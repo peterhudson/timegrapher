@@ -153,7 +153,15 @@ pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
     let step = (coarse.len() / 2000).max(1);
     let sample: Vec<f64> = coarse.iter().step_by(step).map(|c| c.0).collect();
     let template = median_template(env, fs, &sample);
+    let beats = detect_with_template(env, fs, bph, &template);
+    (beats, template)
+}
 
+/// Find every beat by correlating with a given template. Long recordings
+/// are processed in chunks with one template throughout, so the beat's
+/// reference point cannot shift from one chunk to the next.
+pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) -> Vec<Beat> {
+    let beat = 3600.0 / bph as f64;
     // Pass 2: correlate with the zero-mean template and track its peaks.
     let mean = template.iter().sum::<f32>() / template.len().max(1) as f32;
     let zm: Vec<f32> = template.iter().map(|v| v - mean).collect();
@@ -175,5 +183,5 @@ pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
             quality: v / typical,
         });
     }
-    (beats, template)
+    beats
 }
