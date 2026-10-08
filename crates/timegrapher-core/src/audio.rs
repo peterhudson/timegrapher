@@ -101,6 +101,8 @@ pub struct AudioInfo {
     pub sample_rate: u32,
     /// Length in frames, when the header gives it.
     pub frames: Option<u64>,
+    /// Bytes per frame as captured (channels times bytes per sample).
+    pub bytes_per_frame: u32,
 }
 
 fn extension(path: &Path) -> String {
@@ -114,9 +116,11 @@ pub fn info(path: &Path) -> Result<AudioInfo, AudioError> {
     match extension(path).as_str() {
         "wav" => {
             let r = hound::WavReader::open(path).map_err(AudioError::Wav)?;
+            let spec = r.spec();
             Ok(AudioInfo {
-                sample_rate: r.spec().sample_rate,
+                sample_rate: spec.sample_rate,
                 frames: Some(r.duration() as u64),
+                bytes_per_frame: spec.channels as u32 * spec.bits_per_sample.div_ceil(8) as u32,
             })
         }
         "flac" => {
@@ -125,6 +129,7 @@ pub fn info(path: &Path) -> Result<AudioInfo, AudioError> {
             Ok(AudioInfo {
                 sample_rate: i.sample_rate,
                 frames: i.samples,
+                bytes_per_frame: i.channels * i.bits_per_sample.div_ceil(8),
             })
         }
         other => Err(AudioError::Unsupported(format!("file extension '{other}'"))),

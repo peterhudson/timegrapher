@@ -41,6 +41,9 @@ folder next to the recording (`--out` to choose):
 | `slices.csv` | Rate, beat error and amplitude in slices of about 1/400 of the run. |
 | `folds.csv` | The average cycle of each component found. |
 
+A capture split into segments with no gaps is read as one recording by
+listing the files in order: `timegrapher long seg01.flac seg02.flac ...`.
+
 Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`,
 `--escape-teeth`), plus `--wheel "third wheel=450"` (repeatable) to name
 other wheels whose turn period you know for the calibre.
@@ -50,19 +53,23 @@ other wheels whose turn period you know for the calibre.
 A sound card's crystal is typically 10–50 ppm off (1–4 s/d) and drifts
 with temperature. With `--clock`, beat times are mapped onto true time
 using a log, written during the recording, of how much audio had been
-captured against the system clock (which NTP keeps right). Format: CSV or
-whitespace-separated, `#` comments, a header naming the columns:
+captured against the system clock (which NTP keeps right). One entry per
+line, CSV or whitespace-separated, `#` comments, and an optional header:
 
 ```
-unix_s,frames
-1791484294.512,0
-1791484354.513,2880021
+time_ns,bytes
+1791484354282000000,5760044
+1791484414282100000,11520044
 ```
 
-The audio column can be `frames` or `samples` (divided by the sample
-rate) or `audio_s`; the time column `unix_s`, `unix` or `time_s`.
-Without a header the first two columns are taken as audio seconds and
-Unix seconds. An entry every minute is plenty. Entries more than five
+With a header, the audio column is `audio_s`, `frames`, `samples` or
+`bytes` (of audio data), and the time column `unix_s`, `unix`, `time_s`
+or `epoch` in seconds, or any name ending `_ns` or `_ms`. Without one,
+the time column is the one that looks like a Unix time (seconds,
+milliseconds or nanoseconds, told apart by size), and the audio column's
+unit is whichever of seconds, frames or bytes makes it advance one second
+per second. Only the slope matters, so a constant offset in the audio
+count (a WAV header, a pipe buffer) does no harm. An entry every minute is plenty. Entries more than five
 robust SDs off the fit (a timestamp taken late) are dropped. Runs over
 four hours are mapped with a local straight-line fit every ten minutes
 over two hours, which follows the crystal's drift with temperature.

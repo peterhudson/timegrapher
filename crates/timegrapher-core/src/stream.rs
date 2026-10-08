@@ -147,9 +147,34 @@ impl State {
 pub fn analyze_file(
     path: &Path,
     cfg: &StreamConfig,
+    progress: impl FnMut(f64),
+) -> Result<BeatLog, AudioError> {
+    analyze_files(&[path], cfg, progress)
+}
+
+/// Analyse several files as one continuous recording, in the order given
+/// (a long capture split into segments with no gaps between them).
+pub fn analyze_files(
+    paths: &[&Path],
+    cfg: &StreamConfig,
     mut progress: impl FnMut(f64),
 ) -> Result<BeatLog, AudioError> {
-    let info = audio::info(path)?;
+    let Some(first) = paths.first() else {
+        return Err(AudioError::Unsupported("no files given".into()));
+    };
+    let info = audio::info(first)?;
+    for p in &paths[1..] {
+        let i = audio::info(p)?;
+        if i.sample_rate != info.sample_rate {
+            return Err(AudioError::Unsupported(format!(
+                "{} is at {} Hz but {} is at {} Hz",
+                p.display(),
+                i.sample_rate,
+                first.display(),
+                info.sample_rate
+            )));
+        }
+    }
     let fs = info.sample_rate as f64;
     let core = (cfg.chunk_s * fs).round() as usize;
     let margin = (cfg.margin_s * fs).round() as usize;
@@ -168,20 +193,22 @@ pub fn analyze_file(
     let mut buf0 = 0usize;
     let mut next = 0usize;
     let mut total = 0usize;
-    audio::stream(path, 1 << 16, |block| {
-        buf.extend_from_slice(block);
-        total += block.len();
-        while buf0 + buf.len() >= next + core + margin {
-            let from = next.saturating_sub(margin);
-            let x = &buf[from - buf0..next + core + margin - buf0];
-            st.chunk(x, from, next as f64 / fs, (next + core) as f64 / fs);
-            next += core;
-            let keep_from = next.saturating_sub(margin);
-            buf.drain(..keep_from - buf0);
-            buf0 = keep_from;
-            progress(next as f64 / fs);
-        }
-    })?;
+    for path in paths {
+        audio::stream(path, 1 << 16, |block| {
+            buf.extend_from_slice(block);
+            total += block.len();
+            while buf0 + buf.len() >= next + core + margin {
+                let from = next.saturating_sub(margin);
+                let x = &buf[from - buf0..next + core + margin - buf0];
+                st.chunk(x, from, next as f64 / fs, (next + core) as f64 / fs);
+                next += core;
+                let keep_from = next.saturating_sub(margin);
+                buf.drain(..keep_from - buf0);
+                buf0 = keep_from;
+                progress(next as f64 / fs);
+            }
+        })?;
+    }
     if total > next {
         let from = next.saturating_sub(margin);
         st.chunk(&buf[from - buf0..], from, next as f64 / fs, f64::INFINITY);

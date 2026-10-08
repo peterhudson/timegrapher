@@ -54,7 +54,10 @@ enum Command {
     /// Analyse a long recording (hours to days): rate and amplitude over
     /// time and the periodic changes that point at a wheel of the train.
     Long {
-        file: PathBuf,
+        /// The recording; several files are read as one continuous
+        /// recording, in the order given (a capture split into segments).
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
         /// Clock log for calibrating the sound card: audio position against
         /// NTP-synced system time (see `docs/long-runs.md`).
         #[arg(long)]
@@ -141,7 +144,7 @@ fn main() -> ExitCode {
             run_analyze(&file, &cfg, beats, windows, json)
         }
         Command::Long {
-            file,
+            files,
             clock,
             bph,
             lift,
@@ -158,7 +161,7 @@ fn main() -> ExitCode {
             cfg.analysis.envelope.notch_hz = notch;
             cfg.analysis.envelope.highpass_hz = highpass;
             long::run(
-                &file,
+                &files,
                 clock.as_deref(),
                 &cfg,
                 escape_teeth,

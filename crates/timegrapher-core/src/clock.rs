@@ -182,58 +182,131 @@ impl ClockFit {
     }
 }
 
-/// Parse a clock log: CSV or whitespace-separated, `#` comments, with a
-/// header naming the columns. The audio position is `audio_s` (seconds),
-/// `frames` or `samples` (divided by the sample rate); the true time is
-/// `unix_s`, `unix` or `time_s` (seconds). Without a header the first two
-/// columns are taken as audio seconds and Unix seconds.
-pub fn parse_log(text: &str, sample_rate: u32) -> Result<Vec<(f64, f64)>, String> {
-    let mut audio_col = 0usize;
-    let mut audio_scale = 1.0;
-    let mut true_col = 1usize;
-    let mut out = Vec::new();
-    let mut header_seen = false;
+/// Parse a clock log: one entry per line, CSV or whitespace-separated,
+/// `#` comments, with an optional header naming the columns.
+///
+/// - Audio position: `audio_s` (seconds), `frames` or `samples`, or
+///   `bytes` (of audio data, `bytes_per_frame` to a frame).
+/// - System time: `unix_s`, `unix`, `time_s` or `epoch` (seconds), or a
+///   name ending in `_ns` or `_ms` for nanoseconds or milliseconds.
+///
+/// Without a header, the time column is the one that looks like a Unix
+/// time (seconds, milliseconds or nanoseconds, told apart by size), the
+/// audio column is the other one, and its unit (seconds, frames or bytes)
+/// is the one that makes it advance at one second per second. Only the
+/// slope of the mapping matters, so a constant offset in the audio count
+/// (a file header, a pipe buffer) does no harm.
+pub fn parse_log(
+    text: &str,
+    sample_rate: u32,
+    bytes_per_frame: u32,
+) -> Result<Vec<(f64, f64)>, String> {
+    let fs = sample_rate as f64;
+    let mut header: Option<Vec<String>> = None;
+    let mut rows: Vec<Vec<f64>> = Vec::new();
     for (n, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let cells: Vec<&str> = line
-            .split(|c: char| c == ',' || c.is_whitespace())
+            .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
             .filter(|c| !c.is_empty())
             .collect();
-        if !header_seen && cells.iter().any(|c| c.parse::<f64>().is_err()) {
-            header_seen = true;
-            let find = |names: &[&str]| {
-                cells
-                    .iter()
-                    .position(|c| names.contains(&c.to_ascii_lowercase().as_str()))
-            };
-            if let Some(i) = find(&["audio_s", "audio_seconds"]) {
-                audio_col = i;
-            } else if let Some(i) = find(&["frames", "samples", "frame", "sample"]) {
-                audio_col = i;
-                audio_scale = 1.0 / sample_rate as f64;
-            } else {
-                return Err(format!(
-                    "clock log header has no audio column (audio_s, frames or samples): {line}"
-                ));
+        let nums: Vec<Option<f64>> = cells.iter().map(|c| c.parse::<f64>().ok()).collect();
+        if nums.iter().any(|v| v.is_none()) {
+            if header.is_none() && rows.is_empty() {
+                header = Some(cells.iter().map(|c| c.to_ascii_lowercase()).collect());
+                continue;
             }
-            true_col = find(&["unix_s", "unix", "time_s", "ntp_s", "epoch"]).ok_or_else(|| {
-                format!("clock log header has no time column (unix_s, unix or time_s): {line}")
-            })?;
-            continue;
+            return Err(format!("line {}: not a number in '{line}'", n + 1));
         }
-        header_seen = true;
-        let get = |i: usize| -> Result<f64, String> {
-            cells
-                .get(i)
-                .and_then(|c| c.parse::<f64>().ok())
-                .ok_or_else(|| format!("clock log line {}: cannot read column {}", n + 1, i + 1))
-        };
-        out.push((get(audio_col)? * audio_scale, get(true_col)?));
+        rows.push(nums.into_iter().map(|v| v.unwrap_or(f64::NAN)).collect());
     }
-    Ok(out)
+    if rows.len() < 2 {
+        return Err(format!("{} entries; need at least 2", rows.len()));
+    }
+    let width = rows.iter().map(|r| r.len()).min().unwrap_or(0);
+    let col = |i: usize| -> Vec<f64> { rows.iter().map(|r| r[i]).collect() };
+
+    // Scale a time column to seconds from the size of its values.
+    let time_scale = |v: &[f64]| -> Option<f64> {
+        let x = v[0].abs();
+        if (1e8..1e11).contains(&x) {
+            Some(1.0)
+        } else if (1e11..1e14).contains(&x) {
+            Some(1e-3)
+        } else if (1e17..1e20).contains(&x) {
+            Some(1e-9)
+        } else {
+            None
+        }
+    };
+
+    let (ai, ascale, ti, tscale) = if let Some(h) = &header {
+        let find = |pred: &dyn Fn(&str) -> bool| h.iter().position(|c| pred(c));
+        let ti = find(&|c| {
+            ["unix_s", "unix", "time_s", "epoch", "ntp_s", "time"].contains(&c)
+                || c.ends_with("_ns")
+                || c.ends_with("_ms")
+        })
+        .ok_or_else(|| format!("header has no time column: {}", h.join(",")))?;
+        let tscale = if h[ti].ends_with("_ns") {
+            1e-9
+        } else if h[ti].ends_with("_ms") {
+            1e-3
+        } else {
+            1.0
+        };
+        let (ai, ascale) = if let Some(i) = find(&|c| c == "audio_s" || c == "audio_seconds") {
+            (i, 1.0)
+        } else if let Some(i) = find(&|c| ["frames", "samples", "frame", "sample"].contains(&c)) {
+            (i, 1.0 / fs)
+        } else if let Some(i) = find(&|c| c.starts_with("bytes")) {
+            (i, 1.0 / (fs * bytes_per_frame as f64))
+        } else {
+            return Err(format!(
+                "header has no audio column (audio_s, frames or bytes): {}",
+                h.join(",")
+            ));
+        };
+        (ai, ascale, ti, tscale)
+    } else {
+        if width < 2 {
+            return Err("need two columns: system time and audio position".into());
+        }
+        let ti = (0..width)
+            .find(|&i| time_scale(&col(i)).is_some())
+            .ok_or("no column looks like a Unix time")?;
+        let tscale = time_scale(&col(ti)).unwrap_or(1.0);
+        let ai = (0..width)
+            .find(|&i| i != ti)
+            .ok_or("no audio position column")?;
+        let (a, t) = (col(ai), col(ti));
+        let (a0, a1) = (a[0], a[a.len() - 1]);
+        let dt = (t[t.len() - 1] - t[0]) * tscale;
+        if dt <= 0.0 {
+            return Err("times do not increase".into());
+        }
+        let per_s = (a1 - a0) / dt;
+        let ascale = [1.0, fs, fs * bytes_per_frame as f64]
+            .into_iter()
+            .map(|u| (u, (per_s / u).ln().abs()))
+            .filter(|c| c.1.is_finite() && c.1 < 0.05)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|c| 1.0 / c.0)
+            .ok_or_else(|| {
+                format!("audio column advances {per_s:.1} per second: not seconds, frames or bytes at {sample_rate} Hz")
+            })?;
+        (ai, ascale, ti, tscale)
+    };
+    if ai >= width || ti >= width {
+        return Err("a row is missing a column".into());
+    }
+    Ok(rows
+        .iter()
+        .map(|r| (r[ai] * ascale, r[ti] * tscale))
+        .collect())
 }
 
 #[cfg(test)]
@@ -281,9 +354,25 @@ mod tests {
     #[test]
     fn parses_frames_and_unix() {
         let text = "# clock log\nunix_s,frames\n1759948294.5,0\n1759948354.5,2880000\n";
-        let p = parse_log(text, 48000).unwrap();
+        let p = parse_log(text, 48000, 2).unwrap();
         assert_eq!(p, vec![(0.0, 1759948294.5), (60.0, 1759948354.5)]);
-        let bare = "0 100.0\n60 160.001\n";
-        assert_eq!(parse_log(bare, 48000).unwrap()[1], (60.0, 160.001));
+    }
+
+    #[test]
+    fn guesses_nanoseconds_and_bytes_without_a_header() {
+        // System time in ns, then bytes of 16-bit mono at 48 kHz, plus a
+        // 44-byte header counted in.
+        let text = "1791484354282000000 5760044\n1791484414282100000 11520044\n1791484474282000000 17280044\n";
+        let p = parse_log(text, 48000, 2).unwrap();
+        assert!((p[1].0 - p[0].0 - 60.0).abs() < 1e-9);
+        assert!((p[1].1 - p[0].1 - 60.0001).abs() < 1e-6);
+        let fit = ClockFit::new(&p).unwrap();
+        assert!(fit.ppm.abs() < 2.0, "{}", fit.ppm);
+    }
+
+    #[test]
+    fn rejects_an_audio_column_of_unknown_unit() {
+        let text = "1791484354 1000\n1791484414 2000\n";
+        assert!(parse_log(text, 48000, 2).is_err());
     }
 }

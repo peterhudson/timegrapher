@@ -28,7 +28,7 @@ fn parse_wheel(s: &str) -> Result<Wheel, String> {
 }
 
 pub fn run(
-    file: &Path,
+    files: &[PathBuf],
     clock_log: Option<&Path>,
     cfg: &StreamConfig,
     escape_teeth: u32,
@@ -40,11 +40,16 @@ pub fn run(
         .iter()
         .map(|w| parse_wheel(w))
         .collect::<Result<_, _>>()?;
-    let info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let file = files.first().ok_or("no recording given")?.as_path();
+    let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    for f in &files[1..] {
+        let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
+        info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
+    }
     let clock = match clock_log {
         Some(p) => {
             let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
-            let pairs = clock::parse_log(&text, info.sample_rate)
+            let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
                 .map_err(|e| format!("{}: {e}", p.display()))?;
             Some(ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
         }
@@ -58,7 +63,8 @@ pub fn run(
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
     let tty = std::io::stderr().is_terminal();
     let mut last_report = 0.0;
-    let log = stream::analyze_file(file, cfg, |done| {
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    let log = stream::analyze_files(&paths, cfg, |done| {
         if done - last_report >= 600.0 || total.is_some_and(|t| done >= t) {
             last_report = done;
             let msg = match total {
@@ -72,7 +78,7 @@ pub fn run(
             }
         }
     })
-    .map_err(|e| format!("{}: {e}", file.display()))?;
+    .map_err(|e| e.to_string())?;
     if tty {
         eprintln!();
     }
@@ -107,15 +113,19 @@ pub fn run(
         out.join("summary.json"),
         fs::write(out.join("summary.json"), &summary),
     )?;
-    let title = file
+    let name = file
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("recording");
+    let title = match files.len() {
+        1 => name.to_string(),
+        n => format!("{name} and {} more", n - 1),
+    };
     io(
         out.join("report.html"),
         fs::write(
             out.join("report.html"),
-            crate::report::html(title, &rep, &lc.wheels),
+            crate::report::html(&title, &rep, &lc.wheels),
         ),
     )?;
 
