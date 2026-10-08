@@ -11,6 +11,7 @@ pub mod beats;
 pub mod dsp;
 pub mod filter;
 pub mod periodicity;
+pub mod shape;
 pub mod synth;
 pub mod timing;
 
