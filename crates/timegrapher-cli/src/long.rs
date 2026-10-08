@@ -282,10 +282,11 @@ fn print_summary(r: &LongReport) {
     );
     match &r.clock {
         Some(c) => println!(
-            "Clock        sound card {:.2} ppm {} than NTP time ({:+.2} s/d corrected); {} entries, {:.1} ms rms{}",
+            "Clock        sound card {:.2} ppm {} than NTP time, so uncorrected rates read {:.2} s/d {}; corrected from {} entries, {:.1} ms rms{}",
             c.ppm.abs(),
             if c.ppm >= 0.0 { "slower" } else { "faster" },
-            -c.rate_error_s_per_day,
+            c.rate_error_s_per_day.abs(),
+            if c.ppm >= 0.0 { "fast" } else { "slow" },
             c.points,
             c.residual_ms,
             if c.tracks_drift { ", drift followed" } else { "" }

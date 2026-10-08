@@ -40,7 +40,8 @@ pub struct LongReport {
     /// Share of the expected beats found with a clean match, 0..1.
     pub clean_fraction: f64,
     pub clock: Option<ClockFit>,
-    /// The whole run fitted at once (calibrated when `clock` is set).
+    /// The whole run fitted at once (calibrated when `clock` is set); its
+    /// jitter is the median over the slices.
     pub overall: Option<TimingFit>,
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
@@ -88,7 +89,7 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         })
         .collect();
     let duration = map(log.duration_s);
-    let overall = timing::fit(&beats, log.bph);
+    let mut overall = timing::fit(&beats, log.bph);
     let residuals = timing::residuals(&beats).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
 
     // Uniform series for the period search, on the watch's own clock: a
@@ -153,6 +154,7 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
     // Slices for the overview: about 400 over the run, 10 s to 10 min each.
     let slice_s = (duration / 400.0).clamp(10.0, 600.0).round();
     let mut slices = Vec::new();
+    let mut jitters = Vec::new();
     let mut s = 0.0;
     let (mut bi, mut ai) = (0, 0);
     while s + slice_s <= duration + 1e-9 {
@@ -162,6 +164,9 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
             bi += 1;
         }
         let w = timing::fit(&beats[b0..bi], log.bph);
+        if let Some(f) = w {
+            jitters.push(f.jitter_us);
+        }
         let mut amps = Vec::new();
         while ai < at.len() && at[ai] < e {
             if at[ai] >= s {
@@ -177,6 +182,13 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
             amplitude_deg: (!amps.is_empty()).then(|| median(&mut amps)),
         });
         s = e;
+    }
+    // Jitter is beat-to-beat scatter: over a whole run the fit's residuals
+    // are dominated by the rate wandering, so take the median over slices.
+    if let Some(f) = overall.as_mut() {
+        if !jitters.is_empty() {
+            f.jitter_us = median(&mut jitters);
+        }
     }
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();

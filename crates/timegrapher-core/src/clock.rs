@@ -139,7 +139,7 @@ impl ClockFit {
             rejected: total - p.len(),
             span_s: span,
             ppm: (b - 1.0) * 1e6,
-            rate_error_s_per_day: -(b - 1.0) * 86400.0,
+            rate_error_s_per_day: (b - 1.0) * 86400.0,
             residual_ms: 0.0,
             tracks_drift,
             knots,
@@ -182,8 +182,28 @@ impl ClockFit {
     }
 }
 
+fn is_time_name(c: &str) -> bool {
+    ["unix_s", "unix", "time_s", "epoch", "ntp_s", "time"].contains(&c)
+        || c.ends_with("_ns")
+        || c.ends_with("_ms")
+}
+
+fn is_audio_name(c: &str) -> bool {
+    [
+        "audio_s",
+        "audio_seconds",
+        "frames",
+        "samples",
+        "frame",
+        "sample",
+    ]
+    .contains(&c)
+        || c.starts_with("bytes")
+}
+
 /// Parse a clock log: one entry per line, CSV or whitespace-separated,
-/// `#` comments, with an optional header naming the columns.
+/// `#` comments, with an optional header naming the columns. Other lines
+/// that aren't all numbers (a note from the logger) are skipped.
 ///
 /// - Audio position: `audio_s` (seconds), `frames` or `samples`, or
 ///   `bytes` (of audio data, `bytes_per_frame` to a frame).
@@ -204,7 +224,7 @@ pub fn parse_log(
     let fs = sample_rate as f64;
     let mut header: Option<Vec<String>> = None;
     let mut rows: Vec<Vec<f64>> = Vec::new();
-    for (n, line) in text.lines().enumerate() {
+    for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -215,11 +235,17 @@ pub fn parse_log(
             .collect();
         let nums: Vec<Option<f64>> = cells.iter().map(|c| c.parse::<f64>().ok()).collect();
         if nums.iter().any(|v| v.is_none()) {
-            if header.is_none() && rows.is_empty() {
-                header = Some(cells.iter().map(|c| c.to_ascii_lowercase()).collect());
-                continue;
+            // A header names a time and an audio column; any other line
+            // that isn't all numbers (a note the logger wrote) is skipped.
+            let names: Vec<String> = cells.iter().map(|c| c.to_ascii_lowercase()).collect();
+            if header.is_none()
+                && rows.is_empty()
+                && names.iter().any(|c| is_time_name(c))
+                && names.iter().any(|c| is_audio_name(c))
+            {
+                header = Some(names);
             }
-            return Err(format!("line {}: not a number in '{line}'", n + 1));
+            continue;
         }
         rows.push(nums.into_iter().map(|v| v.unwrap_or(f64::NAN)).collect());
     }
@@ -245,12 +271,8 @@ pub fn parse_log(
 
     let (ai, ascale, ti, tscale) = if let Some(h) = &header {
         let find = |pred: &dyn Fn(&str) -> bool| h.iter().position(|c| pred(c));
-        let ti = find(&|c| {
-            ["unix_s", "unix", "time_s", "epoch", "ntp_s", "time"].contains(&c)
-                || c.ends_with("_ns")
-                || c.ends_with("_ms")
-        })
-        .ok_or_else(|| format!("header has no time column: {}", h.join(",")))?;
+        let ti = find(&|c| is_time_name(c))
+            .ok_or_else(|| format!("header has no time column: {}", h.join(",")))?;
         let tscale = if h[ti].ends_with("_ns") {
             1e-9
         } else if h[ti].ends_with("_ms") {
@@ -329,7 +351,7 @@ mod tests {
         let fit = ClockFit::new(&pairs).unwrap();
         assert!((fit.ppm - 20.0).abs() < 0.5, "{}", fit.ppm);
         assert_eq!(fit.rejected, 1);
-        assert!((fit.rate_error_s_per_day + 1.728).abs() < 0.05);
+        assert!((fit.rate_error_s_per_day - 1.728).abs() < 0.05);
         assert!((fit.map(3600.0) - 3600.0 * (1.0 + 20e-6)).abs() < 0.002);
         assert!(!fit.tracks_drift);
     }
@@ -368,6 +390,18 @@ mod tests {
         assert!((p[1].1 - p[0].1 - 60.0001).abs() < 1e-6);
         let fit = ClockFit::new(&p).unwrap();
         assert!(fit.ppm.abs() < 2.0, "{}", fit.ppm);
+    }
+
+    #[test]
+    fn skips_a_note_line_and_reads_fractional_seconds() {
+        // As written by the 2-hour capture's logger.
+        let text = "arecord_start_utc 2026-10-08T18:31:34.281846890Z pid 2748966\n\
+                    1791484294.286333874 44\n\
+                    1791484354.301726276 5760044\n\
+                    1791484414.300000000 11520044\n";
+        let p = parse_log(text, 48000, 2).unwrap();
+        assert_eq!(p.len(), 3);
+        assert!((p[1].0 - p[0].0 - 60.0).abs() < 1e-9);
     }
 
     #[test]
