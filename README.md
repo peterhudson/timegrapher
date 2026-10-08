@@ -16,7 +16,7 @@ possible that no open-source tool offers today:
   escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
 
 Status: early. The per-beat engine and a command-line tool analyse
-recordings, from a few minutes (`analyze`) to days (`long`). A live
+recordings, from a few minutes (`analyze`, `shape`) to days (`long`). A live
 desktop app (egui) comes later.
 
 ## Command line

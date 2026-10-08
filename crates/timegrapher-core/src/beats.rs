@@ -118,8 +118,14 @@ pub const POST_S: f64 = 0.008;
 
 /// Median of the windows around the given beat times (sample by sample).
 pub fn median_template(env: &[f32], fs: f64, times: &[f64]) -> Vec<f32> {
-    let pre = (PRE_S * fs).round() as usize;
-    let post = (POST_S * fs).round() as usize;
+    median_window(env, fs, times, PRE_S, POST_S)
+}
+
+/// Median of the windows from `pre_s` before to `post_s` after each time.
+/// Windows that run off either end of the envelope are left out.
+pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f64) -> Vec<f32> {
+    let pre = (pre_s * fs).round() as usize;
+    let post = (post_s * fs).round() as usize;
     let len = pre + post;
     let starts: Vec<usize> = times
         .iter()

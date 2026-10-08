@@ -1,5 +1,6 @@
 mod long;
 mod report;
+mod shape_cmd;
 
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -50,6 +51,28 @@ enum Command {
         /// Print the summary as JSON instead of text.
         #[arg(long)]
         json: bool,
+    },
+    /// Measure the three sounds of each side's beat.
+    Shape {
+        file: PathBuf,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees.
+        #[arg(long, default_value_t = 52.0)]
+        lift: f64,
+        /// Comma-separated steady tones to notch out, Hz.
+        #[arg(long, value_delimiter = ',')]
+        notch: Vec<f64>,
+        /// High-pass corner, Hz.
+        #[arg(long, default_value_t = 1500.0)]
+        highpass: f64,
+        /// Print the measurements as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+        /// Write the even and odd whole-recording templates to this CSV file.
+        #[arg(long)]
+        templates: Option<PathBuf>,
     },
     /// Analyse a long recording (hours to days): rate and amplitude over
     /// time and the periodic changes that point at a wheel of the train.
@@ -143,6 +166,29 @@ fn main() -> ExitCode {
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
             run_analyze(&file, &cfg, beats, windows, json)
+        }
+        Command::Shape {
+            file,
+            bph,
+            lift,
+            notch,
+            highpass,
+            json,
+            templates,
+        } => {
+            let envelope = timegrapher_core::dsp::EnvelopeConfig {
+                notch_hz: notch,
+                highpass_hz: highpass,
+                ..Default::default()
+            };
+            let o = shape_cmd::Options {
+                bph,
+                envelope,
+                lift_deg: lift,
+                json,
+                templates: templates.as_deref(),
+            };
+            shape_cmd::run(&file, &o)
         }
         Command::Long {
             files,

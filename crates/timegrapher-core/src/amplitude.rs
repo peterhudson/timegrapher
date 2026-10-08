@@ -35,6 +35,25 @@ pub fn amplitude_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) ->
 }
 
 /// Unlock-to-drop time on a template whose drop sits `PRE_S` from its start.
+pub fn unlock_to_drop(template: &[f32], fs: f64, onset_fraction: f32) -> Option<f64> {
+    let e = edges(template, fs, (PRE_S * fs).round() as usize, onset_fraction)?;
+    Some((e.drop - e.unlock) / fs)
+}
+
+/// Landmarks of one template, in samples from its start.
+#[derive(Debug, Clone, Copy)]
+pub struct Edges {
+    /// Unlock and drop edges (fractional samples).
+    pub unlock: f64,
+    pub drop: f64,
+    /// Drop peak and its level.
+    pub peak: usize,
+    pub peak_level: f32,
+    /// Median of the template's first 3 ms.
+    pub floor: f32,
+}
+
+/// Unlock and drop edges on a template whose drop sits near `origin`.
 ///
 /// Both ends are taken on rising edges, which are sharper and steadier than
 /// peaks: the unlock is where the template first rises `onset_fraction` of
@@ -42,9 +61,8 @@ pub fn amplitude_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) ->
 /// reaches half the drop's height. The unlock is often much quieter than the
 /// impulse that follows it, so the threshold is relative to the drop rather
 /// than to the loudest pre-drop sound.
-pub fn unlock_to_drop(template: &[f32], fs: f64, onset_fraction: f32) -> Option<f64> {
+pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> Option<Edges> {
     let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
-    let origin = (PRE_S * fs).round() as usize;
     let w = (0.0015 * fs) as usize;
     let (peak, peak_v) = crate::dsp::argmax(&t, origin.saturating_sub(w), origin + w)?;
     let quiet = (0.003 * fs) as usize;
@@ -68,7 +86,13 @@ pub fn unlock_to_drop(template: &[f32], fs: f64, onset_fraction: f32) -> Option<
     // Unlock edge: the first rise after the quiet stretch, ending well before the drop.
     let end = (drop as usize).checked_sub((0.0015 * fs) as usize)?;
     let unlock = crossing(quiet, end, floor + onset_fraction * height)?;
-    Some((drop - unlock) / fs)
+    Some(Edges {
+        unlock,
+        drop,
+        peak,
+        peak_level: peak_v,
+        floor,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
