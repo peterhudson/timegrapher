@@ -1,0 +1,17 @@
+[package]
+name = "timegrapher-cli"
+description = "Command-line analysis of watch recordings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "timegrapher"
+path = "src/main.rs"
+
+[dependencies]
+timegrapher-core.workspace = true
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"

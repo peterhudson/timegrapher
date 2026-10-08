@@ -1,0 +1,14 @@
+[package]
+name = "timegrapher-core"
+description = "Per-beat signal processing for mechanical watch timing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+claxon = "0.4"
+hound = "3.5"
+realfft = "3.4"
+serde = { version = "1", features = ["derive"] }

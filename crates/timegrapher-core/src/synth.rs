@@ -1,0 +1,113 @@
+//! Synthetic watch signals for tests.
+//!
+//! Each beat is three decaying bursts: unlock, impulse and drop. The time
+//! from unlock to drop follows the amplitude through the lift-angle
+//! formula, so a test can check that amplitude comes back out.
+
+use crate::audio::Audio;
+
+/// Small deterministic PRNG (xorshift64*) so tests need no dependencies.
+pub struct Rng(u64);
+
+impl Rng {
+    pub fn new(seed: u64) -> Self {
+        Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
+    }
+    pub fn next_f64(&mut self) -> f64 {
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        (self.0.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 11) as f64 / (1u64 << 53) as f64
+    }
+    pub fn normal(&mut self) -> f64 {
+        let u1 = self.next_f64().max(1e-300);
+        let u2 = self.next_f64();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+pub struct SynthConfig {
+    pub sample_rate: u32,
+    pub duration_s: f64,
+    pub bph: u32,
+    pub lift_deg: f64,
+    pub rate_s_per_day: f64,
+    pub beat_error_ms: f64,
+    /// Peak signal over RMS noise, dB.
+    pub snr_db: f64,
+    pub seed: u64,
+}
+
+impl Default for SynthConfig {
+    fn default() -> Self {
+        SynthConfig {
+            sample_rate: 48000,
+            duration_s: 30.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            rate_s_per_day: 5.0,
+            beat_error_ms: 0.4,
+            snr_db: 30.0,
+            seed: 1,
+        }
+    }
+}
+
+/// Generate a recording. `amp_fn(t)` gives the amplitude in degrees and
+/// `rate_fn(t)` an extra rate in s/d at time `t` (seconds).
+pub fn generate(
+    cfg: &SynthConfig,
+    amp_fn: impl Fn(f64) -> f64,
+    rate_fn: impl Fn(f64) -> f64,
+) -> Audio {
+    let fs = cfg.sample_rate as f64;
+    let n = (cfg.duration_s * fs) as usize;
+    let mut x = vec![0.0f64; n];
+    let mut rng = Rng::new(cfg.seed);
+    let nominal = 3600.0 / cfg.bph as f64;
+    let blen = (0.004 * fs) as usize;
+    let mut t = 0.05;
+    let mut k = 0u64;
+    while t < cfg.duration_s - 0.05 {
+        let amp = amp_fn(t);
+        let osc = 2.0 * nominal;
+        let tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
+        let side = if k % 2 == 0 { 0.5 } else { -0.5 };
+        // The drop is the reference point; the unlock comes tud earlier.
+        let drop = t + side * cfg.beat_error_ms / 1000.0;
+        let events = [
+            (drop - tud, 0.35, 5200.0, 0.00025),
+            (drop - 0.55 * tud, 0.25, 3800.0, 0.00035),
+            (drop, 1.0, 6100.0, 0.00045),
+        ];
+        for (te, gain, fc, tau) in events {
+            let i0 = (te * fs).round() as isize;
+            let ph = rng.next_f64() * 2.0 * std::f64::consts::PI;
+            let g = gain * (1.0 + 0.08 * rng.normal());
+            for j in 0..blen {
+                let idx = i0 + j as isize;
+                if idx < 0 || idx as usize >= n {
+                    continue;
+                }
+                let tt = j as f64 / fs;
+                x[idx as usize] += g
+                    * (-tt / tau).exp()
+                    * (1.0 - (-tt / 0.00005).exp())
+                    * (2.0 * std::f64::consts::PI * fc * tt + ph).sin();
+            }
+        }
+        let rate = cfg.rate_s_per_day + rate_fn(t);
+        t += nominal * (1.0 - rate / 86400.0);
+        k += 1;
+    }
+    let noise_rms = 10f64.powf(-cfg.snr_db / 20.0);
+    let scale = 0.5;
+    let samples = x
+        .iter()
+        .map(|&v| ((v + noise_rms * rng.normal()) * scale) as f32)
+        .collect();
+    Audio {
+        samples,
+        sample_rate: cfg.sample_rate,
+    }
+}
