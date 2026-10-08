@@ -65,9 +65,9 @@ or a tablet cover.
 each other, which shortens the working length of the spring, so the watch
 gains heavily and unevenly.
 
-**Try first:** demagnetise (a cheap blue-box demagnetiser, used as
-instructed: watch on the box, press the button, draw it slowly away to
-arm's length before releasing) and re-test. A compass near the watch that
+**Try first:** demagnetise at home with a cheap demagnetiser and re-test;
+the steps are in
+[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#demagnetise-first-at-home). A compass near the watch that
 deflects is a rough check that it's magnetised (check: a weak residual
 field may not move a compass).
 

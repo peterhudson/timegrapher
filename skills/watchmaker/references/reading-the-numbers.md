@@ -54,7 +54,7 @@ beat rate, the swing follows: `A = L / (2 sin(π t / T))`. So a wrong lift
 angle gives a wrong amplitude, and a missed unlock sound gives a wildly
 wrong one.
 
-**Typical values, fully wound** (28,800 vph modern Swiss or Japanese):
+**Typical values, fully wound** (28,800 vph modern Swiss). Other calibres differ: Seiko's 21,600 vph movements, for one, normally run 20–30° lower. See the calibre table in [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre) before judging:
 
 | | Dial up / dial down | Vertical (crown positions) |
 | --- | --- | --- |

@@ -25,9 +25,10 @@ Three jobs, in order:
   why, and wait for a yes. `timegrapher doctor` proposes fixes; only pass
   `--apply` after the person has agreed to that specific change.
 - **Never tell anyone to open a watch.** Opening a case back, especially a
-  screw-down or water-resistant one, is a job for a watchmaker. The most you
-  suggest at home is winding, setting, demagnetising with a cheap
-  demagnetiser, and re-testing.
+  screw-down or water-resistant one, is a job for a watchmaker. At home:
+  winding, setting, re-testing, and demagnetising with a cheap
+  demagnetiser, which you should recommend whenever magnetism is
+  possible.
 - **Measurement before mechanism.** Before blaming the watch, rule out the
   set-up: clipping, auto gain, a loose clamp, the wrong lift angle, the wrong
   beat rate, a watch tested a minute after winding, a noisy room. Most "faults"
@@ -120,15 +121,21 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
 ## Judgement rules worth remembering
 
 - **Huge rate, hundreds of s/d fast, erratic: magnetism** until proved
-  otherwise. Demagnetise, re-test. If it's still hundreds out, it's a
+  otherwise. Tell them to demagnetise it at home with a cheap
+  demagnetiser, and how
+  ([when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#demagnetise-first-at-home)),
+  then re-test. If it's still hundreds out, it's a
   watchmaker job (hairspring caught, coils touching, or damage).
 - **Amplitude over about 320° dial up**: check the lift angle first, then
   the microphone (a missed unlock or a doubled sound reads as very high
   amplitude). Real amplitude that high risks **knocking** (overbanking): the
   trace jumps or doubles and you can sometimes hear a double tick. That
   wants a watchmaker; it can damage the escapement.
-- **Low amplitude everywhere** (under ~200° dial up fully wound): dirty or
-  dried oil, a tired mainspring, or wear. The usual answer is a service.
+- **Low amplitude everywhere**, judged against what *that calibre* normally
+  does (a Seiko NH35 at 235° is fine; an ETA 2824 at 235° is tired): dirty
+  or dried oil, a tired mainspring, or wear. Weigh it with the time since
+  the last service and how hard the watch is worn before calling a
+  service.
 - **Dial up and dial down differ by more than ~15–20°**: something at the
   balance pivots or end stones, or a hairspring out of flat. Watchmaker.
 - **Vertical much lower than horizontal (more than ~60–70°)**: worn or dirty
@@ -144,10 +151,13 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   comes out at the next service.
 - **A trace that wanders while everything else is good** may be the watch
   settling, a loose clamp, or the room. Re-test before concluding.
-- **Cheaper movements and clones** vary more between positions than genuine
-  Swiss or Japanese ones because the hairspring and its fitting are less
-  carefully made. A 30 s/d positional spread on a £60 clone is normal for
-  the breed; on a Rolex it isn't.
+- **Budget movements** (and the clone movements in homage and replica
+  watches) vary more between positions than well-adjusted Swiss or Japanese
+  ones, because the hairspring and its fitting are simpler. A 30 s/d
+  positional spread is normal on a budget calibre; on a chronometer it
+  isn't. Judge each watch against its own kind.
+- **On a cheap, common movement, mention replacing it**: a new NH35 or
+  Miyota can cost less than a service.
 
 ## Looking at someone else's timegrapher
 
@@ -179,7 +189,7 @@ your verdict, say so.
 | [diagnosis.md](references/diagnosis.md) | From symptoms to causes: escapement, balance and hairspring, oil, mainspring, gear train, magnetism, shock |
 | [tick-shape.md](references/tick-shape.md) | Reading `timegrapher shape`: unlock, impulse, drop, the two pallet stones, fault signatures |
 | [long-runs.md](references/long-runs.md) | Reading `timegrapher long`: rate and amplitude over hours, periodic faults by wheel, sound-card clock calibration |
-| [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md) | Thresholds and the plain-language verdict |
+| [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md) | The verdict: normal amplitude by calibre, service intervals and lubricant life, thresholds, demagnetising at home, service or replace the movement |
 | [cli-reference.md](references/cli-reference.md) | Every command, option, JSON field and exit code |
 
 ## How to write the answer
