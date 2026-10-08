@@ -9,7 +9,7 @@ use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
-use timegrapher_core::periodicity::standard_wheels;
+use timegrapher_core::periodicity::{standard_wheels, Wheel};
 use timegrapher_core::session::{
     self, Finding, Manifest, Mark, Position, Reading, RecordingEntry, SessionReport, Severity,
     Tolerance,
@@ -312,11 +312,17 @@ fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         Vec::new()
     } else {
         let lc = LongConfig {
-            wheels: standard_wheels(log.bph, escape_teeth),
+            wheels: standard_wheels(log.bph, escape_teeth)
+                .into_iter()
+                .chain(c.m.wheels.iter().map(|(name, &period_s)| Wheel {
+                    name: name.clone(),
+                    period_s,
+                }))
+                .collect(),
             ..Default::default()
         };
         let part = trimmed(&log, settle, end);
-        session::cycles(&longrun::analyse(&part, clock.as_ref(), &lc))
+        session::cycles(&longrun::analyse(&part, clock.as_ref(), &lc), &lc.wheels)
     };
 
     let shape = if c.o.no_shape || c.m.shape == Some(false) {

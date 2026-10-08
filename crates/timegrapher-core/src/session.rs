@@ -16,6 +16,7 @@ use crate::beats::Beat;
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longrun::LongReport;
+use crate::periodicity::Wheel;
 use crate::shape::{ShapeReport, SideReport};
 use crate::stream::BeatLog;
 use crate::timing;
@@ -384,6 +385,9 @@ pub struct Cycle {
     pub explained: f64,
     pub wheel: Option<String>,
     pub nearest_wheel: Option<(String, f64)>,
+    /// A wheel whose turn is a whole number of these periods, and the
+    /// number: a short, sharp change once per turn also shows here.
+    pub fraction_of: Option<(String, u32)>,
 }
 
 impl Cycle {
@@ -397,7 +401,19 @@ impl Cycle {
 }
 
 /// The periodic changes `long` found, without their long arrays.
-pub fn cycles(r: &LongReport) -> Vec<Cycle> {
+/// `wheels` are the turn periods searched, used to mark a component at a
+/// whole fraction of a wheel's turn.
+pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
+    let fraction = |period: f64, wheel: &Option<String>| -> Option<(String, u32)> {
+        if wheel.is_some() {
+            return None;
+        }
+        wheels.iter().find_map(|w| {
+            let n = w.period_s / period;
+            (n > 1.5 && (n - n.round()).abs() < 0.01 * n)
+                .then(|| (w.name.clone(), n.round() as u32))
+        })
+    };
     let rate = r.rate_components.iter().map(|c| Cycle {
         series: "rate",
         period_s: c.component.period_s,
@@ -406,6 +422,7 @@ pub fn cycles(r: &LongReport) -> Vec<Cycle> {
         explained: c.component.explained,
         wheel: c.component.wheel.clone(),
         nearest_wheel: c.component.nearest_wheel.clone(),
+        fraction_of: fraction(c.component.period_s, &c.component.wheel),
     });
     let amp = r.amplitude.components.iter().map(|c| Cycle {
         series: "amplitude",
@@ -415,6 +432,7 @@ pub fn cycles(r: &LongReport) -> Vec<Cycle> {
         explained: c.explained,
         wheel: c.wheel.clone(),
         nearest_wheel: c.nearest_wheel.clone(),
+        fraction_of: fraction(c.period_s, &c.wheel),
     });
     rate.chain(amp).collect()
 }
@@ -979,6 +997,22 @@ fn findings(
                     ),
                     "Witschi: large but regular rate variations are a fault in the gear train. Inspect that wheel and its pinion for a damaged tooth, wear or eccentricity, and check the hands for rubbing if it is the fourth wheel.",
                 ),
+                None if c.fraction_of.is_some() => {
+                    let (w, n) = c.fraction_of.clone().unwrap();
+                    push(
+                        "cycle_wheel_fraction",
+                        Some(ri),
+                        Severity::Note,
+                        &format!("Regular {} change at 1/{n} of the {w}'s turn", c.series),
+                        format!(
+                            "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}",
+                            c.series,
+                            c.period_s,
+                            at(r)
+                        ),
+                        "A short, sharp change once per turn of that wheel shows at whole fractions of its turn, even when the turn itself is too weak to stand out. Look at the wheel's turn in a longer recording.",
+                    )
+                }
                 None => push(
                     "cycle_other",
                     Some(ri),
@@ -1131,6 +1165,10 @@ pub struct Manifest {
     #[serde(alias = "lift_angle")]
     pub lift: Option<f64>,
     pub escape_teeth: Option<u32>,
+    /// More wheels to name in the cycle search, as name = seconds per
+    /// turn, e.g. { "third wheel" = 450.0 }.
+    #[serde(default)]
+    pub wheels: std::collections::BTreeMap<String, f64>,
     /// Witschi tolerance class: ladies, mens (default), cosc, cosc-small, metas.
     pub tolerance: Option<String>,
     /// Seconds to skip at the start of each recording while the watch

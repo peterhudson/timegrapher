@@ -44,6 +44,10 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+`escape_teeth` (default 15) sets the escape wheel's turn period, and
+`wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
+names more wheels in the cycle search (seconds per turn).
+
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
 at the top skips those parts. A `[limits]` table changes the project's
@@ -128,6 +132,7 @@ without a number; change them under `[limits]`.
 | Rate unsteady within a reading | 10 s rates spread > 20 s/d (*project*, `rate_spread`) | check |
 | Regular change once per wheel turn | a periodic change above the 1% false-alarm level matching a wheel | check |
 | Vertical and horizontal rates differ | \|DVH\| ≥ 5 s/d, with Witschi's pin advice | note |
+| Periodic change at a whole fraction of a wheel's turn | as above, the turn is a whole number (2 or more) of the period | note |
 | Periodic change tied to no listed wheel | as above, no wheel | note |
 | Unlocking as loud as the drop; extra sounds around the beat | from the beat shape; not yet checked on watches with confirmed faults | note |
 | Short measurement | < 40 s measured (Witschi's minimum; `min_measure_s`) | note |
@@ -146,7 +151,7 @@ index into `readings`, or null for findings across positions), and its
 `evidence` and `advice` as text. Codes: `overbanking`,
 `amplitude_very_low`, `amplitude_tolerance`, `beat_error_large`,
 `beat_error_tolerance`, `rate_tolerance`, `positional_delta`,
-`vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_other`,
+`vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_wheel_fraction`, `cycle_other`,
 `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
 `measurement_short`. Each reading's `verdicts` entry marks rate,
 amplitude and beat error `within`, `outside` or `not_judged`.
