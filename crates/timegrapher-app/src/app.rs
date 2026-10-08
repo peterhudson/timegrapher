@@ -123,8 +123,8 @@ pub struct TimegrapherApp {
 
 impl TimegrapherApp {
     pub fn new(file: Option<PathBuf>, analyse: bool) -> Self {
-        let devices = capture::input_devices();
-        let device = devices.first().map(|d| d.name.clone());
+        let devices = capture::list().unwrap_or_default();
+        let device = devices.first().map(|d| d.id.clone());
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
@@ -428,7 +428,11 @@ impl TimegrapherApp {
         match self.input {
             Input::Microphone => {
                 ui.horizontal(|ui| {
-                    let sel = self.device.clone().unwrap_or_else(|| "(none found)".into());
+                    let sel = self
+                        .devices
+                        .iter()
+                        .find(|d| Some(&d.id) == self.device.as_ref())
+                        .map_or_else(|| "(none found)".to_string(), |d| d.name.clone());
                     egui::ComboBox::from_id_salt("device")
                         .selected_text(short(&sel, 28))
                         .width(200.0)
@@ -439,7 +443,7 @@ impl TimegrapherApp {
                                 } else {
                                     d.name.clone()
                                 };
-                                ui.selectable_value(&mut self.device, Some(d.name.clone()), label);
+                                ui.selectable_value(&mut self.device, Some(d.id.clone()), label);
                             }
                         });
                     if ui
@@ -447,9 +451,9 @@ impl TimegrapherApp {
                         .on_hover_text("Look for devices again")
                         .clicked()
                     {
-                        self.devices = capture::input_devices();
+                        self.devices = capture::list().unwrap_or_default();
                         if self.device.is_none() {
-                            self.device = self.devices.first().map(|d| d.name.clone());
+                            self.device = self.devices.first().map(|d| d.id.clone());
                         }
                     }
                 });

@@ -113,9 +113,16 @@ fn main() -> ExitCode {
         }
     };
     if args.devices {
-        let d = timegrapher_core::capture::input_devices();
-        println!("{}", serde_json::to_string_pretty(&d).expect("json"));
-        return ExitCode::SUCCESS;
+        return match timegrapher_core::capture::list() {
+            Ok(d) => {
+                println!("{}", serde_json::to_string_pretty(&d).expect("json"));
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
     }
     if args.headless {
         return match headless(&args) {

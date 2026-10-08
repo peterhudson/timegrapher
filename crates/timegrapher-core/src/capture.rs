@@ -128,21 +128,39 @@ pub fn replay_file(path: &Path) -> Result<Capture, String> {
     })
 }
 
-/// One range of formats a device offers.
+/// A range of formats a device offers.
 #[derive(Debug, Clone, Serialize)]
-pub struct InputFormat {
-    pub channels: u16,
-    pub min_rate: u32,
-    pub max_rate: u32,
+pub struct InputConfig {
+    pub min_channels: u16,
+    pub max_channels: u16,
+    pub min_sample_rate: u32,
+    pub max_sample_rate: u32,
     pub sample_format: String,
 }
 
 /// A sound input device and the formats it offers.
 #[derive(Debug, Clone, Serialize)]
 pub struct InputDevice {
+    /// Stable identifier; it, or part of the name, selects the device.
+    pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manufacturer: Option<String>,
     pub is_default: bool,
-    pub formats: Vec<InputFormat>,
+    /// The device's own default configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_config: Option<InputConfig>,
+    pub supported: Vec<InputConfig>,
+}
+
+/// What a short recording was made with.
+#[derive(Debug, Clone, Serialize)]
+pub struct Recorded {
+    pub device: InputDevice,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub sample_format: String,
+    pub started_utc: String,
 }
 
 /// The sample rate asked of a device when it offers it. USB timegrapher
@@ -150,113 +168,228 @@ pub struct InputDevice {
 pub const PREFERRED_RATE: u32 = 48000;
 
 #[cfg(feature = "capture")]
-pub use device::{input_devices, open_input};
+pub use device::{find, list, open, open_input, record};
 
 #[cfg(feature = "capture")]
 mod device {
     use super::*;
+    use crate::audio::Audio;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-    use cpal::{FromSample, SizedSample};
+    use cpal::{FromSample, SampleFormat, SizedSample};
     use std::sync::mpsc::Sender;
 
-    /// Every sound input device, the default first.
-    pub fn input_devices() -> Vec<InputDevice> {
-        let host = cpal::default_host();
-        let default = host.default_input_device().and_then(|d| d.name().ok());
-        let mut out: Vec<InputDevice> = host
-            .input_devices()
+    fn describe(dev: &cpal::Device, default_id: Option<&str>) -> InputDevice {
+        let id = dev.id().map(|i| i.to_string()).unwrap_or_default();
+        let desc = dev.description().ok();
+        let supported = dev
+            .supported_input_configs()
             .map(|it| {
-                it.filter_map(|d| {
-                    let name = d.name().ok()?;
-                    let formats = d
-                        .supported_input_configs()
-                        .map(|c| {
-                            c.map(|r| InputFormat {
-                                channels: r.channels(),
-                                min_rate: r.min_sample_rate().0,
-                                max_rate: r.max_sample_rate().0,
-                                sample_format: r.sample_format().to_string(),
-                            })
-                            .collect()
-                        })
-                        .unwrap_or_default();
-                    Some(InputDevice {
-                        is_default: Some(&name) == default.as_ref(),
-                        name,
-                        formats,
-                    })
-                })
-                .collect()
+                merge(it.map(|c| InputConfig {
+                    min_channels: c.channels(),
+                    max_channels: c.channels(),
+                    min_sample_rate: c.min_sample_rate(),
+                    max_sample_rate: c.max_sample_rate(),
+                    sample_format: c.sample_format().to_string(),
+                }))
             })
             .unwrap_or_default();
-        out.sort_by_key(|d| !d.is_default);
+        let default_config = dev.default_input_config().ok().map(|c| InputConfig {
+            min_channels: c.channels(),
+            max_channels: c.channels(),
+            min_sample_rate: c.sample_rate(),
+            max_sample_rate: c.sample_rate(),
+            sample_format: c.sample_format().to_string(),
+        });
+        InputDevice {
+            is_default: default_id == Some(id.as_str()),
+            name: desc
+                .as_ref()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|| id.clone()),
+            manufacturer: desc.and_then(|d| d.manufacturer().map(str::to_string)),
+            id,
+            default_config,
+            supported,
+        }
+    }
+
+    /// Fold configurations that differ only by channel count into ranges:
+    /// virtual devices list every count from 1 to 32 for every format.
+    fn merge(configs: impl Iterator<Item = InputConfig>) -> Vec<InputConfig> {
+        let mut out: Vec<InputConfig> = Vec::new();
+        for c in configs {
+            match out.iter_mut().find(|o| {
+                o.sample_format == c.sample_format
+                    && o.min_sample_rate == c.min_sample_rate
+                    && o.max_sample_rate == c.max_sample_rate
+            }) {
+                Some(o) => {
+                    o.min_channels = o.min_channels.min(c.min_channels);
+                    o.max_channels = o.max_channels.max(c.max_channels);
+                }
+                None => out.push(c),
+            }
+        }
         out
     }
 
-    /// Open a sound input device by name (`None` for the default) at
-    /// `rate` (or 48 kHz) if it offers it, in as few channels as it offers,
-    /// mixed down to mono.
-    pub fn open_input(name: Option<&str>, rate: Option<u32>) -> Result<Capture, String> {
-        let rate = rate.unwrap_or(PREFERRED_RATE);
+    fn default_id(host: &cpal::Host) -> Option<String> {
+        host.default_input_device()
+            .and_then(|d| d.id().ok())
+            .map(|i| i.to_string())
+    }
+
+    /// Every input the default audio host offers, the default first.
+    pub fn list() -> Result<Vec<InputDevice>, String> {
         let host = cpal::default_host();
-        let device = match name {
-            Some(n) => host
-                .input_devices()
-                .map_err(|e| e.to_string())?
-                .find(|d| d.name().map(|x| x == n).unwrap_or(false))
-                .ok_or_else(|| format!("no input device named {n}"))?,
-            None => host
+        let def = default_id(&host);
+        let devs = host.input_devices().map_err(|e| e.to_string())?;
+        let mut out: Vec<InputDevice> = devs.map(|d| describe(&d, def.as_deref())).collect();
+        out.sort_by_key(|d| !d.is_default);
+        Ok(out)
+    }
+
+    /// The input whose id or name is, or else uniquely contains, `query`
+    /// (case-insensitive), or the default input when `query` is `None`.
+    pub fn find(query: Option<&str>) -> Result<(cpal::Device, InputDevice), String> {
+        let host = cpal::default_host();
+        let def = default_id(&host);
+        let Some(q) = query else {
+            let d = host
                 .default_input_device()
-                .ok_or("no sound input device found")?,
+                .ok_or("no default sound input; name one (see the list of devices)")?;
+            let info = describe(&d, def.as_deref());
+            return Ok((d, info));
         };
-        let label = device.name().unwrap_or_else(|_| "input".into());
-        let ranges: Vec<_> = device
+        let q = q.to_lowercase();
+        let mut hits = Vec::new();
+        for d in host.input_devices().map_err(|e| e.to_string())? {
+            let info = describe(&d, def.as_deref());
+            if info.id.to_lowercase() == q || info.name.to_lowercase() == q {
+                return Ok((d, info));
+            }
+            if info.id.to_lowercase().contains(&q) || info.name.to_lowercase().contains(&q) {
+                hits.push((d, info));
+            }
+        }
+        match hits.len() {
+            1 => Ok(hits.pop().expect("one hit")),
+            0 => Err(format!("no sound input matches '{q}'")),
+            _ => Err(format!(
+                "'{q}' matches several inputs: {}; give more of the id",
+                hits.iter()
+                    .map(|h| h.1.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
+
+    /// The configuration used for a device: `rate` (48 kHz by default) if
+    /// it offers it, in as few channels as possible, 16-bit if it has it;
+    /// otherwise its own default.
+    fn pick(dev: &cpal::Device, rate: u32) -> Result<cpal::SupportedStreamConfig, String> {
+        let ranges: Vec<_> = dev
             .supported_input_configs()
             .map_err(|e| e.to_string())?
             .collect();
-        let pick = ranges
+        let best = ranges
             .iter()
-            .filter(|r| r.min_sample_rate().0 <= rate && r.max_sample_rate().0 >= rate)
+            .filter(|r| r.min_sample_rate() <= rate && r.max_sample_rate() >= rate)
             .min_by_key(|r| (r.channels(), format_rank(r.sample_format())))
-            .map(|r| r.with_sample_rate(cpal::SampleRate(rate)));
-        let supported = match pick {
-            Some(c) => c,
-            None => device.default_input_config().map_err(|e| e.to_string())?,
-        };
+            .map(|r| r.with_sample_rate(rate));
+        match best {
+            Some(c) => Ok(c),
+            None => dev.default_input_config().map_err(|e| e.to_string()),
+        }
+    }
+
+    /// Prefer 16-bit integer, the native format of most timegrapher microphones.
+    fn format_rank(f: SampleFormat) -> u8 {
+        match f {
+            SampleFormat::I16 => 0,
+            SampleFormat::I32 => 1,
+            SampleFormat::F32 => 2,
+            _ => 3,
+        }
+    }
+
+    /// Start capturing from an input found by `query` (see [`find`]).
+    pub fn open_input(query: Option<&str>, rate: Option<u32>) -> Result<Capture, String> {
+        let (dev, info) = find(query)?;
+        open(&dev, &info, rate).map(|(c, _)| c)
+    }
+
+    /// Start capturing from `dev`, mixed down to mono, as blocks on a channel.
+    pub fn open(
+        dev: &cpal::Device,
+        info: &InputDevice,
+        rate: Option<u32>,
+    ) -> Result<(Capture, Recorded), String> {
+        let supported = pick(dev, rate.unwrap_or(PREFERRED_RATE))?;
         let format = supported.sample_format();
         let config: cpal::StreamConfig = supported.config();
         let (tx, rx) = channel();
         let stream = match format {
-            cpal::SampleFormat::I16 => build::<i16>(&device, &config, tx),
-            cpal::SampleFormat::U16 => build::<u16>(&device, &config, tx),
-            cpal::SampleFormat::I32 => build::<i32>(&device, &config, tx),
-            cpal::SampleFormat::F32 => build::<f32>(&device, &config, tx),
-            cpal::SampleFormat::I8 => build::<i8>(&device, &config, tx),
-            cpal::SampleFormat::U8 => build::<u8>(&device, &config, tx),
-            cpal::SampleFormat::F64 => build::<f64>(&device, &config, tx),
+            SampleFormat::I16 => build::<i16>(dev, &config, tx),
+            SampleFormat::U16 => build::<u16>(dev, &config, tx),
+            SampleFormat::I32 => build::<i32>(dev, &config, tx),
+            SampleFormat::F32 => build::<f32>(dev, &config, tx),
+            SampleFormat::I8 => build::<i8>(dev, &config, tx),
+            SampleFormat::U8 => build::<u8>(dev, &config, tx),
+            SampleFormat::F64 => build::<f64>(dev, &config, tx),
             other => return Err(format!("unsupported sample format {other}")),
         }
         .map_err(|e| e.to_string())?;
         stream.play().map_err(|e| e.to_string())?;
-        Ok(Capture {
-            rx,
-            sample_rate: config.sample_rate.0,
-            bits: if format.sample_size() <= 2 { 16 } else { 24 },
-            label,
-            is_file: false,
-            stop: Arc::new(AtomicBool::new(false)),
-            _stream: Some(stream),
-        })
+        let rec = Recorded {
+            device: info.clone(),
+            sample_rate: config.sample_rate,
+            channels: config.channels,
+            sample_format: format.to_string(),
+            started_utc: crate::recorder::utc(SystemTime::now()),
+        };
+        Ok((
+            Capture {
+                rx,
+                sample_rate: config.sample_rate,
+                bits: if format.sample_size() <= 2 { 16 } else { 24 },
+                label: info.name.clone(),
+                is_file: false,
+                stop: Arc::new(AtomicBool::new(false)),
+                _stream: Some(stream),
+            },
+            rec,
+        ))
     }
 
-    /// Prefer 16-bit integer, the native format of most timegrapher microphones.
-    fn format_rank(f: cpal::SampleFormat) -> u8 {
-        match f {
-            cpal::SampleFormat::I16 => 0,
-            cpal::SampleFormat::I32 => 1,
-            cpal::SampleFormat::F32 => 2,
-            _ => 3,
+    /// Record `seconds` from `dev` (configured as for [`open`]), mixed to mono.
+    pub fn record(
+        dev: &cpal::Device,
+        info: InputDevice,
+        seconds: f64,
+    ) -> Result<(Audio, Recorded), String> {
+        let (cap, rec) = open(dev, &info, None)?;
+        let want = (seconds * rec.sample_rate as f64).round() as usize;
+        let mut samples = Vec::with_capacity(want);
+        let deadline = Instant::now() + Duration::from_secs_f64(seconds + 2.0);
+        while samples.len() < want {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match cap.rx.recv_timeout(left) {
+                Ok(Event::Audio(b)) => samples.extend_from_slice(&b.samples),
+                Ok(Event::Error(e)) => return Err(format!("recording failed: {e}")),
+                Ok(Event::End) => break,
+                Err(_) => return Err("the input stopped delivering audio".into()),
+            }
         }
+        samples.truncate(want);
+        Ok((
+            Audio {
+                samples,
+                sample_rate: rec.sample_rate,
+            },
+            rec,
+        ))
     }
 
     fn build<T>(
@@ -275,7 +408,12 @@ mod device {
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 let samples: Vec<f32> = data
                     .chunks(ch)
-                    .map(|f| f.iter().map(|s| s.to_sample::<f32>()).sum::<f32>() / ch as f32)
+                    .map(|f| {
+                        f.iter()
+                            .map(|&s| <f32 as FromSample<T>>::from_sample_(s))
+                            .sum::<f32>()
+                            / ch as f32
+                    })
                     .collect();
                 let _ = tx.send(Event::Audio(Block {
                     samples,
