@@ -142,6 +142,9 @@ pub struct InputConfig {
 #[derive(Debug, Clone, Serialize)]
 pub struct InputDevice {
     /// Stable identifier; it, or part of the name, selects the device.
+    /// It is cpal's device id, `<host>:<device>`; on Linux the device part
+    /// is the ALSA PCM name, as in `alsa:hw:CARD=Device,DEV=0`, so the
+    /// sound card (for its mixer) can be read from it.
     pub id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
