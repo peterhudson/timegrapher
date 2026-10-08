@@ -167,12 +167,14 @@ then go deeper as above if they want more.
 
 ## Reference files
 
-Load the one you need; don't read them all up front.
+Load the one you need; don't read them all up front. A value marked
+"(check)" is commonly quoted but not verified at the bench: if one decides
+your verdict, say so.
 
 | File | When |
 | --- | --- |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
-| [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read, from Peter's guide |
+| [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means, good/fair/poor values, lift angles by calibre, positions, COSC and chronometer criteria, trace patterns |
 | [diagnosis.md](references/diagnosis.md) | From symptoms to causes: escapement, balance and hairspring, oil, mainspring, gear train, magnetism, shock |
 | [tick-shape.md](references/tick-shape.md) | Reading `timegrapher shape`: unlock, impulse, drop, the two pallet stones, fault signatures |
@@ -189,6 +191,3 @@ angle) say what it is the first time. Give a reason for every
 recommendation. If the measurement isn't good enough to judge, say so and
 say how to get a better one, rather than guessing.
 
-> **Peter:** Do you want the skill to suggest a home demagnetiser at all,
-> or always send people to a watchmaker for that? I've allowed it, as the
-> cheap blue-box demagnetisers are safe if used as instructed.

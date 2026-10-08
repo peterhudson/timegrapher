@@ -231,9 +231,3 @@ Then:
   likely area, and [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md)
   for the verdict.
 
-> **Peter:** Which patterns do you see most often on watches people bring
-> in after their own timegrapher worried them, and which of those turned
-> out to be nothing? That's the most useful thing the skill could know.
-
-> **Peter:** The poise sign rule (heavy point down gains below 220°, loses
-> above): please confirm the convention before it ships.

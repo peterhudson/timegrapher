@@ -106,10 +106,3 @@ parts that are expensive to replace."
 - Don't open the case back. Water resistance, dust and a slipped
   screwdriver across a balance cock are all expensive.
 
-> **Peter:** Are these the thresholds you'd give a customer? In
-> particular: 220° dial up for "service soon", 150–160° for "stop wearing
-> it", and 7–10 years without a service regardless of numbers.
-
-> **Peter:** Should the skill say anything about cost, e.g. that a
-> service on a cheap NH35 or clone often costs more than a new movement,
-> so swapping the movement is the sensible "service"?

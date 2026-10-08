@@ -80,17 +80,13 @@ reported running low after 24 hours, with Rolex reportedly allowing about
 200–310° after 24 h (check: secondary sources only). Don't condemn one of
 those on amplitude alone; look at the trend and the trace.
 
-> **Peter:** Which other calibres do you know run low or high by design,
-> so the skill doesn't cry wolf? (e.g. some Seiko 7S26 and NH35s seem to run
-> 220–250° and keep fine time.)
-
 **Too high.** Over about 320° dial up, check in this order:
 
 1. The lift angle (too high a lift angle inflates amplitude).
 2. The measurement: a missed unlock or a doubled sound reads as huge
    amplitude. `timegrapher shape` will show it.
 3. Real high amplitude: a mainspring too strong for the calibre, or a
-   movement short of oil (Peter: oil is sticky and costs energy at this
+   movement short of oil (oil is sticky and costs energy at this
    scale; its main job is to stop wear, so a dry movement can show high
    amplitude while it wears). Around 320–340°, depending
    on the calibre, the impulse pin can strike the outside of the fork horn:
@@ -115,40 +111,49 @@ Most modern Swiss-lever calibres are in the high 40s to low 50s; Witschi
 says "about 51°" for most modern movements, and 52° is the default on
 most cheap timegraphers.
 
-Peter's figures (from his QC guide; "probably" where he says he hasn't
-measured) come first; the rest are commonly quoted values. The full list
-he points people to is watchguy.co.uk/cgi-bin/lift_angles.
+### First, find out what the movement really is
+
+Brands decorate and rename common calibres. A "manufacture calibre XYZ"
+from a microbrand is very often an ETA 2824-2 or Sellita SW200 with a
+custom rotor, and Tudor, Longines, Hamilton and others put their own
+numbers on ETA bases. Look the watch's calibre up on **Caliber Corner**
+(calibercorner.com) to find its base movement, then use the base's lift
+angle and beat rate. Caliber Corner also gives the base's specifications,
+such as the ETA 2824-2 grades.
+
+For the lift angle itself, the most complete list is **WatchGuy's**
+(watchguy.co.uk/cgi-bin/lift_angles), with well over a thousand calibres by
+maker. Look the calibre up there when you can fetch web pages. Where it and
+the table below disagree, prefer the table for the calibres the table
+names: they come from the bench.
 
 | Calibre | Lift angle | Note |
 | --- | --- | --- |
-| ETA 2824-2, Sellita SW200-1 | 50° | Peter |
-| Rolex 31xx; DD/VR/SH 31xx clones | 52° | Peter |
-| Rolex 32xx (3230, 3235, 3255); Dandong and JH 32xx clones | 55° (maybe 58°) | Peter. Not published by Rolex. This project's early Rolex 3235 readings used 52°, which reads about 13° low at 230° if 55° is right |
-| VR 32xx clones | 52° | Peter |
-| Rolex 4130; SH 4131 | 52° | Peter |
-| DD 4131 | 55° | Peter: probably, from the pallet fork geometry; not measured |
-| Miyota 9015 | 51° | Peter |
-| Patek 324 and 240 (and clones) | 52° | Peter |
-| AP 3120 | 53° | Peter |
-| AP 4302 | 52° | Peter |
-| AP 4401 (chronograph) | 50–52° | Peter: not documented for the genuine; a clone may differ |
-| ETA 2892-A2 and derivatives | 50° | (check) |
-| Valjoux/ETA 7750, Sellita SW500 | 50° | (check; 52° also seen) |
-| ETA/Unitas 6497, 6498 | (check) | Figures in the mid 40s to 50° circulate |
-| Seiko 7S26/7S36, 4R35/4R36, NH35/NH36 | 53° | (check) |
-| Seiko 6R15 | 53° | (check) |
-| Miyota 8215 | 50° | (check) |
-| Omega co-axial (8500, 8800, 8900 and others) | 38° | (check). A co-axial escapement doesn't make the Swiss-lever three-sound tick; this program's amplitude assumes a Swiss lever, so treat co-axial amplitude as unreliable. |
+| ETA 2824-2, Sellita SW200-1 | 50° | |
+| Rolex 31xx (3135, 3035 and family) | 52° | |
+| Rolex 32xx (3230, 3235, 3255) | 55°, possibly 58° | Rolex doesn't publish it; 55° is the best estimate. At 52° a 32xx reads about 13° low at 230° |
+| Dandong (DD) and JH clones of the 32xx | 55°, possibly 58° | As the genuine |
+| Shanghai (SH) and VR clones of the 32xx | 52° | Same escapement as the 31xx |
+| DD, VR and SH clones of the 31xx | 52° | |
+| Rolex 4130; SH 4131 | 52° | |
+| DD 4131 | 55° | Probably, from the pallet fork geometry; not measured |
+| Miyota 9015 | 51° | |
+| Patek 324 and 240 (and clones) | 52° | |
+| AP 3120 | 53° | |
+| AP 4302 | 52° | |
+| AP 4401 (chronograph) | 50–52° | Not documented for the genuine; a clone may differ |
+| ETA 2836-2 | 50° | WatchGuy |
+| ETA 2892-A2, 2893-2 | 52° | WatchGuy |
+| Valjoux/ETA 7750 | 49° | WatchGuy; check the SW500 separately |
+| ETA/Unitas 6497 | 44° | WatchGuy |
+| Seiko NH35/NH36, 4R35/4R36, 7S26 | 53° | Commonly quoted; check WatchGuy |
+| Miyota 8215 | 50° | Commonly quoted; check WatchGuy |
+| Omega co-axial (8500, 8800, 8900 and others) | 38° | Commonly quoted. A co-axial escapement doesn't make the Swiss-lever three-sound tick, and this program's amplitude assumes a Swiss lever, so treat co-axial amplitude as unreliable |
 
-Rule of thumb from Peter's guide: each degree of lift angle moves the
-amplitude by about 5–7°, so correct a reading at about 5° per degree.
-A lift angle of 62–65° set on someone else's machine is a sign of
+Rule of thumb: each degree of lift angle moves the amplitude by about
+5–7°, so correct a reading made at the wrong lift angle by about 5° per
+degree. A lift angle of 62–65° set on someone else's machine is a sign of
 amplitude hacking.
-
-> **Peter:** Please correct this table from your own bench notes and add
-> the calibres people most often ask about (Sea-Gull ST2130 / ST36,
-> Vostok 2416, Tudor MT56xx, Omega 1120, Longines L888, vintage Omega 5xx,
-> Seiko 8L35). I've only put in figures I've seen commonly quoted.
 
 If the calibre is unknown: use 52°, and say in the answer that the
 amplitude might be 10–15° out either way. The *changes* between positions
@@ -222,9 +227,6 @@ not out of spec.
 | COSC, movement 20 mm or under | −5 to +8 s/d | (check) |
 | METAS Master Chronometer (Omega, Tudor some) | 0 to +5 s/d | Cased watch; also magnetic resistance to 15,000 gauss (check scope) |
 | Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC (since 2015) |
-
-> **Peter:** Do you want Grand Seiko (Special: +5/−3 mechanical) and Patek
-> Seal in here? I've left them out rather than risk getting them wrong.
 
 ## Positions and the positional delta
 

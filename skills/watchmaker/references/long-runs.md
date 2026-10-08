@@ -170,9 +170,6 @@ What not to say: "the fourth wheel has a broken tooth". We don't know
 that. We know something turning once a minute takes 8° off the amplitude
 for a few seconds of each turn.
 
-> **Peter:** Did you find out what the 3235's once-a-minute dip was? If
-> so, this example should end with the answer.
-
 ## Limits
 
 - So far validated on synthetic recordings; the 3235 runs are the first

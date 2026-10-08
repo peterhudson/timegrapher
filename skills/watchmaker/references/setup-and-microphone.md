@@ -279,9 +279,3 @@ NTP-synchronised. A WAV file is limited to 4 GB, about 12 hours at
 48 kHz 16-bit mono; for longer runs record in segments or to
 FLAC.)
 
-> **Peter:** What's your usual settling time in practice, and do you start
-> dial up or dial down? I've written "a few minutes after winding, 30–60 s
-> per position" and noted Witschi's 20 minutes and dial-down start.
-
-> **Peter:** Is "30–40 crown turns" a fair rule of thumb for a full wind
-> on the automatics people are likely to have (NH35, 2824/SW200, Rolex)?

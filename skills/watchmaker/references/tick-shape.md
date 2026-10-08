@@ -126,7 +126,3 @@ something common: the balance, its pivots, the hairspring, or the room.
 - The **tail** depends a great deal on the case and the clamp. Compare
   sides, not absolute figures.
 
-> **Peter:** From your bench experience, which of Witschi's scope faults
-> do you actually see on the watches people bring you, and roughly what
-> do the healthy level ratios look like on a well-serviced 2824 or 3135
-> on your Witschi? That would let the skill give real reference ranges.
