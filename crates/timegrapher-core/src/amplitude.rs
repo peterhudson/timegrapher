@@ -98,12 +98,40 @@ pub fn windows(
     window_s: f64,
     cfg: &AmplitudeConfig,
 ) -> Vec<AmplitudeWindow> {
+    let (Some(first), Some(last)) = (beats.first(), beats.last()) else {
+        return Vec::new();
+    };
+    windows_between(
+        env,
+        fs,
+        beats,
+        osc_period_s,
+        window_s,
+        first.time,
+        last.time,
+        cfg,
+    )
+}
+
+/// Amplitude in consecutive windows of `window_s` seconds from `from_s`,
+/// up to the last window that ends by `to_s`. Beat times and the window
+/// bounds are in the envelope's time base.
+#[allow(clippy::too_many_arguments)]
+pub fn windows_between(
+    env: &[f32],
+    fs: f64,
+    beats: &[Beat],
+    osc_period_s: f64,
+    window_s: f64,
+    from_s: f64,
+    to_s: f64,
+    cfg: &AmplitudeConfig,
+) -> Vec<AmplitudeWindow> {
     let mut out = Vec::new();
-    let Some(last) = beats.last() else { return out };
     let plausible = |a: f64| (100.0..=380.0).contains(&a);
-    let mut start = beats[0].time;
+    let mut start = from_s;
     let mut lo = 0usize;
-    while start + window_s <= last.time + 1e-9 {
+    while start + window_s <= to_s + 1e-9 {
         while lo < beats.len() && beats[lo].time < start {
             lo += 1;
         }

@@ -112,7 +112,7 @@ pub fn detrend(s: &Series) -> Series {
 }
 
 #[allow(clippy::needless_range_loop)]
-fn polyfit2(t: &[f64], y: &[f64]) -> [f64; 3] {
+pub(crate) fn polyfit2(t: &[f64], y: &[f64]) -> [f64; 3] {
     let t0 = t[0];
     let mut a = [[0.0f64; 3]; 3];
     let mut b = [0.0f64; 3];

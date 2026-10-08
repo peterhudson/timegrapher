@@ -1,8 +1,12 @@
+mod long;
+mod report;
+
 use clap::{Parser, Subcommand};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use timegrapher_core::stream::StreamConfig;
 use timegrapher_core::synth::{self, SynthConfig};
 use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
 
@@ -47,6 +51,41 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Analyse a long recording (hours to days): rate and amplitude over
+    /// time and the periodic changes that point at a wheel of the train.
+    Long {
+        file: PathBuf,
+        /// Clock log for calibrating the sound card: audio position against
+        /// NTP-synced system time (see `docs/long-runs.md`).
+        #[arg(long)]
+        clock: Option<PathBuf>,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees.
+        #[arg(long, default_value_t = 52.0)]
+        lift: f64,
+        /// Comma-separated steady tones to notch out, Hz.
+        #[arg(long, value_delimiter = ',')]
+        notch: Vec<f64>,
+        /// High-pass corner, Hz.
+        #[arg(long, default_value_t = 1500.0)]
+        highpass: f64,
+        /// Escape wheel teeth, used to name periodic components.
+        #[arg(long, default_value_t = 15)]
+        escape_teeth: u32,
+        /// Another wheel to name, as NAME=SECONDS per turn (repeatable),
+        /// e.g. --wheel "third wheel=450".
+        #[arg(long)]
+        wheel: Vec<String>,
+        /// Folder for the report and data files (default: next to the
+        /// recording, named after it).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Print the summary as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         out: PathBuf,
@@ -62,6 +101,18 @@ enum Command {
         beat_error: f64,
         #[arg(long, default_value_t = 30.0)]
         snr: f64,
+        /// Add a fault that repeats every this many seconds (like a bad
+        /// tooth on a wheel), lasting --fault-length seconds each time.
+        #[arg(long)]
+        fault_period: Option<f64>,
+        #[arg(long, default_value_t = 8.0)]
+        fault_length: f64,
+        /// Rate change during the fault, s/d.
+        #[arg(long, default_value_t = -30.0)]
+        fault_rate: f64,
+        /// Amplitude change during the fault, degrees.
+        #[arg(long, default_value_t = -15.0)]
+        fault_amplitude: f64,
     },
 }
 
@@ -89,6 +140,33 @@ fn main() -> ExitCode {
             cfg.envelope.highpass_hz = highpass;
             run_analyze(&file, &cfg, beats, windows, json)
         }
+        Command::Long {
+            file,
+            clock,
+            bph,
+            lift,
+            notch,
+            highpass,
+            escape_teeth,
+            wheel,
+            out,
+            json,
+        } => {
+            let mut cfg = StreamConfig::default();
+            cfg.analysis.bph = bph;
+            cfg.analysis.amplitude.lift_deg = lift;
+            cfg.analysis.envelope.notch_hz = notch;
+            cfg.analysis.envelope.highpass_hz = highpass;
+            long::run(
+                &file,
+                clock.as_deref(),
+                &cfg,
+                escape_teeth,
+                &wheel,
+                out,
+                json,
+            )
+        }
         Command::Synth {
             out,
             duration,
@@ -97,6 +175,10 @@ fn main() -> ExitCode {
             rate,
             beat_error,
             snr,
+            fault_period,
+            fault_length,
+            fault_rate,
+            fault_amplitude,
         } => {
             let cfg = SynthConfig {
                 duration_s: duration,
@@ -106,7 +188,12 @@ fn main() -> ExitCode {
                 snr_db: snr,
                 ..Default::default()
             };
-            let audio = synth::generate(&cfg, |_| amplitude, |_| 0.0);
+            let bad = |t: f64| fault_period.is_some_and(|p| t % p < fault_length);
+            let audio = synth::generate(
+                &cfg,
+                |t| amplitude + if bad(t) { fault_amplitude } else { 0.0 },
+                |t| if bad(t) { fault_rate } else { 0.0 },
+            );
             timegrapher_core::audio::write_wav(&out, &audio).map_err(|e| e.to_string())
         }
     };

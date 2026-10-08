@@ -15,9 +15,9 @@ possible that no open-source tool offers today:
   impulse, drop). Their timing and shape on each pallet stone reveal
   escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
 
-Status: early. This first milestone is the per-beat engine and a
-command-line tool that analyses recordings. A live desktop app (egui)
-comes next.
+Status: early. The per-beat engine and a command-line tool analyse
+recordings, from a few minutes (`analyze`) to days (`long`). A live
+desktop app (egui) comes later.
 
 ## Command line
 
@@ -45,8 +45,15 @@ Options: `--bph` (guessed if omitted), `--lift` (degrees),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate and
 amplitude over time), `--json`.
 
+`timegrapher long run.flac --clock clock.csv` analyses a long run in
+bounded memory: rate and amplitude over time, the sound card calibrated
+against NTP, and periodic changes found, named after the wheel they match,
+and shown as an average cycle and a raster in an HTML report. See
+[docs/long-runs.md](docs/long-runs.md).
+
 `timegrapher synth out.wav` writes a synthetic recording with known rate,
-beat error and amplitude, for testing.
+beat error and amplitude, for testing; `--fault-period 60` adds a fault
+that repeats like a bad tooth.
 
 ## How it works
 
