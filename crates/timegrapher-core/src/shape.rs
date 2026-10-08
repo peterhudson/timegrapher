@@ -57,7 +57,7 @@ impl Default for ShapeConfig {
             window_s: 2.0,
             pre_s: 0.025,
             post_s: 0.025,
-            onset_fraction: 0.05,
+            onset_fraction: 0.02,
             min_prominence: 0.04,
             min_rise: 1.5,
             tail_s: (0.003, 0.015),
