@@ -36,7 +36,7 @@ file = "dandong_DU.flac"        # a file, or a folder of segments
 position = "DU"                 # see below
 wind_h = 0                      # hours since full wind
 date = "2026-10-08T20:41Z"
-reference = { rate = 0.1, amplitude = 282, beat_error = 0.29, source = "tg, same file, lift 55" }
+reference = { rate = 1.0, amplitude = 290, beat_error = 0.3, source = "tg on the same file, lift 55" }   # example values
 
 [[recording]]
 file = "ym42_DU_2h"
