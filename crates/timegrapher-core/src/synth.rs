@@ -26,6 +26,26 @@ impl Rng {
     }
 }
 
+/// One of the sounds in a beat: a decaying tone burst.
+#[derive(Debug, Clone, Copy)]
+pub struct Sound {
+    /// Peak level relative to the drop's nominal level of 1.
+    pub gain: f64,
+    pub freq_hz: f64,
+    /// Exponential decay time constant, seconds.
+    pub decay_s: f64,
+}
+
+/// An extra sound added to every other beat, as a fault would add one.
+#[derive(Debug, Clone, Copy)]
+pub struct ExtraSound {
+    /// Seconds from the drop (negative is before it).
+    pub offset_s: f64,
+    /// Added to beats with an even (`true`) or odd (`false`) generator count.
+    pub even: bool,
+    pub sound: Sound,
+}
+
 pub struct SynthConfig {
     pub sample_rate: u32,
     pub duration_s: f64,
@@ -36,6 +56,11 @@ pub struct SynthConfig {
     /// Peak signal over RMS noise, dB.
     pub snr_db: f64,
     pub seed: u64,
+    /// Unlock, impulse and drop.
+    pub sounds: [Sound; 3],
+    /// Where the impulse sits from unlock (0) to drop (1).
+    pub impulse_at: f64,
+    pub extra: Option<ExtraSound>,
 }
 
 impl Default for SynthConfig {
@@ -49,6 +74,25 @@ impl Default for SynthConfig {
             beat_error_ms: 0.4,
             snr_db: 30.0,
             seed: 1,
+            sounds: [
+                Sound {
+                    gain: 0.35,
+                    freq_hz: 5200.0,
+                    decay_s: 0.00025,
+                },
+                Sound {
+                    gain: 0.25,
+                    freq_hz: 3800.0,
+                    decay_s: 0.00035,
+                },
+                Sound {
+                    gain: 1.0,
+                    freq_hz: 6100.0,
+                    decay_s: 0.00045,
+                },
+            ],
+            impulse_at: 0.45,
+            extra: None,
         }
     }
 }
@@ -75,12 +119,17 @@ pub fn generate(
         let side = if k % 2 == 0 { 0.5 } else { -0.5 };
         // The drop is the reference point; the unlock comes tud earlier.
         let drop = t + side * cfg.beat_error_ms / 1000.0;
-        let events = [
-            (drop - tud, 0.35, 5200.0, 0.00025),
-            (drop - 0.55 * tud, 0.25, 3800.0, 0.00035),
-            (drop, 1.0, 6100.0, 0.00045),
+        let [s1, s2, s3] = cfg.sounds;
+        let mut events = vec![
+            (drop - tud, s1),
+            (drop - (1.0 - cfg.impulse_at) * tud, s2),
+            (drop, s3),
         ];
-        for (te, gain, fc, tau) in events {
+        if let Some(e) = cfg.extra.filter(|e| e.even == (k % 2 == 0)) {
+            events.push((drop + e.offset_s, e.sound));
+        }
+        for (te, snd) in events {
+            let (gain, fc, tau) = (snd.gain, snd.freq_hz, snd.decay_s);
             let i0 = (te * fs).round() as isize;
             let ph = rng.next_f64() * 2.0 * std::f64::consts::PI;
             let g = gain * (1.0 + 0.08 * rng.normal());

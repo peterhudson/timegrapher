@@ -35,3 +35,15 @@ The beat-error difference is not resolved yet: tg reports the median of
 its 16 s windows, while timegrapher fits the whole run at once.
 Absolute rate is uncalibrated in both: neither corrects the sound card's
 clock yet.
+
+## Beat shape
+
+`crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on
+synthetic beats whose three sounds are placed and scaled on purpose:
+
+| Check | Tolerance |
+| --- | --- |
+| 1→2 and 2→3 intervals (impulse at 35% and 60% of unlock-to-drop) | ±0.1 ms |
+| Level ratios 1:3 and 2:3 | ±0.03 |
+| An extra sound 4 ms after the drop on every other beat | found on that side only, ±0.1 ms |
+| Impulse 0.2 ms after the unlock | reported as not separable (no sound 2) |
