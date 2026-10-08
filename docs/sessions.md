@@ -141,7 +141,7 @@ that wheel's finding rather than on their own.
 `summary.json` (and `--json`, which prints the same) carries every value
 in the report, with `"schema": "timegrapher.session/1"`; the name changes
 when a field changes meaning. Each finding has a stable `code`, its
-`severity` (`Fault`, `Warning`, `Note`), the `recording` it is about (an
+`severity` (`fault`, `warning`, `note`), the `recording` it is about (an
 index into `readings`, or null for findings across positions), and its
 `evidence` and `advice` as text. Codes: `overbanking`,
 `amplitude_very_low`, `amplitude_tolerance`, `beat_error_large`,
@@ -149,7 +149,7 @@ index into `readings`, or null for findings across positions), and its
 `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_other`,
 `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
 `measurement_short`. Each reading's `verdicts` entry marks rate,
-amplitude and beat error `Within`, `Outside` or `NotJudged`.
+amplitude and beat error `within`, `outside` or `not_judged`.
 
 ## Validation
 

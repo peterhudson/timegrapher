@@ -533,6 +533,7 @@ pub struct Isochronism {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Severity {
     Fault,
     Warning,
@@ -557,6 +558,7 @@ pub struct Finding {
 
 /// Whether a value is within tolerance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Mark {
     Within,
     Outside,
