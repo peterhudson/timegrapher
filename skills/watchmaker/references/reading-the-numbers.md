@@ -89,8 +89,10 @@ those on amplitude alone; look at the trend and the trace.
 1. The lift angle (too high a lift angle inflates amplitude).
 2. The measurement: a missed unlock or a doubled sound reads as huge
    amplitude. `timegrapher shape` will show it.
-3. Real high amplitude: a mainspring too strong for the calibre, or very
-   fresh oil in a design with little margin. Around 320–340°, depending
+3. Real high amplitude: a mainspring too strong for the calibre, or a
+   movement short of oil (Peter: oil is sticky and costs energy at this
+   scale; its main job is to stop wear, so a dry movement can show high
+   amplitude while it wears). Around 320–340°, depending
    on the calibre, the impulse pin can strike the outside of the fork horn:
    **knocking**, or rebanking. It upsets the rate and can damage the
    escapement. Witschi gives over 330°.
@@ -113,19 +115,35 @@ Most modern Swiss-lever calibres are in the high 40s to low 50s; Witschi
 says "about 51°" for most modern movements, and 52° is the default on
 most cheap timegraphers.
 
+Peter's figures (from his QC guide; "probably" where he says he hasn't
+measured) come first; the rest are commonly quoted values. The full list
+he points people to is watchguy.co.uk/cgi-bin/lift_angles.
+
 | Calibre | Lift angle | Note |
 | --- | --- | --- |
-| ETA 2824-2, Sellita SW200-1 | 50° | Some tables say 52° (check) |
+| ETA 2824-2, Sellita SW200-1 | 50° | Peter |
+| Rolex 31xx; DD/VR/SH 31xx clones | 52° | Peter |
+| Rolex 32xx (3230, 3235, 3255); Dandong and JH 32xx clones | 55° (maybe 58°) | Peter. Not published by Rolex. This project's early Rolex 3235 readings used 52°, which reads about 13° low at 230° if 55° is right |
+| VR 32xx clones | 52° | Peter |
+| Rolex 4130; SH 4131 | 52° | Peter |
+| DD 4131 | 55° | Peter: probably, from the pallet fork geometry; not measured |
+| Miyota 9015 | 51° | Peter |
+| Patek 324 and 240 (and clones) | 52° | Peter |
+| AP 3120 | 53° | Peter |
+| AP 4302 | 52° | Peter |
+| AP 4401 (chronograph) | 50–52° | Peter: not documented for the genuine; a clone may differ |
 | ETA 2892-A2 and derivatives | 50° | (check) |
 | Valjoux/ETA 7750, Sellita SW500 | 50° | (check; 52° also seen) |
 | ETA/Unitas 6497, 6498 | (check) | Figures in the mid 40s to 50° circulate |
-| Rolex 3135, 3035 and the 31xx family | 52° | (check) |
-| Rolex 32xx (3230, 3235, 3255) | not published | 52° is the usual choice; treat amplitude as ±10° |
 | Seiko 7S26/7S36, 4R35/4R36, NH35/NH36 | 53° | (check) |
 | Seiko 6R15 | 53° | (check) |
 | Miyota 8215 | 50° | (check) |
-| Miyota 9015 | 52° | (check) |
 | Omega co-axial (8500, 8800, 8900 and others) | 38° | (check). A co-axial escapement doesn't make the Swiss-lever three-sound tick; this program's amplitude assumes a Swiss lever, so treat co-axial amplitude as unreliable. |
+
+Rule of thumb from Peter's guide: each degree of lift angle moves the
+amplitude by about 5–7°, so correct a reading at about 5° per degree.
+A lift angle of 62–65° set on someone else's machine is a sign of
+amplitude hacking.
 
 > **Peter:** Please correct this table from your own bench notes and add
 > the calibres people most often ask about (Sea-Gull ST2130 / ST36,

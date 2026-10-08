@@ -162,7 +162,8 @@ one moment. Ask for:
   slow wave or a once-a-minute fault has a chance to show;
 - how long since winding, and which position.
 
-Then read it exactly as above.
+Start with the 60-second read in [qc-videos.md](references/qc-videos.md),
+then go deeper as above if they want more.
 
 ## Reference files
 
@@ -171,6 +172,7 @@ Load the one you need; don't read them all up front.
 | File | When |
 | --- | --- |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
+| [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read, from Peter's guide |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means, good/fair/poor values, lift angles by calibre, positions, COSC and chronometer criteria, trace patterns |
 | [diagnosis.md](references/diagnosis.md) | From symptoms to causes: escapement, balance and hairspring, oil, mainspring, gear train, magnetism, shock |
 | [tick-shape.md](references/tick-shape.md) | Reading `timegrapher shape`: unlock, impulse, drop, the two pallet stones, fault signatures |
