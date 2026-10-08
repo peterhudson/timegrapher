@@ -22,7 +22,8 @@ desktop app (egui) comes later.
 ## Command line
 
 ```sh
-cargo build --release
+cargo build --release          # Linux needs libasound2-dev for sound input
+./target/release/timegrapher doctor      # is the microphone set up right?
 ./target/release/timegrapher analyze recording.flac --lift 52
 ```
 
@@ -50,6 +51,19 @@ bounded memory: rate and amplitude over time, the sound card calibrated
 against NTP, and periodic changes found, named after the wheel they match,
 and shown as an average cycle and a raster in an HTML report. See
 [docs/long-runs.md](docs/long-runs.md).
+
+`timegrapher devices` lists the sound inputs. `timegrapher doctor` records
+a few seconds and checks level, clipping, automatic gain, noise and whether
+ticks are heard; it names the exact mixer setting to change (on Linux, the
+`amixer` command) and changes nothing unless given `--apply`.
+
+### For AI agents
+
+Every command takes `--json` and prints one document on a versioned schema
+with the software version and the input it read; `doctor` exits 3 when the
+microphone needs attention. See [docs/agent-interface.md](docs/agent-interface.md).
+The [watchmaker skill](skills/watchmaker/SKILL.md) teaches an agent to run
+the tool and read the results like an experienced watchmaker.
 
 `timegrapher synth out.wav` writes a synthetic recording with known rate,
 beat error and amplitude, for testing; `--fault-period 60` adds a fault

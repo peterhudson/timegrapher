@@ -16,3 +16,10 @@ timegrapher-core.workspace = true
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+cpal = { version = "0.17", optional = true }
+
+[features]
+default = ["live"]
+# Sound input (the `devices` command and live `doctor`). Needs the ALSA
+# development package on Linux (libasound2-dev).
+live = ["dep:cpal"]

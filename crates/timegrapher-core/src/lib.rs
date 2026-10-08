@@ -9,6 +9,7 @@ pub mod analysis;
 pub mod audio;
 pub mod beats;
 pub mod clock;
+pub mod diagnose;
 pub mod dsp;
 pub mod filter;
 pub mod longrun;
