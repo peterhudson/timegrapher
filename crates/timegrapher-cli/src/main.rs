@@ -286,6 +286,18 @@ fn opt(v: Option<f64>, digits: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.digits$}"))
 }
 
+/// Beat error from the unlock as the headline, with the drop's alongside.
+pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
+    match unlock_ms {
+        Some(u) => format!(
+            "{:.2} ms (from the unlock; {:.2} ms from the drop)",
+            u.abs(),
+            drop_ms.abs()
+        ),
+        None => format!("{:.2} ms from the drop (unlock not found)", drop_ms.abs()),
+    }
+}
+
 fn print_summary(a: &Analysis) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
@@ -295,7 +307,10 @@ fn print_summary(a: &Analysis) {
             "Rate         {:+.1} s/d (uncalibrated sound-card clock)",
             f.rate_s_per_day
         );
-        println!("Beat error   {:.2} ms", f.beat_error_ms.abs());
+        println!(
+            "Beat error   {}",
+            beat_error_text(s.beat_error_unlock_ms, f.beat_error_ms)
+        );
     } else {
         println!("Rate         not enough clean beats to fit");
     }
@@ -357,21 +372,24 @@ fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(
         w,
-        "kind,start_s,end_s,rate_s_per_day,beat_error_ms,amplitude_even_deg,amplitude_odd_deg"
+        "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg"
     )?;
     for r in &a.rate_windows {
         writeln!(
             w,
-            "rate,{:.2},{:.2},{:.2},{:.3},,",
+            "rate,{:.2},{:.2},{:.2},{:.3},,,",
             r.start_s, r.end_s, r.fit.rate_s_per_day, r.fit.beat_error_ms
         )?;
     }
     for m in &a.amplitude_windows {
         writeln!(
             w,
-            "amplitude,{:.2},{:.2},,,{},{}",
+            "amplitude,{:.2},{:.2},,{},{},{},{}",
             m.start_s,
             m.end_s,
+            m.beat_error_ms.map_or(String::new(), |v| format!("{v:.3}")),
+            m.beat_error_unlock_ms
+                .map_or(String::new(), |v| format!("{v:.3}")),
             opt(m.even_deg, 1).replace('-', ""),
             opt(m.odd_deg, 1).replace('-', "")
         )?;

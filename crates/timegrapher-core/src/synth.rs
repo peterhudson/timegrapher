@@ -60,6 +60,10 @@ pub struct SynthConfig {
     pub sounds: [Sound; 3],
     /// Where the impulse sits from unlock (0) to drop (1).
     pub impulse_at: f64,
+    /// Extra unlock-to-drop time on beats with an even generator count,
+    /// seconds: their unlock comes this much earlier (the impulse in
+    /// proportion), as when the two sides' lifts differ.
+    pub even_unlock_lead_s: f64,
     pub extra: Option<ExtraSound>,
 }
 
@@ -92,6 +96,7 @@ impl Default for SynthConfig {
                 },
             ],
             impulse_at: 0.45,
+            even_unlock_lead_s: 0.0,
             extra: None,
         }
     }
@@ -115,8 +120,11 @@ pub fn generate(
     while t < cfg.duration_s - 0.05 {
         let amp = amp_fn(t);
         let osc = 2.0 * nominal;
-        let tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
+        let mut tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
         let side = if k % 2 == 0 { 0.5 } else { -0.5 };
+        if k % 2 == 0 {
+            tud += cfg.even_unlock_lead_s;
+        }
         // The drop is the reference point; the unlock comes tud earlier.
         let drop = t + side * cfg.beat_error_ms / 1000.0;
         let [s1, s2, s3] = cfg.sounds;

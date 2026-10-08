@@ -37,8 +37,8 @@ folder next to the recording (`--out` to choose):
 | `report.html` | The report: rate and amplitude over the run, the period searches, and for each component found its average cycle and a raster with one row per cycle. Self-contained; open it in a browser. |
 | `summary.json` | The figures in the printed summary. |
 | `beats.csv` | Every beat: number, time on the sound card's clock, calibrated time, match quality. Re-analysis needs only this and `amplitude.csv`. |
-| `amplitude.csv` | Amplitude of even and odd beats in 2 s windows. |
-| `slices.csv` | Rate, beat error and amplitude in slices of about 1/400 of the run. |
+| `amplitude.csv` | Amplitude of even and odd beats, and beat error from the drop and from the unlock, in 2 s windows. |
+| `slices.csv` | Rate, beat error (from the drop and from the unlock) and amplitude in slices of about 1/400 of the run. |
 | `folds.csv` | The average cycle of each component found. |
 
 A capture split into segments with no gaps is read as one recording by

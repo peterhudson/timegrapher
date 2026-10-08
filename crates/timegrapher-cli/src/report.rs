@@ -581,6 +581,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel]) -> String {
 <tr><th>Recording</th><td>{} at {} Hz, {} bph, {} beats ({:.1}% clean)</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
 <tr><th>Rate</th><td>{rate} over the run; {} slices from {} to {} s/d (5th to 95th percentile)</td></tr>
+<tr><th>Beat error</th><td>{}</td></tr>
 <tr><th>Amplitude</th><td>{} deg median; slices from {} to {} deg (lift angle {} deg)</td></tr>
 </table>"#,
         duration(r.duration_s),
@@ -592,6 +593,11 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel]) -> String {
         slice_name(r.slice_s),
         o(r.rate_p05, 1),
         o(r.rate_p95, 1),
+        r.overall
+            .map_or("-".into(), |f| esc(&crate::beat_error_text(
+                r.beat_error_unlock_ms,
+                f.beat_error_ms
+            ))),
         o(r.amplitude_deg, 0),
         o(r.amplitude_p05, 0),
         o(r.amplitude_p95, 0),

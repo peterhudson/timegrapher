@@ -30,7 +30,7 @@ cargo build --release
 Duration     300.0 s at 48000 Hz
 Beat rate    28800 bph, 2400 beats found
 Rate         +24.5 s/d (uncalibrated sound-card clock)
-Beat error   0.08 ms
+Beat error   0.23 ms (from the unlock; 0.08 ms from the drop)
 Jitter       166 us per beat (within 10 s windows)
 Rate spread  -0.9 to 49.0 s/d (5th-95th percentile of 10 s windows)
 Amplitude    232 deg (even beats 233, odd beats 232; lift angle 52 deg)
@@ -42,8 +42,8 @@ Periodic components in amplitude:
 
 Options: `--bph` (guessed if omitted), `--lift` (degrees),
 `--notch 5000,7000` (remove steady interference tones), `--escape-teeth`,
-`--beats beats.csv` (one row per beat), `--windows windows.csv` (rate and
-amplitude over time), `--json`.
+`--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
+beat error and amplitude over time), `--json`.
 
 `timegrapher long run.flac --clock clock.csv` analyses a long run in
 bounded memory: rate and amplitude over time, the sound card calibrated
@@ -65,9 +65,15 @@ that repeats like a bad tooth.
    per beat. Each beat gets a time and a quality score.
 4. **Rate and beat error.** A least-squares fit of
    `t = t0 + k*P ± e/2` over all beats, robust to outliers, overall and in
-   sliding windows.
-5. **Amplitude.** On median templates of 2 s of beats, per side: unlock
-   edge to drop edge, then `A = L / (2 sin(pi t / T))`.
+   sliding windows. Beat times sit near the drop, so this is the drop's
+   beat error.
+5. **Amplitude and beat error from the unlock.** On median templates of
+   2 s of beats, per side: unlock edge to drop edge, then
+   `A = L / (2 sin(pi t / T))`. The same templates show how far each
+   side's unlock sits from its beat times; moving the drop's beat error by
+   the difference gives the beat error from the unlock, as tg and
+   commercial timegraphers measure it. That is the headline figure (median
+   over the windows), with the drop's alongside.
 6. **Periodicity.** Timing residuals and amplitude binned to 1 s, detrended,
    and searched with a Lomb–Scargle periodogram; peaks near a wheel's turn
    are labelled with it.

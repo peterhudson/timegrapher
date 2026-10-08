@@ -109,6 +109,11 @@ pub fn fit(beats: &[Beat], bph: u32) -> Option<TimingFit> {
     })
 }
 
+/// Signed beat error alone, ms, for runs too short to need the rate.
+pub fn beat_error_ms(beats: &[Beat]) -> Option<f64> {
+    fit_coef(beats).map(|(c, _)| c[2] * 1000.0)
+}
+
 fn residual(b: &Beat, c: &[f64; 3]) -> f64 {
     b.time - (c[0] + c[1] * b.index as f64 + c[2] * side(b.index))
 }
