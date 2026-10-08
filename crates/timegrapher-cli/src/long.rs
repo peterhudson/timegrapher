@@ -27,6 +27,32 @@ fn parse_wheel(s: &str) -> Result<Wheel, String> {
     })
 }
 
+/// Replace each folder with the WAV and FLAC files in it, sorted by name.
+fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for f in files {
+        if !f.is_dir() {
+            out.push(f.clone());
+            continue;
+        }
+        let mut inner: Vec<PathBuf> = fs::read_dir(f)
+            .map_err(|e| format!("{}: {e}", f.display()))?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac")
+                })
+            })
+            .collect();
+        if inner.is_empty() {
+            return Err(format!("{}: no WAV or FLAC files", f.display()));
+        }
+        inner.sort();
+        out.extend(inner);
+    }
+    Ok(out)
+}
+
 pub fn run(
     files: &[PathBuf],
     clock_log: Option<&Path>,
@@ -40,6 +66,7 @@ pub fn run(
         .iter()
         .map(|w| parse_wheel(w))
         .collect::<Result<_, _>>()?;
+    let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
     for f in &files[1..] {

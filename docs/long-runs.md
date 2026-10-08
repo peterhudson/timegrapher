@@ -42,7 +42,8 @@ folder next to the recording (`--out` to choose):
 | `folds.csv` | The average cycle of each component found. |
 
 A capture split into segments with no gaps is read as one recording by
-listing the files in order: `timegrapher long seg01.flac seg02.flac ...`.
+listing the files in order (`timegrapher long seg01.flac seg02.flac ...`)
+or by giving the folder that holds them, read in name order.
 
 Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`,
 `--escape-teeth`), plus `--wheel "third wheel=450"` (repeatable) to name
