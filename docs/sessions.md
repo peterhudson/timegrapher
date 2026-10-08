@@ -25,7 +25,7 @@ full wind.
 watch = "Submariner case, Dandong 3235 clone"
 calibre = "3235"
 bph = 28800
-lift = 52
+lift = 55             # 32xx: probably 55° (maybe 58°), per Peter
 tolerance = "mens"     # ladies, mens, cosc-small, cosc, metas
 settle_s = 20          # skipped at the start of each recording
 # measure_s = 60       # measure only this long after settling
@@ -36,7 +36,7 @@ file = "dandong_DU.flac"        # a file, or a folder of segments
 position = "DU"                 # see below
 wind_h = 0                      # hours since full wind
 date = "2026-10-08T20:41Z"
-reference = { rate = 5, amplitude = 242, beat_error = 0.1, source = "No. 1900, lift 52" }
+reference = { rate = 0.1, amplitude = 282, beat_error = 0.29, source = "tg, same file, lift 55" }
 
 [[recording]]
 file = "ym42_DU_2h"
