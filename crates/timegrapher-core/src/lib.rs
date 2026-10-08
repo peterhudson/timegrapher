@@ -1,0 +1,18 @@
+//! Core signal processing for the timegrapher.
+//!
+//! The design measures every beat individually and keeps the result, so
+//! that both live readings and long-horizon analysis (hours to days) read
+//! from the same per-beat log. See `docs/` in the repository.
+
+pub mod amplitude;
+pub mod analysis;
+pub mod audio;
+pub mod beats;
+pub mod dsp;
+pub mod filter;
+pub mod periodicity;
+pub mod synth;
+pub mod timing;
+
+pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};
+pub use audio::{load, Audio};
