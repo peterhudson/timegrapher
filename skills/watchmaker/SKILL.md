@@ -52,7 +52,7 @@ Three jobs, in order:
 2. `timegrapher devices` to find the microphone.
 3. `timegrapher doctor --device NAME` with the watch clamped in the stand.
    Exit code 0 means the signal is fit to measure with (there may still be
-   advice); 3 means at least one problem. Issues carry a code (`silent`,
+   warnings); 3 means at least one fault. Issues carry a code (`silent`,
    `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `noisy`, `hot`)
    and proposed fixes. Explain the issue in plain words,
    propose the fix, ask, then apply it (or `--apply` after a yes) and run

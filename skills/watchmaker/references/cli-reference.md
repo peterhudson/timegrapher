@@ -92,7 +92,7 @@ JSON body:
 (background rise between ticks; several dB means automatic gain),
 `rate_s_per_day`, `beat_error_ms` (a few seconds only, uncalibrated),
 `suggested_gain_change_db` (negative: turn down), and `issues`:
-`[{ code, severity, message }]` with `severity` `problem` or `advice` and
+`[{ code, severity, title, evidence, advice }]` with `severity` `fault` or `warning` and
 `code` one of `silent`, `too_quiet`, `clipping`, `hot`, `agc_suspected`,
 `no_ticks`, `noisy`. What each means and how to fix it:
 [setup-and-microphone.md](setup-and-microphone.md#checking-the-signal-with-doctor).

@@ -69,7 +69,7 @@ the id or name from `devices`), or reads `--file`, and reports in `check`:
 | `gap_rise_db` | background late in the gap over early in it; several dB means automatic gain is pumping |
 | `rate_s_per_day`, `beat_error_ms` | a quick look only |
 | `suggested_gain_change_db` | what would bring the ticks to about −10 dBFS (−6 dB step when clipped) |
-| `issues[]` | `code`, `severity` (`problem` spoils measurements, `advice` does not), `message` |
+| `issues[]` | `code`, `severity` (`fault` spoils measurements, `warning` does not), `title`, `evidence`, `advice`: the same shape as a test session's findings |
 
 Issue codes: `silent`, `too_quiet`, `clipping`, `hot`, `agc_suspected`,
 `no_ticks`, `noisy`.
@@ -92,7 +92,7 @@ on and the level at 16/16, and clips every tick:
 $ timegrapher doctor
 Level        peak 0.0 dBFS, RMS -10.7 dBFS, 10731 clipped samples
 ...
-PROBLEM      10731 samples clipped: the input level is too high (or automatic gain is on), ...
+FAULT        The input clips (10731 samples clipped, peak 0.0 dBFS). Turn the input level down ...
 Mixer        card 2: 'Mic' 16/16 (+23.8 dB), 'Auto Gain Control' on
 Suggested changes:
   - Turn off 'Auto Gain Control' on card 2 so the gain stays fixed, then run doctor again.

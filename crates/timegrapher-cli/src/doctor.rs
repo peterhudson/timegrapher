@@ -174,10 +174,10 @@ fn print_check(c: &SignalCheck) {
     }
     for i in &c.issues {
         let tag = match i.severity {
-            Severity::Problem => "PROBLEM",
-            Severity::Advice => "advice ",
+            Severity::Fault => "FAULT  ",
+            Severity::Warning => "warning",
         };
-        println!("{tag}      {}", i.message);
+        println!("{tag}      {} ({}). {}", i.title, i.evidence, i.advice);
     }
 }
 

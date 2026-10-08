@@ -96,12 +96,12 @@ level between ticks, the tick-to-background margin, whether the
 background rises between ticks (the sign of automatic gain), the beat rate
 it detected and beats found against expected, a quick rate and beat error
 (a few seconds only; don't read the watch from it), and a list of issues.
-Each issue is a **problem** (spoils measurements) or **advice** (worth
+Each issue is a **fault** (spoils measurements) or a **warning** (worth
 fixing; readings still usable). On Linux it also reads the card's mixer
 (`amixer`) and shows the level and auto-gain controls.
 
 Exit code **0** means nothing spoils a measurement (there may still be
-advice), **3** means at least one problem, **1** an error. The JSON
+warnings), **3** means at least one fault, **1** an error. The JSON
 `verdict` is `ok` or `needs_attention`.
 
 It changes nothing unless you give `--apply`, and **you only give
@@ -113,13 +113,13 @@ live `doctor` checks again and reports the result under `after`.
 
 | Issue | What it means | Usual fix |
 | --- | --- | --- |
-| `silent` (problem) | Nothing, or digital silence. | Wrong device; device muted; mic not plugged in; on macOS the terminal hasn't been given microphone permission. |
-| `too_quiet` (advice) | Peaks below about −30 dBFS. | Raise the mic level; clamp the watch firmly; make sure the case touches the pick-up. |
-| `clipping` (problem) | Samples at full scale, or flat-topped peaks below it (clipping in the analogue stage). Amplitude and shape will be wrong. | Lower the mic level (it suggests about −6 dB and a re-check); turn off any "boost". |
-| `hot` (advice) | Peaks within 1 dB of full scale, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
-| `agc_suspected` (problem) | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
-| `no_ticks` (problem) | Fewer than half the expected beats, or ticks less than 6 dB above the background. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
-| `noisy` (advice) | Ticks found but less than 20 dB above the background: hum, fans, rubbing, handling. | Unplug mains chargers near the mic; move away from fans and the computer; don't touch the stand; try `--notch` for steady tones. |
+| `silent` (fault) | Nothing, or digital silence. | Wrong device; device muted; mic not plugged in; on macOS the terminal hasn't been given microphone permission. |
+| `too_quiet` (warning) | Peaks below about −30 dBFS. | Raise the mic level; clamp the watch firmly; make sure the case touches the pick-up. |
+| `clipping` (fault) | Samples at full scale, or flat-topped peaks below it (clipping in the analogue stage). Amplitude and shape will be wrong. | Lower the mic level (it suggests about −6 dB and a re-check); turn off any "boost". |
+| `hot` (warning) | Peaks within 1 dB of full scale, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
+| `agc_suspected` (fault) | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
+| `no_ticks` (fault) | Fewer than half the expected beats, or ticks less than 6 dB above the background. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
+| `noisy` (warning) | Ticks found but less than 20 dB above the background: hum, fans, rubbing, handling. | Unplug mains chargers near the mic; move away from fans and the computer; don't touch the stand; try `--notch` for steady tones. |
 
 Good signal: tick peaks around −10 dBFS (the level `doctor` aims for, with
 room for a louder watch), no clipped samples, the background flat between

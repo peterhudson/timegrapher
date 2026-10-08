@@ -34,13 +34,14 @@ impl Default for DiagnoseConfig {
     }
 }
 
-/// How bad an issue is: a `problem` spoils measurements; `advice` is
-/// worth fixing but readings are still usable.
+/// How bad an issue is: a `fault` spoils measurements; a `warning` is
+/// worth fixing but readings are still usable. Same words as the
+/// findings of a test session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
-    Problem,
-    Advice,
+    Fault,
+    Warning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -65,9 +66,14 @@ pub enum IssueCode {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Issue {
+    /// Stable identifier for programs and agents; the title is for people.
     pub code: IssueCode,
     pub severity: Severity,
-    pub message: String,
+    pub title: String,
+    /// The measurement that triggered it.
+    pub evidence: String,
+    /// What to do about it.
+    pub advice: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,7 +114,7 @@ pub struct SignalCheck {
 impl SignalCheck {
     /// True when nothing would spoil a measurement.
     pub fn ok(&self) -> bool {
-        self.issues.iter().all(|i| i.severity != Severity::Problem)
+        self.issues.iter().all(|i| i.severity != Severity::Fault)
     }
     pub fn has(&self, code: IssueCode) -> bool {
         self.issues.iter().any(|i| i.code == code)
@@ -227,85 +233,89 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     let tick_to_noise = tick.map(|t| db(t) - db(noise));
 
     let mut issues = Vec::new();
-    let mut add = |code, severity, message: String| {
+    let mut add = |code, severity, title: &str, evidence: String, advice: &str| {
         issues.push(Issue {
             code,
             severity,
-            message,
+            title: title.to_string(),
+            evidence,
+            advice: advice.to_string(),
         })
     };
     let silent = peak < 1e-4;
     if silent {
         add(
             IssueCode::Silent,
-            Severity::Problem,
-            "No signal at all: the input is muted, unplugged, or not the timegrapher microphone."
-                .into(),
+            Severity::Fault,
+            "No signal at all",
+            format!("peak {:.0} dBFS", db(peak)),
+            "Check the input is the timegrapher microphone, that it is plugged in and not muted.",
         );
     }
     let clipping = clipped >= 3;
     if clipping {
         add(
             IssueCode::Clipping,
-            Severity::Problem,
-            format!(
-                "{clipped} samples clipped: the input level is too high (or automatic gain is on), \
-                 which flattens the ticks and spoils amplitude and tick shape."
-            ),
+            Severity::Fault,
+            "The input clips",
+            format!("{clipped} samples clipped, peak {:.1} dBFS", db(peak)),
+            "Turn the input level down (and automatic gain off): clipping flattens the ticks \
+             and spoils amplitude and tick shape.",
         );
     } else if !silent && db(peak) > -1.0 {
         add(
             IssueCode::Hot,
-            Severity::Advice,
-            format!(
-                "Peaks reach {:.1} dBFS: no clipping yet, but a louder watch would clip. \
-                 Turn the input down a little.",
-                db(peak)
-            ),
+            Severity::Warning,
+            "Peaks close to full scale",
+            format!("peak {:.1} dBFS, no clipping", db(peak)),
+            "Turn the input down a little: a louder watch would clip.",
         );
     }
     let agc = gap_rise.is_some_and(|r| r > 3.0);
     if agc {
         add(
             IssueCode::AgcSuspected,
-            Severity::Problem,
+            Severity::Fault,
+            "Automatic gain looks to be on",
             format!(
-                "The background rises by {:.1} dB between ticks: the input's automatic gain \
-                 control is probably on. Turn it off so every tick is measured at the same gain.",
+                "background rises {:.1} dB between ticks (over 3 dB)",
                 gap_rise.unwrap_or(0.0)
             ),
+            "Turn the input's automatic gain control off so every tick is measured at the same gain.",
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
     if !silent && (few_beats || tick_to_noise.map_or(true, |s| s < 6.0)) {
         add(
             IssueCode::NoTicks,
-            Severity::Problem,
+            Severity::Fault,
+            "No steady beat heard",
             format!(
-                "No steady beat found ({} of about {expected} beats): check the watch is \
-                 running and clamped firmly against the microphone, and that this is the right input.",
-                good.len()
+                "{} of about {expected} beats found, ticks {} above background",
+                good.len(),
+                tick_to_noise.map_or("-".into(), |s| format!("{s:.0} dB"))
             ),
+            "Check the watch is running and clamped firmly against the microphone, and that \
+             this is the right input.",
         );
     } else if let Some(s) = tick_to_noise.filter(|&s| s < 20.0 && !clipping) {
         add(
             IssueCode::Noisy,
-            Severity::Advice,
-            format!(
-                "Ticks are only {s:.0} dB above the background: clamp the watch firmly, \
-                 move away from fans and mains hum, or raise the input level if it is low."
-            ),
+            Severity::Warning,
+            "Loud background",
+            format!("ticks only {s:.0} dB above the background (under 20 dB)"),
+            "Clamp the watch firmly, move away from fans and mains hum, or raise the input \
+             level if it is low.",
         );
     }
     let too_quiet = !silent && !clipping && db(peak) < -30.0;
     if too_quiet {
         add(
             IssueCode::TooQuiet,
-            Severity::Advice,
-            format!(
-                "Peaks only reach {:.0} dBFS: raise the input level so ticks sit near {TARGET_PEAK_DBFS:.0} dBFS.",
-                db(peak)
-            ),
+            Severity::Warning,
+            "The input is quiet",
+            format!("peak {:.0} dBFS (under -30)", db(peak)),
+            "Raise the input level so ticks peak near -10 dBFS.",
         );
     }
     let suggested = if silent {
