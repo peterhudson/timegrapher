@@ -28,7 +28,7 @@ fn parse_wheel(s: &str) -> Result<Wheel, String> {
 }
 
 /// Replace each folder with the WAV and FLAC files in it, sorted by name.
-fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for f in files {
         if !f.is_dir() {

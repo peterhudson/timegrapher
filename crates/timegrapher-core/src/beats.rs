@@ -44,9 +44,11 @@ pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
     }
     inv.process(&mut spec, &mut buf).expect("ifft");
     let ac = |lag: f64| -> f64 {
-        // Allow a little slack around the nominal lag for a fast or slow watch.
+        // Allow a little slack around the nominal lag for a fast or slow
+        // watch, and for beat error, which moves the tick-to-toc lag by
+        // the beat error either way (Witschi's example fault is 3 ms).
         let c = lag.round() as usize;
-        let w = (lag * 0.004).ceil() as usize + 1;
+        let w = (lag * 0.004 + 0.004 * fs).ceil() as usize + 1;
         (c.saturating_sub(w)..=c + w)
             .filter_map(|i| buf.get(i).copied())
             .fold(f64::NEG_INFINITY, f64::max)

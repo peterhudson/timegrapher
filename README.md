@@ -16,7 +16,8 @@ possible that no open-source tool offers today:
   escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
 
 Status: early. The per-beat engine and a command-line tool analyse
-recordings, from a few minutes (`analyze`, `shape`) to days (`long`). A live
+recordings, from a few minutes (`analyze`, `shape`) to days (`long`), and
+read a multi-position test (`session`). A live
 desktop app (egui) comes later.
 
 ## Command line
@@ -50,6 +51,13 @@ bounded memory: rate and amplitude over time, the sound card calibrated
 against NTP, and periodic changes found, named after the wheel they match,
 and shown as an average cycle and a raster in an HTML report. See
 [docs/long-runs.md](docs/long-runs.md).
+
+`timegrapher session folder/` reads one watch measured in several
+positions (and states of wind) into a multi-position report in the style
+of Witschi's SEQ mode: rate, amplitude and beat error per position against
+the tolerances, the characteristic values X, D, DV, DH, DVH, Di, Im and
+Ie, and findings with the evidence behind each. `--init` writes a
+`session.toml` to edit. See [docs/sessions.md](docs/sessions.md).
 
 `timegrapher synth out.wav` writes a synthetic recording with known rate,
 beat error and amplitude, for testing; `--fault-period 60` adds a fault
