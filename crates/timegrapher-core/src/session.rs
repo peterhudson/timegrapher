@@ -410,7 +410,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         }
         wheels.iter().find_map(|w| {
             let n = w.period_s / period;
-            (n > 1.5 && (n - n.round()).abs() < 0.01 * n)
+            (n > 1.5 && n < 6.5 && (n - n.round()).abs() < 0.01 * n)
                 .then(|| (w.name.clone(), n.round() as u32))
         })
     };
