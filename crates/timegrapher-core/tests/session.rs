@@ -139,6 +139,14 @@ fn six_positions_give_witschi_values_and_findings() {
         !titles.iter().any(|t| t.contains("Beat error")),
         "{titles:?}"
     );
+    let codes: Vec<&str> = rep.findings.iter().map(|f| f.code).collect();
+    assert!(codes.contains(&"positional_delta"), "{codes:?}");
+    let low = rep
+        .findings
+        .iter()
+        .find(|f| f.code == "amplitude_tolerance")
+        .unwrap();
+    assert_eq!(readings[low.recording.unwrap()].position, Position::H6);
     // Faults first.
     assert!(rep
         .findings

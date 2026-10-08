@@ -542,6 +542,11 @@ pub enum Severity {
 /// Something worth the watchmaker's attention, with what triggered it.
 #[derive(Debug, Clone, Serialize)]
 pub struct Finding {
+    /// Stable identifier of the rule, for programs and agents reading the
+    /// report (e.g. "positional_delta"); the title is for people.
+    pub code: &'static str,
+    /// Index into the readings, for a finding about one recording.
+    pub recording: Option<usize>,
     pub severity: Severity,
     pub title: String,
     /// The measurement that triggered it, with the threshold.
@@ -795,8 +800,15 @@ fn findings(
     lim: &Limits,
 ) -> Vec<Finding> {
     let mut out = Vec::new();
-    let mut push = |severity, title: &str, evidence: String, advice: &str| {
+    let mut push = |code: &'static str,
+                    recording: Option<usize>,
+                    severity,
+                    title: &str,
+                    evidence: String,
+                    advice: &str| {
         out.push(Finding {
+            code,
+            recording,
             severity,
             title: title.into(),
             evidence,
@@ -818,11 +830,13 @@ fn findings(
     };
 
     // Per reading.
-    for r in readings {
+    for (ri, r) in readings.iter().enumerate() {
         let m = &r.measurement;
         if let Some(a) = m.amplitude_deg {
             if a > lim.overbanking {
                 push(
+                    "overbanking",
+                    Some(ri),
                     Severity::Fault,
                     "Amplitude high enough to knock (overbanking)",
                     format!("{a:.0}° in {}; Witschi's limit is {:.0}°", at(r), lim.overbanking),
@@ -830,6 +844,8 @@ fn findings(
                 );
             } else if a < lim.amplitude_fault {
                 push(
+                    "amplitude_very_low",
+                    Some(ri),
                     Severity::Fault,
                     "Very low amplitude",
                     format!("{a:.0}° in {}; below {:.0}° (project default)", at(r), lim.amplitude_fault),
@@ -839,6 +855,8 @@ fn findings(
                 let (lo, hi) = tol.amplitude(r.position);
                 if a < lo || a > hi {
                     push(
+                        "amplitude_tolerance",
+                        Some(ri),
                         Severity::Warning,
                         "Amplitude outside tolerance",
                         format!(
@@ -859,6 +877,8 @@ fn findings(
         if let Some(b) = m.beat_error_ms.map(f64::abs) {
             if b >= lim.beat_error_fault {
                 push(
+                    "beat_error_large",
+                    Some(ri),
                     Severity::Fault,
                     "Large beat error",
                     format!(
@@ -870,6 +890,8 @@ fn findings(
                 );
             } else if b >= tol.beat_error_ms {
                 push(
+                    "beat_error_tolerance",
+                    Some(ri),
                     Severity::Warning,
                     "Beat error outside tolerance",
                     format!(
@@ -884,6 +906,8 @@ fn findings(
         if let (Some(lo), Some(hi)) = (m.rate_p05, m.rate_p95) {
             if hi - lo > lim.rate_spread {
                 push(
+                    "rate_unsteady",
+                    Some(ri),
                     Severity::Warning,
                     "Rate unsteady within the reading",
                     format!(
@@ -898,6 +922,8 @@ fn findings(
         let measured = m.end_s - m.start_s;
         if measured < lim.min_measure_s {
             push(
+                "measurement_short",
+                Some(ri),
                 Severity::Note,
                 "Short measurement",
                 format!(
@@ -941,6 +967,8 @@ fn findings(
             };
             match &c.wheel {
                 Some(w) => push(
+                    "cycle_wheel",
+                    Some(ri),
                     Severity::Warning,
                     &format!("Regular {} change once per turn of the {w}", c.series),
                     format!(
@@ -950,6 +978,8 @@ fn findings(
                     "Witschi: large but regular rate variations are a fault in the gear train. Inspect that wheel and its pinion for a damaged tooth, wear or eccentricity, and check the hands for rubbing if it is the fourth wheel.",
                 ),
                 None => push(
+                    "cycle_other",
+                    Some(ri),
                     Severity::Note,
                     &format!("Regular {} change not tied to a listed wheel", c.series),
                     format!(
@@ -969,6 +999,8 @@ fn findings(
             for (side, v) in [("even", &sh.even), ("odd", &sh.odd)] {
                 if let Some(q) = v.ratio13.filter(|&q| q >= 1.0) {
                     push(
+                        "shape_unlock_loud",
+                        Some(ri),
                         Severity::Note,
                         "Unlocking as loud as the drop",
                         format!("Level of sound 1 to sound 3 is {q:.2} on {side} beats in {}", at(r)),
@@ -978,6 +1010,8 @@ fn findings(
                 let extra = v.extra_pre.len() + v.extra_post.len();
                 if extra > 0 {
                     push(
+                        "shape_extra_sounds",
+                        Some(ri),
                         Severity::Note,
                         "Extra sounds around the beat",
                         format!(
@@ -1006,6 +1040,8 @@ fn findings(
             if let Some(x) = st.x {
                 if x < tol.rate_min || x > tol.rate_max {
                     push(
+                        "rate_tolerance",
+                        None,
                         Severity::Warning,
                         "Mean rate outside tolerance",
                         format!(
@@ -1024,6 +1060,8 @@ fn findings(
         if let Some(d) = st.d_rate.filter(|&d| d > lim.delta_rate) {
             let (hi, lo) = extremes(st);
             push(
+                "positional_delta",
+                None,
                 Severity::Warning,
                 "Large differences between positions",
                 format!(
@@ -1037,6 +1075,8 @@ fn findings(
         }
         if let Some(a) = st.dvh_amplitude.filter(|&a| a < -lim.vh_amplitude_drop) {
             push(
+                "vh_amplitude_drop",
+                None,
                 Severity::Warning,
                 "Large amplitude loss in the vertical positions",
                 format!(
@@ -1048,6 +1088,8 @@ fn findings(
         }
         if let Some(v) = st.dvh_rate.filter(|v| v.abs() >= 5.0) {
             push(
+                "dvh_rate",
+                None,
                 Severity::Note,
                 "Vertical and horizontal rates differ",
                 format!("DVH = {}{label}", s(v)),

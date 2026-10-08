@@ -19,6 +19,8 @@ use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, beats, timing};
 
 pub const MANIFEST: &str = "session.toml";
+/// The layout of `summary.json` and `--json`.
+pub const SCHEMA: &str = "timegrapher.session/1";
 
 pub struct Options {
     pub bph: Option<u32>,
@@ -347,6 +349,8 @@ fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 /// Everything the report and `summary.json` show.
 #[derive(serde::Serialize)]
 pub struct Session<'a> {
+    /// Name and version of this layout; bumped when a field changes meaning.
+    pub schema: &'static str,
     pub watch: Option<&'a str>,
     pub calibre: Option<&'a str>,
     pub owner: Option<&'a str>,
@@ -391,6 +395,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let report = session::evaluate(&readings, &tol, &limits);
     let bph = readings.first().map_or(0, |r| r.bph);
     let s = Session {
+        schema: SCHEMA,
         watch: m.watch.as_deref().filter(|w| !w.is_empty()),
         calibre: m.calibre.as_deref().filter(|w| !w.is_empty()),
         owner: m.owner.as_deref(),
