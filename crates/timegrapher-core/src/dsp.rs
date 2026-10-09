@@ -49,7 +49,8 @@ pub fn envelope(x: &[f32], fs: f64, cfg: &EnvelopeConfig) -> Vec<f32> {
 /// typical tick's: the median, over half-second blocks, of each block's
 /// highest 20 ms energy. A knock on the desk or a bump of the stand is
 /// much louder than the ticks and would otherwise pull the beat tracking
-/// and the templates. Returns the fraction of samples zeroed.
+/// and the templates. Loud stretches longer than 0.1 s are kept. Returns
+/// the fraction of samples zeroed.
 pub fn burst_gate(y: &mut [f32], fs: f64, factor: f64) -> f64 {
     let w = ((0.02 * fs) as usize).max(1);
     let blk = (0.5 * fs) as usize;
@@ -74,16 +75,34 @@ pub fn burst_gate(y: &mut [f32], fs: f64, factor: f64) -> f64 {
     if loud as f64 > MAX_GATED * y.len() as f64 {
         return 0.0;
     }
-    for (v, &e) in y.iter_mut().zip(&energy) {
-        if e > limit {
-            *v = 0.0;
+    // A knock is short. A loud stretch longer than MAX_BURST_S (handling,
+    // rubbing) is left alone: silencing it would take every beat in it
+    // with it, and the beat tracking rides through it better than through
+    // a gap.
+    let max_run = (MAX_BURST_S * fs) as usize;
+    let mut zeroed = 0usize;
+    let mut i = 0;
+    while i < y.len() {
+        if energy[i] <= limit {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < y.len() && energy[i] > limit {
+            i += 1;
+        }
+        if i - start <= max_run {
+            y[start..i].fill(0.0);
+            zeroed += i - start;
         }
     }
-    loud as f64 / y.len() as f64
+    zeroed as f64 / y.len() as f64
 }
 
 /// Most of a recording the burst gate may silence; see [`burst_gate`].
 const MAX_GATED: f64 = 0.04;
+/// Longest loud stretch the burst gate silences, seconds.
+const MAX_BURST_S: f64 = 0.1;
 
 /// Centred moving average of width `w`, same length as the input.
 pub fn moving_average(x: &[f32], w: usize) -> Vec<f32> {
@@ -262,6 +281,27 @@ mod tests {
         assert!(y[knock..knock + 480].iter().all(|&v| v == 0.0));
         assert_eq!(y.iter().filter(|&&v| v == 0.5).count() as f32, ticks);
         assert!(frac > 0.0 && frac < 0.01, "{frac}");
+    }
+
+    #[test]
+    fn burst_gate_keeps_a_long_loud_stretch() {
+        // Ticks for 8 s, and from 4 s a loud stretch of 0.15 s (handling,
+        // not a knock): left alone, so the ticks in it are still there.
+        let fs = 48_000.0;
+        let mut y = vec![0.0f32; (8.0 * fs) as usize];
+        for k in 0..64 {
+            let i = ((0.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let a = (4.0 * fs) as usize;
+        for (j, v) in y[a..a + (0.15 * fs) as usize].iter_mut().enumerate() {
+            *v += if j % 2 == 0 { 3.0 } else { -3.0 };
+        }
+        let before = y.clone();
+        assert_eq!(burst_gate(&mut y, fs, 2.0), 0.0);
+        assert_eq!(y, before);
     }
 
     #[test]
