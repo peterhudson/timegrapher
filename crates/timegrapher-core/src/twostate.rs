@@ -46,6 +46,10 @@ pub struct Sample {
     pub tock: Option<f64>,
     pub beat_error_unlock_ms: Option<f64>,
     pub beat_error_drop_ms: Option<f64>,
+    /// Amplitude only: where each side's unlock edge sat, ms from the
+    /// beat time.
+    pub tick_unlock_ms: Option<f64>,
+    pub tock_unlock_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,10 +146,19 @@ pub struct TwoState {
     pub tick_change: Option<f64>,
     pub tock_change: Option<f64>,
     /// Amplitude only: median beat error in the low and the high state,
-    /// from the unlock and from the drop, ms (signed). The windows do not
-    /// carry the unlock time itself; a jump here is its trace.
+    /// from the unlock and from the drop, ms (signed).
     pub beat_error_unlock_ms: Option<(f64, f64)>,
     pub beat_error_drop_ms: Option<(f64, f64)>,
+    /// Amplitude only: median unlock edge of each side in the low and the
+    /// high state, ms from the beat time.
+    pub tick_unlock_ms: Option<(f64, f64)>,
+    pub tock_unlock_ms: Option<(f64, f64)>,
+    /// Amplitude only: whether one side's unlock edges fall in two
+    /// clusters that the other side's edges do not follow, the direct
+    /// sign of the edge finder hopping between the onset and the shoulder
+    /// after it. A change of the balance's swing moves both sides' edges.
+    pub tick_edge_split_alone: Option<bool>,
+    pub tock_edge_split_alone: Option<bool>,
     /// Amplitude only: whether the Tick (or the Tock) 2 s windows fall in
     /// two clusters that the other side's windows do not follow. The
     /// unlock edge hopping between the onset and the shoulder after it
@@ -181,6 +194,8 @@ struct Block {
     tock: Option<f64>,
     unlock: Option<f64>,
     drop: Option<f64>,
+    tick_edge: Option<f64>,
+    tock_edge: Option<f64>,
 }
 
 fn blocks(samples: &[Sample], p: &Params) -> Vec<Block> {
@@ -216,6 +231,8 @@ fn blocks(samples: &[Sample], p: &Params) -> Vec<Block> {
                 tock: median_of(b.iter().filter_map(|s| s.tock)),
                 unlock: median_of(b.iter().filter_map(|s| s.beat_error_unlock_ms)),
                 drop: median_of(b.iter().filter_map(|s| s.beat_error_drop_ms)),
+                tick_edge: median_of(b.iter().filter_map(|s| s.tick_unlock_ms)),
+                tock_edge: median_of(b.iter().filter_map(|s| s.tock_unlock_ms)),
             });
         }
         i = j;
@@ -336,6 +353,10 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         tock_change: None,
         beat_error_unlock_ms: None,
         beat_error_drop_ms: None,
+        tick_unlock_ms: None,
+        tock_unlock_ms: None,
+        tick_edge_split_alone: None,
+        tock_edge_split_alone: None,
         tick_split_alone: None,
         tock_split_alone: None,
         one_sided: false,
@@ -420,6 +441,8 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     out.tock_change = pair(&|b| b.tock).map(|(l, h)| h - l);
     out.beat_error_unlock_ms = pair(&|b| b.unlock);
     out.beat_error_drop_ms = pair(&|b| b.drop);
+    out.tick_unlock_ms = pair(&|b| b.tick_edge);
+    out.tock_unlock_ms = pair(&|b| b.tock_edge);
 
     // Regularity: the first clear peak of the state sequence's
     // autocorrelation, from two blocks up to a third of the take.
@@ -446,12 +469,22 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     let swapped: Vec<(f64, f64)> = sides.iter().map(|q| (q.1, q.0)).collect();
     out.tick_split_alone = split_alone(&sides, p);
     out.tock_split_alone = split_alone(&swapped, p);
+    let edges: Vec<(f64, f64)> = samples
+        .iter()
+        .filter_map(|s| s.tick_unlock_ms.zip(s.tock_unlock_ms))
+        .filter(|q| q.0.is_finite() && q.1.is_finite())
+        .collect();
+    let swapped: Vec<(f64, f64)> = edges.iter().map(|q| (q.1, q.0)).collect();
+    out.tick_edge_split_alone = split_alone(&edges, p);
+    out.tock_edge_split_alone = split_alone(&swapped, p);
     if let (Some(t), Some(k)) = (out.tick_change, out.tock_change) {
         let (a, b) = (t.abs().min(k.abs()), t.abs().max(k.abs()));
         out.one_sided = t * k < 0.0
             || a < p.min_side_share * b
             || out.tick_split_alone == Some(true)
-            || out.tock_split_alone == Some(true);
+            || out.tock_split_alone == Some(true)
+            || out.tick_edge_split_alone == Some(true)
+            || out.tock_edge_split_alone == Some(true);
     }
     if let (Some(u), Some(d)) = (out.beat_error_unlock_ms, out.beat_error_drop_ms) {
         let (du, dd) = ((u.1 - u.0).abs(), (d.1 - d.0).abs());
@@ -486,9 +519,9 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
 
 /// The side whose windows split in two while the other's do not follow.
 fn lone_split(r: &TwoState) -> Option<&'static str> {
-    if r.tick_split_alone == Some(true) {
+    if r.tick_edge_split_alone == Some(true) || r.tick_split_alone == Some(true) {
         Some("Tick")
-    } else if r.tock_split_alone == Some(true) {
+    } else if r.tock_edge_split_alone == Some(true) || r.tock_split_alone == Some(true) {
         Some("Tock")
     } else {
         None
@@ -587,6 +620,9 @@ mod tests {
                     tock: Some(v - 1.0),
                     beat_error_unlock_ms: Some(0.2),
                     beat_error_drop_ms: Some(0.2),
+                    // A bigger swing brings both unlock edges closer.
+                    tick_unlock_ms: Some(-7.0 + (v - 300.0) * 0.02),
+                    tock_unlock_ms: Some(-7.0 + (v - 300.0) * 0.02),
                 }
             })
             .collect()
@@ -679,17 +715,18 @@ mod tests {
         let mut s = series(900, |_, _| 305.0);
         for (i, x) in s.iter_mut().enumerate() {
             let tock = x.value - 1.0;
-            let tick = if i % 5 == 2 {
-                x.value + 16.0
-            } else {
-                x.value + 1.0
-            };
+            let hop = i % 5 == 2;
+            let tick = if hop { x.value + 16.0 } else { x.value + 1.0 };
             x.tick = Some(tick);
             x.tock = Some(tock);
+            // The Tick edge lands 0.35 ms late on the shoulder.
+            x.tick_unlock_ms = x.tock_unlock_ms.map(|e| if hop { e + 0.35 } else { e });
         }
         let r = find(&s, &Params::default());
         assert_eq!(r.tick_split_alone, Some(true), "{r:?}");
         assert_eq!(r.tock_split_alone, Some(false));
+        assert_eq!(r.tick_edge_split_alone, Some(true));
+        assert_eq!(r.tock_edge_split_alone, Some(false));
         assert_ne!(r.verdict, Verdict::TwoStates);
         assert!(describe(&r, "amplitude").contains("Tick windows"));
     }
@@ -703,6 +740,8 @@ mod tests {
         let r = find(&s, &Params::default());
         assert_eq!(r.tick_split_alone, Some(false), "{r:?}");
         assert_eq!(r.tock_split_alone, Some(false));
+        assert_eq!(r.tick_edge_split_alone, Some(false));
+        assert_eq!(r.tock_edge_split_alone, Some(false));
     }
 
     #[test]

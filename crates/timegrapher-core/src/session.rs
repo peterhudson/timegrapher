@@ -396,6 +396,8 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
                 tock: w.odd_deg,
                 beat_error_unlock_ms: w.beat_error_unlock_ms,
                 beat_error_drop_ms: w.beat_error_ms,
+                tick_unlock_ms: w.even_unlock_ms,
+                tock_unlock_ms: w.odd_unlock_ms,
             })
         })
         .collect();

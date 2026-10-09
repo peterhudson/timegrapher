@@ -133,9 +133,11 @@ Three outcomes other than two states:
   the unlock mark hopping between the onset and the shoulder after sound
   1, as on the Daytona 4130, where 0.3 ms of edge is about 15°.
 
-The amplitude windows do not carry the unlock time itself, so the edge
-check works from its traces: the per-side amplitudes and the per-state
-beat errors from the unlock and from the drop.
+The edge check reads each 2 s window's unlock edge on each side (ms from
+the beat time): when one side's edges fall in two clusters that the
+other side's edges do not follow, the edge finder is hopping. A real
+change of swing moves both sides' edges together (on the Yacht-Master
+dial up, both by about 0.3 ms between its states).
 
 ## Characteristic values
 
@@ -217,7 +219,9 @@ amplitude windows that found the unlock. `amplitude_states` and
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`
 and `regularity`, and for amplitude `tick_change`, `tock_change`,
 `beat_error_unlock_ms` and `beat_error_drop_ms` (low and high state),
-`tick_split_alone`, `tock_split_alone`, `one_sided` and `unlock_jump`.
+`tick_unlock_ms` and `tock_unlock_ms` (low and high state),
+`tick_split_alone`, `tock_split_alone`, `tick_edge_split_alone`,
+`tock_edge_split_alone`, `one_sided` and `unlock_jump`.
 
 ## Validation
 
