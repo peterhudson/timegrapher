@@ -74,6 +74,17 @@ pub struct Edges {
 /// impulse that follows it, so the threshold is relative to the drop rather
 /// than to the loudest pre-drop sound.
 pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> Option<Edges> {
+    edges_after(template, fs, origin, onset_fraction, 0)
+}
+
+/// [`edges`], with sound 1 looked for no earlier than sample `from`.
+fn edges_after(
+    template: &[f32],
+    fs: f64,
+    origin: usize,
+    onset_fraction: f32,
+    from: usize,
+) -> Option<Edges> {
     let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
     let w = (0.0015 * fs) as usize;
     let (peak, peak_v) = crate::dsp::argmax(&t, origin.saturating_sub(w), origin + w)?;
@@ -117,8 +128,8 @@ pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> O
     };
     let detect = floor + (onset_fraction * height).max(4.0 * noise);
     let hold = ((0.00025 * fs) as usize).max(1);
-    let first =
-        (quiet.max(1)..end).find(|&i| t[i..(i + hold).min(end)].iter().all(|&v| v > detect))?;
+    let first = (quiet.max(from).max(1)..end)
+        .find(|&i| t[i..(i + hold).min(end)].iter().all(|&v| v > detect))?;
     let look = (first + (0.0006 * fs) as usize).min(end);
     let (top_i, top) = crate::dsp::argmax(&t, first, look + 1)?;
     let back = first.saturating_sub((0.001 * fs) as usize).max(quiet);
@@ -131,6 +142,11 @@ pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> O
         floor,
     })
 }
+
+/// How far before the unlock on a template of all the beats given a short
+/// window's sound 1 may be found, seconds. Amplitude falling from 300° to
+/// 250° moves the unlock about 1.3 ms earlier.
+const UNLOCK_SEARCH_S: f64 = 0.003;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AmplitudeWindow {
@@ -200,6 +216,33 @@ pub fn windows_between(
 ) -> Vec<AmplitudeWindow> {
     let mut out = Vec::new();
     let plausible = |a: f64| (100.0..=380.0).contains(&a);
+    let origin = (PRE_S * fs).round() as usize;
+    let side_times = |win: &[Beat], even: bool| -> Vec<f64> {
+        win.iter()
+            .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
+            .map(|b| b.time)
+            .collect()
+    };
+    // Where each side's unlock sits on a template of every beat given, as a
+    // guide for the short windows: on a few beats a bump of noise well
+    // before the unlock can pass for sound 1 (the Daytona read 130–170° in
+    // about one window in 40 that way), so a window's sound 1 is looked for
+    // from UNLOCK_SEARCH_S before this one.
+    let guide = |even: bool| -> usize {
+        let times = side_times(beats, even);
+        let e = (times.len() >= 3)
+            .then(|| {
+                edges(
+                    &trimmed_template(env, fs, &times),
+                    fs,
+                    origin,
+                    cfg.onset_fraction,
+                )
+            })
+            .flatten();
+        e.map_or(0, |e| (e.unlock - UNLOCK_SEARCH_S * fs).max(0.0) as usize)
+    };
+    let from = [guide(true), guide(false)];
     let mut start = from_s;
     let mut lo = 0usize;
     while start + window_s <= to_s + 1e-9 {
@@ -214,17 +257,18 @@ pub fn windows_between(
         // Amplitude, and the unlock's and drop's offsets from the beat
         // times, seconds.
         let side = |even: bool| -> Option<(f64, f64, f64)> {
-            let times: Vec<f64> = win
-                .iter()
-                .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
-                .map(|b| b.time)
-                .collect();
+            let times = side_times(win, even);
             if times.len() < 3 {
                 return None;
             }
             let tmpl = trimmed_template(env, fs, &times);
-            let origin = (PRE_S * fs).round() as usize;
-            let e = edges(&tmpl, fs, origin, cfg.onset_fraction)?;
+            let e = edges_after(
+                &tmpl,
+                fs,
+                origin,
+                cfg.onset_fraction,
+                from[usize::from(!even)],
+            )?;
             let a = amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg);
             let at = |i: f64| (i - origin as f64) / fs;
             plausible(a).then_some((a, at(e.unlock), at(e.drop)))
@@ -276,5 +320,42 @@ mod tests {
         assert!((drop_ms + 1.0).abs() < 0.15, "drop at {drop_ms} ms");
         let unlock_ms = (e.unlock - origin as f64) / fs * 1000.0;
         assert!((unlock_ms + 7.0).abs() < 0.15, "unlock at {unlock_ms} ms");
+    }
+
+    #[test]
+    fn a_bump_of_noise_before_the_unlock_is_not_sound_1() {
+        // 20 s of beats at 28,800 bph: floor, sound 1 at -7 ms, the drop at
+        // the beat time. In one 2 s window every Tick also has a bump 15 ms
+        // before the drop, louder than the unlock threshold.
+        let fs = 48_000.0;
+        let period = 0.125;
+        let mut env = vec![0.01f32; (20.5 * fs) as usize];
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..160i64 {
+            let t = 0.1 + k as f64 * period;
+            env[at(t - 0.007)..at(t - 0.0067)].fill(0.3);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            if k % 2 == 0 && (6.0..8.0).contains(&t) {
+                env[at(t - 0.015)..at(t - 0.0145)].fill(0.06);
+            }
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig::default();
+        let w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, 20.0, &cfg);
+        let bumped = w.iter().find(|w| w.start_s == 6.0).unwrap();
+        let clean = w.iter().find(|w| w.start_s == 10.0).unwrap();
+        let (b, c) = (
+            bumped.even_unlock_ms.unwrap(),
+            clean.even_unlock_ms.unwrap(),
+        );
+        assert!(
+            (b - c).abs() < 0.1,
+            "unlock at {b} ms with the bump, {c} without"
+        );
     }
 }

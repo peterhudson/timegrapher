@@ -239,6 +239,40 @@ With knocks added to 5 minutes of a take (noise bursts of 5 to 40 ms at
 A higher threshold (3 or 4 times) rescued fewer of these, so the gate
 keeps tg's factor of 2.
 
+## A bump of noise before the unlock: guiding the short windows
+
+Each 2 s amplitude window builds a Tick and a Tock template from about 8
+beats each and takes sound 1 as the first sustained rise above the noise
+floor. On so few beats a bump of noise well before the unlock sometimes
+passes for sound 1: the Daytona read 130–170° in about one window in 40,
+with the window's beat error from the unlock 5–10 ms. Each call now first
+finds each side's unlock on a template of every beat it is given (a 49 s
+chunk in `session` and `long`, the live screen's buffer in the app) and
+looks for a window's sound 1 no earlier than 3 ms before it. Amplitude
+falling from 300° to 250° moves the unlock about 1.3 ms earlier, so a real
+change within a chunk stays well inside that.
+
+Windows more than 40° from their file's median, over both sides, in
+`long` (main, then with the guide):
+
+| Take | Before | After |
+| --- | --- | --- |
+| Daytona 4130, files 01–03 | 10, 7, 8 | 5, 1, 6 |
+| Patek 324 clone, files 01–03 | 12, 20, 17 | 5, 7, 5 |
+| Yacht-Master dial down, files 01–03 | 10, 5, 4 | 3, 0, 1 |
+| Dandong 3235, files 01–03 | 25, 53, 49 | 20, 50, 36 |
+| ETA 2824 bare, Peacock, Yacht-Master crown left | 0–7 per file | unchanged |
+
+Medians move by 1° or less, and rate is untouched. On the ETA in its
+holder, whose smeared tick fails the plausibility check in most windows
+when the whole file is read at once, `analyze`'s median of the few that
+pass shifts (321 / 329 / 285° to 321 / 348 / 308°); read in chunks, as
+`session` and `long` do, its amplitude moves from 309 / 320 / 313° to
+309 / 321 / 315° (tg 294–300°). That take still waits for the
+smeared-tick fix.
+The unit test `a_bump_of_noise_before_the_unlock_is_not_sound_1` puts a
+bump 15 ms before the drop on every Tick of one window.
+
 ## Knocks that outmatch a beat: the beat window
 
 Pass 2 follows the template's correlation peaks, taking the best match
