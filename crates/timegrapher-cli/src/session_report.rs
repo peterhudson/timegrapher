@@ -5,6 +5,7 @@
 use crate::session_cmd::{opt, severity, signed, wind, Session};
 use std::fmt::Write;
 use timegrapher_core::session::{Mark, Position, Reading, Severity, StateIndices, Tolerance};
+use timegrapher_core::twostate;
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -457,6 +458,28 @@ fn cycles_table(sn: &Session) -> String {
     s
 }
 
+fn states_lines(sn: &Session) -> String {
+    let mut s = String::from(
+        r#"<h2>Two states</h2><p class="note">Whether amplitude (from 2 s windows) and rate (from 10 s readings) sit at two levels the watch switches between, rather than one level with noise and slow drift. Tested on 10 s medians with the slow drift taken off. A dip that comes back on a fixed period is a cycle (see above); a split that only Tick or only Tock carries is likely the measurement.</p>"#,
+    );
+    for r in &sn.readings {
+        let m = &r.measurement;
+        let mut line = twostate::describe(&m.amplitude_states, "amplitude");
+        if let Some(c) = line.get(..1) {
+            line = c.to_uppercase() + &line[1..];
+        }
+        let _ = write!(
+            s,
+            r#"<p class="states"><b>{}</b> {}; {}. <span class="file">{}</span></p>"#,
+            r.position.code(),
+            esc(&line),
+            esc(&twostate::describe(&m.rate_states, "rate")),
+            esc(&r.label)
+        );
+    }
+    s
+}
+
 fn shape_table(sn: &Session) -> String {
     let with: Vec<&Reading> = sn.readings.iter().filter(|r| r.shape.is_some()).collect();
     if with.is_empty() {
@@ -617,6 +640,7 @@ pub fn html(sn: &Session) -> String {
 
     body.push_str(&reference_table(sn));
     body.push_str(&cycles_table(sn));
+    body.push_str(&states_lines(sn));
     body.push_str(&shape_table(sn));
 
     format!(
@@ -655,6 +679,8 @@ svg {{ width: 100%; height: auto; display: block; }}
 .data .out {{ color: var(--bad); font-weight: 600; background: var(--badbg); }}
 .data .unsure {{ color: var(--muted); font-style: italic; }}
 .data .file {{ color: var(--text2); font-size: 12px; word-break: break-all; }}
+.states {{ margin: 4px 0; }}
+.states .file {{ color: var(--text2); font-size: 12px; margin-left: 6px; }}
 .data .what {{ color: var(--text2); font-size: 12px; }}
 .sub {{ color: var(--muted); font-weight: 400; font-size: 12px; }}
 .findings {{ list-style: none; padding: 0; }} .findings li {{ padding: 8px 0 8px 12px; border-left: 3px solid var(--muted); margin: 8px 0; }}

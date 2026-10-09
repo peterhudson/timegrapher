@@ -20,6 +20,7 @@ use crate::periodicity::Wheel;
 use crate::shape::{ShapeReport, SideReport};
 use crate::stream::BeatLog;
 use crate::timing;
+use crate::twostate::{self, TwoState};
 use serde::{Deserialize, Serialize, Serializer};
 
 /// A test position, named as Witschi names them: CH dial up, CB dial
@@ -313,6 +314,10 @@ pub struct Measurement {
     /// error from the unlock rest on those windows.
     pub amplitude_windows: usize,
     pub unlock_coverage: Option<f64>,
+    /// Whether amplitude (from the 2 s windows) and rate (from 10 s
+    /// readings) sit at two levels the watch switches between.
+    pub amplitude_states: TwoState,
+    pub rate_states: TwoState,
 }
 
 impl Measurement {
@@ -365,12 +370,35 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
     let fit = timing::fit(&beats, log.bph);
     let windows = timing::windows(&beats, log.bph, 10.0, 5.0);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
+    let rate_samples: Vec<twostate::Sample> = timing::windows(&beats, log.bph, 10.0, 10.0)
+        .iter()
+        .map(|w| twostate::Sample {
+            start_s: w.start_s,
+            end_s: w.end_s,
+            value: w.fit.rate_s_per_day,
+            ..Default::default()
+        })
+        .collect();
     let amp: Vec<_> = log
         .amplitude_windows
         .iter()
         .filter(|w| w.start_s >= from_s && w.end_s <= to_s)
         .collect();
     let amps: Vec<f64> = amp.iter().filter_map(|w| w.mean()).collect();
+    let amp_samples: Vec<twostate::Sample> = amp
+        .iter()
+        .filter_map(|w| {
+            Some(twostate::Sample {
+                start_s: w.start_s,
+                end_s: w.end_s,
+                value: w.mean()?,
+                tick: w.even_deg,
+                tock: w.odd_deg,
+                beat_error_unlock_ms: w.beat_error_unlock_ms,
+                beat_error_drop_ms: w.beat_error_ms,
+            })
+        })
+        .collect();
     let span = map(to_s) - map(from_s);
     let expected = span * log.bph as f64 / 3600.0;
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
@@ -398,6 +426,8 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
                 .count() as f64
                 / amp.len() as f64
         }),
+        amplitude_states: twostate::find(&amp_samples, &twostate::Params::default()),
+        rate_states: twostate::find(&rate_samples, &twostate::Params::default()),
     }
 }
 
