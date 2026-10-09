@@ -3,6 +3,7 @@
 //! the amplitude and beat error from.
 
 use crate::strip::side_colors;
+use crate::theme;
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Line, LineStyle, Plot, Polygon, VLine};
 use timegrapher_core::profile::TickProfile;
@@ -16,10 +17,6 @@ pub enum Scale {
     /// unlock show as clearly as the drop.
     Decibels,
 }
-
-const UNLOCK: Color32 = Color32::from_rgb(0x3c, 0xb3, 0x71);
-const DROP: Color32 = Color32::from_rgb(0xe0, 0x40, 0x40);
-const PEAK: Color32 = Color32::from_rgb(0xb0, 0x60, 0xe0);
 
 /// Lowest level drawn on the decibel scale.
 const FLOOR_DB: f64 = -50.0;
@@ -62,30 +59,35 @@ pub fn draw(
     scale: &mut Scale,
     note: Option<&str>,
 ) {
+    let pal = theme::pal(ui);
     ui.horizontal(|ui| {
-        ui.selectable_value(scale, Scale::Linear, "Linear");
-        ui.selectable_value(scale, Scale::Decibels, "dB");
-        ui.separator();
+        theme::segmented(
+            ui,
+            scale,
+            &[
+                (
+                    Scale::Linear,
+                    "Linear",
+                    "The sound as the engine measures it",
+                ),
+                (
+                    Scale::Decibels,
+                    "dB",
+                    "The level below the loudest point of each side, which makes the \
+                     quiet unlock easier to see",
+                ),
+            ],
+        );
         // The marks are named on the plots; this says what the line styles
         // mean.
-        ui.label(
-            RichText::new(
-                "solid: the edges amplitude and beat error are read from · dashed: \
-                 the three sounds · flat dashed: noise floor",
-            )
-            .small()
-            .weak(),
-        );
         if let Some(n) = note {
-            ui.separator();
-            ui.label(RichText::new(n).weak());
+            ui.label(RichText::new(n).small().color(pal.text_secondary));
         }
-    })
-    .response
-    .on_hover_text(
-        "Linear shows the sound as the engine measures it; dB shows the level below the \
-         loudest point of each side, which makes the quiet unlock easier to see.",
-    );
+        let key = "solid: the edges amplitude and beat error are read from · dashed: \
+                   the three sounds · flat dashed: noise floor";
+        ui.add(egui::Label::new(RichText::new(key).small().weak()).truncate())
+            .on_hover_text(key);
+    });
     let colors = side_colors(ui.visuals().dark_mode);
     // Both sides on one scale, so their loudness compares.
     let top = profiles
@@ -93,20 +95,25 @@ pub fn draw(
         .flatten()
         .flat_map(|p| p.p90.iter().copied())
         .fold(0.0f32, f32::max);
-    let h = ((ui.available_height() - 8.0) / 2.0).max(60.0);
+    let h = ((ui.available_height() - 12.0) / 2.0).max(60.0);
     let scale = *scale;
     for (k, p) in profiles.iter().enumerate() {
         let name = ["Tick", "Tock"][k];
         let c = colors[k];
-        ui.label(
-            RichText::new(match p {
-                Some(p) => format!("{name}: {}", summary(p)),
-                None => format!("{name}: not enough beats yet"),
-            })
-            .color(c),
-        );
+        ui.horizontal(|ui| {
+            theme::dot(ui, c);
+            ui.label(RichText::new(name).font(theme::semibold(12.5)).color(c));
+            let s = match p {
+                Some(p) => summary(p),
+                None => "not enough beats yet".into(),
+            };
+            ui.add(
+                egui::Label::new(RichText::new(&s).small().color(pal.text_secondary)).truncate(),
+            )
+            .on_hover_text(s);
+        });
         let plot = Plot::new(("profile", k))
-            .height(h - 20.0)
+            .height(h - 24.0)
             .link_axis("profile", [true, true])
             // No crosshair or value box: the marks and the summary above say
             // what matters.
@@ -163,13 +170,13 @@ pub fn draw(
             let floor = scaled(&[p.floor], top, scale)[0];
             pl.hline(
                 HLine::new("noise floor", floor)
-                    .color(Color32::GRAY)
+                    .color(pal.text_tertiary)
                     .style(LineStyle::dashed_dense()),
             );
             let marks = [
-                ("unlock", p.unlock_ms, UNLOCK, 1.5_f32),
-                ("drop", p.drop_ms, DROP, 1.5),
-                ("drop peak", p.peak_ms, PEAK, 1.0),
+                ("unlock", p.unlock_ms, pal.unlock, 1.5_f32),
+                ("drop", p.drop_ms, pal.drop, 1.5),
+                ("drop peak", p.peak_ms, pal.peak, 1.0),
             ];
             for (label, at, col, w) in marks {
                 if let Some(t) = at {
@@ -184,7 +191,7 @@ pub fn draw(
                 if let Some(t) = at {
                     pl.vline(
                         VLine::new(label, t)
-                            .color(Color32::GRAY)
+                            .color(pal.text_tertiary)
                             .style(LineStyle::dashed_loose()),
                     );
                 }
@@ -203,13 +210,14 @@ fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile) {
     let frame = *t.frame();
     let painter = ui.painter_at(frame);
     let font = egui::FontId::proportional(11.0);
-    let grey = ui.visuals().text_color();
+    let pal = theme::pal(ui);
+    let grey = pal.text_secondary;
     let mut ends: Vec<f32> = Vec::new();
     for group in [
         [
-            ("unlock", p.unlock_ms, UNLOCK),
-            ("drop", p.drop_ms, DROP),
-            ("peak", p.peak_ms, PEAK),
+            ("unlock", p.unlock_ms, pal.unlock),
+            ("drop", p.drop_ms, pal.drop),
+            ("peak", p.peak_ms, pal.peak),
         ],
         [
             ("1 unlock", p.sound1_ms, grey),

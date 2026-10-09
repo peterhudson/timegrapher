@@ -15,20 +15,35 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 ## The screen
 
+Along the top, the toolbar: **Microphone** or **Recording**, the
+microphone menu (or the file to open), the input's level meter and the
+button that starts or stops (**Start**, **Replay**, **Stop**; **Analyse
+all** for a recording). On the left, the settings in cards: **Watch**,
+**Microphone** (only for the microphone), **Paper strip**, **View** and a
+reminder of what the mouse does. In the rest, the three readings in cards
+and below them the panes. Along the bottom, the status line. Every setting
+explains itself when the pointer rests on its name. Before anything is
+open, the main area says how to begin, with buttons to start listening or
+open a recording; a problem shows in a red banner above the readings until
+it is dismissed or the next start clears it. The app follows the
+desktop's light or dark setting (Appearance, under View, overrides it),
+and uses the Inter typeface with figures of even width, so readings don't
+shift as they change.
+
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
 from 1 s to an hour, or pick one of Witschi's 2 to 60 s). The big amplitude is the average of the two
 swings; under it are the amplitude from the ticks (blue on the strip and
 charts) and from the tocks (orange). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
-between tick and tockkk usually means one side's sounds were misread rather than a fault in the
+between tick and tock usually means one side's sounds were misread rather than a fault in the
 watch;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg and commercial timegraphers measure
 it; beside it, smaller, is the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
-Below the readings: the beat rate, how many beats the readings used and
+Under the rate: how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
 which is the spread of the dots across the strip. Lower is steadier; it
@@ -40,7 +55,7 @@ reading for a short explanation.
 profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The × on a tab hides
-that pane, and the **Panes** list in the sidebar hides or shows each pane
+that pane, and the switches under **View** in the sidebar hide or show each pane
 and the readings across the top; a hidden pane comes back where it was,
 and changing the strip's direction keeps the choice. **Reset panes**
 shows them all in their starting places. Periodicity views will join
@@ -65,7 +80,7 @@ all at once it is worked out from the file when you stop on a moment.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
-**Paper strip.** One dot per beat, tick and tockk in two colours. Across the
+**Paper strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a clock running at the
 nominal beat rate; along it is time. Running **down** (the default, as on
 tg), the newest beats are at the top, a watch on rate draws a vertical
@@ -77,7 +92,7 @@ strip's width is its zoom and its length sets how much history it shows.
 Type both (a width of ±0.1 to ±250 ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
 widths run from ±1 ms, for a good watch's beat error, to ±62.5 ms, half a
-beat at 28,800 bph and the widest view in which tick and tockk can't wrap
+beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other; the lengths run from 10 s of beats to a two-hour run.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
@@ -102,25 +117,29 @@ readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
-**Theme.** System follows the desktop's light or dark setting; Light and
-Dark override it.
+**Appearance.** Under View: Auto follows the desktop's light or dark
+setting; Light and Dark override it.
 
-**Status bar.** The input, its peak level in dBFS over the last half second
-(red when the input clips, amber when it is very quiet; aim for ticks
-peaking around −12 dBFS), how far the beats stand above the noise ("no
-watch heard" when they don't), and the recording in progress.
+**Level meter.** In the toolbar, while listening to a microphone: a bar to
+the loudest sample of the last half second, green when it is right, amber
+when it is very quiet or too hot, red when the input clips, with marks at
+the −10 dBFS target and the −6 dBFS limit, and the peak in dBFS beside it.
+
+**Status bar.** The input, how far the beats stand above the noise ("no
+watch heard" when they don't), the recording in progress, and on the
+right the beat rate and the position.
 
 ## Settings
 
-- **Input.** A sound input device, or a WAV or FLAC file chosen with
-  **Open...** or typed in. On Linux the menu offers each microphone once:
+- **Input.** In the toolbar: a sound input device, or a WAV or FLAC file chosen with
+  **Open…** or typed in. On Linux the menu offers each microphone once:
   **System default (via PipeWire)**, which is whatever input the
   desktop's sound settings choose and works alongside other programs, and
   each card's direct device, marked "(direct)", which goes straight to
   the card but can't open while the desktop sound server holds it. With a
   USB timegrapher microphone set as the desktop's input, choose the system
   default. **Show every input** lists everything the system offers, with
-  ids, as `timegrapher devices` does. If the input can't be opened, stops,
+  ids, as `timegrapher devices` does (the switch is in the Microphone card). If the input can't be opened, stops,
   or sends no sound for 3 s, the app stops and says why above the
   readings, rather than showing an empty strip. The status bar shows the
   sample rate and bit depth the input opened at. Where the desktop passes
@@ -128,7 +147,7 @@ watch heard" when they don't), and the recording in progress.
   on the window replays it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
-- **Input level.** Under the device menu: the microphone's gain, a switch
+- **Input level.** In the Microphone card: the microphone's gain, a switch
   for its automatic gain when it has one (keep it off), and a peak meter
   with marks at the −10 dBFS target and the −6 dBFS limit. On Linux, for
   the system default the level is the sound server's input volume
@@ -151,7 +170,7 @@ watch heard" when they don't), and the recording in progress.
 
 ## Saving recordings
 
-With **Save the recording** ticked, every session is kept so it can be
+With **Save the recording** switched on (in the Microphone card, before pressing Start), every session is kept so it can be
 analysed again later with a newer engine. Each recording is a folder
 named after the start time, the watch and the position, holding:
 

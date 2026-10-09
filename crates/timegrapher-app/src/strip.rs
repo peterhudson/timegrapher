@@ -16,17 +16,8 @@ use timegrapher_core::beats::Beat;
 
 /// Colours of the ticks (even beats) and tocks (odd beats).
 pub fn side_colors(dark: bool) -> [Color32; 2] {
-    if dark {
-        [
-            Color32::from_rgb(0x5c, 0xc8, 0xff),
-            Color32::from_rgb(0xff, 0xa8, 0x4a),
-        ]
-    } else {
-        [
-            Color32::from_rgb(0x00, 0x6e, 0xc4),
-            Color32::from_rgb(0xc8, 0x5a, 0x00),
-        ]
-    }
+    let p = crate::theme::palette(dark);
+    [p.tick, p.tock]
 }
 
 /// Where the strip is anchored: a beat number and the time it is drawn at
