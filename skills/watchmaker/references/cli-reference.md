@@ -3,8 +3,8 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `devices`, `doctor`, `analyze`, `shape`, `long`, `session`,
-`synth`. `session` (the multi-position report) is documented in the
+Commands: `devices`, `doctor`, `analyze`, `shape`, `profile`, `long`,
+`session`, `synth`. `session` (the multi-position report) is documented in the
 repository's `docs/sessions.md`, including its finding codes
 (`overbanking`, `amplitude_very_low`, `amplitude_tolerance`,
 `beat_error_large`, `beat_error_tolerance`, `rate_tolerance`,
@@ -12,6 +12,14 @@ repository's `docs/sessions.md`, including its finding codes
 `cycle_other`, `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
 `measurement_short`) and per-reading marks (`within`, `outside`,
 `not_judged`).
+
+**Tick and Tock.** When talking to people, call the two sides of the
+beat the **Tick** (the even beats) and the **Tock** (the odd beats), never
+"A" and "B". The program can't tell which is physically the tick (that
+depends on where in the swing the recording started), so Tick simply means
+the even beats. Machine fields keep their own names: `even`/`odd` in
+`analyze` and `shape`, `a`/`b` in `profile`, where `a` is the Tick and `b`
+the Tock.
 
 Exit codes: **0** success, **1** error (message on stderr), **3** `doctor`
 found a problem.
@@ -36,8 +44,8 @@ then the command's own fields alongside them:
 }
 ```
 
-- `schema` is `timegrapher.<kind>/<version>`: `analyze`, `shape`, `long`,
-  `doctor`, `devices` (and `recording` for the sidecar `doctor --save`
+- `schema` is `timegrapher.<kind>/<version>`: `analyze`, `shape`,
+  `profile`, `long`, `session`, `doctor`, `devices` (and `recording` for the sidecar `doctor --save`
   writes). Within a version fields are only added; check the kind and
   version before reading, and ignore fields you don't know.
 - `input.files[].recording`: when a recording has a sidecar `FILE.json`
@@ -180,6 +188,43 @@ template's floor):
 | `noise_ratio` | Noise between beats against the silence before the unlock |
 | `rises` | Rises from unlock to drop, counting the drop: 3 is textbook |
 | `extra_pre`, `extra_post` | Extra sounds before 1 / after 3: `[{ t_ms, level }]` |
+
+## profile
+
+```
+timegrapher profile FILE [--at S] [--span S] [--bph N] [--lift DEG]
+                    [--notch HZ,...] [--highpass HZ] [--json] [--svg FILE]
+```
+
+The median sound of the Tick and of the Tock over a stretch of the
+recording (`--at` seconds in, `--span` seconds long; defaults 0 and 10),
+with the marks the engine measured on it: the unlock, the drop and its
+peak, and the three sounds. **Use it when amplitude or beat error look
+wrong** (implausibly high or low, the Tick and the Tock amplitudes far
+apart, a beat error that doesn't match what you hear): it shows which
+sound the engine took as the unlock and which as the drop. A movement in
+a plastic holder, a case that rings, or a quiet first sound can put a mark
+on the wrong sound, and the amplitude follows it. `--svg` draws both
+envelopes with the marks, for a person to look at. Pick a quiet stretch
+(`--at`) away from handling noise.
+
+JSON body: `a` (the Tick) and `b` (the Tock), each with:
+
+| Field | Meaning |
+| --- | --- |
+| `beats` | Beats averaged in the stretch |
+| `t0_ms`, `step_ms` | Time of the first envelope point and the spacing; all times in ms from the beat |
+| `median`, `p10`, `p90` | The envelope point by point: median, and 10th and 90th percentiles across beats (a wide band means the sound varies from beat to beat) |
+| `floor` | Background level |
+| `unlock_ms`, `drop_ms`, `peak_ms` | The engine's marks: amplitude comes from unlock to drop |
+| `sound1_ms`, `sound2_ms`, `sound3_ms` | The three sounds (unlock, impulse, drop) |
+| `amplitude_deg` | Amplitude from these marks at `--lift` |
+
+Read it as: the unlock mark should sit at the start of the first small
+sound, not on noise before it or on the second sound; the drop on the
+start of the big last sound. If the Tick and the Tock marks differ by much
+more than their sounds do, the engine has picked different sounds on the
+two sides; report that rather than the amplitude.
 
 ## long
 

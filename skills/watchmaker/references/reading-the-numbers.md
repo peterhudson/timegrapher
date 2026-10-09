@@ -18,10 +18,12 @@ From `timegrapher analyze --json` (field names in
   `--bph` explicitly.
 - **Beats found (`beats_found`)** should be close to duration × bph ÷ 3600.
   A big shortfall means the microphone is missing ticks.
-- **Even and odd amplitudes** (`amplitude_even_deg`, `amplitude_odd_deg`)
-  should agree within a few degrees. A big split on a healthy-sounding
+- **Tick and Tock amplitudes** (`amplitude_even_deg`, `amplitude_odd_deg`:
+  the even beats are the Tick, the odd the Tock) should agree within a few
+  degrees. A big split on a healthy-sounding
   watch usually means the unlock sound is being missed on one side (level
-  too low, or clipping); occasionally it's a real escapement asymmetry
+  too low, or clipping; `profile` shows which sounds were marked);
+occasionally it's a real escapement asymmetry
   (see [tick-shape.md](tick-shape.md)).
 - **Jitter (`jitter_us`)**: scatter of single beats about the local rate.
   Compare it between recordings of the same watch; a sudden jump with

@@ -95,12 +95,12 @@ less affected; on those, a large gain is less likely to be magnetism
 ## Escapement
 
 The escapement's health shows in amplitude, in the tick shape, and in the
-difference between the two pallet stones (even and odd beats). For the
+difference between the two pallet stones (the Tick and the Tock). For the
 tick shape see [tick-shape.md](tick-shape.md).
 
 | Pattern | Likely cause |
 | --- | --- |
-| Even and odd amplitude differ by more than about 10° on a clean signal | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error (check: how much beat error alone splits the two measured amplitudes) |
+| Tick and Tock amplitude differ by more than about 10° on a clean signal | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error (check: how much beat error alone splits the two measured amplitudes) |
 | Late dots on one side, scatter below the line; amplitude low | Dry or gummed pallet stones or escape wheel (Witschi: clean the escapement or replace the escape wheel) |
 | A smooth wave with the escape wheel's period (3.75 s at 28,800 vph with 15 teeth; 5 s at 21,600; 6 s at 18,000) | Escape wheel out of round, bent arbor or a pivot problem; a damaged escape tooth gives a sharp blip instead of a wave |
 | Long gap unlock-to-impulse (deep lock); low amplitude | Lock too deep: energy lost in unlocking (Witschi "escapement fitting strong") |
