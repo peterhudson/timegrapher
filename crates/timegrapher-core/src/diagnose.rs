@@ -15,6 +15,11 @@ use serde::Serialize;
 /// sound card's own noise, with headroom for a louder watch.
 pub const TARGET_PEAK_DBFS: f64 = -10.0;
 
+/// Peaks above this, dBFS, leave too little headroom: tick loudness
+/// varies by a few dB through a run and between positions, and a fully
+/// wound watch at high amplitude is louder still.
+pub const HOT_PEAK_DBFS: f64 = -6.0;
+
 #[derive(Debug, Clone)]
 pub struct DiagnoseConfig {
     pub envelope: EnvelopeConfig,
@@ -262,13 +267,18 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
             "Turn the input level down (and automatic gain off): clipping flattens the ticks \
              and spoils amplitude and tick shape.",
         );
-    } else if !silent && db(peak) > -1.0 {
+    } else if !silent && db(peak) > HOT_PEAK_DBFS {
         add(
             IssueCode::Hot,
             Severity::Warning,
             "Peaks close to full scale",
-            format!("peak {:.1} dBFS, no clipping", db(peak)),
-            "Turn the input down a little: a louder watch would clip.",
+            format!(
+                "peak {:.1} dBFS, {:.1} dB short of clipping",
+                db(peak),
+                -db(peak)
+            ),
+            "Turn the input down a little: a louder watch, or this one in another position, \
+             would clip.",
         );
     }
     let agc = gap_rise.is_some_and(|r| r > 3.0);
@@ -323,7 +333,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     } else if clipping {
         // The true peak is unknown once clipped; step down and re-check.
         Some(-6.0)
-    } else if too_quiet || db(peak) > -1.0 {
+    } else if too_quiet || db(peak) > HOT_PEAK_DBFS {
         Some(((TARGET_PEAK_DBFS - db(peak)) * 2.0).round() / 2.0)
     } else {
         None

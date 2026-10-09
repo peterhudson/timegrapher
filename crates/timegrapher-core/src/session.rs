@@ -287,8 +287,12 @@ pub struct Measurement {
     /// Whether rate is corrected for the sound card's clock.
     pub calibrated: bool,
     pub rate_s_per_day: Option<f64>,
-    /// Signed beat error, ms (even beats late is positive).
+    /// Signed beat error from the drop (the fitted beat times), ms (even
+    /// beats late is positive).
     pub beat_error_ms: Option<f64>,
+    /// Signed beat error from the unlock, as tg and commercial
+    /// timegraphers measure it (median of the amplitude windows), ms.
+    pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
@@ -300,6 +304,16 @@ pub struct Measurement {
     /// Amplitude in its windows, 5th and 95th percentile, deg.
     pub amplitude_p05: Option<f64>,
     pub amplitude_p95: Option<f64>,
+}
+
+impl Measurement {
+    /// The beat error the report judges: from the unlock where it was
+    /// found, else from the drop. Unsigned, ms.
+    pub fn beat_error(&self) -> Option<f64> {
+        self.beat_error_unlock_ms
+            .or(self.beat_error_ms)
+            .map(f64::abs)
+    }
 }
 
 fn percentile(v: &[f64], q: f64) -> Option<f64> {
@@ -352,6 +366,7 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         calibrated: clock.is_some(),
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
+        beat_error_unlock_ms: median_of(amp.iter().filter_map(|w| w.beat_error_unlock_ms)),
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
@@ -511,6 +526,7 @@ pub struct PositionValue {
     pub position: Position,
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
+    /// Unsigned, from the unlock where found, else from the drop.
     pub beat_error_ms: Option<f64>,
     /// Readings averaged into this value.
     pub readings: usize,
@@ -644,10 +660,7 @@ fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
                 position: p,
                 rate_s_per_day: mean(rs.iter().filter_map(|r| r.measurement.rate_s_per_day)),
                 amplitude_deg: mean(rs.iter().filter_map(|r| r.measurement.amplitude_deg)),
-                beat_error_ms: mean(
-                    rs.iter()
-                        .filter_map(|r| r.measurement.beat_error_ms.map(f64::abs)),
-                ),
+                beat_error_ms: mean(rs.iter().filter_map(|r| r.measurement.beat_error())),
                 readings: rs.len(),
             })
         })
@@ -725,8 +738,8 @@ pub fn evaluate(readings: &[Reading], tol: &Tolerance, limits: &Limits) -> Sessi
             Verdict {
                 rate: judge(m.rate_s_per_day, tol.rate_min, tol.rate_max),
                 amplitude: judge(m.amplitude_deg, alo, ahi),
-                beat_error: match m.beat_error_ms {
-                    Some(b) if b.abs() < tol.beat_error_ms => Mark::Within,
+                beat_error: match m.beat_error() {
+                    Some(b) if b < tol.beat_error_ms => Mark::Within,
                     Some(_) => Mark::Outside,
                     None => Mark::NotJudged,
                 },
@@ -894,7 +907,12 @@ fn findings(
                 }
             }
         }
-        if let Some(b) = m.beat_error_ms.map(f64::abs) {
+        if let Some(b) = m.beat_error() {
+            let how = match (m.beat_error_unlock_ms, m.beat_error_ms) {
+                (Some(_), Some(d)) => format!(" from the unlock ({:.2} ms from the drop)", d.abs()),
+                (None, Some(_)) => " from the drop (unlock not found)".to_string(),
+                _ => String::new(),
+            };
             if b >= lim.beat_error_fault {
                 push(
                     "beat_error_large",
@@ -902,7 +920,7 @@ fn findings(
                     Severity::Fault,
                     "Large beat error",
                     format!(
-                        "{b:.2} ms in {}; at or above {:.1} ms (project default)",
+                        "{b:.2} ms{how} in {}; at or above {:.1} ms (project default)",
                         at(r),
                         lim.beat_error_fault
                     ),
@@ -915,7 +933,7 @@ fn findings(
                     Severity::Warning,
                     "Beat error outside tolerance",
                     format!(
-                        "{b:.2} ms in {}; Witschi's tolerance is under {:.1} ms",
+                        "{b:.2} ms{how} in {}; Witschi's tolerance is under {:.1} ms",
                         at(r),
                         tol.beat_error_ms
                     ),

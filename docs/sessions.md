@@ -73,9 +73,13 @@ so that `_2h` or `_12h` (a duration) is not taken for a position.
 After `settle_s` (default 20 s, Witschi's stabilisation time), to the end
 of the recording or for `measure_s`:
 
-- rate and beat error from one fit over every beat (tick and toc fitted
-  together), corrected for the sound card's clock when the recording has a
-  clock log or the session gives `card_ppm`;
+- rate from one fit over every beat (tick and toc fitted together),
+  corrected for the sound card's clock when the recording has a clock log
+  or the session gives `card_ppm`;
+- beat error measured from the unlock, as tg and bench timegraphers do
+  (median of the 2 s windows); this is the value judged against the
+  tolerance. The beat error from the drop (the same fit as the rate) is
+  shown beside it, and used when no unlock is found;
 - amplitude, the median of the 2 s windows;
 - jitter, and the 5th to 95th percentile of rate in 10 s windows: how
   steady the rate is;

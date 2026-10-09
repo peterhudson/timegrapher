@@ -170,6 +170,29 @@ pub struct Recorded {
 /// microphones commonly do 44.1 or 48 kHz; the recordings so far are 48 kHz.
 pub const PREFERRED_RATE: u32 = 48000;
 
+#[cfg_attr(not(feature = "capture"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Match {
+    Exact,
+    Partial,
+}
+
+/// How a device query matches an input, case-insensitively: exactly (the
+/// whole id, the id without its `host:` prefix, or the whole name), as part
+/// of the id or name, or not at all.
+#[cfg_attr(not(feature = "capture"), allow(dead_code))]
+fn matches(id: &str, name: &str, query: &str) -> Option<Match> {
+    let (id, name, q) = (id.to_lowercase(), name.to_lowercase(), query.to_lowercase());
+    let bare = id.split_once(':').map_or(id.as_str(), |(_, rest)| rest);
+    if id == q || bare == q || name == q {
+        Some(Match::Exact)
+    } else if id.contains(&q) || name.contains(&q) {
+        Some(Match::Partial)
+    } else {
+        None
+    }
+}
+
 #[cfg(feature = "capture")]
 pub use device::{find, host, list, open, open_input, record};
 
@@ -259,6 +282,9 @@ mod device {
 
     /// The input whose id or name is, or else uniquely contains, `query`
     /// (case-insensitive), or the default input when `query` is `None`.
+    /// The id may be given with or without its host prefix, so
+    /// `hw:CARD=Device,DEV=0` picks `alsa:hw:CARD=Device,DEV=0` over
+    /// `alsa:plughw:CARD=Device,DEV=0`.
     pub fn find(query: Option<&str>) -> Result<(cpal::Device, InputDevice), String> {
         let host = cpal::default_host();
         let def = default_id(&host);
@@ -269,22 +295,20 @@ mod device {
             let info = describe(&d, def.as_deref());
             return Ok((d, info));
         };
-        let q = q.to_lowercase();
         let mut hits = Vec::new();
         for d in host.input_devices().map_err(|e| e.to_string())? {
             let info = describe(&d, def.as_deref());
-            if info.id.to_lowercase() == q || info.name.to_lowercase() == q {
-                return Ok((d, info));
-            }
-            if info.id.to_lowercase().contains(&q) || info.name.to_lowercase().contains(&q) {
-                hits.push((d, info));
+            match super::matches(&info.id, &info.name, q) {
+                Some(super::Match::Exact) => return Ok((d, info)),
+                Some(super::Match::Partial) => hits.push((d, info)),
+                None => {}
             }
         }
         match hits.len() {
             1 => Ok(hits.pop().expect("one hit")),
             0 => Err(format!("no sound input matches '{q}'")),
             _ => Err(format!(
-                "'{q}' matches several inputs: {}; give more of the id",
+                "'{q}' matches several inputs: {}; give the whole id",
                 hits.iter()
                     .map(|h| h.1.id.as_str())
                     .collect::<Vec<_>>()
@@ -438,6 +462,28 @@ mod device {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn device_id_without_host_prefix_is_exact() {
+        let m = |id| {
+            matches(
+                id,
+                "USB PnP Sound Device, USB Audio",
+                "hw:CARD=Device,DEV=0",
+            )
+        };
+        assert_eq!(m("alsa:hw:CARD=Device,DEV=0"), Some(Match::Exact));
+        assert_eq!(m("alsa:plughw:CARD=Device,DEV=0"), Some(Match::Partial));
+        assert_eq!(m("alsa:hw:CARD=PCH,DEV=0"), None);
+        assert_eq!(
+            matches("alsa:default", "Default ALSA Output", "ALSA:DEFAULT"),
+            Some(Match::Exact)
+        );
+        assert_eq!(
+            matches("alsa:x", "USB PnP Sound Device", "usb pnp"),
+            Some(Match::Partial)
+        );
+    }
+
     use super::*;
 
     #[test]
