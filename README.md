@@ -17,8 +17,18 @@ possible that no open-source tool offers today:
 
 Status: early. The per-beat engine and a command-line tool analyse
 recordings, from a few minutes (`analyze`, `shape`) to days (`long`), and
-read a multi-position test (`session`). A live
-desktop app (egui) comes later.
+read a multi-position test (`session`). A
+desktop app (egui) shows a watch live from a microphone, with the classic
+paper-strip trace; see [docs/app.md](docs/app.md).
+
+## Desktop app
+
+```sh
+cargo run --release -p timegrapher-app            # live from a microphone
+cargo run --release -p timegrapher-app -- rec.flac # replay a recording
+```
+
+On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).
 
 ## Command line
 

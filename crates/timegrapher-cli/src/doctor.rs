@@ -114,12 +114,12 @@ fn acquire(o: &Options) -> Result<(Audio, Value), String> {
 
 #[cfg(feature = "live")]
 fn live(o: &Options) -> Result<(Audio, Value), String> {
-    let (dev, info) = crate::capture::find(o.device.as_deref())?;
+    let (dev, info) = timegrapher_core::capture::find(o.device.as_deref())?;
     eprintln!(
         "listening to '{}' for {:.0} s; keep the watch clamped against the microphone",
         info.name, o.seconds
     );
-    let (a, rec) = crate::capture::record(&dev, info, o.seconds)?;
+    let (a, rec) = timegrapher_core::capture::record(&dev, info, o.seconds)?;
     let v = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
     Ok((a, v))
 }

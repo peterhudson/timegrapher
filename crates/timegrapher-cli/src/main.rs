@@ -1,5 +1,3 @@
-#[cfg(feature = "live")]
-mod capture;
 mod doctor;
 mod long;
 mod mixer;
@@ -433,11 +431,11 @@ fn run_analyze(
 
 #[cfg(feature = "live")]
 fn run_devices(json: bool) -> Result<(), String> {
-    let devs = capture::list()?;
+    let devs = timegrapher_core::capture::list()?;
     if json {
         return output::print(
             "devices",
-            serde_json::json!({ "host": format!("{:?}", cpal::default_host().id()) }),
+            serde_json::json!({ "host": timegrapher_core::capture::host() }),
             &serde_json::json!({ "devices": devs }),
         );
     }

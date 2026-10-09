@@ -1,0 +1,16 @@
+[package]
+name = "timegrapher-app"
+description = "Desktop timegrapher: live trace, rate, amplitude and beat error"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "timegrapher-app"
+path = "src/main.rs"
+
+[dependencies]
+timegrapher-core = { workspace = true, features = ["capture"] }
+eframe = "0.33"
+serde_json = "1"
