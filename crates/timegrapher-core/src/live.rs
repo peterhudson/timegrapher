@@ -152,7 +152,7 @@ impl LiveAnalyzer {
         &self.beats
     }
 
-    /// The sound of the A and B beats (even and odd) over the last
+    /// The sound of the tick and the tock (even and odd beats) over the last
     /// `profile_s` seconds of settled beats, with the unlock, drop and sound
     /// marks the engine measured on them. Empty for a file analysed at once.
     pub fn tick_profiles(&self) -> &[Option<TickProfile>; 2] {

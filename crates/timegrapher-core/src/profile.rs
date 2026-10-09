@@ -13,8 +13,8 @@ use crate::dsp::envelope;
 use crate::shape::{self, ShapeConfig};
 use serde::Serialize;
 
-/// Which beats a profile is built from. `A` is the even beats and `B` the
-/// odd ones, as on the paper strip.
+/// Which beats a profile is built from: `A` is the tick (even beats) and
+/// `B` the tock (odd beats). People-facing text says Tick and Tock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Side {

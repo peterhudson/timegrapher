@@ -1,4 +1,5 @@
-//! `timegrapher profile`: the sound of the tick and of the tock, with the
+//! `timegrapher profile`: the sound of the tick and of the tock (even and odd
+//! beats; the JSON keeps `a` for the tick and `b` for the tock), with the
 //! unlock, drop and sound marks the engine measured on them.
 
 use std::fmt::Write as _;
@@ -74,8 +75,8 @@ fn ms(v: Option<f64>) -> String {
 
 fn print_side(p: &TickProfile) {
     let name = match p.side {
-        Side::A => "A (even)",
-        Side::B => "B (odd)",
+        Side::A => "Tick",
+        Side::B => "Tock",
     };
     println!(
         "{name:<12} {} beats; unlock {}, drop {}, peak {}; sounds {} / {} / {}; amplitude {}",
@@ -91,7 +92,7 @@ fn print_side(p: &TickProfile) {
     );
 }
 
-/// Two stacked plots (A above B) on a log level scale, with the median, the
+/// Two stacked plots (tick above tock) on a log level scale, with the median, the
 /// 10–90% band and the marks.
 fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lift: f64) -> String {
     let (w, h, ml, mr, mt, gap) = (900.0, 260.0, 60.0, 20.0, 40.0, 50.0);
@@ -119,9 +120,9 @@ fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lif
     for (i, p) in profiles.iter().enumerate() {
         let y0 = mt + i as f64 * (h + gap);
         let label = if i == 0 {
-            "A (even beats)"
+            "Tick (even beats)"
         } else {
-            "B (odd beats)"
+            "Tock (odd beats)"
         };
         let _ = writeln!(
             s,
