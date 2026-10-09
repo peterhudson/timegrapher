@@ -438,7 +438,7 @@ impl TimegrapherApp {
         }
         // A microphone that opened but sends nothing.
         if let Some(cap) = &self.capture {
-            let quiet = self.audio_at.map_or(self.opened_at, |t| t).elapsed();
+            let quiet = self.audio_at.unwrap_or(self.opened_at).elapsed();
             if !cap.is_file && quiet.as_secs_f64() > 3.0 && failure.is_none() {
                 failure = Some(
                     "No sound is arriving from this input. Choose another one, or the \
