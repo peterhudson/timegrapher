@@ -1,6 +1,6 @@
 ---
 name: watchmaker
-description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like).
+description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like).
 ---
 
 # Watchmaker
@@ -90,9 +90,11 @@ Work through them in this order. The reasons are in
 [reading-the-numbers.md](references/reading-the-numbers.md).
 
 1. **Is the measurement sound?** Beats found against expected (duration ×
-   bph ÷ 3600), a jitter that isn't enormous, even and odd amplitudes
+   bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
    within a few degrees of each other, the beat rate one the calibre
-   actually runs at. If not, back to set-up.
+   actually runs at. If not, back to set-up. If the signal is clean but
+   amplitude or beat error still look wrong, `profile` shows which sounds
+   the engine marked as the unlock and the drop.
 2. **Amplitude first.** It is the best single measure of the health of a
    movement: how much energy reaches the balance, after everything the
    train, the oil and the escapement take out of it. Fully wound and dial

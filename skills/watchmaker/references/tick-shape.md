@@ -37,10 +37,13 @@ oscillation period.)
 **Even and odd beats are the two pallet stones.** The tick and the tock
 are delivered by alternate stones, the entry and the exit pallet. A fault
 on one stone, or on one side of the fork, shows on every other beat only.
-`shape` reports the two sides separately as "even" and "odd". It can't
-tell which is the entry stone and which the exit; that depends on where in
+Call the two sides the **Tick** (even beats) and the **Tock** (odd
+beats) when talking to people; `shape` labels them "even" and "odd" and
+`profile` labels them `a` and `b`. The program can't tell which is
+physically the tick, nor which is the entry stone and which the exit; that depends on where in
 the swing the recording started. What it can tell you is that the two
-differ.
+differ. To see where the engine put the unlock and drop marks on each
+side, run `profile` (see [cli-reference.md](cli-reference.md#profile)).
 
 A fault on one **escape tooth**, by contrast, shows once per escape-wheel
 turn (every 30 beats with 15 teeth), on alternate stones; that's for the
