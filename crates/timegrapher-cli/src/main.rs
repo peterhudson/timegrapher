@@ -2,6 +2,7 @@ mod doctor;
 mod long;
 mod mixer;
 mod output;
+mod profile_cmd;
 mod report;
 mod session_cmd;
 mod session_report;
@@ -82,6 +83,37 @@ enum Command {
         /// Write the even and odd whole-recording templates to this CSV file.
         #[arg(long)]
         templates: Option<PathBuf>,
+    },
+    /// The sound of the tick and the tock (A and B beats) over a stretch of
+    /// a recording, with the unlock, drop and sound marks the engine
+    /// measured on them: the place to look when amplitude or beat error
+    /// seem wrong.
+    Profile {
+        file: PathBuf,
+        /// Start of the stretch, seconds from the start of the recording.
+        #[arg(long, default_value_t = 0.0)]
+        at: f64,
+        /// Length of the stretch, seconds.
+        #[arg(long, default_value_t = 10.0)]
+        span: f64,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees.
+        #[arg(long, default_value_t = 52.0)]
+        lift: f64,
+        /// Comma-separated steady tones to notch out, Hz.
+        #[arg(long, value_delimiter = ',')]
+        notch: Vec<f64>,
+        /// High-pass corner, Hz.
+        #[arg(long, default_value_t = 1500.0)]
+        highpass: f64,
+        /// Print the profiles (envelopes and marks) as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+        /// Also draw them to this SVG file.
+        #[arg(long)]
+        svg: Option<PathBuf>,
     },
     /// Analyse a long recording (hours to days): rate and amplitude over
     /// time and the periodic changes that point at a wheel of the train.
@@ -276,6 +308,33 @@ fn main() -> ExitCode {
                 templates: templates.as_deref(),
             };
             shape_cmd::run(&file, &o)
+        }
+        Command::Profile {
+            file,
+            at,
+            span,
+            bph,
+            lift,
+            notch,
+            highpass,
+            json,
+            svg,
+        } => {
+            let mut cfg = AnalysisConfig {
+                bph,
+                ..Default::default()
+            };
+            cfg.amplitude.lift_deg = lift;
+            cfg.envelope.notch_hz = notch;
+            cfg.envelope.highpass_hz = highpass;
+            let o = profile_cmd::Options {
+                cfg,
+                at_s: at,
+                span_s: span,
+                json,
+                svg: svg.as_deref(),
+            };
+            profile_cmd::run(&file, &o)
         }
         Command::Long {
             files,

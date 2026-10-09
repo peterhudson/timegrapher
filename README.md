@@ -57,6 +57,11 @@ Options: `--bph` (guessed if omitted), `--lift` (degrees),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
 beat error and amplitude over time), `--json`.
 
+`timegrapher profile recording.flac --at 60 --svg profile.svg` shows the
+sound of the tick and the tock (even and odd beats) over a 10 s stretch,
+with the unlock, drop and sound marks behind the amplitude and beat error
+readings: the place to look when those readings seem wrong.
+
 `timegrapher long run.flac --clock clock.csv` analyses a long run in
 bounded memory: rate and amplitude over time, the sound card calibrated
 against NTP, and periodic changes found, named after the wheel they match,
