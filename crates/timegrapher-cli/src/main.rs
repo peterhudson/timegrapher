@@ -5,6 +5,8 @@ mod long;
 mod mixer;
 mod output;
 mod report;
+mod session_cmd;
+mod session_report;
 mod shape_cmd;
 
 use clap::{Parser, Subcommand};
@@ -163,6 +165,43 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Read a watch measured in several positions (and states of wind)
+    /// into one multi-position report, Witschi style.
+    Session {
+        /// A session file (session.toml), a folder holding one, or the
+        /// recordings themselves with the position in each file name
+        /// (DU, DD, CU, CD, CL, CR or CH, CB, 3H, 6H, 9H, 12H).
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// Write a session.toml for this folder of recordings to edit, and stop.
+        #[arg(long)]
+        init: bool,
+        /// Beat rate in beats per hour (overrides the session file).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees (overrides the session file; default 52).
+        #[arg(long)]
+        lift: Option<f64>,
+        /// Tolerance class: ladies, mens, cosc-small, cosc, metas (default mens).
+        #[arg(long)]
+        tolerance: Option<String>,
+        /// Seconds skipped at the start of each recording while the watch
+        /// settles (overrides the session file; default 20).
+        #[arg(long)]
+        settle: Option<f64>,
+        /// Skip the beat-shape measurement.
+        #[arg(long)]
+        no_shape: bool,
+        /// Skip the periodic-change search.
+        #[arg(long)]
+        no_cycles: bool,
+        /// Folder for the report (default: session_report next to the session file).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Print the summary as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         out: PathBuf,
@@ -294,6 +333,31 @@ fn main() -> ExitCode {
                 Err(e) => Err(e),
             }
         }
+        Command::Session {
+            paths,
+            init,
+            bph,
+            lift,
+            tolerance,
+            settle,
+            no_shape,
+            no_cycles,
+            out,
+            json,
+        } => session_cmd::run(
+            &paths,
+            &session_cmd::Options {
+                bph,
+                lift,
+                tolerance,
+                settle,
+                out,
+                json,
+                init,
+                no_shape,
+                no_cycles,
+            },
+        ),
         Command::Synth {
             out,
             duration,

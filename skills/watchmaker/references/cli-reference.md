@@ -3,9 +3,15 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `devices`, `doctor`, `analyze`, `shape`, `long`, `synth`. A
-multi-position `session` / `report` command is being built and isn't
-available yet.
+Commands: `devices`, `doctor`, `analyze`, `shape`, `long`, `session`,
+`synth`. `session` (the multi-position report) is documented in the
+repository's `docs/sessions.md`, including its finding codes
+(`overbanking`, `amplitude_very_low`, `amplitude_tolerance`,
+`beat_error_large`, `beat_error_tolerance`, `rate_tolerance`,
+`positional_delta`, `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`,
+`cycle_other`, `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
+`measurement_short`) and per-reading marks (`within`, `outside`,
+`not_judged`).
 
 Exit codes: **0** success, **1** error (message on stderr), **3** `doctor`
 found a problem.

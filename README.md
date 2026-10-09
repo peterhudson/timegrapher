@@ -16,7 +16,8 @@ possible that no open-source tool offers today:
   escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
 
 Status: early. The per-beat engine and a command-line tool analyse
-recordings, from a few minutes (`analyze`, `shape`) to days (`long`). A live
+recordings, from a few minutes (`analyze`, `shape`) to days (`long`), and
+read a multi-position test (`session`). A live
 desktop app (egui) comes later.
 
 ## Command line
@@ -64,6 +65,13 @@ with the software version and the input it read; `doctor` exits 3 when the
 microphone needs attention. See [docs/agent-interface.md](docs/agent-interface.md).
 The [watchmaker skill](skills/watchmaker/SKILL.md) teaches an agent to run
 the tool and read the results like an experienced watchmaker.
+
+`timegrapher session folder/` reads one watch measured in several
+positions (and states of wind) into a multi-position report in the style
+of Witschi's SEQ mode: rate, amplitude and beat error per position against
+the tolerances, the characteristic values X, D, DV, DH, DVH, Di, Im and
+Ie, and findings with the evidence behind each. `--init` writes a
+`session.toml` to edit. See [docs/sessions.md](docs/sessions.md).
 
 `timegrapher synth out.wav` writes a synthetic recording with known rate,
 beat error and amplitude, for testing; `--fault-period 60` adds a fault

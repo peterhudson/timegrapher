@@ -15,6 +15,7 @@ pub mod filter;
 pub mod longrun;
 pub mod longterm;
 pub mod periodicity;
+pub mod session;
 pub mod shape;
 pub mod stream;
 pub mod synth;

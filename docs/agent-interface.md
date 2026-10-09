@@ -45,6 +45,7 @@ the device, its configuration and the mixer settings at the time.
 | `long` | `long FILES --json` | rate and amplitude over the run, clock calibration, periodic components named after wheels with false-alarm probability; also written to `summary.json` beside `report.html`; see [long-runs.md](long-runs.md) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | `source`, `check`, `mixer`, `fixes[]`, `applied`, `after`, `verdict` (below) |
+| `session` | `session PATHS --json` | per-position `readings`, Witschi's characteristic values and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) |
 
 Rates are seconds per day, positive gaining. Rates from a recording are on
 the sound card's clock unless `long` was given a clock log; a sound card can

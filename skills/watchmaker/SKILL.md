@@ -75,8 +75,14 @@ Three jobs, in order:
 - Analyse each file: `timegrapher analyze FILE --lift L --json` (and `--bph`
   if you know it). Then `shape` if the tick needs looking at.
 
-A multi-position `session`/`report` command is coming; until then, record
-one file per position and put the table together yourself.
+For several positions, name each file after its position (`watch_DU.flac`,
+`watch_CL.flac`, ... or CH, CB, 3H, 6H, 9H, 12H) and run
+`timegrapher session FOLDER --lift L --json`, or `timegrapher session
+--init FOLDER` to write a `session.toml` to fill in (calibre, wind state,
+tolerance class). It gives per-position readings, Witschi's characteristic
+values (X, D, DV, DH, DVH, Di, isochronism) and findings, each with a
+stable `code`, a `severity` (`fault`, `warning`, `note`), the evidence and
+advice. Read the findings, then reason about them as below.
 
 ### 3. Read the results
 
