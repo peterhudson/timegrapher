@@ -133,6 +133,7 @@ without a number; change them under `[limits]`.
 | Mean rate outside tolerance | X outside the class's range, fully wound | check |
 | Large differences between positions | D > 10 s/d (*project*, `delta_rate`) | check |
 | Large vertical amplitude loss | DVH amplitude below −50° (*project*, `vh_amplitude_drop`) | check |
+| Unlock not timed reliably | under 60% of the 2 s amplitude windows find the unlock on both sides (*project*, `min_unlock_coverage`); amplitude and beat error from the unlock are then shown with `?` and not judged | check |
 | Rate unsteady within a reading | 10 s rates spread > 20 s/d (*project*, `rate_spread`) | check |
 | Regular change once per wheel turn | a periodic change above the 1% false-alarm level matching a wheel | check |
 | Vertical and horizontal rates differ | \|DVH\| ≥ 5 s/d, with Witschi's pin advice | note |
@@ -157,8 +158,10 @@ index into `readings`, or null for findings across positions), and its
 `beat_error_tolerance`, `rate_tolerance`, `positional_delta`,
 `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_wheel_fraction`, `cycle_other`,
 `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
-`measurement_short`. Each reading's `verdicts` entry marks rate,
-amplitude and beat error `within`, `outside` or `not_judged`.
+`measurement_short`, `unlock_unreliable`. Each reading's `verdicts` entry marks rate,
+amplitude and beat error `within`, `outside`, `not_judged` or
+`unreliable`; `unlock_coverage` in its measurement is the share of
+amplitude windows that found the unlock.
 
 ## Validation
 

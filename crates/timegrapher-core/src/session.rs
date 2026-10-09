@@ -242,6 +242,9 @@ pub struct Limits {
     /// Readings taken this soon after a full wind count as fully wound
     /// for the tolerance checks, hours.
     pub full_wind_h: f64,
+    /// Share of amplitude windows that must find the unlock on both sides
+    /// before amplitude and beat error are judged, 0..1.
+    pub min_unlock_coverage: f64,
 }
 
 impl Default for Limits {
@@ -255,6 +258,7 @@ impl Default for Limits {
             rate_spread: 20.0,
             min_measure_s: 40.0,
             full_wind_h: 2.0,
+            min_unlock_coverage: 0.6,
         }
     }
 }
@@ -304,6 +308,11 @@ pub struct Measurement {
     /// Amplitude in its windows, 5th and 95th percentile, deg.
     pub amplitude_p05: Option<f64>,
     pub amplitude_p95: Option<f64>,
+    /// Amplitude windows (2 s) in the measured stretch, and the share of
+    /// them that found the unlock on both sides. Amplitude and the beat
+    /// error from the unlock rest on those windows.
+    pub amplitude_windows: usize,
+    pub unlock_coverage: Option<f64>,
 }
 
 impl Measurement {
@@ -313,6 +322,13 @@ impl Measurement {
         self.beat_error_unlock_ms
             .or(self.beat_error_ms)
             .map(f64::abs)
+    }
+
+    /// Whether too few windows found the unlock for amplitude and the
+    /// beat error from the unlock to be trusted.
+    pub fn unlock_unreliable(&self, lim: &Limits) -> bool {
+        self.unlock_coverage
+            .is_some_and(|c| c < lim.min_unlock_coverage)
     }
 }
 
@@ -375,6 +391,13 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         rate_p95: percentile(&rates, 0.95),
         amplitude_p05: percentile(&amps, 0.05),
         amplitude_p95: percentile(&amps, 0.95),
+        amplitude_windows: amp.len(),
+        unlock_coverage: (!amp.is_empty()).then(|| {
+            amp.iter()
+                .filter(|w| w.beat_error_unlock_ms.is_some())
+                .count() as f64
+                / amp.len() as f64
+        }),
     }
 }
 
@@ -598,6 +621,8 @@ pub enum Mark {
     Outside,
     /// Not judged: not measured, or not fully wound.
     NotJudged,
+    /// Measured, but not reliably enough to judge (see `unlock_unreliable`).
+    Unreliable,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -735,10 +760,15 @@ pub fn evaluate(readings: &[Reading], tol: &Tolerance, limits: &Limits) -> Sessi
                 _ => Mark::NotJudged,
             };
             let (alo, ahi) = tol.amplitude(r.position);
+            let unsure = m.unlock_unreliable(limits);
             Verdict {
                 rate: judge(m.rate_s_per_day, tol.rate_min, tol.rate_max),
-                amplitude: judge(m.amplitude_deg, alo, ahi),
+                amplitude: match m.amplitude_deg {
+                    Some(_) if unsure => Mark::Unreliable,
+                    a => judge(a, alo, ahi),
+                },
                 beat_error: match m.beat_error() {
+                    Some(_) if unsure && m.beat_error_unlock_ms.is_some() => Mark::Unreliable,
                     Some(b) if b < tol.beat_error_ms => Mark::Within,
                     Some(_) => Mark::Outside,
                     None => Mark::NotJudged,
@@ -865,7 +895,28 @@ fn findings(
     // Per reading.
     for (ri, r) in readings.iter().enumerate() {
         let m = &r.measurement;
-        if let Some(a) = m.amplitude_deg {
+        let unsure = m.unlock_unreliable(lim);
+        if unsure {
+            let sides = match (m.amplitude_even_deg, m.amplitude_odd_deg) {
+                (Some(e), Some(o)) => format!("; even and odd beats read {e:.0}° and {o:.0}°"),
+                _ => String::new(),
+            };
+            push(
+                "unlock_unreliable",
+                Some(ri),
+                Severity::Warning,
+                "Unlock not timed reliably",
+                format!(
+                    "only {:.0}% of the {} amplitude windows in {} found the unlock on both sides (at least {:.0}% needed){sides}",
+                    100.0 * m.unlock_coverage.unwrap_or(0.0),
+                    m.amplitude_windows,
+                    at(r),
+                    100.0 * lim.min_unlock_coverage
+                ),
+                "Amplitude and the beat error from the unlock are shown but not judged; rate is unaffected. A holder or stand that rings, a weak or clipped signal or a noisy room smears the tick; try the watch cased or on another stand.",
+            );
+        }
+        if let Some(a) = m.amplitude_deg.filter(|_| !unsure) {
             if a > lim.overbanking {
                 push(
                     "overbanking",
@@ -907,7 +958,10 @@ fn findings(
                 }
             }
         }
-        if let Some(b) = m.beat_error() {
+        if let Some(b) = m
+            .beat_error()
+            .filter(|_| !(unsure && m.beat_error_unlock_ms.is_some()))
+        {
             let how = match (m.beat_error_unlock_ms, m.beat_error_ms) {
                 (Some(_), Some(d)) => format!(" from the unlock ({:.2} ms from the drop)", d.abs()),
                 (None, Some(_)) => " from the drop (unlock not found)".to_string(),

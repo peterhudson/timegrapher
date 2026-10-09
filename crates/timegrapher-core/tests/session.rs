@@ -201,3 +201,22 @@ fn large_beat_error_is_a_fault() {
     assert_eq!(f.title, "Large beat error");
     assert!(f.evidence.contains("2.5"), "{}", f.evidence);
 }
+
+#[test]
+fn unlock_missing_in_most_windows_is_not_judged() {
+    let mut readings = vec![reading(Position::CH, 0.0, 2.0, 200.0, 0.1)];
+    assert!(readings[0].measurement.unlock_coverage.unwrap() > 0.9);
+    // As on a smeared tick, where most windows lose one side's unlock.
+    readings[0].measurement.unlock_coverage = Some(0.2);
+    let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
+    let codes: Vec<&str> = rep.findings.iter().map(|f| f.code).collect();
+    assert!(codes.contains(&"unlock_unreliable"), "{codes:?}");
+    // The low amplitude is shown but not judged.
+    assert!(
+        !codes.iter().any(|c| c.starts_with("amplitude")),
+        "{codes:?}"
+    );
+    assert_eq!(rep.verdicts[0].amplitude, session::Mark::Unreliable);
+    assert_eq!(rep.verdicts[0].beat_error, session::Mark::Unreliable);
+    assert_ne!(rep.verdicts[0].rate, session::Mark::Unreliable);
+}

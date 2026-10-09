@@ -16,6 +16,9 @@ fn esc(s: &str) -> String {
 fn cell(text: String, m: Mark) -> String {
     match m {
         Mark::Outside => format!(r#"<td class="num out" title="outside tolerance">{text}</td>"#),
+        Mark::Unreliable => format!(
+            r#"<td class="num unsure" title="not measured reliably: see the findings">{text}?</td>"#
+        ),
         _ => format!(r#"<td class="num">{text}</td>"#),
     }
 }
@@ -643,6 +646,7 @@ svg {{ width: 100%; height: auto; display: block; }}
 .data thead th {{ color: var(--text2); font-weight: 600; font-size: 12px; }}
 .data .num {{ text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }}
 .data .out {{ color: var(--bad); font-weight: 600; background: var(--badbg); }}
+.data .unsure {{ color: var(--muted); font-style: italic; }}
 .data .file {{ color: var(--text2); font-size: 12px; word-break: break-all; }}
 .data .what {{ color: var(--text2); font-size: 12px; }}
 .sub {{ color: var(--muted); font-weight: 400; font-size: 12px; }}
