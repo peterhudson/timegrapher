@@ -269,6 +269,44 @@ some windows: `analyze` reads 321 / 348 / 308° against 321 / 329 / 285°
 before and tg's 294–300°; that take still waits for the smeared-tick fix.
 The unit test `a_bump_of_noise_before_the_unlock_is_not_sound_1` puts a
 bump 15 ms before the drop on every Tick of one window.
+## Knocks that outmatch a beat: the beat window
+
+Pass 2 follows the template's correlation peaks, taking the best match
+within 30% of a beat period of where each beat is due and counting the
+beat as missed if that match is more than 10% of a period off, which is
+how a knock is kept from pulling the track. But the knock then costs the
+beat under it too. Now, when the best match is that far off, the tracker
+looks again within 2 ms of where the beat is due (from the same side's
+last beat, so beat error does not enter it; professional timegraphers
+gate to about 2 ms) and takes the best peak there if it matches at least
+half as well as that side's recent beats. Only then: a window that always
+preferred a fair match near the prediction held the track on another sound
+of the Tock for five minutes of the Yacht-Master dial down once a knock had
+put it there (drop beat error 6.6 ms). And a beat found this way is never
+used to predict the next ones: on the Yacht-Master dial down, read in
+chunks by `session`, a knock had already pulled one Tock 12 ms early, the
+window then took the knock's tail where the next Tock was predicted, and
+predicting from it lost the 31 beats after it until the track recovered.
+
+With knocks every 0.5 s (the files in the table above):
+
+| Recording | Beats found before | After | Readings |
+| --- | --- | --- | --- |
+| Peacock SL1258 | 2102 | 2235 | unchanged (306°, 0.13 ms) |
+| Yacht-Master crown up | 2117 | 2294 | unchanged (228°, 0.23 ms) |
+| Patek 324 clone | 2103 | 2241 | still unreliable: 224° and 4.93 ms against 229° and 1.34 ms before (clean 239°, 0.49 ms) |
+
+The Patek with knocks every half second leaves few clean 2 s windows on
+either build, so its unlock-side readings rest on a handful of windows.
+
+On the recordings themselves (`analyze` on every take, and `session` on
+the Dandong 3235, Patek and Yacht-Master dial down) rate is unchanged,
+amplitude by 1° or less and beat error by 0.05 ms or less, and no file
+loses a beat in either. The Dandong 3235 keeps 9 or 10 more beats in its
+first file and the Yacht-Master dial down 4 to 7 in the file with its knock; the beats it loses
+(about one in 40, nearly all Ticks) are silenced by the burst gate, so no
+window can find them, and a gate that knows where the beats are is
+separate work.
 
 ## Sound 2 after a shoulder on the unlock: the Daytona's Tick
 
