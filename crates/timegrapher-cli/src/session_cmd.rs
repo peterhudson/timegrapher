@@ -16,7 +16,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, beats, timing};
+use timegrapher_core::{audio, beats, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 /// The layout of `summary.json` and `--json`.
@@ -586,6 +586,16 @@ fn print_summary(s: &Session) {
         );
     }
     println!("* outside tolerance, ? not measured reliably");
+    println!();
+    for rd in &s.readings {
+        let m = &rd.measurement;
+        println!(
+            "States       {:<4} {}; {}",
+            rd.position.code(),
+            twostate::describe(&m.amplitude_states, "amplitude"),
+            twostate::describe(&m.rate_states, "rate")
+        );
+    }
     println!();
     for st in &r.states {
         println!(

@@ -88,9 +88,54 @@ of the recording or for `measure_s`:
   steady the rate is;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
-- beat shape (as `shape`) on the first 60 s after settling.
+- beat shape (as `shape`) on the first 60 s after settling;
+- whether amplitude and rate sit at two levels the watch switches
+  between (see [Two states](#two-states)).
 
 Repeat readings in the same position and state of wind are averaged.
+
+## Two states
+
+Some watches swing at two amplitudes and flip between them every few
+tens of seconds, which a histogram of the readings shows as two humps.
+`twostate.rs` looks for that in each reading, on amplitude (the 2 s
+windows) and on rate (10 s readings), and the report gives one line per
+reading, e.g. "two amplitude states, 239° and 250°, switching about
+every 30 s (medium confidence)".
+
+The windows are reduced to 10 s medians (outliers beyond 5 MAD dropped
+first, so a stray window reading 130° is not a state) and a running
+median over ±5 minutes is taken off, so the slow fall of amplitude as the
+mainspring runs down is not read as two levels. One Gaussian and a
+mixture of two of equal width are fitted to the blocks. Two states are
+called only when:
+
+| Test | Bar | Why |
+|---|---|---|
+| BIC, one level minus two | ≥ 10 | "very strong" evidence (Kass and Raftery) |
+| Separation of the levels in widths (Ashman's D) | ≥ 2 | two humps, not one wide one |
+| Share of the smaller state | ≥ 10% | |
+| Switches | ≥ 4 | back and forth, not one step |
+| Both states in each third of the reading | ≥ 5% of its blocks | not a drift |
+
+Three outcomes other than two states:
+
+- **regular**: the state sequence repeats at one lag with an
+  autocorrelation of 0.5 or more, like the once-a-minute dip of the
+  fourth wheel. That is a cycle (see the periodic changes), not a state.
+- **measurement**: a change of the balance's swing moves Tick and Tock
+  together. A split one side carries alone (the other side moves less
+  than 40% as much, or the other way), or one where the beat error from
+  the unlock jumps by 0.1 ms or more and over three times the change from
+  the drop, is likely the unlock mark, not the watch.
+- **one level**, with a note when the Tick (or Tock) 2 s windows on their
+  own fall in two clusters that the other side's windows do not follow:
+  the unlock mark hopping between the onset and the shoulder after sound
+  1, as on the Daytona 4130, where 0.3 ms of edge is about 15°.
+
+The amplitude windows do not carry the unlock time itself, so the edge
+check works from its traces: the per-side amplitudes and the per-state
+beat errors from the unlock and from the drop.
 
 ## Characteristic values
 
@@ -164,7 +209,15 @@ index into `readings`, or null for findings across positions), and its
 `measurement_short`, `unlock_unreliable`. Each reading's `verdicts` entry marks rate,
 amplitude and beat error `within`, `outside`, `not_judged` or
 `unreliable`; `unlock_coverage` in its measurement is the share of
-amplitude windows that found the unlock.
+amplitude windows that found the unlock. `amplitude_states` and
+`rate_states` in each measurement hold the two-state finder's result:
+`verdict` (`one_level`, `two_states`, `regular`, `measurement`,
+`too_short`), `confidence` (`low`, `medium`, `high`), the `low` and
+`high` levels, `low_share`, `separation`, `delta_bic`, `switches`,
+`dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`
+and `regularity`, and for amplitude `tick_change`, `tock_change`,
+`beat_error_unlock_ms` and `beat_error_drop_ms` (low and high state),
+`tick_split_alone`, `tock_split_alone`, `one_sided` and `unlock_jump`.
 
 ## Validation
 
