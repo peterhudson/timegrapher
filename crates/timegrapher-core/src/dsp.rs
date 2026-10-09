@@ -12,6 +12,10 @@ pub struct EnvelopeConfig {
     pub notch_hz: Vec<f64>,
     /// Length of the moving average applied to the rectified signal, seconds.
     pub smooth_s: f64,
+    /// Silence knocks and bumps: stretches whose 20 ms energy is more than
+    /// this many times a typical tick's are zeroed before anything else
+    /// sees them. `None` keeps everything.
+    pub burst_gate: Option<f64>,
 }
 
 impl Default for EnvelopeConfig {
@@ -20,6 +24,7 @@ impl Default for EnvelopeConfig {
             highpass_hz: 1500.0,
             notch_hz: Vec::new(),
             smooth_s: 0.0002,
+            burst_gate: Some(2.0),
         }
     }
 }
@@ -31,11 +36,54 @@ pub fn envelope(x: &[f32], fs: f64, cfg: &EnvelopeConfig) -> Vec<f32> {
     for &f0 in &cfg.notch_hz {
         Biquad::notch(fs, f0, 30.0).filtfilt(&mut y);
     }
+    if let Some(factor) = cfg.burst_gate {
+        burst_gate(&mut y, fs, factor);
+    }
     for v in y.iter_mut() {
         *v = v.abs();
     }
     moving_average(&y, ((cfg.smooth_s * fs).round() as usize).max(1))
 }
+
+/// Zero every sample whose 20 ms energy is more than `factor` times a
+/// typical tick's: the median, over half-second blocks, of each block's
+/// highest 20 ms energy. A knock on the desk or a bump of the stand is
+/// much louder than the ticks and would otherwise pull the beat tracking
+/// and the templates. Returns the fraction of samples zeroed.
+pub fn burst_gate(y: &mut [f32], fs: f64, factor: f64) -> f64 {
+    let w = ((0.02 * fs) as usize).max(1);
+    let blk = (0.5 * fs) as usize;
+    if y.len() < 2 * blk || w >= y.len() {
+        return 0.0;
+    }
+    let sq: Vec<f32> = y.iter().map(|v| v * v).collect();
+    let energy = moving_average(&sq, w);
+    let mut peaks: Vec<f32> = energy
+        .chunks_exact(blk)
+        .map(|c| c.iter().copied().fold(0.0, f32::max))
+        .collect();
+    let typical = median_f32(&mut peaks);
+    if typical.is_nan() || typical <= 0.0 {
+        return 0.0;
+    }
+    let limit = (factor * typical as f64) as f32;
+    let loud = energy.iter().filter(|&&e| e > limit).count();
+    // Knocks fill a percent or two of a recording. Far more than that means
+    // the typical level is not a tick's, as when the watch is only heard in
+    // the last part of a window, so the "bursts" are the ticks: keep them.
+    if loud as f64 > MAX_GATED * y.len() as f64 {
+        return 0.0;
+    }
+    for (v, &e) in y.iter_mut().zip(&energy) {
+        if e > limit {
+            *v = 0.0;
+        }
+    }
+    loud as f64 / y.len() as f64
+}
+
+/// Most of a recording the burst gate may silence; see [`burst_gate`].
+const MAX_GATED: f64 = 0.04;
 
 /// Centred moving average of width `w`, same length as the input.
 pub fn moving_average(x: &[f32], w: usize) -> Vec<f32> {
@@ -193,6 +241,47 @@ pub fn robust_sd(v: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn burst_gate_silences_a_knock_not_the_ticks() {
+        // A 1 ms tick every 125 ms for 4 s, and a knock ten times as loud.
+        let fs = 48_000.0;
+        let mut y = vec![0.0f32; (4.0 * fs) as usize];
+        for k in 0..32 {
+            let i = ((0.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let knock = (2.01 * fs) as usize;
+        for v in &mut y[knock..knock + 480] {
+            *v = 5.0;
+        }
+        let ticks: f32 = y.iter().filter(|&&v| v == 0.5).count() as f32;
+        let frac = burst_gate(&mut y, fs, 2.0);
+        assert!(y[knock..knock + 480].iter().all(|&v| v == 0.0));
+        assert_eq!(y.iter().filter(|&&v| v == 0.5).count() as f32, ticks);
+        assert!(frac > 0.0 && frac < 0.01, "{frac}");
+    }
+
+    #[test]
+    fn burst_gate_keeps_ticks_when_the_watch_arrives_late() {
+        // Faint noise for 3 s, then ticks for 1 s: the typical block is
+        // quiet and every tick looks like a burst, so nothing is gated.
+        let fs = 48_000.0;
+        let mut y: Vec<f32> = (0..(4.0 * fs) as usize)
+            .map(|i| 0.001 * ((i * 7919 % 1000) as f32 / 500.0 - 1.0))
+            .collect();
+        for k in 0..8 {
+            let i = ((3.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let before = y.clone();
+        assert_eq!(burst_gate(&mut y, fs, 2.0), 0.0);
+        assert_eq!(y, before);
+    }
 
     #[test]
     fn parabolic_refines_only_a_peak() {

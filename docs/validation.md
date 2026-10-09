@@ -204,6 +204,36 @@ beats (7 of 240 in the synthetic test) are now left out rather than
 placed on a noise peak, and the last beat of a recording may be left out
 when its sound runs past the end.
 
+## Knocks on the desk: the burst gate
+
+The envelope now silences bursts before the beats are tracked, as tg's
+noise suppressor does: after the 1.5 kHz highpass, any sample whose 20 ms
+energy is more than twice a typical tick's (the median, over half-second
+blocks, of each block's loudest 20 ms) is set to zero. If that would
+silence more than 4% of the recording, the typical level is not a tick's
+(the watch is only heard in the last part of a live window, say) and
+nothing is silenced.
+
+On the recordings it changes almost nothing: under 0.03% of samples on
+the clean takes, 0.5% on the Yacht-Master dial down with its knock.
+Rate, amplitude and beat error move by 3° or less and 0.03 ms or less,
+except the ETA in its holder, whose beat error was already unreliable
+(0.07 / 1.22 / 0.85 ms against tg's 0.07 / 0.09 / 0.06) and is now
+0.17 / 0.96 / 3.09 ms; that take waits for the smeared-tick fix.
+
+With knocks added to 5 minutes of a take (noise bursts of 5 to 40 ms at
+1 to 4 times the loudest tick, at random with the mean spacing shown):
+
+| Recording | Knocks | Before | After | Clean take |
+| --- | --- | --- | --- | --- |
+| Patek 324 clone (52°) | every 2 s | 156°, 5.14 ms | 238°, 0.55 ms | 239°, 0.49 ms |
+| Patek 324 clone (52°) | every 0.5 s | +39.7 s/d, 290°, 3.36 ms | −5.9 s/d, 229°, 1.34 ms | −6.3 s/d |
+| Peacock SL1258 (52°) | every 0.5 s | 257°, beat error not found | 306°, 0.13 ms | 306°, 0.13 ms |
+| Yacht-Master crown up (55°) | every 0.5 s | 303°, beat error not found | 228°, 0.23 ms | 228°, 0.22 ms |
+
+A higher threshold (3 or 4 times) rescued fewer of these, so the gate
+keeps tg's factor of 2.
+
 ## Beat shape
 
 `crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on
