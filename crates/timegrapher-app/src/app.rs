@@ -6,7 +6,7 @@ use crate::fields::{self, Format};
 use crate::profiles;
 use crate::strip::{self, Anchor, StripInput, StripView};
 use eframe::egui::{self, Color32, RichText, Vec2};
-use egui_plot::{Legend, Line, Plot, VLine};
+use egui_plot::{Legend, Line, Plot};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
@@ -100,7 +100,7 @@ impl Pane {
     fn title(self) -> &'static str {
         match self {
             Pane::Strip => "Paper strip",
-            Pane::Sound => "Tick and tock sound",
+            Pane::Sound => "Tick tock profile",
             Pane::Rate => "Rate",
             Pane::Amplitude => "Amplitude",
             Pane::BeatError => "Beat error",
@@ -113,11 +113,18 @@ impl Pane {
 /// side.
 fn default_layout(horizontal: bool) -> Tree<Pane> {
     let mut tiles = Tiles::default();
-    let strip = tiles.insert_pane(Pane::Strip);
-    let sound = tiles.insert_pane(Pane::Sound);
+    // Each pane in its own tab bar from the start. Left to the tree, the
+    // tab bar would take over the pane's id and the pane get a new one,
+    // which loses a pane hidden before the first frame.
+    let mut tabbed = |p: Pane| {
+        let pane = tiles.insert_pane(p);
+        tiles.insert_tab_tile(vec![pane])
+    };
+    let strip = tabbed(Pane::Strip);
+    let sound = tabbed(Pane::Sound);
     let charts: Vec<TileId> = [Pane::Rate, Pane::Amplitude, Pane::BeatError]
         .into_iter()
-        .map(|p| tiles.insert_pane(p))
+        .map(&mut tabbed)
         .collect();
     let mut rest = vec![sound];
     rest.extend(&charts);
@@ -353,7 +360,7 @@ impl TimegrapherApp {
             gain_device: None,
             gain_error: None,
             message: None,
-            sound_scale: profiles::Scale::Decibels,
+            sound_scale: profiles::Scale::Linear,
             sound_history: Vec::new(),
             sound_at: None,
             sound_job: None,
@@ -1729,23 +1736,29 @@ impl TimegrapherApp {
                 };
                 p.line(Line::new(name, pts).color(c).width(w));
             }
-            if let Some(t) = marker {
-                p.vline(VLine::new("", t).color(weak).width(1.0_f32));
-            }
             let (hovered, clicked) = {
                 let r = p.response();
                 (r.hovered(), r.clicked() && !r.double_clicked())
             };
             let hover = p.pointer_coordinate().filter(|_| hovered);
-            if let Some(h) = hover {
-                p.vline(VLine::new("", h.x).color(weak).width(1.0_f32));
-            }
             let click = clicked.then(|| p.pointer_coordinate()).flatten();
             // Panned or zoomed away from the whole session.
             let moved = !to_live && !p.auto_bounds().x;
             (click, hover.map(|h| h.x), moved)
         });
         let (click, hover, moved) = resp.inner;
+        // The moment shown and the pointer's time, painted over the plot
+        // rather than added to it: a plot line counts towards the automatic
+        // bounds, so one under the pointer near the edge widened the chart
+        // a little more every frame.
+        let frame = *resp.transform.frame();
+        let painter = ui.painter_at(frame);
+        for x in [marker, hover].into_iter().flatten() {
+            let px = resp.transform.position_from_point_x(x);
+            if px >= frame.left() && px <= frame.right() {
+                painter.vline(px, frame.y_range(), egui::Stroke::new(1.0_f32, weak));
+            }
+        }
         let running = self.running();
         if moved {
             // Say how to get back, on the chart itself.
@@ -2046,6 +2059,41 @@ mod tests {
                 assert!(!out.shapes.is_empty());
             }
         }
+    }
+
+    /// Draw `n` frames of the whole window.
+    fn frames(app: &mut TimegrapherApp, ctx: &egui::Context, n: usize) {
+        for _ in 0..n {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(1280.0, 820.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::SidePanel::left("controls").show(ctx, |ui| app.controls(ui));
+                egui::CentralPanel::default().show(ctx, |ui| app.main_view(ui));
+            });
+        }
+    }
+
+    #[test]
+    fn hidden_panes_stay_hidden_through_a_new_direction() {
+        let mut app = synthetic(12.0, 20.0);
+        let ctx = egui::Context::default();
+        frames(&mut app, &ctx, 2);
+        for p in [Pane::Rate, Pane::Amplitude, Pane::Strip] {
+            set_pane_visible(&mut app.panes.tiles, p, false);
+        }
+        frames(&mut app, &ctx, 2);
+        app.strip.horizontal = true;
+        app.relayout(true);
+        frames(&mut app, &ctx, 3);
+        for p in [Pane::Rate, Pane::Amplitude, Pane::Strip] {
+            assert!(!pane_visible(&app.panes.tiles, p), "{p:?} came back");
+        }
+        assert!(pane_visible(&app.panes.tiles, Pane::Sound));
     }
 
     #[test]

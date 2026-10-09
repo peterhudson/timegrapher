@@ -63,19 +63,19 @@ pub fn draw(
     note: Option<&str>,
 ) {
     ui.horizontal(|ui| {
-        ui.selectable_value(scale, Scale::Decibels, "dB");
         ui.selectable_value(scale, Scale::Linear, "Linear");
+        ui.selectable_value(scale, Scale::Decibels, "dB");
         ui.separator();
-        // A key instead of a legend over each small plot.
-        for (label, c) in [
-            ("unlock", UNLOCK),
-            ("drop", DROP),
-            ("drop peak", PEAK),
-            ("sounds 1-3 (dashed)", Color32::GRAY),
-            ("noise floor (dashed)", Color32::GRAY),
-        ] {
-            ui.label(RichText::new(label).color(c).small());
-        }
+        // The marks are named on the plots; this says what the line styles
+        // mean.
+        ui.label(
+            RichText::new(
+                "solid: the edges amplitude and beat error are read from · dashed: \
+                 the three sounds · flat dashed: noise floor",
+            )
+            .small()
+            .weak(),
+        );
         if let Some(n) = note {
             ui.separator();
             ui.label(RichText::new(n).weak());
@@ -83,8 +83,8 @@ pub fn draw(
     })
     .response
     .on_hover_text(
-        "dB shows the level below the loudest point of each side, which makes the quiet \
-         unlock easy to see; Linear shows the sound as the engine measures it.",
+        "Linear shows the sound as the engine measures it; dB shows the level below the \
+         loudest point of each side, which makes the quiet unlock easier to see.",
     );
     let colors = side_colors(ui.visuals().dark_mode);
     // Both sides on one scale, so their loudness compares.
@@ -124,7 +124,7 @@ pub fn draw(
             } else {
                 0.0
             });
-        plot.show(ui, |pl| {
+        let resp = plot.show(ui, |pl| {
             let Some(p) = p else { return };
             let x = |i: usize| p.t0_ms + i as f64 * p.step_ms;
             let (med, lo, hi) = (
@@ -190,6 +190,55 @@ pub fn draw(
                 }
             }
         });
+        if let Some(p) = p {
+            label_marks(ui, &resp.transform, p);
+        }
+    }
+}
+
+/// Name each mark on the plot itself, along the top: the engine's edges
+/// first, then the three sounds, each label just right of its line and
+/// moved down a row where it would run into another.
+fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile) {
+    let frame = *t.frame();
+    let painter = ui.painter_at(frame);
+    let font = egui::FontId::proportional(11.0);
+    let grey = ui.visuals().text_color();
+    let mut ends: Vec<f32> = Vec::new();
+    for group in [
+        [
+            ("unlock", p.unlock_ms, UNLOCK),
+            ("drop", p.drop_ms, DROP),
+            ("peak", p.peak_ms, PEAK),
+        ],
+        [
+            ("1 unlock", p.sound1_ms, grey),
+            ("2 impulse", p.sound2_ms, grey),
+            ("3 drop", p.sound3_ms, grey),
+        ],
+    ] {
+        let mut marks: Vec<(f32, &str, Color32)> = group
+            .into_iter()
+            .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v), l, c)))
+            .filter(|(x, _, _)| *x >= frame.left() && *x <= frame.right())
+            .collect();
+        marks.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // The sounds start on the row below the edges' lowest.
+        let first = ends.len();
+        for (x, label, c) in marks {
+            let galley = painter.layout_no_wrap(label.to_string(), font.clone(), c);
+            let row = (first..ends.len())
+                .find(|&r| ends[r] + 4.0 < x)
+                .unwrap_or(ends.len());
+            let end = x + 3.0 + galley.size().x;
+            if row == ends.len() {
+                ends.push(end);
+            } else {
+                ends[row] = end;
+            }
+            let y = frame.top() + 2.0 + row as f32 * (galley.size().y + 1.0);
+            painter.galley(egui::pos2(x + 3.0, y), galley, c);
+        }
     }
 }
 
