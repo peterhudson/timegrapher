@@ -13,6 +13,7 @@ pub mod clock;
 pub mod diagnose;
 pub mod dsp;
 pub mod filter;
+pub mod histogram;
 pub mod live;
 pub mod longrun;
 pub mod longterm;

@@ -181,6 +181,61 @@ impl RateLine {
     }
 }
 
+/// Another reading drawn over the strip on its own scale, against time.
+#[derive(Debug, Clone)]
+pub struct Overlay {
+    pub name: &'static str,
+    pub unit: &'static str,
+    pub decimals: usize,
+    pub color: Color32,
+    /// The smallest range the scale spans, so a steady reading isn't
+    /// blown up into noise.
+    pub min_span: f64,
+    /// (time in s, value), oldest first.
+    pub points: Vec<[f64; 2]>,
+}
+
+impl Overlay {
+    /// The scale's ends: the values in view with a little room either side.
+    fn range(&self, from_s: f64, to_s: f64) -> Option<(f64, f64)> {
+        let vals = self
+            .points
+            .iter()
+            .filter(|p| p[0] >= from_s && p[0] <= to_s)
+            .map(|p| p[1]);
+        let (lo, hi) = vals.fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
+            (a.min(v), b.max(v))
+        });
+        if !lo.is_finite() {
+            return None;
+        }
+        let mid = (lo + hi) / 2.0;
+        let half = ((hi - lo) * 0.55).max(self.min_span / 2.0);
+        Some((mid - half, mid + half))
+    }
+}
+
+/// What is drawn over the beats.
+#[derive(Debug, Clone, Default)]
+pub struct Extras<'a> {
+    /// A line of text over the strip, such as where the view is.
+    pub note: Option<&'a str>,
+    pub rate_line: Option<RateLine>,
+    /// Faint lines parallel to the rate line across the whole strip.
+    pub guides: bool,
+    pub overlays: &'a [Overlay],
+}
+
+/// A signed number of ms for an axis label.
+fn axis_ms(ms: f64) -> String {
+    if ms.abs() < 1e-9 {
+        "0 ms".into()
+    } else {
+        let sign = if ms > 0.0 { "+" } else { "−" };
+        format!("{sign}{}", fmt_ms(ms.abs()))
+    }
+}
+
 /// Draw the strip for the beats up to `end_s` and report what the mouse
 /// did to it: the wheel zooms the length, Ctrl and the wheel (or a pinch)
 /// zooms the width, dragging along the time axis looks back, dragging
@@ -194,15 +249,42 @@ pub fn draw_strip(
     anchor: Option<Anchor>,
     end_s: f64,
     view: &StripView,
-    note: Option<&str>,
-    rate_line: Option<RateLine>,
+    extras: &Extras,
     size: Vec2,
 ) -> StripInput {
     let (resp, painter) = ui.allocate_painter(size, Sense::click_and_drag());
-    let r = resp.rect;
+    let outer = resp.rect;
+    let vis = ui.visuals().clone();
+    let pal = crate::theme::pal(ui);
+    let dark = vis.dark_mode;
+    painter.rect_filled(outer, 2.0, vis.extreme_bg_color);
+    let font = FontId::proportional(11.0);
+    let row_h = 15.0;
+    let half = view.half_width_ms;
+    let oldest = end_s - view.span_s;
+    let overlays: Vec<(&Overlay, (f64, f64))> = extras
+        .overlays
+        .iter()
+        .filter_map(|o| o.range(oldest, end_s).map(|r| (o, r)))
+        .collect();
+    // The plotting area inside its axes: time labels down the left (or
+    // along the bottom when lying across), ms labels along the bottom (or
+    // down the left), the key along the top, and a scale for each overlay
+    // on top (or down the right).
+    let r = if view.horizontal {
+        Rect::from_min_max(
+            outer.min + Vec2::new(46.0, row_h + 4.0),
+            outer.max - Vec2::new(4.0 + 58.0 * overlays.len() as f32, row_h + 2.0),
+        )
+    } else {
+        Rect::from_min_max(
+            outer.min + Vec2::new(36.0, row_h * (1.0 + overlays.len() as f32) + 4.0),
+            outer.max - Vec2::new(8.0, row_h + 2.0),
+        )
+    };
     let g = Geom {
         r,
-        half: view.half_width_ms,
+        half,
         span: view.span_s,
         end: end_s,
         horizontal: view.horizontal,
@@ -231,126 +313,138 @@ pub fn draw_strip(
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
 
-    let vis = ui.visuals();
-    let dark = vis.dark_mode;
-    painter.rect_filled(r, 2.0, vis.extreme_bg_color);
-    let grid = vis.widgets.noninteractive.bg_stroke.color;
+    let grid = Stroke::new(1.0_f32, vis.widgets.noninteractive.bg_stroke.color);
     let text = vis.weak_text_color();
-    let font = FontId::proportional(11.0);
-    let half = view.half_width_ms;
-    let oldest = end_s - view.span_s;
 
-    // Grid: lines every nice step of ms along the strip, every nice step of
-    // seconds across it.
+    // Grid, every line alike: a nice step of ms along the strip, labelled
+    // on the ms axis, and a nice step of seconds across it, labelled on the
+    // time axis.
     let step = nice_step(half / 4.0);
     let mut k = (-half / step).ceil() as i64;
-    while (k as f64) * step < half {
+    while (k as f64) * step < half + 1e-9 {
         let ms = k as f64 * step;
-        let s = if k == 0 {
-            Stroke::new(1.5_f32, grid.gamma_multiply(2.0))
+        let (a, b) = (g.pos(ms, end_s), g.pos(ms, oldest));
+        if (k as f64) * step > -half + 1e-9 {
+            painter.line_segment([a, b], grid);
+        }
+        // Labels, leaving the ends for "Early" and "Late".
+        let (at, align, room) = if view.horizontal {
+            (
+                Pos2::new(r.left() - 4.0, a.y),
+                Align2::RIGHT_CENTER,
+                (a.y - r.top()).min(r.bottom() - a.y),
+            )
         } else {
-            Stroke::new(1.0_f32, grid)
+            (
+                Pos2::new(a.x, r.bottom() + 2.0),
+                Align2::CENTER_TOP,
+                (a.x - r.left()).min(r.right() - a.x),
+            )
         };
-        painter.line_segment([g.pos(ms, end_s), g.pos(ms, oldest)], s);
+        if room > if view.horizontal { 14.0 } else { 34.0 } {
+            painter.text(at, align, axis_ms(ms), font.clone(), text);
+        }
         k += 1;
     }
+    let (early_at, early_align, late_at, late_align) = if view.horizontal {
+        (
+            Pos2::new(r.left() - 4.0, r.top()),
+            Align2::RIGHT_TOP,
+            Pos2::new(r.left() - 4.0, r.bottom()),
+            Align2::RIGHT_BOTTOM,
+        )
+    } else {
+        (
+            Pos2::new(r.right(), r.bottom() + 2.0),
+            Align2::RIGHT_TOP,
+            Pos2::new(r.left(), r.bottom() + 2.0),
+            Align2::LEFT_TOP,
+        )
+    };
+    painter.text(early_at, early_align, "Early", font.clone(), text);
+    painter.text(late_at, late_align, "Late", font.clone(), text);
     let tstep = nice_step(view.span_s / 6.0);
     let mut t = (end_s / tstep).floor() * tstep;
     while t > oldest {
         let (a, b) = (g.pos(-half, t), g.pos(half, t));
-        painter.line_segment([a, b], Stroke::new(1.0_f32, grid));
-        // Vertical: label at the left edge above the line; horizontal: at
-        // the bottom edge right of the line.
-        let at = if view.horizontal {
-            a + Vec2::new(3.0, -16.0)
+        painter.line_segment([a, b], grid);
+        let (at, align) = if view.horizontal {
+            (Pos2::new(a.x, r.bottom() + 2.0), Align2::CENTER_TOP)
         } else {
-            a + Vec2::new(4.0, -2.0)
+            (Pos2::new(r.left() - 4.0, a.y), Align2::RIGHT_CENTER)
         };
-        // Leave room for the "late" label in the corner.
-        let crowded = if view.horizontal {
-            at.x < r.left() + 32.0
-        } else {
-            at.y > r.bottom() - 16.0
-        };
-        if !crowded {
-            painter.text(at, Align2::LEFT_BOTTOM, fmt_time(t), font.clone(), text);
-        }
+        painter.text(at, align, fmt_time(t), font.clone(), text);
         t -= tstep;
     }
-    let caption = format!(
-        "{} ms per line, {} ms across",
-        fmt_ms(step),
-        fmt_ms(2.0 * half)
-    );
-    if view.horizontal {
-        let pad = Vec2::new(4.0, 2.0);
-        painter.text(
-            r.left_top() + pad,
-            Align2::LEFT_TOP,
-            "early",
-            font.clone(),
-            text,
-        );
-        painter.text(
-            r.left_bottom() + Vec2::new(4.0, -2.0),
-            Align2::LEFT_BOTTOM,
-            "late",
-            font.clone(),
-            text,
-        );
-        painter.text(
-            r.center_top() + Vec2::new(0.0, 2.0),
-            Align2::CENTER_TOP,
-            caption,
-            font.clone(),
-            text,
-        );
-    } else {
-        painter.text(
-            r.left_bottom() + Vec2::new(4.0, -4.0),
-            Align2::LEFT_BOTTOM,
-            "late",
-            font.clone(),
-            text,
-        );
-        painter.text(
-            r.center_bottom() + Vec2::new(0.0, -4.0),
-            Align2::CENTER_BOTTOM,
-            caption,
-            font.clone(),
-            text,
-        );
-        painter.text(
-            r.right_bottom() + Vec2::new(-4.0, -4.0),
-            Align2::RIGHT_BOTTOM,
-            "early",
-            font.clone(),
-            text,
-        );
-    }
-    // Which colour is which.
+
+    // The key along the top: Tick, Tock, the rate line and the overlays,
+    // each in its colour.
     let colors = side_colors(dark);
-    let mut at = if view.horizontal {
-        r.left_top() + Vec2::new(48.0, 2.0)
-    } else {
-        r.left_top() + Vec2::new(4.0, 2.0)
-    };
-    for (label, c) in [("Tick", colors[0]), ("Tock", colors[1])] {
-        let g = painter.text(at, Align2::LEFT_TOP, label, font.clone(), c);
-        at.x = g.right() + 10.0;
+    let mut at = Pos2::new(r.left(), outer.top() + 3.0);
+    let mut keys: Vec<(&str, Color32)> = vec![("Tick", colors[0]), ("Tock", colors[1])];
+    if extras.rate_line.is_some() {
+        keys.push(("Rate Line", pal.drop));
     }
-    if let Some(n) = note {
-        let at = if view.horizontal {
-            r.right_top() + Vec2::new(-4.0, 2.0)
+    for (o, _) in &overlays {
+        keys.push((o.name, o.color));
+    }
+    for (label, c) in keys {
+        let k = painter.text(at, Align2::LEFT_TOP, label, font.clone(), c);
+        at.x = k.right() + 12.0;
+    }
+    if let Some(n) = extras.note {
+        painter.text(
+            Pos2::new(outer.right() - 6.0, outer.top() + 3.0),
+            Align2::RIGHT_TOP,
+            n,
+            font.clone(),
+            vis.text_color(),
+        );
+    }
+    // Each overlay's scale: its ends in its colour, in a row of its own
+    // above the strip, or a column of its own right of it.
+    for (i, (o, (lo, hi))) in overlays.iter().enumerate() {
+        let f = |v: f64| format!("{v:.*}{}", o.decimals, o.unit);
+        if view.horizontal {
+            let x = r.right() + 6.0 + 58.0 * i as f32;
+            painter.text(
+                Pos2::new(x, r.top()),
+                Align2::LEFT_TOP,
+                f(*hi),
+                font.clone(),
+                o.color,
+            );
+            painter.text(
+                Pos2::new(x, r.bottom()),
+                Align2::LEFT_BOTTOM,
+                f(*lo),
+                font.clone(),
+                o.color,
+            );
         } else {
-            r.center_top() + Vec2::new(0.0, 4.0)
-        };
-        let align = if view.horizontal {
-            Align2::RIGHT_TOP
-        } else {
-            Align2::CENTER_TOP
-        };
-        painter.text(at, align, n, font, vis.text_color());
+            let y = outer.top() + 3.0 + row_h * (1 + i) as f32;
+            painter.text(
+                Pos2::new(r.left(), y),
+                Align2::LEFT_TOP,
+                f(*lo),
+                font.clone(),
+                o.color,
+            );
+            painter.text(
+                Pos2::new(r.center().x, y),
+                Align2::CENTER_TOP,
+                format!("{} scale", o.name),
+                font.clone(),
+                o.color.gamma_multiply(0.8),
+            );
+            painter.text(
+                Pos2::new(r.right(), y),
+                Align2::RIGHT_TOP,
+                f(*hi),
+                font.clone(),
+                o.color,
+            );
+        }
     }
 
     let Some(anchor) = anchor else {
@@ -367,7 +461,7 @@ pub fn draw_strip(
     };
     let per_px = shown.len() as f32 / along.max(1.0);
     let radius = (2.2 / per_px.max(1.0).sqrt()).clamp(0.8, 2.2);
-    let painter = painter.with_clip_rect(r);
+    let painter = painter.with_clip_rect(r.expand(3.0));
     for b in shown {
         if b.quality < 0.4 {
             continue;
@@ -376,22 +470,66 @@ pub fn draw_strip(
         let c = colors[b.index.rem_euclid(2) as usize];
         painter.circle_filled(p, radius, c);
     }
-    // The rate reading over its beats, wrapping as the dots do.
-    if let Some([(ta, la), (tb, lb)]) = rate_line.and_then(|l| l.ends(beats, anchor, period_s)) {
-        let stroke = Stroke::new(1.5_f32, vis.strong_text_color().gamma_multiply(0.85));
-        let steps = 200;
-        let mut prev: Option<(f64, Pos2)> = None;
-        for k in 0..=steps {
-            let f = k as f64 / steps as f64;
-            let (t, l) = (ta + (tb - ta) * f, la + (lb - la) * f);
-            let w = wrap(l, half);
-            let p = g.pos(w, t);
-            if let Some((pw, pp)) = prev {
-                if (w - pw).abs() < half {
-                    painter.line_segment([pp, p], stroke);
+    let painter = painter.with_clip_rect(r);
+    // The overlays, each scaled across the strip's width.
+    for (o, (lo, hi)) in &overlays {
+        let across = |v: f64| -half + (v - lo) / (hi - lo) * 2.0 * half;
+        let pts: Vec<&[f64; 2]> = o
+            .points
+            .iter()
+            .filter(|p| p[0] >= oldest - 2.0 && p[0] <= end_s)
+            .collect();
+        for w in pts.windows(2) {
+            // A gap in the readings is a gap in the line.
+            if w[1][0] - w[0][0] > 5.0 {
+                continue;
+            }
+            painter.line_segment(
+                [
+                    g.pos(across(w[0][1]), w[0][0]),
+                    g.pos(across(w[1][1]), w[1][0]),
+                ],
+                Stroke::new(1.6_f32, o.color),
+            );
+        }
+    }
+    // The rate reading over its beats, on top of them, wrapping as the dots
+    // do; and faint parallels to it across the whole strip, one per grid
+    // step, so the eye can tell whether the dots run parallel to it.
+    if let Some(line) = extras.rate_line {
+        if let Some([(ta, la), (tb, lb)]) = line.ends(beats, anchor, period_s) {
+            let slope = if tb > ta { (lb - la) / (tb - ta) } else { 0.0 };
+            let at = |t: f64| la + slope * (t - ta);
+            let polyline = |t0: f64, t1: f64, offset: f64, stroke: Stroke| {
+                let steps = 200;
+                let mut prev: Option<(f64, Pos2)> = None;
+                for k in 0..=steps {
+                    let t = t0 + (t1 - t0) * k as f64 / steps as f64;
+                    let w = wrap(at(t) + offset, half);
+                    let p = g.pos(w, t);
+                    if let Some((pw, pp)) = prev {
+                        if (w - pw).abs() < half {
+                            painter.line_segment([pp, p], stroke);
+                        }
+                    }
+                    prev = Some((w, p));
+                }
+            };
+            if extras.guides {
+                let n = (2.0 * half / step).round().max(1.0) as i64;
+                let faint = Stroke::new(1.0_f32, pal.drop.gamma_multiply(0.3));
+                for k in 0..n {
+                    polyline(oldest, end_s, k as f64 * step, faint);
                 }
             }
-            prev = Some((w, p));
+            // A dark edge under the line keeps it readable over the dots.
+            polyline(
+                ta,
+                tb,
+                0.0,
+                Stroke::new(4.0_f32, vis.extreme_bg_color.gamma_multiply(0.8)),
+            );
+            polyline(ta, tb, 0.0, Stroke::new(2.0_f32, pal.drop));
         }
     }
     input

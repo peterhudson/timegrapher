@@ -8,7 +8,7 @@ use crate::profiles;
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
-use egui_plot::{Legend, Line, Plot};
+use egui_plot::{Bar, BarChart, Legend, Line, Plot, VLine};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
@@ -74,12 +74,12 @@ impl Position {
 
     pub fn name(self) -> &'static str {
         match self {
-            Position::DialUp => "Dial up",
-            Position::DialDown => "Dial down",
-            Position::CrownUp => "Crown up",
-            Position::CrownDown => "Crown down",
-            Position::CrownLeft => "Crown left",
-            Position::CrownRight => "Crown right",
+            Position::DialUp => "Dial Up",
+            Position::DialDown => "Dial Down",
+            Position::CrownUp => "Crown Up",
+            Position::CrownDown => "Crown Down",
+            Position::CrownLeft => "Crown Left",
+            Position::CrownRight => "Crown Right",
         }
     }
 }
@@ -99,25 +99,51 @@ pub enum Pane {
     Rate,
     Amplitude,
     BeatError,
+    RateHistogram,
+    AmplitudeHistogram,
+    BeatErrorHistogram,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 5] = [
+    const ALL: [Pane; 8] = [
         Pane::Strip,
         Pane::Sound,
         Pane::Rate,
         Pane::Amplitude,
         Pane::BeatError,
+        Pane::RateHistogram,
+        Pane::AmplitudeHistogram,
+        Pane::BeatErrorHistogram,
+    ];
+    const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
+    const HISTOGRAMS: [Pane; 3] = [
+        Pane::RateHistogram,
+        Pane::AmplitudeHistogram,
+        Pane::BeatErrorHistogram,
     ];
 
     fn title(self) -> &'static str {
         match self {
-            Pane::Strip => "Paper strip",
-            Pane::Sound => "Tick tock profile",
+            Pane::Strip => "Paper Strip",
+            Pane::Sound => "Tick Tock Profile",
             Pane::Rate => "Rate",
             Pane::Amplitude => "Amplitude",
-            Pane::BeatError => "Beat error",
+            Pane::BeatError => "Beat Error",
+            Pane::RateHistogram => "Rate Histogram",
+            Pane::AmplitudeHistogram => "Amplitude Histogram",
+            Pane::BeatErrorHistogram => "Beat Error Histogram",
+        }
+    }
+
+    /// The short name in a sidebar card that is already about charts or
+    /// histograms.
+    fn short(self) -> &'static str {
+        match self {
+            Pane::Rate | Pane::RateHistogram => "Rate",
+            Pane::Amplitude | Pane::AmplitudeHistogram => "Amplitude",
+            Pane::BeatError | Pane::BeatErrorHistogram => "Beat Error",
+            p => p.title(),
         }
     }
 
@@ -129,6 +155,18 @@ impl Pane {
             Pane::Rate => "The rate over the whole session",
             Pane::Amplitude => "The amplitude over the whole session, from the ticks and tocks",
             Pane::BeatError => "The beat error over the whole session",
+            Pane::RateHistogram => {
+                "How often each rate came up: one count per reading. Two peaks mean the \
+                 rate moves between two states."
+            }
+            Pane::AmplitudeHistogram => {
+                "How often each amplitude came up: one count per 2 seconds of beats. Two \
+                 peaks mean the balance swings between a high and a low state."
+            }
+            Pane::BeatErrorHistogram => {
+                "How often each beat error came up, from the unlock: one count per 2 \
+                 seconds of beats"
+            }
         }
     }
 }
@@ -147,17 +185,23 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     };
     let strip = tabbed(Pane::Strip);
     let sound = tabbed(Pane::Sound);
-    let charts: Vec<TileId> = [Pane::Rate, Pane::Amplitude, Pane::BeatError]
-        .into_iter()
-        .map(&mut tabbed)
-        .collect();
-    let mut rest = vec![sound];
-    rest.extend(&charts);
+    let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
+    let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
     let dir = if horizontal {
         LinearDir::Horizontal
     } else {
         LinearDir::Vertical
     };
+    // The histograms side by side across the charts, hidden until wanted.
+    let across = if horizontal {
+        LinearDir::Vertical
+    } else {
+        LinearDir::Horizontal
+    };
+    let hist_row = tiles.insert_container(Linear::new(across, hists));
+    let mut rest = vec![sound];
+    rest.extend(&charts);
+    rest.push(hist_row);
     let mut side = Linear::new(dir, rest);
     side.shares.set_share(sound, 2.5);
     let side = tiles.insert_container(side);
@@ -170,7 +214,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
             0.45,
         ))
     };
-    Tree::new("panes", root, tiles)
+    let mut tree = Tree::new("panes", root, tiles);
+    for p in Pane::HISTOGRAMS {
+        set_pane_visible(&mut tree.tiles, p, false);
+    }
+    tree
 }
 
 /// Whether a pane is shown.
@@ -293,6 +341,17 @@ pub struct TimegrapherApp {
     follow: bool,
     /// Draw the rate reading as a line over the strip.
     rate_line: bool,
+    /// Faint parallels to the rate line across the strip.
+    rate_guides: bool,
+    /// Amplitude, rate and beat error drawn over the strip.
+    overlays: [bool; 3],
+    /// The charts and histograms cover only the strip's length, ending
+    /// where the strip does, instead of the whole session.
+    span_of_strip: bool,
+    /// Sidebar cards folded down to their caption.
+    folded: std::collections::BTreeSet<&'static str>,
+    /// The sidebar is shown.
+    sidebar: bool,
     /// The rate, amplitude and beat error figures above the panes.
     show_readings: bool,
     /// Asked to put the charts back on the whole session, following new
@@ -380,6 +439,11 @@ impl TimegrapherApp {
             },
             follow: false,
             rate_line: true,
+            rate_guides: true,
+            overlays: [true, false, false],
+            span_of_strip: false,
+            folded: Default::default(),
+            sidebar: true,
             view_end: None,
             panes: default_layout(false),
             show_readings: true,
@@ -874,7 +938,7 @@ impl TimegrapherApp {
 
     fn open_file_dialog(&mut self) -> Option<PathBuf> {
         let mut d = rfd::FileDialog::new()
-            .set_title("Open a recording")
+            .set_title("Open a Recording")
             .add_filter("Recordings", &["wav", "WAV", "flac", "FLAC"])
             .add_filter("All files", &["*"]);
         if let Some(dir) = Path::new(self.file_path.trim()).parent() {
@@ -909,6 +973,18 @@ impl TimegrapherApp {
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.set_min_height(28.0);
+            if theme::sidebar_button(ui, self.sidebar)
+                .on_hover_text(if self.sidebar {
+                    "Hide the sidebar, to give the panes the whole window (Ctrl+B, or Cmd+B \
+                     on a Mac)"
+                } else {
+                    "Show the sidebar (Ctrl+B, or Cmd+B on a Mac)"
+                })
+                .clicked()
+            {
+                self.sidebar = !self.sidebar;
+            }
+            ui.add_space(2.0);
             theme::segmented(
                 ui,
                 &mut self.input,
@@ -932,7 +1008,7 @@ impl TimegrapherApp {
                     let sel = choices
                         .iter()
                         .find(|c| Some(&c.id) == self.device.as_ref())
-                        .map_or_else(|| "Choose a microphone".to_string(), |c| c.label.clone());
+                        .map_or_else(|| "Choose a Microphone".to_string(), |c| c.label.clone());
                     egui::ComboBox::from_id_salt("device")
                         .selected_text(short(&sel, 36))
                         .width(270.0)
@@ -1014,7 +1090,7 @@ impl TimegrapherApp {
                             if ui
                                 .add_enabled(
                                     ok && self.batch.is_none(),
-                                    egui::Button::new("Analyse all").min_size(Vec2::new(0.0, 26.0)),
+                                    egui::Button::new("Analyse All").min_size(Vec2::new(0.0, 26.0)),
                                 )
                                 .on_hover_text("Analyse the whole file now and look through it")
                                 .clicked()
@@ -1077,7 +1153,7 @@ impl TimegrapherApp {
         if mic_data
             && !self.running()
             && ui
-                .add(egui::Button::new("New session").min_size(Vec2::new(0.0, 26.0)))
+                .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
                 .on_hover_text("Clear everything and start again with the next watch or position")
                 .clicked()
         {
@@ -1091,7 +1167,7 @@ impl TimegrapherApp {
             let saved = self.saved_to.is_some();
             if ui
                 .add(
-                    egui::Button::new(if saved { "Save again…" } else { "Save…" })
+                    egui::Button::new(if saved { "Save Again…" } else { "Save…" })
                         .min_size(Vec2::new(0.0, 26.0)),
                 )
                 .on_hover_text(
@@ -1130,8 +1206,8 @@ impl TimegrapherApp {
                     choice = Some(0);
                 }
                 let go = match what {
-                    Confirm::NewSession => "Don't save",
-                    Confirm::Quit => "Quit without saving",
+                    Confirm::NewSession => "Don't Save",
+                    Confirm::Quit => "Quit Without Saving",
                 };
                 if ui
                     .add(egui::Button::new(go).min_size(Vec2::new(0.0, 26.0)))
@@ -1176,33 +1252,59 @@ impl TimegrapherApp {
     /// explains it.
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 8.0;
-        theme::section_header(ui, "Watch", None, help::WATCH);
-        theme::card_ui(ui, |ui| self.watch_settings(ui));
+        self.section(ui, "Watch", None, help::WATCH, Self::watch_settings);
         if self.input == Input::Microphone {
-            theme::section_header(ui, "Microphone", None, help::MICROPHONE);
-            theme::card_ui(ui, |ui| self.microphone_settings(ui));
+            self.section(
+                ui,
+                "Microphone",
+                None,
+                help::MICROPHONE,
+                Self::microphone_settings,
+            );
         }
-        theme::section_header(
+        let mut on = self.show_readings;
+        self.section(
             ui,
             "Readings",
-            Some(&mut self.show_readings),
+            Some(&mut on),
             help::READINGS,
+            Self::readings_settings,
         );
-        theme::card_ui(ui, |ui| self.readings_settings(ui));
+        self.show_readings = on;
         self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
         self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
-        theme::section_header(ui, "Charts", None, help::CHARTS);
-        theme::card_ui(ui, |ui| {
-            for pane in [Pane::Rate, Pane::Amplitude, Pane::BeatError] {
-                let mut on = pane_visible(&self.panes.tiles, pane);
-                if theme::switch_row(ui, pane.title(), &mut on, pane.hint()) {
-                    set_pane_visible(&mut self.panes.tiles, pane, on);
-                }
-            }
+        self.section(ui, "Charts", None, help::CHARTS, |app, ui| {
+            app.pane_switches(ui, &Pane::CHARTS);
+            app.span_setting(ui);
         });
-        theme::section_header(ui, "Window", None, help::WINDOW);
-        theme::card_ui(ui, |ui| self.window_settings(ui));
+        self.section(ui, "Histograms", None, help::HISTOGRAMS, |app, ui| {
+            app.pane_switches(ui, &Pane::HISTOGRAMS);
+            app.span_setting(ui);
+        });
+        self.section(ui, "Window", None, help::WINDOW, Self::window_settings);
         ui.add_space(8.0);
+    }
+
+    /// A card of settings under its caption, which folds it away; `shown`
+    /// is the switch for what the card is about, if it has one. True when
+    /// that switch flipped.
+    fn section(
+        &mut self,
+        ui: &mut egui::Ui,
+        title: &'static str,
+        shown: Option<&mut bool>,
+        help: &[&str],
+        settings: impl FnOnce(&mut Self, &mut egui::Ui),
+    ) -> bool {
+        let mut folded = self.folded.contains(title);
+        let changed = theme::section_header(ui, title, shown, help, &mut folded);
+        if folded {
+            self.folded.insert(title);
+        } else {
+            self.folded.remove(title);
+            theme::card_ui(ui, |ui| settings(self, ui));
+        }
+        changed
     }
 
     /// A pane's section: its switch in the caption, its settings below.
@@ -1214,10 +1316,48 @@ impl TimegrapherApp {
         settings: fn(&mut Self, &mut egui::Ui),
     ) {
         let mut on = pane_visible(&self.panes.tiles, pane);
-        if theme::section_header(ui, pane.title(), Some(&mut on), help) {
+        if self.section(ui, pane.title(), Some(&mut on), help, settings) {
             set_pane_visible(&mut self.panes.tiles, pane, on);
         }
-        theme::card_ui(ui, |ui| settings(self, ui));
+    }
+
+    /// A switch for each of these panes.
+    fn pane_switches(&mut self, ui: &mut egui::Ui, panes: &[Pane]) {
+        for &pane in panes {
+            let mut on = pane_visible(&self.panes.tiles, pane);
+            if theme::switch_row(ui, pane.short(), &mut on, pane.hint()) {
+                set_pane_visible(&mut self.panes.tiles, pane, on);
+            }
+        }
+    }
+
+    /// Whether the charts and histograms cover the whole session or the
+    /// strip's length.
+    fn span_setting(&mut self, ui: &mut egui::Ui) {
+        theme::row(
+            ui,
+            "Time Span",
+            Some("How much of the session the charts and histograms cover"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut self.span_of_strip,
+                    &[
+                        (
+                            false,
+                            "Session",
+                            "Everything since the session started, growing as it goes",
+                        ),
+                        (
+                            true,
+                            "Strip",
+                            "The same stretch of time as the paper strip, so the charts \
+                             line up with it and move with it",
+                        ),
+                    ],
+                );
+            },
+        );
     }
 
     fn watch_settings(&mut self, ui: &mut egui::Ui) {
@@ -1231,7 +1371,7 @@ impl TimegrapherApp {
         let mut bph = self.bph;
         theme::row(
             ui,
-            "Beat rate",
+            "Beat Rate",
             Some("Beats per hour. Auto finds it from the first few seconds of beats."),
             |ui| {
                 egui::ComboBox::from_id_salt("bph")
@@ -1263,7 +1403,7 @@ impl TimegrapherApp {
         let mut lift = self.lift_deg;
         let changed = theme::row(
             ui,
-            "Lift angle",
+            "Lift Angle",
             Some(
                 "The calibre's lift angle in degrees: type it and press Enter, or pick \
                  a common one from the menu. Amplitude depends on it.",
@@ -1324,7 +1464,7 @@ impl TimegrapherApp {
         let mut avg = self.average_s;
         let changed = theme::row(
             ui,
-            "Average over",
+            "Average Over",
             Some(
                 "Each reading is fitted over this much of the latest beats, and the \
                  tick and tock profile is the typical beat over the same time (up to 60 s)",
@@ -1349,7 +1489,7 @@ impl TimegrapherApp {
         ui.add_space(2.0);
         theme::switch_row(
             ui,
-            "Show every input",
+            "Show Every Input",
             &mut self.all_inputs,
             "List every device the system offers in the microphone menu, with its id",
         );
@@ -1436,14 +1576,49 @@ impl TimegrapherApp {
         }
         theme::switch_row(
             ui,
-            "Rate line",
+            "Rate Line",
             &mut self.rate_line,
-            "Draw the Rate reading as a line over the beats it was fitted to, to check \
-             that it follows the dots",
+            "Draw the Rate reading as a red line over the beats it was fitted to, to \
+             check that it follows the dots",
         );
+        ui.add_enabled_ui(self.rate_line, |ui| {
+            theme::switch_row(
+                ui,
+                "Parallel Guides",
+                &mut self.rate_guides,
+                "Faint lines at the rate line's slope across the whole strip, so it is \
+                 easy to see whether the dots run parallel to it",
+            );
+        });
+        ui.label(
+            RichText::new("Draw over the strip")
+                .small()
+                .color(theme::pal(ui).text_secondary),
+        );
+        for (i, (name, hint)) in [
+            (
+                "Amplitude",
+                "The amplitude readings as a purple line against the same time, on their \
+                 own scale",
+            ),
+            (
+                "Rate",
+                "The rate readings as a green line against the same time, on their own scale",
+            ),
+            (
+                "Beat Error",
+                "The beat error readings, from the unlock, as a gold line against the same \
+                 time, on their own scale",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            theme::switch_row(ui, name, &mut self.overlays[i], hint);
+        }
         theme::switch_row(
             ui,
-            "Auto-centre",
+            "Auto-Centre",
             &mut self.follow,
             "Keep the newest beats on the centre line and slide the rest",
         );
@@ -1549,7 +1724,7 @@ impl TimegrapherApp {
         }
         ui.horizontal(|ui| {
             if ui
-                .button("Reset panes")
+                .button("Reset Panes")
                 .on_hover_text("Show every pane and put them back where they started")
                 .clicked()
             {
@@ -1637,7 +1812,7 @@ impl TimegrapherApp {
                     around -10 dBFS, and never clipping.";
         match (self.gain.clone(), self.gain_state.clone()) {
             (Some(g), Some(st)) => {
-                theme::row(ui, "Input level", Some(hint), |ui| {
+                theme::row(ui, "Input Level", Some(hint), |ui| {
                     let mut pct = st.level * 100.0;
                     ui.spacing_mut().slider_width = (ui.available_width() - 44.0).max(60.0);
                     let r = ui.add(
@@ -1678,7 +1853,7 @@ impl TimegrapherApp {
                                 )
                                 .wrap(),
                             );
-                            if ui.button("Turn it off").clicked() {
+                            if ui.button("Turn It Off").clicked() {
                                 self.gain_error = g.set_agc(false).err();
                                 self.read_gain();
                             }
@@ -1686,7 +1861,7 @@ impl TimegrapherApp {
                 }
             }
             _ => {
-                theme::row(ui, "Input level", Some(hint), |ui| {
+                theme::row(ui, "Input Level", Some(hint), |ui| {
                     ui.label(
                         RichText::new(if cfg!(target_os = "linux") {
                             "not adjustable here"
@@ -1867,7 +2042,7 @@ impl TimegrapherApp {
             });
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
-            card(&mut cols[2], "Beat error", help::BEAT_ERROR, &|ui| {
+            card(&mut cols[2], "Beat Error", help::BEAT_ERROR, &|ui| {
                 figure(
                     ui,
                     unlock.or(drop).map(|v| format!("{v:+.2}")),
@@ -2007,13 +2182,13 @@ impl TimegrapherApp {
     /// The starting arrangement for a strip direction, keeping which panes
     /// are hidden.
     fn relayout(&mut self, horizontal: bool) {
-        let hidden: Vec<Pane> = Pane::ALL
+        let shown: Vec<(Pane, bool)> = Pane::ALL
             .into_iter()
-            .filter(|&p| !pane_visible(&self.panes.tiles, p))
+            .map(|p| (p, pane_visible(&self.panes.tiles, p)))
             .collect();
         self.panes = default_layout(horizontal);
-        for p in hidden {
-            set_pane_visible(&mut self.panes.tiles, p, false);
+        for (p, on) in shown {
+            set_pane_visible(&mut self.panes.tiles, p, on);
         }
     }
 
@@ -2029,7 +2204,7 @@ impl TimegrapherApp {
                     ui.set_width(w - 28.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 10.0;
-                        ui.label(RichText::new("Ready to listen").font(theme::semibold(20.0)));
+                        ui.label(RichText::new("Ready to Listen").font(theme::semibold(20.0)));
                         for (n, step) in [
                             "Put the watch on the microphone, dial up.",
                             "Choose the microphone at the top and set its level in the sidebar.",
@@ -2055,7 +2230,7 @@ impl TimegrapherApp {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             if ui
-                                .add(theme::primary(ui, "Start listening"))
+                                .add(theme::primary(ui, "Start Listening"))
                                 .on_hover_text("Listen to the microphone chosen at the top")
                                 .clicked()
                             {
@@ -2064,7 +2239,7 @@ impl TimegrapherApp {
                             }
                             if ui
                                 .add(
-                                    egui::Button::new("Open a recording…")
+                                    egui::Button::new("Open a Recording…")
                                         .min_size(Vec2::new(0.0, 26.0)),
                                 )
                                 .on_hover_text("Replay a WAV or FLAC file as if live")
@@ -2219,6 +2394,52 @@ impl TimegrapherApp {
                     rate_s_per_day: r.rate_s_per_day?,
                 })
             });
+        let pal = theme::pal(ui);
+        let from = end - self.strip.span_s - 5.0;
+        let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
+            self.trend
+                .iter()
+                .filter(|p| p.t >= from && p.t <= end)
+                .filter_map(|p| f(p).map(|v| [p.t, v]))
+                .collect()
+        };
+        let mut overlays = Vec::new();
+        if self.overlays[0] {
+            overlays.push(strip::Overlay {
+                name: "Amplitude",
+                unit: "°",
+                decimals: 0,
+                color: pal.trace_amplitude,
+                min_span: 10.0,
+                points: series(|p| p.amplitude),
+            });
+        }
+        if self.overlays[1] {
+            overlays.push(strip::Overlay {
+                name: "Rate",
+                unit: " s/d",
+                decimals: 1,
+                color: pal.trace_rate,
+                min_span: 4.0,
+                points: series(|p| p.rate),
+            });
+        }
+        if self.overlays[2] {
+            overlays.push(strip::Overlay {
+                name: "Beat Error",
+                unit: " ms",
+                decimals: 2,
+                color: pal.trace_beat_error,
+                min_span: 0.2,
+                points: series(|p| p.beat_error_unlock),
+            });
+        }
+        let extras = strip::Extras {
+            note: note.as_deref(),
+            rate_line,
+            guides: self.rate_guides,
+            overlays: &overlays,
+        };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
             ui,
@@ -2227,8 +2448,7 @@ impl TimegrapherApp {
             self.anchor,
             end,
             &self.strip,
-            note.as_deref(),
-            rate_line,
+            &extras,
             ui.available_size(),
         );
         self.apply_strip_input(input, end);
@@ -2368,6 +2588,153 @@ impl TimegrapherApp {
         }
     }
 
+    /// The stretch of time the charts and histograms cover: the strip's
+    /// length, ending where the strip does, or `None` for the whole session.
+    fn chart_window(&self) -> Option<(f64, f64)> {
+        self.span_of_strip.then(|| {
+            let end = self.end_s();
+            (end - self.strip.span_s, end)
+        })
+    }
+
+    /// How often each value of a reading came up, over the session or the
+    /// strip's length.
+    fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        let pal = theme::pal(ui);
+        let window = self.chart_window();
+        let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b);
+        let windows = self
+            .live
+            .as_ref()
+            .map_or(&[][..], |l| l.amplitude_windows());
+        let (values, resolution, unit, decimals, color, per): (
+            Vec<f64>,
+            f64,
+            &str,
+            usize,
+            _,
+            &str,
+        ) = match pane {
+            Pane::RateHistogram => (
+                self.trend
+                    .iter()
+                    .filter(|p| inside(p.t))
+                    .filter_map(|p| p.rate)
+                    .collect(),
+                0.1,
+                " s/day",
+                1,
+                pal.trace_rate,
+                "readings",
+            ),
+            Pane::AmplitudeHistogram => (
+                windows
+                    .iter()
+                    .filter(|w| inside(w.end_s))
+                    .filter_map(|w| w.mean())
+                    .collect(),
+                0.5,
+                "°",
+                0,
+                pal.trace_amplitude,
+                "2-second stretches",
+            ),
+            Pane::BeatErrorHistogram => (
+                windows
+                    .iter()
+                    .filter(|w| inside(w.end_s))
+                    .filter_map(|w| w.beat_error_unlock_ms)
+                    .collect(),
+                0.01,
+                " ms",
+                2,
+                pal.trace_beat_error,
+                "2-second stretches",
+            ),
+            _ => return,
+        };
+        let Some(h) = timegrapher_core::histogram::histogram(&values, resolution) else {
+            ui.label(
+                RichText::new("Not enough readings yet")
+                    .small()
+                    .color(pal.text_secondary),
+            );
+            return;
+        };
+        let peaks = h.peaks(0.05);
+        let f = |v: f64| format!("{v:.decimals$}{unit}");
+        let bins = fields::plain(h.bin_width);
+        let mut line = format!(
+            "{} {per} · median {} · middle 80% {} to {} · bins of {bins}{unit}",
+            h.n,
+            f(h.median),
+            f(h.p10),
+            f(h.p90),
+        );
+        if peaks.len() > 1 {
+            let at: Vec<String> = peaks.iter().map(|&i| f(h.centre(i))).collect();
+            line += &format!(" · {} peaks, at {}", peaks.len(), at.join(" and "));
+        }
+        ui.add(egui::Label::new(RichText::new(&line).small().color(pal.text_secondary)).truncate())
+            .on_hover_text(line.clone());
+        let bars: Vec<Bar> = h
+            .counts
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                Bar::new(h.centre(i), c as f64)
+                    .width(h.bin_width * 0.92)
+                    .fill(color.gamma_multiply(0.75))
+                    .stroke(egui::Stroke::NONE)
+            })
+            .collect();
+        let median = h.median;
+        let unit_owned = unit.to_string();
+        Plot::new(pane.title())
+            .allow_scroll(false)
+            .allow_zoom(false)
+            .allow_drag(false)
+            .allow_double_click_reset(false)
+            .show_x(false)
+            .show_y(false)
+            .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
+            .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
+            .x_axis_formatter(move |m, _| {
+                let d = if m.step_size >= 1.0 {
+                    0
+                } else if m.step_size >= 0.1 {
+                    1
+                } else {
+                    2
+                };
+                // No "-0" from rounding.
+                let v = if m.value.abs() < m.step_size * 1e-6 {
+                    0.0
+                } else {
+                    m.value
+                };
+                format!("{:.*}{unit_owned}", d, v)
+            })
+            .y_axis_min_width(40.0)
+            .y_axis_formatter(|m, _| {
+                // Counts: none below zero.
+                if m.value < -1e-9 {
+                    String::new()
+                } else {
+                    format!("{}", m.value.abs())
+                }
+            })
+            .include_y(0.0)
+            .show(ui, |p| {
+                p.bar_chart(BarChart::new("count", bars).color(color));
+                p.vline(
+                    VLine::new("median", median)
+                        .color(pal.text_secondary)
+                        .width(1.0_f32),
+                );
+            });
+    }
+
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
         let pal = theme::pal(ui);
         let colors = [pal.tick, pal.tock];
@@ -2395,14 +2762,14 @@ impl TimegrapherApp {
             ),
             Pane::Amplitude => (
                 vec![
-                    ("Average amplitude".into(), pick(|p| p.amplitude), main),
+                    ("Average Amplitude".into(), pick(|p| p.amplitude), main),
                     (
-                        "Amplitude from tick".into(),
+                        "Amplitude from Tick".into(),
                         pick(|p| p.amplitude_a),
                         colors[0],
                     ),
                     (
-                        "Amplitude from tock".into(),
+                        "Amplitude from Tock".into(),
                         pick(|p| p.amplitude_b),
                         colors[1],
                     ),
@@ -2413,12 +2780,12 @@ impl TimegrapherApp {
             Pane::BeatError => (
                 vec![
                     (
-                        "From the unlock".into(),
+                        "From the Unlock".into(),
                         pick(|p| p.beat_error_unlock),
                         main,
                     ),
                     (
-                        "From the drop".into(),
+                        "From the Drop".into(),
                         pick(|p| p.beat_error_drop),
                         pal.text_secondary,
                     ),
@@ -2426,18 +2793,18 @@ impl TimegrapherApp {
                 " ms",
                 2,
             ),
-            Pane::Strip | Pane::Sound => return,
+            _ => return,
         };
         let mut plot = Plot::new(pane.title())
             .link_axis("trend", [true, false])
             .link_cursor("trend", [true, false])
             .allow_scroll(false)
             .allow_zoom([false, true])
-            .x_grid_spacer(time_grid)
-            .custom_x_axes(vec![egui_plot::AxisHints::new_x()
-                .formatter(|m, _| strip::fmt_time(m.value))
-                .label_spacing(30.0..=40.0)])
-            .y_grid_spacer(nice_grid)
+            .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
+            .custom_x_axes(vec![
+                egui_plot::AxisHints::new_x().formatter(|m, _| strip::fmt_time(m.value))
+            ])
+            .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
             .y_axis_min_width(52.0)
             .y_axis_formatter(move |m, _| {
                 let d = if m.step_size >= 1.0 {
@@ -2468,18 +2835,35 @@ impl TimegrapherApp {
         }
         // Scale to the 2nd to 98th percentile of the lines, so that one
         // glitch doesn't flatten them.
-        let all: Vec<[f64; 2]> = series.iter().flat_map(|s| s.1.iter().copied()).collect();
-        if let Some((lo, hi)) = percentile_range(&all) {
+        let window = self.chart_window();
+        let all: Vec<[f64; 2]> = series
+            .iter()
+            .flat_map(|s| s.1.iter().copied())
+            .filter(|p| window.is_none_or(|(a, b)| p[0] >= a && p[0] <= b))
+            .collect();
+        let y_range = percentile_range(&all);
+        if let Some((lo, hi)) = y_range {
             plot = plot.default_y_bounds(lo, hi);
+        }
+        if window.is_some() {
+            // The strip sets the time: only the vertical scale moves.
+            plot = plot
+                .allow_drag([false, true])
+                .allow_double_click_reset(false);
         }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
         let lookup: Vec<(String, Vec<[f64; 2]>, Color32)> = series.clone();
         let to_live = self.charts_to_live_now;
         let resp = plot.show(ui, |p| {
-            if to_live {
+            if let Some((a, b)) = window {
+                p.set_plot_bounds_x(a..=b);
+                if let (Some((lo, hi)), true) = (y_range, to_live) {
+                    p.set_plot_bounds_y(lo..=hi);
+                }
+            } else if to_live {
                 p.set_auto_bounds([true, true]);
             }
-            if p.response().hovered() {
+            if p.response().hovered() && window.is_none() {
                 let s = p.ctx().input(|i| i.smooth_scroll_delta);
                 let wheel = s.x + s.y;
                 if wheel != 0.0 {
@@ -2501,7 +2885,7 @@ impl TimegrapherApp {
             let hover = p.pointer_coordinate().filter(|_| hovered);
             let click = clicked.then(|| p.pointer_coordinate()).flatten();
             // Panned or zoomed away from the whole session.
-            let moved = !to_live && !p.auto_bounds().x;
+            let moved = window.is_none() && !to_live && !p.auto_bounds().x;
             (click, hover.map(|h| h.x), moved)
         });
         let (click, hover, moved) = resp.inner;
@@ -2522,9 +2906,9 @@ impl TimegrapherApp {
             // Say how to get back, on the chart itself.
             let at = resp.response.rect.left_top() + Vec2::new(60.0, 4.0);
             let label = if running {
-                "Follow live"
+                "Follow Live"
             } else {
-                "Show whole session"
+                "Show Whole Session"
             };
             let b = ui.put(
                 egui::Rect::from_min_size(at, Vec2::new(150.0, 24.0)),
@@ -2579,64 +2963,6 @@ impl TimegrapherApp {
     }
 }
 
-/// Grid steps for a time axis in seconds: whole seconds, minutes and hours.
-fn time_grid(input: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
-    const LADDER: [f64; 21] = [
-        0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0,
-        3600.0, 7200.0, 14400.0, 21600.0, 43200.0, 86400.0,
-    ];
-    grid_marks(input, &LADDER)
-}
-
-/// Grid steps of 1, 2 and 5 times a power of ten.
-fn nice_grid(input: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
-    let p = 10f64.powf(input.base_step_size.max(1e-9).log10().floor());
-    let ladder: Vec<f64> = (0..4)
-        .flat_map(|k| [1.0, 2.0, 5.0].map(|m| m * p * 10f64.powi(k)))
-        .collect();
-    grid_marks(input, &ladder)
-}
-
-/// Marks at up to three levels of `ladder`, starting at the first step no
-/// finer than the plot asks for.
-fn grid_marks(input: egui_plot::GridInput, ladder: &[f64]) -> Vec<egui_plot::GridMark> {
-    let (lo, hi) = input.bounds;
-    let first = ladder
-        .iter()
-        .position(|&s| s >= input.base_step_size)
-        .unwrap_or(ladder.len() - 1);
-    // Each level a whole multiple of the one below, so labels of different
-    // levels never crowd each other.
-    let mut levels = vec![ladder[first]];
-    for &s in &ladder[first + 1..] {
-        let below = *levels.last().unwrap();
-        if levels.len() < 3 && ((s / below).round() * below - s).abs() < below * 1e-6 {
-            levels.push(s);
-        }
-    }
-    let mut marks: Vec<egui_plot::GridMark> = Vec::new();
-    let mut coarser: Vec<f64> = Vec::new();
-    // Coarsest first, so each time keeps the largest step it falls on.
-    for &step in levels.iter().rev() {
-        let mut k = (lo / step).ceil();
-        while k * step <= hi && marks.len() < 5000 {
-            let v = k * step;
-            if !coarser
-                .iter()
-                .any(|&c| ((v / c).round() * c - v).abs() < step * 1e-6)
-            {
-                marks.push(egui_plot::GridMark {
-                    value: v,
-                    step_size: step,
-                });
-            }
-            k += 1.0;
-        }
-        coarser.push(step);
-    }
-    marks
-}
-
 /// The value of the point nearest `x` in points sorted by x, unless the
 /// nearest is far off (a gap in the line).
 fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
@@ -2684,6 +3010,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| match pane {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
+            p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
             p => self.app.chart(ui, *p),
         });
         UiResponse::None
@@ -2812,6 +3139,10 @@ impl TimegrapherApp {
         egui::TopBottomPanel::bottom("status")
             .frame(bar.inner_margin(egui::Margin::symmetric(14, 5)))
             .show(ctx, |ui| self.status_bar(ui));
+        let toggle = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
+        if ctx.input_mut(|i| i.consume_shortcut(&toggle)) {
+            self.sidebar = !self.sidebar;
+        }
         egui::SidePanel::left("controls")
             .resizable(false)
             .exact_width(300.0)
@@ -2822,7 +3153,7 @@ impl TimegrapherApp {
                 top: 8,
                 bottom: 0,
             }))
-            .show(ctx, |ui| {
+            .show_animated(ctx, self.sidebar, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.scope_builder(
                         egui::UiBuilder::new()
@@ -3095,6 +3426,29 @@ mod tests {
         app.relayout(true);
         assert!(!pane_visible(&app.panes.tiles, Pane::Sound));
         assert!(pane_visible(&app.panes.tiles, Pane::Strip));
+    }
+
+    #[test]
+    fn histograms_start_hidden_and_keep_their_switch_through_a_relayout() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        for p in Pane::HISTOGRAMS {
+            assert!(!pane_visible(&app.panes.tiles, p));
+        }
+        assert!(pane_visible(&app.panes.tiles, Pane::Rate));
+        set_pane_visible(&mut app.panes.tiles, Pane::AmplitudeHistogram, true);
+        app.relayout(true);
+        assert!(pane_visible(&app.panes.tiles, Pane::AmplitudeHistogram));
+        assert!(!pane_visible(&app.panes.tiles, Pane::RateHistogram));
+    }
+
+    #[test]
+    fn charts_can_follow_the_strip() {
+        let mut app = synthetic(40.0, 0.0);
+        assert_eq!(app.chart_window(), None);
+        app.span_of_strip = true;
+        let (a, b) = app.chart_window().unwrap();
+        assert!((b - app.end_s()).abs() < 1e-9);
+        assert!((b - a - app.strip.span_s).abs() < 1e-9);
     }
 
     #[test]
