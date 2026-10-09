@@ -89,18 +89,28 @@ pub struct Beat {
 /// it, so each side stays on one sound even when another sound of the beat
 /// is about as loud. The whole search span is used instead when it holds a
 /// peak more than twice as high, so a lost track finds the beats again.
+///
+/// Without a gate, once the track is running, a beat whose best match in
+/// the span is too far from where it is due (a knock) is looked for within
+/// [`BEAT_WINDOW_S`] of where it is due instead, and taken from there if it
+/// matches at least [`BEAT_WINDOW_FLOOR`] of that side's typical beat, so
+/// the knock does not cost the beat.
 fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f32)> {
     let n = x.len();
     let start_span = (beat * fs * 1.5) as usize;
     let Some((first, _)) = argmax(x, 0, start_span) else {
         return Vec::new();
     };
-    // Found peaks with the number of the beat each one is.
-    let mut out: Vec<(f64, f32, i64)> = Vec::new();
+    // Found peaks with the number of the beat each one is, and whether
+    // later beats may be predicted from it (not from one found by the beat
+    // window, which may be a knock's tail where the track was already off).
+    let mut out: Vec<(f64, f32, i64, bool)> = Vec::new();
     let mut per = beat * fs;
     let mut pred = first as f64;
     let mut k = 0i64;
     let mut misses = 0;
+    // A slow average of each side's match, for the beat window's floor.
+    let mut typical = [0.0f32; 2];
     let half = 0.3 * beat * fs;
     while pred + half < n as f64 {
         let a = (pred - half).max(0.0) as usize;
@@ -108,11 +118,33 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f3
         let Some((mut i, mut v)) = argmax(x, a, b) else {
             break;
         };
+        let mut rescued = false;
         if let Some(g) = gate.filter(|_| out.len() >= 2) {
             let g = g * fs;
             let near = argmax(x, (pred - g).max(0.0) as usize, (pred + g) as usize + 1);
             if let Some((j, w)) = near.filter(|&(_, w)| 2.0 * w >= v) {
                 (i, v) = (j, w);
+            }
+        } else if out.len() >= 4
+            && typical[side(k)] > 0.0
+            && (i as f64 - pred).abs() >= MAX_OFFSET * per
+        {
+            // The best match is too far from where the beat is due to be
+            // the beat, which would cost a beat. But the beat is where it
+            // is due to within a fraction of a millisecond, so a good match
+            // there is the beat, hidden by a knock elsewhere in the span.
+            // Only then: a window that always took a fair match near the
+            // prediction would hold the track on another sound of the beat
+            // once a knock had put it there. The best point must be a peak,
+            // not the window's edge on the flank of something outside it.
+            let g = BEAT_WINDOW_S * fs;
+            let (lo, hi) = ((pred - g).max(1.0) as usize, (pred + g) as usize);
+            let near = argmax(x, lo, hi + 1).filter(|&(j, w)| {
+                j > lo && j < hi && j + 1 < n && w >= BEAT_WINDOW_FLOOR * typical[side(k)]
+            });
+            if let Some((j, w)) = near {
+                (i, v) = (j, w);
+                rescued = true;
             }
         }
         let t = parabolic(x, i);
@@ -127,37 +159,54 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f3
             || (t - pred).abs() < MAX_OFFSET * per
             || misses >= MAX_MISSES
         {
-            if let Some(&(t2, _, _)) = out.iter().rev().take(3).find(|o| o.2 == k - 2) {
+            let anchors = out.iter().rev().filter(|o| o.3).take(3);
+            if let Some(&(t2, ..)) = anchors.clone().find(|o| o.2 == k - 2 && !rescued) {
                 // Update on the tick-to-tick interval so beat error doesn't pull the loop.
                 let meas = (t - t2) / 2.0;
                 if (meas - per).abs() < 0.05 * per {
                     per = 0.9 * per + 0.1 * meas;
                 }
             }
-            out.push((t, v, k));
+            out.push((t, v, k, !rescued));
             misses = 0;
+            let ty = &mut typical[side(k)];
+            *ty = if *ty > 0.0 { 0.95 * *ty + 0.05 * v } else { v };
         } else {
             misses += 1;
         }
         k += 1;
         // Predict beat k from the same side's last beat once there are
         // three beats, so beat error does not enter the prediction.
-        let same_side = out.iter().rev().take(3).find(|o| o.2 == k - 2);
+        let mut anchors = out.iter().rev().filter(|o| o.3);
+        let same_side = anchors.clone().take(3).find(|o| o.2 == k - 2);
         pred = match same_side.filter(|_| out.len() > 2) {
-            Some(&(t2, _, _)) => t2 + 2.0 * per,
-            None => match out.last() {
-                Some(&(t1, _, k1)) => t1 + (k - k1) as f64 * per,
+            Some(&(t2, ..)) => t2 + 2.0 * per,
+            None => match anchors.next() {
+                Some(&(t1, _, k1, _)) => t1 + (k - k1) as f64 * per,
                 None => pred + per,
             },
         };
     }
-    out.into_iter().map(|(t, v, _)| (t / fs, v)).collect()
+    out.into_iter().map(|(t, v, ..)| (t / fs, v)).collect()
 }
 
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
 /// timing are far smaller; a knock lands anywhere.
 const MAX_OFFSET: f64 = 0.1;
+
+fn side(k: i64) -> usize {
+    k.rem_euclid(2) as usize
+}
+
+/// Half-width of the window around where a beat is due that pass 2
+/// searches when a knock outmatches the beat, seconds. Beat-to-beat
+/// changes in timing are tenths of a millisecond; professional
+/// timegraphers gate to about 2 ms.
+const BEAT_WINDOW_S: f64 = 0.002;
+/// How well the best match in that window must compare with the typical
+/// beat's to be taken as the beat; below it the whole span is searched.
+const BEAT_WINDOW_FLOOR: f32 = 0.5;
 /// Beats in a row that may be missed before the track takes whatever it
 /// finds, so it can recover from a real jump.
 const MAX_MISSES: usize = 16;
@@ -338,7 +387,7 @@ mod tests {
     #[test]
     fn a_knock_does_not_move_the_beats() {
         // A beat every 0.125 s for 4 s, and a knock three times as loud
-        // 30 ms before beat 20 is due.
+        // 30 ms before beat 20 is due. The beat window keeps beat 20.
         let fs = 8000.0;
         let beat = 0.125;
         let mut x = vec![0.0f32; (4.0 * fs) as usize];
@@ -351,7 +400,7 @@ mod tests {
         let knock = ((0.05 + 20.0 * beat - 0.030) * fs) as usize;
         x[knock] = 3.0;
         let peaks = track_peaks(&x, fs, beat, None);
-        assert_eq!(peaks.len(), 31, "beat 20 is missed, nothing else");
+        assert_eq!(peaks.len(), 32, "beat 20 is found under the knock");
         for (t, _) in &peaks {
             let k = ((t - 0.05) / beat).round();
             assert!(
