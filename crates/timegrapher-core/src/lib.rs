@@ -17,6 +17,7 @@ pub mod longrun;
 pub mod longterm;
 pub mod periodicity;
 pub mod recorder;
+pub mod session;
 pub mod shape;
 pub mod stream;
 pub mod synth;
