@@ -88,6 +88,15 @@ pub enum Pane {
 }
 
 impl Pane {
+    /// Every pane, in the order the Panes list shows them.
+    const ALL: [Pane; 5] = [
+        Pane::Strip,
+        Pane::Sound,
+        Pane::Rate,
+        Pane::Amplitude,
+        Pane::BeatError,
+    ];
+
     fn title(self) -> &'static str {
         match self {
             Pane::Strip => "Paper strip",
@@ -130,6 +139,44 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         ))
     };
     Tree::new("panes", root, tiles)
+}
+
+/// Whether a pane is shown.
+fn pane_visible(tiles: &Tiles<Pane>, pane: Pane) -> bool {
+    tiles
+        .find_pane(&pane)
+        .is_some_and(|id| tiles.is_visible(id))
+}
+
+/// Show or hide a pane. A hidden pane keeps its place, so it comes back
+/// where it was.
+fn set_pane_visible(tiles: &mut Tiles<Pane>, pane: Pane, visible: bool) {
+    if let Some(id) = tiles.find_pane(&pane) {
+        tiles.set_visible(id, visible);
+        sync_containers(tiles);
+    }
+}
+
+/// Hide every container with nothing visible in it, and show the rest, so
+/// hidden panes leave no empty frame or tab bar behind.
+fn sync_containers(tiles: &mut Tiles<Pane>) {
+    loop {
+        let mut changed = false;
+        let ids: Vec<TileId> = tiles.tile_ids().collect();
+        for id in ids {
+            let Some(c) = tiles.get_container(id) else {
+                continue;
+            };
+            let any = c.children().any(|&c| tiles.is_visible(c));
+            if any != tiles.is_visible(id) {
+                tiles.set_visible(id, any);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }
 
 /// Averaging times offered for the readings, seconds (Witschi's choices).
@@ -203,6 +250,12 @@ pub struct TimegrapherApp {
     strip: StripView,
     /// Keep the newest beats on the centre line, sliding the rest.
     follow: bool,
+    /// The rate, amplitude and beat error figures above the panes.
+    show_readings: bool,
+    /// Asked to put the charts back on the whole session, following new
+    /// beats: set by the button, applied by every chart on the next frame.
+    charts_to_live: bool,
+    charts_to_live_now: bool,
     /// `None` follows the newest beat; otherwise the time at the newest
     /// edge of the strip.
     view_end: Option<f64>,
@@ -281,6 +334,9 @@ impl TimegrapherApp {
             follow: false,
             view_end: None,
             panes: default_layout(false),
+            show_readings: true,
+            charts_to_live: false,
+            charts_to_live_now: false,
             capture: None,
             live: None,
             source_label: String::new(),
@@ -914,7 +970,7 @@ impl TimegrapherApp {
                 ui.selectable_value(&mut h, true, "Across");
                 if h != self.strip.horizontal {
                     self.strip.horizontal = h;
-                    self.panes = default_layout(h);
+                    self.relayout(h);
                 }
             });
             ui.end_row();
@@ -951,14 +1007,25 @@ impl TimegrapherApp {
                 self.anchor = None;
                 self.trend.clear();
             }
-            if ui
-                .button("Reset panes")
-                .on_hover_text("Put the strip and charts back where they started")
-                .clicked()
-            {
-                self.panes = default_layout(self.strip.horizontal);
-            }
         });
+        ui.add_space(8.0);
+        ui.heading("Panes");
+        ui.checkbox(&mut self.show_readings, "Readings")
+            .on_hover_text("The rate, amplitude and beat error figures across the top");
+        for pane in Pane::ALL {
+            let mut on = pane_visible(&self.panes.tiles, pane);
+            if ui.checkbox(&mut on, pane.title()).changed() {
+                set_pane_visible(&mut self.panes.tiles, pane, on);
+            }
+        }
+        if ui
+            .button("Reset panes")
+            .on_hover_text("Show every pane and put them back where they started")
+            .clicked()
+        {
+            self.show_readings = true;
+            self.panes = default_layout(self.strip.horizontal);
+        }
         ui.add_space(4.0);
         ui.label(
             RichText::new(
@@ -966,7 +1033,7 @@ impl TimegrapherApp {
                  double-click for the newest beats.\n\
                  Charts: wheel to zoom time, Ctrl+wheel for the scale, drag to pan, \
                  double-click to fit, click to show that moment on the strip.\n\
-                 Drag a pane by its tab to rearrange.",
+                 Drag a pane by its tab to rearrange, or close it with its ×.",
             )
             .small()
             .weak(),
@@ -1272,6 +1339,19 @@ impl TimegrapherApp {
         });
     }
 
+    /// The starting arrangement for a strip direction, keeping which panes
+    /// are hidden.
+    fn relayout(&mut self, horizontal: bool) {
+        let hidden: Vec<Pane> = Pane::ALL
+            .into_iter()
+            .filter(|&p| !pane_visible(&self.panes.tiles, p))
+            .collect();
+        self.panes = default_layout(horizontal);
+        for p in hidden {
+            set_pane_visible(&mut self.panes.tiles, p, false);
+        }
+    }
+
     fn main_view(&mut self, ui: &mut egui::Ui) {
         // Problems with the input go where they can't be missed.
         if let Some((m, true)) = &self.message {
@@ -1285,8 +1365,10 @@ impl TimegrapherApp {
                 });
             ui.add_space(4.0);
         }
-        self.readouts(ui);
-        ui.add_space(4.0);
+        if self.show_readings {
+            self.readouts(ui);
+            ui.add_space(4.0);
+        }
 
         // Looking back through a finished or analysed recording.
         let total = self.live.as_ref().map_or(0.0, |l| l.duration_s());
@@ -1321,6 +1403,23 @@ impl TimegrapherApp {
             });
             return;
         }
+        // A drag can leave a container holding only hidden panes.
+        sync_containers(&mut self.panes.tiles);
+        if Pane::ALL
+            .iter()
+            .all(|&p| !pane_visible(&self.panes.tiles, p))
+        {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    RichText::new("Every pane is hidden. Turn one on under Panes.")
+                        .size(16.0)
+                        .weak(),
+                );
+            });
+            return;
+        }
+        self.charts_to_live_now = std::mem::take(&mut self.charts_to_live);
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         panes.ui(&mut PaneBehavior { app: self }, ui);
         self.panes = panes;
@@ -1588,7 +1687,11 @@ impl TimegrapherApp {
         }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
         let lookup: Vec<(String, Vec<[f64; 2]>, Color32)> = series.clone();
+        let to_live = self.charts_to_live_now;
         let resp = plot.show(ui, |p| {
+            if to_live {
+                p.set_auto_bounds([true, true]);
+            }
             if p.response().hovered() {
                 let s = p.ctx().input(|i| i.smooth_scroll_delta);
                 let wheel = s.x + s.y;
@@ -1616,11 +1719,39 @@ impl TimegrapherApp {
                 p.vline(VLine::new("", h.x).color(weak).width(1.0_f32));
             }
             let click = clicked.then(|| p.pointer_coordinate()).flatten();
-            (click, hover.map(|h| h.x))
+            // Panned or zoomed away from the whole session.
+            let moved = !to_live && !p.auto_bounds().x;
+            (click, hover.map(|h| h.x), moved)
         });
-        let (click, hover) = resp.inner;
+        let (click, hover, moved) = resp.inner;
+        let running = self.running();
+        if moved {
+            // Say how to get back, on the chart itself.
+            let at = resp.response.rect.left_top() + Vec2::new(60.0, 4.0);
+            let label = if running {
+                "Follow live"
+            } else {
+                "Show whole session"
+            };
+            let b = ui.put(
+                egui::Rect::from_min_size(at, Vec2::new(150.0, 22.0)),
+                egui::Button::new(label),
+            );
+            if b.on_hover_text(if running {
+                "Back to the whole session, following new beats as they come in. \
+                 Double-clicking a chart does the same."
+            } else {
+                "Back to the whole session. Double-clicking a chart does the same."
+            })
+            .clicked()
+            {
+                self.charts_to_live = true;
+                ui.ctx().request_repaint();
+            }
+        }
         if let Some(x) = hover {
             resp.response.on_hover_ui_at_pointer(|ui| {
+                ui.set_max_width(300.0);
                 ui.label(RichText::new(strip::fmt_time(x)).strong());
                 for (name, pts, c) in &lookup {
                     let v = value_at(pts, x);
@@ -1632,6 +1763,19 @@ impl TimegrapherApp {
                         });
                     });
                 }
+                ui.label(
+                    RichText::new(if running {
+                        "Wheel zooms time, Ctrl+wheel the scale, drag pans, \
+                         click shows that moment on the strip, \
+                         double-click follows live again."
+                    } else {
+                        "Wheel zooms time, Ctrl+wheel the scale, drag pans, \
+                         click shows that moment on the strip, \
+                         double-click shows the whole session."
+                    })
+                    .small()
+                    .weak(),
+                );
             });
         }
         if let Some(at) = click {
@@ -1748,6 +1892,20 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
 
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
         pane.title().into()
+    }
+
+    fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile_id: TileId) -> bool {
+        matches!(tiles.get(tile_id), Some(egui_tiles::Tile::Pane(_)))
+    }
+
+    /// Closing a tab hides the pane instead of removing it, so the Panes
+    /// list can bring it back in the same place.
+    fn on_tab_close(&mut self, tiles: &mut Tiles<Pane>, tile_id: TileId) -> bool {
+        if let Some(egui_tiles::Tile::Pane(p)) = tiles.get(tile_id) {
+            let p = *p;
+            set_pane_visible(tiles, p, false);
+        }
+        false
     }
 
     fn simplification_options(&self) -> SimplificationOptions {
@@ -1899,6 +2057,42 @@ mod tests {
             None
         );
         assert_eq!(value_at(&[], 1.0), None);
+    }
+
+    #[test]
+    fn hidden_panes_leave_no_empty_frames_and_come_back() {
+        let mut tree = default_layout(false);
+        // Wrap each pane in its tab bar, as drawing does.
+        tree.simplify(&SimplificationOptions {
+            all_panes_must_have_tabs: true,
+            ..Default::default()
+        });
+        let tiles = &mut tree.tiles;
+        let visible_containers = |t: &Tiles<Pane>| {
+            t.tile_ids()
+                .filter(|&id| t.get_container(id).is_some() && t.is_visible(id))
+                .count()
+        };
+        let all = visible_containers(tiles);
+        set_pane_visible(tiles, Pane::Rate, false);
+        assert!(!pane_visible(tiles, Pane::Rate));
+        // Its tab container goes too, nothing else.
+        assert_eq!(visible_containers(tiles), all - 1);
+        for p in Pane::ALL {
+            set_pane_visible(tiles, p, false);
+        }
+        assert_eq!(visible_containers(tiles), 0, "root still shown");
+        set_pane_visible(tiles, Pane::Amplitude, true);
+        assert!(pane_visible(tiles, Pane::Amplitude));
+        assert!(tiles.is_visible(tree.root.unwrap()));
+        assert!(!pane_visible(tiles, Pane::Rate));
+
+        // A new strip direction keeps the choice.
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        set_pane_visible(&mut app.panes.tiles, Pane::Sound, false);
+        app.relayout(true);
+        assert!(!pane_visible(&app.panes.tiles, Pane::Sound));
+        assert!(pane_visible(&app.panes.tiles, Pane::Strip));
     }
 
     #[test]

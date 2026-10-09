@@ -39,8 +39,12 @@ reading for a short explanation.
 **Panes.** Below the readings are five panes: the paper strip, the tick and tock
 sound, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
-them; drag the gaps between panes to resize them. **Reset panes** puts
-them back. Tick shape and periodicity views will join them.
+them; drag the gaps between panes to resize them. The × on a tab hides
+that pane, and the **Panes** list in the sidebar hides or shows each pane
+and the readings across the top; a hidden pane comes back where it was,
+and changing the strip's direction keeps the choice. **Reset panes**
+shows them all in their starting places. Periodicity views will join
+them.
 
 **Tick and tock sound.** The median sound of the ticks (blue) and of the
 tocks (orange) over the last 3 s, from the drop's side of the beat back
@@ -87,7 +91,10 @@ anywhere over a chart, a vertical line marks that moment and a box lists
 every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
 the vertical scale, dragging pans, and a double click fits the whole
-session again. Clicking a moment shows it on the strip and in the
+session again and, while listening, follows new beats as they come in.
+Once a chart has been panned or zoomed a **Follow live** button
+(**Show whole session** for a recording) appears on it and does the same,
+and the box at the pointer lists these controls. Clicking a moment shows it on the strip and in the
 readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
