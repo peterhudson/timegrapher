@@ -304,6 +304,17 @@ pub fn draw_strip(
             text,
         );
     }
+    // Which colour is which.
+    let colors = side_colors(dark);
+    let mut at = if view.horizontal {
+        r.left_top() + Vec2::new(48.0, 2.0)
+    } else {
+        r.left_top() + Vec2::new(4.0, 2.0)
+    };
+    for (label, c) in [("A beats", colors[0]), ("B beats", colors[1])] {
+        let g = painter.text(at, Align2::LEFT_TOP, label, font.clone(), c);
+        at.x = g.right() + 10.0;
+    }
     if let Some(n) = note {
         let at = if view.horizontal {
             r.right_top() + Vec2::new(-4.0, 2.0)
@@ -321,7 +332,6 @@ pub fn draw_strip(
     let Some(anchor) = anchor else {
         return input;
     };
-    let colors = side_colors(dark);
     let lo = beats.partition_point(|b| b.time < oldest);
     let hi = beats.partition_point(|b| b.time <= end_s);
     let shown = &beats[lo..hi];

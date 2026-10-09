@@ -15,10 +15,13 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 ## The screen
 
-**Readings.** Rate (s/d), amplitude (degrees) and beat error (ms), each a
+**Readings.** Rate (seconds a day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
-from 1 s to an hour, or pick one of Witschi's 2 to 60 s). Under the
-amplitude are the two sides separately, A (even beats) and B (odd beats);
+from 1 s to an hour, or pick one of Witschi's 2 to 60 s). The big amplitude is the average of the two
+swings; under it are the two separately, A (the even beats, blue on the
+strip and charts) and B (the odd beats, orange). A big gap between A and B
+usually means one side's sounds were misread rather than a fault in the
+watch;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg and commercial timegraphers measure
@@ -56,14 +59,19 @@ the newest beats on the centre line all the time, so the older ones slide
 away from it as the rate wanders; sliding the trace by hand turns it off.
 **Centre** centres once; **Clear** starts the readings and the strip again.
 
-**Charts.** Rate, amplitude (with A and B) and beat error (from the unlock
-and from the drop) over the whole session. Their time axes move together:
+**Charts.** Rate, amplitude (the average, A and B) and beat error (from the
+unlock and from the drop) over the whole session. With the pointer
+anywhere over a chart, a vertical line marks that moment and a box lists
+every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
 the vertical scale, dragging pans, and a double click fits the whole
 session again. Clicking a moment shows it on the strip and in the
 readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
+
+**Theme.** System follows the desktop's light or dark setting; Light and
+Dark override it.
 
 **Status bar.** The input, its peak level in dBFS over the last half second
 (red when the input clips, amber when it is very quiet; aim for ticks
@@ -88,6 +96,17 @@ watch heard" when they don't), and the recording in progress.
   on the window replays it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
+- **Input level.** Under the device menu: the microphone's gain, a switch
+  for its automatic gain when it has one (keep it off), and a peak meter
+  with marks at the −10 dBFS target and the −6 dBFS limit. On Linux, for
+  the system default the level is the sound server's input volume
+  (`wpctl`, or `pactl` on PulseAudio), which the server writes back onto
+  the microphone each time it opens it, so setting the card's own control
+  there would not last; for a direct device it is the card's capture
+  control (`amixer`). The change is made when you let go of the slider.
+  On other systems, set the level in the system's sound settings. The
+  same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
+  proposals.
 - **Beat rate.** Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,

@@ -1,6 +1,5 @@
 mod doctor;
 mod long;
-mod mixer;
 mod output;
 mod report;
 mod session_cmd;

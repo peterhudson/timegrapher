@@ -16,6 +16,7 @@ pub mod filter;
 pub mod live;
 pub mod longrun;
 pub mod longterm;
+pub mod mixer;
 pub mod periodicity;
 pub mod recorder;
 pub mod session;
