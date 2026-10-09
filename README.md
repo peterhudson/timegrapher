@@ -60,9 +60,12 @@ that repeats like a bad tooth.
 1. **Envelope.** High-pass at 1.5 kHz (zero phase), optional notches,
    rectify, 0.2 ms moving average.
 2. **Beat rate.** Autocorrelation scored at each standard rate.
-3. **Beats.** A first pass builds a median beat template; the second pass
+3. **Beats.** A first pass follows the envelope's maxima, keeping each
+   side (tick and tock) on one sound, and builds a median beat template
+   with each side's beats moved onto that side's drop; the second pass
    correlates the whole recording with it and tracks one correlation peak
-   per beat. Each beat gets a time and a quality score.
+   per beat, and a template rebuilt from those beats is used for a final
+   pass. Each beat gets a time and a quality score.
 4. **Rate and beat error.** A least-squares fit of
    `t = t0 + k*P ± e/2` over all beats, robust to outliers, overall and in
    sliding windows. Beat times sit near the drop, so this is the drop's

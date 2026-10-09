@@ -1,13 +1,15 @@
 //! Finding every beat.
 //!
 //! Two passes. A first pass tracks the loudest point of each beat on the
-//! envelope and builds a median beat template from it. The second pass
-//! correlates the whole envelope with that template and tracks the
-//! correlation peaks, which is far more robust than picking maxima: a beat
-//! whose unlock happens to be louder than its drop still lines up with the
-//! template as a whole.
+//! envelope, keeping each side on one sound, and builds a median beat
+//! template from it with each side's beats moved onto their drop. The
+//! second pass correlates the whole envelope with that template and tracks
+//! the correlation peaks, which is far more robust than picking maxima: a
+//! beat whose unlock happens to be louder than its drop still lines up with
+//! the template as a whole. The second pass is run again with a template
+//! rebuilt from its own beats.
 
-use crate::dsp::{argmax, correlate, median_f32, parabolic};
+use crate::dsp::{argmax, correlate, median_f32, moving_average, parabolic};
 use realfft::RealFftPlanner;
 use serde::Serialize;
 
@@ -79,7 +81,13 @@ pub struct Beat {
 
 /// Track one peak per beat in `x`, starting near the strongest peak of the
 /// first beat-and-a-half. A simple phase-locked loop follows rate changes.
-fn track_peaks(x: &[f32], fs: f64, beat: f64) -> Vec<(f64, f32)> {
+///
+/// With a `gate` (seconds), each beat after the first two is the highest
+/// peak within that distance of where the same side's last beat predicts
+/// it, so each side stays on one sound even when another sound of the beat
+/// is about as loud. The whole search span is used instead when it holds a
+/// peak more than twice as high, so a lost track finds the beats again.
+fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f32)> {
     let n = x.len();
     let start_span = (beat * fs * 1.5) as usize;
     let Some((first, _)) = argmax(x, 0, start_span) else {
@@ -92,7 +100,16 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64) -> Vec<(f64, f32)> {
     while pred + half < n as f64 {
         let a = (pred - half).max(0.0) as usize;
         let b = (pred + half) as usize;
-        let Some((i, v)) = argmax(x, a, b) else { break };
+        let Some((mut i, mut v)) = argmax(x, a, b) else {
+            break;
+        };
+        if let Some(g) = gate.filter(|_| out.len() >= 2) {
+            let g = g * fs;
+            let near = argmax(x, (pred - g).max(0.0) as usize, (pred + g) as usize + 1);
+            if let Some((j, w)) = near.filter(|&(_, w)| 2.0 * w >= v) {
+                (i, v) = (j, w);
+            }
+        }
         let t = parabolic(x, i);
         out.push((t, v));
         let len = out.len();
@@ -146,15 +163,83 @@ pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f6
 }
 
 /// Find every beat in an envelope.
+///
+/// Pass 1 follows the envelope's maxima to build a template. The loudest
+/// sound of a beat can change from beat to beat when two of its sounds are
+/// about as loud, and a template built on whichever is loudest is a blend
+/// of beats aligned on different sounds; on a watch whose two sides differ
+/// in shape, its correlation peaks then land on different sounds from beat
+/// to beat. So pass 1 keeps each side on one sound, which can be a different
+/// one on each side, and each side's beats are moved onto that side's drop
+/// before the template is built.
 pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
     let beat = 3600.0 / bph as f64;
     // Pass 1: maxima, used only to build the template.
-    let coarse = track_peaks(env, fs, beat);
-    let step = (coarse.len() / 2000).max(1);
-    let sample: Vec<f64> = coarse.iter().step_by(step).map(|c| c.0).collect();
+    let coarse = track_peaks(env, fs, beat, Some(PASS1_GATE_S));
+    let origin = (PRE_S * fs).round() as usize;
+    let mut sample = Vec::new();
+    for side in 0..2 {
+        let times: Vec<f64> = coarse.iter().skip(side).step_by(2).map(|c| c.0).collect();
+        let step = (times.len() / 1000).max(1);
+        let times: Vec<f64> = times.into_iter().step_by(step).collect();
+        let drop = if times.len() >= 3 {
+            let wide = median_window(env, fs, &times, PRE_S, PRE_S);
+            drop_offset(&wide, fs, origin).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        sample.extend(times.iter().map(|t| t + drop));
+    }
     let template = median_template(env, fs, &sample);
     let beats = detect_with_template(env, fs, bph, &template);
-    (beats, template)
+    // Pass 2 lines the beats up more closely than the maxima did, so a
+    // template rebuilt from its beats is sharper for the final pass.
+    let good: Vec<f64> = beats
+        .iter()
+        .filter(|b| b.quality > 0.4)
+        .map(|b| b.time)
+        .collect();
+    let step = (good.len() / 2000).max(1);
+    let sample: Vec<f64> = good.into_iter().step_by(step).collect();
+    if sample.len() < 10 {
+        return (beats, template);
+    }
+    let template = median_template(env, fs, &sample);
+    (detect_with_template(env, fs, bph, &template), template)
+}
+
+/// How far from its last beat pass 1 looks for a side's next one, seconds.
+/// Sounds within a beat are further apart than this, and the beat-to-beat
+/// change in timing much less.
+const PASS1_GATE_S: f64 = 0.001;
+
+/// Where the drop sits on a template, seconds from `origin`: the last
+/// sound that reaches 60% of the template's highest peak above the floor
+/// and is separated from the sound before it by a dip below half the lower
+/// of the two. A drop's lumpy tail does not count, since it neither stands
+/// that high nor dips that far.
+fn drop_offset(template: &[f32], fs: f64, origin: usize) -> Option<f64> {
+    let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
+    let quiet = ((0.003 * fs) as usize).min(t.len());
+    let mut floor_v = t[..quiet].to_vec();
+    let floor = median_f32(&mut floor_v);
+    let (top, top_v) = argmax(&t, quiet, t.len())?;
+    let h_top = top_v - floor;
+    if h_top <= 0.0 {
+        return None;
+    }
+    let mut drop = top;
+    for j in top + 1..t.len().saturating_sub(1) {
+        let h = t[j] - floor;
+        if h < 0.6 * h_top || t[j] < t[j - 1] || t[j] <= t[j + 1] {
+            continue;
+        }
+        let dip = t[drop..j].iter().copied().fold(f32::INFINITY, f32::min) - floor;
+        if dip <= 0.5 * h.min(t[drop] - floor) {
+            drop = j;
+        }
+    }
+    Some((parabolic(&t, drop) - origin as f64) / fs)
 }
 
 /// Find every beat by correlating with a given template. Long recordings
@@ -167,7 +252,7 @@ pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) ->
     let zm: Vec<f32> = template.iter().map(|v| v - mean).collect();
     let corr = correlate(env, &zm);
     let pre = PRE_S * fs;
-    let peaks = track_peaks(&corr, fs, beat);
+    let peaks = track_peaks(&corr, fs, beat, None);
     let mut q: Vec<f32> = peaks.iter().map(|p| p.1).collect();
     let typical = median_f32(&mut q).max(f32::MIN_POSITIVE);
 

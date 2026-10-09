@@ -64,6 +64,12 @@ pub struct SynthConfig {
     /// seconds: their unlock comes this much earlier (the impulse in
     /// proportion), as when the two sides' lifts differ.
     pub even_unlock_lead_s: f64,
+    /// Gains of the three sounds on beats with an odd generator count,
+    /// when the two sides' sounds differ in level; `sounds` sets the even
+    /// beats' gains, and the odd beats' when this is `None`.
+    pub odd_gains: Option<[f64; 3]>,
+    /// Spread of each sound's level from beat to beat (SD, relative).
+    pub gain_jitter: f64,
     pub extra: Option<ExtraSound>,
 }
 
@@ -97,6 +103,8 @@ impl Default for SynthConfig {
             ],
             impulse_at: 0.45,
             even_unlock_lead_s: 0.0,
+            odd_gains: None,
+            gain_jitter: 0.08,
             extra: None,
         }
     }
@@ -127,7 +135,10 @@ pub fn generate(
         }
         // The drop is the reference point; the unlock comes tud earlier.
         let drop = t + side * cfg.beat_error_ms / 1000.0;
-        let [s1, s2, s3] = cfg.sounds;
+        let [mut s1, mut s2, mut s3] = cfg.sounds;
+        if let Some([g1, g2, g3]) = cfg.odd_gains.filter(|_| k % 2 == 1) {
+            (s1.gain, s2.gain, s3.gain) = (g1, g2, g3);
+        }
         let mut events = vec![
             (drop - tud, s1),
             (drop - (1.0 - cfg.impulse_at) * tud, s2),
@@ -140,7 +151,7 @@ pub fn generate(
             let (gain, fc, tau) = (snd.gain, snd.freq_hz, snd.decay_s);
             let i0 = (te * fs).round() as isize;
             let ph = rng.next_f64() * 2.0 * std::f64::consts::PI;
-            let g = gain * (1.0 + 0.08 * rng.normal());
+            let g = gain * (1.0 + cfg.gain_jitter * rng.normal()).max(0.0);
             for j in 0..blen {
                 let idx = i0 + j as isize;
                 if idx < 0 || idx as usize >= n {
