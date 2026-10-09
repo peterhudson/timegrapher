@@ -1,13 +1,15 @@
-//! What to change on the computer to fix a microphone problem.
+//! The microphone's input level, and what to change on the computer to fix
+//! a microphone problem.
 //!
 //! On Linux we read the ALSA mixer with `amixer` and propose exact
 //! commands; on macOS and Windows we say which setting to change. Nothing
-//! here changes a setting unless `apply` is called, and the CLI only calls
-//! it when the person passed `--apply`.
+//! here changes a setting unless `apply` is called (the CLI calls it only
+//! when the person passed `--apply`) or an [`InputGain`] is set (the app
+//! does that when the person moves its input-level control).
 
+use crate::diagnose::{IssueCode, SignalCheck};
 use serde::Serialize;
 use std::process::Command;
-use timegrapher_core::diagnose::{IssueCode, SignalCheck};
 
 /// One control from `amixer scontents`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -294,7 +296,7 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
 }
 
 /// The sound server on top of ALSA, if one is running for this user.
-fn sound_server() -> Option<&'static str> {
+pub fn sound_server() -> Option<&'static str> {
     let dir = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
     if dir.join("pipewire-0").exists() {
         Some("PipeWire")
@@ -376,6 +378,164 @@ pub fn shell_words(cmd: &[String]) -> String {
         .join(" ")
 }
 
+/// Where a sound input's level is set.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum InputGain {
+    /// The desktop sound server's default input: PipeWire through
+    /// `wpctl`, or PulseAudio (or PipeWire's stand-in for it) through
+    /// `pactl`.
+    SoundServer { server: String },
+    /// An ALSA card's capture control, through `amixer`.
+    Alsa { card: String },
+}
+
+/// An input's level as it stands.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GainState {
+    /// From 0 (quietest) to 1 (loudest).
+    pub level: f64,
+    /// As the system shows it, such as "62%" or "10/16 (12.4 dB)".
+    pub text: String,
+    /// The card's automatic gain switch, when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agc: Option<bool>,
+}
+
+impl InputGain {
+    /// The level control for a device id from `capture::list` (Linux only):
+    /// the sound server's for the default input, the card's for a direct
+    /// device.
+    pub fn for_device(id: &str) -> Option<InputGain> {
+        if !cfg!(target_os = "linux") {
+            return None;
+        }
+        let bare = id.strip_prefix("alsa:").unwrap_or(id);
+        if matches!(bare, "default" | "pipewire" | "pulse") {
+            return Some(InputGain::SoundServer {
+                server: sound_server()?.to_string(),
+            });
+        }
+        card_from_device(bare).map(|card| InputGain::Alsa { card })
+    }
+
+    /// The card whose automatic gain switch is offered: the device's own,
+    /// or the one USB card behind the sound server.
+    fn card(&self) -> Option<String> {
+        match self {
+            InputGain::Alsa { card } => Some(card.clone()),
+            InputGain::SoundServer { .. } => single_usb_card(),
+        }
+    }
+
+    pub fn read(&self) -> Option<GainState> {
+        let mixer = self.card().and_then(|c| read_alsa(&c));
+        let agc = mixer.as_ref().and_then(|m| m.agc()).and_then(|c| c.switch);
+        match self {
+            InputGain::SoundServer { .. } => {
+                let level = output(&["wpctl", "get-volume", "@DEFAULT_AUDIO_SOURCE@"])
+                    .and_then(|t| parse_wpctl_volume(&t))
+                    .or_else(|| {
+                        output(&["pactl", "get-source-volume", "@DEFAULT_SOURCE@"])
+                            .and_then(|t| parse_pactl_volume(&t))
+                    })?;
+                Some(GainState {
+                    level: level.clamp(0.0, 1.0),
+                    text: format!("{:.0}%", level * 100.0),
+                    agc,
+                })
+            }
+            InputGain::Alsa { .. } => {
+                let m = mixer?;
+                let c = m.capture_level()?;
+                let (cur, lo, hi) = c.capture?;
+                Some(GainState {
+                    level: (cur - lo) as f64 / (hi - lo).max(1) as f64,
+                    text: match c.capture_db {
+                        Some(db) => format!("{cur}/{hi} ({db:+.1} dB)"),
+                        None => format!("{cur}/{hi}"),
+                    },
+                    agc,
+                })
+            }
+        }
+    }
+
+    /// Set the level, from 0 to 1.
+    pub fn set_level(&self, level: f64) -> Result<(), String> {
+        let level = level.clamp(0.0, 1.0);
+        match self {
+            InputGain::SoundServer { .. } => {
+                let v = format!("{level:.3}");
+                run(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", &v]).or_else(|_| {
+                    let p = format!("{:.0}%", level * 100.0);
+                    run(&["pactl", "set-source-volume", "@DEFAULT_SOURCE@", &p])
+                })
+            }
+            InputGain::Alsa { card } => {
+                let m = read_alsa(card).ok_or("can't read the sound card's mixer")?;
+                let c = m.capture_level().ok_or("the card has no capture level")?;
+                let (_, lo, hi) = c.capture.ok_or("the card has no capture level")?;
+                let v = lo + ((hi - lo) as f64 * level).round() as i64;
+                let cmd = amixer(card, c, &v.to_string());
+                run(&cmd.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+        }
+    }
+
+    /// Turn the card's automatic gain on or off.
+    pub fn set_agc(&self, on: bool) -> Result<(), String> {
+        let card = self.card().ok_or("no sound card found for this input")?;
+        let m = read_alsa(&card).ok_or("can't read the sound card's mixer")?;
+        let c = m
+            .agc()
+            .ok_or("this microphone has no automatic gain switch")?;
+        let cmd = amixer(&card, c, if on { "on" } else { "off" });
+        run(&cmd.iter().map(String::as_str).collect::<Vec<_>>())
+    }
+}
+
+/// `wpctl get-volume` prints "Volume: 0.62", with " [MUTED]" when muted.
+pub fn parse_wpctl_volume(text: &str) -> Option<f64> {
+    let v = text.split("Volume:").nth(1)?.split_whitespace().next()?;
+    let v: f64 = v.parse().ok()?;
+    Some(if text.contains("[MUTED]") { 0.0 } else { v })
+}
+
+/// `pactl get-source-volume` prints "Volume: mono: 40632 /  62% / -12.46 dB"
+/// (one entry per channel); the first percentage is taken.
+pub fn parse_pactl_volume(text: &str) -> Option<f64> {
+    let pct = text
+        .split('%')
+        .next()?
+        .rsplit(['/', ' '])
+        .find(|s| !s.is_empty())?;
+    pct.trim().parse::<f64>().ok().map(|p| p / 100.0)
+}
+
+fn output(cmd: &[&str]) -> Option<String> {
+    let out = Command::new(cmd[0]).args(&cmd[1..]).output().ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn run(cmd: &[&str]) -> Result<(), String> {
+    let out = Command::new(cmd[0])
+        .args(&cmd[1..])
+        .output()
+        .map_err(|e| format!("{}: {e}", cmd[0]))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} failed: {}",
+            cmd.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,8 +585,8 @@ Simple mixer control 'Auto Gain Control',0
     }
 
     fn clipped() -> SignalCheck {
-        use timegrapher_core::diagnose::{check, DiagnoseConfig};
-        use timegrapher_core::synth::{generate, SynthConfig};
+        use crate::diagnose::{check, DiagnoseConfig};
+        use crate::synth::{generate, SynthConfig};
         let cfg = SynthConfig {
             duration_s: 4.0,
             ..Default::default()
@@ -473,6 +633,28 @@ Simple mixer control 'Auto Gain Control',0
         CMEDIA
             .replace("Playback [on]", "Playback [off]")
             .replace(" [23.81dB]", "")
+    }
+
+    #[test]
+    fn sound_server_volumes() {
+        assert_eq!(parse_wpctl_volume("Volume: 0.62\n"), Some(0.62));
+        assert_eq!(parse_wpctl_volume("Volume: 0.40 [MUTED]\n"), Some(0.0));
+        assert_eq!(
+            parse_pactl_volume("Volume: mono: 40632 /  62% / -12.46 dB\n        balance 0.00\n"),
+            Some(0.62)
+        );
+        assert_eq!(
+            parse_pactl_volume(
+                "Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB"
+            ),
+            Some(1.0)
+        );
+        assert_eq!(
+            InputGain::for_device("alsa:hw:CARD=Device,DEV=0"),
+            cfg!(target_os = "linux").then(|| InputGain::Alsa {
+                card: "Device".into()
+            })
+        );
     }
 
     #[test]

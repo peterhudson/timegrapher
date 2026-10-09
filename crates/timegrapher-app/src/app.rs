@@ -12,7 +12,9 @@ use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
+use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
+use timegrapher_core::mixer::{GainState, InputGain};
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -109,7 +111,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 /// Averaging times offered for the readings, seconds (Witschi's choices).
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
-/// beat at 28,800 bph, the widest view in which tick and toc can't wrap
+/// beat at 28,800 bph, the widest view in which tick and tock can't wrap
 /// onto each other.
 const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
@@ -191,7 +193,15 @@ pub struct TimegrapherApp {
     trend: Vec<TrendPoint>,
     level: Level,
     level_at: Instant,
-    clipped_recently: bool,
+    /// When the input last clipped.
+    clipped_at: Option<Instant>,
+    /// The selected input's level control, and its state when last read.
+    gain: Option<InputGain>,
+    gain_state: Option<GainState>,
+    gain_read_at: Instant,
+    /// The device the level control was read for.
+    gain_device: Option<String>,
+    gain_error: Option<String>,
     message: Option<(String, bool)>,
     /// Offer every input the system lists, not just one per microphone.
     all_inputs: bool,
@@ -202,7 +212,12 @@ pub struct TimegrapherApp {
 
 impl TimegrapherApp {
     pub fn new(file: Option<PathBuf>, analyse: bool) -> Self {
-        let devices = capture::list().unwrap_or_default();
+        Self::with_devices(capture::list().unwrap_or_default(), file, analyse)
+    }
+
+    /// The app with a given device list. Tests pass an empty one: listing
+    /// devices from several test threads at once crashes on Windows.
+    fn with_devices(devices: Vec<InputDevice>, file: Option<PathBuf>, analyse: bool) -> Self {
         let device = capture::choices(&devices).first().map(|c| c.id.clone());
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
@@ -244,7 +259,12 @@ impl TimegrapherApp {
             trend: Vec::new(),
             level: Level::default(),
             level_at: Instant::now(),
-            clipped_recently: false,
+            clipped_at: None,
+            gain: None,
+            gain_state: None,
+            gain_read_at: Instant::now(),
+            gain_device: None,
+            gain_error: None,
             message: None,
             all_inputs: false,
             opened_at: Instant::now(),
@@ -291,7 +311,7 @@ impl TimegrapherApp {
         self.trend.clear();
         self.view_end = None;
         self.level = Level::default();
-        self.clipped_recently = false;
+        self.clipped_at = None;
         self.message = None;
     }
 
@@ -405,7 +425,7 @@ impl TimegrapherApp {
                             self.level_at = Instant::now();
                         }
                         if l.clipped_fraction > 0.0 {
-                            self.clipped_recently = true;
+                            self.clipped_at = Some(Instant::now());
                         }
                         if let Some(r) = self.recorder.as_mut() {
                             if let Err(e) = r.write(&b) {
@@ -622,6 +642,10 @@ impl TimegrapherApp {
                 });
                 ui.checkbox(&mut self.all_inputs, "Show every input")
                     .on_hover_text("List every device the system offers, with its id");
+                if self.gain_device != self.device {
+                    self.read_gain();
+                }
+                self.gain_controls(ui);
                 ui.add_enabled_ui(!self.running(), |ui| {
                     ui.checkbox(&mut self.save, "Save the recording");
                     if self.save {
@@ -848,6 +872,17 @@ impl TimegrapherApp {
                 }
             });
             ui.end_row();
+            ui.label("Theme");
+            ui.horizontal(|ui| {
+                let mut t = ui.ctx().options(|o| o.theme_preference);
+                ui.selectable_value(&mut t, egui::ThemePreference::System, "System");
+                ui.selectable_value(&mut t, egui::ThemePreference::Light, "Light");
+                ui.selectable_value(&mut t, egui::ThemePreference::Dark, "Dark");
+                if t != ui.ctx().options(|o| o.theme_preference) {
+                    ui.ctx().set_theme(t);
+                }
+            });
+            ui.end_row();
         });
         ui.checkbox(&mut self.follow, "Auto-centre")
             .on_hover_text("Keep the newest beats on the centre line and slide the rest");
@@ -892,6 +927,150 @@ impl TimegrapherApp {
         );
     }
 
+    fn clipping(&self) -> bool {
+        self.clipped_at
+            .is_some_and(|t| t.elapsed().as_secs_f64() < 3.0)
+    }
+
+    /// The input level in words and the colour to show it in.
+    fn level_text(&self, ui: &egui::Ui) -> (String, Color32) {
+        let peak = self.level.peak_dbfs.max(-99.0);
+        let red = Color32::from_rgb(0xe0, 0x40, 0x40);
+        let amber = Color32::from_rgb(0xd0, 0x90, 0x20);
+        if self.clipping() {
+            (format!("peak {peak:.0} dBFS, clipping"), red)
+        } else if peak > HOT_PEAK_DBFS {
+            (format!("peak {peak:.0} dBFS, too hot"), amber)
+        } else if peak < -40.0 {
+            (format!("peak {peak:.0} dBFS, very quiet"), amber)
+        } else {
+            (
+                format!("peak {peak:.0} dBFS"),
+                ui.visuals().weak_text_color(),
+            )
+        }
+    }
+
+    /// Find the selected input's level control and read it.
+    fn read_gain(&mut self) {
+        self.gain_device = self.device.clone();
+        self.gain = self.device.as_deref().and_then(InputGain::for_device);
+        self.gain_state = self.gain.as_ref().and_then(|g| g.read());
+        self.gain_read_at = Instant::now();
+    }
+
+    /// The input level control and meter, under the device menu.
+    fn gain_controls(&mut self, ui: &mut egui::Ui) {
+        if self.gain_read_at.elapsed().as_secs_f64() > if self.running() { 2.0 } else { 10.0 } {
+            self.read_gain();
+        }
+        egui::Grid::new("gain").num_columns(2).show(ui, |ui| {
+            ui.label("Input level").on_hover_text(
+                "The microphone's gain. For the system default this is the sound server's \
+                 input volume, which it puts back on the microphone each time it opens it; \
+                 for a direct device it is the card's capture level. Aim for ticks peaking \
+                 around -10 dBFS, and never clipping.",
+            );
+            match (self.gain.clone(), self.gain_state.clone()) {
+                (Some(g), Some(st)) => {
+                    ui.horizontal(|ui| {
+                        let mut pct = st.level * 100.0;
+                        let r = ui.add(
+                            egui::Slider::new(&mut pct, 0.0..=100.0)
+                                .show_value(false)
+                                .step_by(1.0),
+                        );
+                        ui.label(&st.text);
+                        // Set it once the drag ends (or on a click or key),
+                        // not on every pixel.
+                        if (r.changed() && !r.dragged()) || r.drag_stopped() {
+                            self.gain_error = g.set_level(pct / 100.0).err();
+                            self.read_gain();
+                        } else if r.changed() {
+                            if let Some(s) = self.gain_state.as_mut() {
+                                s.level = pct / 100.0;
+                            }
+                        }
+                    });
+                    ui.end_row();
+                    if let Some(on) = st.agc {
+                        ui.label("Auto gain");
+                        let mut agc = on;
+                        if ui
+                            .checkbox(&mut agc, if on { "on (turn it off)" } else { "off" })
+                            .on_hover_text(
+                                "The microphone's automatic gain changes the level as it \
+                                 listens, which spoils amplitude and level readings. Keep it off.",
+                            )
+                            .changed()
+                        {
+                            self.gain_error = g.set_agc(agc).err();
+                            self.read_gain();
+                        }
+                        ui.end_row();
+                    }
+                }
+                _ => {
+                    ui.label(
+                        RichText::new(if cfg!(target_os = "linux") {
+                            "not adjustable here"
+                        } else {
+                            "set it in the system's sound settings"
+                        })
+                        .weak(),
+                    );
+                    ui.end_row();
+                }
+            }
+            ui.label("Peak");
+            let peak = self.level.peak_dbfs.max(-60.0);
+            let (txt, color) = self.level_text(ui);
+            let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(150.0, 12.0), egui::Sense::hover());
+            let p = ui.painter();
+            p.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
+            p.rect_stroke(
+                rect,
+                2.0,
+                ui.visuals().widgets.noninteractive.bg_stroke,
+                egui::StrokeKind::Inside,
+            );
+            if self.running() {
+                let mut fill = rect;
+                fill.set_width(rect.width() * frac);
+                p.rect_filled(fill, 2.0, color.gamma_multiply(0.9));
+            }
+            // Marks at the target and at the hot limit.
+            for (db, c) in [
+                (TARGET_PEAK_DBFS, ui.visuals().text_color()),
+                (HOT_PEAK_DBFS, Color32::from_rgb(0xe0, 0x40, 0x40)),
+            ] {
+                let x = rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
+                p.line_segment(
+                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                    egui::Stroke::new(1.0_f32, c),
+                );
+            }
+            ui.end_row();
+            ui.label("");
+            let (txt, color) = if self.running() {
+                (txt, color)
+            } else {
+                ("shows once the input starts".into(), ui.visuals().weak_text_color())
+            };
+            ui.label(RichText::new(txt).small().color(color))
+                .on_hover_text("Loudest sample in the last half second; the white mark is the -10 dBFS target, the red one -6 dBFS, the most that leaves room for a louder watch.");
+            ui.end_row();
+        });
+        if let Some(e) = &self.gain_error {
+            ui.label(
+                RichText::new(e)
+                    .small()
+                    .color(Color32::from_rgb(0xe0, 0x40, 0x40)),
+            );
+        }
+    }
+
     fn set_lift(&mut self, lift: f64) {
         self.lift_deg = lift;
         if let Some(l) = self.live.as_mut() {
@@ -925,19 +1104,29 @@ impl TimegrapherApp {
             let rate = r.and_then(|r| r.rate_s_per_day);
             cols[0].label(RichText::new("Rate").size(14.0));
             cols[0].label(big(rate.map_or(dash.clone(), |v| format!("{v:+.1}"))));
-            cols[0].label("s/d");
+            cols[0]
+                .label("seconds per day")
+                .on_hover_text("+ the watch gains that many seconds a day, − it loses them");
             let amp = r.and_then(|r| r.amplitude_deg);
             cols[1].label(RichText::new("Amplitude").size(14.0));
             cols[1].label(big(amp.map_or(dash.clone(), |v| format!("{v:.0}°"))));
             let lift = fields::plain(self.lift_deg);
-            cols[1].label(match r {
-                Some(LiveReading {
-                    amplitude_even_deg: Some(a),
-                    amplitude_odd_deg: Some(b),
-                    ..
-                }) => format!("A {a:.0}°  B {b:.0}°   lift {lift}°"),
-                _ => format!("lift {lift}°"),
-            });
+            cols[1]
+                .label(match r {
+                    Some(LiveReading {
+                        amplitude_even_deg: Some(a),
+                        amplitude_odd_deg: Some(b),
+                        ..
+                    }) => format!("tick {a:.0}°   tock {b:.0}°   lift angle {lift}°"),
+                    _ => format!("lift angle {lift}°"),
+                })
+                .on_hover_text(
+                    "The big figure is the average amplitude. Below it are the amplitude \
+                 measured from the ticks (blue on the strip and charts) and from the tocks \
+                 (orange). The sound can't tell which beat is which pallet, so the first beat \
+                 heard is called the tick. A big difference between them usually means one \
+                 beat's sounds were misread, not a fault in the watch.",
+                );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
             cols[2].label(RichText::new("Beat error").size(14.0));
@@ -962,9 +1151,6 @@ impl TimegrapherApp {
             if let Some(b) = r.and_then(|r| r.bph) {
                 parts.push(format!("{b} bph"));
             }
-            if let Some(j) = r.and_then(|r| r.jitter_us) {
-                parts.push(format!("jitter {j:.0} µs"));
-            }
             if let Some(r) = r {
                 parts.push(format!(
                     "{} beats in {}",
@@ -978,6 +1164,18 @@ impl TimegrapherApp {
                 self.position.name().to_lowercase()
             ));
             ui.label(RichText::new(parts.join("   ·   ")).weak());
+            if let Some(j) = r.and_then(|r| r.jitter_us) {
+                ui.label(RichText::new(format!("·   jitter {j:.0} µs")).weak())
+                    .on_hover_text(
+                        "How far single beats land from the steady line that the rate and \
+                         beat error are fitted to: the spread of the dots across the strip, \
+                         as a robust standard deviation in microseconds (millionths of a \
+                         second). Lower is steadier. It rises with background noise or a \
+                         muffled sound as well as with a watch that runs unevenly (a rubbing \
+                         part, a worn tooth, low amplitude), so compare it on the same stand \
+                         and microphone.",
+                    );
+            }
         });
     }
 
@@ -992,27 +1190,16 @@ impl TimegrapherApp {
                         .text(format!("Analysing {}", b.label)),
                 );
             } else if !self.source_label.is_empty() {
-                let what = if self.running() { "Listening to" } else { "Showing" };
+                let what = if self.running() {
+                    "Listening to"
+                } else {
+                    "Showing"
+                };
                 ui.label(format!("{what} {}", self.source_label));
             }
             if self.running() {
-                let warn = self.clipped_recently || self.level.peak_dbfs > -1.0;
-                let low = self.level.peak_dbfs < -40.0;
-                let txt = format!("peak {:.0} dBFS", self.level.peak_dbfs.max(-99.0));
-                let color = if warn {
-                    Color32::from_rgb(0xe0, 0x40, 0x40)
-                } else if low {
-                    Color32::from_rgb(0xd0, 0x90, 0x20)
-                } else {
-                    ui.visuals().weak_text_color()
-                };
-                ui.label(RichText::new(txt).color(color)).on_hover_text(
-                    "Loudest sample in the last half second. Aim for ticks peaking around -12 dBFS; \
-                     red means the input is clipping, so turn the gain down.",
-                );
-                if self.clipped_recently {
-                    ui.label(RichText::new("clipping").color(Color32::from_rgb(0xe0, 0x40, 0x40)));
-                }
+                let (txt, color) = self.level_text(ui);
+                ui.label(RichText::new(txt).color(color));
                 if let Some(s) = self.reading().and_then(|r| r.snr) {
                     ui.label(
                         RichText::new(if s < 4.0 {
@@ -1164,18 +1351,29 @@ impl TimegrapherApp {
         let (series, unit, decimals): (Series, &'static str, usize) = match pane {
             Pane::Rate => (
                 vec![(
-                    format!("Rate ({} average)", fields::duration(self.average_s)),
+                    format!(
+                        "Rate in seconds per day, {} average",
+                        fields::duration(self.average_s)
+                    ),
                     pick(|p| p.rate),
                     colors[0],
                 )],
-                " s/d",
+                " s/day",
                 1,
             ),
             Pane::Amplitude => (
                 vec![
-                    ("Amplitude".into(), pick(|p| p.amplitude), main),
-                    ("A".into(), pick(|p| p.amplitude_a), colors[0]),
-                    ("B".into(), pick(|p| p.amplitude_b), colors[1]),
+                    ("Average amplitude".into(), pick(|p| p.amplitude), main),
+                    (
+                        "Amplitude from tick".into(),
+                        pick(|p| p.amplitude_a),
+                        colors[0],
+                    ),
+                    (
+                        "Amplitude from tock".into(),
+                        pick(|p| p.amplitude_b),
+                        colors[1],
+                    ),
                 ],
                 "°",
                 0,
@@ -1225,14 +1423,10 @@ impl TimegrapherApp {
                 };
                 format!("{:.*}{unit}", d, v)
             })
-            .label_formatter(move |name, p| {
-                format!(
-                    "{name}\n{}  {:.*}{unit}",
-                    strip::fmt_time(p.x),
-                    decimals,
-                    p.y
-                )
-            });
+            // The values at the pointer are shown for every line at once
+            // (below), instead of only when the pointer is on a line.
+            .show_x(false)
+            .show_y(false);
         if series.len() > 1 {
             plot = plot.legend(Legend::default());
         }
@@ -1243,6 +1437,7 @@ impl TimegrapherApp {
             plot = plot.default_y_bounds(lo, hi);
         }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
+        let lookup: Vec<(String, Vec<[f64; 2]>, Color32)> = series.clone();
         let resp = plot.show(ui, |p| {
             if p.response().hovered() {
                 let s = p.ctx().input(|i| i.smooth_scroll_delta);
@@ -1262,14 +1457,34 @@ impl TimegrapherApp {
             if let Some(t) = marker {
                 p.vline(VLine::new("", t).color(weak).width(1.0_f32));
             }
-            let r = p.response();
-            if r.clicked() && !r.double_clicked() {
-                p.pointer_coordinate()
-            } else {
-                None
+            let (hovered, clicked) = {
+                let r = p.response();
+                (r.hovered(), r.clicked() && !r.double_clicked())
+            };
+            let hover = p.pointer_coordinate().filter(|_| hovered);
+            if let Some(h) = hover {
+                p.vline(VLine::new("", h.x).color(weak).width(1.0_f32));
             }
+            let click = clicked.then(|| p.pointer_coordinate()).flatten();
+            (click, hover.map(|h| h.x))
         });
-        if let Some(at) = resp.inner {
+        let (click, hover) = resp.inner;
+        if let Some(x) = hover {
+            resp.response.on_hover_ui_at_pointer(|ui| {
+                ui.label(RichText::new(strip::fmt_time(x)).strong());
+                for (name, pts, c) in &lookup {
+                    let v = value_at(pts, x);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("■").color(*c));
+                        ui.label(match v {
+                            Some(v) => format!("{name}: {v:.decimals$}{unit}"),
+                            None => format!("{name}: none"),
+                        });
+                    });
+                }
+            });
+        }
+        if let Some(at) = click {
             if at.x > 0.0 {
                 self.view_end = Some(at.x);
             }
@@ -1333,6 +1548,25 @@ fn grid_marks(input: egui_plot::GridInput, ladder: &[f64]) -> Vec<egui_plot::Gri
         coarser.push(step);
     }
     marks
+}
+
+/// The value of the point nearest `x` in points sorted by x, unless the
+/// nearest is far off (a gap in the line).
+fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
+    let i = points.partition_point(|p| p[0] < x);
+    let near = [i.checked_sub(1), (i < points.len()).then_some(i)]
+        .into_iter()
+        .flatten()
+        .min_by(|&a, &b| {
+            (points[a][0] - x)
+                .abs()
+                .total_cmp(&(points[b][0] - x).abs())
+        })?;
+    // The usual spacing of the points: the median gap.
+    let mut gaps: Vec<f64> = points.windows(2).map(|w| w[1][0] - w[0][0]).collect();
+    gaps.sort_by(f64::total_cmp);
+    let spacing = gaps.get(gaps.len() / 2).copied().unwrap_or(f64::INFINITY);
+    ((points[near][0] - x).abs() <= 3.0 * spacing).then_some(points[near][1])
 }
 
 /// The 2nd to 98th percentile of the values, padded a little.
@@ -1431,7 +1665,7 @@ mod tests {
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
-        let mut app = TimegrapherApp::new(None, false);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.reset_session(48000, "syn".into());
         let cfg = SynthConfig {
             duration_s: seconds,
@@ -1497,6 +1731,23 @@ mod tests {
         assert!(
             (app.trend.last().unwrap().t - app.live.as_ref().unwrap().duration_s()).abs() <= 0.5
         );
+    }
+
+    #[test]
+    fn values_under_the_pointer() {
+        let pts = vec![[0.0, 1.0], [1.0, 2.0], [2.0, 3.0], [10.0, 4.0]];
+        assert_eq!(value_at(&pts, 0.9), Some(2.0));
+        assert_eq!(value_at(&pts, 1.4), Some(2.0));
+        assert_eq!(value_at(&pts, -0.5), Some(1.0));
+        // In the gap between 2 s and 10 s, nothing near enough.
+        assert_eq!(
+            value_at(
+                &[[0.0, 1.0], [1.0, 2.0], [2.0, 3.0], [3.0, 3.0], [40.0, 4.0]],
+                25.0
+            ),
+            None
+        );
+        assert_eq!(value_at(&[], 1.0), None);
     }
 
     #[test]

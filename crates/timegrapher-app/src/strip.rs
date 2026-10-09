@@ -5,7 +5,7 @@
 //! clock running at the nominal beat rate, and down the strip by time. The
 //! newest beats are at the top. A watch on rate draws a vertical line; one
 //! that gains leans right as it rises (/), one that loses leans left (\).
-//! Tick and toc (beats A and B) draw two lines whose gap is the beat error.
+//! Tick and tock (the even and odd beats) draw two lines whose gap is the beat error.
 //! A line that runs off one side comes back on the other, as on a
 //! Witschi diagram, so the strip's width sets the zoom. The strip can also
 //! lie on its side, time running left to right with the newest beats on the
@@ -14,7 +14,7 @@
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
 
-/// Colours of beats A (even) and B (odd).
+/// Colours of the ticks (even beats) and tocks (odd beats).
 pub fn side_colors(dark: bool) -> [Color32; 2] {
     if dark {
         [
@@ -38,7 +38,7 @@ pub struct Anchor {
 }
 
 impl Anchor {
-    /// Centre the strip on the last `n` beats (tick and toc together).
+    /// Centre the strip on the last `n` beats (tick and tock together).
     pub fn centre_on(beats: &[Beat], period_s: f64, n: usize) -> Option<Anchor> {
         let last = beats.last()?;
         let recent = &beats[beats.len().saturating_sub(n)..];
@@ -304,6 +304,17 @@ pub fn draw_strip(
             text,
         );
     }
+    // Which colour is which.
+    let colors = side_colors(dark);
+    let mut at = if view.horizontal {
+        r.left_top() + Vec2::new(48.0, 2.0)
+    } else {
+        r.left_top() + Vec2::new(4.0, 2.0)
+    };
+    for (label, c) in [("Tick", colors[0]), ("Tock", colors[1])] {
+        let g = painter.text(at, Align2::LEFT_TOP, label, font.clone(), c);
+        at.x = g.right() + 10.0;
+    }
     if let Some(n) = note {
         let at = if view.horizontal {
             r.right_top() + Vec2::new(-4.0, 2.0)
@@ -321,7 +332,6 @@ pub fn draw_strip(
     let Some(anchor) = anchor else {
         return input;
     };
-    let colors = side_colors(dark);
     let lo = beats.partition_point(|b| b.time < oldest);
     let hi = beats.partition_point(|b| b.time <= end_s);
     let shown = &beats[lo..hi];

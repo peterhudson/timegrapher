@@ -6,13 +6,13 @@
 //! reads the sound card's mixer where it can, and proposes fixes. It
 //! changes nothing on the computer unless `--apply` is given.
 
-use crate::mixer::{self, Fix, Mixer};
 use crate::output;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use timegrapher_core::audio::{self, Audio};
 use timegrapher_core::diagnose::{self, DiagnoseConfig, Severity, SignalCheck};
+use timegrapher_core::mixer::{self, Fix, Mixer};
 
 pub struct Options {
     pub device: Option<String>,
