@@ -193,12 +193,17 @@ pub struct TimegrapherApp {
     level_at: Instant,
     clipped_recently: bool,
     message: Option<(String, bool)>,
+    /// Offer every input the system lists, not just one per microphone.
+    all_inputs: bool,
+    /// When the microphone was opened and when it last sent audio.
+    opened_at: Instant,
+    audio_at: Option<Instant>,
 }
 
 impl TimegrapherApp {
     pub fn new(file: Option<PathBuf>, analyse: bool) -> Self {
         let devices = capture::list().unwrap_or_default();
-        let device = devices.first().map(|d| d.id.clone());
+        let device = capture::choices(&devices).first().map(|c| c.id.clone());
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
@@ -241,6 +246,9 @@ impl TimegrapherApp {
             level_at: Instant::now(),
             clipped_recently: false,
             message: None,
+            all_inputs: false,
+            opened_at: Instant::now(),
+            audio_at: None,
         };
         if let Some(f) = file {
             if analyse {
@@ -291,7 +299,16 @@ impl TimegrapherApp {
         self.stop();
         match capture::open_input(self.device.as_deref(), None) {
             Ok(c) => {
-                self.reset_session(c.sample_rate, c.label.clone());
+                let label = capture::choices(&self.devices)
+                    .into_iter()
+                    .find(|ch| Some(&ch.id) == self.device.as_ref())
+                    .map_or_else(|| c.label.clone(), |ch| ch.label);
+                self.reset_session(
+                    c.sample_rate,
+                    format!("{label} at {} Hz, {}-bit", c.sample_rate, c.bits),
+                );
+                self.opened_at = Instant::now();
+                self.audio_at = None;
                 if self.save {
                     let info = self.info(&c.label, c.sample_rate, c.bits);
                     match Recorder::start(Path::new(&self.save_dir), info) {
@@ -301,7 +318,10 @@ impl TimegrapherApp {
                 }
                 self.capture = Some(c);
             }
-            Err(e) => self.error(format!("Can't open the input: {e}")),
+            Err(e) => self.error(format!(
+                "Can't open the input. {}",
+                capture::explain_error(&e)
+            )),
         }
     }
 
@@ -376,6 +396,7 @@ impl TimegrapherApp {
             loop {
                 match cap.rx.try_recv() {
                     Ok(Event::Audio(b)) => {
+                        self.audio_at = Some(Instant::now());
                         let l = Level::of(&b.samples);
                         if self.level_at.elapsed().as_secs_f64() > 0.5
                             || l.peak_dbfs > self.level.peak_dbfs
@@ -401,7 +422,11 @@ impl TimegrapherApp {
                         break;
                     }
                     Ok(Event::Error(e)) => {
-                        failure = Some(format!("Input: {e}"));
+                        failure = Some(format!("Input stopped. {}", capture::explain_error(&e)));
+                        if !cap.is_file {
+                            ended = true;
+                            break;
+                        }
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
@@ -411,15 +436,30 @@ impl TimegrapherApp {
                 }
             }
         }
+        // A microphone that opened but sends nothing.
+        if let Some(cap) = &self.capture {
+            let quiet = self.audio_at.map_or(self.opened_at, |t| t).elapsed();
+            if !cap.is_file && quiet.as_secs_f64() > 3.0 && failure.is_none() {
+                failure = Some(
+                    "No sound is arriving from this input. Choose another one, or the \
+                     system default."
+                        .to_string(),
+                );
+                ended = true;
+            }
+        }
+        let was_file = self.capture.as_ref().is_some_and(|c| c.is_file);
+        if ended {
+            self.stop();
+            if was_file {
+                self.info_msg("End of the recording.".into());
+            }
+        }
         if let Some(f) = failure {
             if f.starts_with("Saving") {
                 self.recorder = None;
             }
             self.error(f);
-        }
-        if ended {
-            self.capture = None;
-            self.info_msg("End of the recording.".into());
         }
 
         let mut done = None;
@@ -534,23 +574,37 @@ impl TimegrapherApp {
         });
         match self.input {
             Input::Microphone => {
-                ui.horizontal(|ui| {
-                    let sel = self
-                        .devices
+                let choices: Vec<capture::InputChoice> = if self.all_inputs {
+                    self.devices
                         .iter()
-                        .find(|d| Some(&d.id) == self.device.as_ref())
-                        .map_or_else(|| "(none found)".to_string(), |d| d.name.clone());
+                        .map(|d| capture::InputChoice {
+                            id: d.id.clone(),
+                            label: format!("{} ({})", d.name, d.id),
+                            detail: String::new(),
+                            is_default: d.is_default,
+                        })
+                        .collect()
+                } else {
+                    capture::choices(&self.devices)
+                };
+                ui.horizontal(|ui| {
+                    let sel = choices
+                        .iter()
+                        .find(|c| Some(&c.id) == self.device.as_ref())
+                        .map_or_else(|| "(choose an input)".to_string(), |c| c.label.clone());
                     egui::ComboBox::from_id_salt("device")
-                        .selected_text(short(&sel, 28))
+                        .selected_text(short(&sel, 30))
                         .width(200.0)
                         .show_ui(ui, |ui| {
-                            for d in &self.devices {
-                                let label = if d.is_default {
-                                    format!("{} (default)", d.name)
-                                } else {
-                                    d.name.clone()
-                                };
-                                ui.selectable_value(&mut self.device, Some(d.id.clone()), label);
+                            for c in &choices {
+                                let r = ui.selectable_value(
+                                    &mut self.device,
+                                    Some(c.id.clone()),
+                                    &c.label,
+                                );
+                                if !c.detail.is_empty() {
+                                    r.on_hover_text(&c.detail);
+                                }
                             }
                         });
                     if ui
@@ -560,10 +614,14 @@ impl TimegrapherApp {
                     {
                         self.devices = capture::list().unwrap_or_default();
                         if self.device.is_none() {
-                            self.device = self.devices.first().map(|d| d.id.clone());
+                            self.device = capture::choices(&self.devices)
+                                .first()
+                                .map(|c| c.id.clone());
                         }
                     }
                 });
+                ui.checkbox(&mut self.all_inputs, "Show every input")
+                    .on_hover_text("List every device the system offers, with its id");
                 ui.add_enabled_ui(!self.running(), |ui| {
                     ui.checkbox(&mut self.save, "Save the recording");
                     if self.save {
@@ -974,18 +1032,26 @@ impl TimegrapherApp {
                 )
                 .on_hover_text(r.dir().display().to_string());
             }
-            if let Some((m, err)) = &self.message {
-                let c = if *err {
-                    Color32::from_rgb(0xe0, 0x40, 0x40)
-                } else {
-                    ui.visuals().text_color()
-                };
-                ui.label(RichText::new(m).color(c));
+            // Errors show above the readings instead.
+            if let Some((m, false)) = &self.message {
+                ui.label(m);
             }
         });
     }
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
+        // Problems with the input go where they can't be missed.
+        if let Some((m, true)) = &self.message {
+            egui::Frame::new()
+                .fill(Color32::from_rgb(0x5a, 0x1a, 0x1a))
+                .inner_margin(8.0)
+                .corner_radius(4.0)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new(m).color(Color32::WHITE).size(15.0));
+                });
+            ui.add_space(4.0);
+        }
         self.readouts(ui);
         ui.add_space(4.0);
 

@@ -72,12 +72,22 @@ watch heard" when they don't), and the recording in progress.
 
 ## Settings
 
-- **Input.** A sound input device (the default first; Rescan looks again), or a
-  WAV or FLAC file chosen with **Open...** or typed in. Where the desktop
-  passes dropped files on (X11, Windows, macOS; not yet Wayland), dropping
-  a file on the window replays it. The app asks the device for 48 kHz in
-  as few channels as it offers, mixed to mono, and takes 16-bit samples
-  when the device has them.
+- **Input.** A sound input device, or a WAV or FLAC file chosen with
+  **Open...** or typed in. On Linux the menu offers each microphone once:
+  **System default (via PipeWire)**, which is whatever input the
+  desktop's sound settings choose and works alongside other programs, and
+  each card's direct device, marked "(direct)", which goes straight to
+  the card but can't open while the desktop sound server holds it. With a
+  USB timegrapher microphone set as the desktop's input, choose the system
+  default. **Show every input** lists everything the system offers, with
+  ids, as `timegrapher devices` does. If the input can't be opened, stops,
+  or sends no sound for 3 s, the app stops and says why above the
+  readings, rather than showing an empty strip. The status bar shows the
+  sample rate and bit depth the input opened at. Where the desktop passes
+  dropped files on (X11, Windows, macOS; not yet Wayland), dropping a file
+  on the window replays it. The app asks the device for 48 kHz in as few
+  channels as it offers, mixed to mono, and takes 16-bit samples when the
+  device has them.
 - **Beat rate.** Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,

@@ -193,6 +193,133 @@ fn matches(id: &str, name: &str, query: &str) -> Option<Match> {
     }
 }
 
+/// One entry of a device menu for a person to choose from.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct InputChoice {
+    /// The device id to open (as in [`InputDevice::id`]).
+    pub id: String,
+    pub label: String,
+    /// One or two sentences on when to use it.
+    pub detail: String,
+    pub is_default: bool,
+}
+
+/// The inputs worth offering a person, from a device list (see `list`).
+///
+/// On Linux, ALSA lists every card several times over (front, dsnoop,
+/// sysdefault, surround, null and so on) and names the sound server's
+/// default input "Default ALSA Output". This keeps the system default
+/// (normally the desktop sound server, which shares the microphone with
+/// other programs) and each card's direct `hw:` device, labelled as such.
+/// Other systems' lists are kept as they are, the default first.
+pub fn choices(devices: &[InputDevice]) -> Vec<InputChoice> {
+    let alsa: Vec<&InputDevice> = devices
+        .iter()
+        .filter(|d| d.id.starts_with("alsa:"))
+        .collect();
+    if alsa.is_empty() {
+        let mut out: Vec<InputChoice> = devices
+            .iter()
+            .map(|d| InputChoice {
+                id: d.id.clone(),
+                label: if d.is_default {
+                    format!("{} (default)", d.name)
+                } else {
+                    d.name.clone()
+                },
+                detail: d.manufacturer.clone().unwrap_or_default(),
+                is_default: d.is_default,
+            })
+            .collect();
+        out.sort_by_key(|c| !c.is_default);
+        return out;
+    }
+    let server = |name: &str| {
+        let n = name.to_lowercase();
+        if n.contains("pipewire") {
+            Some("PipeWire")
+        } else if n.contains("pulse") {
+            Some("PulseAudio")
+        } else {
+            None
+        }
+    };
+    let shared = "Whichever input the desktop's sound settings choose, shared with other \
+                  programs. Use this while the desktop sound server is running.";
+    let mut out = Vec::new();
+    let mut have_default = false;
+    for d in &alsa {
+        if &d.id[5..] == "default" {
+            have_default = true;
+            out.push(InputChoice {
+                id: d.id.clone(),
+                label: match server(&d.name) {
+                    Some(s) => format!("System default (via {s})"),
+                    None => "System default".into(),
+                },
+                detail: shared.into(),
+                is_default: true,
+            });
+        }
+    }
+    for d in &alsa {
+        let bare = &d.id[5..];
+        if (bare == "pipewire" || bare == "pulse") && !have_default {
+            out.push(InputChoice {
+                id: d.id.clone(),
+                label: format!(
+                    "{} sound server",
+                    if bare == "pipewire" {
+                        "PipeWire"
+                    } else {
+                        "PulseAudio"
+                    }
+                ),
+                detail: shared.into(),
+                is_default: false,
+            });
+        }
+    }
+    let direct: Vec<&&InputDevice> = alsa
+        .iter()
+        .filter(|d| d.id[5..].starts_with("hw:"))
+        .collect();
+    for d in &direct {
+        let twins = direct.iter().filter(|o| o.name == d.name).count();
+        let dev = d.id.rsplit("DEV=").next().filter(|_| twins > 1);
+        out.push(InputChoice {
+            id: d.id.clone(),
+            label: match dev {
+                Some(n) => format!("{} #{n} (direct)", d.name),
+                None => format!("{} (direct)", d.name),
+            },
+            detail: "Straight to the sound card, bypassing the desktop sound server. \
+                     It can't open while the sound server holds the card; then choose \
+                     the system default."
+                .into(),
+            is_default: false,
+        });
+    }
+    out
+}
+
+/// A plainer account of an error from opening or reading an input.
+pub fn explain_error(e: &str) -> String {
+    let l = e.to_lowercase();
+    if l.contains("no longer available")
+        || l.contains("unplugged")
+        || l.contains("busy")
+        || l.contains("not available")
+    {
+        format!(
+            "This input is busy: the desktop sound server is probably holding it. \
+             Choose the system default instead, or close what is using it. ({e})"
+        )
+    } else {
+        e.to_string()
+    }
+}
+
 #[cfg(feature = "capture")]
 pub use device::{find, host, list, open, open_input, record};
 
@@ -485,6 +612,76 @@ mod tests {
     }
 
     use super::*;
+
+    fn dev(id: &str, name: &str, is_default: bool) -> InputDevice {
+        InputDevice {
+            id: id.into(),
+            name: name.into(),
+            manufacturer: None,
+            is_default,
+            default_config: None,
+            supported: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn menu_keeps_the_default_and_direct_devices() {
+        // As cpal lists them on Peter's workstation (some of them).
+        let usb = "USB PnP Sound Device, USB Audio";
+        let list = vec![
+            dev(
+                "alsa:default",
+                "Default ALSA Output (currently PipeWire Media Server)",
+                true,
+            ),
+            dev("alsa:pipewire", "PipeWire Sound Server", false),
+            dev("alsa:null", "Discard all samples", false),
+            dev("alsa:sysdefault:CARD=Device", usb, false),
+            dev("alsa:front:CARD=Device,DEV=0", usb, false),
+            dev("alsa:dsnoop:CARD=Device,DEV=0", usb, false),
+            dev("alsa:hw:CARD=Device,DEV=0", usb, false),
+            dev("alsa:plughw:CARD=Device,DEV=0", usb, false),
+            dev(
+                "alsa:hw:CARD=PCH,DEV=0",
+                "HDA Intel PCH, ALC897 Analog",
+                false,
+            ),
+            dev(
+                "alsa:hw:CARD=PCH,DEV=2",
+                "HDA Intel PCH, ALC897 Analog",
+                false,
+            ),
+        ];
+        let c = choices(&list);
+        let labels: Vec<&str> = c.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "System default (via PipeWire)",
+                "USB PnP Sound Device, USB Audio (direct)",
+                "HDA Intel PCH, ALC897 Analog #0 (direct)",
+                "HDA Intel PCH, ALC897 Analog #2 (direct)",
+            ]
+        );
+        assert_eq!(c[0].id, "alsa:default");
+        assert!(c[0].is_default);
+        assert_eq!(c[1].id, "alsa:hw:CARD=Device,DEV=0");
+    }
+
+    #[test]
+    fn other_systems_keep_their_list() {
+        let list = vec![
+            dev("wasapi:a", "Mic", false),
+            dev("wasapi:b", "USB Mic", true),
+        ];
+        let c = choices(&list);
+        assert_eq!(c[0].label, "USB Mic (default)");
+        assert_eq!(c.len(), 2);
+        assert!(explain_error(
+            "The requested device is no longer available. For example, it has been unplugged."
+        )
+        .starts_with("This input is busy"));
+    }
 
     #[test]
     fn level_of_a_sine() {
