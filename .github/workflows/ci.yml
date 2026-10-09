@@ -1,37 +1,26 @@
 name: CI
 
-# Linux checks every PR push and every merge to main. Windows checks every
-# merge to main; macOS runs once a week. Both run on a PR that carries the
-# `full-ci` label, and on demand from the Actions tab (Run workflow).
-# Docs and Markdown-only changes start no run.
-
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "docs/**"]
+    paths-ignore: ["**.md"]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
-    paths-ignore: ["**.md", "docs/**"]
-  schedule:
-    - cron: "17 9 * * 1"
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
-# A newer push to the same PR or to main cancels the run it supersedes. A
-# label run keeps its own group, so adding the label leaves the Linux run alone.
+# A newer push to a PR cancels that PR's run still in progress; runs on main
+# are never cancelled.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}-${{ github.event.action == 'labeled' && 'label' || 'push' }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  linux:
-    name: test (ubuntu-latest)
-    if: >-
-      github.event_name == 'push' || github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.action != 'labeled')
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -39,28 +28,8 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: ALSA headers for sound input
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked --release
-
-  cross:
-    name: test (${{ matrix.os }})
-    if: >-
-      github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci') &&
-       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(github.event_name == 'push' && '["windows-latest"]' || github.event_name == 'schedule' && '["macos-latest"]' || '["windows-latest","macos-latest"]') }}
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --release
