@@ -102,7 +102,9 @@ JSON body:
 
 `check` fields: `sample_rate`, `duration_s`, `peak_dbfs`, `rms_dbfs`,
 `dc_offset`, `clipped_samples`, `bph`, `beats_expected`, `beats_found`,
-`tick_level_dbfs`, `noise_level_dbfs`, `tick_to_noise_db`, `gap_rise_db`
+`tick_level_dbfs`, `noise_level_dbfs`, `tick_to_noise_db`, `signal_x`
+and `signal_band` (the desktop app's "signal N×" and its band: `good`,
+`fair`, `poor`, `none`; see the table in setup-and-microphone.md), `gap_rise_db`
 (background rise between ticks; several dB means automatic gain),
 `rate_s_per_day`, `beat_error_ms` (a few seconds only, uncalibrated),
 `suggested_gain_change_db` (negative: turn down), and `issues`:

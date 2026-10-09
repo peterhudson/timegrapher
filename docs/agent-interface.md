@@ -70,6 +70,7 @@ the id or name from `devices`), or reads `--file`, and reports in `check`:
 | `clipped_samples` | samples at full scale, plus flat tops below it (clipping before the converter) |
 | `bph`, `beats_expected`, `beats_found` | is a steady beat heard? |
 | `tick_level_dbfs`, `noise_level_dbfs`, `tick_to_noise_db` | ticks against the background between them (high-passed at 1.5 kHz) |
+| `signal_x`, `signal_band` | median beat peak over the median envelope, the desktop app's "signal N×", and its band (below) |
 | `gap_rise_db` | background late in the gap over early in it; several dB means automatic gain is pumping |
 | `rate_s_per_day`, `beat_error_ms` | a quick look only |
 | `suggested_gain_change_db` | what would bring the ticks to about −10 dBFS (−6 dB step when clipped) |
@@ -77,6 +78,14 @@ the id or name from `devices`), or reads `--file`, and reports in `check`:
 
 Issue codes: `silent`, `too_quiet`, `clipping`, `hot`, `agc_suspected`,
 `no_ticks`, `noisy`.
+
+`signal_band` is `good` (10× and above: all readings can be trusted),
+`fair` (5 to 10×: rate reliable, amplitude and beat error may be off),
+`poor` (3 to 5×: only the rate) or `none` (below 3×: no watch heard;
+pure noise reads about 2×). These are the desktop app's bands and its
+"signal N×" figure, so an agent and the app's status bar agree. `no_ticks` is raised when the band is `none` (or
+fewer than half the beats are found), `noisy` as a fault when it is `poor`
+and as a warning when it is `fair`.
 
 On Linux, `mixer` holds the sound card's ALSA controls (read with
 `amixer -c CARD scontents`; the card comes from `--card`, the device id, or

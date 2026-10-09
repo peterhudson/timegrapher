@@ -55,7 +55,9 @@ Three jobs, in order:
    Exit code 0 means the signal is fit to measure with (there may still be
    warnings); 3 means at least one fault. Issues carry a code (`silent`,
    `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `noisy`, `hot`)
-   and proposed fixes. Explain the issue in plain words,
+   and proposed fixes, and the signal is banded as in the desktop app
+   (`good` 10× and up; `fair` 5–10×, rate reliable; `poor` 3–5×, only the rate;
+   `none`). Explain the issue in plain words,
    propose the fix, ask, then apply it (or `--apply` after a yes) and run
    `doctor` again until it is clean.
 4. Find out what the watch is: make, model and **calibre** if they know it.
