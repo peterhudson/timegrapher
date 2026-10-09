@@ -16,17 +16,8 @@ use timegrapher_core::beats::Beat;
 
 /// Colours of the ticks (even beats) and tocks (odd beats).
 pub fn side_colors(dark: bool) -> [Color32; 2] {
-    if dark {
-        [
-            Color32::from_rgb(0x5c, 0xc8, 0xff),
-            Color32::from_rgb(0xff, 0xa8, 0x4a),
-        ]
-    } else {
-        [
-            Color32::from_rgb(0x00, 0x6e, 0xc4),
-            Color32::from_rgb(0xc8, 0x5a, 0x00),
-        ]
-    }
+    let p = crate::theme::palette(dark);
+    [p.tick, p.tock]
 }
 
 /// Where the strip is anchored: a beat number and the time it is drawn at
@@ -158,6 +149,38 @@ impl Geom {
     }
 }
 
+/// The rate reading to draw over the beats it was fitted to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RateLine {
+    pub from_s: f64,
+    pub to_s: f64,
+    pub rate_s_per_day: f64,
+}
+
+impl RateLine {
+    /// The line's lead (ms) at each end, through the middle of the beats it
+    /// covers: a line of slope `rate` through their mean time and lead.
+    fn ends(&self, beats: &[Beat], anchor: Anchor, period_s: f64) -> Option<[(f64, f64); 2]> {
+        let lo = beats.partition_point(|b| b.time < self.from_s);
+        let hi = beats.partition_point(|b| b.time <= self.to_s);
+        let used: Vec<&Beat> = beats[lo..hi].iter().filter(|b| b.quality >= 0.4).collect();
+        if used.len() < 6 {
+            return None;
+        }
+        let n = used.len() as f64;
+        let t0 = used.iter().map(|b| b.time).sum::<f64>() / n;
+        let l0 = used
+            .iter()
+            .map(|b| anchor.lead_ms(b, period_s))
+            .sum::<f64>()
+            / n;
+        // A gaining watch beats a little early each time: ms of lead per second.
+        let slope = self.rate_s_per_day / 86400.0 * 1000.0;
+        let at = |t: f64| (t, l0 + slope * (t - t0));
+        Some([at(used[0].time), at(used[used.len() - 1].time)])
+    }
+}
+
 /// Draw the strip for the beats up to `end_s` and report what the mouse
 /// did to it: the wheel zooms the length, Ctrl and the wheel (or a pinch)
 /// zooms the width, dragging along the time axis looks back, dragging
@@ -172,6 +195,7 @@ pub fn draw_strip(
     end_s: f64,
     view: &StripView,
     note: Option<&str>,
+    rate_line: Option<RateLine>,
     size: Vec2,
 ) -> StripInput {
     let (resp, painter) = ui.allocate_painter(size, Sense::click_and_drag());
@@ -351,6 +375,24 @@ pub fn draw_strip(
         let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
         let c = colors[b.index.rem_euclid(2) as usize];
         painter.circle_filled(p, radius, c);
+    }
+    // The rate reading over its beats, wrapping as the dots do.
+    if let Some([(ta, la), (tb, lb)]) = rate_line.and_then(|l| l.ends(beats, anchor, period_s)) {
+        let stroke = Stroke::new(1.5_f32, vis.strong_text_color().gamma_multiply(0.85));
+        let steps = 200;
+        let mut prev: Option<(f64, Pos2)> = None;
+        for k in 0..=steps {
+            let f = k as f64 / steps as f64;
+            let (t, l) = (ta + (tb - ta) * f, la + (lb - la) * f);
+            let w = wrap(l, half);
+            let p = g.pos(w, t);
+            if let Some((pw, pp)) = prev {
+                if (w - pw).abs() < half {
+                    painter.line_segment([pp, p], stroke);
+                }
+            }
+            prev = Some((w, p));
+        }
     }
     input
 }

@@ -10,8 +10,10 @@
 
 mod app;
 mod fields;
+mod help;
 mod profiles;
 mod strip;
+mod theme;
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -153,7 +155,10 @@ fn main() -> ExitCode {
     match eframe::run_native(
         "Timegrapher",
         options,
-        Box::new(move |_cc| Ok(Box::new(app::TimegrapherApp::new(file, analyse)))),
+        Box::new(move |cc| {
+            theme::install(&cc.egui_ctx);
+            Ok(Box::new(app::TimegrapherApp::new(file, analyse)))
+        }),
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

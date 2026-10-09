@@ -217,6 +217,51 @@ impl Recorder {
         fs::write(self.dir.join("session.json"), text)
     }
 
+    /// Note a pause in listening. Audio written after it follows straight
+    /// on in the WAV file, and the clock log gets a line with the first block
+    /// after it, so the gap shows in `clock.csv`.
+    pub fn pause(&mut self) -> io::Result<()> {
+        self.last_clock = None;
+        if let Some(w) = self.writer.as_mut() {
+            w.flush().map_err(io_err)?;
+        }
+        self.clock.flush()?;
+        self.note("paused")
+    }
+
+    /// Copy the recording so far into a new folder of the same name under
+    /// `parent`, keeping on recording here. `result` is saved with the
+    /// settings as the readings at the time of the copy. Returns the copy.
+    pub fn save_copy(
+        &mut self,
+        parent: &Path,
+        result: Option<&serde_json::Value>,
+    ) -> io::Result<PathBuf> {
+        if let Some(w) = self.writer.as_mut() {
+            w.flush().map_err(io_err)?;
+        }
+        self.clock.flush()?;
+        self.write_session(Some(utc(SystemTime::now())), result)?;
+        let name = self
+            .dir
+            .file_name()
+            .ok_or_else(|| io::Error::other("no folder name"))?;
+        let dest = parent.join(name);
+        if dest == self.dir {
+            return Ok(dest);
+        }
+        fs::create_dir_all(&dest)?;
+        for e in fs::read_dir(&self.dir)? {
+            let e = e?;
+            if e.file_type()?.is_file() {
+                fs::copy(e.path(), dest.join(e.file_name()))?;
+            }
+        }
+        // Back to an open session here.
+        self.write_session(None, None)?;
+        Ok(dest)
+    }
+
     /// Close the files, saving `result` (the readings at the end) with the
     /// settings. Returns the folder.
     pub fn finish(mut self, result: Option<serde_json::Value>) -> io::Result<PathBuf> {
@@ -321,5 +366,54 @@ mod tests {
             .to_string_lossy()
             .ends_with("_Test_3235_DU"));
         fs::remove_dir_all(&parent).unwrap();
+    }
+
+    #[test]
+    fn pauses_and_saves_a_copy_while_recording() {
+        let base = std::env::temp_dir().join(format!("tg-copy-{}", std::process::id()));
+        let info = SessionInfo {
+            watch: String::new(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: Some(28800),
+            device: "test".into(),
+            sample_rate: 8000,
+            bits: 16,
+            software: "test".into(),
+        };
+        let mut r = Recorder::start(&base.join("tmp"), info).unwrap();
+        let t0 = SystemTime::now();
+        let block = |k: u64| Block {
+            samples: vec![0.1; 8000],
+            at: t0 + Duration::from_secs(k),
+        };
+        for k in 0..3 {
+            r.write(&block(k)).unwrap();
+        }
+        r.pause().unwrap();
+        // A minute later, listening again.
+        for k in 63..65 {
+            r.write(&block(k)).unwrap();
+        }
+        let copy = r.save_copy(&base.join("saved"), None).unwrap();
+        let audio = crate::audio::load(&copy.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 5 * 8000);
+        let clock = fs::read_to_string(copy.join("clock.csv")).unwrap();
+        let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
+        // One line at the start, one after the pause.
+        assert_eq!(pairs.len(), 2, "{clock}");
+        let session = fs::read_to_string(copy.join("session.json")).unwrap();
+        assert!(session.contains("paused"));
+        // Recording carries on in the original folder.
+        r.write(&block(65)).unwrap();
+        let dir = r.finish(None).unwrap();
+        assert_eq!(
+            crate::audio::load(&dir.join("audio-001.wav"))
+                .unwrap()
+                .samples
+                .len(),
+            6 * 8000
+        );
+        fs::remove_dir_all(&base).unwrap();
     }
 }

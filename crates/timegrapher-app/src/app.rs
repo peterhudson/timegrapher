@@ -3,8 +3,10 @@
 //! that can be dragged by their tabs into any arrangement.
 
 use crate::fields::{self, Format};
+use crate::help;
 use crate::profiles;
 use crate::strip::{self, Anchor, StripInput, StripView};
+use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{Legend, Line, Plot};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
@@ -25,6 +27,18 @@ type Profiles = [Option<TickProfile>; 2];
 const SOUND_EVERY_S: f64 = 2.0;
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
+
+/// What a question before throwing away unsaved sound is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Confirm {
+    NewSession,
+    Quit,
+}
+
+/// Where a session's sound is kept until it is saved or thrown away.
+fn scratch_dir() -> PathBuf {
+    std::env::temp_dir().join("timegrapher-unsaved")
+}
 
 /// The six standard test positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +120,17 @@ impl Pane {
             Pane::BeatError => "Beat error",
         }
     }
+
+    /// What the pane shows, for its switch in the sidebar.
+    fn hint(self) -> &'static str {
+        match self {
+            Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
+            Pane::Sound => "The typical tick and tock sound, with the edges the readings come from",
+            Pane::Rate => "The rate over the whole session",
+            Pane::Amplitude => "The amplitude over the whole session, from the ticks and tocks",
+            Pane::BeatError => "The beat error over the whole session",
+        }
+    }
 }
 
 /// The starting arrangement: the strip beside the sound and the three
@@ -134,7 +159,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         LinearDir::Vertical
     };
     let mut side = Linear::new(dir, rest);
-    side.shares.set_share(sound, 2.0);
+    side.shares.set_share(sound, 2.5);
     let side = tiles.insert_container(side);
     let root = if horizontal {
         tiles.insert_container(Linear::new_binary(LinearDir::Vertical, [strip, side], 0.45))
@@ -142,7 +167,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         tiles.insert_container(Linear::new_binary(
             LinearDir::Horizontal,
             [strip, side],
-            0.5,
+            0.45,
         ))
     };
     Tree::new("panes", root, tiles)
@@ -189,7 +214,7 @@ fn sync_containers(tiles: &mut Tiles<Pane>) {
 /// Averaging times offered for the readings, seconds (Witschi's choices).
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
-/// beat at 28,800 bph, the widest view in which tick and tockk can't wrap
+/// beat at 28,800 bph, the widest view in which tick and tock can't wrap
 /// onto each other.
 const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
@@ -252,11 +277,22 @@ pub struct TimegrapherApp {
     position: Position,
     average_s: f64,
     watch: String,
-    save: bool,
+    /// Where the last Save put the session, if it has been saved.
+    saved_to: Option<PathBuf>,
+    /// The folder Save offers first.
     save_dir: String,
+    /// The session came from the microphone, and when it was paused.
+    mic_session: bool,
+    paused_at: Option<Instant>,
+    /// Asking before something throws away unsaved sound.
+    confirm: Option<Confirm>,
+    /// The window may close: the user has said what to do with the sound.
+    may_close: bool,
     strip: StripView,
     /// Keep the newest beats on the centre line, sliding the rest.
     follow: bool,
+    /// Draw the rate reading as a line over the strip.
+    rate_line: bool,
     /// The rate, amplitude and beat error figures above the panes.
     show_readings: bool,
     /// Asked to put the charts back on the whole session, following new
@@ -290,7 +326,7 @@ pub struct TimegrapherApp {
     /// The tick and tock sound: how it is drawn, what it was every few
     /// seconds of this session, and one worked out from the file for a
     /// moment that history doesn't cover.
-    sound_scale: profiles::Scale,
+    sound_opts: profiles::Options,
     sound_history: Vec<(f64, Profiles)>,
     sound_at: Option<(f64, Profiles)>,
     sound_job: Option<(f64, std::sync::mpsc::Receiver<Profiles>)>,
@@ -331,7 +367,11 @@ impl TimegrapherApp {
             position: Position::DialUp,
             average_s: 10.0,
             watch: String::new(),
-            save: false,
+            saved_to: None,
+            mic_session: false,
+            paused_at: None,
+            confirm: None,
+            may_close: false,
             save_dir: home.join("Timegrapher recordings").display().to_string(),
             strip: StripView {
                 half_width_ms: 10.0,
@@ -339,6 +379,7 @@ impl TimegrapherApp {
                 horizontal: false,
             },
             follow: false,
+            rate_line: true,
             view_end: None,
             panes: default_layout(false),
             show_readings: true,
@@ -360,7 +401,7 @@ impl TimegrapherApp {
             gain_device: None,
             gain_error: None,
             message: None,
-            sound_scale: profiles::Scale::Linear,
+            sound_opts: profiles::Options::default(),
             sound_history: Vec::new(),
             sound_at: None,
             sound_job: None,
@@ -424,6 +465,9 @@ impl TimegrapherApp {
     }
 
     fn reset_session(&mut self, sample_rate: u32, label: String) {
+        self.discard_recording();
+        self.mic_session = false;
+        self.paused_at = None;
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
         self.source_label = label;
         self.anchor = None;
@@ -437,26 +481,31 @@ impl TimegrapherApp {
         self.sound_job = None;
     }
 
+    /// Listen to the microphone: carry on the paused session if there is
+    /// one, else start a new one.
     fn start_microphone(&mut self) {
+        if self.can_resume() {
+            return self.resume_microphone();
+        }
         self.stop();
         match capture::open_input(self.device.as_deref(), None) {
             Ok(c) => {
-                let label = capture::choices(&self.devices)
-                    .into_iter()
-                    .find(|ch| Some(&ch.id) == self.device.as_ref())
-                    .map_or_else(|| c.label.clone(), |ch| ch.label);
+                let label = self.device_label(&c);
                 self.reset_session(
                     c.sample_rate,
                     format!("{label} at {} Hz, {}-bit", c.sample_rate, c.bits),
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                if self.save {
-                    let info = self.info(&c.label, c.sample_rate, c.bits);
-                    match Recorder::start(Path::new(&self.save_dir), info) {
-                        Ok(r) => self.recorder = Some(r),
-                        Err(e) => self.error(format!("Can't save the recording: {e}")),
-                    }
+                self.mic_session = true;
+                // Every session is kept as it goes, so it can be saved at any
+                // point; it is thrown away with a new session unless saved.
+                let info = self.info(&c.label, c.sample_rate, c.bits);
+                match Recorder::start(&scratch_dir(), info) {
+                    Ok(r) => self.recorder = Some(r),
+                    Err(e) => self.error(format!(
+                        "Can't keep the sound for saving later: {e}. The readings still work."
+                    )),
                 }
                 self.capture = Some(c);
             }
@@ -464,6 +513,133 @@ impl TimegrapherApp {
                 "Can't open the input. {}",
                 capture::explain_error(&e)
             )),
+        }
+    }
+
+    fn device_label(&self, c: &Capture) -> String {
+        capture::choices(&self.devices)
+            .into_iter()
+            .find(|ch| Some(&ch.id) == self.device.as_ref())
+            .map_or_else(|| c.label.clone(), |ch| ch.label)
+    }
+
+    /// A microphone session that is paused and can carry on.
+    fn can_resume(&self) -> bool {
+        self.mic_session && self.paused_at.is_some() && self.live.is_some() && !self.running()
+    }
+
+    /// Stop listening for now, keeping everything.
+    fn pause(&mut self) {
+        if self.capture.is_none() {
+            return;
+        }
+        self.capture = None;
+        if self.mic_session {
+            self.paused_at = Some(Instant::now());
+            if let Some(r) = self.recorder.as_mut() {
+                let _ = r.pause();
+            }
+        }
+    }
+
+    /// Carry on listening after a pause, in the same session.
+    fn resume_microphone(&mut self) {
+        let rate = self.live.as_ref().map(|l| l.sample_rate());
+        match capture::open_input(self.device.as_deref(), rate) {
+            Ok(c) if Some(c.sample_rate) == rate => {
+                let paused = self
+                    .paused_at
+                    .take()
+                    .map_or(0.0, |t| t.elapsed().as_secs_f64());
+                if let Some(l) = self.live.as_mut() {
+                    l.skip(paused);
+                }
+                self.opened_at = Instant::now();
+                self.audio_at = None;
+                self.view_end = None;
+                self.message = None;
+                self.capture = Some(c);
+            }
+            Ok(c) => self.error(format!(
+                "The microphone opened at {} Hz this time, not the {} Hz this session \
+                 was listening at, so it can't carry on. Press New session to start again.",
+                c.sample_rate,
+                rate.unwrap_or_default()
+            )),
+            Err(e) => self.error(format!(
+                "Can't open the input. {}",
+                capture::explain_error(&e)
+            )),
+        }
+    }
+
+    /// Forget this session (after asking, if its sound isn't saved), ready
+    /// to start another.
+    fn new_session(&mut self) {
+        self.stop();
+        self.discard_recording();
+        self.live = None;
+        self.mic_session = false;
+        self.paused_at = None;
+        self.trend.clear();
+        self.sound_history.clear();
+        self.source_label.clear();
+        self.message = None;
+    }
+
+    /// Unsaved sound that a new session would throw away, seconds.
+    fn unsaved_s(&self) -> f64 {
+        match (&self.recorder, &self.saved_to) {
+            (Some(r), None) => r.duration_s(),
+            _ => 0.0,
+        }
+    }
+
+    /// Close and delete the sound kept for saving.
+    fn discard_recording(&mut self) {
+        if let Some(r) = self.recorder.take() {
+            if let Ok(dir) = r.finish(None) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+        self.saved_to = None;
+    }
+
+    /// Save a copy of the session's sound so far, with its clock log and
+    /// settings, in a folder the user picks. Listening carries on.
+    fn save_recording(&mut self) {
+        let mut d = rfd::FileDialog::new().set_title("Save the recording in…");
+        let start = self
+            .saved_to
+            .as_ref()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from(&self.save_dir));
+        if start.is_dir() {
+            d = d.set_directory(&start);
+        }
+        let Some(parent) = d.pick_folder() else {
+            return;
+        };
+        self.save_into(&parent);
+    }
+
+    fn save_into(&mut self, parent: &Path) {
+        let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
+        let Some(r) = self.recorder.as_mut() else {
+            return;
+        };
+        let secs = r.duration_s();
+        match r.save_copy(parent, result.as_ref()) {
+            Ok(dir) => {
+                self.info_msg(format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(secs),
+                    dir.display()
+                ));
+                self.save_dir = parent.display().to_string();
+                self.saved_to = Some(dir);
+            }
+            Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
     }
 
@@ -507,19 +683,14 @@ impl TimegrapherApp {
         });
     }
 
+    /// Stop listening or replaying, and any analysis under way. A
+    /// microphone session pauses, so it can carry on or be saved.
     fn stop(&mut self) {
+        if self.capture.as_ref().is_some_and(|c| !c.is_file) {
+            self.pause();
+        }
         self.capture = None;
         self.batch = None;
-        if let Some(r) = self.recorder.take() {
-            let result = self
-                .live
-                .as_ref()
-                .and_then(|l| serde_json::to_value(l.reading(self.average_s)).ok());
-            match r.finish(result) {
-                Ok(dir) => self.info_msg(format!("Recording saved in {}", dir.display())),
-                Err(e) => self.error(format!("Saving the recording failed: {e}")),
-            }
-        }
     }
 
     fn error(&mut self, m: String) {
@@ -716,35 +887,55 @@ impl TimegrapherApp {
         Some(p)
     }
 
-    fn controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Input");
+    /// The inputs the device menu offers.
+    fn input_choices(&self) -> Vec<capture::InputChoice> {
+        if self.all_inputs {
+            self.devices
+                .iter()
+                .map(|d| capture::InputChoice {
+                    id: d.id.clone(),
+                    label: format!("{} ({})", d.name, d.id),
+                    detail: String::new(),
+                    is_default: d.is_default,
+                })
+                .collect()
+        } else {
+            capture::choices(&self.devices)
+        }
+    }
+
+    /// The bar across the top: where the sound comes from, and the button
+    /// that starts it.
+    fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.input, Input::Microphone, "Microphone");
-            ui.selectable_value(&mut self.input, Input::File, "Recording");
-        });
-        match self.input {
-            Input::Microphone => {
-                let choices: Vec<capture::InputChoice> = if self.all_inputs {
-                    self.devices
-                        .iter()
-                        .map(|d| capture::InputChoice {
-                            id: d.id.clone(),
-                            label: format!("{} ({})", d.name, d.id),
-                            detail: String::new(),
-                            is_default: d.is_default,
-                        })
-                        .collect()
-                } else {
-                    capture::choices(&self.devices)
-                };
-                ui.horizontal(|ui| {
+            ui.set_min_height(28.0);
+            theme::segmented(
+                ui,
+                &mut self.input,
+                &[
+                    (
+                        Input::Microphone,
+                        "Microphone",
+                        "Listen to a watch on the microphone",
+                    ),
+                    (
+                        Input::File,
+                        "Recording",
+                        "Replay or analyse a WAV or FLAC recording",
+                    ),
+                ],
+            );
+            ui.add_space(4.0);
+            match self.input {
+                Input::Microphone => {
+                    let choices = self.input_choices();
                     let sel = choices
                         .iter()
                         .find(|c| Some(&c.id) == self.device.as_ref())
-                        .map_or_else(|| "(choose an input)".to_string(), |c| c.label.clone());
+                        .map_or_else(|| "Choose a microphone".to_string(), |c| c.label.clone());
                     egui::ComboBox::from_id_salt("device")
-                        .selected_text(short(&sel, 30))
-                        .width(200.0)
+                        .selected_text(short(&sel, 36))
+                        .width(270.0)
                         .show_ui(ui, |ui| {
                             for c in &choices {
                                 let r = ui.selectable_value(
@@ -756,10 +947,15 @@ impl TimegrapherApp {
                                     r.on_hover_text(&c.detail);
                                 }
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text(
+                            "The microphone to listen to. \"Show every input\" in the \
+                             sidebar lists every device the system offers.",
+                        );
                     if ui
                         .button("Rescan")
-                        .on_hover_text("Look for devices again")
+                        .on_hover_text("Look for microphones again, after plugging one in")
                         .clicked()
                     {
                         self.devices = capture::list().unwrap_or_default();
@@ -769,190 +965,405 @@ impl TimegrapherApp {
                                 .map(|c| c.id.clone());
                         }
                     }
-                });
-                ui.checkbox(&mut self.all_inputs, "Show every input")
-                    .on_hover_text("List every device the system offers, with its id");
-                if self.gain_device != self.device {
-                    self.read_gain();
                 }
-                self.gain_controls(ui);
-                ui.add_enabled_ui(!self.running(), |ui| {
-                    ui.checkbox(&mut self.save, "Save the recording");
-                    if self.save {
-                        ui.horizontal(|ui| {
-                            ui.label("Folder");
-                            if ui.button("Choose...").clicked() {
-                                let mut d =
-                                    rfd::FileDialog::new().set_title("Folder for recordings");
-                                if Path::new(&self.save_dir).is_dir() {
-                                    d = d.set_directory(&self.save_dir);
-                                }
-                                if let Some(p) = d.pick_folder() {
-                                    self.save_dir = p.display().to_string();
-                                }
-                            }
-                        });
-                        ui.text_edit_singleline(&mut self.save_dir);
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if self.running() {
-                        if ui.button("Stop").clicked() {
-                            self.stop();
-                        }
-                    } else if ui.button("Start").clicked() {
-                        self.start_microphone();
-                    }
-                });
-            }
-            Input::File => {
-                ui.horizontal(|ui| {
-                    ui.label("WAV or FLAC file");
+                Input::File => {
                     if ui
-                        .button("Open...")
-                        .on_hover_text("Choose a recording")
+                        .button("Open…")
+                        .on_hover_text("Choose a WAV or FLAC recording")
                         .clicked()
                     {
                         self.open_file_dialog();
                     }
-                });
-                ui.text_edit_singleline(&mut self.file_path);
-                ui.horizontal(|ui| {
-                    let path = PathBuf::from(self.file_path.trim());
-                    let ok = !self.file_path.trim().is_empty();
-                    if self.running() {
-                        if ui.button("Stop").clicked() {
-                            self.stop();
+                    let w = (ui.available_width() - 260.0).clamp(120.0, 420.0);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.file_path)
+                            .hint_text("or type a file's path, or drop it on the window")
+                            .desired_width(w),
+                    );
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                match self.input {
+                    Input::Microphone => self.microphone_buttons(ui),
+                    Input::File => {
+                        if self.running() {
+                            if ui
+                                .add(theme::destructive(ui, "Stop"))
+                                .on_hover_text(
+                                    "Stop the replay. What it has shown so far stays, to look \
+                                     back through with the time slider.",
+                                )
+                                .clicked()
+                            {
+                                self.stop();
+                            }
+                        } else {
+                            let path = PathBuf::from(self.file_path.trim());
+                            let ok = !self.file_path.trim().is_empty();
+                            if ui
+                                .add_enabled(ok, theme::primary(ui, "Replay"))
+                                .on_hover_text(
+                                    "Play the recording through at its own speed, as if live, \
+                                     from the start",
+                                )
+                                .on_disabled_hover_text("Open a recording first")
+                                .clicked()
+                            {
+                                self.start_replay(&path);
+                            }
+                            if ui
+                                .add_enabled(
+                                    ok && self.batch.is_none(),
+                                    egui::Button::new("Analyse all").min_size(Vec2::new(0.0, 26.0)),
+                                )
+                                .on_hover_text("Analyse the whole file now and look through it")
+                                .clicked()
+                            {
+                                self.start_batch(&path);
+                            }
                         }
-                    } else if ui
-                        .add_enabled(ok, egui::Button::new("Replay"))
-                        .on_hover_text("Play it through at its own speed, as if live")
-                        .clicked()
-                    {
-                        self.start_replay(&path);
                     }
-                    if ui
-                        .add_enabled(ok && self.batch.is_none(), egui::Button::new("Analyse all"))
-                        .on_hover_text("Analyse the whole file now and look through it")
-                        .clicked()
-                    {
-                        self.start_batch(&path);
+                }
+                if self.input == Input::Microphone {
+                    ui.add_space(8.0);
+                    self.meter(ui, 120.0, 6.0).on_hover_text(
+                        "Input level: the loudest sample in the last half second. Aim for \
+                         the ticks to reach the light mark (-10 dBFS) and stay short of the \
+                         red one (-6 dBFS). Set it with Input level in the sidebar.",
+                    );
+                    let (txt, color) = self.level_text(ui);
+                    if self.running() {
+                        ui.label(RichText::new(txt).small().color(color));
                     }
-                });
+                }
+            });
+        });
+    }
+
+    /// Start, Pause and Resume, New session and Save, for the microphone.
+    /// Laid out right to left.
+    fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
+        let mic_data = self.mic_session && self.live.is_some();
+        if self.running() {
+            if ui
+                .add(theme::secondary(ui, "Pause"))
+                .on_hover_text(
+                    "Stop listening for now. Everything so far stays: look back through it \
+                     with the time slider, save it, or Resume to carry on.",
+                )
+                .clicked()
+            {
+                self.pause();
+            }
+        } else if self.can_resume() {
+            if ui
+                .add(theme::primary(ui, "Resume"))
+                .on_hover_text(
+                    "Carry on listening in the same session. The readings start afresh \
+                     after the pause, since the watch may have moved; the strip and charts \
+                     keep what came before.",
+                )
+                .clicked()
+            {
+                self.resume_microphone();
+            }
+        } else if ui
+            .add(theme::primary(ui, "Start"))
+            .on_hover_text("Start listening to the microphone")
+            .clicked()
+        {
+            self.start_microphone();
+        }
+        if mic_data
+            && !self.running()
+            && ui
+                .add(egui::Button::new("New session").min_size(Vec2::new(0.0, 26.0)))
+                .on_hover_text("Clear everything and start again with the next watch or position")
+                .clicked()
+        {
+            if self.unsaved_s() > 5.0 {
+                self.confirm = Some(Confirm::NewSession);
+            } else {
+                self.new_session();
             }
         }
+        if self.recorder.is_some() {
+            let saved = self.saved_to.is_some();
+            if ui
+                .add(
+                    egui::Button::new(if saved { "Save again…" } else { "Save…" })
+                        .min_size(Vec2::new(0.0, 26.0)),
+                )
+                .on_hover_text(
+                    "Save the sound of this session so far, with its clock log and \
+                     settings, to analyse again later. Listening carries on. Unsaved \
+                     sound is thrown away by New session or quitting.",
+                )
+                .clicked()
+            {
+                self.save_recording();
+            }
+        }
+    }
 
-        ui.separator();
-        ui.heading("Watch");
-        ui.horizontal(|ui| {
-            ui.label("Name");
-            ui.text_edit_singleline(&mut self.watch);
-        });
-        egui::Grid::new("settings").num_columns(2).show(ui, |ui| {
-            ui.label("Beat rate");
-            let mut bph = self.bph;
-            egui::ComboBox::from_id_salt("bph")
-                .selected_text(match bph {
-                    None => match self.live.as_ref().and_then(|l| l.bph()) {
-                        Some(b) => format!("Auto ({b})"),
-                        None => "Auto".into(),
-                    },
-                    Some(b) => format!("{b} bph"),
+    /// The question before throwing away unsaved sound.
+    fn confirm_dialog(&mut self, ctx: &egui::Context) {
+        let Some(what) = self.confirm else { return };
+        let mut choice = None;
+        let unsaved = strip::fmt_time(self.unsaved_s());
+        egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                RichText::new(match what {
+                    Confirm::NewSession => "Start a new session?",
+                    Confirm::Quit => "Quit without saving?",
                 })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut bph, None, "Auto");
-                    for b in STANDARD_BPH {
-                        ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
-                    }
-                });
-            ui.end_row();
-            if bph != self.bph {
-                self.bph = bph;
-                if let Some(l) = self.live.as_mut() {
-                    l.set_bph(bph);
+                .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "This session's {unsaved} of sound hasn't been saved and will be thrown away."
+            ));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Save…")).clicked() {
+                    choice = Some(0);
                 }
-                self.anchor = None;
-                self.trend.clear();
+                let go = match what {
+                    Confirm::NewSession => "Don't save",
+                    Confirm::Quit => "Quit without saving",
+                };
+                if ui
+                    .add(egui::Button::new(go).min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(1);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(2);
+                }
+            });
+        });
+        match choice {
+            Some(0) => {
+                self.save_recording();
+                if self.saved_to.is_none() {
+                    return; // the folder dialog was cancelled
+                }
             }
+            Some(1) => {}
+            Some(_) => {
+                self.confirm = None;
+                return;
+            }
+            None => return,
+        }
+        self.confirm = None;
+        match what {
+            Confirm::NewSession => self.new_session(),
+            Confirm::Quit => {
+                self.may_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
 
-            ui.label("Lift angle")
-                .on_hover_text("Type the calibre's lift angle in degrees and press Enter");
-            let mut lift = self.lift_deg;
-            let changed = ui
-                .horizontal(|ui| {
-                    let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 50.0);
-                    ui.label("°");
-                    let b = fields::presets(ui, "lift-presets", &mut lift, &LIFTS, |v| {
-                        format!("{}°", fields::plain(v))
+    /// The sidebar: the watch and the microphone, then a section for each
+    /// pane with the switch that shows it, its options and a "?" that
+    /// explains it.
+    fn controls(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().item_spacing.y = 8.0;
+        theme::section_header(ui, "Watch", None, help::WATCH);
+        theme::card_ui(ui, |ui| self.watch_settings(ui));
+        if self.input == Input::Microphone {
+            theme::section_header(ui, "Microphone", None, help::MICROPHONE);
+            theme::card_ui(ui, |ui| self.microphone_settings(ui));
+        }
+        theme::section_header(
+            ui,
+            "Readings",
+            Some(&mut self.show_readings),
+            help::READINGS,
+        );
+        theme::card_ui(ui, |ui| self.readings_settings(ui));
+        self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
+        self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
+        theme::section_header(ui, "Charts", None, help::CHARTS);
+        theme::card_ui(ui, |ui| {
+            for pane in [Pane::Rate, Pane::Amplitude, Pane::BeatError] {
+                let mut on = pane_visible(&self.panes.tiles, pane);
+                if theme::switch_row(ui, pane.title(), &mut on, pane.hint()) {
+                    set_pane_visible(&mut self.panes.tiles, pane, on);
+                }
+            }
+        });
+        theme::section_header(ui, "Window", None, help::WINDOW);
+        theme::card_ui(ui, |ui| self.window_settings(ui));
+        ui.add_space(8.0);
+    }
+
+    /// A pane's section: its switch in the caption, its settings below.
+    fn pane_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        pane: Pane,
+        help: &[&str],
+        settings: fn(&mut Self, &mut egui::Ui),
+    ) {
+        let mut on = pane_visible(&self.panes.tiles, pane);
+        if theme::section_header(ui, pane.title(), Some(&mut on), help) {
+            set_pane_visible(&mut self.panes.tiles, pane, on);
+        }
+        theme::card_ui(ui, |ui| settings(self, ui));
+    }
+
+    fn watch_settings(&mut self, ui: &mut egui::Ui) {
+        theme::row(ui, "Name", Some("Noted in a saved recording"), |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.watch)
+                    .hint_text("Make, model or calibre")
+                    .desired_width(f32::INFINITY),
+            );
+        });
+        let mut bph = self.bph;
+        theme::row(
+            ui,
+            "Beat rate",
+            Some("Beats per hour. Auto finds it from the first few seconds of beats."),
+            |ui| {
+                egui::ComboBox::from_id_salt("bph")
+                    .width(ui.available_width())
+                    .selected_text(match bph {
+                        None => match self.live.as_ref().and_then(|l| l.bph()) {
+                            Some(b) => format!("Auto ({b})"),
+                            None => "Auto".into(),
+                        },
+                        Some(b) => format!("{b} bph"),
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut bph, None, "Auto");
+                        for b in STANDARD_BPH {
+                            ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
+                        }
                     });
-                    a || b
-                })
-                .inner;
-            ui.end_row();
-            if changed {
-                self.set_lift(lift);
+            },
+        );
+        if bph != self.bph {
+            self.bph = bph;
+            if let Some(l) = self.live.as_mut() {
+                l.set_bph(bph);
             }
+            self.anchor = None;
+            self.trend.clear();
+        }
 
-            ui.label("Position").on_hover_text(
+        let mut lift = self.lift_deg;
+        let changed = theme::row(
+            ui,
+            "Lift angle",
+            Some(
+                "The calibre's lift angle in degrees: type it and press Enter, or pick \
+                 a common one from the menu. Amplitude depends on it.",
+            ),
+            |ui| {
+                let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 44.0);
+                ui.label("°");
+                let b = fields::presets(ui, "lift-presets", &mut lift, &LIFTS, |v| {
+                    format!("{}°", fields::plain(v))
+                });
+                a || b
+            },
+        );
+        if changed {
+            self.set_lift(lift);
+        }
+
+        let mut pos = self.position;
+        theme::row(
+            ui,
+            "Position",
+            Some(
                 "Noted in a saved recording, and changing it starts the readings again. \
                  Guided runs through the positions will use it.",
-            );
-            let mut pos = self.position;
-            egui::ComboBox::from_id_salt("position")
-                .selected_text(format!("{} ({})", pos.name(), pos.code()))
-                .show_ui(ui, |ui| {
-                    for p in Position::ALL {
-                        ui.selectable_value(&mut pos, p, format!("{} ({})", p.name(), p.code()));
-                    }
-                });
-            ui.end_row();
-            if pos != self.position {
-                self.position = pos;
-                // A new position is a new measurement: start the readings again.
-                if let Some(l) = self.live.as_mut() {
-                    if self.capture.is_some() {
-                        l.restart();
-                        self.anchor = None;
-                    }
+            ),
+            |ui| {
+                egui::ComboBox::from_id_salt("position")
+                    .width(ui.available_width())
+                    .selected_text(format!("{} ({})", pos.name(), pos.code()))
+                    .show_ui(ui, |ui| {
+                        for p in Position::ALL {
+                            ui.selectable_value(
+                                &mut pos,
+                                p,
+                                format!("{} ({})", p.name(), p.code()),
+                            );
+                        }
+                    });
+            },
+        );
+        if pos != self.position {
+            self.position = pos;
+            // A new position is a new measurement: start the readings again.
+            if let Some(l) = self.live.as_mut() {
+                if self.capture.is_some() {
+                    l.restart();
+                    self.anchor = None;
                 }
-                if let Some(r) = self.recorder.as_mut() {
-                    let _ = r.note(&format!("position {}", pos.code()));
-                }
-                self.note_settings();
             }
+            if let Some(r) = self.recorder.as_mut() {
+                let _ = r.note(&format!("position {}", pos.code()));
+            }
+            self.note_settings();
+        }
+    }
 
-            ui.label("Average over").on_hover_text(
+    fn readings_settings(&mut self, ui: &mut egui::Ui) {
+        let mut avg = self.average_s;
+        let changed = theme::row(
+            ui,
+            "Average over",
+            Some(
                 "Each reading is fitted over this much of the latest beats, and the \
-                     tick and tock sound is the typical beat over the same time (up to 60 s)",
-            );
-            let mut avg = self.average_s;
-            let changed = ui
-                .horizontal(|ui| {
-                    let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 50.0);
-                    let b = fields::presets(
-                        ui,
-                        "average-presets",
-                        &mut avg,
-                        &AVERAGES,
-                        fields::duration,
-                    );
-                    a || b
-                })
-                .inner;
-            ui.end_row();
-            if changed {
-                self.set_average(avg);
-            }
-        });
+                 tick and tock profile is the typical beat over the same time (up to 60 s)",
+            ),
+            |ui| {
+                let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
+                let b =
+                    fields::presets(ui, "average-presets", &mut avg, &AVERAGES, fields::duration);
+                a || b
+            },
+        );
+        if changed {
+            self.set_average(avg);
+        }
+    }
 
-        ui.separator();
-        ui.heading("Strip");
-        egui::Grid::new("strip").num_columns(2).show(ui, |ui| {
-            ui.label("Width").on_hover_text(
+    fn microphone_settings(&mut self, ui: &mut egui::Ui) {
+        if self.gain_device != self.device {
+            self.read_gain();
+        }
+        self.gain_controls(ui);
+        ui.add_space(2.0);
+        theme::switch_row(
+            ui,
+            "Show every input",
+            &mut self.all_inputs,
+            "List every device the system offers in the microphone menu, with its id",
+        );
+    }
+
+    fn strip_settings(&mut self, ui: &mut egui::Ui) {
+        theme::row(
+            ui,
+            "Width",
+            Some(
                 "Milliseconds either side of the centre line. Ctrl and the mouse wheel \
                  on the strip change it too.",
-            );
-            ui.horizontal(|ui| {
+            ),
+            |ui| {
                 ui.label("±");
                 let mut w = self.strip.half_width_ms;
                 let a = fields::entry(
@@ -961,7 +1372,7 @@ impl TimegrapherApp {
                     &mut w,
                     StripView::MIN_HALF_WIDTH_MS..=StripView::MAX_HALF_WIDTH_MS,
                     &MS,
-                    50.0,
+                    44.0,
                 );
                 ui.label("ms");
                 let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
@@ -970,13 +1381,16 @@ impl TimegrapherApp {
                 if a || b {
                     self.strip.set_half_width(w);
                 }
-            });
-            ui.end_row();
-            ui.label("Length").on_hover_text(
+            },
+        );
+        theme::row(
+            ui,
+            "Length",
+            Some(
                 "Time shown along the strip, such as 30 s, 5 min or 2 h. \
                  The mouse wheel on the strip changes it too.",
-            );
-            ui.horizontal(|ui| {
+            ),
+            |ui| {
                 let mut s = self.strip.span_s;
                 let a = fields::entry(
                     ui,
@@ -990,33 +1404,49 @@ impl TimegrapherApp {
                 if a || b {
                     self.strip.set_span(s);
                 }
-            });
-            ui.end_row();
-            ui.label("Direction");
-            ui.horizontal(|ui| {
-                let mut h = self.strip.horizontal;
-                ui.selectable_value(&mut h, false, "Down");
-                ui.selectable_value(&mut h, true, "Across");
-                if h != self.strip.horizontal {
-                    self.strip.horizontal = h;
-                    self.relayout(h);
-                }
-            });
-            ui.end_row();
-            ui.label("Theme");
-            ui.horizontal(|ui| {
-                let mut t = ui.ctx().options(|o| o.theme_preference);
-                ui.selectable_value(&mut t, egui::ThemePreference::System, "System");
-                ui.selectable_value(&mut t, egui::ThemePreference::Light, "Light");
-                ui.selectable_value(&mut t, egui::ThemePreference::Dark, "Dark");
-                if t != ui.ctx().options(|o| o.theme_preference) {
-                    ui.ctx().set_theme(t);
-                }
-            });
-            ui.end_row();
-        });
-        ui.checkbox(&mut self.follow, "Auto-centre")
-            .on_hover_text("Keep the newest beats on the centre line and slide the rest");
+            },
+        );
+        let mut h = self.strip.horizontal;
+        theme::row(
+            ui,
+            "Direction",
+            Some("Which way time runs along the strip"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut h,
+                    &[
+                        (
+                            false,
+                            "Down",
+                            "Newest beats at the top, the strip beside the charts",
+                        ),
+                        (
+                            true,
+                            "Across",
+                            "Newest beats at the right, the strip above the charts",
+                        ),
+                    ],
+                );
+            },
+        );
+        if h != self.strip.horizontal {
+            self.strip.horizontal = h;
+            self.relayout(h);
+        }
+        theme::switch_row(
+            ui,
+            "Rate line",
+            &mut self.rate_line,
+            "Draw the Rate reading as a line over the beats it was fitted to, to check \
+             that it follows the dots",
+        );
+        theme::switch_row(
+            ui,
+            "Auto-centre",
+            &mut self.follow,
+            "Keep the newest beats on the centre line and slide the rest",
+        );
         ui.horizontal(|ui| {
             if ui
                 .button("Centre")
@@ -1028,6 +1458,7 @@ impl TimegrapherApp {
             if ui
                 .add_enabled(self.capture.is_some(), egui::Button::new("Clear"))
                 .on_hover_text("Start the readings and the strip again")
+                .on_disabled_hover_text("Starts the readings again while listening")
                 .clicked()
             {
                 if let Some(l) = self.live.as_mut() {
@@ -1037,36 +1468,95 @@ impl TimegrapherApp {
                 self.trend.clear();
             }
         });
-        ui.add_space(8.0);
-        ui.heading("Panes");
-        ui.checkbox(&mut self.show_readings, "Readings")
-            .on_hover_text("The rate, amplitude and beat error figures across the top");
-        for pane in Pane::ALL {
-            let mut on = pane_visible(&self.panes.tiles, pane);
-            if ui.checkbox(&mut on, pane.title()).changed() {
-                set_pane_visible(&mut self.panes.tiles, pane, on);
-            }
-        }
-        if ui
-            .button("Reset panes")
-            .on_hover_text("Show every pane and put them back where they started")
-            .clicked()
-        {
-            self.show_readings = true;
-            self.panes = default_layout(self.strip.horizontal);
-        }
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new(
-                "Strip: wheel for length, Ctrl+wheel for width, drag to move, \
-                 double-click for the newest beats.\n\
-                 Charts: wheel to zoom time, Ctrl+wheel for the scale, drag to pan, \
-                 double-click to fit, click to show that moment on the strip.\n\
-                 Drag a pane by its tab to rearrange, or close it with its ×.",
-            )
-            .small()
-            .weak(),
+    }
+
+    fn profile_settings(&mut self, ui: &mut egui::Ui) {
+        let o = &mut self.sound_opts;
+        theme::row(
+            ui,
+            "Layout",
+            Some("Tick above tock, or side by side as tg shows them"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut o.side_by_side,
+                    &[
+                        (false, "Stacked", "Tick above tock"),
+                        (
+                            true,
+                            "Beside",
+                            "Tick on the left, tock on the right, as tg shows them",
+                        ),
+                    ],
+                );
+            },
         );
+        theme::row(ui, "Scale", Some("How the loudness is drawn"), |ui| {
+            theme::segmented(
+                ui,
+                &mut o.scale,
+                &[
+                    (
+                        profiles::Scale::Linear,
+                        "Linear",
+                        "The sound's loudness as the engine measures it",
+                    ),
+                    (
+                        profiles::Scale::Decibels,
+                        "dB",
+                        "Decibels below the loudest point, which makes the quiet unlock \
+                         easier to see",
+                    ),
+                ],
+            );
+        });
+        theme::switch_row(
+            ui,
+            "Edges",
+            &mut o.edges,
+            "The solid unlock, drop and peak lines: the edges amplitude and the \
+             beat error are read from",
+        );
+        theme::switch_row(
+            ui,
+            "Sounds 1, 2 and 3",
+            &mut o.sounds,
+            "The dashed gold lines where the three sounds of each beat rise: unlock, \
+             impulse and drop",
+        );
+    }
+
+    fn window_settings(&mut self, ui: &mut egui::Ui) {
+        let mut t = ui.ctx().options(|o| o.theme_preference);
+        theme::row(
+            ui,
+            "Appearance",
+            Some("Light or dark, or follow the system"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut t,
+                    &[
+                        (egui::ThemePreference::System, "Auto", "Follow the system"),
+                        (egui::ThemePreference::Light, "Light", ""),
+                        (egui::ThemePreference::Dark, "Dark", ""),
+                    ],
+                );
+            },
+        );
+        if t != ui.ctx().options(|o| o.theme_preference) {
+            ui.ctx().set_theme(t);
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Reset panes")
+                .on_hover_text("Show every pane and put them back where they started")
+                .clicked()
+            {
+                self.show_readings = true;
+                self.panes = default_layout(self.strip.horizontal);
+            }
+        });
     }
 
     fn clipping(&self) -> bool {
@@ -1076,21 +1566,55 @@ impl TimegrapherApp {
 
     /// The input level in words and the colour to show it in.
     fn level_text(&self, ui: &egui::Ui) -> (String, Color32) {
+        let pal = theme::pal(ui);
         let peak = self.level.peak_dbfs.max(-99.0);
-        let red = Color32::from_rgb(0xe0, 0x40, 0x40);
-        let amber = Color32::from_rgb(0xd0, 0x90, 0x20);
         if self.clipping() {
-            (format!("peak {peak:.0} dBFS, clipping"), red)
+            (format!("peak {peak:.0} dBFS, clipping"), pal.bad)
         } else if peak > HOT_PEAK_DBFS {
-            (format!("peak {peak:.0} dBFS, too hot"), amber)
+            (format!("peak {peak:.0} dBFS, too hot"), pal.warn)
         } else if peak < -40.0 {
-            (format!("peak {peak:.0} dBFS, very quiet"), amber)
+            (format!("peak {peak:.0} dBFS, very quiet"), pal.warn)
         } else {
-            (
-                format!("peak {peak:.0} dBFS"),
-                ui.visuals().weak_text_color(),
-            )
+            (format!("peak {peak:.0} dBFS"), pal.text_secondary)
         }
+    }
+
+    /// The level meter: a bar to the latest peak, in green, amber or red,
+    /// with marks at the target and at the hot limit.
+    fn meter(&self, ui: &mut egui::Ui, width: f32, height: f32) -> egui::Response {
+        let pal = theme::pal(ui);
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
+        let r = height / 2.0;
+        let p = ui.painter();
+        p.rect_filled(rect, r, pal.control);
+        if self.running() {
+            let peak = self.level.peak_dbfs.max(-60.0);
+            let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
+            let color = if self.clipping() {
+                pal.bad
+            } else if !(-40.0..=HOT_PEAK_DBFS).contains(&peak) {
+                pal.warn
+            } else {
+                pal.good
+            };
+            let mut fill = rect;
+            fill.set_width((rect.width() * frac).max(height));
+            p.rect_filled(fill, r, color);
+        }
+        for (db, c) in [
+            (TARGET_PEAK_DBFS, pal.text_secondary),
+            (HOT_PEAK_DBFS, pal.bad),
+        ] {
+            let x = rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
+            p.line_segment(
+                [
+                    egui::pos2(x, rect.top() - 2.0),
+                    egui::pos2(x, rect.bottom() + 2.0),
+                ],
+                egui::Stroke::new(1.5_f32, c),
+            );
+        }
+        resp
     }
 
     /// Find the selected input's level control and read it.
@@ -1101,118 +1625,99 @@ impl TimegrapherApp {
         self.gain_read_at = Instant::now();
     }
 
-    /// The input level control and meter, under the device menu.
+    /// The input level control and meter, in the Microphone card.
     fn gain_controls(&mut self, ui: &mut egui::Ui) {
         if self.gain_read_at.elapsed().as_secs_f64() > if self.running() { 2.0 } else { 10.0 } {
             self.read_gain();
         }
-        egui::Grid::new("gain").num_columns(2).show(ui, |ui| {
-            ui.label("Input level").on_hover_text(
-                "The microphone's gain. For the system default this is the sound server's \
-                 input volume, which it puts back on the microphone each time it opens it; \
-                 for a direct device it is the card's capture level. Aim for ticks peaking \
-                 around -10 dBFS, and never clipping.",
-            );
-            match (self.gain.clone(), self.gain_state.clone()) {
-                (Some(g), Some(st)) => {
-                    ui.horizontal(|ui| {
-                        let mut pct = st.level * 100.0;
-                        let r = ui.add(
-                            egui::Slider::new(&mut pct, 0.0..=100.0)
-                                .show_value(false)
-                                .step_by(1.0),
-                        );
-                        ui.label(&st.text);
-                        // Set it once the drag ends (or on a click or key),
-                        // not on every pixel.
-                        if (r.changed() && !r.dragged()) || r.drag_stopped() {
-                            self.gain_error = g.set_level(pct / 100.0).err();
-                            self.read_gain();
-                        } else if r.changed() {
-                            if let Some(s) = self.gain_state.as_mut() {
-                                s.level = pct / 100.0;
-                            }
+        let pal = theme::pal(ui);
+        let hint = "The microphone's gain. For the system default this is the sound server's \
+                    input volume, which it puts back on the microphone each time it opens it; \
+                    for a direct device it is the card's capture level. Aim for ticks peaking \
+                    around -10 dBFS, and never clipping.";
+        match (self.gain.clone(), self.gain_state.clone()) {
+            (Some(g), Some(st)) => {
+                theme::row(ui, "Input level", Some(hint), |ui| {
+                    let mut pct = st.level * 100.0;
+                    ui.spacing_mut().slider_width = (ui.available_width() - 44.0).max(60.0);
+                    let r = ui.add(
+                        egui::Slider::new(&mut pct, 0.0..=100.0)
+                            .show_value(false)
+                            .step_by(1.0),
+                    );
+                    ui.label(RichText::new(&st.text).small().color(pal.text_secondary));
+                    // Set it once the drag ends (or on a click or key), not
+                    // on every pixel.
+                    if (r.changed() && !r.dragged()) || r.drag_stopped() {
+                        self.gain_error = g.set_level(pct / 100.0).err();
+                        self.read_gain();
+                    } else if r.changed() {
+                        if let Some(s) = self.gain_state.as_mut() {
+                            s.level = pct / 100.0;
                         }
-                    });
-                    ui.end_row();
-                    if let Some(on) = st.agc {
-                        ui.label("Auto gain");
-                        let mut agc = on;
-                        if ui
-                            .checkbox(&mut agc, if on { "on (turn it off)" } else { "off" })
-                            .on_hover_text(
-                                "The microphone's automatic gain changes the level as it \
-                                 listens, which spoils amplitude and level readings. Keep it off.",
-                            )
-                            .changed()
-                        {
-                            self.gain_error = g.set_agc(agc).err();
-                            self.read_gain();
-                        }
-                        ui.end_row();
                     }
+                });
+                // Automatic gain only ever spoils the readings, so there is
+                // nothing to choose: it shows only when it is on, with the way
+                // to turn it off.
+                if st.agc == Some(true) {
+                    let pal = theme::pal(ui);
+                    theme::card()
+                        .fill(pal.warn.gamma_multiply(0.15))
+                        .inner_margin(egui::Margin::same(8))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(
+                                        "The microphone's automatic gain is on. It turns the \
+                                         level up between ticks, so they clip and the \
+                                         amplitude and level readings go wrong.",
+                                    )
+                                    .small(),
+                                )
+                                .wrap(),
+                            );
+                            if ui.button("Turn it off").clicked() {
+                                self.gain_error = g.set_agc(false).err();
+                                self.read_gain();
+                            }
+                        });
                 }
-                _ => {
+            }
+            _ => {
+                theme::row(ui, "Input level", Some(hint), |ui| {
                     ui.label(
                         RichText::new(if cfg!(target_os = "linux") {
                             "not adjustable here"
                         } else {
                             "set it in the system's sound settings"
                         })
-                        .weak(),
+                        .color(pal.text_secondary),
                     );
-                    ui.end_row();
-                }
+                });
             }
-            ui.label("Peak");
-            let peak = self.level.peak_dbfs.max(-60.0);
-            let (txt, color) = self.level_text(ui);
-            let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(150.0, 12.0), egui::Sense::hover());
-            let p = ui.painter();
-            p.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
-            p.rect_stroke(
-                rect,
-                2.0,
-                ui.visuals().widgets.noninteractive.bg_stroke,
-                egui::StrokeKind::Inside,
-            );
-            if self.running() {
-                let mut fill = rect;
-                fill.set_width(rect.width() * frac);
-                p.rect_filled(fill, 2.0, color.gamma_multiply(0.9));
-            }
-            // Marks at the target and at the hot limit.
-            for (db, c) in [
-                (TARGET_PEAK_DBFS, ui.visuals().text_color()),
-                (HOT_PEAK_DBFS, Color32::from_rgb(0xe0, 0x40, 0x40)),
-            ] {
-                let x = rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
-                p.line_segment(
-                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-                    egui::Stroke::new(1.0_f32, c),
-                );
-            }
-            ui.end_row();
-            ui.label("");
-            let (txt, color) = if self.running() {
-                (txt, color)
-            } else {
-                ("shows once the input starts".into(), ui.visuals().weak_text_color())
-            };
-            ui.label(RichText::new(txt).small().color(color))
-                .on_hover_text("Loudest sample in the last half second; the white mark is the -10 dBFS target, the red one -6 dBFS, the most that leaves room for a louder watch.");
-            ui.end_row();
+        }
+        let level_hint = "Loudest sample in the last half second; the light mark is the \
+                          -10 dBFS target, the red one -6 dBFS, the most that leaves room \
+                          for a louder watch.";
+        theme::row(ui, "Peak", Some(level_hint), |ui| {
+            let w = ui.available_width();
+            self.meter(ui, w, 8.0).on_hover_text(level_hint);
+        });
+        let (txt, color) = if self.running() {
+            self.level_text(ui)
+        } else {
+            ("shows once the input starts".into(), pal.text_tertiary)
+        };
+        ui.horizontal(|ui| {
+            ui.add_space(theme::LABEL_W + ui.spacing().item_spacing.x);
+            ui.label(RichText::new(txt).small().color(color));
         });
         if let Some(e) = &self.gain_error {
-            ui.label(
-                RichText::new(e)
-                    .small()
-                    .color(Color32::from_rgb(0xe0, 0x40, 0x40)),
-            );
+            ui.label(RichText::new(e).small().color(pal.bad));
         }
     }
-
     fn set_lift(&mut self, lift: f64) {
         self.lift_deg = lift;
         if let Some(l) = self.live.as_mut() {
@@ -1238,98 +1743,164 @@ impl TimegrapherApp {
         }
     }
 
+    /// The three readings, each in a card: a caption, the figure large with
+    /// its unit beside it, and a line of detail.
     fn readouts(&self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
         let r = self.reading();
-        let big = |v: String| RichText::new(v).size(44.0).monospace().strong();
-        let dash = "—".to_string();
+        let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str| {
+            let mut job = egui::text::LayoutJob::default();
+            let (v, c) = match value {
+                // A true minus sign, as wide as the plus.
+                Some(v) => (v.replace('-', "−"), pal.text),
+                None => ("—".to_string(), pal.text_tertiary),
+            };
+            job.append(&v, 0.0, egui::TextFormat::simple(theme::display(36.0), c));
+            if !unit.is_empty() {
+                job.append(
+                    unit,
+                    6.0,
+                    egui::TextFormat::simple(egui::FontId::proportional(15.0), pal.text_secondary),
+                );
+            }
+            ui.label(job);
+        };
+        let card = |ui: &mut egui::Ui, title: &str, help: &[&str], body: &dyn Fn(&mut egui::Ui)| {
+            theme::card()
+                .fill(pal.card)
+                .inner_margin(egui::Margin::symmetric(14, 10))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.horizontal(|ui| {
+                        ui.label(theme::caption(title).color(pal.text_secondary));
+                        theme::help(ui, title, help);
+                    });
+                    body(ui);
+                });
+        };
+        ui.spacing_mut().item_spacing.x = theme::GAP;
         ui.columns(3, |cols| {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            cols[0].label(RichText::new("Rate").size(14.0));
-            cols[0].label(big(rate.map_or(dash.clone(), |v| format!("{v:+.1}"))));
-            cols[0]
-                .label("seconds per day")
-                .on_hover_text("+ the watch gains that many seconds a day, − it loses them");
+            card(&mut cols[0], "Rate", help::RATE, &|ui| {
+                // Roughly how far the rate could be off from the beats'
+                // scatter alone: the standard error of the fitted slope.
+                let pm = r.and_then(|r| {
+                    let j = r.jitter_us? * 1e-6;
+                    let n = r.beats_used as f64;
+                    (n >= 6.0 && r.span_s > 1.0)
+                        .then(|| j * 12f64.sqrt() / (n.sqrt() * r.span_s) * 86400.0)
+                });
+                let unit = match pm {
+                    Some(e) if e < 0.05 => "seconds per day".to_string(),
+                    Some(e) => format!("± {e:.1} seconds per day"),
+                    None => "seconds per day".to_string(),
+                };
+                figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
+                    let Some(r) = r else {
+                        ui.label(small("waiting for beats".into()));
+                        return;
+                    };
+                    let short = r.span_s + 1.0 < self.average_s;
+                    ui.label(small(if short {
+                        format!(
+                            "{} beats in {} of {}",
+                            r.beats_used,
+                            fields::duration(r.span_s.round()),
+                            fields::duration(self.average_s)
+                        )
+                    } else {
+                        format!(
+                            "{} beats in {}",
+                            r.beats_used,
+                            fields::duration(self.average_s)
+                        )
+                    }))
+                    .on_hover_text(if short {
+                        "The beats the readings are fitted to. There are fewer seconds of \
+                             beats than Average over asks for, early in a session or after a \
+                             pause, so the readings use what there is."
+                    } else {
+                        "The beats the readings are fitted to. Set the time with Average \
+                             over in the sidebar."
+                    });
+                    if let Some(j) = r.jitter_us {
+                        ui.label(small("·".into()));
+                        ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
+                            "How far single beats land from the rate's straight line: the \
+                                 spread of the dots across the strip. The ? beside Rate says more.",
+                        );
+                    }
+                });
+            });
             let amp = r.and_then(|r| r.amplitude_deg);
-            cols[1].label(RichText::new("Amplitude").size(14.0));
-            cols[1].label(big(amp.map_or(dash.clone(), |v| format!("{v:.0}°"))));
             let lift = fields::plain(self.lift_deg);
-            cols[1]
-                .label(match r {
-                    Some(LiveReading {
+            card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
+                figure(ui, amp.map(|v| format!("{v:.0}°")), "");
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if let Some(LiveReading {
                         amplitude_even_deg: Some(a),
                         amplitude_odd_deg: Some(b),
                         ..
-                    }) => format!("tick {a:.0}°   tock {b:.0}°   lift angle {lift}°"),
-                    _ => format!("lift angle {lift}°"),
-                })
-                .on_hover_text(
-                    "The big figure is the average amplitude. Below it are the amplitude \
-                 measured from the ticks (blue on the strip and charts) and from the tocks \
-                 (orange). The sound can't tell which beat is which pallet, so the first beat \
-                 heard is called the tick. A big difference between them usually means one \
-                 beat's sounds were misread, not a fault in the watch.",
-                );
+                    }) = r
+                    {
+                        for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
+                            theme::dot(ui, c);
+                            ui.label(
+                                RichText::new(format!("{name} {v:.0}°"))
+                                    .small()
+                                    .color(pal.text_secondary),
+                            );
+                            ui.add_space(6.0);
+                        }
+                    }
+                    ui.label(
+                        RichText::new(format!("lift angle {lift}°"))
+                            .small()
+                            .color(pal.text_secondary),
+                    );
+                });
+            });
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
-            cols[2].label(RichText::new("Beat error").size(14.0));
-            cols[2].label(big(unlock
-                .or(drop)
-                .map_or(dash.clone(), |v| format!("{v:+.2}"))));
-            cols[2]
-                .label(match (unlock, drop) {
-                    (Some(_), Some(d)) => format!("ms   from the drop {d:+.2}"),
-                    (None, Some(_)) => "ms, from the drop".into(),
-                    _ => "ms".into(),
-                })
-                .on_hover_text(
-                    "The big figure is timed from the unlock, as tg and commercial \
-                     timegraphers measure it. The smaller one is timed from the beat \
-                     as a whole, nearer the drop: it is the gap between the two lines \
-                     on the strip.",
+            card(&mut cols[2], "Beat error", help::BEAT_ERROR, &|ui| {
+                figure(
+                    ui,
+                    unlock.or(drop).map(|v| format!("{v:+.2}")),
+                    "milliseconds",
                 );
-        });
-        ui.horizontal(|ui| {
-            let mut parts = Vec::new();
-            if let Some(b) = r.and_then(|r| r.bph) {
-                parts.push(format!("{b} bph"));
-            }
-            if let Some(r) = r {
-                parts.push(format!(
-                    "{} beats in {}",
-                    r.beats_used,
-                    fields::duration(self.average_s)
-                ));
-            }
-            parts.push(format!(
-                "{} {}",
-                self.position.code(),
-                self.position.name().to_lowercase()
-            ));
-            ui.label(RichText::new(parts.join("   ·   ")).weak());
-            if let Some(j) = r.and_then(|r| r.jitter_us) {
-                ui.label(RichText::new(format!("·   jitter {j:.0} µs")).weak())
-                    .on_hover_text(
-                        "How far single beats land from the steady line that the rate and \
-                         beat error are fitted to: the spread of the dots across the strip, \
-                         as a robust standard deviation in microseconds (millionths of a \
-                         second). Lower is steadier. It rises with background noise or a \
-                         muffled sound as well as with a watch that runs unevenly (a rubbing \
-                         part, a worn tooth, low amplitude), so compare it on the same stand \
-                         and microphone.",
-                    );
-            }
+                ui.label(
+                    RichText::new(match (unlock, drop) {
+                        (Some(_), Some(d)) => {
+                            format!("from the unlock · from the drop {d:+.2} ms")
+                        }
+                        (None, Some(_)) => "from the drop".into(),
+                        _ => "from the unlock".into(),
+                    })
+                    .small()
+                    .color(pal.text_secondary),
+                );
+            });
         });
     }
 
     fn status_bar(&self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
         ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
             if let Some(b) = &self.batch {
                 let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
                 let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
                 ui.add(
                     egui::ProgressBar::new(frac as f32)
                         .desired_width(240.0)
-                        .text(format!("Analysing {}", b.label)),
+                        .desired_height(14.0)
+                        .fill(pal.accent)
+                        .text(RichText::new(format!("Analysing {}", b.label)).small()),
                 );
             } else if !self.source_label.is_empty() {
                 let what = if self.running() {
@@ -1337,34 +1908,99 @@ impl TimegrapherApp {
                 } else {
                     "Showing"
                 };
-                ui.label(format!("{what} {}", self.source_label));
+                ui.label(
+                    RichText::new(format!("{what} {}", self.source_label))
+                        .small()
+                        .color(pal.text_secondary),
+                );
+            } else {
+                ui.label(
+                    RichText::new("Not listening")
+                        .small()
+                        .color(pal.text_tertiary),
+                );
             }
             if self.running() {
-                let (txt, color) = self.level_text(ui);
-                ui.label(RichText::new(txt).color(color));
                 if let Some(s) = self.reading().and_then(|r| r.snr) {
-                    ui.label(
-                        RichText::new(if s < 4.0 {
-                            "no watch heard".to_string()
-                        } else {
-                            format!("signal {:.0}×", s)
-                        })
-                        .weak(),
-                    )
-                    .on_hover_text("How far the beats stand above the background noise");
+                    let (word, color) = if s >= 10.0 {
+                        ("good", pal.good)
+                    } else if s >= 5.0 {
+                        ("fair: rate reliable", pal.warn)
+                    } else if s >= 3.0 {
+                        ("poor: only the rate", pal.bad)
+                    } else {
+                        ("no watch heard", pal.bad)
+                    };
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        theme::dot(ui, color);
+                        ui.label(
+                            RichText::new(format!("signal {s:.0}×, {word}"))
+                                .small()
+                                .color(pal.text_secondary),
+                        );
+                    })
+                    .response
+                    .on_hover_text(help::SIGNAL);
                 }
             }
             if let Some(r) = &self.recorder {
-                ui.label(
-                    RichText::new(format!("Saving {}", strip::fmt_time(r.duration_s())))
-                        .color(Color32::from_rgb(0xe0, 0x40, 0x40)),
-                )
-                .on_hover_text(r.dir().display().to_string());
+                let (text, color, hint) = match &self.saved_to {
+                    Some(p) => (
+                        format!("{} of sound, saved", strip::fmt_time(r.duration_s())),
+                        pal.text_secondary,
+                        format!(
+                            "Saved in {}. Sound since then is kept too; Save again to add it.",
+                            p.display()
+                        ),
+                    ),
+                    None => (
+                        format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
+                        pal.text_secondary,
+                        "The session's sound is kept as it goes, so Save can keep it at any \
+                         point. New session or quitting throws it away unless saved."
+                            .to_string(),
+                    ),
+                };
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    theme::dot(
+                        ui,
+                        if self.running() {
+                            pal.bad
+                        } else {
+                            pal.text_tertiary
+                        },
+                    );
+                    ui.label(RichText::new(text).small().color(color));
+                })
+                .response
+                .on_hover_text(hint);
             }
             // Errors show above the readings instead.
             if let Some((m, false)) = &self.message {
-                ui.label(m);
+                ui.label(RichText::new(m).small().color(pal.text_secondary));
             }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "{} {}",
+                        self.position.code(),
+                        self.position.name().to_lowercase()
+                    ))
+                    .small()
+                    .color(pal.text_secondary),
+                )
+                .on_hover_text("The position, set under Watch in the sidebar");
+                if let Some(b) = self.reading().and_then(|r| r.bph) {
+                    ui.label(
+                        RichText::new(format!("{b} beats per hour"))
+                            .small()
+                            .color(pal.text_secondary),
+                    )
+                    .on_hover_text("Found from the beats, or set under Watch in the sidebar");
+                }
+            });
         });
     }
 
@@ -1381,57 +2017,159 @@ impl TimegrapherApp {
         }
     }
 
-    fn main_view(&mut self, ui: &mut egui::Ui) {
-        // Problems with the input go where they can't be missed.
-        if let Some((m, true)) = &self.message {
-            egui::Frame::new()
-                .fill(Color32::from_rgb(0x5a, 0x1a, 0x1a))
-                .inner_margin(8.0)
-                .corner_radius(4.0)
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.label(RichText::new(m).color(Color32::WHITE).size(15.0));
+    /// What shows before there is anything to show: how to begin, and the
+    /// two ways to.
+    fn empty_state(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.add_space((ui.available_height() * 0.18).clamp(16.0, 120.0));
+        ui.vertical_centered(|ui| {
+            let w = 440.0_f32.min(ui.available_width());
+            ui.allocate_ui(Vec2::new(w, 0.0), |ui| {
+                theme::card().fill(pal.card).show(ui, |ui| {
+                    ui.set_width(w - 28.0);
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.spacing_mut().item_spacing.y = 10.0;
+                        ui.label(RichText::new("Ready to listen").font(theme::semibold(20.0)));
+                        for (n, step) in [
+                            "Put the watch on the microphone, dial up.",
+                            "Choose the microphone at the top and set its level in the sidebar.",
+                            "Press Start. The readings settle once the first beats are in.",
+                        ]
+                        .iter()
+                        .enumerate()
+                        {
+                            ui.horizontal(|ui| {
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::splat(20.0), egui::Sense::hover());
+                                ui.painter().circle_filled(rect.center(), 10.0, pal.control);
+                                ui.painter().text(
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    (n + 1).to_string(),
+                                    theme::semibold(11.0),
+                                    pal.text_secondary,
+                                );
+                                ui.add(egui::Label::new(*step).wrap());
+                            });
+                        }
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(theme::primary(ui, "Start listening"))
+                                .on_hover_text("Listen to the microphone chosen at the top")
+                                .clicked()
+                            {
+                                self.input = Input::Microphone;
+                                self.start_microphone();
+                            }
+                            if ui
+                                .add(
+                                    egui::Button::new("Open a recording…")
+                                        .min_size(Vec2::new(0.0, 26.0)),
+                                )
+                                .on_hover_text("Replay a WAV or FLAC file as if live")
+                                .clicked()
+                            {
+                                self.input = Input::File;
+                                if let Some(p) = self.open_file_dialog() {
+                                    self.start_replay(&p);
+                                }
+                            }
+                        });
+                        ui.label(
+                            RichText::new("You can also drop a WAV or FLAC file on the window.")
+                                .small()
+                                .color(pal.text_tertiary),
+                        );
+                    });
                 });
-            ui.add_space(4.0);
+            });
+        });
+    }
+
+    /// A problem, where it can't be missed, with a way to put it away.
+    fn error_banner(&mut self, ui: &mut egui::Ui) {
+        let Some((m, true)) = self.message.clone() else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let mut dismiss = false;
+        let resp = theme::card()
+            .fill(pal.bad.gamma_multiply(0.14))
+            .inner_margin(egui::Margin {
+                left: 18,
+                right: 10,
+                top: 10,
+                bottom: 10,
+            })
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        dismiss = ui
+                            .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                            .on_hover_text("Hide this message")
+                            .clicked();
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.add(egui::Label::new(RichText::new(&m).color(pal.text)).wrap());
+                        });
+                    });
+                });
+            });
+        // A bar down the left edge in red.
+        let r = resp.response.rect;
+        let bar = egui::Rect::from_min_size(r.left_top(), Vec2::new(4.0, r.height()));
+        ui.painter().rect_filled(
+            bar,
+            egui::CornerRadius {
+                nw: theme::CARD_RADIUS,
+                sw: theme::CARD_RADIUS,
+                ne: 0,
+                se: 0,
+            },
+            pal.bad,
+        );
+        if dismiss {
+            self.message = None;
+        }
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
+    fn main_view(&mut self, ui: &mut egui::Ui) {
+        self.error_banner(ui);
+        if self.live.is_none() {
+            self.empty_state(ui);
+            return;
         }
         if self.show_readings {
             self.readouts(ui);
-            ui.add_space(4.0);
+            ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
         }
 
         // Looking back through a finished or analysed recording.
         let total = self.live.as_ref().map_or(0.0, |l| l.duration_s());
         if !self.running() && total > self.strip.span_s.min(self.average_s) {
             let mut end = self.end_s();
+            let pal = theme::pal(ui);
             ui.horizontal(|ui| {
-                ui.label("Time");
-                ui.spacing_mut().slider_width = (ui.available_width() - 120.0).max(100.0);
+                ui.add_space(4.0);
+                ui.label(theme::caption("Time").color(pal.text_secondary))
+                    .on_hover_text("The moment the readings, strip and profile show");
+                ui.spacing_mut().slider_width = (ui.available_width() - 90.0).max(100.0);
                 if ui
                     .add(
                         egui::Slider::new(&mut end, 0.0..=total)
                             .custom_formatter(|v, _| strip::fmt_time(v)),
                     )
+                    .on_hover_text("Drag to look back through the recording")
                     .changed()
                 {
                     self.view_end = Some(end);
                 }
             });
+            ui.add_space(4.0);
         }
 
-        if self.live.is_none() {
-            ui.add_space(40.0);
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new(
-                        "Choose an input and press Start, or open a recording.\n\
-                         Put the watch on the microphone dial up to begin.",
-                    )
-                    .size(16.0)
-                    .weak(),
-                );
-            });
-            return;
-        }
         // A drag can leave a container holding only hidden panes.
         sync_containers(&mut self.panes.tiles);
         if Pane::ALL
@@ -1441,9 +2179,11 @@ impl TimegrapherApp {
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    RichText::new("Every pane is hidden. Turn one on under Panes.")
-                        .size(16.0)
-                        .weak(),
+                    RichText::new(
+                        "Every pane is hidden. Turn one on with its switch in the sidebar.",
+                    )
+                    .size(15.0)
+                    .weak(),
                 );
             });
             return;
@@ -1468,6 +2208,18 @@ impl TimegrapherApp {
         });
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
+        let rate_line = self
+            .rate_line
+            .then(|| self.reading())
+            .flatten()
+            .and_then(|r| {
+                Some(strip::RateLine {
+                    from_s: r.time_s - r.span_s,
+                    to_s: r.time_s,
+                    rate_s_per_day: r.rate_s_per_day?,
+                })
+            });
+        let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
             ui,
             live.beats(),
@@ -1476,6 +2228,7 @@ impl TimegrapherApp {
             end,
             &self.strip,
             note.as_deref(),
+            rate_line,
             ui.available_size(),
         );
         self.apply_strip_input(input, end);
@@ -1517,7 +2270,7 @@ impl TimegrapherApp {
                 }
             }
         };
-        profiles::draw(ui, &shown, &mut self.sound_scale, note.as_deref());
+        profiles::draw(ui, &shown, self.sound_opts, note.as_deref());
     }
 
     /// Start working out the sound at `end` from the file, unless one is
@@ -1616,9 +2369,10 @@ impl TimegrapherApp {
     }
 
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        let colors = strip::side_colors(ui.visuals().dark_mode);
-        let main = ui.visuals().strong_text_color();
-        let weak = ui.visuals().weak_text_color();
+        let pal = theme::pal(ui);
+        let colors = [pal.tick, pal.tock];
+        let main = pal.text;
+        let weak = pal.text_tertiary;
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             self.trend
                 .iter()
@@ -1634,7 +2388,7 @@ impl TimegrapherApp {
                         fields::duration(self.average_s)
                     ),
                     pick(|p| p.rate),
-                    colors[0],
+                    main,
                 )],
                 " s/day",
                 1,
@@ -1666,7 +2420,7 @@ impl TimegrapherApp {
                     (
                         "From the drop".into(),
                         pick(|p| p.beat_error_drop),
-                        colors[1],
+                        pal.text_secondary,
                     ),
                 ],
                 " ms",
@@ -1682,7 +2436,7 @@ impl TimegrapherApp {
             .x_grid_spacer(time_grid)
             .custom_x_axes(vec![egui_plot::AxisHints::new_x()
                 .formatter(|m, _| strip::fmt_time(m.value))
-                .label_spacing(36.0..=48.0)])
+                .label_spacing(30.0..=40.0)])
             .y_grid_spacer(nice_grid)
             .y_axis_min_width(52.0)
             .y_axis_formatter(move |m, _| {
@@ -1706,7 +2460,11 @@ impl TimegrapherApp {
             .show_x(false)
             .show_y(false);
         if series.len() > 1 {
-            plot = plot.legend(Legend::default());
+            plot = plot.legend(
+                Legend::default()
+                    .text_style(egui::TextStyle::Small)
+                    .background_alpha(0.85),
+            );
         }
         // Scale to the 2nd to 98th percentile of the lines, so that one
         // glitch doesn't flatten them.
@@ -1769,8 +2527,8 @@ impl TimegrapherApp {
                 "Show whole session"
             };
             let b = ui.put(
-                egui::Rect::from_min_size(at, Vec2::new(150.0, 22.0)),
-                egui::Button::new(label),
+                egui::Rect::from_min_size(at, Vec2::new(150.0, 24.0)),
+                theme::primary(ui, label).min_size(Vec2::new(0.0, 24.0)),
             );
             if b.on_hover_text(if running {
                 "Back to the whole session, following new beats as they come in. \
@@ -1916,17 +2674,25 @@ struct PaneBehavior<'a> {
 }
 
 impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
+    /// Each pane is a card under its tab.
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile: TileId, pane: &mut Pane) -> UiResponse {
-        match pane {
+        let pal = theme::pal(ui);
+        let rect = ui.max_rect();
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
+        let inner = rect.shrink2(Vec2::new(8.0, 6.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| match pane {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
             p => self.app.chart(ui, *p),
-        }
+        });
         UiResponse::None
     }
 
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
-        pane.title().into()
+        RichText::new(pane.title())
+            .font(theme::semibold(12.5))
+            .into()
     }
 
     fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile_id: TileId) -> bool {
@@ -1949,6 +2715,74 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             ..Default::default()
         }
     }
+
+    // The tabs sit on the window like captions over their cards, with no
+    // bar or outline of their own.
+    fn tab_bar_color(&self, visuals: &egui::Visuals) -> Color32 {
+        theme::palette(visuals.dark_mode).window
+    }
+
+    fn tab_bg_color(
+        &self,
+        visuals: &egui::Visuals,
+        _tiles: &Tiles<Pane>,
+        _tile_id: TileId,
+        _state: &egui_tiles::TabState,
+    ) -> Color32 {
+        theme::palette(visuals.dark_mode).window
+    }
+
+    fn tab_outline_stroke(
+        &self,
+        _visuals: &egui::Visuals,
+        _tiles: &Tiles<Pane>,
+        _tile_id: TileId,
+        _state: &egui_tiles::TabState,
+    ) -> egui::Stroke {
+        egui::Stroke::NONE
+    }
+
+    fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
+        egui::Stroke::NONE
+    }
+
+    fn tab_text_color(
+        &self,
+        visuals: &egui::Visuals,
+        _tiles: &Tiles<Pane>,
+        _tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> Color32 {
+        let p = theme::palette(visuals.dark_mode);
+        if state.active {
+            p.text
+        } else {
+            p.text_tertiary
+        }
+    }
+
+    fn tab_bar_height(&self, _style: &egui::Style) -> f32 {
+        24.0
+    }
+
+    fn gap_width(&self, _style: &egui::Style) -> f32 {
+        8.0
+    }
+
+    fn resize_stroke(
+        &self,
+        style: &egui::Style,
+        resize_state: egui_tiles::ResizeState,
+    ) -> egui::Stroke {
+        let accent = theme::palette(style.visuals.dark_mode).accent;
+        match resize_state {
+            egui_tiles::ResizeState::Idle => egui::Stroke::NONE,
+            egui_tiles::ResizeState::Hovering => {
+                egui::Stroke::new(2.0_f32, accent.gamma_multiply(0.6))
+            }
+            egui_tiles::ResizeState::Dragging => egui::Stroke::new(2.0_f32, accent),
+        }
+    }
 }
 
 fn capture_label(path: &Path) -> String {
@@ -1962,6 +2796,49 @@ fn short(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         format!("{}…", s.chars().take(n - 1).collect::<String>())
+    }
+}
+
+impl TimegrapherApp {
+    /// The toolbar across the top, the status line along the bottom, the
+    /// sidebar of settings on the left and the readings and panes in the
+    /// rest, all on the window colour with the content in cards.
+    fn panels(&mut self, ctx: &egui::Context) {
+        let pal = theme::palette(ctx.style().visuals.dark_mode);
+        let bar = egui::Frame::new().fill(pal.window);
+        egui::TopBottomPanel::top("toolbar")
+            .frame(bar.inner_margin(egui::Margin::symmetric(14, 10)))
+            .show(ctx, |ui| self.toolbar(ui));
+        egui::TopBottomPanel::bottom("status")
+            .frame(bar.inner_margin(egui::Margin::symmetric(14, 5)))
+            .show(ctx, |ui| self.status_bar(ui));
+        egui::SidePanel::left("controls")
+            .resizable(false)
+            .exact_width(300.0)
+            .show_separator_line(false)
+            .frame(bar.inner_margin(egui::Margin {
+                left: 12,
+                right: 0,
+                top: 8,
+                bottom: 0,
+            }))
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .max_rect(ui.max_rect().with_max_x(ui.max_rect().right() - 6.0)),
+                        |ui| self.controls(ui),
+                    );
+                });
+            });
+        egui::CentralPanel::default()
+            .frame(bar.inner_margin(egui::Margin {
+                left: 6,
+                right: 12,
+                top: 12,
+                bottom: 12,
+            }))
+            .show(ctx, |ui| self.main_view(ui));
     }
 }
 
@@ -1984,14 +2861,16 @@ impl eframe::App for TimegrapherApp {
 
         self.poll();
 
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| self.status_bar(ui));
-        egui::SidePanel::left("controls")
-            .resizable(false)
-            .exact_width(280.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.controls(ui));
-            });
-        egui::CentralPanel::default().show(ctx, |ui| self.main_view(ui));
+        // Closing the window with unsaved sound asks first.
+        if ctx.input(|i| i.viewport().close_requested())
+            && !self.may_close
+            && self.unsaved_s() > 5.0
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.confirm = Some(Confirm::Quit);
+        }
+        self.panels(ctx);
+        self.confirm_dialog(ctx);
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
@@ -2000,6 +2879,7 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
+        self.discard_recording();
     }
 }
 
@@ -2038,7 +2918,7 @@ mod tests {
         let rate = r.rate_s_per_day.unwrap();
         assert!((rate - 20.0).abs() < 2.0, "rate {rate}");
 
-        let ctx = egui::Context::default();
+        let ctx = themed();
         for horizontal in [false, true] {
             app.strip.horizontal = horizontal;
             app.panes = default_layout(horizontal);
@@ -2051,14 +2931,17 @@ mod tests {
                     )),
                     ..Default::default()
                 };
-                let out = ctx.run(input, |ctx| {
-                    egui::TopBottomPanel::bottom("status").show(ctx, |ui| app.status_bar(ui));
-                    egui::SidePanel::left("controls").show(ctx, |ui| app.controls(ui));
-                    egui::CentralPanel::default().show(ctx, |ui| app.main_view(ui));
-                });
+                let out = ctx.run(input, |ctx| app.panels(ctx));
                 assert!(!out.shapes.is_empty());
             }
         }
+    }
+
+    /// A context with the app's fonts and styles, as the window has.
+    fn themed() -> egui::Context {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
     }
 
     /// Draw `n` frames of the whole window.
@@ -2071,17 +2954,64 @@ mod tests {
                 )),
                 ..Default::default()
             };
-            let _ = ctx.run(input, |ctx| {
-                egui::SidePanel::left("controls").show(ctx, |ui| app.controls(ui));
-                egui::CentralPanel::default().show(ctx, |ui| app.main_view(ui));
-            });
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
         }
+    }
+
+    /// The window before anything is open, with a problem showing, in both
+    /// themes.
+    #[test]
+    fn draws_the_empty_and_error_states() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.error("Can't read take.flac".into());
+        let ctx = themed();
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            ctx.set_theme(theme);
+            frames(&mut app, &ctx, 2);
+        }
+        app.message = None;
+        app.input = Input::File;
+        frames(&mut app, &ctx, 1);
+    }
+
+    /// A microphone session's sound is kept as it goes, can be saved at
+    /// any point, and goes with a new session.
+    #[test]
+    fn sessions_keep_save_and_discard_their_sound() {
+        let base = std::env::temp_dir().join(format!("tg-app-save-{}", std::process::id()));
+        let mut app = synthetic(12.0, 20.0);
+        app.mic_session = true;
+        let info = app.info("test", 48000, 16);
+        let mut r = Recorder::start(&base.join("kept"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 6],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        let kept = r.dir().to_path_buf();
+        app.recorder = Some(r);
+        assert!(app.unsaved_s() > 5.0, "unsaved sound to ask about");
+        app.save_into(&base.join("saved"));
+        let saved = app.saved_to.clone().expect("saved");
+        assert!(saved.join("audio-001.wav").is_file());
+        assert_eq!(app.unsaved_s(), 0.0);
+        // Paused, a session can carry on; a new session forgets it.
+        app.paused_at = Some(Instant::now());
+        assert!(app.can_resume());
+        app.new_session();
+        assert!(app.live.is_none() && app.recorder.is_none() && !app.can_resume());
+        assert!(!kept.exists(), "the unsaved copy is thrown away");
+        assert!(
+            saved.join("audio-001.wav").is_file(),
+            "the saved copy stays"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn hidden_panes_stay_hidden_through_a_new_direction() {
         let mut app = synthetic(12.0, 20.0);
-        let ctx = egui::Context::default();
+        let ctx = themed();
         frames(&mut app, &ctx, 2);
         for p in [Pane::Rate, Pane::Amplitude, Pane::Strip] {
             set_pane_visible(&mut app.panes.tiles, p, false);

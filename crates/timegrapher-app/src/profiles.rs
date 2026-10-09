@@ -3,6 +3,7 @@
 //! the amplitude and beat error from.
 
 use crate::strip::side_colors;
+use crate::theme;
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Line, LineStyle, Plot, Polygon, VLine};
 use timegrapher_core::profile::TickProfile;
@@ -16,10 +17,6 @@ pub enum Scale {
     /// unlock show as clearly as the drop.
     Decibels,
 }
-
-const UNLOCK: Color32 = Color32::from_rgb(0x3c, 0xb3, 0x71);
-const DROP: Color32 = Color32::from_rgb(0xe0, 0x40, 0x40);
-const PEAK: Color32 = Color32::from_rgb(0xb0, 0x60, 0xe0);
 
 /// Lowest level drawn on the decibel scale.
 const FLOOR_DB: f64 = -50.0;
@@ -55,76 +52,115 @@ pub fn summary(p: &TickProfile) -> String {
     s
 }
 
-/// Draw both sides, tick above tock, sharing their axes.
+/// How the pane is drawn: set in the sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Options {
+    pub scale: Scale,
+    /// Tick beside tock rather than above it.
+    pub side_by_side: bool,
+    /// The unlock, drop and drop peak edges amplitude and beat error are
+    /// read from.
+    pub edges: bool,
+    /// Where the three sounds rise.
+    pub sounds: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            scale: Scale::Linear,
+            side_by_side: false,
+            edges: true,
+            sounds: true,
+        }
+    }
+}
+
+/// Grid marks all of one step, so every grid line is drawn alike: the
+/// first step of 1, 2 or 5 times a power of ten at least `factor` times the
+/// finest step the plot allows (which is a few pixels).
+fn even_grid(input: egui_plot::GridInput, factor: f64) -> Vec<egui_plot::GridMark> {
+    let want = (input.base_step_size * factor).max(1e-9);
+    let p = 10f64.powf(want.log10().floor());
+    let step = [1.0, 2.0, 5.0, 10.0]
+        .into_iter()
+        .map(|m| m * p)
+        .find(|&s| s >= want)
+        .unwrap_or(10.0 * p);
+    let (lo, hi) = input.bounds;
+    let mut k = (lo / step).ceil();
+    let mut marks = Vec::new();
+    while k * step <= hi && marks.len() < 200 {
+        marks.push(egui_plot::GridMark {
+            value: k * step,
+            step_size: step,
+        });
+        k += 1.0;
+    }
+    marks
+}
+
+/// Draw both sides, tick above or beside tock, on one scale so their
+/// loudness compares.
 pub fn draw(
     ui: &mut egui::Ui,
     profiles: &[Option<TickProfile>; 2],
-    scale: &mut Scale,
+    opt: Options,
     note: Option<&str>,
 ) {
-    ui.horizontal(|ui| {
-        ui.selectable_value(scale, Scale::Linear, "Linear");
-        ui.selectable_value(scale, Scale::Decibels, "dB");
-        ui.separator();
-        // The marks are named on the plots; this says what the line styles
-        // mean.
-        ui.label(
-            RichText::new(
-                "solid: the edges amplitude and beat error are read from · dashed: \
-                 the three sounds · flat dashed: noise floor",
-            )
-            .small()
-            .weak(),
-        );
-        if let Some(n) = note {
-            ui.separator();
-            ui.label(RichText::new(n).weak());
-        }
-    })
-    .response
-    .on_hover_text(
-        "Linear shows the sound as the engine measures it; dB shows the level below the \
-         loudest point of each side, which makes the quiet unlock easier to see.",
-    );
+    let pal = theme::pal(ui);
+    if let Some(n) = note {
+        ui.label(RichText::new(n).small().color(pal.text_secondary));
+    }
     let colors = side_colors(ui.visuals().dark_mode);
-    // Both sides on one scale, so their loudness compares.
     let top = profiles
         .iter()
         .flatten()
         .flat_map(|p| p.p90.iter().copied())
         .fold(0.0f32, f32::max);
-    let h = ((ui.available_height() - 8.0) / 2.0).max(60.0);
-    let scale = *scale;
-    for (k, p) in profiles.iter().enumerate() {
+    let scale = opt.scale;
+    let (y_lo, y_hi) = match scale {
+        Scale::Linear => (0.0, (top as f64 * 1.08).max(1e-6)),
+        Scale::Decibels => (FLOOR_DB, 3.0),
+    };
+    let side = |ui: &mut egui::Ui, k: usize, height: f32| {
+        let p = &profiles[k];
         let name = ["Tick", "Tock"][k];
         let c = colors[k];
-        ui.label(
-            RichText::new(match p {
-                Some(p) => format!("{name}: {}", summary(p)),
-                None => format!("{name}: not enough beats yet"),
-            })
-            .color(c),
-        );
+        ui.horizontal(|ui| {
+            theme::dot(ui, c);
+            ui.label(RichText::new(name).font(theme::semibold(12.5)).color(c));
+            let s = match p {
+                Some(p) => summary(p),
+                None => "not enough beats yet".into(),
+            };
+            ui.add(
+                egui::Label::new(RichText::new(&s).small().color(pal.text_secondary)).truncate(),
+            )
+            .on_hover_text(s);
+        });
         let plot = Plot::new(("profile", k))
-            .height(h - 20.0)
-            .link_axis("profile", [true, true])
+            .height((height - 22.0).max(40.0))
+            .link_axis("profile", [true, false])
             // No crosshair or value box: the marks and the summary above say
             // what matters.
             .show_x(false)
             .show_y(false)
             .allow_scroll(false)
+            .allow_zoom(false)
+            .allow_drag(false)
+            .allow_double_click_reset(false)
+            .default_y_bounds(y_lo, y_hi)
+            .x_grid_spacer(|g| even_grid(g, 6.0))
+            .y_grid_spacer(|g| even_grid(g, 4.0))
             .x_axis_formatter(|m, _| format!("{} ms", m.value))
             .y_axis_min_width(52.0)
             .y_axis_formatter(move |m, _| match scale {
                 Scale::Decibels => format!("{:.0} dB", m.value),
                 Scale::Linear => format!("{:.2}", m.value),
-            })
-            .include_y(if scale == Scale::Decibels {
-                FLOOR_DB
-            } else {
-                0.0
             });
         let resp = plot.show(ui, |pl| {
+            pl.set_plot_bounds_y(y_lo..=y_hi);
             let Some(p) = p else { return };
             let x = |i: usize| p.t0_ms + i as f64 * p.step_ms;
             let (med, lo, hi) = (
@@ -163,60 +199,82 @@ pub fn draw(
             let floor = scaled(&[p.floor], top, scale)[0];
             pl.hline(
                 HLine::new("noise floor", floor)
-                    .color(Color32::GRAY)
+                    .color(pal.text_tertiary)
                     .style(LineStyle::dashed_dense()),
             );
-            let marks = [
-                ("unlock", p.unlock_ms, UNLOCK, 1.5_f32),
-                ("drop", p.drop_ms, DROP, 1.5),
-                ("drop peak", p.peak_ms, PEAK, 1.0),
-            ];
-            for (label, at, col, w) in marks {
-                if let Some(t) = at {
-                    pl.vline(VLine::new(label, t).color(col).width(w));
+            if opt.edges {
+                for (label, at, col, w) in [
+                    ("unlock", p.unlock_ms, pal.unlock, 1.5_f32),
+                    ("drop", p.drop_ms, pal.drop, 1.5),
+                    ("drop peak", p.peak_ms, pal.peak, 1.0),
+                ] {
+                    if let Some(t) = at {
+                        pl.vline(VLine::new(label, t).color(col).width(w));
+                    }
                 }
             }
-            for (label, at) in [
-                ("sound 1", p.sound1_ms),
-                ("sound 2", p.sound2_ms),
-                ("sound 3", p.sound3_ms),
-            ] {
-                if let Some(t) = at {
-                    pl.vline(
-                        VLine::new(label, t)
-                            .color(Color32::GRAY)
-                            .style(LineStyle::dashed_loose()),
-                    );
+            if opt.sounds {
+                for (label, at) in [
+                    ("sound 1", p.sound1_ms),
+                    ("sound 2", p.sound2_ms),
+                    ("sound 3", p.sound3_ms),
+                ] {
+                    if let Some(t) = at {
+                        pl.vline(
+                            VLine::new(label, t)
+                                .color(pal.sound)
+                                .width(1.2_f32)
+                                .style(LineStyle::dashed_loose()),
+                        );
+                    }
                 }
             }
         });
         if let Some(p) = p {
-            label_marks(ui, &resp.transform, p);
+            label_marks(ui, &resp.transform, p, opt);
         }
+    };
+    if opt.side_by_side {
+        let h = ui.available_height();
+        ui.columns(2, |cols| {
+            for (k, ui) in cols.iter_mut().enumerate() {
+                side(ui, k, h);
+            }
+        });
+    } else {
+        let h = ((ui.available_height() - 6.0) / 2.0).max(60.0);
+        side(ui, 0, h);
+        ui.add_space(4.0);
+        side(ui, 1, h);
     }
 }
 
 /// Name each mark on the plot itself, along the top: the engine's edges
 /// first, then the three sounds, each label just right of its line and
 /// moved down a row where it would run into another.
-fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile) {
+fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile, opt: Options) {
     let frame = *t.frame();
     let painter = ui.painter_at(frame);
     let font = egui::FontId::proportional(11.0);
-    let grey = ui.visuals().text_color();
+    let pal = theme::pal(ui);
+    let snd = pal.sound;
     let mut ends: Vec<f32> = Vec::new();
-    for group in [
-        [
-            ("unlock", p.unlock_ms, UNLOCK),
-            ("drop", p.drop_ms, DROP),
-            ("peak", p.peak_ms, PEAK),
-        ],
-        [
-            ("1 unlock", p.sound1_ms, grey),
-            ("2 impulse", p.sound2_ms, grey),
-            ("3 drop", p.sound3_ms, grey),
-        ],
-    ] {
+    let mut groups = Vec::new();
+    if opt.edges {
+        groups.push([
+            ("unlock", p.unlock_ms, pal.unlock),
+            ("drop", p.drop_ms, pal.drop),
+            ("peak", p.peak_ms, pal.peak),
+        ]);
+    }
+    if opt.sounds {
+        groups.push([
+            ("1 unlock", p.sound1_ms, snd),
+            ("2 impulse", p.sound2_ms, snd),
+            ("3 drop", p.sound3_ms, snd),
+        ]);
+    }
+    for group in groups {
         let mut marks: Vec<(f32, &str, Color32)> = group
             .into_iter()
             .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v), l, c)))
