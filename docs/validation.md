@@ -239,6 +239,26 @@ With knocks added to 5 minutes of a take (noise bursts of 5 to 40 ms at
 A higher threshold (3 or 4 times) rescued fewer of these, so the gate
 keeps tg's factor of 2.
 
+## Sound 2 after a shoulder on the unlock: the Daytona's Tick
+
+On the Daytona 4130 the Tick's unlock climbs to a shoulder about 1 ms
+later, dips, and the impulse then rises out of the shoulder's tail. Sound 2
+was the biggest rise after sound 1, each rise measured from the lowest
+point in the 0.6 ms before it. For the shoulder that reached back before
+the unlock, so the unlock's own climb counted towards it. In 4 s profiles
+the mark then flipped from the impulse (about −4.8 ms) to the shoulder
+(about −6.8 ms) in 6 of 40 windows. A rise after sound 1 is now measured
+from the lowest point after sound 1. On six takes, in 40 profiles each,
+only those 6 Daytona Tick marks move; the unit test
+`a_shoulder_on_the_unlock_is_not_the_impulse` draws that Tick.
+
+Each 2 s amplitude window now also records where its unlock and drop edges
+sat on each side (`even_unlock_ms`, `odd_unlock_ms`, `even_drop_ms`,
+`odd_drop_ms`, ms from the beat time), so an edge that hops between sounds
+can be told from a real change of amplitude. On this Daytona file the
+Tick's unlock sits at −7.2 to −7.0 ms in most windows and at −6.8 to
+−6.7 ms (the shoulder) in about one in six, which reads 15–25° higher.
+
 ## Beat shape
 
 `crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on

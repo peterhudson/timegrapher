@@ -248,11 +248,19 @@ fn measure_at(
         .copied()
         .filter(|r| r.at <= e.unlock + samples(0.001) as f64);
     let after1 = s1.map_or(e.unlock, |r| r.at + gap);
+    // A rise just after sound 1 is measured from the lowest point after
+    // sound 1, not from before the unlock, or the unlock's own climb would
+    // count towards it and a shoulder on sound 1 would outweigh the impulse.
+    let rise_after1 = |r: &Rise| {
+        let from = r.from.max(after1 as usize);
+        let to = (r.at as usize).max(from);
+        r.top - t[from..=to].iter().copied().fold(f32::INFINITY, f32::min)
+    };
     let s2 = inner
         .iter()
         .copied()
         .filter(|r| r.at > after1)
-        .max_by(|a, b| (a.top - a.base).total_cmp(&(b.top - b.base)));
+        .max_by(|a, b| rise_after1(a).total_cmp(&rise_after1(b)));
 
     // Each sound's peak lies between its own rise and the start of the next.
     let reach = samples(0.001);
@@ -623,5 +631,65 @@ fn median_shape(shapes: &[&Shape]) -> Shape {
         rises: all(&|s| s.rises as f64).round() as usize,
         extra_pre: Vec::new(),
         extra_post: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A template drawn through (ms from the drop peak, level) points.
+    fn template(fs: f64, points: &[(f64, f32)]) -> (Vec<f32>, usize) {
+        let n = (0.050 * fs) as usize;
+        let origin = n / 2;
+        let t = (0..n)
+            .map(|i| {
+                let ms = (i as f64 - origin as f64) / fs * 1000.0;
+                let k = points.iter().position(|p| p.0 > ms).unwrap_or(points.len());
+                if k == 0 {
+                    points[0].1
+                } else if k == points.len() {
+                    points[k - 1].1
+                } else {
+                    let (a, b) = (points[k - 1], points[k]);
+                    a.1 + (b.1 - a.1) * ((ms - a.0) / (b.0 - a.0)) as f32
+                }
+            })
+            .collect();
+        (t, origin)
+    }
+
+    #[test]
+    fn a_shoulder_on_the_unlock_is_not_the_impulse() {
+        // The Daytona 4130's Tick at 9:15 of its dial-up take, 4 s: the
+        // unlock climbs to a shoulder 1 ms later, and the impulse rises
+        // out of that shoulder's tail about 2.4 ms after the unlock.
+        let fs = 48_000.0;
+        let (t, origin) = template(
+            fs,
+            &[
+                (-7.45, 0.0066),
+                (-7.3, 0.0124),
+                (-7.1, 0.0108),
+                (-6.25, 0.0234),
+                (-5.9, 0.0160),
+                (-5.6, 0.0183),
+                (-5.3, 0.0148),
+                (-4.5, 0.0297),
+                (-4.1, 0.0240),
+                (-3.8, 0.0295),
+                (-3.2, 0.0122),
+                (-1.0, 0.0120),
+                (-0.4, 0.0400),
+                (0.0, 0.0600),
+                (8.0, 0.0066),
+            ],
+        );
+        let s = measure(&t, fs, origin, &ShapeConfig::default()).expect("shape");
+        let t2 = s.t2_ms.expect("sound 2");
+        assert!(
+            (2.0..3.0).contains(&t2),
+            "sound 2 {t2:.2} ms after the unlock"
+        );
     }
 }
