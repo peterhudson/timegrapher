@@ -143,6 +143,12 @@ pub struct AmplitudeWindow {
     /// from the unlock edges, ms; even beats late is positive.
     pub beat_error_ms: Option<f64>,
     pub beat_error_unlock_ms: Option<f64>,
+    /// Where the unlock and drop edges sat on each side's template, ms from
+    /// the beat time, so a jump of an edge between sounds shows.
+    pub even_unlock_ms: Option<f64>,
+    pub odd_unlock_ms: Option<f64>,
+    pub even_drop_ms: Option<f64>,
+    pub odd_drop_ms: Option<f64>,
 }
 
 impl AmplitudeWindow {
@@ -205,8 +211,9 @@ pub fn windows_between(
             hi += 1;
         }
         let win = &beats[lo..hi];
-        // Amplitude and the unlock's offset from the beat times, seconds.
-        let side = |even: bool| -> Option<(f64, f64)> {
+        // Amplitude, and the unlock's and drop's offsets from the beat
+        // times, seconds.
+        let side = |even: bool| -> Option<(f64, f64, f64)> {
             let times: Vec<f64> = win
                 .iter()
                 .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
@@ -219,12 +226,13 @@ pub fn windows_between(
             let origin = (PRE_S * fs).round() as usize;
             let e = edges(&tmpl, fs, origin, cfg.onset_fraction)?;
             let a = amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg);
-            plausible(a).then_some((a, e.unlock / fs - origin as f64 / fs))
+            let at = |i: f64| (i - origin as f64) / fs;
+            plausible(a).then_some((a, at(e.unlock), at(e.drop)))
         };
         let (even, odd) = (side(true), side(false));
         let beat_error_ms = timing::beat_error_ms(win);
         let beat_error_unlock_ms = match (beat_error_ms, even, odd) {
-            (Some(e), Some((_, ue)), Some((_, uo))) => Some(e + (ue - uo) * 1000.0),
+            (Some(e), Some((_, ue, _)), Some((_, uo, _))) => Some(e + (ue - uo) * 1000.0),
             _ => None,
         };
         out.push(AmplitudeWindow {
@@ -234,6 +242,10 @@ pub fn windows_between(
             odd_deg: odd.map(|s| s.0),
             beat_error_ms,
             beat_error_unlock_ms,
+            even_unlock_ms: even.map(|s| s.1 * 1000.0),
+            odd_unlock_ms: odd.map(|s| s.1 * 1000.0),
+            even_drop_ms: even.map(|s| s.2 * 1000.0),
+            odd_drop_ms: odd.map(|s| s.2 * 1000.0),
         });
         start += window_s;
     }
