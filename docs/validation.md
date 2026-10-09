@@ -212,7 +212,12 @@ energy is more than twice a typical tick's (the median, over half-second
 blocks, of each block's loudest 20 ms) is set to zero. If that would
 silence more than 4% of the recording, the typical level is not a tick's
 (the watch is only heard in the last part of a live window, say) and
-nothing is silenced.
+nothing is silenced. A loud stretch longer than 0.1 s (handling or
+rubbing, not a knock) is also left alone: silencing it takes every beat in
+it too, and on the Yacht-Master dial down, read in 47 s chunks by
+`session`, that gap let the beat count slip by one and the rate read
++67.4 s/d instead of +43.6 (tg +46.8). The tracker rides through such a
+stretch better than through a gap.
 
 On the recordings it changes almost nothing: under 0.03% of samples on
 the clean takes, 0.5% on the Yacht-Master dial down with its knock.
