@@ -84,7 +84,7 @@ enum Command {
         #[arg(long)]
         templates: Option<PathBuf>,
     },
-    /// The sound of the tick and the tock (A and B beats) over a stretch of
+    /// The sound of the tick and the tock (even and odd beats) over a stretch of
     /// a recording, with the unlock, drop and sound marks the engine
     /// measured on them: the place to look when amplitude or beat error
     /// seem wrong.

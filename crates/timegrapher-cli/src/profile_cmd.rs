@@ -92,7 +92,7 @@ fn print_side(p: &TickProfile) {
     );
 }
 
-/// Two stacked plots (A above B) on a log level scale, with the median, the
+/// Two stacked plots (tick above tock) on a log level scale, with the median, the
 /// 10–90% band and the marks.
 fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lift: f64) -> String {
     let (w, h, ml, mr, mt, gap) = (900.0, 260.0, 60.0, 20.0, 40.0, 50.0);
