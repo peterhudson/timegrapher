@@ -134,7 +134,10 @@ pub fn parabolic(x: &[f32], i: usize) -> f64 {
     }
     let (y0, y1, y2) = (x[i - 1] as f64, x[i] as f64, x[i + 1] as f64);
     let d = y0 - 2.0 * y1 + y2;
-    if d < 0.0 {
+    // Only a local maximum is refined: on a slope (an argmax at the edge
+    // of its search window) a nearly flat curve would throw the vertex
+    // many samples away.
+    if d < 0.0 && y1 >= y0 && y1 >= y2 {
         i as f64 + 0.5 * (y0 - y2) / d
     } else {
         i as f64
@@ -190,6 +193,15 @@ pub fn robust_sd(v: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parabolic_refines_only_a_peak() {
+        // A true peak moves toward its higher neighbour by under a sample.
+        let p = parabolic(&[0.0, 1.0, 0.5], 1);
+        assert!(p > 1.0 && p < 1.5, "{p}");
+        // On a nearly flat falling slope the vertex would be far away.
+        assert_eq!(parabolic(&[1.0, 0.999, 0.997], 1), 1.0);
+    }
 
     #[test]
     fn trimmed_mean_ignores_the_ends() {

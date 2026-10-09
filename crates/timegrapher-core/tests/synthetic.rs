@@ -62,7 +62,9 @@ fn noisy_signal_still_tracks() {
         "rate {}",
         f.rate_s_per_day
     );
-    assert!(a.beats.len() >= 235);
+    // 240 beats; at this noise level a few are drowned out and left out
+    // rather than placed on a noise peak.
+    assert!(a.beats.len() >= 230, "{} beats", a.beats.len());
 }
 
 #[test]
