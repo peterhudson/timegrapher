@@ -190,6 +190,7 @@ struct Summary<'a> {
     clean_fraction: f64,
     clock: &'a Option<ClockFit>,
     overall: &'a Option<timing::TimingFit>,
+    beat_error_unlock_ms: Option<f64>,
     rate_p05: Option<f64>,
     rate_p95: Option<f64>,
     amplitude_deg: Option<f64>,
@@ -236,6 +237,7 @@ impl<'a> From<&'a LongReport> for Summary<'a> {
             clean_fraction: r.clean_fraction,
             clock: &r.clock,
             overall: &r.overall,
+            beat_error_unlock_ms: r.beat_error_unlock_ms,
             rate_p05: r.rate_p05,
             rate_p95: r.rate_p95,
             amplitude_deg: r.amplitude_deg,
@@ -317,6 +319,12 @@ fn print_summary(r: &LongReport) {
         ),
         None => println!("Rate         not enough clean beats to fit"),
     }
+    if let Some(f) = &r.overall {
+        println!(
+            "Beat error   {}",
+            crate::beat_error_text(r.beat_error_unlock_ms, f.beat_error_ms)
+        );
+    }
     println!(
         "Amplitude    {} deg median; slices from {} to {} deg (lift angle {} deg)",
         opt(r.amplitude_deg, 0),
@@ -372,16 +380,22 @@ fn write_beats(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io::Re
 
 fn write_amplitude(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
-    writeln!(w, "start_s,end_s,true_start_s,even_deg,odd_deg")?;
+    writeln!(
+        w,
+        "start_s,end_s,true_start_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms"
+    )?;
     for a in &log.amplitude_windows {
         writeln!(
             w,
-            "{:.3},{:.3},{:.3},{},{}",
+            "{:.3},{:.3},{:.3},{},{},{},{}",
             a.start_s,
             a.end_s,
             clock.map_or(a.start_s, |c| c.map(a.start_s)),
             a.even_deg.map_or(String::new(), |v| format!("{v:.1}")),
-            a.odd_deg.map_or(String::new(), |v| format!("{v:.1}"))
+            a.odd_deg.map_or(String::new(), |v| format!("{v:.1}")),
+            a.beat_error_ms.map_or(String::new(), |v| format!("{v:.3}")),
+            a.beat_error_unlock_ms
+                .map_or(String::new(), |v| format!("{v:.3}"))
         )?;
     }
     w.flush()
@@ -391,16 +405,17 @@ fn write_slices(p: &Path, r: &LongReport) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(
         w,
-        "start_s,end_s,rate_s_per_day,beat_error_ms,amplitude_deg"
+        "start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg"
     )?;
     for s in &r.slices {
         writeln!(
             w,
-            "{:.1},{:.1},{},{},{}",
+            "{:.1},{:.1},{},{},{},{}",
             s.start_s,
             s.end_s,
             opt(s.rate_s_per_day, 2),
             opt(s.beat_error_ms, 3),
+            opt(s.beat_error_unlock_ms, 3),
             opt(s.amplitude_deg, 1)
         )?;
     }

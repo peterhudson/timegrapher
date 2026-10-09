@@ -8,9 +8,19 @@
 //! `t` is measured on median templates of a few seconds of beats, one for
 //! each side (tick and toc), because single beats are too noisy for a
 //! stable onset.
+//!
+//! The same templates give the beat error measured from the unlock, as tg
+//! and commercial timegraphers measure it. Beat times sit near the drop, so
+//! the fitted beat error is the drop's. If the even side's unlock comes
+//! `u_e` after its beat time and the odd side's `u_o` after its own, the
+//! unlocks fall at `t0 + k*P + s*e/2 + u_s`, which is the same model with
+//! beat error `e + u_e - u_o`. When the beat times sit exactly on the drop
+//! edges this is the drop's beat error minus the difference between the
+//! two sides' unlock-to-drop times.
 
 use crate::beats::{median_template, Beat, PRE_S};
 use crate::dsp::{median_f32, moving_average};
+use crate::timing;
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -118,6 +128,10 @@ pub struct AmplitudeWindow {
     /// Amplitude from even beats and from odd beats, degrees.
     pub even_deg: Option<f64>,
     pub odd_deg: Option<f64>,
+    /// Signed beat error from the window's beat times (near the drop) and
+    /// from the unlock edges, ms; even beats late is positive.
+    pub beat_error_ms: Option<f64>,
+    pub beat_error_unlock_ms: Option<f64>,
 }
 
 impl AmplitudeWindow {
@@ -180,7 +194,8 @@ pub fn windows_between(
             hi += 1;
         }
         let win = &beats[lo..hi];
-        let side = |even: bool| -> Option<f64> {
+        // Amplitude and the unlock's offset from the beat times, seconds.
+        let side = |even: bool| -> Option<(f64, f64)> {
             let times: Vec<f64> = win
                 .iter()
                 .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
@@ -190,14 +205,24 @@ pub fn windows_between(
                 return None;
             }
             let tmpl = median_template(env, fs, &times);
-            let t = unlock_to_drop(&tmpl, fs, cfg.onset_fraction)?;
-            Some(amplitude_deg(t, osc_period_s, cfg.lift_deg)).filter(|&a| plausible(a))
+            let origin = (PRE_S * fs).round() as usize;
+            let e = edges(&tmpl, fs, origin, cfg.onset_fraction)?;
+            let a = amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg);
+            plausible(a).then_some((a, e.unlock / fs - origin as f64 / fs))
+        };
+        let (even, odd) = (side(true), side(false));
+        let beat_error_ms = timing::beat_error_ms(win);
+        let beat_error_unlock_ms = match (beat_error_ms, even, odd) {
+            (Some(e), Some((_, ue)), Some((_, uo))) => Some(e + (ue - uo) * 1000.0),
+            _ => None,
         };
         out.push(AmplitudeWindow {
             start_s: start,
             end_s: start + window_s,
-            even_deg: side(true),
-            odd_deg: side(false),
+            even_deg: even.map(|s| s.0),
+            odd_deg: odd.map(|s| s.0),
+            beat_error_ms,
+            beat_error_unlock_ms,
         });
         start += window_s;
     }

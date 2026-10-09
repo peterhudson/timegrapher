@@ -15,7 +15,10 @@ pub struct Slice {
     pub start_s: f64,
     pub end_s: f64,
     pub rate_s_per_day: Option<f64>,
+    /// Signed beat error from the drop (the slice's fit) and from the
+    /// unlock (median of the amplitude windows in the slice), ms.
     pub beat_error_ms: Option<f64>,
+    pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
 }
 
@@ -43,6 +46,8 @@ pub struct LongReport {
     /// The whole run fitted at once (calibrated when `clock` is set); its
     /// jitter is the median over the slices.
     pub overall: Option<TimingFit>,
+    /// Signed beat error from the unlock, median of the amplitude windows, ms.
+    pub beat_error_unlock_ms: Option<f64>,
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
     pub amplitude_deg: Option<f64>,
@@ -131,6 +136,11 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         .iter()
         .filter_map(|w| Some((map((w.start_s + w.end_s) / 2.0), w.mean()?)))
         .unzip();
+    let (ut, uv): (Vec<f64>, Vec<f64>) = log
+        .amplitude_windows
+        .iter()
+        .filter_map(|w| Some((map((w.start_s + w.end_s) / 2.0), w.beat_error_unlock_ms?)))
+        .unzip();
     let aw: Vec<f64> = at.iter().map(|&t| to_watch(t)).collect();
     let amp_grid = grid_median(&aw, &av, 0.0, astep, (duration / astep).floor() as usize);
 
@@ -156,7 +166,7 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
     let mut slices = Vec::new();
     let mut jitters = Vec::new();
     let mut s = 0.0;
-    let (mut bi, mut ai) = (0, 0);
+    let (mut bi, mut ai, mut ui) = (0, 0, 0);
     while s + slice_s <= duration + 1e-9 {
         let e = s + slice_s;
         let b0 = bi;
@@ -174,11 +184,19 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
             }
             ai += 1;
         }
+        let mut unlocks = Vec::new();
+        while ui < ut.len() && ut[ui] < e {
+            if ut[ui] >= s {
+                unlocks.push(uv[ui]);
+            }
+            ui += 1;
+        }
         slices.push(Slice {
             start_s: s,
             end_s: e,
             rate_s_per_day: w.map(|f| f.rate_s_per_day),
             beat_error_ms: w.map(|f| f.beat_error_ms),
+            beat_error_unlock_ms: (!unlocks.is_empty()).then(|| median(&mut unlocks)),
             amplitude_deg: (!amps.is_empty()).then(|| median(&mut amps)),
         });
         s = e;
@@ -202,6 +220,10 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         clean_fraction: (bw.len() as f64 / expected.max(1.0)).min(1.0),
         clock: clock.cloned(),
         overall,
+        beat_error_unlock_ms: {
+            let mut u = uv;
+            (!u.is_empty()).then(|| median(&mut u))
+        },
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         amplitude_deg: {
