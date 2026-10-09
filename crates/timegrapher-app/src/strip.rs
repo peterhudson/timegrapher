@@ -1,4 +1,4 @@
-//! The paper strip and the trend charts.
+//! The paper strip.
 //!
 //! The strip is drawn the way tg draws its paperstrip: one dot per beat,
 //! placed across the strip by how early or late the beat came against a
@@ -7,7 +7,9 @@
 //! that gains leans right as it rises (/), one that loses leans left (\).
 //! Tick and toc (beats A and B) draw two lines whose gap is the beat error.
 //! A line that runs off one side comes back on the other, as on a
-//! Witschi diagram, so the strip's width sets the zoom.
+//! Witschi diagram, so the strip's width sets the zoom. The strip can also
+//! lie on its side, time running left to right with the newest beats on the
+//! right and early beats towards the top.
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
@@ -64,11 +66,57 @@ pub fn wrap(x: f64, half: f64) -> f64 {
     (x + half).rem_euclid(2.0 * half) - half
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StripView {
     /// Half the strip's width, ms.
     pub half_width_ms: f64,
-    /// Time shown top to bottom, seconds.
+    /// Time shown along the strip, seconds.
     pub span_s: f64,
+    /// Time runs left to right (newest on the right) instead of down the
+    /// strip (newest at the top).
+    pub horizontal: bool,
+}
+
+impl StripView {
+    pub const MIN_HALF_WIDTH_MS: f64 = 0.1;
+    pub const MAX_HALF_WIDTH_MS: f64 = 250.0;
+    pub const MIN_SPAN_S: f64 = 2.0;
+    pub const MAX_SPAN_S: f64 = 24.0 * 3600.0;
+
+    pub fn set_half_width(&mut self, ms: f64) {
+        self.half_width_ms = ms.clamp(Self::MIN_HALF_WIDTH_MS, Self::MAX_HALF_WIDTH_MS);
+    }
+
+    pub fn set_span(&mut self, s: f64) {
+        self.span_s = s.clamp(Self::MIN_SPAN_S, Self::MAX_SPAN_S);
+    }
+}
+
+/// What the mouse did to the strip in one frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StripInput {
+    /// Seconds to move the newest edge by (positive: towards newer beats).
+    pub time_shift_s: f64,
+    /// Ms to slide the trace across by (positive: towards early).
+    pub lead_shift_ms: f64,
+    /// Factor for the length (below 1 zooms in).
+    pub span_factor: f64,
+    /// Factor for the width (below 1 zooms in).
+    pub width_factor: f64,
+    /// Double-clicked: back to the newest beats, centred.
+    pub reset: bool,
+}
+
+impl Default for StripInput {
+    fn default() -> Self {
+        StripInput {
+            time_shift_s: 0.0,
+            lead_shift_ms: 0.0,
+            span_factor: 1.0,
+            width_factor: 1.0,
+            reset: false,
+        }
+    }
 }
 
 /// A step of 1, 2 or 5 times a power of ten, about `target` long.
@@ -82,7 +130,40 @@ fn nice_step(target: f64) -> f64 {
     10.0 * p
 }
 
-/// Draw the strip for the beats up to `end_s`.
+/// Places points on the strip from (lead in ms, time in s).
+struct Geom {
+    r: Rect,
+    half: f64,
+    span: f64,
+    end: f64,
+    horizontal: bool,
+}
+
+impl Geom {
+    fn pos(&self, ms: f64, t: f64) -> Pos2 {
+        let r = self.r;
+        let across = (ms / self.half) as f32;
+        let back = ((self.end - t) / self.span) as f32;
+        if self.horizontal {
+            Pos2::new(
+                r.right() - back * r.width(),
+                r.center().y - across * r.height() / 2.0,
+            )
+        } else {
+            Pos2::new(
+                r.center().x + across * r.width() / 2.0,
+                r.top() + back * r.height(),
+            )
+        }
+    }
+}
+
+/// Draw the strip for the beats up to `end_s` and report what the mouse
+/// did to it: the wheel zooms the length, Ctrl and the wheel (or a pinch)
+/// zooms the width, dragging along the time axis looks back, dragging
+/// across slides the trace, and a double click returns to the newest
+/// beats.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_strip(
     ui: &mut egui::Ui,
     beats: &[Beat],
@@ -90,10 +171,42 @@ pub fn draw_strip(
     anchor: Option<Anchor>,
     end_s: f64,
     view: &StripView,
+    note: Option<&str>,
     size: Vec2,
-) {
-    let (resp, painter) = ui.allocate_painter(size, Sense::hover());
+) -> StripInput {
+    let (resp, painter) = ui.allocate_painter(size, Sense::click_and_drag());
     let r = resp.rect;
+    let g = Geom {
+        r,
+        half: view.half_width_ms,
+        span: view.span_s,
+        end: end_s,
+        horizontal: view.horizontal,
+    };
+    let mut input = StripInput::default();
+    let d = resp.drag_delta();
+    if view.horizontal {
+        input.time_shift_s = -(d.x / r.width().max(1.0)) as f64 * view.span_s;
+        input.lead_shift_ms = -(d.y / (r.height() / 2.0).max(1.0)) as f64 * view.half_width_ms;
+    } else {
+        input.time_shift_s = (d.y / r.height().max(1.0)) as f64 * view.span_s;
+        input.lead_shift_ms = (d.x / (r.width() / 2.0).max(1.0)) as f64 * view.half_width_ms;
+    }
+    if resp.hovered() {
+        let (scroll, zoom) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
+        let wheel = scroll.x + scroll.y;
+        if wheel != 0.0 {
+            input.span_factor = (-wheel as f64 * 0.003).exp();
+        }
+        if zoom != 1.0 {
+            input.width_factor = 1.0 / zoom as f64;
+        }
+    }
+    input.reset = resp.double_clicked();
+    if resp.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+
     let vis = ui.visuals();
     let dark = vis.dark_mode;
     painter.rect_filled(r, 2.0, vis.extreme_bg_color);
@@ -101,84 +214,138 @@ pub fn draw_strip(
     let text = vis.weak_text_color();
     let font = FontId::proportional(11.0);
     let half = view.half_width_ms;
-    let x_of = |ms: f64| r.center().x + (ms / half) as f32 * r.width() / 2.0;
-    let y_of = |t: f64| r.top() + ((end_s - t) / view.span_s) as f32 * r.height();
+    let oldest = end_s - view.span_s;
 
-    // Grid: lines every nice step of ms across, every nice step of seconds down.
+    // Grid: lines every nice step of ms along the strip, every nice step of
+    // seconds across it.
     let step = nice_step(half / 4.0);
     let mut k = (-half / step).ceil() as i64;
     while (k as f64) * step < half {
-        let x = x_of(k as f64 * step);
+        let ms = k as f64 * step;
         let s = if k == 0 {
             Stroke::new(1.5_f32, grid.gamma_multiply(2.0))
         } else {
             Stroke::new(1.0_f32, grid)
         };
-        painter.line_segment([Pos2::new(x, r.top()), Pos2::new(x, r.bottom())], s);
+        painter.line_segment([g.pos(ms, end_s), g.pos(ms, oldest)], s);
         k += 1;
     }
     let tstep = nice_step(view.span_s / 6.0);
     let mut t = (end_s / tstep).floor() * tstep;
-    while t > end_s - view.span_s {
-        let y = y_of(t);
-        painter.line_segment(
-            [Pos2::new(r.left(), y), Pos2::new(r.right(), y)],
-            Stroke::new(1.0_f32, grid),
-        );
+    while t > oldest {
+        let (a, b) = (g.pos(-half, t), g.pos(half, t));
+        painter.line_segment([a, b], Stroke::new(1.0_f32, grid));
+        // Vertical: label at the left edge above the line; horizontal: at
+        // the bottom edge right of the line.
+        let at = if view.horizontal {
+            a + Vec2::new(3.0, -16.0)
+        } else {
+            a + Vec2::new(4.0, -2.0)
+        };
+        // Leave room for the "late" label in the corner.
+        let crowded = if view.horizontal {
+            at.x < r.left() + 32.0
+        } else {
+            at.y > r.bottom() - 16.0
+        };
+        if !crowded {
+            painter.text(at, Align2::LEFT_BOTTOM, fmt_time(t), font.clone(), text);
+        }
+        t -= tstep;
+    }
+    let caption = format!(
+        "{} ms per line, {} ms across",
+        fmt_ms(step),
+        fmt_ms(2.0 * half)
+    );
+    if view.horizontal {
+        let pad = Vec2::new(4.0, 2.0);
         painter.text(
-            Pos2::new(r.left() + 4.0, y - 2.0),
-            Align2::LEFT_BOTTOM,
-            fmt_time(t),
+            r.left_top() + pad,
+            Align2::LEFT_TOP,
+            "early",
             font.clone(),
             text,
         );
-        t -= tstep;
+        painter.text(
+            r.left_bottom() + Vec2::new(4.0, -2.0),
+            Align2::LEFT_BOTTOM,
+            "late",
+            font.clone(),
+            text,
+        );
+        painter.text(
+            r.center_top() + Vec2::new(0.0, 2.0),
+            Align2::CENTER_TOP,
+            caption,
+            font.clone(),
+            text,
+        );
+    } else {
+        painter.text(
+            r.left_bottom() + Vec2::new(4.0, -4.0),
+            Align2::LEFT_BOTTOM,
+            "late",
+            font.clone(),
+            text,
+        );
+        painter.text(
+            r.center_bottom() + Vec2::new(0.0, -4.0),
+            Align2::CENTER_BOTTOM,
+            caption,
+            font.clone(),
+            text,
+        );
+        painter.text(
+            r.right_bottom() + Vec2::new(-4.0, -4.0),
+            Align2::RIGHT_BOTTOM,
+            "early",
+            font.clone(),
+            text,
+        );
     }
-    painter.text(
-        r.left_bottom() + Vec2::new(4.0, -4.0),
-        Align2::LEFT_BOTTOM,
-        "late",
-        font.clone(),
-        text,
-    );
-    painter.text(
-        r.center_bottom() + Vec2::new(0.0, -4.0),
-        Align2::CENTER_BOTTOM,
-        format!(
-            "{} ms per line, {} ms across",
-            fmt_ms(step),
-            fmt_ms(2.0 * half)
-        ),
-        font.clone(),
-        text,
-    );
-    painter.text(
-        r.right_bottom() + Vec2::new(-4.0, -4.0),
-        Align2::RIGHT_BOTTOM,
-        "early",
-        font,
-        text,
-    );
+    if let Some(n) = note {
+        let at = if view.horizontal {
+            r.right_top() + Vec2::new(-4.0, 2.0)
+        } else {
+            r.center_top() + Vec2::new(0.0, 4.0)
+        };
+        let align = if view.horizontal {
+            Align2::RIGHT_TOP
+        } else {
+            Align2::CENTER_TOP
+        };
+        painter.text(at, align, n, font, vis.text_color());
+    }
 
-    let Some(anchor) = anchor else { return };
+    let Some(anchor) = anchor else {
+        return input;
+    };
     let colors = side_colors(dark);
-    let lo = beats.partition_point(|b| b.time < end_s - view.span_s);
+    let lo = beats.partition_point(|b| b.time < oldest);
     let hi = beats.partition_point(|b| b.time <= end_s);
     let shown = &beats[lo..hi];
     // Dots shrink when the strip is crowded.
-    let per_px = shown.len() as f32 / r.height().max(1.0);
+    let along = if view.horizontal {
+        r.width()
+    } else {
+        r.height()
+    };
+    let per_px = shown.len() as f32 / along.max(1.0);
     let radius = (2.2 / per_px.max(1.0).sqrt()).clamp(0.8, 2.2);
+    let painter = painter.with_clip_rect(r);
     for b in shown {
         if b.quality < 0.4 {
             continue;
         }
-        let x = x_of(wrap(anchor.lead_ms(b, period_s), half));
+        let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
         let c = colors[b.index.rem_euclid(2) as usize];
-        painter.circle_filled(Pos2::new(x, y_of(b.time)), radius, c);
+        painter.circle_filled(p, radius, c);
     }
+    input
 }
 
-fn fmt_ms(ms: f64) -> String {
+pub fn fmt_ms(ms: f64) -> String {
     if ms >= 10.0 {
         format!("{ms:.0}")
     } else if ms >= 1.0 {
@@ -195,94 +362,6 @@ pub fn fmt_time(t: f64) -> String {
     } else {
         format!("{}:{:02}", s / 60, s % 60)
     }
-}
-
-/// A small chart of one quantity over the session.
-pub fn draw_series(
-    ui: &mut egui::Ui,
-    title: &str,
-    unit: &str,
-    points: &[(f64, f64)],
-    t_range: (f64, f64),
-    color: Color32,
-    size: Vec2,
-) {
-    let (resp, painter) = ui.allocate_painter(size, Sense::hover());
-    let r = resp.rect;
-    let vis = ui.visuals();
-    painter.rect_filled(r, 2.0, vis.extreme_bg_color);
-    let text = vis.weak_text_color();
-    let grid = vis.widgets.noninteractive.bg_stroke.color;
-    let font = FontId::proportional(11.0);
-    painter.text(
-        r.left_top() + Vec2::new(4.0, 2.0),
-        Align2::LEFT_TOP,
-        title,
-        font.clone(),
-        vis.text_color(),
-    );
-    if points.len() < 2 {
-        return;
-    }
-    // Scale to the 2nd to 98th percentile so a glitch doesn't flatten the line.
-    let mut ys: Vec<f64> = points.iter().map(|p| p.1).collect();
-    ys.sort_by(f64::total_cmp);
-    let q = |f: f64| ys[((ys.len() - 1) as f64 * f).round() as usize];
-    let (mut y0, mut y1) = (q(0.02), q(0.98));
-    let pad = ((y1 - y0) * 0.15).max(1.0);
-    y0 -= pad;
-    y1 += pad;
-    let (t0, t1) = (t_range.0, t_range.1.max(t_range.0 + 1.0));
-    let inner = r.shrink2(Vec2::new(40.0, 16.0));
-    let px = |t: f64, y: f64| {
-        Pos2::new(
-            inner.left() + ((t - t0) / (t1 - t0)) as f32 * inner.width(),
-            inner.bottom() - ((y - y0) / (y1 - y0)) as f32 * inner.height(),
-        )
-    };
-    let ystep = nice_step((y1 - y0) / 4.0);
-    let mut y = (y0 / ystep).ceil() * ystep;
-    while y <= y1 {
-        let p = px(t0, y);
-        painter.line_segment(
-            [Pos2::new(inner.left(), p.y), Pos2::new(inner.right(), p.y)],
-            Stroke::new(1.0_f32, grid),
-        );
-        painter.text(
-            Pos2::new(inner.left() - 4.0, p.y),
-            Align2::RIGHT_CENTER,
-            format!("{y:.0}{unit}"),
-            font.clone(),
-            text,
-        );
-        y += ystep;
-    }
-    painter.text(
-        Pos2::new(inner.left(), r.bottom() - 2.0),
-        Align2::LEFT_BOTTOM,
-        fmt_time(t0),
-        font.clone(),
-        text,
-    );
-    painter.text(
-        Pos2::new(inner.right(), r.bottom() - 2.0),
-        Align2::RIGHT_BOTTOM,
-        fmt_time(t1),
-        font,
-        text,
-    );
-    let clip = Rect::from_min_max(inner.min, inner.max);
-    let painter = painter.with_clip_rect(clip);
-    // One point per pixel column at most.
-    let step = (points.len() as f32 / inner.width().max(1.0))
-        .ceil()
-        .max(1.0) as usize;
-    let line: Vec<Pos2> = points
-        .iter()
-        .step_by(step)
-        .map(|&(t, y)| px(t, y))
-        .collect();
-    painter.add(egui::Shape::line(line, Stroke::new(1.5_f32, color)));
 }
 
 #[cfg(test)]
