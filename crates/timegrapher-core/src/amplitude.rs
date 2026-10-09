@@ -89,12 +89,22 @@ pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> O
         let (y0, y1) = (t[i - 1], t[i]);
         Some((i - 1) as f64 + ((level - y0) / (y1 - y0)) as f64)
     };
-    // Drop edge: within 2 ms before the peak.
-    let drop = crossing(
-        peak.saturating_sub((0.002 * fs) as usize),
-        peak + 1,
-        floor + 0.5 * height,
-    )?;
+    // Drop edge: where the rise into the peak crosses half height, within
+    // 2 ms before the peak. Walking back from the peak (rather than taking
+    // the first crossing in those 2 ms) keeps the edge on that rise when an
+    // earlier sound sits near half the drop's height.
+    let half = floor + 0.5 * height;
+    let start = peak.saturating_sub((0.002 * fs) as usize).max(1);
+    let mut i = peak;
+    while i > start && t[i - 1] > half {
+        i -= 1;
+    }
+    let drop = if i > start {
+        let (y0, y1) = (t[i - 1], t[i]);
+        (i - 1) as f64 + ((half - y0) / (y1 - y0)) as f64
+    } else {
+        crossing(start, peak + 1, half)?
+    };
     // Unlock edge: sound 1 is found as the first sustained rise above the
     // floor by `onset_fraction` of the drop or 4 noise SDs, whichever is
     // larger, and its edge is where it crosses half its own height. A
@@ -228,4 +238,31 @@ pub fn windows_between(
         start += window_s;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drop_edge_stays_on_the_rise_into_the_peak() {
+        // Floor, a short sound 1 at -7 ms, a shelf just under half the drop's
+        // height from -2.3 to -1 ms with a brief bump above half on it, then
+        // the drop rising to its peak at 0.
+        let fs = 48_000.0;
+        let origin = (PRE_S * fs).round() as usize;
+        let len = origin + (0.01 * fs) as usize;
+        let at = |ms: f64| (origin as f64 + ms / 1000.0 * fs).round() as usize;
+        let mut t = vec![0.01f32; len];
+        t[at(-7.0)..at(-6.7)].fill(0.3);
+        t[at(-2.3)..at(-1.0)].fill(0.45);
+        t[at(-1.8)..at(-1.5)].fill(0.6);
+        t[at(-1.0)..at(0.0)].fill(0.8);
+        t[at(0.0)..at(0.3)].fill(1.0);
+        let e = edges(&t, fs, origin, 0.02).unwrap();
+        let drop_ms = (e.drop - origin as f64) / fs * 1000.0;
+        assert!((drop_ms + 1.0).abs() < 0.15, "drop at {drop_ms} ms");
+        let unlock_ms = (e.unlock - origin as f64) / fs * 1000.0;
+        assert!((unlock_ms + 7.0).abs() < 0.15, "unlock at {unlock_ms} ms");
+    }
 }

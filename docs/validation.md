@@ -155,6 +155,30 @@ segment 03 this moves the drop's beat error from 0.34 to 0.77 ms and that
 side's amplitude from 300° to 308° (median 289° to 295° at 55°, against
 tg's 286°). Segments 01 and 02 do not change by more than 1°.
 
+## The drop edge on the bare ETA 2824
+
+The ETA 2824-2 clone, taken out of its plastic holder (30 min dial up, and
+10 min at a lower microphone gain), read 14–20° above tg at 50°. On this
+movement the last sound before the drop's peak sits just under half the
+drop's height and starts about 2 ms before it. The drop edge used to be the
+first crossing of half height in the 2 ms before the peak, so in 28% of the
+Tick side's 2 s windows a little noise on that earlier sound moved the edge
+about 1 ms early and the window read 320–350°. The edge is now where the
+rise into the peak crosses half height, found by walking back from the peak.
+
+| Recording | tg | before | after |
+| --- | --- | --- | --- |
+| ETA 2824 bare, 01 / 02 / 03 (50°) | 279 / 283 / 281° | 297 / 299 / 293° | 290 / 290 / 288° |
+| ETA 2824 bare, Mic 4/16 (50°) | 276° | 296° | 285° |
+| Dandong 3235, 01 / 02 / 03 (55°) | 286° (whole) | 285 / 287 / 294° | 281 / 283 / 294° |
+| Daytona, Patek 324 clone, Peacock SL1258 | | | within 1° |
+
+Rate does not change. The remaining 7–11° on the bare ETA is a difference
+of landmark: tg measures from the peak of sound 1 to the waveform's highest
+point, and on this movement that point is about 1.1 ms after the drop's
+rising edge (0.3–0.6 ms on the other watches). The ETA in its holder
+remains unreliable either way.
+
 ## Beat shape
 
 `crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on
