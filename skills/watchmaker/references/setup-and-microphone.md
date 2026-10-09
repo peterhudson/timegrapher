@@ -157,6 +157,12 @@ a quick test, or on a system with no sound server, where
 `alsactl store` makes the level survive a reboot (ask first; it may need
 root).
 
+If the person uses the desktop app (`timegrapher-app`), its **Input
+level** slider under the device menu does this for them: for the system
+default input it sets the sound server's volume, for a direct device the
+card's control, with a peak meter marked at the −10 dBFS target and the
+−6 dBFS limit. Point them to that before any command line.
+
 **macOS**
 
 - *Audio MIDI Setup* (Applications › Utilities): select the USB microphone
