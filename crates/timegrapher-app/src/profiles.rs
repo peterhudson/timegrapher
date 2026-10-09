@@ -1,4 +1,4 @@
-//! The tick and tock sound pane: the median sound of the ticks and of the
+//! The tick and tock sound pane: the typical sound of the ticks and of the
 //! tocks, with the band most beats fall in and the marks the engine read
 //! the amplitude and beat error from.
 
@@ -148,7 +148,7 @@ pub fn draw(
             }
             pl.line(
                 Line::new(
-                    "median sound",
+                    "typical sound",
                     med.iter()
                         .enumerate()
                         .map(|(i, &v)| [x(i), v])

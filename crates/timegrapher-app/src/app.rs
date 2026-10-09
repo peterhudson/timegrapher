@@ -14,7 +14,7 @@ use std::time::Instant;
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
-use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
+use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::mixer::{GainState, InputGain};
 use timegrapher_core::profile::TickProfile;
 
@@ -375,7 +375,28 @@ impl TimegrapherApp {
         let mut c = LiveConfig::default();
         c.analysis.bph = self.bph;
         c.analysis.amplitude.lift_deg = self.lift_deg;
+        c.profile_s = self.sound_span();
         c
+    }
+
+    /// Seconds of beats the tick and tock sound covers: the averaging time,
+    /// so it describes the same beats as the readings, up to the engine's
+    /// limit.
+    fn sound_span(&self) -> f64 {
+        self.average_s.clamp(0.5, MAX_PROFILE_S)
+    }
+
+    /// A new averaging time: the readings over the whole session are worked
+    /// out again, and the tick and tock sound follows it.
+    fn set_average(&mut self, seconds: f64) {
+        self.average_s = seconds;
+        let span = self.sound_span();
+        if let Some(l) = self.live.as_mut() {
+            l.set_profile_span(span);
+        }
+        // The sound kept so far covered the old span.
+        self.sound_at = None;
+        self.rebuild_trend();
     }
 
     fn info(&self, device: &str, sample_rate: u32, bits: u16) -> SessionInfo {
@@ -893,8 +914,10 @@ impl TimegrapherApp {
                 self.note_settings();
             }
 
-            ui.label("Average over")
-                .on_hover_text("Each reading is fitted over this much of the latest beats");
+            ui.label("Average over").on_hover_text(
+                "Each reading is fitted over this much of the latest beats, and the \
+                     tick and tock sound is the typical beat over the same time (up to 60 s)",
+            );
             let mut avg = self.average_s;
             let changed = ui
                 .horizontal(|ui| {
@@ -911,8 +934,7 @@ impl TimegrapherApp {
                 .inner;
             ui.end_row();
             if changed {
-                self.average_s = avg;
-                self.rebuild_trend();
+                self.set_average(avg);
             }
         });
 
@@ -2031,8 +2053,10 @@ mod tests {
         let mut app = synthetic(30.0, 20.0);
         let before = app.trend.len();
         assert!(before > 20);
-        app.average_s = 4.0;
-        app.rebuild_trend();
+        assert_eq!(app.live.as_ref().unwrap().config().profile_s, 10.0);
+        app.set_average(4.0);
+        // The tick and tock sound covers the same beats as the readings.
+        assert_eq!(app.live.as_ref().unwrap().config().profile_s, 4.0);
         // Every point now uses 4 s of beats, back to the start.
         let early = app.trend.iter().find(|p| p.t >= 8.0).unwrap();
         let r = app.live.as_ref().unwrap().reading_at(early.t, 4.0);
