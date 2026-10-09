@@ -13,6 +13,7 @@ use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::AnalysisConfig;
 use crate::beats::{self, Beat};
 use crate::dsp::{envelope, median, median_f32};
+use crate::profile::{self, TickProfile};
 use crate::stream::BeatLog;
 use crate::timing;
 use serde::Serialize;
@@ -32,6 +33,9 @@ pub struct LiveConfig {
     /// Beats kept; the oldest are dropped beyond this (about a day at
     /// 28,800 bph).
     pub max_beats: usize,
+    /// Settled beats behind the tick and tock profiles, seconds (at most
+    /// about `window_s`, the audio a pass sees).
+    pub profile_s: f64,
 }
 
 impl Default for LiveConfig {
@@ -42,6 +46,7 @@ impl Default for LiveConfig {
             update_s: 0.5,
             min_snr: 4.0,
             max_beats: 700_000,
+            profile_s: 3.0,
         }
     }
 }
@@ -83,6 +88,8 @@ pub struct LiveAnalyzer {
     beats: Vec<Beat>,
     amp: Vec<AmplitudeWindow>,
     next_amp_s: Option<f64>,
+    /// Tick and tock sounds over the latest settled beats.
+    profiles: [Option<TickProfile>; 2],
     snr: Option<f32>,
     /// Passes in a row with no signal.
     quiet_passes: u32,
@@ -103,6 +110,7 @@ impl LiveAnalyzer {
             beats: Vec::new(),
             amp: Vec::new(),
             next_amp_s: None,
+            profiles: [None, None],
             snr: None,
             quiet_passes: 0,
         }
@@ -144,6 +152,13 @@ impl LiveAnalyzer {
         &self.beats
     }
 
+    /// The sound of the A and B beats (even and odd) over the last
+    /// `profile_s` seconds of settled beats, with the unlock, drop and sound
+    /// marks the engine measured on them. Empty for a file analysed at once.
+    pub fn tick_profiles(&self) -> &[Option<TickProfile>; 2] {
+        &self.profiles
+    }
+
     pub fn amplitude_windows(&self) -> &[AmplitudeWindow] {
         &self.amp
     }
@@ -156,6 +171,7 @@ impl LiveAnalyzer {
         self.beats.clear();
         self.amp.clear();
         self.next_amp_s = None;
+        self.profiles = [None, None];
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
     }
@@ -327,6 +343,17 @@ impl LiveAnalyzer {
         } else if self.next_amp_s.is_none() {
             self.next_amp_s = Some(start);
         }
+        let span = self.cfg.profile_s.max(0.5);
+        let p_from = (to - span).max(off + beats::PRE_S + 0.01) - off;
+        self.profiles = profile::profiles(
+            &env,
+            fs,
+            &numbered,
+            2.0 * beat,
+            p_from,
+            to - off,
+            &a.amplitude,
+        );
         self.settled_to = to;
     }
 
@@ -416,6 +443,13 @@ mod tests {
         assert!((be.abs() - 0.5).abs() < 0.05, "beat error {be}");
         let amp = r.amplitude_deg.expect("amplitude");
         assert!((amp - 270.0).abs() < 10.0, "amplitude {amp}");
+        // Both sides' sounds, with the marks behind the amplitude.
+        for p in a.tick_profiles() {
+            let p = p.as_ref().expect("profile");
+            assert!(p.beats >= 8, "{} beats", p.beats);
+            let pa = p.amplitude_deg.expect("profile amplitude");
+            assert!((pa - 270.0).abs() < 15.0, "profile amplitude {pa}");
+        }
         // About 8 beats a second from the first pass on, none counted twice.
         let n = a.beats().len();
         assert!((200..=240).contains(&n), "{n} beats");

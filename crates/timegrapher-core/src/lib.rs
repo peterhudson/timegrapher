@@ -17,6 +17,7 @@ pub mod live;
 pub mod longrun;
 pub mod longterm;
 pub mod periodicity;
+pub mod profile;
 pub mod recorder;
 pub mod session;
 pub mod shape;
