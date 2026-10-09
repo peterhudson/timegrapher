@@ -10,6 +10,7 @@
 
 mod app;
 mod fields;
+mod help;
 mod profiles;
 mod strip;
 mod theme;

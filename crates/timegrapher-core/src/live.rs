@@ -16,6 +16,11 @@ use crate::dsp::{envelope, median, median_f32};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
 
+/// A pause between beats longer than this, seconds, breaks the beat log:
+/// the readings never fit across it, since the watch may have been moved
+/// or handled, and beats may have been counted wrongly across it.
+pub const GAP_S: f64 = 2.0;
+
 /// Longest stretch the tick and tock profiles can cover, seconds.
 pub const MAX_PROFILE_S: f64 = 60.0;
 use crate::stream::BeatLog;
@@ -73,6 +78,10 @@ pub struct LiveReading {
     pub amplitude_odd_deg: Option<f64>,
     pub jitter_us: Option<f64>,
     pub beats_used: usize,
+    /// Seconds the readings actually cover: from the first beat of the
+    /// latest unbroken run in the averaging time to the reading's time.
+    /// Shorter than the averaging time early in a session or after a gap.
+    pub span_s: f64,
     /// Beat peak over the envelope's median on the latest pass.
     pub snr: Option<f32>,
 }
@@ -195,6 +204,21 @@ impl LiveAnalyzer {
         self.profiles = [None, None];
         self.snippets.clear();
         self.settled_to = self.duration_s();
+        self.quiet_passes = 0;
+    }
+
+    /// Move the audio clock on by `seconds` with no audio, for a pause in
+    /// listening: the beat log, template and readings are kept, the audio
+    /// buffer starts afresh, and the beats after the pause carry on in time
+    /// after a gap (which the readings don't fit across).
+    pub fn skip(&mut self, seconds: f64) {
+        let n = (seconds.max(0.0) * self.fs).round() as u64;
+        self.total += n;
+        self.buf.clear();
+        self.buf0 = self.total;
+        self.next_pass = self.total;
+        self.settled_to = self.duration_s();
+        self.next_amp_s = None;
         self.quiet_passes = 0;
     }
 
@@ -395,9 +419,22 @@ impl LiveAnalyzer {
 
     /// Readings over the `average_s` seconds before `end_s`.
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
-        let from = end_s - average_s;
-        let lo = self.beats.partition_point(|b| b.time < from);
+        let mut from = end_s - average_s;
+        let mut lo = self.beats.partition_point(|b| b.time < from);
         let hi = self.beats.partition_point(|b| b.time <= end_s);
+        // Only the latest unbroken run of beats.
+        if let Some(gap) = (lo + 1..hi)
+            .rev()
+            .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
+        {
+            lo = gap;
+            from = self.beats[gap].time - 1e-6;
+        }
+        let span_s = if lo < hi {
+            end_s - self.beats[lo].time.max(from)
+        } else {
+            0.0
+        };
         let fit = self
             .bph
             .and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
@@ -419,6 +456,7 @@ impl LiveAnalyzer {
             amplitude_odd_deg: med(&|w| w.odd_deg),
             jitter_us: fit.map(|f| f.jitter_us),
             beats_used: fit.map_or(0, |f| f.beats_used),
+            span_s,
             snr: self.snr,
         }
     }
@@ -453,6 +491,31 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn readings_cover_only_the_run_since_a_pause() {
+        let cfg = SynthConfig {
+            duration_s: 20.0,
+            rate_s_per_day: 10.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let before = a.reading(60.0);
+        assert!((before.span_s - 20.0).abs() < 3.0, "span {}", before.span_s);
+        a.skip(30.0);
+        feed(&mut a, &audio.samples);
+        let r = a.reading(60.0);
+        // Only the 20 s since the pause, not the beats before it.
+        assert!(r.span_s < 20.0 && r.span_s > 10.0, "span {}", r.span_s);
+        let rate = r.rate_s_per_day.expect("rate");
+        assert!((rate - 10.0).abs() < 3.0, "rate {rate}");
+        // The beats before the pause are kept, a gap behind the new ones.
+        assert!(a.beats().iter().any(|b| b.time < 20.0));
+        assert!(a.beats().iter().any(|b| b.time > 50.0));
+        assert!(a.duration_s() > 69.0);
     }
 
     #[test]

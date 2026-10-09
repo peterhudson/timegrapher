@@ -17,22 +17,31 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 Along the top, the toolbar: **Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
-button that starts or stops (**Start**, **Replay**, **Stop**; **Analyse
-all** for a recording). On the left, the settings in cards: **Watch**,
-**Microphone** (only for the microphone), **Paper strip**, **View** and a
-reminder of what the mouse does. In the rest, the three readings in cards
-and below them the panes. Along the bottom, the status line. Every setting
-explains itself when the pointer rests on its name. Before anything is
+buttons for the session (see Sessions below; **Replay**, **Stop** and
+**Analyse all** for a recording). On the left, the settings in cards:
+**Watch**, **Microphone** (only for the microphone), then one card for each
+part of the window (**Readings**, **Paper strip**, **Tick tock profile**,
+**Charts**), each with its switch to show or hide it and its own options,
+and **Window** for the appearance and the pane layout. In the rest, the
+three readings in cards and below them the panes. Along the bottom, the
+status line. Every card and reading has a **?** beside its name that opens
+a longer explanation in place (click it again, or anywhere else, to close
+it), and every setting gives a short hint when the pointer rests on it. Before anything is
 open, the main area says how to begin, with buttons to start listening or
 open a recording; a problem shows in a red banner above the readings until
 it is dismissed or the next start clears it. The app follows the
-desktop's light or dark setting (Appearance, under View, overrides it),
+desktop's light or dark setting (Appearance, under Window, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
 
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
-from 1 s to an hour, or pick one of Witschi's 2 to 60 s). The big amplitude is the average of the two
+from 1 s to an hour, or pick one of Witschi's 2 to 60 s; the setting is
+in the Readings card). Early in a session, or after a pause or a gap of
+more than 2 s with no beats, there are fewer seconds of beats than asked
+for: the readings use what there is and say so ("190 beats in 24 s of
+180 s"); they never fit across a pause or gap, since the watch may have
+been moved or have drifted meanwhile. The big amplitude is the average of the two
 swings; under it are the amplitude from the ticks (blue on the strip and
 charts) and from the tocks (orange). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
@@ -43,22 +52,25 @@ of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg and commercial timegraphers measure
 it; beside it, smaller, is the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
-Under the rate: how many beats the readings used and
+Beside the rate, when it is at least 0.05 s/d, is its ± figure: the
+standard error of the fitted slope, roughly how far the rate could be off
+from the scatter of the beats alone; it shrinks with a longer averaging
+time. Under the rate: how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
 which is the spread of the dots across the strip. Lower is steadier; it
 rises with noise or a muffled sound as well as with a watch that runs
-unevenly, so compare it on the same stand and microphone. Hover over any
-reading for a short explanation.
+unevenly, so compare it on the same stand and microphone. The **?** on
+each reading explains it at length.
 
 **Panes.** Below the readings are five panes: the paper strip, the tick tock
 profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The × on a tab hides
-that pane, and the switches under **View** in the sidebar hide or show each pane
-and the readings across the top; a hidden pane comes back where it was,
+that pane, and the switch on each card in the sidebar hides or shows its pane
+or the readings across the top; a hidden pane comes back where it was,
 and changing the strip's direction keeps the choice. **Reset panes**
-shows them all in their starting places. Periodicity views will join
+(under Window) shows them all in their starting places. Periodicity views will join
 them.
 
 **Tick tock profile.** The typical sound of the ticks (blue) and of
@@ -69,8 +81,19 @@ arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read: unlock (green) and drop (red), from which
 amplitude and the unlock-based beat error come, the drop's peak (purple),
-the three sounds where the engine tells them apart (dashed: 1 unlock,
+the three sounds where the engine tells them apart (dashed gold: 1 unlock,
 2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
+The solid edges and the dashed sounds are two different measurements of
+the same averaged sound, not single beats: the edges are where the
+readings come from, and the sounds are where each of the three sounds
+rises halfway up its own climb, used to recognise escapement faults, so
+they sit near but not exactly on the edges. A sound line is missing when
+that sound can't be told apart from its neighbour (a soft unlock merged
+into the impulse, say), which is a finding in itself. The Tick tock
+profile card switches the edges and the sounds on and off, sets the scale
+and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
+tock share one vertical scale, so a quieter side shows smaller, and every
+grid line is drawn alike.
 Above each plot are the beat count, the marks in ms from the
 beat, the unlock-to-drop time and the amplitude they give. Linear (the
 default) shows the envelope as the engine measures it; dB shows the level
@@ -81,8 +104,12 @@ When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
 **Paper strip.** One dot per beat, tick and tock in two colours. Across the
-strip is how early or late each beat came against a clock running at the
-nominal beat rate; along it is time. Running **down** (the default, as on
+strip is how early or late each beat came against a perfect clock beating
+exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
+before that clock's beat is early, after it late, the words Witschi uses.
+Along it is time. **Rate line** (on by default) draws the Rate reading
+as a solid line over the beats it was fitted to, as tg does: if the dots
+follow it, the reading describes them well. Running **down** (the default, as on
 tg), the newest beats are at the top, a watch on rate draws a vertical
 line, a gaining watch leans right as it rises (/) and a losing one leans
 left (\\). Running **across**, time goes left to right with the newest beats
@@ -117,7 +144,7 @@ readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
-**Appearance.** Under View: Auto follows the desktop's light or dark
+**Appearance.** Under Window: Auto follows the desktop's light or dark
 setting; Light and Dark override it.
 
 **Level meter.** In the toolbar, while listening to a microphone: a bar to
@@ -125,9 +152,15 @@ the loudest sample of the last half second, green when it is right, amber
 when it is very quiet or too hot, red when the input clips, with marks at
 the −10 dBFS target and the −6 dBFS limit, and the peak in dBFS beside it.
 
-**Status bar.** The input, how far the beats stand above the noise ("no
-watch heard" when they don't), the recording in progress, and on the
-right the beat rate and the position.
+**Status bar.** The input; the signal, how far the typical beat's peak
+stands above the typical level between beats, with a coloured dot and
+what it means: 10× and above good; 5 to 10× fair, the rate reliable; 3 to
+5× poor, only the rate to be trusted; below 3× no watch heard (noise alone
+reads about 2×); its hint says what to do about a low figure. It measures
+loudness, not the shape of the tick, so hum, knocks or a holder that
+smears the sound aren't caught by it. Then how much sound the session
+holds and whether it is saved, and on the right the beat rate and the
+position.
 
 ## Settings
 
@@ -147,8 +180,7 @@ right the beat rate and the position.
   on the window replays it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
-- **Input level.** In the Microphone card: the microphone's gain, a switch
-  for its automatic gain when it has one (keep it off), and a peak meter
+- **Input level.** In the Microphone card: the microphone's gain and a peak meter
   with marks at the −10 dBFS target and the −6 dBFS limit. On Linux, for
   the system default the level is the sound server's input volume
   (`wpctl`, or `pactl` on PulseAudio), which the server writes back onto
@@ -157,7 +189,10 @@ right the beat rate and the position.
   control (`amixer`). The change is made when you let go of the slider.
   On other systems, set the level in the system's sound settings. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
-  proposals.
+  proposals. A microphone's automatic gain chases every tick, so it
+  clips and changes the shape of the sound; if it is on, the card shows
+  an amber warning with **Turn it off**, and otherwise says nothing about
+  it.
 - **Beat rate.** Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,
@@ -168,11 +203,23 @@ right the beat rate and the position.
   saved recording. Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
-## Saving recordings
+## Sessions
 
-With **Save the recording** switched on (in the Microphone card, before pressing Start), every session is kept so it can be
-analysed again later with a newer engine. Each recording is a folder
-named after the start time, the watch and the position, holding:
+**Start** begins a session from the microphone. **Pause** stops listening
+and keeps everything: the readings, strip, charts and the sound so far.
+**Resume** carries on in the same session: the strip and charts leave
+the paused time out, and the readings start from the beats after the
+pause. **New session**, shown while paused, clears everything for the
+next watch or position. Everything heard is kept as it comes in, so
+**Save…** can be pressed at any time, running or paused: it asks for a
+folder and copies the session there, and **Save again…** later brings
+that copy up to date. Sound that hasn't been saved is never thrown away
+without asking: New session and closing the window ask whether to save it
+first.
+
+Each saved recording is a folder named after the start time, the watch
+and the position, so it can be analysed again later with a newer engine,
+holding:
 
 | File | Contents |
 | --- | --- |

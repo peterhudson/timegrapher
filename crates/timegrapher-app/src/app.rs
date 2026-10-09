@@ -3,6 +3,7 @@
 //! that can be dragged by their tabs into any arrangement.
 
 use crate::fields::{self, Format};
+use crate::help;
 use crate::profiles;
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -26,6 +27,18 @@ type Profiles = [Option<TickProfile>; 2];
 const SOUND_EVERY_S: f64 = 2.0;
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
+
+/// What a question before throwing away unsaved sound is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Confirm {
+    NewSession,
+    Quit,
+}
+
+/// Where a session's sound is kept until it is saved or thrown away.
+fn scratch_dir() -> PathBuf {
+    std::env::temp_dir().join("timegrapher-unsaved")
+}
 
 /// The six standard test positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +121,7 @@ impl Pane {
         }
     }
 
-    /// What the pane shows, for its switch under View.
+    /// What the pane shows, for its switch in the sidebar.
     fn hint(self) -> &'static str {
         match self {
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
@@ -264,11 +277,22 @@ pub struct TimegrapherApp {
     position: Position,
     average_s: f64,
     watch: String,
-    save: bool,
+    /// Where the last Save put the session, if it has been saved.
+    saved_to: Option<PathBuf>,
+    /// The folder Save offers first.
     save_dir: String,
+    /// The session came from the microphone, and when it was paused.
+    mic_session: bool,
+    paused_at: Option<Instant>,
+    /// Asking before something throws away unsaved sound.
+    confirm: Option<Confirm>,
+    /// The window may close: the user has said what to do with the sound.
+    may_close: bool,
     strip: StripView,
     /// Keep the newest beats on the centre line, sliding the rest.
     follow: bool,
+    /// Draw the rate reading as a line over the strip.
+    rate_line: bool,
     /// The rate, amplitude and beat error figures above the panes.
     show_readings: bool,
     /// Asked to put the charts back on the whole session, following new
@@ -302,7 +326,7 @@ pub struct TimegrapherApp {
     /// The tick and tock sound: how it is drawn, what it was every few
     /// seconds of this session, and one worked out from the file for a
     /// moment that history doesn't cover.
-    sound_scale: profiles::Scale,
+    sound_opts: profiles::Options,
     sound_history: Vec<(f64, Profiles)>,
     sound_at: Option<(f64, Profiles)>,
     sound_job: Option<(f64, std::sync::mpsc::Receiver<Profiles>)>,
@@ -343,7 +367,11 @@ impl TimegrapherApp {
             position: Position::DialUp,
             average_s: 10.0,
             watch: String::new(),
-            save: false,
+            saved_to: None,
+            mic_session: false,
+            paused_at: None,
+            confirm: None,
+            may_close: false,
             save_dir: home.join("Timegrapher recordings").display().to_string(),
             strip: StripView {
                 half_width_ms: 10.0,
@@ -351,6 +379,7 @@ impl TimegrapherApp {
                 horizontal: false,
             },
             follow: false,
+            rate_line: true,
             view_end: None,
             panes: default_layout(false),
             show_readings: true,
@@ -372,7 +401,7 @@ impl TimegrapherApp {
             gain_device: None,
             gain_error: None,
             message: None,
-            sound_scale: profiles::Scale::Linear,
+            sound_opts: profiles::Options::default(),
             sound_history: Vec::new(),
             sound_at: None,
             sound_job: None,
@@ -436,6 +465,9 @@ impl TimegrapherApp {
     }
 
     fn reset_session(&mut self, sample_rate: u32, label: String) {
+        self.discard_recording();
+        self.mic_session = false;
+        self.paused_at = None;
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
         self.source_label = label;
         self.anchor = None;
@@ -449,26 +481,31 @@ impl TimegrapherApp {
         self.sound_job = None;
     }
 
+    /// Listen to the microphone: carry on the paused session if there is
+    /// one, else start a new one.
     fn start_microphone(&mut self) {
+        if self.can_resume() {
+            return self.resume_microphone();
+        }
         self.stop();
         match capture::open_input(self.device.as_deref(), None) {
             Ok(c) => {
-                let label = capture::choices(&self.devices)
-                    .into_iter()
-                    .find(|ch| Some(&ch.id) == self.device.as_ref())
-                    .map_or_else(|| c.label.clone(), |ch| ch.label);
+                let label = self.device_label(&c);
                 self.reset_session(
                     c.sample_rate,
                     format!("{label} at {} Hz, {}-bit", c.sample_rate, c.bits),
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                if self.save {
-                    let info = self.info(&c.label, c.sample_rate, c.bits);
-                    match Recorder::start(Path::new(&self.save_dir), info) {
-                        Ok(r) => self.recorder = Some(r),
-                        Err(e) => self.error(format!("Can't save the recording: {e}")),
-                    }
+                self.mic_session = true;
+                // Every session is kept as it goes, so it can be saved at any
+                // point; it is thrown away with a new session unless saved.
+                let info = self.info(&c.label, c.sample_rate, c.bits);
+                match Recorder::start(&scratch_dir(), info) {
+                    Ok(r) => self.recorder = Some(r),
+                    Err(e) => self.error(format!(
+                        "Can't keep the sound for saving later: {e}. The readings still work."
+                    )),
                 }
                 self.capture = Some(c);
             }
@@ -476,6 +513,133 @@ impl TimegrapherApp {
                 "Can't open the input. {}",
                 capture::explain_error(&e)
             )),
+        }
+    }
+
+    fn device_label(&self, c: &Capture) -> String {
+        capture::choices(&self.devices)
+            .into_iter()
+            .find(|ch| Some(&ch.id) == self.device.as_ref())
+            .map_or_else(|| c.label.clone(), |ch| ch.label)
+    }
+
+    /// A microphone session that is paused and can carry on.
+    fn can_resume(&self) -> bool {
+        self.mic_session && self.paused_at.is_some() && self.live.is_some() && !self.running()
+    }
+
+    /// Stop listening for now, keeping everything.
+    fn pause(&mut self) {
+        if self.capture.is_none() {
+            return;
+        }
+        self.capture = None;
+        if self.mic_session {
+            self.paused_at = Some(Instant::now());
+            if let Some(r) = self.recorder.as_mut() {
+                let _ = r.pause();
+            }
+        }
+    }
+
+    /// Carry on listening after a pause, in the same session.
+    fn resume_microphone(&mut self) {
+        let rate = self.live.as_ref().map(|l| l.sample_rate());
+        match capture::open_input(self.device.as_deref(), rate) {
+            Ok(c) if Some(c.sample_rate) == rate => {
+                let paused = self
+                    .paused_at
+                    .take()
+                    .map_or(0.0, |t| t.elapsed().as_secs_f64());
+                if let Some(l) = self.live.as_mut() {
+                    l.skip(paused);
+                }
+                self.opened_at = Instant::now();
+                self.audio_at = None;
+                self.view_end = None;
+                self.message = None;
+                self.capture = Some(c);
+            }
+            Ok(c) => self.error(format!(
+                "The microphone opened at {} Hz this time, not the {} Hz this session \
+                 was listening at, so it can't carry on. Press New session to start again.",
+                c.sample_rate,
+                rate.unwrap_or_default()
+            )),
+            Err(e) => self.error(format!(
+                "Can't open the input. {}",
+                capture::explain_error(&e)
+            )),
+        }
+    }
+
+    /// Forget this session (after asking, if its sound isn't saved), ready
+    /// to start another.
+    fn new_session(&mut self) {
+        self.stop();
+        self.discard_recording();
+        self.live = None;
+        self.mic_session = false;
+        self.paused_at = None;
+        self.trend.clear();
+        self.sound_history.clear();
+        self.source_label.clear();
+        self.message = None;
+    }
+
+    /// Unsaved sound that a new session would throw away, seconds.
+    fn unsaved_s(&self) -> f64 {
+        match (&self.recorder, &self.saved_to) {
+            (Some(r), None) => r.duration_s(),
+            _ => 0.0,
+        }
+    }
+
+    /// Close and delete the sound kept for saving.
+    fn discard_recording(&mut self) {
+        if let Some(r) = self.recorder.take() {
+            if let Ok(dir) = r.finish(None) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+        self.saved_to = None;
+    }
+
+    /// Save a copy of the session's sound so far, with its clock log and
+    /// settings, in a folder the user picks. Listening carries on.
+    fn save_recording(&mut self) {
+        let mut d = rfd::FileDialog::new().set_title("Save the recording in…");
+        let start = self
+            .saved_to
+            .as_ref()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from(&self.save_dir));
+        if start.is_dir() {
+            d = d.set_directory(&start);
+        }
+        let Some(parent) = d.pick_folder() else {
+            return;
+        };
+        self.save_into(&parent);
+    }
+
+    fn save_into(&mut self, parent: &Path) {
+        let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
+        let Some(r) = self.recorder.as_mut() else {
+            return;
+        };
+        let secs = r.duration_s();
+        match r.save_copy(parent, result.as_ref()) {
+            Ok(dir) => {
+                self.info_msg(format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(secs),
+                    dir.display()
+                ));
+                self.save_dir = parent.display().to_string();
+                self.saved_to = Some(dir);
+            }
+            Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
     }
 
@@ -519,19 +683,14 @@ impl TimegrapherApp {
         });
     }
 
+    /// Stop listening or replaying, and any analysis under way. A
+    /// microphone session pauses, so it can carry on or be saved.
     fn stop(&mut self) {
+        if self.capture.as_ref().is_some_and(|c| !c.is_file) {
+            self.pause();
+        }
         self.capture = None;
         self.batch = None;
-        if let Some(r) = self.recorder.take() {
-            let result = self
-                .live
-                .as_ref()
-                .and_then(|l| serde_json::to_value(l.reading(self.average_s)).ok());
-            match r.finish(result) {
-                Ok(dir) => self.info_msg(format!("Recording saved in {}", dir.display())),
-                Err(e) => self.error(format!("Saving the recording failed: {e}")),
-            }
-        }
     }
 
     fn error(&mut self, m: String) {
@@ -824,36 +983,29 @@ impl TimegrapherApp {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.running() {
-                    let what = if self.input == Input::File {
-                        "Stop the replay"
-                    } else {
-                        "Stop listening"
-                    };
-                    if ui
-                        .add(theme::destructive(ui, "Stop"))
-                        .on_hover_text(what)
-                        .clicked()
-                    {
-                        self.stop();
-                    }
-                } else {
-                    match self.input {
-                        Input::Microphone => {
+                match self.input {
+                    Input::Microphone => self.microphone_buttons(ui),
+                    Input::File => {
+                        if self.running() {
                             if ui
-                                .add(theme::primary(ui, "Start"))
-                                .on_hover_text("Start listening to the microphone")
+                                .add(theme::destructive(ui, "Stop"))
+                                .on_hover_text(
+                                    "Stop the replay. What it has shown so far stays, to look \
+                                     back through with the time slider.",
+                                )
                                 .clicked()
                             {
-                                self.start_microphone();
+                                self.stop();
                             }
-                        }
-                        Input::File => {
+                        } else {
                             let path = PathBuf::from(self.file_path.trim());
                             let ok = !self.file_path.trim().is_empty();
                             if ui
                                 .add_enabled(ok, theme::primary(ui, "Replay"))
-                                .on_hover_text("Play it through at its own speed, as if live")
+                                .on_hover_text(
+                                    "Play the recording through at its own speed, as if live, \
+                                     from the start",
+                                )
                                 .on_disabled_hover_text("Open a recording first")
                                 .clicked()
                             {
@@ -888,48 +1040,184 @@ impl TimegrapherApp {
         });
     }
 
-    /// The sidebar: the watch, the microphone, the strip and the view, each
-    /// in a card of its own.
+    /// Start, Pause and Resume, New session and Save, for the microphone.
+    /// Laid out right to left.
+    fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
+        let mic_data = self.mic_session && self.live.is_some();
+        if self.running() {
+            if ui
+                .add(theme::secondary(ui, "Pause"))
+                .on_hover_text(
+                    "Stop listening for now. Everything so far stays: look back through it \
+                     with the time slider, save it, or Resume to carry on.",
+                )
+                .clicked()
+            {
+                self.pause();
+            }
+        } else if self.can_resume() {
+            if ui
+                .add(theme::primary(ui, "Resume"))
+                .on_hover_text(
+                    "Carry on listening in the same session. The readings start afresh \
+                     after the pause, since the watch may have moved; the strip and charts \
+                     keep what came before.",
+                )
+                .clicked()
+            {
+                self.resume_microphone();
+            }
+        } else if ui
+            .add(theme::primary(ui, "Start"))
+            .on_hover_text("Start listening to the microphone")
+            .clicked()
+        {
+            self.start_microphone();
+        }
+        if mic_data
+            && !self.running()
+            && ui
+                .add(egui::Button::new("New session").min_size(Vec2::new(0.0, 26.0)))
+                .on_hover_text("Clear everything and start again with the next watch or position")
+                .clicked()
+        {
+            if self.unsaved_s() > 5.0 {
+                self.confirm = Some(Confirm::NewSession);
+            } else {
+                self.new_session();
+            }
+        }
+        if self.recorder.is_some() {
+            let saved = self.saved_to.is_some();
+            if ui
+                .add(
+                    egui::Button::new(if saved { "Save again…" } else { "Save…" })
+                        .min_size(Vec2::new(0.0, 26.0)),
+                )
+                .on_hover_text(
+                    "Save the sound of this session so far, with its clock log and \
+                     settings, to analyse again later. Listening carries on. Unsaved \
+                     sound is thrown away by New session or quitting.",
+                )
+                .clicked()
+            {
+                self.save_recording();
+            }
+        }
+    }
+
+    /// The question before throwing away unsaved sound.
+    fn confirm_dialog(&mut self, ctx: &egui::Context) {
+        let Some(what) = self.confirm else { return };
+        let mut choice = None;
+        let unsaved = strip::fmt_time(self.unsaved_s());
+        egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                RichText::new(match what {
+                    Confirm::NewSession => "Start a new session?",
+                    Confirm::Quit => "Quit without saving?",
+                })
+                .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "This session's {unsaved} of sound hasn't been saved and will be thrown away."
+            ));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Save…")).clicked() {
+                    choice = Some(0);
+                }
+                let go = match what {
+                    Confirm::NewSession => "Don't save",
+                    Confirm::Quit => "Quit without saving",
+                };
+                if ui
+                    .add(egui::Button::new(go).min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(1);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(2);
+                }
+            });
+        });
+        match choice {
+            Some(0) => {
+                self.save_recording();
+                if self.saved_to.is_none() {
+                    return; // the folder dialog was cancelled
+                }
+            }
+            Some(1) => {}
+            Some(_) => {
+                self.confirm = None;
+                return;
+            }
+            None => return,
+        }
+        self.confirm = None;
+        match what {
+            Confirm::NewSession => self.new_session(),
+            Confirm::Quit => {
+                self.may_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+
+    /// The sidebar: the watch and the microphone, then a section for each
+    /// pane with the switch that shows it, its options and a "?" that
+    /// explains it.
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 8.0;
-        theme::section(ui, "Watch");
+        theme::section_header(ui, "Watch", None, help::WATCH);
         theme::card_ui(ui, |ui| self.watch_settings(ui));
         if self.input == Input::Microphone {
-            theme::section(ui, "Microphone");
+            theme::section_header(ui, "Microphone", None, help::MICROPHONE);
             theme::card_ui(ui, |ui| self.microphone_settings(ui));
         }
-        theme::section(ui, "Paper strip");
-        theme::card_ui(ui, |ui| self.strip_settings(ui));
-        theme::section(ui, "View");
-        theme::card_ui(ui, |ui| self.view_settings(ui));
-        theme::section(ui, "Mouse");
+        theme::section_header(
+            ui,
+            "Readings",
+            Some(&mut self.show_readings),
+            help::READINGS,
+        );
+        theme::card_ui(ui, |ui| self.readings_settings(ui));
+        self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
+        self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
+        theme::section_header(ui, "Charts", None, help::CHARTS);
         theme::card_ui(ui, |ui| {
-            let pal = theme::pal(ui);
-            for (what, how) in [
-                (
-                    "Strip",
-                    "wheel for length, Ctrl+wheel for width, drag to move, \
-                     double-click for the newest beats",
-                ),
-                (
-                    "Charts",
-                    "wheel to zoom time, Ctrl+wheel for the scale, drag to pan, \
-                     double-click to fit, click to show that moment on the strip",
-                ),
-                (
-                    "Panes",
-                    "drag one by its tab to rearrange, close it with its ×, \
-                     bring it back under View",
-                ),
-            ] {
-                ui.label(
-                    RichText::new(format!("{what}: {how}."))
-                        .small()
-                        .color(pal.text_secondary),
-                );
+            for pane in [Pane::Rate, Pane::Amplitude, Pane::BeatError] {
+                let mut on = pane_visible(&self.panes.tiles, pane);
+                if theme::switch_row(ui, pane.title(), &mut on, pane.hint()) {
+                    set_pane_visible(&mut self.panes.tiles, pane, on);
+                }
             }
         });
+        theme::section_header(ui, "Window", None, help::WINDOW);
+        theme::card_ui(ui, |ui| self.window_settings(ui));
         ui.add_space(8.0);
+    }
+
+    /// A pane's section: its switch in the caption, its settings below.
+    fn pane_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        pane: Pane,
+        help: &[&str],
+        settings: fn(&mut Self, &mut egui::Ui),
+    ) {
+        let mut on = pane_visible(&self.panes.tiles, pane);
+        if theme::section_header(ui, pane.title(), Some(&mut on), help) {
+            set_pane_visible(&mut self.panes.tiles, pane, on);
+        }
+        theme::card_ui(ui, |ui| settings(self, ui));
     }
 
     fn watch_settings(&mut self, ui: &mut egui::Ui) {
@@ -1030,7 +1318,9 @@ impl TimegrapherApp {
             }
             self.note_settings();
         }
+    }
 
+    fn readings_settings(&mut self, ui: &mut egui::Ui) {
         let mut avg = self.average_s;
         let changed = theme::row(
             ui,
@@ -1063,29 +1353,6 @@ impl TimegrapherApp {
             &mut self.all_inputs,
             "List every device the system offers in the microphone menu, with its id",
         );
-        ui.add_enabled_ui(!self.running(), |ui| {
-            theme::switch_row(
-                ui,
-                "Save the recording",
-                &mut self.save,
-                "Keep the sound as a FLAC file with the watch's details, in the folder \
-                 below. Set it before pressing Start.",
-            );
-            if self.save {
-                theme::row(ui, "Folder", Some("Where recordings are saved"), |ui| {
-                    if ui.button("Choose…").clicked() {
-                        let mut d = rfd::FileDialog::new().set_title("Folder for recordings");
-                        if Path::new(&self.save_dir).is_dir() {
-                            d = d.set_directory(&self.save_dir);
-                        }
-                        if let Some(p) = d.pick_folder() {
-                            self.save_dir = p.display().to_string();
-                        }
-                    }
-                });
-                ui.add(egui::TextEdit::singleline(&mut self.save_dir).desired_width(f32::INFINITY));
-            }
-        });
     }
 
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
@@ -1169,6 +1436,13 @@ impl TimegrapherApp {
         }
         theme::switch_row(
             ui,
+            "Rate line",
+            &mut self.rate_line,
+            "Draw the Rate reading as a line over the beats it was fitted to, to check \
+             that it follows the dots",
+        );
+        theme::switch_row(
+            ui,
             "Auto-centre",
             &mut self.follow,
             "Keep the newest beats on the centre line and slide the rest",
@@ -1196,30 +1470,63 @@ impl TimegrapherApp {
         });
     }
 
-    fn view_settings(&mut self, ui: &mut egui::Ui) {
+    fn profile_settings(&mut self, ui: &mut egui::Ui) {
+        let o = &mut self.sound_opts;
+        theme::row(
+            ui,
+            "Layout",
+            Some("Tick above tock, or side by side as tg shows them"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut o.side_by_side,
+                    &[
+                        (false, "Stacked", "Tick above tock"),
+                        (
+                            true,
+                            "Beside",
+                            "Tick on the left, tock on the right, as tg shows them",
+                        ),
+                    ],
+                );
+            },
+        );
+        theme::row(ui, "Scale", Some("How the loudness is drawn"), |ui| {
+            theme::segmented(
+                ui,
+                &mut o.scale,
+                &[
+                    (
+                        profiles::Scale::Linear,
+                        "Linear",
+                        "The sound's loudness as the engine measures it",
+                    ),
+                    (
+                        profiles::Scale::Decibels,
+                        "dB",
+                        "Decibels below the loudest point, which makes the quiet unlock \
+                         easier to see",
+                    ),
+                ],
+            );
+        });
         theme::switch_row(
             ui,
-            "Readings",
-            &mut self.show_readings,
-            "The rate, amplitude and beat error figures across the top",
+            "Edges",
+            &mut o.edges,
+            "The solid unlock, drop and peak lines: the edges amplitude and the \
+             beat error are read from",
         );
-        for pane in Pane::ALL {
-            let mut on = pane_visible(&self.panes.tiles, pane);
-            if theme::switch_row(ui, pane.title(), &mut on, pane.hint()) {
-                set_pane_visible(&mut self.panes.tiles, pane, on);
-            }
-        }
-        ui.horizontal(|ui| {
-            if ui
-                .button("Reset panes")
-                .on_hover_text("Show every pane and put them back where they started")
-                .clicked()
-            {
-                self.show_readings = true;
-                self.panes = default_layout(self.strip.horizontal);
-            }
-        });
-        ui.add_space(2.0);
+        theme::switch_row(
+            ui,
+            "Sounds 1, 2 and 3",
+            &mut o.sounds,
+            "The dashed gold lines where the three sounds of each beat rise: unlock, \
+             impulse and drop",
+        );
+    }
+
+    fn window_settings(&mut self, ui: &mut egui::Ui) {
         let mut t = ui.ctx().options(|o| o.theme_preference);
         theme::row(
             ui,
@@ -1240,6 +1547,16 @@ impl TimegrapherApp {
         if t != ui.ctx().options(|o| o.theme_preference) {
             ui.ctx().set_theme(t);
         }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Reset panes")
+                .on_hover_text("Show every pane and put them back where they started")
+                .clicked()
+            {
+                self.show_readings = true;
+                self.panes = default_layout(self.strip.horizontal);
+            }
+        });
     }
 
     fn clipping(&self) -> bool {
@@ -1340,22 +1657,32 @@ impl TimegrapherApp {
                         }
                     }
                 });
-                if let Some(on) = st.agc {
-                    let mut agc = on;
-                    if theme::switch_row(
-                        ui,
-                        if on {
-                            "Auto gain (turn it off)"
-                        } else {
-                            "Auto gain"
-                        },
-                        &mut agc,
-                        "The microphone's automatic gain changes the level as it \
-                         listens, which spoils amplitude and level readings. Keep it off.",
-                    ) {
-                        self.gain_error = g.set_agc(agc).err();
-                        self.read_gain();
-                    }
+                // Automatic gain only ever spoils the readings, so there is
+                // nothing to choose: it shows only when it is on, with the way
+                // to turn it off.
+                if st.agc == Some(true) {
+                    let pal = theme::pal(ui);
+                    theme::card()
+                        .fill(pal.warn.gamma_multiply(0.15))
+                        .inner_margin(egui::Margin::same(8))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(
+                                        "The microphone's automatic gain is on. It turns the \
+                                         level up between ticks, so they clip and the \
+                                         amplitude and level readings go wrong.",
+                                    )
+                                    .small(),
+                                )
+                                .wrap(),
+                            );
+                            if ui.button("Turn it off").clicked() {
+                                self.gain_error = g.set_agc(false).err();
+                                self.read_gain();
+                            }
+                        });
                 }
             }
             _ => {
@@ -1438,125 +1765,126 @@ impl TimegrapherApp {
             }
             ui.label(job);
         };
-        let card = |ui: &mut egui::Ui, title: &str, hint: &str, body: &dyn Fn(&mut egui::Ui)| {
+        let card = |ui: &mut egui::Ui, title: &str, help: &[&str], body: &dyn Fn(&mut egui::Ui)| {
             theme::card()
                 .fill(pal.card)
                 .inner_margin(egui::Margin::symmetric(14, 10))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.label(theme::caption(title).color(pal.text_secondary));
+                    ui.horizontal(|ui| {
+                        ui.label(theme::caption(title).color(pal.text_secondary));
+                        theme::help(ui, title, help);
+                    });
                     body(ui);
-                })
-                .response
-                .on_hover_text(hint);
+                });
         };
         ui.spacing_mut().item_spacing.x = theme::GAP;
         ui.columns(3, |cols| {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            card(
-                &mut cols[0],
-                "Rate",
-                "+ the watch gains that many seconds a day, − it loses them",
-                &|ui| {
-                    figure(ui, rate.map(|v| format!("{v:+.1}")), "seconds per day");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                        let Some(r) = r else {
-                            ui.label(small("waiting for beats".into()));
-                            return;
-                        };
-                        ui.label(small(format!(
+            card(&mut cols[0], "Rate", help::RATE, &|ui| {
+                // Roughly how far the rate could be off from the beats'
+                // scatter alone: the standard error of the fitted slope.
+                let pm = r.and_then(|r| {
+                    let j = r.jitter_us? * 1e-6;
+                    let n = r.beats_used as f64;
+                    (n >= 6.0 && r.span_s > 1.0)
+                        .then(|| j * 12f64.sqrt() / (n.sqrt() * r.span_s) * 86400.0)
+                });
+                let unit = match pm {
+                    Some(e) if e < 0.05 => "seconds per day".to_string(),
+                    Some(e) => format!("± {e:.1} seconds per day"),
+                    None => "seconds per day".to_string(),
+                };
+                figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
+                    let Some(r) = r else {
+                        ui.label(small("waiting for beats".into()));
+                        return;
+                    };
+                    let short = r.span_s + 1.0 < self.average_s;
+                    ui.label(small(if short {
+                        format!(
+                            "{} beats in {} of {}",
+                            r.beats_used,
+                            fields::duration(r.span_s.round()),
+                            fields::duration(self.average_s)
+                        )
+                    } else {
+                        format!(
                             "{} beats in {}",
                             r.beats_used,
                             fields::duration(self.average_s)
-                        )))
-                        .on_hover_text(
-                            "The beats the readings are fitted to. Set the time with \
-                             Average over in the sidebar.",
-                        );
-                        if let Some(j) = r.jitter_us {
-                            ui.label(small("·".into()));
-                            ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
-                                "How far single beats land from the steady line that the rate \
-                                 and beat error are fitted to: the spread of the dots across the \
-                                 strip, as a robust standard deviation in microseconds \
-                                 (millionths of a second). Lower is steadier. It rises with \
-                                 background noise or a muffled sound as well as with a watch \
-                                 that runs unevenly (a rubbing part, a worn tooth, low \
-                                 amplitude), so compare it on the same stand and microphone.",
-                            );
-                        }
+                        )
+                    }))
+                    .on_hover_text(if short {
+                        "The beats the readings are fitted to. There are fewer seconds of \
+                             beats than Average over asks for, early in a session or after a \
+                             pause, so the readings use what there is."
+                    } else {
+                        "The beats the readings are fitted to. Set the time with Average \
+                             over in the sidebar."
                     });
-                },
-            );
+                    if let Some(j) = r.jitter_us {
+                        ui.label(small("·".into()));
+                        ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
+                            "How far single beats land from the rate's straight line: the \
+                                 spread of the dots across the strip. The ? beside Rate says more.",
+                        );
+                    }
+                });
+            });
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
-            card(
-                &mut cols[1],
-                "Amplitude",
-                "The big figure is the average amplitude. Below it are the amplitude \
-                 measured from the ticks (blue on the strip and charts) and from the tocks \
-                 (orange). The sound can't tell which beat is which pallet, so the first beat \
-                 heard is called the tick. A big difference between them usually means one \
-                 beat's sounds were misread, not a fault in the watch.",
-                &|ui| {
-                    figure(ui, amp.map(|v| format!("{v:.0}°")), "");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        if let Some(LiveReading {
-                            amplitude_even_deg: Some(a),
-                            amplitude_odd_deg: Some(b),
-                            ..
-                        }) = r
-                        {
-                            for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
-                                theme::dot(ui, c);
-                                ui.label(
-                                    RichText::new(format!("{name} {v:.0}°"))
-                                        .small()
-                                        .color(pal.text_secondary),
-                                );
-                                ui.add_space(6.0);
-                            }
+            card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
+                figure(ui, amp.map(|v| format!("{v:.0}°")), "");
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if let Some(LiveReading {
+                        amplitude_even_deg: Some(a),
+                        amplitude_odd_deg: Some(b),
+                        ..
+                    }) = r
+                    {
+                        for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
+                            theme::dot(ui, c);
+                            ui.label(
+                                RichText::new(format!("{name} {v:.0}°"))
+                                    .small()
+                                    .color(pal.text_secondary),
+                            );
+                            ui.add_space(6.0);
                         }
-                        ui.label(
-                            RichText::new(format!("lift angle {lift}°"))
-                                .small()
-                                .color(pal.text_secondary),
-                        );
-                    });
-                },
-            );
+                    }
+                    ui.label(
+                        RichText::new(format!("lift angle {lift}°"))
+                            .small()
+                            .color(pal.text_secondary),
+                    );
+                });
+            });
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
-            card(
-                &mut cols[2],
-                "Beat error",
-                "The big figure is timed from the unlock, as tg and commercial \
-                 timegraphers measure it. The smaller one is timed from the beat \
-                 as a whole, nearer the drop: it is the gap between the two lines \
-                 on the strip.",
-                &|ui| {
-                    figure(
-                        ui,
-                        unlock.or(drop).map(|v| format!("{v:+.2}")),
-                        "milliseconds",
-                    );
-                    ui.label(
-                        RichText::new(match (unlock, drop) {
-                            (Some(_), Some(d)) => {
-                                format!("from the unlock · from the drop {d:+.2} ms")
-                            }
-                            (None, Some(_)) => "from the drop".into(),
-                            _ => "from the unlock".into(),
-                        })
-                        .small()
-                        .color(pal.text_secondary),
-                    );
-                },
-            );
+            card(&mut cols[2], "Beat error", help::BEAT_ERROR, &|ui| {
+                figure(
+                    ui,
+                    unlock.or(drop).map(|v| format!("{v:+.2}")),
+                    "milliseconds",
+                );
+                ui.label(
+                    RichText::new(match (unlock, drop) {
+                        (Some(_), Some(d)) => {
+                            format!("from the unlock · from the drop {d:+.2} ms")
+                        }
+                        (None, Some(_)) => "from the drop".into(),
+                        _ => "from the unlock".into(),
+                    })
+                    .small()
+                    .color(pal.text_secondary),
+                );
+            });
         });
     }
 
@@ -1594,34 +1922,60 @@ impl TimegrapherApp {
             }
             if self.running() {
                 if let Some(s) = self.reading().and_then(|r| r.snr) {
-                    ui.label(
-                        RichText::new(if s < 4.0 {
-                            "no watch heard".to_string()
-                        } else {
-                            format!("signal {:.0}×", s)
-                        })
-                        .small()
-                        .color(if s < 4.0 {
-                            pal.warn
-                        } else {
-                            pal.text_secondary
-                        }),
-                    )
-                    .on_hover_text("How far the beats stand above the background noise");
+                    let (word, color) = if s >= 10.0 {
+                        ("good", pal.good)
+                    } else if s >= 5.0 {
+                        ("fair: rate reliable", pal.warn)
+                    } else if s >= 3.0 {
+                        ("poor: only the rate", pal.bad)
+                    } else {
+                        ("no watch heard", pal.bad)
+                    };
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        theme::dot(ui, color);
+                        ui.label(
+                            RichText::new(format!("signal {s:.0}×, {word}"))
+                                .small()
+                                .color(pal.text_secondary),
+                        );
+                    })
+                    .response
+                    .on_hover_text(help::SIGNAL);
                 }
             }
             if let Some(r) = &self.recorder {
+                let (text, color, hint) = match &self.saved_to {
+                    Some(p) => (
+                        format!("{} of sound, saved", strip::fmt_time(r.duration_s())),
+                        pal.text_secondary,
+                        format!(
+                            "Saved in {}. Sound since then is kept too; Save again to add it.",
+                            p.display()
+                        ),
+                    ),
+                    None => (
+                        format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
+                        pal.text_secondary,
+                        "The session's sound is kept as it goes, so Save can keep it at any \
+                         point. New session or quitting throws it away unless saved."
+                            .to_string(),
+                    ),
+                };
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    theme::dot(ui, pal.bad);
-                    ui.label(
-                        RichText::new(format!("Saving {}", strip::fmt_time(r.duration_s())))
-                            .small()
-                            .color(pal.bad),
+                    theme::dot(
+                        ui,
+                        if self.running() {
+                            pal.bad
+                        } else {
+                            pal.text_tertiary
+                        },
                     );
+                    ui.label(RichText::new(text).small().color(color));
                 })
                 .response
-                .on_hover_text(r.dir().display().to_string());
+                .on_hover_text(hint);
             }
             // Errors show above the readings instead.
             if let Some((m, false)) = &self.message {
@@ -1825,9 +2179,11 @@ impl TimegrapherApp {
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    RichText::new("Every pane is hidden. Turn one on under View in the sidebar.")
-                        .size(15.0)
-                        .weak(),
+                    RichText::new(
+                        "Every pane is hidden. Turn one on with its switch in the sidebar.",
+                    )
+                    .size(15.0)
+                    .weak(),
                 );
             });
             return;
@@ -1852,6 +2208,18 @@ impl TimegrapherApp {
         });
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
+        let rate_line = self
+            .rate_line
+            .then(|| self.reading())
+            .flatten()
+            .and_then(|r| {
+                Some(strip::RateLine {
+                    from_s: r.time_s - r.span_s,
+                    to_s: r.time_s,
+                    rate_s_per_day: r.rate_s_per_day?,
+                })
+            });
+        let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
             ui,
             live.beats(),
@@ -1860,6 +2228,7 @@ impl TimegrapherApp {
             end,
             &self.strip,
             note.as_deref(),
+            rate_line,
             ui.available_size(),
         );
         self.apply_strip_input(input, end);
@@ -1901,7 +2270,7 @@ impl TimegrapherApp {
                 }
             }
         };
-        profiles::draw(ui, &shown, &mut self.sound_scale, note.as_deref());
+        profiles::draw(ui, &shown, self.sound_opts, note.as_deref());
     }
 
     /// Start working out the sound at `end` from the file, unless one is
@@ -2492,7 +2861,16 @@ impl eframe::App for TimegrapherApp {
 
         self.poll();
 
+        // Closing the window with unsaved sound asks first.
+        if ctx.input(|i| i.viewport().close_requested())
+            && !self.may_close
+            && self.unsaved_s() > 5.0
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.confirm = Some(Confirm::Quit);
+        }
         self.panels(ctx);
+        self.confirm_dialog(ctx);
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
@@ -2501,6 +2879,7 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
+        self.discard_recording();
     }
 }
 
@@ -2593,6 +2972,40 @@ mod tests {
         app.message = None;
         app.input = Input::File;
         frames(&mut app, &ctx, 1);
+    }
+
+    /// A microphone session's sound is kept as it goes, can be saved at
+    /// any point, and goes with a new session.
+    #[test]
+    fn sessions_keep_save_and_discard_their_sound() {
+        let base = std::env::temp_dir().join(format!("tg-app-save-{}", std::process::id()));
+        let mut app = synthetic(12.0, 20.0);
+        app.mic_session = true;
+        let info = app.info("test", 48000, 16);
+        let mut r = Recorder::start(&base.join("kept"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 6],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        let kept = r.dir().to_path_buf();
+        app.recorder = Some(r);
+        assert!(app.unsaved_s() > 5.0, "unsaved sound to ask about");
+        app.save_into(&base.join("saved"));
+        let saved = app.saved_to.clone().expect("saved");
+        assert!(saved.join("audio-001.wav").is_file());
+        assert_eq!(app.unsaved_s(), 0.0);
+        // Paused, a session can carry on; a new session forgets it.
+        app.paused_at = Some(Instant::now());
+        assert!(app.can_resume());
+        app.new_session();
+        assert!(app.live.is_none() && app.recorder.is_none() && !app.can_resume());
+        assert!(!kept.exists(), "the unsaved copy is thrown away");
+        assert!(
+            saved.join("audio-001.wav").is_file(),
+            "the saved copy stays"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

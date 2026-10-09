@@ -42,6 +42,8 @@ pub struct Palette {
     pub unlock: Color32,
     pub drop: Color32,
     pub peak: Color32,
+    /// The three sounds on the tick tock profile.
+    pub sound: Color32,
 }
 
 const fn rgb(hex: u32) -> Color32 {
@@ -69,6 +71,7 @@ pub const DARK: Palette = Palette {
     unlock: rgb(0x30d158),
     drop: rgb(0xff453a),
     peak: rgb(0xbf5af2),
+    sound: rgb(0xffd60a),
 };
 
 pub const LIGHT: Palette = Palette {
@@ -92,6 +95,7 @@ pub const LIGHT: Palette = Palette {
     unlock: rgb(0x248a3d),
     drop: rgb(0xd70015),
     peak: rgb(0x8944ab),
+    sound: rgb(0x8a6d00),
 };
 
 pub fn palette(dark: bool) -> &'static Palette {
@@ -285,14 +289,74 @@ pub fn caption(text: &str) -> RichText {
         .extra_letter_spacing(0.6)
 }
 
-/// A caption over a card of settings, in the secondary text colour.
-pub fn section(ui: &mut Ui, text: &str) {
+/// A small round "?" that opens an explanation beside it, closed by
+/// clicking anywhere else. The one way the app explains itself at length;
+/// short hints stay as tooltips on the controls.
+pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
+    let p = pal(ui);
+    let size = Vec2::splat(16.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
+    let fill = if open {
+        p.accent
+    } else if resp.hovered() {
+        p.control_active
+    } else {
+        p.control_hover
+    };
+    ui.painter().circle_filled(rect.center(), 8.0, fill);
+    ui.painter().text(
+        rect.center() + Vec2::new(0.0, 0.5),
+        egui::Align2::CENTER_CENTER,
+        "?",
+        semibold(11.0),
+        if open { p.on_accent } else { p.text_secondary },
+    );
+    let resp = resp.on_hover_text(format!("What {} means", title.to_lowercase()));
+    egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .width(360.0)
+        .show(|ui| {
+            ui.set_max_width(360.0);
+            ui.spacing_mut().item_spacing.y = 8.0;
+            ui.label(RichText::new(title).font(semibold(14.0)));
+            for para in paragraphs {
+                ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
+            }
+        });
+    resp
+}
+
+/// The caption over a card of settings, with its explanation and, for a
+/// pane, the switch that shows or hides it. True when the switch flipped.
+pub fn section_header(
+    ui: &mut Ui,
+    text: &str,
+    shown: Option<&mut bool>,
+    help_text: &[&str],
+) -> bool {
+    let mut changed = false;
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.add_space(4.0);
         ui.label(caption(text).color(pal(ui).text_secondary));
+        if !help_text.is_empty() {
+            help(ui, text, help_text);
+        }
+        if let Some(on) = shown {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(14.0);
+                let hint = if *on {
+                    format!("Hide the {}", text.to_lowercase())
+                } else {
+                    format!("Show the {}", text.to_lowercase())
+                };
+                changed = switch(ui, on).on_hover_text(hint).changed();
+            });
+        }
     });
     ui.add_space(2.0);
+    changed
 }
 
 /// A row in a settings card: the name on the left (with its hint on hover)
@@ -430,6 +494,13 @@ pub fn primary(ui: &Ui, text: &str) -> egui::Button<'static> {
     let p = pal(ui);
     egui::Button::new(RichText::new(text).font(semibold(13.0)).color(p.on_accent))
         .fill(p.accent)
+        .corner_radius(CornerRadius::same(CONTROL_RADIUS))
+        .min_size(Vec2::new(84.0, 26.0))
+}
+
+/// A button of the same size as the primary one, without its colour.
+pub fn secondary(_ui: &Ui, text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text).font(semibold(13.0)))
         .corner_radius(CornerRadius::same(CONTROL_RADIUS))
         .min_size(Vec2::new(84.0, 26.0))
 }
