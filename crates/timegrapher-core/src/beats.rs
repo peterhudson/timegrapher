@@ -140,9 +140,34 @@ pub fn median_template(env: &[f32], fs: f64, times: &[f64]) -> Vec<f32> {
     median_window(env, fs, times, PRE_S, POST_S)
 }
 
+/// Share of beats dropped from each end, point by point, when averaging
+/// beats into the template that amplitude, beat error from the unlock and
+/// the tick and tock profiles are measured on. Keeping the middle half
+/// ignores stray clicks as a median does but averages away more hiss.
+pub const TEMPLATE_TRIM: f64 = 0.25;
+
+/// Trimmed mean (see [`TEMPLATE_TRIM`]) of the windows from `PRE_S` before
+/// to `POST_S` after each time.
+pub fn trimmed_template(env: &[f32], fs: f64, times: &[f64]) -> Vec<f32> {
+    window_stat(env, fs, times, PRE_S, POST_S, |c| {
+        crate::dsp::trimmed_mean_f32(c, TEMPLATE_TRIM)
+    })
+}
+
 /// Median of the windows from `pre_s` before to `post_s` after each time.
 /// Windows that run off either end of the envelope are left out.
 pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f64) -> Vec<f32> {
+    window_stat(env, fs, times, pre_s, post_s, median_f32)
+}
+
+fn window_stat(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    pre_s: f64,
+    post_s: f64,
+    stat: impl Fn(&mut [f32]) -> f32,
+) -> Vec<f32> {
     let pre = (pre_s * fs).round() as usize;
     let post = (post_s * fs).round() as usize;
     let len = pre + post;
@@ -159,7 +184,7 @@ pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f6
             for (c, &s) in col.iter_mut().zip(&starts) {
                 *c = env[s + k];
             }
-            median_f32(&mut col)
+            stat(&mut col)
         })
         .collect()
 }

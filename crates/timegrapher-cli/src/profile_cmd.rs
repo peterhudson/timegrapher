@@ -102,7 +102,7 @@ fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lif
         s,
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{total}" font-family="sans-serif" font-size="12">
 <rect width="100%" height="100%" fill="#fff"/>
-<text x="{ml}" y="20" font-size="14">{} — {from:.1}–{to:.1} s, lift {lift}°: median sound (line), 10–90% of beats (band), engine marks</text>
+<text x="{ml}" y="20" font-size="14">{} — {from:.1}–{to:.1} s, lift {lift}°: typical sound (line, mean of the middle half of beats), 10–90% of beats (band), engine marks</text>
 "##,
         file.file_name().map_or("".into(), |n| n.to_string_lossy())
     );

@@ -166,6 +166,19 @@ pub fn median_f32(v: &mut [f32]) -> f32 {
     v[mid]
 }
 
+/// Mean of the middle of `v` after dropping `trim` of the values from each
+/// end (0.25 keeps the middle half; 0.5 is the median). Sorts `v`.
+pub fn trimmed_mean_f32(v: &mut [f32], trim: f64) -> f32 {
+    if v.is_empty() {
+        return f32::NAN;
+    }
+    v.sort_unstable_by(|a, b| a.total_cmp(b));
+    let n = v.len();
+    let cut = ((n as f64 * trim.clamp(0.0, 0.5)).floor() as usize).min((n - 1) / 2);
+    let mid = &v[cut..n - cut];
+    (mid.iter().map(|&x| x as f64).sum::<f64>() / mid.len() as f64) as f32
+}
+
 /// Median absolute deviation scaled to match a standard deviation.
 pub fn robust_sd(v: &[f64]) -> f64 {
     let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
@@ -177,6 +190,17 @@ pub fn robust_sd(v: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trimmed_mean_ignores_the_ends() {
+        let mut v = [1.0, 2.0, 3.0, 4.0, 100.0, -50.0, 2.5, 3.5];
+        // Middle half of the sorted values: 2.0, 2.5, 3.0, 3.5.
+        assert!((trimmed_mean_f32(&mut v, 0.25) - 2.75).abs() < 1e-6);
+        let mut one = [7.0];
+        assert_eq!(trimmed_mean_f32(&mut one, 0.25), 7.0);
+        let mut w = [1.0, 2.0, 9.0];
+        assert_eq!(trimmed_mean_f32(&mut w, 0.5), 2.0);
+    }
 
     #[test]
     fn correlate_matches_direct() {
