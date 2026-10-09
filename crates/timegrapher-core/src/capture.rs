@@ -312,8 +312,9 @@ pub fn explain_error(e: &str) -> String {
         || l.contains("not available")
     {
         format!(
-            "This input is busy: the desktop sound server is probably holding it. \
-             Choose the system default instead, or close what is using it. ({e})"
+            "This input is busy or missing. If the desktop sound server is running it \
+             is probably holding it: choose the system default instead, or close what \
+             is using it. Otherwise check the microphone is plugged in. ({e})"
         )
     } else {
         e.to_string()
@@ -680,7 +681,7 @@ mod tests {
         assert!(explain_error(
             "The requested device is no longer available. For example, it has been unplugged."
         )
-        .starts_with("This input is busy"));
+        .starts_with("This input is busy or missing"));
     }
 
     #[test]
