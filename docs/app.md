@@ -36,8 +36,8 @@ rises with noise or a muffled sound as well as with a watch that runs
 unevenly, so compare it on the same stand and microphone. Hover over any
 reading for a short explanation.
 
-**Panes.** Below the readings are five panes: the paper strip, the tick and tock
-sound, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
+**Panes.** Below the readings are five panes: the paper strip, the tick tock
+profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The × on a tab hides
 that pane, and the **Panes** list in the sidebar hides or shows each pane
@@ -46,7 +46,7 @@ and changing the strip's direction keeps the choice. **Reset panes**
 shows them all in their starting places. Periodicity views will join
 them.
 
-**Tick and tock sound.** The typical sound of the ticks (blue) and of
+**Tick tock profile.** The typical sound of the ticks (blue) and of
 the tocks (orange) over the averaging time (Average over, up to 60 s, so
 it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
@@ -54,12 +54,12 @@ arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read: unlock (green) and drop (red), from which
 amplitude and the unlock-based beat error come, the drop's peak (purple),
-the three sounds where the engine tells them apart (grey dashes) and the
-noise floor. Above each plot are the beat count, the marks in ms from the
-beat, the unlock-to-drop time and the amplitude they give. The dB scale
-(the default) shows the level below each side's loudest point, so the
-quiet unlock shows as clearly as the drop; Linear shows the envelope as
-the engine measures it. Looking back, the pane shows the sound the session
+the three sounds where the engine tells them apart (dashed: 1 unlock,
+2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
+Above each plot are the beat count, the marks in ms from the
+beat, the unlock-to-drop time and the amplitude they give. Linear (the
+default) shows the envelope as the engine measures it; dB shows the level
+below each side's loudest point, so the quiet unlock shows more clearly. Looking back, the pane shows the sound the session
 kept nearest before that moment (one every 2 s); for a recording analysed
 all at once it is worked out from the file when you stop on a moment.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
