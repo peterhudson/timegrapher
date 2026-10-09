@@ -171,7 +171,7 @@ pub struct Recorded {
 pub const PREFERRED_RATE: u32 = 48000;
 
 #[cfg(feature = "capture")]
-pub use device::{find, list, open, open_input, record};
+pub use device::{find, host, list, open, open_input, record};
 
 #[cfg(feature = "capture")]
 mod device {
@@ -240,6 +240,11 @@ mod device {
         host.default_input_device()
             .and_then(|d| d.id().ok())
             .map(|i| i.to_string())
+    }
+
+    /// The audio host in use (ALSA, CoreAudio, WASAPI, ...).
+    pub fn host() -> String {
+        format!("{:?}", cpal::default_host().id())
     }
 
     /// Every input the default audio host offers, the default first.
