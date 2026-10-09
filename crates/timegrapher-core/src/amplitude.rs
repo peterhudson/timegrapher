@@ -5,7 +5,8 @@
 //! period of a full oscillation, the amplitude is
 //! `A = L / (2 sin(pi t / T))` (the formula Witschi and tg use).
 //!
-//! `t` is measured on median templates of a few seconds of beats, one for
+//! `t` is measured on templates of a few seconds of beats (at each point the mean
+//! of the middle half of the beats, which ignores stray clicks), one for
 //! each side (tick and toc), because single beats are too noisy for a
 //! stable onset.
 //!
@@ -18,7 +19,7 @@
 //! edges this is the drop's beat error minus the difference between the
 //! two sides' unlock-to-drop times.
 
-use crate::beats::{median_template, Beat, PRE_S};
+use crate::beats::{trimmed_template, Beat, PRE_S};
 use crate::dsp::{median_f32, moving_average};
 use crate::timing;
 use serde::Serialize;
@@ -204,7 +205,7 @@ pub fn windows_between(
             if times.len() < 3 {
                 return None;
             }
-            let tmpl = median_template(env, fs, &times);
+            let tmpl = trimmed_template(env, fs, &times);
             let origin = (PRE_S * fs).round() as usize;
             let e = edges(&tmpl, fs, origin, cfg.onset_fraction)?;
             let a = amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg);

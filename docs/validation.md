@@ -49,6 +49,13 @@ rate is on the uncalibrated sound-card clock.
 | Rolex 3235, 2 h take, 30 min of it (segments 1, 2, 7) | 251° | 250° | +43.1 / +43.1 |
 | Rolex 3235, 5 min | 246° | 245° | +35.6 / +34.1 |
 
+The templates behind amplitude are now the mean of the middle half of the
+beats at each point rather than their median (stray clicks are still
+ignored, and more of the beats count, so hiss from a cheap microphone
+averages away better). Against the median, per-segment amplitudes moved by
+3° at most: Dandong 3235 288/288/295° → 285/287/294° (tg 286°), Daytona,
+Patek 324 and Peacock SL1258 by 1° or less. Rate is unaffected.
+
 On the Dandong, sound 1 on one side is only 4–5% as loud as the drop.
 A threshold of 5% of the drop's height missed it and timed the unlock from
 sound 2, reading 297°. The unlock is now the first sustained rise above the

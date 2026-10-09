@@ -13,7 +13,11 @@ use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::AnalysisConfig;
 use crate::beats::{self, Beat};
 use crate::dsp::{envelope, median, median_f32};
-use crate::profile::{self, TickProfile};
+use crate::profile::{self, Side, TickProfile};
+use std::collections::VecDeque;
+
+/// Longest stretch the tick and tock profiles can cover, seconds.
+pub const MAX_PROFILE_S: f64 = 60.0;
 use crate::stream::BeatLog;
 use crate::timing;
 use serde::Serialize;
@@ -33,8 +37,9 @@ pub struct LiveConfig {
     /// Beats kept; the oldest are dropped beyond this (about a day at
     /// 28,800 bph).
     pub max_beats: usize,
-    /// Settled beats behind the tick and tock profiles, seconds (at most
-    /// about `window_s`, the audio a pass sees).
+    /// Settled beats behind the tick and tock profiles, seconds, up to
+    /// `MAX_PROFILE_S`. Each beat's sound is kept for that long (about 5 kB
+    /// a beat at 48 kHz, 2.6 MB at 60 s and 28,800 bph).
     pub profile_s: f64,
 }
 
@@ -90,6 +95,9 @@ pub struct LiveAnalyzer {
     next_amp_s: Option<f64>,
     /// Tick and tock sounds over the latest settled beats.
     profiles: [Option<TickProfile>; 2],
+    /// Each settled beat's envelope window for the profiles: time, even
+    /// side, samples. Oldest first.
+    snippets: VecDeque<(f64, bool, Vec<f32>)>,
     snr: Option<f32>,
     /// Passes in a row with no signal.
     quiet_passes: u32,
@@ -111,6 +119,7 @@ impl LiveAnalyzer {
             amp: Vec::new(),
             next_amp_s: None,
             profiles: [None, None],
+            snippets: VecDeque::new(),
             snr: None,
             quiet_passes: 0,
         }
@@ -159,6 +168,18 @@ impl LiveAnalyzer {
         &self.profiles
     }
 
+    /// Set how many seconds of settled beats the profiles cover (clamped to
+    /// 0.5..=`MAX_PROFILE_S`), e.g. to follow the screen's averaging time.
+    /// Beats already kept are reused, so a longer span fills in as beats
+    /// arrive and a shorter one applies on the next pass.
+    pub fn set_profile_span(&mut self, seconds: f64) {
+        self.cfg.profile_s = seconds;
+    }
+
+    fn profile_span(&self) -> f64 {
+        self.cfg.profile_s.clamp(0.5, MAX_PROFILE_S)
+    }
+
     pub fn amplitude_windows(&self) -> &[AmplitudeWindow] {
         &self.amp
     }
@@ -172,6 +193,7 @@ impl LiveAnalyzer {
         self.amp.clear();
         self.next_amp_s = None;
         self.profiles = [None, None];
+        self.snippets.clear();
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
     }
@@ -307,6 +329,12 @@ impl LiveAnalyzer {
                 }
             }
             self.beats.push(Beat { time: t, ..*b });
+            if b.quality > 0.4 {
+                if let Some(w) = profile::snippet(&env, fs, b.time) {
+                    self.snippets
+                        .push_back((t, b.index.rem_euclid(2) == 0, w.to_vec()));
+                }
+            }
         }
         if self.beats.len() > self.cfg.max_beats {
             let cut = self.beats.len() - self.cfg.max_beats;
@@ -343,17 +371,20 @@ impl LiveAnalyzer {
         } else if self.next_amp_s.is_none() {
             self.next_amp_s = Some(start);
         }
-        let span = self.cfg.profile_s.max(0.5);
-        let p_from = (to - span).max(off + beats::PRE_S + 0.01) - off;
-        self.profiles = profile::profiles(
-            &env,
-            fs,
-            &numbered,
-            2.0 * beat,
-            p_from,
-            to - off,
-            &a.amplitude,
-        );
+        let span = self.profile_span();
+        while self.snippets.front().is_some_and(|f| f.0 < to - span) {
+            self.snippets.pop_front();
+        }
+        self.profiles = [Side::A, Side::B].map(|side| {
+            let even = side == Side::A;
+            let w: Vec<&[f32]> = self
+                .snippets
+                .iter()
+                .filter(|s| s.1 == even)
+                .map(|s| s.2.as_slice())
+                .collect();
+            profile::from_snippets(&w, fs, side, 2.0 * beat, &a.amplitude)
+        });
         self.settled_to = to;
     }
 
@@ -425,6 +456,31 @@ mod tests {
     }
 
     #[test]
+    fn profiles_cover_more_than_one_pass() {
+        let cfg = SynthConfig {
+            duration_s: 20.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        a.set_profile_span(10.0);
+        feed(&mut a, &audio.samples);
+        for p in a.tick_profiles() {
+            let p = p.as_ref().expect("profile");
+            // 10 s is 40 beats a side; the pass guard trims a couple.
+            assert!((36..=41).contains(&p.beats), "{} beats", p.beats);
+            let amp = p.amplitude_deg.expect("amplitude");
+            assert!((amp - 270.0).abs() < 10.0, "amplitude {amp}");
+        }
+        a.set_profile_span(2.0);
+        feed(&mut a, &audio.samples[..48000]);
+        for p in a.tick_profiles() {
+            let n = p.as_ref().expect("profile").beats;
+            assert!(n <= 9, "{n} beats after shortening");
+        }
+    }
+
+    #[test]
     fn follows_a_synthetic_watch() {
         let cfg = SynthConfig {
             rate_s_per_day: 12.0,
@@ -443,10 +499,11 @@ mod tests {
         assert!((be.abs() - 0.5).abs() < 0.05, "beat error {be}");
         let amp = r.amplitude_deg.expect("amplitude");
         assert!((amp - 270.0).abs() < 10.0, "amplitude {amp}");
-        // Both sides' sounds, with the marks behind the amplitude.
+        // Both sides' sounds, with the marks behind the amplitude, over the
+        // default 3 s (12 beats a side at 28,800 bph).
         for p in a.tick_profiles() {
             let p = p.as_ref().expect("profile");
-            assert!(p.beats >= 8, "{} beats", p.beats);
+            assert!((10..=13).contains(&p.beats), "{} beats", p.beats);
             let pa = p.amplitude_deg.expect("profile amplitude");
             assert!((pa - 270.0).abs() < 15.0, "profile amplitude {pa}");
         }

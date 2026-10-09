@@ -8,7 +8,7 @@
 //! numbers on screen.
 
 use crate::amplitude::{amplitude_deg, edges, AmplitudeConfig};
-use crate::beats::{median_template, Beat, POST_S, PRE_S};
+use crate::beats::{Beat, POST_S, PRE_S, TEMPLATE_TRIM};
 use crate::dsp::envelope;
 use crate::shape::{self, ShapeConfig};
 use serde::Serialize;
@@ -28,7 +28,7 @@ impl Side {
     }
 }
 
-/// One side's median sound with the engine's marks. Times are ms from the
+/// One side's typical sound with the engine's marks. Times are ms from the
 /// beat's reference point (near the drop); levels are envelope values.
 #[derive(Debug, Clone, Serialize)]
 pub struct TickProfile {
@@ -38,7 +38,10 @@ pub struct TickProfile {
     /// Time of the first point and the spacing between points, ms.
     pub t0_ms: f64,
     pub step_ms: f64,
-    /// Median envelope and its 10th and 90th percentiles, point by point.
+    /// The beats' typical envelope, point by point: the mean of the middle
+    /// half of the beats (a 25% trimmed mean, the template amplitude is
+    /// measured on; named `median` for compatibility), and the 10th and
+    /// 90th percentiles.
     pub median: Vec<f32>,
     pub p10: Vec<f32>,
     pub p90: Vec<f32>,
@@ -110,11 +113,55 @@ pub fn profile(
         })
         .map(|b| b.time)
         .collect();
-    let windows = windows(env, fs, &times);
-    if windows.len() < 3 {
+    let len = template_len(fs);
+    let snips: Vec<&[f32]> = windows(env, fs, &times)
+        .into_iter()
+        .map(|w| &env[w..w + len])
+        .collect();
+    from_snippets(&snips, fs, side, osc_period_s, cfg)
+}
+
+/// Samples in one beat's window: `PRE_S` before the beat to `POST_S` after.
+pub fn template_len(fs: f64) -> usize {
+    (PRE_S * fs).round() as usize + (POST_S * fs).round() as usize
+}
+
+/// One beat's envelope window, as [`from_snippets`] takes it, or `None`
+/// when it runs off either end of `env`. `t` is the beat time in `env`'s
+/// time base.
+pub fn snippet(env: &[f32], fs: f64, t: f64) -> Option<&[f32]> {
+    let w = *windows(env, fs, &[t]).first()?;
+    Some(&env[w..w + template_len(fs)])
+}
+
+/// A profile from beat windows already cut out of the envelope (each
+/// [`template_len`] samples, the beat `PRE_S` in), so a live view can keep
+/// windows from many passes.
+pub fn from_snippets(
+    snips: &[&[f32]],
+    fs: f64,
+    side: Side,
+    osc_period_s: f64,
+    cfg: &AmplitudeConfig,
+) -> Option<TickProfile> {
+    let len = template_len(fs);
+    let snips: Vec<&[f32]> = snips.iter().copied().filter(|w| w.len() == len).collect();
+    if snips.len() < 3 {
         return None;
     }
-    let tmpl = median_template(env, fs, &times);
+    let mut col = vec![0.0f32; snips.len()];
+    let mut sorted_at = |k: usize| -> Vec<f32> {
+        for (c, w) in col.iter_mut().zip(&snips) {
+            *c = w[k];
+        }
+        col.sort_unstable_by(|a, b| a.total_cmp(b));
+        col.clone()
+    };
+    let q = |c: &[f32], p: f64| c[((c.len() - 1) as f64 * p).round() as usize];
+    // The same trimmed-mean template the amplitude measurement builds.
+    let tmpl: Vec<f32> = (0..len)
+        .map(|k| crate::dsp::trimmed_mean_f32(&mut sorted_at(k), TEMPLATE_TRIM))
+        .collect();
     let origin = (PRE_S * fs).round() as usize;
     let to_ms = |s: f64| (s - origin as f64) / fs * 1000.0;
     let e = edges(&tmpl, fs, origin, cfg.onset_fraction);
@@ -129,22 +176,17 @@ pub fn profile(
 
     let stride = ((STEP_MS / 1000.0 * fs).round() as usize).max(1);
     let (mut median, mut p10, mut p90) = (Vec::new(), Vec::new(), Vec::new());
-    let mut col = vec![0.0f32; windows.len()];
-    for k in (0..tmpl.len()).step_by(stride) {
-        for (c, w) in col.iter_mut().zip(&windows) {
-            *c = env[w + k];
-        }
-        col.sort_unstable_by(|a, b| a.total_cmp(b));
-        let q = |p: f64| col[((col.len() - 1) as f64 * p).round() as usize];
+    for k in (0..len).step_by(stride) {
+        let c = sorted_at(k);
         median.push(tmpl[k]);
-        p10.push(q(0.1));
-        p90.push(q(0.9));
+        p10.push(q(&c, 0.1));
+        p90.push(q(&c, 0.9));
     }
-    let quiet = ((0.003 * fs) as usize).min(tmpl.len());
+    let quiet = ((0.003 * fs) as usize).min(len);
     let mut floor_v = tmpl[..quiet].to_vec();
     Some(TickProfile {
         side,
-        beats: windows.len(),
+        beats: snips.len(),
         t0_ms: to_ms(0.0),
         step_ms: stride as f64 / fs * 1000.0,
         median,
