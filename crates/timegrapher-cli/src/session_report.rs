@@ -332,19 +332,20 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num">Rate<br>s/d</th><th class="num">Amplitude<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">Jitter<br>µs</th><th class="num">10 s rates<br>s/d</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num">Rate<br>s/d</th><th class="num">Amplitude<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num">Jitter<br>µs</th><th class="num">10 s rates<br>s/d</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for (r, v) in sn.readings.iter().zip(&sn.report.verdicts) {
         let m = &r.measurement;
         let _ = write!(
             s,
-            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}{}{}<td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
+            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}{}{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
             r.position.code(),
             r.position.description(),
             wind(r.wind_h),
             cell(signed(m.rate_s_per_day, 1), v.rate),
             cell(opt(m.amplitude_deg, 0), v.amplitude),
-            cell(opt(m.beat_error_ms.map(f64::abs), 2), v.beat_error),
+            cell(opt(m.beat_error(), 2), v.beat_error),
+            opt(m.beat_error_ms.map(f64::abs), 2),
             opt(m.jitter_us, 0),
             signed(m.rate_p05, 0),
             signed(m.rate_p95, 0),
@@ -380,15 +381,15 @@ fn reference_table(sn: &Session) -> String {
         return String::new();
     }
     let mut s = String::from(
-        r#"<h2>Against the reference timegrapher</h2><table class="data"><thead><tr><th>Position</th><th class="num">Rate s/d<br>here / ref</th><th class="num">Difference</th><th class="num">Amplitude deg<br>here / ref</th><th class="num">Difference</th><th class="num">Beat error ms<br>here / ref</th><th>Reference</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<h2>Against the reference timegrapher</h2><table class="data"><thead><tr><th>Position</th><th class="num">Rate s/d<br>here / ref</th><th class="num">Difference</th><th class="num">Amplitude deg<br>here / ref</th><th class="num">Difference</th><th class="num">Beat error ms<br>here / ref</th><th class="num">Here from<br>the drop</th><th>Reference</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for r in with {
         let f = r.reference.as_ref().unwrap();
         let m = &r.measurement;
-        let be = m.beat_error_ms.map(f64::abs);
+        let be = m.beat_error();
         let _ = write!(
             s,
-            r#"<tr><th>{}</th><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td>{}</td><td class="file">{}</td></tr>"#,
+            r#"<tr><th>{}</th><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
             r.position.code(),
             signed(m.rate_s_per_day, 1),
             signed(f.rate_s_per_day, 1),
@@ -401,6 +402,7 @@ fn reference_table(sn: &Session) -> String {
             signed(m.amplitude_deg.zip(f.amplitude_deg).map(|(a, b)| a - b), 0),
             opt(be, 2),
             opt(f.beat_error_ms, 2),
+            opt(m.beat_error_ms.map(f64::abs), 2),
             esc(f.source.as_deref().unwrap_or("")),
             esc(&r.label)
         );
