@@ -29,10 +29,17 @@ pub fn run(file: &Path, o: &Options) -> Result<(), String> {
         write_templates(p, &r, fs).map_err(|e| format!("{}: {e}", p.display()))?;
     }
     if o.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&r).map_err(|e| e.to_string())?
-        );
+        let settings = serde_json::json!({
+            "bph": bph,
+            "lift_deg": o.lift_deg,
+            "notch_hz": o.envelope.notch_hz,
+            "highpass_hz": o.envelope.highpass_hz,
+        });
+        crate::output::print(
+            "shape",
+            crate::output::input(&[file.to_path_buf()], settings),
+            &r,
+        )?;
     } else {
         print_report(&r, bph, beat_s, o.lift_deg);
     }

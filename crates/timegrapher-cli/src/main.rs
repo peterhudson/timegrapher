@@ -1,4 +1,9 @@
+#[cfg(feature = "live")]
+mod capture;
+mod doctor;
 mod long;
+mod mixer;
+mod output;
 mod report;
 mod session_cmd;
 mod session_report;
@@ -17,7 +22,11 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
 #[command(
     name = "timegrapher",
     version,
-    about = "Analyse mechanical watch recordings beat by beat"
+    about = "Analyse mechanical watch recordings beat by beat",
+    after_help = "Every command with --json prints one JSON document with a `schema` field \
+(e.g. timegrapher.analyze/1), the software version and the input it read. \
+Start with `timegrapher doctor` to check the microphone. Exit codes: 0 success, \
+1 error, 3 doctor found problems."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -112,6 +121,47 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
         /// Print the summary as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the sound inputs, with the sample rates and formats each supports.
+    Devices {
+        /// Print the list as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check the microphone: record a few seconds and report level,
+    /// clipping, automatic gain, noise and whether ticks are heard, with
+    /// the exact settings to change. Changes nothing without --apply.
+    /// Exits 0 when the input is fit to measure with, 3 when it is not.
+    Doctor {
+        /// Sound input to use: part of its name or id from `devices`
+        /// (default: the system's default input).
+        #[arg(long)]
+        device: Option<String>,
+        /// ALSA card (number or name) whose mixer to read on Linux
+        /// (default: from the device, or the only USB sound card).
+        #[arg(long)]
+        card: Option<String>,
+        /// Seconds to record.
+        #[arg(long, default_value_t = 5.0)]
+        seconds: f64,
+        /// Check a recording instead of listening live.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// Keep the recording as a WAV file, with its device and mixer
+        /// settings in FILE.json beside it.
+        #[arg(long)]
+        save: Option<PathBuf>,
+        /// Make the proposed mixer changes (Linux), then check again.
+        /// Ask the watch's owner before using this: it changes their
+        /// computer's settings.
+        #[arg(long)]
+        apply: bool,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Print the report as JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -256,6 +306,33 @@ fn main() -> ExitCode {
                 json,
             )
         }
+        Command::Devices { json } => run_devices(json),
+        Command::Doctor {
+            device,
+            card,
+            seconds,
+            file,
+            save,
+            apply,
+            bph,
+            json,
+        } => {
+            let o = doctor::Options {
+                device,
+                card,
+                seconds,
+                file,
+                save,
+                apply,
+                json,
+                bph,
+            };
+            match doctor::run(&o) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(3),
+                Err(e) => Err(e),
+            }
+        }
         Command::Session {
             paths,
             init,
@@ -336,14 +413,64 @@ fn run_analyze(
         write_windows(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&a.summary).map_err(|e| e.to_string())?
-        );
+        let settings = serde_json::json!({
+            "bph": cfg.bph,
+            "lift_deg": cfg.amplitude.lift_deg,
+            "notch_hz": cfg.envelope.notch_hz,
+            "highpass_hz": cfg.envelope.highpass_hz,
+            "escape_teeth": cfg.escape_teeth,
+        });
+        output::print(
+            "analyze",
+            output::input(&[file.to_path_buf()], settings),
+            &a.summary,
+        )?;
     } else {
         print_summary(&a);
     }
     Ok(())
+}
+
+#[cfg(feature = "live")]
+fn run_devices(json: bool) -> Result<(), String> {
+    let devs = capture::list()?;
+    if json {
+        return output::print(
+            "devices",
+            serde_json::json!({ "host": format!("{:?}", cpal::default_host().id()) }),
+            &serde_json::json!({ "devices": devs }),
+        );
+    }
+    if devs.is_empty() {
+        println!("No sound inputs found.");
+    }
+    for d in &devs {
+        println!(
+            "{}{}",
+            d.name,
+            if d.is_default { "  (default)" } else { "" }
+        );
+        println!("    id {}", d.id);
+        for c in &d.supported {
+            let rate = if c.min_sample_rate == c.max_sample_rate {
+                format!("{} Hz", c.min_sample_rate)
+            } else {
+                format!("{}-{} Hz", c.min_sample_rate, c.max_sample_rate)
+            };
+            let ch = if c.min_channels == c.max_channels {
+                c.min_channels.to_string()
+            } else {
+                format!("{}-{}", c.min_channels, c.max_channels)
+            };
+            println!("    {ch} channel(s), {rate}, {}", c.sample_format);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "live"))]
+fn run_devices(_json: bool) -> Result<(), String> {
+    Err("this build has no sound input support; build with --features live".into())
 }
 
 fn opt(v: Option<f64>, digits: usize) -> String {

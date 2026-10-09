@@ -357,6 +357,11 @@ fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 pub struct Session<'a> {
     /// Name and version of this layout; bumped when a field changes meaning.
     pub schema: &'static str,
+    /// Name, version and platform of the software, as in every `--json`
+    /// document (see docs/agent-interface.md).
+    pub software: serde_json::Value,
+    /// The recordings read and the settings used.
+    pub input: serde_json::Value,
     pub watch: Option<&'a str>,
     pub calibre: Option<&'a str>,
     pub owner: Option<&'a str>,
@@ -400,8 +405,19 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     }
     let report = session::evaluate(&readings, &tol, &limits);
     let bph = readings.first().map_or(0, |r| r.bph);
+    let files: Vec<PathBuf> = m.recordings.iter().map(|e| base.join(&e.file)).collect();
+    let settings = serde_json::json!({
+        "bph": o.bph.or(m.bph),
+        "lift_deg": o.lift.or(m.lift).unwrap_or(52.0),
+        "tolerance": tol_name,
+        "settle_s": o.settle,
+        "shape": !o.no_shape,
+        "cycles": !o.no_cycles,
+    });
     let s = Session {
         schema: SCHEMA,
+        software: crate::output::software(),
+        input: crate::output::input(&files, settings),
         watch: m.watch.as_deref().filter(|w| !w.is_empty()),
         calibre: m.calibre.as_deref().filter(|w| !w.is_empty()),
         owner: m.owner.as_deref(),
