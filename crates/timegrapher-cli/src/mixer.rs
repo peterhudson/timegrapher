@@ -263,10 +263,19 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
                     (new.to_string(), format!("from {cur} to {new} of {hi}"))
                 }
             };
+            let lasting = match sound_server() {
+                Some(server) => format!(
+                    " {server} is running and puts back its own saved microphone level whenever \
+                     the microphone is opened, so for a change that lasts lower or raise the \
+                     input volume in the sound settings (or wpctl/pactl) until doctor shows \
+                     this level."
+                ),
+                None => String::new(),
+            };
             fix(
                 issue,
                 format!(
-                    "Change '{}' on card {} {to}, then run doctor again.",
+                    "Change '{}' on card {} {to}, then run doctor again.{lasting}",
                     c.name, m.card
                 ),
                 Some(amixer(&m.card, c, &value)),
@@ -282,6 +291,18 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
         ),
     }
     fixes
+}
+
+/// The sound server on top of ALSA, if one is running for this user.
+fn sound_server() -> Option<&'static str> {
+    let dir = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+    if dir.join("pipewire-0").exists() {
+        Some("PipeWire")
+    } else if dir.join("pulse/native").exists() {
+        Some("PulseAudio")
+    } else {
+        None
+    }
 }
 
 /// Fixes on macOS and Windows: which setting to change, in words.

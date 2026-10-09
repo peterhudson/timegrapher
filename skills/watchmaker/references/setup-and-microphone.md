@@ -116,7 +116,7 @@ live `doctor` checks again and reports the result under `after`.
 | `silent` (fault) | Nothing, or digital silence. | Wrong device; device muted; mic not plugged in; on macOS the terminal hasn't been given microphone permission. |
 | `too_quiet` (warning) | Peaks below about −30 dBFS. | Raise the mic level; clamp the watch firmly; make sure the case touches the pick-up. |
 | `clipping` (fault) | Samples at full scale, or flat-topped peaks below it (clipping in the analogue stage). Amplitude and shape will be wrong. | Lower the mic level (it suggests about −6 dB and a re-check); turn off any "boost". |
-| `hot` (warning) | Peaks within 1 dB of full scale, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
+| `hot` (warning) | Peaks above −6 dBFS, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
 | `agc_suspected` (fault) | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
 | `no_ticks` (fault) | Fewer than half the expected beats, or ticks less than 6 dB above the background. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
 | `noisy` (warning) | Ticks found but less than 20 dB above the background: hum, fans, rubbing, handling. | Unplug mains chargers near the mic; move away from fans and the computer; don't touch the stand; try `--notch` for steady tones. |
@@ -141,14 +141,21 @@ amixer -c 2 sset Mic 10            # set a level (steps or a percentage, e.g. 60
 alsamixer -c 2                     # interactive: F4 for capture controls, M to mute/unmute
 ```
 
-PipeWire and PulseAudio sit on top of ALSA and keep their own software
-level per source. If the ALSA level is right but the recording is still
-quiet or loud, check `wpctl status` / `wpctl get-volume <id>` (PipeWire) or
-`pactl list sources short` / `pactl set-source-volume <name> 100%`
-(PulseAudio). Set the software level to 100% (0 dB) and do the adjusting
-in the ALSA hardware control, which is where the clipping happens.
-`alsactl store` makes ALSA settings survive a reboot (ask first; it may
-need root).
+PipeWire and PulseAudio sit on top of ALSA, and on most desktops one of
+them is running. For a USB microphone with a hardware capture control,
+their source volume *is* that control: PipeWire (WirePlumber) and
+PulseAudio drive the ALSA level from it, and WirePlumber writes its saved
+volume back to the card whenever the microphone is opened. So a level set
+with `amixer` lasts only until the next recording; a saved 100% comes
+back as full gain (16/16 on the C-Media). Make the change that lasts in
+the sound server instead: find the source with `wpctl status` and set it
+with `wpctl set-volume <id> 60%` (PipeWire), or
+`pactl set-source-volume <name> 60%` (PulseAudio), or the desktop's
+sound settings, then run `doctor` again to see which ALSA level it
+produced and adjust until the peaks sit near −10 dBFS. Use `amixer` for
+a quick test, or on a system with no sound server, where
+`alsactl store` makes the level survive a reboot (ask first; it may need
+root).
 
 **macOS**
 
