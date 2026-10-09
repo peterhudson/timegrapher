@@ -179,6 +179,31 @@ point, and on this movement that point is about 1.1 ms after the drop's
 rising edge (0.3–0.6 ms on the other watches). The ETA in its holder
 remains unreliable either way.
 
+## A loud knock: the Yacht-Master dial down
+
+On the Yacht-Master's dial-down take (the pickup bar resting on the desk)
+two knocks at full scale, 3 minutes into the first 10 minutes, threw the
+beat count off for the rest of that file: rate +34,553 s/d. A peak found on
+the slope at the edge of its search window was "refined" by parabolic
+interpolation to a point 30 ms away, the tracker then found every beat
+twice, and the count never recovered. Two changes:
+
+- interpolation only refines a local maximum;
+- once the correlation track is running, a peak more than a tenth of a
+  beat from where the beat is due is counted as a missed beat instead of
+  a beat (after 16 misses in a row the track takes what it finds again).
+
+| Recording (55°) | tg | before | after |
+| --- | --- | --- | --- |
+| YM42 dial down, 01 | +46.8 s/d, 235° | +34,553 s/d, 174° | +43.3 s/d, 241° |
+| YM42 dial down, 02 / 03 | 236 / 229° | 240 / 233° | 240 / 233° |
+
+Every other take moves by 2° or less and 0.03 ms or less, except the ETA
+in its holder, which stays unreliable. At 12 dB signal-to-noise a few
+beats (7 of 240 in the synthetic test) are now left out rather than
+placed on a noise peak, and the last beat of a recording may be left out
+when its sound runs past the end.
+
 ## Beat shape
 
 `crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on
