@@ -303,6 +303,11 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
+    /// Median of the rate in 10 s windows, s/d. For a watch whose rate
+    /// wanders with dips, this sits above `rate_s_per_day` (the fit over
+    /// every beat, what the hands keep), as tg's median sits above its
+    /// mean; the report headlines the fit and shows this beside it.
+    pub rate_window_median_s_per_day: Option<f64>,
     /// Rate in 10 s windows, 5th and 95th percentile, s/d.
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
@@ -396,6 +401,8 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
                 tock: w.odd_deg,
                 beat_error_unlock_ms: w.beat_error_unlock_ms,
                 beat_error_drop_ms: w.beat_error_ms,
+                tick_unlock_ms: w.even_unlock_ms,
+                tock_unlock_ms: w.odd_unlock_ms,
             })
         })
         .collect();
@@ -415,6 +422,7 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
         jitter_us: median_of(windows.iter().map(|w| w.fit.jitter_us)),
+        rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         amplitude_p05: percentile(&amps, 0.05),

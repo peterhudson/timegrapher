@@ -84,8 +84,12 @@ of the recording or for `measure_s`:
   (the two kinds of beat, one per pallet stone; Tick is the even beats
   and Tock the odd ones, `amplitude_even_deg` and `amplitude_odd_deg` in
   the JSON, since the sound can't say which stone is which);
-- jitter, and the 5th to 95th percentile of rate in 10 s windows: how
-  steady the rate is;
+- jitter, and the median and the 5th to 95th percentile of rate in 10 s
+  windows: how steady the rate is. The headline rate is the fit over
+  every beat, the average the hands keep; where the rate wanders with
+  dips (the Yacht-Master crown left), the 10 s median sits a few s/d
+  above it, as tg's median reading sits above its mean, so compare tg's
+  mean with the headline and tg's median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
 - beat shape (as `shape`) on the first 60 s after settling;
@@ -133,9 +137,11 @@ Three outcomes other than two states:
   the unlock mark hopping between the onset and the shoulder after sound
   1, as on the Daytona 4130, where 0.3 ms of edge is about 15°.
 
-The amplitude windows do not carry the unlock time itself, so the edge
-check works from its traces: the per-side amplitudes and the per-state
-beat errors from the unlock and from the drop.
+The edge check reads each 2 s window's unlock edge on each side (ms from
+the beat time): when one side's edges fall in two clusters that the
+other side's edges do not follow, the edge finder is hopping. A real
+change of swing moves both sides' edges together (on the Yacht-Master
+dial up, both by about 0.3 ms between its states).
 
 ## Characteristic values
 
@@ -217,7 +223,9 @@ amplitude windows that found the unlock. `amplitude_states` and
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`
 and `regularity`, and for amplitude `tick_change`, `tock_change`,
 `beat_error_unlock_ms` and `beat_error_drop_ms` (low and high state),
-`tick_split_alone`, `tock_split_alone`, `one_sided` and `unlock_jump`.
+`tick_unlock_ms` and `tock_unlock_ms` (low and high state),
+`tick_split_alone`, `tock_split_alone`, `tick_edge_split_alone`,
+`tock_edge_split_alone`, `one_sided` and `unlock_jump`.
 
 ## Validation
 
