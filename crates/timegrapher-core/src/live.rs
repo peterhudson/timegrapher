@@ -53,7 +53,11 @@ pub struct LiveReading {
     pub time_s: f64,
     pub bph: Option<u32>,
     pub rate_s_per_day: Option<f64>,
+    /// Signed beat error from the fit to the beat times (near the drop), ms.
     pub beat_error_ms: Option<f64>,
+    /// Signed beat error measured from the unlock, as tg and commercial
+    /// timegraphers measure it: median over the amplitude windows, ms.
+    pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
@@ -339,11 +343,9 @@ impl LiveAnalyzer {
         let fit = self
             .bph
             .and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
-        let wins: Vec<&AmplitudeWindow> = self
-            .amp
-            .iter()
-            .filter(|w| w.end_s > from && w.end_s <= end_s + 1e-9)
-            .collect();
+        let a0 = self.amp.partition_point(|w| w.end_s <= from);
+        let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
+        let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)].iter().collect();
         let med = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Option<f64> {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
@@ -353,6 +355,7 @@ impl LiveAnalyzer {
             bph: self.bph,
             rate_s_per_day: fit.map(|f| f.rate_s_per_day),
             beat_error_ms: fit.map(|f| f.beat_error_ms),
+            beat_error_unlock_ms: med(&|w| w.beat_error_unlock_ms),
             amplitude_deg: med(&|w| w.mean()),
             amplitude_even_deg: med(&|w| w.even_deg),
             amplitude_odd_deg: med(&|w| w.odd_deg),

@@ -9,8 +9,10 @@
 //!   engine as fast as it can and prints the readings as JSON lines.
 
 mod app;
+mod fields;
 mod strip;
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use timegrapher_core::audio;
@@ -81,9 +83,14 @@ fn headless(a: &Args) -> Result<(), String> {
     cfg.analysis.amplitude.lift_deg = a.lift;
     let mut live = LiveAnalyzer::new(info.sample_rate, cfg);
     let mut next = a.every_s;
-    let print = |live: &LiveAnalyzer| {
-        let r = live.reading(a.average_s);
-        println!("{}", serde_json::to_string(&r).expect("json"));
+    // Stop printing quietly if the reader goes away (`| head`).
+    let mut out = std::io::stdout().lock();
+    let mut open = true;
+    let mut print = |live: &LiveAnalyzer| {
+        if open {
+            let r = live.reading(a.average_s);
+            open = writeln!(out, "{}", serde_json::to_string(&r).expect("json")).is_ok();
+        }
     };
     audio::stream(path, 4800, |block| {
         live.push(block);
