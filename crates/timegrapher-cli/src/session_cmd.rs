@@ -478,6 +478,7 @@ pub fn mark(m: Mark) -> &'static str {
         Mark::Within => "",
         Mark::Outside => "*",
         Mark::NotJudged => "",
+        Mark::Unreliable => "?",
     }
 }
 
@@ -584,7 +585,7 @@ fn print_summary(s: &Session) {
             if m.calibrated { "" } else { " (card clock)" }
         );
     }
-    println!("* outside tolerance");
+    println!("* outside tolerance, ? not measured reliably");
     println!();
     for st in &r.states {
         println!(
