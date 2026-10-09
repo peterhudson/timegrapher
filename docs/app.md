@@ -21,7 +21,7 @@ from 1 s to an hour, or pick one of Witschi's 2 to 60 s). The big amplitude is t
 swings; under it are the amplitude from the ticks (blue on the strip and
 charts) and from the tocks (orange). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
-between tick and tockk usually means one side's sounds were misread rather than a fault in the
+between tick and tockkk usually means one side's sounds were misread rather than a fault in the
 watch;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
@@ -36,13 +36,29 @@ rises with noise or a muffled sound as well as with a watch that runs
 unevenly, so compare it on the same stand and microphone. Hover over any
 reading for a short explanation.
 
-**Panes.** Below the readings are four panes: the paper strip and charts of
-rate, amplitude and beat error over the session. Drag a pane by its tab
+**Panes.** Below the readings are five panes: the paper strip, the tick and tock
+sound, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. **Reset panes** puts
 them back. Tick shape and periodicity views will join them.
 
-**Paper strip.** One dot per beat, tick and tock in two colours. Across the
+**Tick and tock sound.** The median sound of the ticks (blue) and of the
+tocks (orange) over the last 3 s, from the drop's side of the beat back
+through the unlock, with a shaded band where the middle 80% of beats fall
+and the marks the engine read: unlock (green) and drop (red), from which
+amplitude and the unlock-based beat error come, the drop's peak (purple),
+the three sounds where the engine tells them apart (grey dashes) and the
+noise floor. Above each plot are the beat count, the marks in ms from the
+beat, the unlock-to-drop time and the amplitude they give. The dB scale
+(the default) shows the level below each side's loudest point, so the
+quiet unlock shows as clearly as the drop; Linear shows the envelope as
+the engine measures it. Looking back, the pane shows the sound the session
+kept nearest before that moment (one every 2 s); for a recording analysed
+all at once it is worked out from the file when you stop on a moment.
+When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
+built on them are suspect.
+
+**Paper strip.** One dot per beat, tick and tockk in two colours. Across the
 strip is how early or late each beat came against a clock running at the
 nominal beat rate; along it is time. Running **down** (the default, as on
 tg), the newest beats are at the top, a watch on rate draws a vertical
@@ -54,7 +70,7 @@ strip's width is its zoom and its length sets how much history it shows.
 Type both (a width of ±0.1 to ±250 ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
 widths run from ±1 ms, for a good watch's beat error, to ±62.5 ms, half a
-beat at 28,800 bph and the widest view in which tick and tock can't wrap
+beat at 28,800 bph and the widest view in which tick and tockk can't wrap
 onto each other; the lengths run from 10 s of beats to a two-hour run.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a

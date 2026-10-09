@@ -3,6 +3,7 @@
 //! that can be dragged by their tabs into any arrangement.
 
 use crate::fields::{self, Format};
+use crate::profiles;
 use crate::strip::{self, Anchor, StripInput, StripView};
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{Legend, Line, Plot, VLine};
@@ -15,6 +16,13 @@ use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
 use timegrapher_core::mixer::{GainState, InputGain};
+use timegrapher_core::profile::TickProfile;
+
+/// The A and B sides' sounds.
+type Profiles = [Option<TickProfile>; 2];
+
+/// How often the sound is kept for looking back, seconds.
+const SOUND_EVERY_S: f64 = 2.0;
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -73,6 +81,7 @@ enum Input {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
     Strip,
+    Sound,
     Rate,
     Amplitude,
     BeatError,
@@ -82,6 +91,7 @@ impl Pane {
     fn title(self) -> &'static str {
         match self {
             Pane::Strip => "Paper strip",
+            Pane::Sound => "Tick and tock sound",
             Pane::Rate => "Rate",
             Pane::Amplitude => "Amplitude",
             Pane::BeatError => "Beat error",
@@ -89,21 +99,35 @@ impl Pane {
     }
 }
 
-/// The starting arrangement: strip beside the three charts when it runs
-/// down the window, above them when it lies on its side.
+/// The starting arrangement: the strip beside the sound and the three
+/// charts when it runs down the window, above them when it lies on its
+/// side.
 fn default_layout(horizontal: bool) -> Tree<Pane> {
     let mut tiles = Tiles::default();
     let strip = tiles.insert_pane(Pane::Strip);
+    let sound = tiles.insert_pane(Pane::Sound);
     let charts: Vec<TileId> = [Pane::Rate, Pane::Amplitude, Pane::BeatError]
         .into_iter()
         .map(|p| tiles.insert_pane(p))
         .collect();
-    let root = if horizontal {
-        let row = tiles.insert_horizontal_tile(charts);
-        tiles.insert_container(Linear::new_binary(LinearDir::Vertical, [strip, row], 0.55))
+    let mut rest = vec![sound];
+    rest.extend(&charts);
+    let dir = if horizontal {
+        LinearDir::Horizontal
     } else {
-        let col = tiles.insert_vertical_tile(charts);
-        tiles.insert_container(Linear::new_binary(LinearDir::Horizontal, [strip, col], 0.6))
+        LinearDir::Vertical
+    };
+    let mut side = Linear::new(dir, rest);
+    side.shares.set_share(sound, 2.0);
+    let side = tiles.insert_container(side);
+    let root = if horizontal {
+        tiles.insert_container(Linear::new_binary(LinearDir::Vertical, [strip, side], 0.45))
+    } else {
+        tiles.insert_container(Linear::new_binary(
+            LinearDir::Horizontal,
+            [strip, side],
+            0.5,
+        ))
     };
     Tree::new("panes", root, tiles)
 }
@@ -111,7 +135,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 /// Averaging times offered for the readings, seconds (Witschi's choices).
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
-/// beat at 28,800 bph, the widest view in which tick and tock can't wrap
+/// beat at 28,800 bph, the widest view in which tick and tockk can't wrap
 /// onto each other.
 const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
@@ -203,6 +227,13 @@ pub struct TimegrapherApp {
     gain_device: Option<String>,
     gain_error: Option<String>,
     message: Option<(String, bool)>,
+    /// The tick and tock sound: how it is drawn, what it was every few
+    /// seconds of this session, and one worked out from the file for a
+    /// moment that history doesn't cover.
+    sound_scale: profiles::Scale,
+    sound_history: Vec<(f64, Profiles)>,
+    sound_at: Option<(f64, Profiles)>,
+    sound_job: Option<(f64, std::sync::mpsc::Receiver<Profiles>)>,
     /// Offer every input the system lists, not just one per microphone.
     all_inputs: bool,
     /// When the microphone was opened and when it last sent audio.
@@ -266,6 +297,10 @@ impl TimegrapherApp {
             gain_device: None,
             gain_error: None,
             message: None,
+            sound_scale: profiles::Scale::Decibels,
+            sound_history: Vec::new(),
+            sound_at: None,
+            sound_job: None,
             all_inputs: false,
             opened_at: Instant::now(),
             audio_at: None,
@@ -313,6 +348,9 @@ impl TimegrapherApp {
         self.level = Level::default();
         self.clipped_at = None;
         self.message = None;
+        self.sound_history.clear();
+        self.sound_at = None;
+        self.sound_job = None;
     }
 
     fn start_microphone(&mut self) {
@@ -435,6 +473,14 @@ impl TimegrapherApp {
                         if live.push(&b.samples) {
                             let r = live.reading(self.average_s);
                             self.trend.push(TrendPoint::of(r.time_s, &r));
+                            let p = live.tick_profiles();
+                            let due = self
+                                .sound_history
+                                .last()
+                                .is_none_or(|h| r.time_s - h.0 >= SOUND_EVERY_S);
+                            if due && p.iter().any(Option::is_some) {
+                                self.sound_history.push((r.time_s, p.clone()));
+                            }
                         }
                     }
                     Ok(Event::End) => {
@@ -1307,6 +1353,110 @@ impl TimegrapherApp {
         self.apply_strip_input(input, end);
     }
 
+    fn sound_pane(&mut self, ui: &mut egui::Ui) {
+        let end = self.end_s();
+        let latest = self.view_end.is_none() && self.running();
+        let mut note = None;
+        let shown: Profiles = if latest {
+            self.live
+                .as_ref()
+                .map_or([None, None], |l| l.tick_profiles().clone())
+        } else {
+            // Looking back: what the session kept nearest before the
+            // moment, else work it out from the file.
+            let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
+            match i.checked_sub(1).map(|i| &self.sound_history[i]) {
+                Some((t, p)) if end - t <= SOUND_EVERY_S + 0.5 => {
+                    note = Some(format!("at {}", strip::fmt_time(*t)));
+                    p.clone()
+                }
+                _ => {
+                    self.poll_sound_job();
+                    match &self.sound_at {
+                        Some((t, p)) if (t - end).abs() < 0.5 => {
+                            note = Some(format!("at {}", strip::fmt_time(*t)));
+                            p.clone()
+                        }
+                        _ => {
+                            note = Some(if self.start_sound_job(end) {
+                                "working it out from the recording...".to_string()
+                            } else {
+                                "not kept for this moment".to_string()
+                            });
+                            [None, None]
+                        }
+                    }
+                }
+            }
+        };
+        profiles::draw(ui, &shown, &mut self.sound_scale, note.as_deref());
+    }
+
+    /// Start working out the sound at `end` from the file, unless one is
+    /// already under way. False when there is no file to read.
+    fn start_sound_job(&mut self, end: f64) -> bool {
+        // One at a time: while the strip is dragged, the next starts when
+        // this one is done.
+        if self.sound_job.is_some() {
+            return true;
+        }
+        let path = PathBuf::from(self.file_path.trim());
+        let Some(live) = &self.live else { return false };
+        let Some(bph) = live.bph() else { return false };
+        if self.input != Input::File || !path.is_file() {
+            return false;
+        }
+        let span = live.config().profile_s.max(0.5);
+        let from = (end - span).max(0.0);
+        // A little audio either side of the beats for the template windows.
+        let (a0, a1) = (from - 0.05, end + 0.05);
+        let beats: Vec<timegrapher_core::beats::Beat> = live
+            .beats()
+            .iter()
+            .filter(|b| b.time >= from && b.time < end)
+            .map(|b| timegrapher_core::beats::Beat {
+                time: b.time - a0.max(0.0),
+                ..*b
+            })
+            .collect();
+        let cfg = live.config().analysis.clone();
+        let period = 7200.0 / bph as f64;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let Ok(info) = timegrapher_core::audio::info(&path) else {
+                return;
+            };
+            let fs = info.sample_rate as f64;
+            let (i0, i1) = ((a0.max(0.0) * fs) as usize, (a1 * fs) as usize);
+            let mut x = Vec::with_capacity(i1.saturating_sub(i0));
+            let mut pos = 0usize;
+            let _ = timegrapher_core::audio::stream(&path, 48000, |b| {
+                let (s, e) = (pos, pos + b.len());
+                if e > i0 && s < i1 {
+                    x.extend_from_slice(&b[i0.saturating_sub(s)..(i1 - s).min(b.len())]);
+                }
+                pos = e;
+            });
+            let p = timegrapher_core::profile::profiles_from_audio(&x, fs, &beats, period, &cfg);
+            let _ = tx.send(p);
+        });
+        self.sound_job = Some((end, rx));
+        true
+    }
+
+    fn poll_sound_job(&mut self) {
+        if let Some((t, rx)) = &self.sound_job {
+            match rx.try_recv() {
+                Ok(p) => {
+                    self.sound_at = Some((*t, p));
+                    self.sound_job = None;
+                }
+                Err(TryRecvError::Disconnected) => self.sound_job = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+    }
+
     fn apply_strip_input(&mut self, input: StripInput, end: f64) {
         if input.span_factor != 1.0 {
             self.strip.set_span(self.strip.span_s * input.span_factor);
@@ -1394,7 +1544,7 @@ impl TimegrapherApp {
                 " ms",
                 2,
             ),
-            Pane::Strip => return,
+            Pane::Strip | Pane::Sound => return,
         };
         let mut plot = Plot::new(pane.title())
             .link_axis("trend", [true, false])
@@ -1590,6 +1740,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile: TileId, pane: &mut Pane) -> UiResponse {
         match pane {
             Pane::Strip => self.app.strip_pane(ui),
+            Pane::Sound => self.app.sound_pane(ui),
             p => self.app.chart(ui, *p),
         }
         UiResponse::None

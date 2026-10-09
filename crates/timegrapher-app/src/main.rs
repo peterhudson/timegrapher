@@ -10,6 +10,7 @@
 
 mod app;
 mod fields;
+mod profiles;
 mod strip;
 
 use std::io::Write;
