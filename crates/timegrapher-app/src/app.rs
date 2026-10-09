@@ -259,6 +259,22 @@ fn sync_containers(tiles: &mut Tiles<Pane>) {
     }
 }
 
+/// Width of the time panes' left axis, the strip's (lying across) and the
+/// charts' alike, so their time axes line up when stacked.
+const GUTTER: f32 = 76.0;
+
+/// Histogram bin widths offered: times the automatic width, with a name.
+const HIST_DETAIL: [(f64, &str, &str); 4] = [
+    (2.0, "Coarse", "Bins twice the automatic width"),
+    (
+        1.0,
+        "Auto",
+        "Bins as wide as the spread of the values calls for",
+    ),
+    (0.5, "Fine", "Bins half the automatic width"),
+    (0.25, "Finest", "Bins a quarter of the automatic width"),
+];
+
 /// Averaging times offered for the readings, seconds (Witschi's choices).
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
@@ -348,6 +364,17 @@ pub struct TimegrapherApp {
     /// The charts and histograms cover only the strip's length, ending
     /// where the strip does, instead of the whole session.
     span_of_strip: bool,
+    /// The histograms' bin width, as an index into `HIST_DETAIL`.
+    hist_detail: usize,
+    /// Show the cumulative share instead of the histogram.
+    hist_cumulative: bool,
+    /// Amplitude and beat error histograms count the readings rather than
+    /// each 2 seconds of beats.
+    hist_readings: bool,
+    /// The time under the pointer on the strip or a chart, drawn as a
+    /// cursor on all of them: last frame's, and this frame's so far.
+    cursor_t: Option<f64>,
+    cursor_next: Option<f64>,
     /// Sidebar cards folded down to their caption.
     folded: std::collections::BTreeSet<&'static str>,
     /// The sidebar is shown.
@@ -442,6 +469,11 @@ impl TimegrapherApp {
             rate_guides: true,
             overlays: [true, false, false],
             span_of_strip: false,
+            hist_detail: 1,
+            hist_cumulative: false,
+            hist_readings: true,
+            cursor_t: None,
+            cursor_next: None,
             folded: Default::default(),
             sidebar: true,
             view_end: None,
@@ -1280,6 +1312,7 @@ impl TimegrapherApp {
         self.section(ui, "Histograms", None, help::HISTOGRAMS, |app, ui| {
             app.pane_switches(ui, &Pane::HISTOGRAMS);
             app.span_setting(ui);
+            app.histogram_settings(ui);
         });
         self.section(ui, "Window", None, help::WINDOW, Self::window_settings);
         ui.add_space(8.0);
@@ -1329,6 +1362,69 @@ impl TimegrapherApp {
                 set_pane_visible(&mut self.panes.tiles, pane, on);
             }
         }
+    }
+
+    fn histogram_settings(&mut self, ui: &mut egui::Ui) {
+        theme::row(
+            ui,
+            "Show",
+            Some("Bars of how often, or the cumulative share"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut self.hist_cumulative,
+                    &[
+                        (
+                            false,
+                            "Bars",
+                            "How often each value came up, with a smooth curve over the bars",
+                        ),
+                        (
+                            true,
+                            "Cumulative",
+                            "The share of values at or below each value. One state rises in one \
+                         steep stretch; two states rise twice with a flat stretch between.",
+                        ),
+                    ],
+                );
+            },
+        );
+        theme::row(ui, "Bins", Some("How wide each bar is"), |ui| {
+            egui::ComboBox::from_id_salt("hist-bins")
+                .width(ui.available_width())
+                .selected_text(HIST_DETAIL[self.hist_detail].1)
+                .show_ui(ui, |ui| {
+                    for (i, &(_, name, hint)) in HIST_DETAIL.iter().enumerate() {
+                        ui.selectable_value(&mut self.hist_detail, i, name)
+                            .on_hover_text(hint);
+                    }
+                });
+        });
+        theme::row(
+            ui,
+            "Values",
+            Some("What the amplitude and beat error histograms count"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut self.hist_readings,
+                    &[
+                        (
+                            true,
+                            "Readings",
+                            "The readings, each averaged over Average Over, as on the charts \
+                             and the strip: states lasting longer than that stand out clearly",
+                        ),
+                        (
+                            false,
+                            "2 s",
+                            "Each 2 seconds of beats, the finest the app measures: catches \
+                             quicker changes, with more scatter",
+                        ),
+                    ],
+                );
+            },
+        );
     }
 
     /// Whether the charts and histograms cover the whole session or the
@@ -2439,6 +2535,8 @@ impl TimegrapherApp {
             rate_line,
             guides: self.rate_guides,
             overlays: &overlays,
+            cursor_t: self.cursor_t,
+            gutter: GUTTER,
         };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
@@ -2451,6 +2549,9 @@ impl TimegrapherApp {
             &extras,
             ui.available_size(),
         );
+        if input.hover_t.is_some() {
+            self.cursor_next = input.hover_t;
+        }
         self.apply_strip_input(input, end);
     }
 
@@ -2598,8 +2699,10 @@ impl TimegrapherApp {
     }
 
     /// How often each value of a reading came up, over the session or the
-    /// strip's length.
+    /// strip's length: bars with a smooth density curve over them, or the
+    /// cumulative share.
     fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
         let window = self.chart_window();
         let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b);
@@ -2607,6 +2710,14 @@ impl TimegrapherApp {
             .live
             .as_ref()
             .map_or(&[][..], |l| l.amplitude_windows());
+        let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
+            self.trend
+                .iter()
+                .filter(|p| inside(p.t))
+                .filter_map(f)
+                .collect()
+        };
+        let short = !self.hist_readings;
         let (values, resolution, unit, decimals, color, per): (
             Vec<f64>,
             f64,
@@ -2616,18 +2727,14 @@ impl TimegrapherApp {
             &str,
         ) = match pane {
             Pane::RateHistogram => (
-                self.trend
-                    .iter()
-                    .filter(|p| inside(p.t))
-                    .filter_map(|p| p.rate)
-                    .collect(),
+                readings(|p| p.rate),
                 0.1,
                 " s/day",
                 1,
                 pal.trace_rate,
                 "readings",
             ),
-            Pane::AmplitudeHistogram => (
+            Pane::AmplitudeHistogram if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s))
@@ -2639,7 +2746,15 @@ impl TimegrapherApp {
                 pal.trace_amplitude,
                 "2-second stretches",
             ),
-            Pane::BeatErrorHistogram => (
+            Pane::AmplitudeHistogram => (
+                readings(|p| p.amplitude),
+                0.5,
+                "°",
+                0,
+                pal.trace_amplitude,
+                "readings",
+            ),
+            Pane::BeatErrorHistogram if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s))
@@ -2651,9 +2766,22 @@ impl TimegrapherApp {
                 pal.trace_beat_error,
                 "2-second stretches",
             ),
+            Pane::BeatErrorHistogram => (
+                readings(|p| p.beat_error_unlock),
+                0.01,
+                " ms",
+                2,
+                pal.trace_beat_error,
+                "readings",
+            ),
             _ => return,
         };
-        let Some(h) = timegrapher_core::histogram::histogram(&values, resolution) else {
+        let opt = hist::Options {
+            resolution,
+            width_factor: HIST_DETAIL[self.hist_detail].0,
+            trim: 0.005,
+        };
+        let Some(h) = hist::histogram_with(&values, &opt) else {
             ui.label(
                 RichText::new("Not enough readings yet")
                     .small()
@@ -2671,26 +2799,20 @@ impl TimegrapherApp {
             f(h.p10),
             f(h.p90),
         );
+        if h.below + h.above > 0 {
+            line += &format!(" · {} outliers off the scale", h.below + h.above);
+        }
         if peaks.len() > 1 {
             let at: Vec<String> = peaks.iter().map(|&i| f(h.centre(i))).collect();
             line += &format!(" · {} peaks, at {}", peaks.len(), at.join(" and "));
         }
         ui.add(egui::Label::new(RichText::new(&line).small().color(pal.text_secondary)).truncate())
             .on_hover_text(line.clone());
-        let bars: Vec<Bar> = h
-            .counts
-            .iter()
-            .enumerate()
-            .map(|(i, &c)| {
-                Bar::new(h.centre(i), c as f64)
-                    .width(h.bin_width * 0.92)
-                    .fill(color.gamma_multiply(0.75))
-                    .stroke(egui::Stroke::NONE)
-            })
-            .collect();
+        let (x_lo, x_hi) = (h.start, h.start + h.counts.len() as f64 * h.bin_width);
         let median = h.median;
         let unit_owned = unit.to_string();
-        Plot::new(pane.title())
+        let cumulative = self.hist_cumulative;
+        let plot = Plot::new(pane.title())
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
@@ -2715,24 +2837,77 @@ impl TimegrapherApp {
                 };
                 format!("{:.*}{unit_owned}", d, v)
             })
-            .y_axis_min_width(40.0)
-            .y_axis_formatter(|m, _| {
-                // Counts: none below zero.
-                if m.value < -1e-9 {
+            .y_axis_min_width(44.0)
+            .y_axis_formatter(move |m, _| {
+                if m.value < -1e-9 || (cumulative && m.value > 100.0 + 1e-9) {
                     String::new()
+                } else if cumulative {
+                    format!("{}%", m.value.abs())
                 } else {
                     format!("{}", m.value.abs())
                 }
             })
-            .include_y(0.0)
-            .show(ui, |p| {
-                p.bar_chart(BarChart::new("count", bars).color(color));
+            .default_x_bounds(x_lo, x_hi)
+            .include_y(0.0);
+        if cumulative {
+            // The share of values at or below each value, as a step line.
+            let mut pts: Vec<[f64; 2]> = Vec::new();
+            for [x, q] in hist::ecdf(&values) {
+                if x < x_lo || x > x_hi {
+                    continue;
+                }
+                if let Some(&[_, prev]) = pts.last() {
+                    pts.push([x, prev]);
+                }
+                pts.push([x, q * 100.0]);
+            }
+            plot.include_y(100.0).show(ui, |p| {
+                p.line(
+                    Line::new("share at or below", pts)
+                        .color(color)
+                        .width(1.8_f32),
+                );
                 p.vline(
                     VLine::new("median", median)
                         .color(pal.text_secondary)
                         .width(1.0_f32),
                 );
             });
+            return;
+        }
+        let bars: Vec<Bar> = h
+            .counts
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                Bar::new(h.centre(i), c as f64)
+                    .width(h.bin_width * 0.92)
+                    .fill(color.gamma_multiply(0.45))
+                    .stroke(egui::Stroke::NONE)
+            })
+            .collect();
+        // A smooth curve over the bars, a little narrower than a bin, so two
+        // peaks stand out even where the bars blur them.
+        let steps = 300;
+        let xs: Vec<f64> = (0..=steps)
+            .map(|k| x_lo + (x_hi - x_lo) * k as f64 / steps as f64)
+            .collect();
+        let kept: Vec<f64> = values
+            .iter()
+            .copied()
+            .filter(|v| *v >= x_lo && *v <= x_hi)
+            .collect();
+        let d = hist::density(&kept, h.bin_width * 0.5, &xs, h.bin_width);
+        let curve: Vec<[f64; 2]> = xs.iter().zip(d).map(|(&x, y)| [x, y]).collect();
+        plot.show(ui, |p| {
+            p.bar_chart(BarChart::new("count", bars).color(color));
+            p.line(Line::new("density", curve).color(color).width(1.8_f32));
+            p.vline(
+                VLine::new("median", median)
+                    .color(pal.text_secondary)
+                    .width(1.0_f32),
+            );
+        });
     }
 
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
@@ -2805,7 +2980,7 @@ impl TimegrapherApp {
                 egui_plot::AxisHints::new_x().formatter(|m, _| strip::fmt_time(m.value))
             ])
             .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
-            .y_axis_min_width(52.0)
+            .y_axis_min_width(GUTTER)
             .y_axis_formatter(move |m, _| {
                 let d = if m.step_size >= 1.0 {
                     0
@@ -2836,6 +3011,13 @@ impl TimegrapherApp {
         // Scale to the 2nd to 98th percentile of the lines, so that one
         // glitch doesn't flatten them.
         let window = self.chart_window();
+        if window.is_some() && self.strip.horizontal {
+            // Leave the room the strip keeps for its overlays' scales, so the
+            // time axes end together too.
+            let n = self.overlays.iter().filter(|&&o| o).count() as f32;
+            let right = 4.0 + 58.0 * n;
+            ui.set_max_width((ui.available_width() - right).max(100.0));
+        }
         let all: Vec<[f64; 2]> = series
             .iter()
             .flat_map(|s| s.1.iter().copied())
@@ -2895,7 +3077,11 @@ impl TimegrapherApp {
         // a little more every frame.
         let frame = *resp.transform.frame();
         let painter = ui.painter_at(frame);
-        for x in [marker, hover].into_iter().flatten() {
+        if hover.is_some() {
+            self.cursor_next = hover;
+        }
+        let cursor = hover.or(self.cursor_t);
+        for x in [marker, cursor].into_iter().flatten() {
             let px = resp.transform.position_from_point_x(x);
             if px >= frame.left() && px <= frame.right() {
                 painter.vline(px, frame.y_range(), egui::Stroke::new(1.0_f32, weak));
@@ -3202,6 +3388,13 @@ impl eframe::App for TimegrapherApp {
         }
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        // The cursor shared by the strip and the charts follows the pointer;
+        // repaint once more when it leaves so the line goes too.
+        let next = self.cursor_next.take();
+        if next != self.cursor_t {
+            self.cursor_t = next;
+            ctx.request_repaint();
+        }
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
