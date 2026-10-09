@@ -108,7 +108,10 @@ pub fn draw(
         let plot = Plot::new(("profile", k))
             .height(h - 20.0)
             .link_axis("profile", [true, true])
-            .link_cursor("profile", [true, false])
+            // No crosshair or value box: the marks and the summary above say
+            // what matters.
+            .show_x(false)
+            .show_y(false)
             .allow_scroll(false)
             .x_axis_formatter(|m, _| format!("{} ms", m.value))
             .y_axis_min_width(52.0)
