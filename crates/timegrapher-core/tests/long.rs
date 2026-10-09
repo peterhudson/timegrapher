@@ -46,6 +46,14 @@ fn steady_watch_shows_no_cycles() {
         "{}",
         f.rate_s_per_day
     );
+    // The sides' unlocks are alike, so the unlock and the drop agree.
+    let unlock = r.beat_error_unlock_ms.expect("unlock beat error");
+    assert!(
+        (unlock - f.beat_error_ms).abs() < 0.05 && (unlock.abs() - 0.4).abs() < 0.05,
+        "unlock {unlock}, drop {}",
+        f.beat_error_ms
+    );
+    assert!(r.slices.iter().all(|s| s.beat_error_unlock_ms.is_some()));
     assert!(
         r.rate_components.is_empty(),
         "{:?}",

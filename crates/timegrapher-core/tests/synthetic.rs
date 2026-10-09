@@ -1,6 +1,6 @@
 //! End-to-end checks on synthetic recordings with known answers.
 
-use timegrapher_core::synth::{generate, SynthConfig};
+use timegrapher_core::synth::{generate, Sound, SynthConfig};
 use timegrapher_core::{analyze, AnalysisConfig};
 
 fn run(
@@ -103,4 +103,89 @@ fn finds_an_amplitude_dip_every_minute() {
         "{:?}",
         a.summary.amplitude_periods
     );
+}
+
+#[test]
+fn beat_error_from_the_unlock() {
+    // Drops 0.4 ms apart, and the even side's unlock 0.6 ms further ahead
+    // of its drop than the odd side's. Even beats' drops come 0.2 ms late
+    // and their unlocks 0.4 ms early, so measured from the unlock the beat
+    // error is 0.2 ms the other way. A correction with the wrong sign
+    // would read 1.0 ms.
+    let cfg = SynthConfig {
+        beat_error_ms: 0.4,
+        even_unlock_lead_s: 0.0006,
+        duration_s: 30.0,
+        ..Default::default()
+    };
+    let a = run(&cfg, |_| 270.0, |_| 0.0);
+    let drop = a.summary.overall.expect("fit").beat_error_ms;
+    let unlock = a.summary.beat_error_unlock_ms.expect("unlock beat error");
+    assert!((drop.abs() - 0.4).abs() < 0.05, "drop {drop}");
+    // Detection may number the beats from the other side, which flips both
+    // signs together.
+    let unlock = unlock * drop.signum();
+    assert!((unlock + 0.2).abs() < 0.05, "unlock {unlock}, drop {drop}");
+    let w = &a.amplitude_windows;
+    let ok = w
+        .iter()
+        .filter_map(|w| w.beat_error_unlock_ms)
+        .filter(|u| (u * drop.signum() + 0.2).abs() < 0.15)
+        .count();
+    assert!(ok * 10 >= w.len() * 9, "{ok} of {} windows", w.len());
+
+    // With the sides alike, the two agree.
+    let cfg = SynthConfig {
+        beat_error_ms: 0.6,
+        duration_s: 30.0,
+        ..Default::default()
+    };
+    let s = run(&cfg, |_| 270.0, |_| 0.0).summary;
+    let drop = s.overall.expect("fit").beat_error_ms;
+    let unlock = s.beat_error_unlock_ms.expect("unlock beat error");
+    assert!((unlock - drop).abs() < 0.05, "unlock {unlock}, drop {drop}");
+}
+
+#[test]
+fn sides_that_differ_in_shape_keep_their_drop() {
+    // As on a Patek 324 clone: on one side the impulse is louder than the
+    // drop, on the other the unlock is nearly as loud as the drop, and the
+    // levels wander from beat to beat, so the loudest sound changes. Beat
+    // times on the drop of both sides give the set beat error, steady
+    // timing and the same amplitude on each side. Beat times that wander
+    // between sounds read milliseconds of beat error and lopsided
+    // amplitudes.
+    let cfg = SynthConfig {
+        beat_error_ms: 0.4,
+        duration_s: 60.0,
+        sounds: [
+            Sound {
+                gain: 0.35,
+                ..SynthConfig::default().sounds[0]
+            },
+            Sound {
+                gain: 1.3,
+                ..SynthConfig::default().sounds[1]
+            },
+            SynthConfig::default().sounds[2],
+        ],
+        odd_gains: Some([0.9, 0.45, 1.0]),
+        gain_jitter: 0.25,
+        ..Default::default()
+    };
+    let s = run(&cfg, |_| 245.0, |_| 0.0).summary;
+    let f = s.overall.expect("fit");
+    assert!((f.beat_error_ms.abs() - 0.4).abs() < 0.05, "drop {f:?}");
+    let unlock = s.beat_error_unlock_ms.expect("unlock beat error");
+    assert!(
+        (unlock - f.beat_error_ms).abs() < 0.1,
+        "unlock {unlock}, drop {}",
+        f.beat_error_ms
+    );
+    let jitter = s.jitter_us.expect("jitter");
+    assert!(jitter < 50.0, "jitter {jitter} us");
+    for side in [s.amplitude_even_deg, s.amplitude_odd_deg] {
+        let a = side.expect("amplitude");
+        assert!((a - 245.0).abs() < 8.0, "{s:?}");
+    }
 }

@@ -40,7 +40,11 @@ pub struct Summary {
     pub sample_rate: u32,
     pub bph: u32,
     pub beats_found: usize,
+    /// Fit over the whole recording; its beat error is the drop's.
     pub overall: Option<TimingFit>,
+    /// Signed beat error measured from the unlock, as tg and commercial
+    /// timegraphers measure it: median over the amplitude windows, ms.
+    pub beat_error_unlock_ms: Option<f64>,
     /// Spread of the windowed rate (5th and 95th percentiles), s/d.
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
@@ -138,6 +142,11 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         bph,
         beats_found: beats.len(),
         overall,
+        beat_error_unlock_ms: median_of(
+            amplitude_windows
+                .iter()
+                .filter_map(|w| w.beat_error_unlock_ms),
+        ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         jitter_us: median_of(rate_windows.iter().map(|w| w.fit.jitter_us)),
