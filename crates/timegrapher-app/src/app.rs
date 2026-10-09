@@ -111,7 +111,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 /// Averaging times offered for the readings, seconds (Witschi's choices).
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
-/// beat at 28,800 bph, the widest view in which tick and toc can't wrap
+/// beat at 28,800 bph, the widest view in which tick and tock can't wrap
 /// onto each other.
 const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
@@ -1105,8 +1105,8 @@ impl TimegrapherApp {
             cols[0].label(RichText::new("Rate").size(14.0));
             cols[0].label(big(rate.map_or(dash.clone(), |v| format!("{v:+.1}"))));
             cols[0]
-                .label("s/day")
-                .on_hover_text("Seconds a day: + the watch gains, − it loses");
+                .label("seconds per day")
+                .on_hover_text("+ the watch gains that many seconds a day, − it loses them");
             let amp = r.and_then(|r| r.amplitude_deg);
             cols[1].label(RichText::new("Amplitude").size(14.0));
             cols[1].label(big(amp.map_or(dash.clone(), |v| format!("{v:.0}°"))));
@@ -1117,14 +1117,15 @@ impl TimegrapherApp {
                         amplitude_even_deg: Some(a),
                         amplitude_odd_deg: Some(b),
                         ..
-                    }) => format!("A {a:.0}°  B {b:.0}°   lift {lift}°"),
-                    _ => format!("lift {lift}°"),
+                    }) => format!("tick {a:.0}°   tock {b:.0}°   lift angle {lift}°"),
+                    _ => format!("lift angle {lift}°"),
                 })
                 .on_hover_text(
-                    "The big figure is the average of the two swings. A is the swing measured \
-                 on the A beats (blue on the strip and charts), B on the B beats (orange). \
-                 Which of them is the tick can't be told from the sound. A big difference \
-                 between them usually means a beat's sounds were misread, not a fault.",
+                    "The big figure is the average amplitude. Below it are the amplitude \
+                 measured from the ticks (blue on the strip and charts) and from the tocks \
+                 (orange). The sound can't tell which beat is which pallet, so the first beat \
+                 heard is called the tick. A big difference between them usually means one \
+                 beat's sounds were misread, not a fault in the watch.",
                 );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
@@ -1150,9 +1151,6 @@ impl TimegrapherApp {
             if let Some(b) = r.and_then(|r| r.bph) {
                 parts.push(format!("{b} bph"));
             }
-            if let Some(j) = r.and_then(|r| r.jitter_us) {
-                parts.push(format!("jitter {j:.0} µs"));
-            }
             if let Some(r) = r {
                 parts.push(format!(
                     "{} beats in {}",
@@ -1166,6 +1164,18 @@ impl TimegrapherApp {
                 self.position.name().to_lowercase()
             ));
             ui.label(RichText::new(parts.join("   ·   ")).weak());
+            if let Some(j) = r.and_then(|r| r.jitter_us) {
+                ui.label(RichText::new(format!("·   jitter {j:.0} µs")).weak())
+                    .on_hover_text(
+                        "How far single beats land from the steady line that the rate and \
+                         beat error are fitted to: the spread of the dots across the strip, \
+                         as a robust standard deviation in microseconds (millionths of a \
+                         second). Lower is steadier. It rises with background noise or a \
+                         muffled sound as well as with a watch that runs unevenly (a rubbing \
+                         part, a worn tooth, low amplitude), so compare it on the same stand \
+                         and microphone.",
+                    );
+            }
         });
     }
 
@@ -1341,18 +1351,29 @@ impl TimegrapherApp {
         let (series, unit, decimals): (Series, &'static str, usize) = match pane {
             Pane::Rate => (
                 vec![(
-                    format!("Rate, {} average", fields::duration(self.average_s)),
+                    format!(
+                        "Rate in seconds per day, {} average",
+                        fields::duration(self.average_s)
+                    ),
                     pick(|p| p.rate),
                     colors[0],
                 )],
-                " s/d",
+                " s/day",
                 1,
             ),
             Pane::Amplitude => (
                 vec![
-                    ("Average of A and B".into(), pick(|p| p.amplitude), main),
-                    ("A beats".into(), pick(|p| p.amplitude_a), colors[0]),
-                    ("B beats".into(), pick(|p| p.amplitude_b), colors[1]),
+                    ("Average amplitude".into(), pick(|p| p.amplitude), main),
+                    (
+                        "Amplitude from tick".into(),
+                        pick(|p| p.amplitude_a),
+                        colors[0],
+                    ),
+                    (
+                        "Amplitude from tock".into(),
+                        pick(|p| p.amplitude_b),
+                        colors[1],
+                    ),
                 ],
                 "°",
                 0,
