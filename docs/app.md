@@ -46,8 +46,11 @@ and changing the strip's direction keeps the choice. **Reset panes**
 shows them all in their starting places. Periodicity views will join
 them.
 
-**Tick and tock sound.** The median sound of the ticks (blue) and of the
-tocks (orange) over the last 3 s, from the drop's side of the beat back
+**Tick and tock sound.** The typical sound of the ticks (blue) and of
+the tocks (orange) over the averaging time (Average over, up to 60 s, so
+it describes the same beats as the readings; a longer time gives a
+steadier shape, and after lengthening it the beat count fills in as beats
+arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read: unlock (green) and drop (red), from which
 amplitude and the unlock-based beat error come, the drop's peak (purple),
