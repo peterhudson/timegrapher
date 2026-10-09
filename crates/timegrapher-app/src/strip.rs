@@ -96,6 +96,8 @@ pub struct StripInput {
     pub width_factor: f64,
     /// Double-clicked: back to the newest beats, centred.
     pub reset: bool,
+    /// The time under the pointer, for the cursor shared with the charts.
+    pub hover_t: Option<f64>,
 }
 
 impl Default for StripInput {
@@ -106,6 +108,7 @@ impl Default for StripInput {
             span_factor: 1.0,
             width_factor: 1.0,
             reset: false,
+            hover_t: None,
         }
     }
 }
@@ -131,6 +134,17 @@ struct Geom {
 }
 
 impl Geom {
+    /// The time at a point on the strip.
+    fn time_at(&self, p: Pos2) -> f64 {
+        let r = self.r;
+        let back = if self.horizontal {
+            (r.right() - p.x) / r.width().max(1.0)
+        } else {
+            (p.y - r.top()) / r.height().max(1.0)
+        };
+        self.end - back as f64 * self.span
+    }
+
     fn pos(&self, ms: f64, t: f64) -> Pos2 {
         let r = self.r;
         let across = (ms / self.half) as f32;
@@ -198,17 +212,20 @@ pub struct Overlay {
 impl Overlay {
     /// The scale's ends: the values in view with a little room either side.
     fn range(&self, from_s: f64, to_s: f64) -> Option<(f64, f64)> {
-        let vals = self
+        let mut vals: Vec<f64> = self
             .points
             .iter()
-            .filter(|p| p[0] >= from_s && p[0] <= to_s)
-            .map(|p| p[1]);
-        let (lo, hi) = vals.fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
-            (a.min(v), b.max(v))
-        });
-        if !lo.is_finite() {
+            .filter(|p| p[0] >= from_s && p[0] <= to_s && p[1].is_finite())
+            .map(|p| p[1])
+            .collect();
+        if vals.is_empty() {
             return None;
         }
+        // The 2nd to 98th percentile, so a few stray readings (the first
+        // seconds of a session, say) don't squash the rest flat.
+        vals.sort_by(f64::total_cmp);
+        let at = |q: f64| vals[((vals.len() - 1) as f64 * q).round() as usize];
+        let (lo, hi) = (at(0.02), at(0.98));
         let mid = (lo + hi) / 2.0;
         let half = ((hi - lo) * 0.55).max(self.min_span / 2.0);
         Some((mid - half, mid + half))
@@ -223,6 +240,11 @@ pub struct Extras<'a> {
     pub rate_line: Option<RateLine>,
     /// Faint lines parallel to the rate line across the whole strip.
     pub guides: bool,
+    /// A time to mark with a cursor line: where the pointer is on a chart.
+    pub cursor_t: Option<f64>,
+    /// Space left of the plotting area when the strip lies across, so its
+    /// time axis lines up with the charts' below it.
+    pub gutter: f32,
     pub overlays: &'a [Overlay],
 }
 
@@ -273,7 +295,7 @@ pub fn draw_strip(
     // on top (or down the right).
     let r = if view.horizontal {
         Rect::from_min_max(
-            outer.min + Vec2::new(46.0, row_h + 4.0),
+            outer.min + Vec2::new(extras.gutter.max(46.0), row_h + 4.0),
             outer.max - Vec2::new(4.0 + 58.0 * overlays.len() as f32, row_h + 2.0),
         )
     } else {
@@ -309,6 +331,10 @@ pub fn draw_strip(
         }
     }
     input.reset = resp.double_clicked();
+    input.hover_t = resp
+        .hover_pos()
+        .filter(|p| r.contains(*p))
+        .map(|p| g.time_at(p));
     if resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
@@ -363,9 +389,21 @@ pub fn draw_strip(
     };
     painter.text(early_at, early_align, "Early", font.clone(), text);
     painter.text(late_at, late_align, "Late", font.clone(), text);
-    let tstep = nice_step(view.span_s / 6.0);
+    // Time lines at whole seconds, minutes or hours, about 90 points apart.
+    let along_px = if view.horizontal {
+        r.width()
+    } else {
+        r.height()
+    } as f64;
+    let want = view.span_s * 90.0 / along_px.max(1.0);
+    let tstep = crate::theme::TIME_STEPS
+        .iter()
+        .copied()
+        .find(|&s| s >= want)
+        .unwrap_or(172800.0);
     let mut t = (end_s / tstep).floor() * tstep;
-    while t > oldest {
+    // Nothing before the session started.
+    while t > oldest && t >= -1e-9 {
         let (a, b) = (g.pos(-half, t), g.pos(half, t));
         painter.line_segment([a, b], grid);
         let (at, align) = if view.horizontal {
@@ -522,15 +560,19 @@ pub fn draw_strip(
                     polyline(oldest, end_s, k as f64 * step, faint);
                 }
             }
-            // A dark edge under the line keeps it readable over the dots.
+            // A thin dark edge under the line keeps it readable over the dots.
             polyline(
                 ta,
                 tb,
                 0.0,
-                Stroke::new(4.0_f32, vis.extreme_bg_color.gamma_multiply(0.8)),
+                Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
             );
-            polyline(ta, tb, 0.0, Stroke::new(2.0_f32, pal.drop));
+            polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.drop));
         }
+    }
+    if let Some(t) = extras.cursor_t.filter(|t| *t >= oldest && *t <= end_s) {
+        let (a, b) = (g.pos(-half, t), g.pos(half, t));
+        painter.line_segment([a, b], Stroke::new(1.0_f32, vis.weak_text_color()));
     }
     input
 }
@@ -599,6 +641,22 @@ mod tests {
             (even + 0.4).abs() < 1e-9 && (odd - 0.4).abs() < 1e-9,
             "{even} {odd}"
         );
+    }
+
+    #[test]
+    fn the_time_under_the_pointer_is_where_the_beat_is_drawn() {
+        for horizontal in [false, true] {
+            let g = Geom {
+                r: Rect::from_min_size(Pos2::new(50.0, 20.0), Vec2::new(400.0, 300.0)),
+                half: 10.0,
+                span: 60.0,
+                end: 100.0,
+                horizontal,
+            };
+            for t in [40.0, 55.5, 100.0] {
+                assert!((g.time_at(g.pos(3.0, t)) - t).abs() < 1e-3);
+            }
+        }
     }
 
     #[test]

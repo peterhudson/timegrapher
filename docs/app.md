@@ -116,7 +116,7 @@ exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
 before that clock's beat is early, after it late, the words Witschi uses.
 Along it is time; both axes are labelled, in ms across and in minutes and
 seconds along, and every grid line is drawn alike. **Rate Line** (on by
-default) draws the Rate reading as a solid red line over the beats it was
+default) draws the Rate reading as a thin solid red line over the beats it was
 fitted to, on top of them, as tg does: if the dots follow it, the reading
 describes them well. **Parallel Guides** (on by default) adds faint red
 lines at the same slope across the whole strip, one per grid step, since
@@ -153,8 +153,11 @@ unlock and from the drop) over time. **Time Span**, in the Charts and
 Histograms cards, sets what they cover: **Session**, everything since the
 session started, or **Strip**, the same stretch of time as the paper strip,
 moving with it, so that with the charts under a strip lying across every
-time axis lines up. In Strip mode the strip sets the time, so only the
-vertical scale can be dragged or zoomed. With the pointer
+time axis lines up: the strip and the charts keep the same width of axis
+on the left and of overlay scales on the right, so their times sit one
+above the other. In Strip mode the strip sets the time, so only the
+vertical scale can be dragged or zoomed. Wherever the pointer is on the
+strip or a chart, a thin line marks that moment on all of them. With the pointer
 anywhere over a chart, a vertical line marks that moment and a box lists
 every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
@@ -172,10 +175,19 @@ came up, over the session or the strip's length (Time Span), switched on in
 the Histograms card (all off at first). An average gives one number; a
 histogram shows whether a watch keeps to one state or moves between two,
 such as a high and a low amplitude, as two peaks. Amplitude and beat error
-count one value per 2 seconds of beats, the finest the engine measures
-them; rate counts one per reading. A thin line marks the median, and the
-line above gives the count, the median, the middle 80%, the bin width
-(rounded Freedman–Diaconis) and the peaks when there is more than one. The
+count either the readings (**Values: Readings**, the default, averaged
+over Average Over as on the charts and the strip) or each 2 seconds of
+beats (**2 s**, the finest the engine measures them, with more scatter);
+rate counts readings. **Show: Bars** draws the bins with a smooth kernel
+density curve over them, which shows two peaks even where the bars blur
+them; **Cumulative** draws the share of values at or below each value, in
+which two states show as two steep rises with a flatter stretch between,
+with no bins to choose. **Bins** is Auto (rounded Freedman–Diaconis),
+Coarse, Fine or Finest. The scale leaves out the most extreme 0.5% at each
+end so stray readings can't squeeze the rest into one bar. A thin line
+marks the median, and the line above gives the count, the median, the
+middle 80%, the bin width, the outliers left off and the peaks when there
+is more than one. The
 binning is `timegrapher_core::histogram`, so the CLI and reports can share
 it.
 

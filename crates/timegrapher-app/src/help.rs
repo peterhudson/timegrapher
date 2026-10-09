@@ -107,6 +107,9 @@ pub const STRIP: &[&str] = &[
      above the strip (or beside it when the strip lies across). Seeing amplitude beside \
      the dots shows at once whether a wobble in the rate comes with a change in \
      amplitude.",
+    "Lying across with the charts set to the strip's length (Time Span: Strip), the \
+     strip and the charts below it share one time axis, and the pointer's time is \
+     marked on all of them at once.",
     "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
@@ -156,13 +159,21 @@ pub const HISTOGRAMS: &[&str] = &[
      cluster around it or around two values. Two peaks suggest the watch moves between \
      two states, say a high and a low amplitude as a rubbing part comes and goes, which \
      a single average hides.",
-    "Amplitude and beat error count one value for every 2 seconds of beats, the finest \
-     the app measures them; rate counts one value per reading, each fitted over the \
-     averaging time. The thin line is the median. Above each histogram: how many values, \
-     the median, where the middle 80% lie, the bin width, and the peaks when there are \
-     more than one.",
-    "The bins are as wide as the spread of the values calls for (the Freedman–Diaconis \
-     rule), rounded to a round number, so they get finer as values come in.",
+    "Values: Readings counts each reading, averaged over Average Over as on the charts \
+     and the strip, so states lasting longer than that stand out clearly. 2 s counts \
+     each 2 seconds of beats, the finest the app measures amplitude and beat error: it \
+     catches quicker changes, with more scatter, which can blur two close states into \
+     one. Rate always counts readings.",
+    "Show: Bars draws how many values fell in each bin, with a smooth curve (a kernel \
+     density estimate) over them that shows two peaks even where the bars blur them. \
+     Cumulative draws the share of values at or below each value: one state rises in one \
+     steep stretch, two states rise twice with a flatter stretch between, and no choice \
+     of bins is needed.",
+    "Bins: Auto makes them as wide as the spread of the values calls for (the \
+     Freedman–Diaconis rule), rounded to a round number; Fine and Finest split them \
+     further, Coarse merges them. The scale leaves out the most extreme 0.5% at each \
+     end, so a few stray readings can't squeeze the rest into one bar; the line above \
+     says how many were left off. The thin line is the median.",
 ];
 
 pub const WINDOW: &[&str] = &[
