@@ -154,13 +154,17 @@ fn print_check(c: &SignalCheck) {
         c.peak_dbfs, c.rms_dbfs, c.clipped_samples
     );
     println!(
-        "Ticks        {} of about {} beats at {} bph; tick {}, background {:.1} dBFS, margin {}",
+        "Ticks        {} of about {} beats at {} bph; tick {}, background {:.1} dBFS",
         c.beats_found,
         c.beats_expected,
         c.bph,
         opt(c.tick_level_dbfs, " dBFS"),
         c.noise_level_dbfs,
-        opt(c.tick_to_noise_db, " dB")
+    );
+    println!(
+        "Signal       {}{}",
+        c.signal_x.map_or(String::new(), |x| format!("{x:.0}×, ")),
+        c.signal_band.word()
     );
     println!(
         "Gain pumping background rises {} between ticks",

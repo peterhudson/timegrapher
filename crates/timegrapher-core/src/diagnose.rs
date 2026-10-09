@@ -58,15 +58,56 @@ pub enum IssueCode {
     TooQuiet,
     /// Samples hit full scale; tick shapes and amplitude are distorted.
     Clipping,
-    /// Peaks within 1 dB of full scale; one louder watch away from clipping.
+    /// Peaks above -6 dBFS; a louder watch, or another position, would clip.
     Hot,
     /// The background rises between ticks: the input's automatic gain
     /// turns itself down on each tick and back up in the gaps.
     AgcSuspected,
     /// No regular beat found.
     NoTicks,
-    /// Ticks found but the background is loud next to them.
+    /// Ticks found but the background is loud next to them: the signal is
+    /// fair (a warning) or poor (a fault), see [`SignalBand`].
     Noisy,
+}
+
+/// How far the beats stand above the background, in the desktop app's
+/// bands: "signal Nx" is the median beat peak over the median of the
+/// envelope. Pure noise reads about 2x.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalBand {
+    /// 10x and above: all readings can be trusted.
+    Good,
+    /// 5 to 10x: rate reliable; amplitude and beat error may be off.
+    Fair,
+    /// 3 to 5x: only the rate can be trusted.
+    Poor,
+    /// Below 3x: no watch heard.
+    None,
+}
+
+impl SignalBand {
+    pub fn of(signal_x: f64) -> SignalBand {
+        if signal_x >= 10.0 {
+            SignalBand::Good
+        } else if signal_x >= 5.0 {
+            SignalBand::Fair
+        } else if signal_x >= 3.0 {
+            SignalBand::Poor
+        } else {
+            SignalBand::None
+        }
+    }
+
+    /// The words the app shows after "signal Nx, ".
+    pub fn word(self) -> &'static str {
+        match self {
+            SignalBand::Good => "good",
+            SignalBand::Fair => "fair: rate reliable",
+            SignalBand::Poor => "poor: only the rate",
+            SignalBand::None => "no watch heard",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -105,6 +146,11 @@ pub struct SignalCheck {
     pub noise_level_dbfs: f64,
     /// Tick peak over background, dB.
     pub tick_to_noise_db: Option<f64>,
+    /// Median beat peak over the median of the envelope, as the desktop
+    /// app's "signal Nx" (None when no beat was found).
+    pub signal_x: Option<f64>,
+    /// The band `signal_x` falls in.
+    pub signal_band: SignalBand,
     /// Background late in the gap between ticks over early in it, dB.
     /// Near 0 for a fixed gain; several dB when automatic gain pumps.
     pub gap_rise_db: Option<f64>,
@@ -236,6 +282,8 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         }
     });
     let tick_to_noise = tick.map(|t| db(t) - db(noise));
+    let signal_x = signal_ratio(&env, fs, &found);
+    let band = signal_x.map_or(SignalBand::None, SignalBand::of);
 
     let mut issues = Vec::new();
     let mut add = |code, severity, title: &str, evidence: String, advice: &str| {
@@ -295,27 +343,34 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
-    if !silent && (few_beats || tick_to_noise.map_or(true, |s| s < 6.0)) {
+    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.0}x"));
+    if !silent && (few_beats || band == SignalBand::None) {
         add(
             IssueCode::NoTicks,
             Severity::Fault,
-            "No steady beat heard",
-            format!(
-                "{} of about {expected} beats found, ticks {} above background",
-                good.len(),
-                tick_to_noise.map_or("-".into(), |s| format!("{s:.0} dB"))
-            ),
+            "No watch heard",
+            format!("{} of about {expected} beats found, {signal}", good.len()),
             "Check the watch is running and clamped firmly against the microphone, and that \
              this is the right input.",
         );
-    } else if let Some(s) = tick_to_noise.filter(|&s| s < 20.0 && !clipping) {
+    } else if band == SignalBand::Poor {
+        add(
+            IssueCode::Noisy,
+            Severity::Fault,
+            "Signal poor: only the rate",
+            format!("{signal}, under 5x"),
+            "Only the rate can be trusted; ignore amplitude and beat error. Reposition the \
+             watch on the pickup, check the microphone cable, and raise the input level.",
+        );
+    } else if band == SignalBand::Fair && !clipping {
         add(
             IssueCode::Noisy,
             Severity::Warning,
-            "Loud background",
-            format!("ticks only {s:.0} dB above the background (under 20 dB)"),
-            "Clamp the watch firmly, move away from fans and mains hum, or raise the input \
-             level if it is low.",
+            "Signal fair: rate reliable",
+            format!("{signal}, under 10x"),
+            "Rate is reliable; amplitude and beat error may be off on some watches. Press the \
+             watch more firmly against the pickup, or raise the input level a little, to get \
+             above 10x.",
         );
     }
     let too_quiet = !silent && !clipping && db(peak) < -30.0;
@@ -352,10 +407,32 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         tick_level_dbfs: tick.map(db),
         noise_level_dbfs: db(noise),
         tick_to_noise_db: tick_to_noise,
+        signal_x,
+        signal_band: band,
         gap_rise_db: gap_rise,
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms.abs()),
         suggested_gain_change_db: suggested,
         issues,
     }
+}
+
+/// Median beat peak (within 1 ms of each beat) over the median of the
+/// envelope: the desktop app's "signal Nx".
+fn signal_ratio(env: &[f32], fs: f64, beats: &[beats::Beat]) -> Option<f64> {
+    let w = (0.001 * fs) as usize;
+    let mut peaks: Vec<f64> = beats
+        .iter()
+        .filter_map(|b| {
+            let c = (b.time * fs).round().max(0.0) as usize;
+            let (a, z) = (c.saturating_sub(w), (c + w).min(env.len()));
+            (a < z).then(|| env[a..z].iter().fold(0f32, |m, &v| m.max(v)) as f64)
+        })
+        .collect();
+    if peaks.is_empty() {
+        return None;
+    }
+    let mut all: Vec<f64> = env.iter().step_by(7).map(|&v| v as f64).collect();
+    let floor = median(&mut all).max(f64::MIN_POSITIVE);
+    Some(median(&mut peaks) / floor)
 }

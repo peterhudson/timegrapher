@@ -1,7 +1,7 @@
 //! The microphone checks on synthetic recordings with known faults.
 
 use timegrapher_core::audio::Audio;
-use timegrapher_core::diagnose::{check, DiagnoseConfig, IssueCode};
+use timegrapher_core::diagnose::{check, DiagnoseConfig, IssueCode, Severity, SignalBand};
 use timegrapher_core::synth::{generate, SynthConfig};
 
 fn watch(snr_db: f64) -> Audio {
@@ -97,9 +97,38 @@ fn silence_and_noise_only() {
     assert!(codes(&noise).contains(&IssueCode::NoTicks));
 }
 
+/// The desktop app's bands: 10x and above good, 5 to 10x fair (a
+/// warning), 3 to 5x poor (a fault), below 3x no watch heard.
 #[test]
-fn noisy_signal_is_flagged() {
-    assert!(codes(&watch(12.0)).contains(&IssueCode::Noisy));
+fn signal_bands_match_the_app() {
+    let cfg = DiagnoseConfig::default();
+    let fair = check(&watch(21.0), &cfg);
+    assert_eq!(fair.signal_band, SignalBand::Fair, "{:?}", fair.signal_x);
+    let i = fair
+        .issues
+        .iter()
+        .find(|i| i.code == IssueCode::Noisy)
+        .unwrap();
+    assert_eq!(i.severity, Severity::Warning);
+    assert!(fair.ok());
+
+    let poor = check(&watch(16.0), &cfg);
+    assert_eq!(poor.signal_band, SignalBand::Poor, "{:?}", poor.signal_x);
+    let i = poor
+        .issues
+        .iter()
+        .find(|i| i.code == IssueCode::Noisy)
+        .unwrap();
+    assert_eq!(i.severity, Severity::Fault);
+    assert!(!poor.ok());
+
+    let none = check(&watch(11.0), &cfg);
+    assert_eq!(none.signal_band, SignalBand::None, "{:?}", none.signal_x);
+    assert!(none.has(IssueCode::NoTicks));
+
+    let good = check(&watch(40.0), &cfg);
+    assert_eq!(good.signal_band, SignalBand::Good);
+    assert!(good.signal_x.unwrap() >= 10.0);
 }
 
 #[test]
