@@ -16,13 +16,25 @@ possible that no open-source tool offers today:
   escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
 
 Status: early. The per-beat engine and a command-line tool analyse
-recordings, from a few minutes (`analyze`, `shape`) to days (`long`). A live
-desktop app (egui) comes later.
+recordings, from a few minutes (`analyze`, `shape`) to days (`long`), and
+read a multi-position test (`session`). A
+desktop app (egui) shows a watch live from a microphone, with the classic
+paper-strip trace; see [docs/app.md](docs/app.md).
+
+## Desktop app
+
+```sh
+cargo run --release -p timegrapher-app            # live from a microphone
+cargo run --release -p timegrapher-app -- rec.flac # replay a recording
+```
+
+On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).
 
 ## Command line
 
 ```sh
-cargo build --release
+cargo build --release          # Linux needs libasound2-dev for sound input
+./target/release/timegrapher doctor      # is the microphone set up right?
 ./target/release/timegrapher analyze recording.flac --lift 52
 ```
 
@@ -50,6 +62,26 @@ bounded memory: rate and amplitude over time, the sound card calibrated
 against NTP, and periodic changes found, named after the wheel they match,
 and shown as an average cycle and a raster in an HTML report. See
 [docs/long-runs.md](docs/long-runs.md).
+
+`timegrapher devices` lists the sound inputs. `timegrapher doctor` records
+a few seconds and checks level, clipping, automatic gain, noise and whether
+ticks are heard; it names the exact mixer setting to change (on Linux, the
+`amixer` command) and changes nothing unless given `--apply`.
+
+### For AI agents
+
+Every command takes `--json` and prints one document on a versioned schema
+with the software version and the input it read; `doctor` exits 3 when the
+microphone needs attention. See [docs/agent-interface.md](docs/agent-interface.md).
+The [watchmaker skill](skills/watchmaker/SKILL.md) teaches an agent to run
+the tool and read the results like an experienced watchmaker.
+
+`timegrapher session folder/` reads one watch measured in several
+positions (and states of wind) into a multi-position report in the style
+of Witschi's SEQ mode: rate, amplitude and beat error per position against
+the tolerances, the characteristic values X, D, DV, DH, DVH, Di, Im and
+Ie, and findings with the evidence behind each. `--init` writes a
+`session.toml` to edit. See [docs/sessions.md](docs/sessions.md).
 
 `timegrapher synth out.wav` writes a synthetic recording with known rate,
 beat error and amplitude, for testing; `--fault-period 60` adds a fault

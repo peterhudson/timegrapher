@@ -28,7 +28,7 @@ fn parse_wheel(s: &str) -> Result<Wheel, String> {
 }
 
 /// Replace each folder with the WAV and FLAC files in it, sorted by name.
-fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for f in files {
         if !f.is_dir() {
@@ -135,7 +135,21 @@ pub fn run(
         out.join("folds.csv"),
         write_folds(&out.join("folds.csv"), &rep),
     )?;
-    let summary = serde_json::to_string_pretty(&Summary::from(&rep)).map_err(|e| e.to_string())?;
+    let settings = serde_json::json!({
+        "clock_log": clock_log.map(|p| p.display().to_string()),
+        "bph": cfg.analysis.bph,
+        "lift_deg": cfg.analysis.amplitude.lift_deg,
+        "notch_hz": cfg.analysis.envelope.notch_hz,
+        "highpass_hz": cfg.analysis.envelope.highpass_hz,
+        "escape_teeth": escape_teeth,
+        "wheels": wheels,
+        "out": out.display().to_string(),
+    });
+    let summary = crate::output::to_json(
+        "long",
+        crate::output::input(&files, settings),
+        &Summary::from(&rep),
+    )?;
     io(
         out.join("summary.json"),
         fs::write(out.join("summary.json"), &summary),
