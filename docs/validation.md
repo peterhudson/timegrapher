@@ -36,6 +36,27 @@ its 16 s windows, while timegrapher fits the whole run at once.
 Absolute rate is uncalibrated in both: neither corrects the sound card's
 clock yet.
 
+## Against tg on the bench watches
+
+tg here is jnarvaezp/tg-mod built with lift angle 55° (the value for
+32xx movements), run offline on the same files. Medians of window values;
+rate is on the uncalibrated sound-card clock.
+
+| Recording | Amplitude tg | Amplitude timegrapher | Rate tg / timegrapher (s/d) |
+| --- | --- | --- | --- |
+| Dandong 3235, dial up, 30 min | 286° | 288° | +3.8 / +3.6 |
+| Rolex 3235, 2 h take, 30 min of it (segments 1, 2, 7) | 251° | 250° | +43.1 / +43.1 |
+| Rolex 3235, 5 min | 246° | 245° | +35.6 / +34.1 |
+
+On the Dandong, sound 1 on one side is only 4–5% as loud as the drop.
+A threshold of 5% of the drop's height missed it and timed the unlock from
+sound 2, reading 297°. The unlock is now the first sustained rise above the
+larger of 2% of the drop or 4 noise SDs, timed at half its own height.
+
+Beat error is not compared here: tg measures it from the unlock, timegrapher
+from the drop, and the two differ when the two sides' unlock-to-drop times
+differ.
+
 ## Beat shape
 
 `crates/timegrapher-core/tests/shape.rs` checks `timegrapher shape` on

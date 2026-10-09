@@ -17,7 +17,8 @@ use serde::Serialize;
 pub struct AmplitudeConfig {
     /// Lift angle in degrees.
     pub lift_deg: f64,
-    /// Unlock threshold as a fraction of the drop's height above the noise floor.
+    /// Minimum height of sound 1 (the unlock) as a fraction of the drop's
+    /// height above the noise floor; 4 noise SDs is used when that is larger.
     pub onset_fraction: f32,
 }
 
@@ -25,7 +26,7 @@ impl Default for AmplitudeConfig {
     fn default() -> Self {
         AmplitudeConfig {
             lift_deg: 52.0,
-            onset_fraction: 0.05,
+            onset_fraction: 0.02,
         }
     }
 }
@@ -83,9 +84,24 @@ pub fn edges(template: &[f32], fs: f64, origin: usize, onset_fraction: f32) -> O
         peak + 1,
         floor + 0.5 * height,
     )?;
-    // Unlock edge: the first rise after the quiet stretch, ending well before the drop.
+    // Unlock edge: sound 1 is found as the first sustained rise above the
+    // floor by `onset_fraction` of the drop or 4 noise SDs, whichever is
+    // larger, and its edge is where it crosses half its own height. A
+    // threshold relative to the drop alone misses a sound 1 that is quiet
+    // next to the drop and falls through to sound 2.
     let end = (drop as usize).checked_sub((0.0015 * fs) as usize)?;
-    let unlock = crossing(quiet, end, floor + onset_fraction * height)?;
+    let noise = {
+        let q: Vec<f64> = t[..quiet.min(t.len())].iter().map(|&v| v as f64).collect();
+        crate::dsp::robust_sd(&q) as f32
+    };
+    let detect = floor + (onset_fraction * height).max(4.0 * noise);
+    let hold = ((0.00025 * fs) as usize).max(1);
+    let first =
+        (quiet.max(1)..end).find(|&i| t[i..(i + hold).min(end)].iter().all(|&v| v > detect))?;
+    let look = (first + (0.0006 * fs) as usize).min(end);
+    let (top_i, top) = crate::dsp::argmax(&t, first, look + 1)?;
+    let back = first.saturating_sub((0.001 * fs) as usize).max(quiet);
+    let unlock = crossing(back, top_i + 1, floor + 0.5 * (top - floor))?;
     Some(Edges {
         unlock,
         drop,
