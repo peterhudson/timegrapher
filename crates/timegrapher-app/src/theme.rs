@@ -44,6 +44,11 @@ pub struct Palette {
     pub peak: Color32,
     /// The three sounds on the tick tock profile.
     pub sound: Color32,
+    /// Amplitude, rate and beat error where they are drawn over the strip
+    /// and in their histograms.
+    pub trace_amplitude: Color32,
+    pub trace_rate: Color32,
+    pub trace_beat_error: Color32,
 }
 
 const fn rgb(hex: u32) -> Color32 {
@@ -72,6 +77,9 @@ pub const DARK: Palette = Palette {
     drop: rgb(0xff453a),
     peak: rgb(0xbf5af2),
     sound: rgb(0xffd60a),
+    trace_amplitude: rgb(0xbf5af2),
+    trace_rate: rgb(0x30d158),
+    trace_beat_error: rgb(0xffd60a),
 };
 
 pub const LIGHT: Palette = Palette {
@@ -96,6 +104,9 @@ pub const LIGHT: Palette = Palette {
     drop: rgb(0xd70015),
     peak: rgb(0x8944ab),
     sound: rgb(0x8a6d00),
+    trace_amplitude: rgb(0x8944ab),
+    trace_rate: rgb(0x248a3d),
+    trace_beat_error: rgb(0x8a6d00),
 };
 
 pub fn palette(dark: bool) -> &'static Palette {
@@ -284,9 +295,7 @@ pub fn card_ui<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
 /// A small, spaced, upper-case caption over a group of settings or a
 /// reading.
 pub fn caption(text: &str) -> RichText {
-    RichText::new(text.to_uppercase())
-        .font(semibold(11.0))
-        .extra_letter_spacing(0.6)
+    RichText::new(text).font(semibold(12.5))
 }
 
 /// A small round "?" that opens an explanation beside it, closed by
@@ -312,7 +321,7 @@ pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
         semibold(11.0),
         if open { p.on_accent } else { p.text_secondary },
     );
-    let resp = resp.on_hover_text(format!("What {} means", title.to_lowercase()));
+    let resp = resp.on_hover_text(format!("About {title}"));
     egui::Popup::from_toggle_button_response(&resp)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .width(360.0)
@@ -334,12 +343,50 @@ pub fn section_header(
     text: &str,
     shown: Option<&mut bool>,
     help_text: &[&str],
+    folded: &mut bool,
 ) -> bool {
     let mut changed = false;
+    let p = pal(ui);
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        ui.label(caption(text).color(pal(ui).text_secondary));
+        // The chevron and the name fold the card away or open it again.
+        let galley =
+            ui.painter()
+                .layout_no_wrap(text.to_string(), semibold(12.5), p.text_secondary);
+        let size = Vec2::new(18.0 + galley.size().x, 20.0);
+        let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+        let color = if resp.hovered() {
+            p.text
+        } else {
+            p.text_secondary
+        };
+        let c = egui::pos2(rect.left() + 8.0, rect.center().y);
+        let t = ui.ctx().animate_bool_responsive(resp.id, !*folded);
+        // A triangle pointing right when folded, turning to point down.
+        let angle = t * std::f32::consts::FRAC_PI_2;
+        let rot = |x: f32, y: f32| {
+            let (s, co) = angle.sin_cos();
+            c + Vec2::new(x * co - y * s, x * s + y * co)
+        };
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![rot(3.5, 0.0), rot(-2.5, 3.5), rot(-2.5, -3.5)],
+            color,
+            Stroke::NONE,
+        ));
+        ui.painter().galley_with_override_text_color(
+            egui::pos2(rect.left() + 18.0, rect.center().y - galley.size().y / 2.0),
+            galley,
+            color,
+        );
+        if resp.clicked() {
+            *folded = !*folded;
+        }
+        resp.on_hover_text(if *folded {
+            format!("Open the {} card", text)
+        } else {
+            format!("Fold the {} card away", text)
+        })
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
         if !help_text.is_empty() {
             help(ui, text, help_text);
         }
@@ -347,9 +394,9 @@ pub fn section_header(
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(14.0);
                 let hint = if *on {
-                    format!("Hide the {}", text.to_lowercase())
+                    format!("Hide the {}", text)
                 } else {
-                    format!("Show the {}", text.to_lowercase())
+                    format!("Show the {}", text)
                 };
                 changed = switch(ui, on).on_hover_text(hint).changed();
             });
@@ -446,7 +493,9 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 }
 
 /// A segmented control: one of a few choices, the selected one raised.
-/// True when the choice changed.
+/// With two choices a click anywhere on it switches to the other, so it can
+/// be flipped back and forth without moving the pointer. True when the
+/// choice changed.
 pub fn segmented<T: PartialEq + Copy>(
     ui: &mut Ui,
     value: &mut T,
@@ -462,7 +511,8 @@ pub fn segmented<T: PartialEq + Copy>(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 ui.spacing_mut().button_padding = Vec2::new(10.0, 2.0);
-                for &(v, label, hint) in choices {
+                let two = choices.len() == 2;
+                for (i, &(v, label, hint)) in choices.iter().enumerate() {
                     let selected = *value == v;
                     let text = if selected {
                         RichText::new(label).font(semibold(12.5)).color(p.text)
@@ -476,12 +526,25 @@ pub fn segmented<T: PartialEq + Copy>(
                         .corner_radius(CornerRadius::same(CONTROL_RADIUS - 1))
                         .min_size(Vec2::new(0.0, 20.0));
                     let mut r = ui.add(b);
-                    if !hint.is_empty() {
+                    let other = if two { choices[1 - i] } else { choices[i] };
+                    if two && selected {
+                        let flip = format!("Click to switch to {}", other.1);
+                        r = r.on_hover_text(if hint.is_empty() {
+                            flip
+                        } else {
+                            format!("{hint}. {flip}.")
+                        });
+                    } else if !hint.is_empty() {
                         r = r.on_hover_text(hint);
                     }
-                    if r.clicked() && !selected {
-                        *value = v;
-                        changed = true;
+                    if r.clicked() {
+                        if !selected {
+                            *value = v;
+                            changed = true;
+                        } else if two {
+                            *value = other.0;
+                            changed = true;
+                        }
                     }
                 }
             });
@@ -514,6 +577,76 @@ pub fn destructive(ui: &Ui, text: &str) -> egui::Button<'static> {
         .min_size(Vec2::new(84.0, 26.0))
 }
 
+/// Grid marks for a plot, all of one step so every grid line and label is
+/// drawn alike: the first step of `ladder` (1, 2 and 5 times powers of ten
+/// when empty) at least `min_px` points apart. 80 points is what the plot
+/// needs to show every label along a horizontal axis at full strength, 30
+/// along a vertical one.
+pub fn even_grid(
+    input: egui_plot::GridInput,
+    min_px: f64,
+    ladder: &[f64],
+) -> Vec<egui_plot::GridMark> {
+    // The plot's base step is the value of its 8-point minimum spacing.
+    let want = (input.base_step_size / 8.0 * min_px).max(1e-12);
+    let step = if ladder.is_empty() {
+        let p = 10f64.powf(want.log10().floor());
+        [1.0, 2.0, 5.0, 10.0]
+            .into_iter()
+            .map(|m| m * p)
+            .find(|&s| s >= want * (1.0 - 1e-9))
+            .unwrap_or(10.0 * p)
+    } else {
+        ladder
+            .iter()
+            .copied()
+            .find(|&s| s >= want)
+            .unwrap_or(*ladder.last().unwrap())
+    };
+    let (lo, hi) = input.bounds;
+    let mut k = (lo / step).ceil();
+    let mut marks = Vec::new();
+    while k * step <= hi && marks.len() < 400 {
+        marks.push(egui_plot::GridMark {
+            value: k * step,
+            step_size: step,
+        });
+        k += 1.0;
+    }
+    marks
+}
+
+/// Steps for a time axis in seconds: whole seconds, minutes and hours.
+pub const TIME_STEPS: [f64; 22] = [
+    0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0,
+    3600.0, 7200.0, 10800.0, 21600.0, 43200.0, 86400.0, 172800.0,
+];
+
+/// The button that hides and shows the sidebar: a window with its left
+/// column filled while the sidebar is shown.
+pub fn sidebar_button(ui: &mut Ui, shown: bool) -> Response {
+    let p = pal(ui);
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(30.0, 26.0), Sense::click());
+    let bg = if resp.hovered() {
+        p.control_hover
+    } else {
+        p.control
+    };
+    ui.painter()
+        .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), bg);
+    let icon = egui::Rect::from_center_size(rect.center(), Vec2::new(16.0, 12.0));
+    let stroke = Stroke::new(1.3_f32, p.text);
+    ui.painter()
+        .rect_stroke(icon, 2.0, stroke, egui::StrokeKind::Inside);
+    let column = egui::Rect::from_min_max(icon.min, egui::pos2(icon.left() + 5.5, icon.bottom()));
+    if shown {
+        ui.painter().rect_filled(column, 2.0, p.text);
+    } else {
+        ui.painter().vline(column.right(), icon.y_range(), stroke);
+    }
+    resp
+}
+
 /// A coloured dot, the key to a line or side.
 pub fn dot(ui: &mut Ui, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 14.0), Sense::hover());
@@ -534,6 +667,47 @@ mod tests {
                 ui.label(RichText::new("Tick 276°").font(semibold(13.0)));
             });
         });
+    }
+
+    #[test]
+    fn a_two_way_control_flips_from_either_half() {
+        // Click the selected half: it switches to the other.
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let mut v = false;
+        let frame = |events: Vec<egui::Event>, v: &mut bool| {
+            let mut rect = egui::Rect::NOTHING;
+            let input = egui::RawInput {
+                events,
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(400.0, 200.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let r = ui.horizontal(|ui| {
+                        segmented(ui, v, &[(false, "Stacked", ""), (true, "Beside", "")]);
+                    });
+                    rect = r.response.rect;
+                });
+            });
+            rect
+        };
+        let rect = frame(vec![], &mut v);
+        // The left half is "Stacked", which is selected.
+        let at = egui::pos2(rect.left() + 20.0, rect.center().y);
+        let click = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(vec![egui::Event::PointerMoved(at)], &mut v);
+        frame(vec![click(true)], &mut v);
+        frame(vec![click(false)], &mut v);
+        assert!(v, "clicking the selected half switches to the other");
     }
 
     #[test]

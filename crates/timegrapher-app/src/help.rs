@@ -97,8 +97,16 @@ pub const STRIP: &[&str] = &[
      drift, the bigger the rate. Witschi and other timegraphers use the same words.",
     "The ticks and the tocks make two lines; the gap between them is the beat error. \
      A line that runs off one edge comes back on the other, so the width is a zoom.",
-    "The rate line is the Rate reading drawn over the beats it was fitted to: if the \
-     dots follow it, the reading describes them well.",
+    "The red rate line is the Rate reading drawn over the beats it was fitted to: if \
+     the dots follow it, the reading describes them well. The faint red lines beside it \
+     (Parallel Guides) run at the same slope across the whole strip, one per grid step, \
+     so you can see at a glance whether the dots everywhere run parallel to the rate \
+     or bend away from it.",
+    "Amplitude, rate and beat error can be drawn over the strip as lines against the \
+     same time, each on its own scale: the scale's ends are written in the line's colour \
+     above the strip (or beside it when the strip lies across). Seeing amplitude beside \
+     the dots shows at once whether a wobble in the rate comes with a change in \
+     amplitude.",
     "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
@@ -131,16 +139,37 @@ pub const PROFILE: &[&str] = &[
 ];
 
 pub const CHARTS: &[&str] = &[
-    "Rate, amplitude and beat error over the whole session, each point a reading over \
-     the averaging time. The charts' time axes move together.",
+    "Rate, amplitude and beat error over time, each point a reading over the averaging \
+     time. The charts' time axes move together.",
+    "Time Span: Session shows everything since the session started, growing as it \
+     goes. Strip Length shows the same stretch of time as the paper strip and moves with \
+     it, so with the charts under a strip lying across, every time axis lines up.",
     "Mouse: the wheel zooms time around the pointer, Ctrl and the wheel the vertical \
      scale, dragging pans, and a double-click fits the whole session again (and \
      follows new beats while listening). Clicking a moment shows it on the strip and \
      in the readings.",
 ];
 
+pub const HISTOGRAMS: &[&str] = &[
+    "How often each value of a reading came up, over the session or the strip's length \
+     (Time Span). An average gives one number; a histogram shows whether the values \
+     cluster around it or around two values. Two peaks suggest the watch moves between \
+     two states, say a high and a low amplitude as a rubbing part comes and goes, which \
+     a single average hides.",
+    "Amplitude and beat error count one value for every 2 seconds of beats, the finest \
+     the app measures them; rate counts one value per reading, each fitted over the \
+     averaging time. The thin line is the median. Above each histogram: how many values, \
+     the median, where the middle 80% lie, the bin width, and the peaks when there are \
+     more than one.",
+    "The bins are as wide as the spread of the values calls for (the Freedman–Diaconis \
+     rule), rounded to a round number, so they get finer as values come in.",
+];
+
 pub const WINDOW: &[&str] = &[
     "Appearance: Auto follows the system's light or dark setting.",
+    "The sidebar button at the left of the toolbar, or Ctrl+B (Cmd+B on a Mac), hides the \
+     sidebar to give the panes the whole window, and brings it back. Clicking a card's \
+     name folds the card away.",
     "Panes can be dragged by their tabs beside, above or below each other, or onto \
      another's tab to stack them, and resized by dragging the gaps. The × on a tab \
      hides a pane; its switch here brings it back where it was. Reset panes puts \

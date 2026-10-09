@@ -15,14 +15,21 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 ## The screen
 
-Along the top, the toolbar: **Microphone** or **Recording**, the
+Along the top, the toolbar: the sidebar button, which hides the sidebar
+to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
+a Mac), **Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
 buttons for the session (see Sessions below; **Replay**, **Stop** and
-**Analyse all** for a recording). On the left, the settings in cards:
+**Analyse All** for a recording). On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
-part of the window (**Readings**, **Paper strip**, **Tick tock profile**,
-**Charts**), each with its switch to show or hide it and its own options,
-and **Window** for the appearance and the pane layout. In the rest, the
+part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
+**Charts**, **Histograms**), each with its switch to show or hide it and
+its own options, and **Window** for the appearance and the pane layout.
+Clicking a card's name folds the card away to its caption, and clicking it
+again opens it. A choice between two options, such as Stacked and Beside,
+switches to the other option wherever it is clicked, so it can be flipped
+back and forth without moving the pointer. Titles and labels are in Title
+Case. In the rest, the
 three readings in cards and below them the panes. Along the bottom, the
 status line. Every card and reading has a **?** beside its name that opens
 a longer explanation in place (click it again, or anywhere else, to close
@@ -69,12 +76,12 @@ to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The × on a tab hides
 that pane, and the switch on each card in the sidebar hides or shows its pane
 or the readings across the top; a hidden pane comes back where it was,
-and changing the strip's direction keeps the choice. **Reset panes**
+and changing the strip's direction keeps the choice. **Reset Panes**
 (under Window) shows them all in their starting places. Periodicity views will join
 them.
 
-**Tick tock profile.** The typical sound of the ticks (blue) and of
-the tocks (orange) over the averaging time (Average over, up to 60 s, so
+**Tick Tock Profile.** The typical sound of the ticks (blue) and of
+the tocks (orange) over the averaging time (Average Over, up to 60 s, so
 it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
@@ -103,13 +110,24 @@ all at once it is worked out from the file when you stop on a moment.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
-**Paper strip.** One dot per beat, tick and tock in two colours. Across the
+**Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating
 exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
 before that clock's beat is early, after it late, the words Witschi uses.
-Along it is time. **Rate line** (on by default) draws the Rate reading
-as a solid line over the beats it was fitted to, as tg does: if the dots
-follow it, the reading describes them well. Running **down** (the default, as on
+Along it is time; both axes are labelled, in ms across and in minutes and
+seconds along, and every grid line is drawn alike. **Rate Line** (on by
+default) draws the Rate reading as a solid red line over the beats it was
+fitted to, on top of them, as tg does: if the dots follow it, the reading
+describes them well. **Parallel Guides** (on by default) adds faint red
+lines at the same slope across the whole strip, one per grid step, since
+the eye judges whether lines are parallel far better than it judges a
+slope; dots that bend away from the guides show the rate changing. Under
+**Draw over the strip**, amplitude (purple, on by default), rate (green)
+and beat error (gold) readings can be drawn as lines against the same
+time, each on its own scale, whose ends are written in its colour above
+the strip (beside it when the strip lies across), as some versions of tg
+do for amplitude: a wobble in the rate that comes with a dip in amplitude
+shows at a glance. Running **down** (the default, as on
 tg), the newest beats are at the top, a watch on rate draws a vertical
 line, a gaining watch leans right as it rises (/) and a losing one leans
 left (\\). Running **across**, time goes left to right with the newest beats
@@ -125,24 +143,41 @@ onto each other; the lengths run from 10 s of beats to a two-hour run.
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
-click returns to the newest beats and centres them. **Auto-centre** keeps
+click returns to the newest beats and centres them. **Auto-Centre** keeps
 the newest beats on the centre line all the time, so the older ones slide
 away from it as the rate wanders; sliding the trace by hand turns it off.
 **Centre** centres once; **Clear** starts the readings and the strip again.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
-unlock and from the drop) over the whole session. With the pointer
+unlock and from the drop) over time. **Time Span**, in the Charts and
+Histograms cards, sets what they cover: **Session**, everything since the
+session started, or **Strip**, the same stretch of time as the paper strip,
+moving with it, so that with the charts under a strip lying across every
+time axis lines up. In Strip mode the strip sets the time, so only the
+vertical scale can be dragged or zoomed. With the pointer
 anywhere over a chart, a vertical line marks that moment and a box lists
 every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
 the vertical scale, dragging pans, and a double click fits the whole
 session again and, while listening, follows new beats as they come in.
-Once a chart has been panned or zoomed a **Follow live** button
-(**Show whole session** for a recording) appears on it and does the same,
+Once a chart has been panned or zoomed a **Follow Live** button
+(**Show Whole Session** for a recording) appears on it and does the same,
 and the box at the pointer lists these controls. Clicking a moment shows it on the strip and in the
 readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
+
+**Histograms.** How often each value of rate, amplitude and beat error
+came up, over the session or the strip's length (Time Span), switched on in
+the Histograms card (all off at first). An average gives one number; a
+histogram shows whether a watch keeps to one state or moves between two,
+such as a high and a low amplitude, as two peaks. Amplitude and beat error
+count one value per 2 seconds of beats, the finest the engine measures
+them; rate counts one per reading. A thin line marks the median, and the
+line above gives the count, the median, the middle 80%, the bin width
+(rounded Freedman–Diaconis) and the peaks when there is more than one. The
+binning is `timegrapher_core::histogram`, so the CLI and reports can share
+it.
 
 **Appearance.** Under Window: Auto follows the desktop's light or dark
 setting; Light and Dark override it.

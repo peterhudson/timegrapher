@@ -76,30 +76,6 @@ impl Default for Options {
     }
 }
 
-/// Grid marks all of one step, so every grid line is drawn alike: the
-/// first step of 1, 2 or 5 times a power of ten at least `factor` times the
-/// finest step the plot allows (which is a few pixels).
-fn even_grid(input: egui_plot::GridInput, factor: f64) -> Vec<egui_plot::GridMark> {
-    let want = (input.base_step_size * factor).max(1e-9);
-    let p = 10f64.powf(want.log10().floor());
-    let step = [1.0, 2.0, 5.0, 10.0]
-        .into_iter()
-        .map(|m| m * p)
-        .find(|&s| s >= want)
-        .unwrap_or(10.0 * p);
-    let (lo, hi) = input.bounds;
-    let mut k = (lo / step).ceil();
-    let mut marks = Vec::new();
-    while k * step <= hi && marks.len() < 200 {
-        marks.push(egui_plot::GridMark {
-            value: k * step,
-            step_size: step,
-        });
-        k += 1.0;
-    }
-    marks
-}
-
 /// Draw both sides, tick above or beside tock, on one scale so their
 /// loudness compares.
 pub fn draw(
@@ -151,8 +127,8 @@ pub fn draw(
             .allow_drag(false)
             .allow_double_click_reset(false)
             .default_y_bounds(y_lo, y_hi)
-            .x_grid_spacer(|g| even_grid(g, 6.0))
-            .y_grid_spacer(|g| even_grid(g, 4.0))
+            .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
+            .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
             .x_axis_formatter(|m, _| format!("{} ms", m.value))
             .y_axis_min_width(52.0)
             .y_axis_formatter(move |m, _| match scale {
@@ -204,9 +180,9 @@ pub fn draw(
             );
             if opt.edges {
                 for (label, at, col, w) in [
-                    ("unlock", p.unlock_ms, pal.unlock, 1.5_f32),
-                    ("drop", p.drop_ms, pal.drop, 1.5),
-                    ("drop peak", p.peak_ms, pal.peak, 1.0),
+                    ("Unlock", p.unlock_ms, pal.unlock, 1.5_f32),
+                    ("Drop", p.drop_ms, pal.drop, 1.5),
+                    ("Drop Peak", p.peak_ms, pal.peak, 1.0),
                 ] {
                     if let Some(t) = at {
                         pl.vline(VLine::new(label, t).color(col).width(w));
@@ -215,9 +191,9 @@ pub fn draw(
             }
             if opt.sounds {
                 for (label, at) in [
-                    ("sound 1", p.sound1_ms),
-                    ("sound 2", p.sound2_ms),
-                    ("sound 3", p.sound3_ms),
+                    ("Sound 1", p.sound1_ms),
+                    ("Sound 2", p.sound2_ms),
+                    ("Sound 3", p.sound3_ms),
                 ] {
                     if let Some(t) = at {
                         pl.vline(
@@ -262,16 +238,16 @@ fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile, opt
     let mut groups = Vec::new();
     if opt.edges {
         groups.push([
-            ("unlock", p.unlock_ms, pal.unlock),
-            ("drop", p.drop_ms, pal.drop),
-            ("peak", p.peak_ms, pal.peak),
+            ("Unlock", p.unlock_ms, pal.unlock),
+            ("Drop", p.drop_ms, pal.drop),
+            ("Peak", p.peak_ms, pal.peak),
         ]);
     }
     if opt.sounds {
         groups.push([
-            ("1 unlock", p.sound1_ms, snd),
-            ("2 impulse", p.sound2_ms, snd),
-            ("3 drop", p.sound3_ms, snd),
+            ("1 Unlock", p.sound1_ms, snd),
+            ("2 Impulse", p.sound2_ms, snd),
+            ("3 Drop", p.sound3_ms, snd),
         ]);
     }
     for group in groups {
