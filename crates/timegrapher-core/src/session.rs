@@ -898,7 +898,7 @@ fn findings(
         let unsure = m.unlock_unreliable(lim);
         if unsure {
             let sides = match (m.amplitude_even_deg, m.amplitude_odd_deg) {
-                (Some(e), Some(o)) => format!("; even and odd beats read {e:.0}° and {o:.0}°"),
+                (Some(e), Some(o)) => format!("; Tick and Tock read {e:.0}° and {o:.0}°"),
                 _ => String::new(),
             };
             push(
@@ -1104,7 +1104,7 @@ fn findings(
             }
         }
         if let Some(sh) = &r.shape {
-            for (side, v) in [("even", &sh.even), ("odd", &sh.odd)] {
+            for (side, v) in [("Tick", &sh.even), ("Tock", &sh.odd)] {
                 if let Some(q) = v.ratio13.filter(|&q| q >= 1.0) {
                     push(
                         "shape_unlock_loud",
