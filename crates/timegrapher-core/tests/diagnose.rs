@@ -59,6 +59,20 @@ fn analogue_clipping_below_full_scale_is_found() {
 }
 
 #[test]
+fn peaks_within_a_few_db_of_full_scale_are_hot() {
+    // The live run on the C-Media at full gain: peak about -3 dBFS.
+    let a = watch(40.0);
+    let peak = a.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+    let a = scaled(a, 0.7 / peak);
+    let c = check(&a, &DiagnoseConfig::default());
+    assert!(c.has(IssueCode::Hot), "{:?}", c.issues);
+    assert!(!c.has(IssueCode::Clipping));
+    assert!(c.ok(), "a warning, not a fault");
+    let change = c.suggested_gain_change_db.unwrap();
+    assert!((-8.0..=-6.0).contains(&change), "{change}");
+}
+
+#[test]
 fn quiet_signal_asks_for_more_gain() {
     let a = scaled(watch(40.0), 0.01);
     let c = check(&a, &DiagnoseConfig::default());
