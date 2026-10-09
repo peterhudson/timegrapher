@@ -341,17 +341,18 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num">Rate<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>sec/day</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for (r, v) in sn.readings.iter().zip(&sn.report.verdicts) {
         let m = &r.measurement;
         let _ = write!(
             s,
-            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
+            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
             r.position.code(),
             r.position.description(),
             wind(r.wind_h),
             cell(signed(m.rate_s_per_day, 1), v.rate),
+            signed(m.rate_window_median_s_per_day, 1),
             cell(opt(m.amplitude_deg, 0), v.amplitude),
             opt(m.amplitude_even_deg, 0),
             opt(m.amplitude_odd_deg, 0),

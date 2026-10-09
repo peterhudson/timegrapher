@@ -84,8 +84,12 @@ of the recording or for `measure_s`:
   (the two kinds of beat, one per pallet stone; Tick is the even beats
   and Tock the odd ones, `amplitude_even_deg` and `amplitude_odd_deg` in
   the JSON, since the sound can't say which stone is which);
-- jitter, and the 5th to 95th percentile of rate in 10 s windows: how
-  steady the rate is;
+- jitter, and the median and the 5th to 95th percentile of rate in 10 s
+  windows: how steady the rate is. The headline rate is the fit over
+  every beat, the average the hands keep; where the rate wanders with
+  dips (the Yacht-Master crown left), the 10 s median sits a few s/d
+  above it, as tg's median reading sits above its mean, so compare tg's
+  mean with the headline and tg's median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
 - beat shape (as `shape`) on the first 60 s after settling;
