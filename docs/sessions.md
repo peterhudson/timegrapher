@@ -80,7 +80,10 @@ of the recording or for `measure_s`:
   (median of the 2 s windows); this is the value judged against the
   tolerance. The beat error from the drop (the same fit as the rate) is
   shown beside it, and used when no unlock is found;
-- amplitude, the median of the 2 s windows;
+- amplitude, the median of the 2 s windows, with Tick and Tock beside it
+  (the two kinds of beat, one per pallet stone; Tick is the even beats
+  and Tock the odd ones, `amplitude_even_deg` and `amplitude_odd_deg` in
+  the JSON, since the sound can't say which stone is which);
 - jitter, and the 5th to 95th percentile of rate in 10 s windows: how
   steady the rate is;
 - periodic changes in rate and amplitude, from the same search as `long`,

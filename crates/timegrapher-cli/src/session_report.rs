@@ -238,7 +238,12 @@ fn charts(st: &StateIndices, readings: &[&Reading], tol: &Tolerance) -> String {
     ];
     format!(
         r#"<h3>Rate by position</h3>{}<h3>Amplitude by position</h3>{}<p class="note">Shaded: {} tolerance{}.</p>"#,
-        position_chart("s/d", &rs, if full { &rate_band } else { &[] }, true),
+        position_chart(
+            "seconds per day",
+            &rs,
+            if full { &rate_band } else { &[] },
+            true
+        ),
         position_chart("deg", &as_, if full { &amp_band } else { &[] }, false),
         esc(&tol.name),
         if full {
@@ -268,7 +273,7 @@ fn indices_table(states: &[StateIndices]) -> String {
         (
             "X",
             &|st| signed(st.x, 1),
-            "mean rate over the positions, s/d",
+            "mean rate over the positions, seconds per day",
         ),
         (
             "XH",
@@ -283,7 +288,7 @@ fn indices_table(states: &[StateIndices]) -> String {
         (
             "D",
             &|st| opt(st.d_rate, 1),
-            "largest rate difference between positions, s/d",
+            "largest rate difference between positions, seconds per day",
         ),
         (
             "DV",
@@ -298,12 +303,12 @@ fn indices_table(states: &[StateIndices]) -> String {
         (
             "DVH",
             &|st| signed(st.dvh_rate, 1),
-            "vertical mean minus horizontal mean, s/d",
+            "vertical mean minus horizontal mean, seconds per day",
         ),
         (
             "Di",
             &|st| signed(st.di, 1),
-            "6H minus CH, s/d (short-term analogue of COSC's D)",
+            "6H minus CH, seconds per day (short-term analogue of COSC's D)",
         ),
         (
             "Amplitude",
@@ -335,18 +340,20 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num">Rate<br>s/d</th><th class="num">Amplitude<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num">Jitter<br>µs</th><th class="num">10 s rates<br>s/d</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num">Rate<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for (r, v) in sn.readings.iter().zip(&sn.report.verdicts) {
         let m = &r.measurement;
         let _ = write!(
             s,
-            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}{}{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
+            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
             r.position.code(),
             r.position.description(),
             wind(r.wind_h),
             cell(signed(m.rate_s_per_day, 1), v.rate),
             cell(opt(m.amplitude_deg, 0), v.amplitude),
+            opt(m.amplitude_even_deg, 0),
+            opt(m.amplitude_odd_deg, 0),
             cell(opt(m.beat_error(), 2), v.beat_error),
             opt(m.beat_error_ms.map(f64::abs), 2),
             opt(m.jitter_us, 0),
@@ -384,7 +391,7 @@ fn reference_table(sn: &Session) -> String {
         return String::new();
     }
     let mut s = String::from(
-        r#"<h2>Against the reference timegrapher</h2><table class="data"><thead><tr><th>Position</th><th class="num">Rate s/d<br>here / ref</th><th class="num">Difference</th><th class="num">Amplitude deg<br>here / ref</th><th class="num">Difference</th><th class="num">Beat error ms<br>here / ref</th><th class="num">Here from<br>the drop</th><th>Reference</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<h2>Against the reference timegrapher</h2><table class="data"><thead><tr><th>Position</th><th class="num">Rate sec/day<br>here / ref</th><th class="num">Difference</th><th class="num">Amplitude deg<br>here / ref</th><th class="num">Difference</th><th class="num">Beat error ms<br>here / ref</th><th class="num">Here from<br>the drop</th><th>Reference</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for r in with {
         let f = r.reference.as_ref().unwrap();
@@ -410,7 +417,7 @@ fn reference_table(sn: &Session) -> String {
             esc(&r.label)
         );
     }
-    s.push_str(r#"</tbody></table><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few s/d from either.</p>"#);
+    s.push_str(r#"</tbody></table><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few seconds per day from either.</p>"#);
     s
 }
 
@@ -456,11 +463,11 @@ fn shape_table(sn: &Session) -> String {
         return String::new();
     }
     let mut s = String::from(
-        r#"<h2>Beat shape</h2><p class="note">From the first minute after settling. Even and odd beats are the two pallet stones. Intervals are between the halfway rises of the unlock (1), impulse (2) and drop (3); levels are against the drop.</p><table class="data"><thead><tr><th>Position</th><th>Side</th><th class="num">1 to 2<br>ms</th><th class="num">1 to 3<br>ms</th><th class="num">Level<br>1:3</th><th class="num">Level<br>2:3</th><th class="num">Noise between<br>beats</th><th class="num">Unlock<br>found</th><th class="num">Extra sounds<br>before / after</th></tr></thead><tbody>"#,
+        r#"<h2>Beat shape</h2><p class="note">From the first minute after settling. Tick and Tock are the two kinds of beat, one from each pallet stone (which is which can't be told from the sound). Intervals are between the halfway rises of the unlock (1), impulse (2) and drop (3); levels are against the drop.</p><table class="data"><thead><tr><th>Position</th><th>Side</th><th class="num">1 to 2<br>ms</th><th class="num">1 to 3<br>ms</th><th class="num">Level<br>1:3</th><th class="num">Level<br>2:3</th><th class="num">Noise between<br>beats</th><th class="num">Unlock<br>found</th><th class="num">Extra sounds<br>before / after</th></tr></thead><tbody>"#,
     );
     for r in with {
         let sh = r.shape.as_ref().unwrap();
-        for (k, (side, v)) in [("even", &sh.even), ("odd", &sh.odd)]
+        for (k, (side, v)) in [("Tick", &sh.even), ("Tock", &sh.odd)]
             .into_iter()
             .enumerate()
         {
@@ -510,7 +517,7 @@ pub fn html(sn: &Session) -> String {
 <tr><th>Movement</th><td>{} bph, lift angle {}°</td></tr>
 <tr><th>Recordings</th><td>{} in {} position(s): {}</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
-<tr><th>Tolerance</th><td>{}: {:+.0} to {:+.0} s/d; amplitude {:.0}–{:.0}° horizontal, {:.0}–{:.0}° vertical; beat error under {} ms (fully wound)</td></tr>
+<tr><th>Tolerance</th><td>{}: {:+.0} to {:+.0} seconds per day; amplitude {:.0}–{:.0}° horizontal, {:.0}–{:.0}° vertical; beat error under {} ms (fully wound)</td></tr>
 {}</table>"#,
         sn.bph,
         sn.lift_deg,
@@ -518,7 +525,7 @@ pub fn html(sn: &Session) -> String {
         positions.len(),
         positions.join(", "),
         match calibrated {
-            0 => "rates are on the sound card's clock (uncalibrated), good to a few s/d".to_string(),
+            0 => "rates are on the sound card's clock (uncalibrated), good to a few seconds per day".to_string(),
             n if n == sn.readings.len() => "every rate is corrected for the sound card's clock".to_string(),
             n => format!("{n} of {} rates corrected for the sound card's clock; the others are on the card's clock", sn.readings.len()),
         },
@@ -565,7 +572,7 @@ pub fn html(sn: &Session) -> String {
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&r.states));
     if !r.isochronism.is_empty() {
-        body.push_str(r#"<h3>Isochronism</h3><table class="data"><thead><tr><th>Position</th><th class="num">From</th><th class="num">To</th><th class="num">Rate change s/d</th><th class="num">Amplitude change deg</th></tr></thead><tbody>"#);
+        body.push_str(r#"<h3>Isochronism</h3><table class="data"><thead><tr><th>Position</th><th class="num">From</th><th class="num">To</th><th class="num">Rate change<br>sec/day</th><th class="num">Amplitude change deg</th></tr></thead><tbody>"#);
         for i in &r.isochronism {
             let _ = write!(
                 body,
@@ -579,7 +586,7 @@ pub fn html(sn: &Session) -> String {
         }
         let _ = write!(
             body,
-            r#"</tbody></table><p>Im {} s/d (largest, excluding 12H), Im* {} s/d (all positions), Ie {} s/d (change in mean rate), N {} (with Witschi's default thermal term 0.6).</p>"#,
+            r#"</tbody></table><p>Im {} seconds per day (largest, excluding 12H), Im* {} (all positions), Ie {} (change in mean rate), N {} (with Witschi's default thermal term 0.6).</p>"#,
             signed(r.im, 1),
             signed(r.im_all, 1),
             opt(r.ie, 1),
