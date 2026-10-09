@@ -263,12 +263,16 @@ Windows more than 40° from their file's median, over both sides, in
 | Dandong 3235, files 01–03 | 25, 53, 49 | 20, 50, 36 |
 | ETA 2824 bare, Peacock, Yacht-Master crown left | 0–7 per file | unchanged |
 
-Medians move by 1° or less, and rate is untouched. The exception is the
-ETA in its holder, whose smeared tick the guide moves to a later rise in
-some windows: `analyze` reads 321 / 348 / 308° against 321 / 329 / 285°
-before and tg's 294–300°; that take still waits for the smeared-tick fix.
+Medians move by 1° or less, and rate is untouched. On the ETA in its
+holder, whose smeared tick fails the plausibility check in most windows
+when the whole file is read at once, `analyze`'s median of the few that
+pass shifts (321 / 329 / 285° to 321 / 348 / 308°); read in chunks, as
+`session` and `long` do, its amplitude moves from 309 / 320 / 313° to
+309 / 321 / 315° (tg 294–300°). That take still waits for the
+smeared-tick fix.
 The unit test `a_bump_of_noise_before_the_unlock_is_not_sound_1` puts a
 bump 15 ms before the drop on every Tick of one window.
+
 ## Knocks that outmatch a beat: the beat window
 
 Pass 2 follows the template's correlation peaks, taking the best match
