@@ -483,13 +483,13 @@ pub fn mark(m: Mark) -> &'static str {
 
 fn csv(s: &Session) -> String {
     let mut t = String::from(
-        "recording,position,wind_h,measured_s,beats,clean_fraction,calibrated,rate_s_per_day,amplitude_deg,beat_error_ms,jitter_us,rate_p05,rate_p95,ref_rate,ref_amplitude,ref_beat_error\n",
+        "recording,position,wind_h,measured_s,beats,clean_fraction,calibrated,rate_s_per_day,amplitude_deg,beat_error_unlock_ms,beat_error_drop_ms,jitter_us,rate_p05,rate_p95,ref_rate,ref_amplitude,ref_beat_error\n",
     );
     for r in &s.readings {
         let m = &r.measurement;
         let rf = r.reference.clone().unwrap_or_default();
         t.push_str(&format!(
-            "{},{},{},{:.1},{},{:.3},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{:.1},{},{:.3},{},{},{},{},{},{},{},{},{},{},{}\n",
             r.label.replace(',', ";"),
             r.position,
             opt(r.wind_h, 1).replace('-', ""),
@@ -499,6 +499,7 @@ fn csv(s: &Session) -> String {
             m.calibrated,
             opt(m.rate_s_per_day, 2),
             opt(m.amplitude_deg, 1),
+            opt(m.beat_error_unlock_ms.map(f64::abs), 3),
             opt(m.beat_error_ms.map(f64::abs), 3),
             opt(m.jitter_us, 0),
             opt(m.rate_p05, 1),
@@ -544,12 +545,12 @@ fn print_summary(s: &Session) {
     );
     println!();
     println!(
-        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>7} {:>15} {:>17}  Recording",
-        "Pos", "Wind", "Rate", "Amp", "BE", "Jitter", "10 s rates", "Reference"
+        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}  Recording",
+        "Pos", "Wind", "Rate", "Amp", "BE", "drop", "Jitter", "10 s rates", "Reference"
     );
     println!(
-        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>7} {:>15} {:>17}",
-        "", "", "s/d", "deg", "ms", "us", "s/d", "s/d, deg, ms"
+        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}",
+        "", "", "s/d", "deg", "ms", "ms", "us", "s/d", "s/d, deg, ms"
     );
     for (rd, v) in s.readings.iter().zip(&r.verdicts) {
         let m = &rd.measurement;
@@ -566,15 +567,16 @@ fn print_summary(s: &Session) {
             })
             .unwrap_or_default();
         println!(
-            "{:<5} {:<6} {:>7}{:1} {:>5}{:1} {:>5}{:1} {:>7} {:>15} {:>17}  {}{}",
+            "{:<5} {:<6} {:>7}{:1} {:>5}{:1} {:>5}{:1} {:>5} {:>7} {:>15} {:>17}  {}{}",
             rd.position.code(),
             wind(rd.wind_h),
             signed(m.rate_s_per_day, 1),
             mark(v.rate),
             opt(m.amplitude_deg, 0),
             mark(v.amplitude),
-            opt(m.beat_error_ms.map(f64::abs), 2),
+            opt(m.beat_error(), 2),
             mark(v.beat_error),
+            opt(m.beat_error_ms.map(f64::abs), 2),
             opt(m.jitter_us, 0),
             format!("{}..{}", signed(m.rate_p05, 0), signed(m.rate_p95, 0)),
             rf,

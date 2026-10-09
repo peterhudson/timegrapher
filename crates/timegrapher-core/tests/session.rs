@@ -102,6 +102,12 @@ fn six_positions_give_witschi_values_and_findings() {
             "{p}: {:?}",
             m.beat_error_ms
         );
+        // Unlock and drop beat errors agree when the sides' impulses match.
+        assert!(
+            close(m.beat_error(), 0.2, 0.05),
+            "{p}: {:?}",
+            m.beat_error_unlock_ms
+        );
         assert!(
             (m.end_s - m.start_s - 40.0).abs() < 0.5,
             "settling time not skipped"
