@@ -239,6 +239,19 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 
 /// A layout saved before the Steadiness pane existed, with it added as a
 /// tab beside the profile (or at the top, if the profile is not in tabs).
+/// After a drag moves a tab out of a tab group, egui_tiles can leave the
+/// group's active tab pointing at the tile that left, so the group shows
+/// nothing. Point every group back at one of its own tabs.
+fn repair_tabs(tree: &mut Tree<Pane>) {
+    for tile in tree.tiles.tiles_mut() {
+        if let egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t)) = tile {
+            if t.active.is_none_or(|a| !t.children.contains(&a)) {
+                t.active = t.children.first().copied();
+            }
+        }
+    }
+}
+
 fn add_missing_steadiness(tree: &mut Tree<Pane>) {
     if tree.tiles.find_pane(&Pane::Steadiness).is_some() {
         return;
@@ -3186,6 +3199,7 @@ impl TimegrapherApp {
         }
         self.charts_to_live_now = std::mem::take(&mut self.charts_to_live);
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
+        repair_tabs(&mut panes);
         panes.ui(&mut PaneBehavior { app: self }, ui);
         self.panes = panes;
     }
@@ -4720,6 +4734,35 @@ mod tests {
             again.panes.tiles.parent_of(sound),
             again.panes.tiles.parent_of(steady)
         );
+    }
+
+    #[test]
+    fn moving_steadiness_out_leaves_the_profile_showing() {
+        let app = synthetic(40.0, 0.0);
+        let mut tree = app.panes.clone();
+        let steady = tree.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let sound = tree.tiles.find_pane(&Pane::Sound).unwrap();
+        let tabs = tree.tiles.parent_of(steady).unwrap();
+        // What a drag leaves behind: Steadiness active in the profile's
+        // tab group but moved into a tab group of its own.
+        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(tabs) {
+            c.remove_child(steady);
+            if let egui_tiles::Container::Tabs(t) = c {
+                t.active = Some(steady);
+            }
+        }
+        let own = tree.tiles.insert_tab_tile(vec![steady]);
+        let root = tree.root().unwrap();
+        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(root) {
+            c.add_child(own);
+        }
+        repair_tabs(&mut tree);
+        let Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) =
+            tree.tiles.get(tabs)
+        else {
+            panic!("the profile's tab group is gone");
+        };
+        assert_eq!(t.active, Some(sound));
     }
 
     #[test]
