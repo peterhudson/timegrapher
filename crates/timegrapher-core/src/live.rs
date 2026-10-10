@@ -75,10 +75,9 @@ pub struct LiveReading {
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
-    /// the 2 s windows alone: the standard error of their median, from a
-    /// robust spread of successive differences (so a slow drift doesn't
-    /// count as scatter), when there are at least 3 windows. Precision, not
-    /// accuracy: a wrong lift angle moves every amplitude together.
+    /// the 2 s windows alone, as `amplitude::standard_error` gives it for a
+    /// recording: precision, not accuracy, since a wrong lift angle moves
+    /// every amplitude together.
     pub amplitude_error_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
@@ -487,14 +486,9 @@ impl LiveAnalyzer {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
         };
-        let amplitude_error_deg = {
-            let v: Vec<f64> = wins.iter().filter_map(|w| w.mean()).collect();
-            let d: Vec<f64> = v.windows(2).map(|p| p[1] - p[0]).collect();
-            // A difference of two has √2 times one value's spread, and the
-            // median's standard error is about 1.25 times the mean's.
-            (v.len() >= 3)
-                .then(|| 1.2533 * crate::dsp::robust_sd(&d) / 2f64.sqrt() / (v.len() as f64).sqrt())
-        };
+        let amplitude_error_deg = crate::amplitude::standard_error(
+            &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
+        );
         LiveReading {
             time_s: end_s,
             bph: self.bph,
