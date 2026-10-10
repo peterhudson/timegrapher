@@ -6,6 +6,7 @@ use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
 use crate::settings::Settings;
+use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
@@ -104,13 +105,15 @@ pub enum Pane {
     RateHistogram,
     AmplitudeHistogram,
     BeatErrorHistogram,
+    Steadiness,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 8] = [
+    const ALL: [Pane; 9] = [
         Pane::Strip,
         Pane::Sound,
+        Pane::Steadiness,
         Pane::Rate,
         Pane::Amplitude,
         Pane::BeatError,
@@ -135,6 +138,7 @@ impl Pane {
             Pane::RateHistogram => "Rate Distribution",
             Pane::AmplitudeHistogram => "Amplitude Distribution",
             Pane::BeatErrorHistogram => "Beat Error Distribution",
+            Pane::Steadiness => "Steadiness",
         }
     }
 
@@ -168,6 +172,10 @@ impl Pane {
             Pane::BeatErrorHistogram => {
                 "The beat error readings, from the unlock, on probability paper"
             }
+            Pane::Steadiness => {
+                "Whether the rate, amplitude and beat error each hold steady over the \
+                 session, or carry a cycle, two states, a step, a drift or wander"
+            }
         }
     }
 }
@@ -188,6 +196,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let sound = tabbed(Pane::Sound);
     let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
     let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
+    // The steadiness tests share the profile's place, as a second tab.
+    let steadiness = tiles.insert_pane(Pane::Steadiness);
+    if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
+        c.add_child(steadiness);
+    }
     let dir = if horizontal {
         LinearDir::Horizontal
     } else {
@@ -220,6 +233,29 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         set_pane_visible(&mut tree.tiles, p, false);
     }
     tree
+}
+
+/// A layout saved before the Steadiness pane existed, with it added as a
+/// tab beside the profile (or at the top, if the profile is not in tabs).
+fn add_missing_steadiness(tree: &mut Tree<Pane>) {
+    if tree.tiles.find_pane(&Pane::Steadiness).is_some() {
+        return;
+    }
+    let pane = tree.tiles.insert_pane(Pane::Steadiness);
+    let host = tree
+        .tiles
+        .find_pane(&Pane::Sound)
+        .and_then(|sound| tree.tiles.parent_of(sound))
+        .filter(|&id| {
+            matches!(
+                tree.tiles.get(id),
+                Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+            )
+        })
+        .or(tree.root());
+    if let Some(Some(egui_tiles::Tile::Container(c))) = host.map(|id| tree.tiles.get_mut(id)) {
+        c.add_child(pane);
+    }
 }
 
 /// Whether a saved layout holds every pane exactly once.
@@ -392,6 +428,12 @@ pub struct TimegrapherApp {
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
     hist_readings: bool,
+    /// What the Steadiness pane draws under each verdict.
+    steady_view: steady::View,
+    /// The steadiness tests' latest answer over the session, and the run
+    /// in the background that will replace it.
+    steady: Option<Steadiness>,
+    steady_job: Option<std::sync::mpsc::Receiver<Steadiness>>,
     /// The time under the pointer on the strip or a chart, drawn as a
     /// cursor on all of them: last frame's, and this frame's so far.
     cursor_t: Option<f64>,
@@ -477,6 +519,7 @@ impl TimegrapherApp {
             folded: self.folded.iter().cloned().collect(),
             sidebar: self.sidebar,
             theme: self.theme,
+            steady_view: self.steady_view,
             panes: Some(self.panes.clone()),
         }
     }
@@ -500,6 +543,7 @@ impl TimegrapherApp {
             folded,
             sidebar,
             theme,
+            steady_view,
             panes,
         } = s;
         // Checked against the inputs when they are listed.
@@ -526,7 +570,11 @@ impl TimegrapherApp {
         self.folded = folded.into_iter().collect();
         self.sidebar = sidebar;
         self.theme = theme;
-        self.panes = match panes {
+        self.steady_view = steady_view;
+        self.panes = match panes.map(|mut p| {
+            add_missing_steadiness(&mut p);
+            p
+        }) {
             Some(p) if layout_is_whole(&p) => p,
             _ => default_layout(self.strip.horizontal),
         };
@@ -575,6 +623,9 @@ impl TimegrapherApp {
             overlays: [true, false, false],
             span_of_strip: false,
             hist_cumulative: false,
+            steady_view: steady::View::default(),
+            steady: None,
+            steady_job: None,
             hist_readings: true,
             cursor_t: None,
             cursor_next: None,
@@ -682,6 +733,8 @@ impl TimegrapherApp {
         self.sound_history.clear();
         self.sound_at = None;
         self.sound_job = None;
+        self.steady = None;
+        self.steady_job = None;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -1045,6 +1098,8 @@ impl TimegrapherApp {
 
     fn show_log(&mut self, log: BeatLog, label: String) {
         self.live = Some(LiveAnalyzer::from_log(log, self.live_config()));
+        self.steady = None;
+        self.steady_job = None;
         self.rebuild_trend();
         self.source_label = label;
         self.anchor = None;
@@ -1452,6 +1507,12 @@ impl TimegrapherApp {
         self.show_readings = on;
         self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
         self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
+        self.pane_section(
+            ui,
+            Pane::Steadiness,
+            help::STEADINESS,
+            Self::steady_settings,
+        );
         self.section(ui, "Charts", None, help::CHARTS, |app, ui| {
             app.pane_switches(ui, &Pane::CHARTS);
             app.span_setting(ui);
@@ -1509,6 +1570,65 @@ impl TimegrapherApp {
                 set_pane_visible(&mut self.panes.tiles, pane, on);
             }
         }
+    }
+
+    fn steady_settings(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.add(
+            egui::Label::new(
+                RichText::new(
+                    "Tested over the whole session once it has 5 minutes of beats, and \
+                     again every minute while it grows. Pick the view at the top of the pane.",
+                )
+                .small()
+                .color(pal.text_secondary),
+            )
+            .wrap(),
+        );
+    }
+
+    /// The Steadiness pane: start the tests when there is enough new, show
+    /// the latest answer.
+    fn steady_pane(&mut self, ui: &mut egui::Ui) {
+        if let Some(rx) = &self.steady_job {
+            match rx.try_recv() {
+                Ok(s) => {
+                    self.steady = Some(s);
+                    self.steady_job = None;
+                }
+                Err(TryRecvError::Disconnected) => self.steady_job = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+        let dur = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        let upto = self.steady.as_ref().map(|s| s.upto_s);
+        let due = match upto {
+            None => true,
+            Some(u) if self.running() => dur - u >= steady::RERUN_S,
+            Some(u) => dur - u > 1.0,
+        };
+        if self.steady_job.is_none() && due && dur >= steady::MIN_S {
+            if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let ctx = ui.ctx().clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(steady::compute(&log));
+                    ctx.request_repaint();
+                });
+                self.steady_job = Some(rx);
+            }
+        }
+        let working = self.steady_job.is_some();
+        let status = match upto {
+            Some(u) if working => format!("Tested over {} of beats · updating", strip::fmt_time(u)),
+            Some(u) => format!("Tested over {} of beats", strip::fmt_time(u)),
+            None if working => "Testing the session…".to_string(),
+            None => format!(
+                "The tests need 5 minutes of beats; {} so far",
+                strip::fmt_time(dur)
+            ),
+        };
+        steady::draw(ui, self.steady.as_ref(), &status, &mut self.steady_view);
     }
 
     fn histogram_settings(&mut self, ui: &mut egui::Ui) {
@@ -3427,6 +3547,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| match pane {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
+            Pane::Steadiness => self.app.steady_pane(ui),
             p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
             p => self.app.chart(ui, *p),
         });
@@ -4038,6 +4159,27 @@ mod tests {
         broken.panes = Some(Tree::new("panes", only, tiles));
         again.apply_settings(broken);
         assert!(layout_is_whole(&again.panes));
+        // A layout from before the Steadiness pane keeps its arrangement
+        // and gains the pane as a tab beside the profile.
+        let mut before = app.settings();
+        let mut tree = app.panes.clone();
+        let id = tree.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let tabs = tree.tiles.parent_of(id).unwrap();
+        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(tabs) {
+            c.remove_child(id);
+        }
+        tree.tiles.remove(id);
+        assert!(!layout_is_whole(&tree));
+        before.panes = Some(tree);
+        again.apply_settings(before);
+        assert!(layout_is_whole(&again.panes));
+        assert!(again.strip.horizontal, "the saved arrangement was kept");
+        let sound = again.panes.tiles.find_pane(&Pane::Sound).unwrap();
+        let steady = again.panes.tiles.find_pane(&Pane::Steadiness).unwrap();
+        assert_eq!(
+            again.panes.tiles.parent_of(sound),
+            again.panes.tiles.parent_of(steady)
+        );
     }
 
     #[test]
