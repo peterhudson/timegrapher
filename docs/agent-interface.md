@@ -50,6 +50,7 @@ readings: anything that compares two documents should leave `software` out.
 | Kind | Command | The command's own fields |
 |---|---|---|
 | `analyze` | `analyze FILE --json` | `duration_s`, `sample_rate`, `bph`, `beats_found`, `watch_heard` (false when the beats are no steadier than noise, as on an empty stand: the median jitter is 2% of the beat period or more; every reading in the result then describes noise and must not be shown), `overall` (`rate_s_per_day`, `beat_error_ms`, `period_s`, `jitter_us`), `rate_p05`, `rate_p95`, `jitter_us`, `amplitude_deg` (+ even/odd), `amplitude_se_deg` (+ even/odd: the standard error from the spread between 2 s windows; precision, not accuracy, which rests on the lift angle), `lift_deg`, `timing_periods`, `amplitude_periods`, `clipping` (`samples`, `beats`, `beat_fraction`, `peak_dbfs`; more than 1% of beats clipped means the amplitude and beat error may be off) |
+| `calibres` | `calibres [NAME] --json` | `calibres[]`: `calibre`, `maker`, `family` (other names that match), `bph`, `lift_angle_deg`, `escape_teeth`, `seconds`, `wheels[]` (`name`, `period_s` for one full turn, `teeth`, `pinion`, `basis`), `sources`, `confidence`, `notes`; a figure no source gives is `null` or left out (below) |
 | `shape` | `shape FILE --json` | per pallet stone (even/odd beats): unlock, impulse and drop timing and level; see [fault-signatures.md](fault-signatures.md) |
 | `profile` | `profile FILE --at S --span S --json` | `a` (the tick: even beats) and `b` (the tock: odd beats): `beats`, `t0_ms`, `step_ms`, `median`, `p10`, `p90` (envelope point by point), `floor`, `unlock_ms`, `drop_ms`, `peak_ms`, `amplitude_deg`, `sound1_ms`, `sound2_ms`, `sound3_ms`; times in ms from the beat. `--svg FILE` also draws them |
 | `long` | `long FILES --json` | rate and amplitude over the run, clock calibration, periodic components named after wheels (`--calibre`, or both common escape wheels; `input.settings.named_wheels`) with false-alarm probability; also written to `summary.json` beside `report.html`; see [long-runs.md](long-runs.md) |
@@ -66,6 +67,25 @@ Tick and tock: the engine numbers beats from the first one it hears, so the tick
 Rates are seconds per day, positive gaining. Rates from a recording are on
 the sound card's clock unless `long` was given a clock log or a stored
 correction; a sound card can be tens of ppm off (1 ppm is 0.0864 s/d).
+
+## Calibres
+
+The lift angle sets the amplitude, so take it from the calibre, never
+from memory. `timegrapher calibres` lists the built-in table (the
+crate's `data/train-wheels.json`, whose README says where each figure
+comes from); `calibres NAME` shows one, matched on its name, its name
+without the maker, or one of its `family` names, ignoring case, spaces
+and punctuation. An unknown name exits 1.
+
+`analyze --calibre NAME` sets the beat rate, the lift angle and the
+escape wheel teeth from the table (52° and 15 teeth where it gives
+none) and names `timing_periods` and `amplitude_periods` after that
+calibre's wheels. `--bph`, `--lift` and
+`--escape-teeth` still win over it. Without a calibre, `analyze` guesses
+the beat rate and uses 52° and a 15-tooth escape wheel. The calibre and
+the settings used are in `input.settings` (`calibre`, `bph`, `lift_deg`,
+`escape_teeth`). A watch whose rate differs from its calibre's (a
+modified movement) needs `--bph`.
 
 ## `clock`
 
