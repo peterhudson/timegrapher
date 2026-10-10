@@ -2,6 +2,9 @@
   "schema": "timegrapher.regress-baseline/1",
   "software": {
     "arch": "x86_64",
+    "build_date": "2026-10-10",
+    "git_dirty": false,
+    "git_hash": "2dcf058",
     "name": "timegrapher",
     "os": "linux",
     "version": "0.1.0"
@@ -1403,6 +1406,104 @@
         "beat_error_unlock_ms": 0.029769649519590564,
         "beat_error_ms": 0.060369502652937,
         "beats": 4641
+      }
+    ],
+    "ym42_DU_2h/session.toml": [
+      {
+        "label": "ym42_DU_48000-01.flac",
+        "rate_s_per_day": 48.55404370041043,
+        "amplitude_deg": 251.6117092640299,
+        "beat_error_unlock_ms": 0.27026784016121963,
+        "beat_error_ms": 0.11085079494241173,
+        "beats": 4642
+      },
+      {
+        "label": "ym42_DU_48000-02.flac",
+        "rate_s_per_day": 48.30952162072535,
+        "amplitude_deg": 252.05413321681488,
+        "beat_error_unlock_ms": -0.26782442076865753,
+        "beat_error_ms": -0.04337868508288106,
+        "beats": 4639
+      },
+      {
+        "label": "ym42_DU_48000-03.flac",
+        "rate_s_per_day": 34.79347283222509,
+        "amplitude_deg": 248.58038776069085,
+        "beat_error_unlock_ms": 0.2984712458800279,
+        "beat_error_ms": 0.14315409402020887,
+        "beats": 4642
+      },
+      {
+        "label": "ym42_DU_48000-04.flac",
+        "rate_s_per_day": 24.946959288158865,
+        "amplitude_deg": 247.22040168558203,
+        "beat_error_unlock_ms": 0.3196854853217891,
+        "beat_error_ms": 0.13895330427530325,
+        "beats": 4641
+      },
+      {
+        "label": "ym42_DU_48000-05.flac",
+        "rate_s_per_day": 16.65809830539544,
+        "amplitude_deg": 246.79592405875815,
+        "beat_error_unlock_ms": 0.33228033419046166,
+        "beat_error_ms": 0.14152934381056415,
+        "beats": 4637
+      },
+      {
+        "label": "ym42_DU_48000-06.flac",
+        "rate_s_per_day": 14.379762414957042,
+        "amplitude_deg": 247.1487719301018,
+        "beat_error_unlock_ms": 0.32631096539129917,
+        "beat_error_ms": 0.09236336802388713,
+        "beats": 4638
+      },
+      {
+        "label": "ym42_DU_48000-07.flac",
+        "rate_s_per_day": 13.76825167841318,
+        "amplitude_deg": 246.5105499560863,
+        "beat_error_unlock_ms": -0.334686417087375,
+        "beat_error_ms": -0.011000964290159574,
+        "beats": 4639
+      },
+      {
+        "label": "ym42_DU_48000-08.flac",
+        "rate_s_per_day": 16.907747861917244,
+        "amplitude_deg": 251.5031102742313,
+        "beat_error_unlock_ms": 0.3222382040462859,
+        "beat_error_ms": 0.09290273523962211,
+        "beats": 4638
+      },
+      {
+        "label": "ym42_DU_48000-09.flac",
+        "rate_s_per_day": 8.058665295055079,
+        "amplitude_deg": 249.02041385343668,
+        "beat_error_unlock_ms": -0.3499810378487358,
+        "beat_error_ms": 0.013290548379656519,
+        "beats": 4635
+      },
+      {
+        "label": "ym42_DU_48000-10.flac",
+        "rate_s_per_day": 8.829440430867663,
+        "amplitude_deg": 250.78971032230783,
+        "beat_error_unlock_ms": -0.33815863370193494,
+        "beat_error_ms": -0.11645577498227408,
+        "beats": 4638
+      },
+      {
+        "label": "ym42_DU_48000-11.flac",
+        "rate_s_per_day": 8.570083381264482,
+        "amplitude_deg": 248.1927444914566,
+        "beat_error_unlock_ms": 0.33618171448980183,
+        "beat_error_ms": 0.15291024710465614,
+        "beats": 4641
+      },
+      {
+        "label": "ym42_DU_48000-12.flac",
+        "rate_s_per_day": 9.597717902838099,
+        "amplitude_deg": 247.45662281788285,
+        "beat_error_unlock_ms": 0.3332012656574085,
+        "beat_error_ms": 0.15983401262228275,
+        "beats": 4639
       }
     ]
   }
