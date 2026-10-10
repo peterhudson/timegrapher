@@ -859,8 +859,13 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
         opt(s.rate_p95, 1)
     );
     println!(
-        "Amplitude    {} deg (even beats {}, odd beats {}; lift angle {} deg)",
+        "Amplitude    {}{} deg (even beats {}, odd beats {}; lift angle {} deg)",
         opt(s.amplitude_deg, 0),
+        s.amplitude_se_deg.map_or(String::new(), |e| if e < 1.0 {
+            format!(" ± {e:.1}")
+        } else {
+            format!(" ± {e:.0}")
+        }),
         opt(s.amplitude_even_deg, 0),
         opt(s.amplitude_odd_deg, 0),
         s.lift_deg

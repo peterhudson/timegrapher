@@ -176,6 +176,24 @@ impl AmplitudeWindow {
     }
 }
 
+/// Standard error of the median of window amplitudes taken in time order,
+/// degrees: 1.25 s / sqrt(n), with s the spread from one window to the
+/// next (the MAD of successive differences over sqrt 2), so a slow drift
+/// or cycle in the watch's amplitude does not count as noise. None with
+/// fewer than three values.
+pub fn standard_error(values: &[f64]) -> Option<f64> {
+    if values.len() < 3 {
+        return None;
+    }
+    let mut d: Vec<f64> = values.windows(2).map(|w| w[1] - w[0]).collect();
+    let mid = crate::dsp::median(&mut d.clone());
+    for v in d.iter_mut() {
+        *v = (*v - mid).abs();
+    }
+    let s = 1.4826 * crate::dsp::median(&mut d) / std::f64::consts::SQRT_2;
+    Some(1.2533 * s / (values.len() as f64).sqrt())
+}
+
 /// Amplitude in consecutive windows of `window_s` seconds.
 pub fn windows(
     env: &[f32],
@@ -298,6 +316,36 @@ pub fn windows_between(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn standard_error_ignores_slow_change() {
+        // Gaussian noise of SD 2 from a fixed seed, alone and on a steep
+        // ramp: the ramp must not count as noise.
+        let mut seed = 12345u64;
+        let mut uniform = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 11) as f64 + 0.5) / (1u64 << 53) as f64
+        };
+        let noise: Vec<f64> = (0..400)
+            .map(|_| {
+                let (u, v) = (uniform(), uniform());
+                2.0 * (-2.0 * u.ln()).sqrt() * (2.0 * std::f64::consts::PI * v).cos()
+            })
+            .collect();
+        let want = 1.2533 * 2.0 / 20.0;
+        let flat = super::standard_error(&noise).unwrap();
+        let ramp: Vec<f64> = noise
+            .iter()
+            .enumerate()
+            .map(|(i, n)| 200.0 + 0.5 * i as f64 + n)
+            .collect();
+        let sloped = super::standard_error(&ramp).unwrap();
+        assert!((flat / want - 1.0).abs() < 0.2, "{flat} vs {want}");
+        assert!((sloped - flat).abs() < 1e-9, "{sloped} vs {flat}");
+        assert_eq!(super::standard_error(&[1.0, 2.0]), None);
+    }
+
     use super::*;
 
     #[test]
