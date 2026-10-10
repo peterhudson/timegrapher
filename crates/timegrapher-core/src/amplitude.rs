@@ -181,17 +181,23 @@ pub const OUTLIER_SPAN_S: f64 = 60.0;
 
 /// Leave out one side's amplitude in a window when it sits more than five
 /// robust SDs (at least 0.5°) from the median of that side's neighbours
-/// within `span_s`: an unlock or drop edge marked on the wrong sound, which
-/// moves one side by tens of degrees while the other stays put. Only the
+/// within `span_s` while the other side moved less than a quarter as many
+/// degrees from its own: an unlock or drop edge marked on the wrong sound,
+/// which moves one side by tens of degrees while the other stays put. When
+/// both sides move
+/// together the watch moved (a dip once a turn of a wheel), and both
+/// stay. Only the
 /// amplitude is left out: the edges stay for the shape view, and the
 /// unlock beat error is a median over windows already. Windows must be in
 /// time order. Returns how many sides were left out.
 pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize {
-    let flag = |get: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Vec<bool> {
+    // Each side's distance from its neighbours' median, degrees, and in
+    // robust SDs.
+    let score = |get: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Vec<Option<(f64, f64)>> {
         let vals: Vec<Option<f64>> = wins.iter().map(get).collect();
         (0..wins.len())
             .map(|i| {
-                let Some(v) = vals[i] else { return false };
+                let v = vals[i]?;
                 let mid = |w: &AmplitudeWindow| (w.start_s + w.end_s) / 2.0;
                 let lo = wins.partition_point(|w| mid(w) < mid(&wins[i]) - span_s / 2.0);
                 let hi = wins.partition_point(|w| mid(w) <= mid(&wins[i]) + span_s / 2.0);
@@ -200,19 +206,24 @@ pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize 
                     .filter_map(|j| vals[j])
                     .collect();
                 if near.len() < 5 {
-                    return false;
+                    return None;
                 }
                 let med = crate::dsp::median(&mut near.clone());
                 for x in near.iter_mut() {
                     *x = (*x - med).abs();
                 }
                 let sd = (1.4826 * crate::dsp::median(&mut near)).max(0.5);
-                (v - med).abs() > 5.0 * sd
+                Some(((v - med).abs(), (v - med).abs() / sd))
             })
             .collect()
     };
-    let even = flag(&|w| w.even_deg);
-    let odd = flag(&|w| w.odd_deg);
+    let (even, odd) = (score(&|w| w.even_deg), score(&|w| w.odd_deg));
+    let lone = |a: Option<(f64, f64)>, b: Option<(f64, f64)>| matches!((a, b), (Some(a), Some(b)) if a.1 > 5.0 && b.0 < 0.25 * a.0);
+    let (even, odd): (Vec<bool>, Vec<bool>) = even
+        .iter()
+        .zip(&odd)
+        .map(|(&e, &o)| (lone(e, o), lone(o, e)))
+        .unzip();
     let mut n = 0;
     for (w, (e, o)) in wins.iter_mut().zip(even.into_iter().zip(odd)) {
         if e {
