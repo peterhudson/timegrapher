@@ -1043,7 +1043,10 @@ impl TimegrapherApp {
             }
         }
         let label = if path.is_dir() {
-            format!("{} ({} files)", capture_label(path), files.len())
+            match files.len() {
+                1 => format!("{} (1 file)", capture_label(path)),
+                n => format!("{} ({n} files)", capture_label(path)),
+            }
         } else {
             capture_label(path)
         };
@@ -3226,6 +3229,7 @@ impl TimegrapherApp {
         let frac = b.duration_s.map(|d| (done / d.max(1e-9)).clamp(0.0, 1.0));
         ui.add(
             egui::ProgressBar::new(frac.unwrap_or(0.0) as f32)
+                .desired_width(ui.available_width())
                 .desired_height(16.0)
                 .fill(pal.accent)
                 .text(RichText::new(match frac {
