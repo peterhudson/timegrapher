@@ -184,27 +184,38 @@ fn mean(v: &[f32]) -> f64 {
 }
 
 fn count_clipped(x: &[f32], clip_level: f32) -> usize {
+    clipped_indices(x, clip_level).len()
+}
+
+/// The samples that are clipped: at or above `clip_level`, or in a flat top
+/// (four or more equal samples at the recording's peak, which is how
+/// clipping before the converter shows once the level is turned down
+/// after it). In order.
+pub fn clipped_indices(x: &[f32], clip_level: f32) -> Vec<usize> {
     let peak = x.iter().fold(0f32, |m, v| m.max(v.abs()));
-    let mut n = x.iter().filter(|v| v.abs() >= clip_level).count();
-    if peak > 0.25 && peak < clip_level {
-        // Flat tops: runs of equal samples at the peak.
+    if peak >= clip_level {
+        return (0..x.len()).filter(|&i| x[i].abs() >= clip_level).collect();
+    }
+    let mut out = Vec::new();
+    if peak > 0.25 {
         let near = |v: f32| (v.abs() - peak).abs() <= peak * 1e-3;
         let mut run = 0;
-        for w in x.windows(2) {
-            if near(w[0]) && near(w[1]) && (w[0] - w[1]).abs() <= peak * 1e-3 {
+        for i in 1..x.len() {
+            let (a, b) = (x[i - 1], x[i]);
+            if near(a) && near(b) && (a - b).abs() <= peak * 1e-3 {
                 run += 1;
             } else {
                 if run >= 3 {
-                    n += run + 1;
+                    out.extend(i - run - 1..i);
                 }
                 run = 0;
             }
         }
         if run >= 3 {
-            n += run + 1;
+            out.extend(x.len() - run - 1..x.len());
         }
     }
-    n
+    out
 }
 
 /// Measure a short recording and name what is wrong with it.

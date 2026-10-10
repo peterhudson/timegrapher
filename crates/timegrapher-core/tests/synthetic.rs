@@ -191,3 +191,26 @@ fn sides_that_differ_in_shape_keep_their_drop() {
         assert!((a - 245.0).abs() < 8.0, "{s:?}");
     }
 }
+
+#[test]
+fn clipping_is_counted_per_beat() {
+    let cfg = SynthConfig {
+        duration_s: 20.0,
+        ..Default::default()
+    };
+    let mut audio = generate(&cfg, |_| 280.0, |_| 0.0);
+    let clean = analyze(&audio, &AnalysisConfig::default()).summary;
+    assert_eq!(clean.clipping.samples, 0);
+    assert!(!clean.clipping.warns());
+
+    // Drive it 12 dB too hot and clip at full scale, as a converter does.
+    let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+    for v in audio.samples.iter_mut() {
+        *v = (*v * 4.0 / peak).clamp(-1.0, 1.0);
+    }
+    let hot = analyze(&audio, &AnalysisConfig::default()).summary;
+    let c = hot.clipping;
+    assert!(c.warns(), "{c:?}");
+    assert!(c.beat_fraction > 0.5, "{c:?}");
+    assert!(c.peak_dbfs > -0.1, "{c:?}");
+}

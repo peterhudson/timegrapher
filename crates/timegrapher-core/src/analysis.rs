@@ -58,7 +58,61 @@ pub struct Summary {
     /// Strongest periodic components of the timing and the amplitude.
     pub timing_periods: Vec<Component>,
     pub amplitude_periods: Vec<Component>,
+    /// How much of the recording is clipped.
+    pub clipping: Clipping,
 }
+
+/// Clipping flattens the loudest part of a tick, which moves the drop and
+/// so the amplitude and the beat error; rate is unaffected.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Clipping {
+    /// Clipped samples (see [`crate::diagnose::clipped_indices`]).
+    pub samples: usize,
+    /// Beats with a clipped sample within their template window.
+    pub beats: usize,
+    /// `beats` as a fraction of the beats found.
+    pub beat_fraction: f64,
+    /// Highest sample, dB relative to full scale.
+    pub peak_dbfs: f64,
+}
+
+impl Clipping {
+    /// Above this fraction of clipped beats the readings carry a warning.
+    pub const WARN_FRACTION: f64 = 0.01;
+
+    pub fn measure(x: &[f32], fs: f64, beats: &[Beat]) -> Clipping {
+        let idx = crate::diagnose::clipped_indices(x, CLIP_LEVEL);
+        let (pre, post) = (
+            (beats::PRE_S * fs).round() as usize,
+            (beats::POST_S * fs).round() as usize,
+        );
+        let hit = |b: &Beat| {
+            let c = (b.time * fs).round().max(0.0) as usize;
+            let k = idx.partition_point(|&i| i < c.saturating_sub(pre));
+            idx.get(k).is_some_and(|&i| i <= c + post)
+        };
+        let n = beats.iter().filter(|b| hit(b)).count();
+        let peak = x.iter().fold(0f32, |m, v| m.max(v.abs())) as f64;
+        Clipping {
+            samples: idx.len(),
+            beats: n,
+            beat_fraction: if beats.is_empty() {
+                0.0
+            } else {
+                n as f64 / beats.len() as f64
+            },
+            peak_dbfs: 20.0 * peak.max(1e-10).log10(),
+        }
+    }
+
+    /// Enough clipped beats to doubt the amplitude and beat error.
+    pub fn warns(&self) -> bool {
+        self.beat_fraction > Self::WARN_FRACTION
+    }
+}
+
+/// A sample at or above this magnitude counts as clipped, as in `doctor`.
+const CLIP_LEVEL: f32 = 0.99;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Analysis {
@@ -156,6 +210,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         lift_deg: cfg.amplitude.lift_deg,
         timing_periods: search(timing_series),
         amplitude_periods: search(amp_series),
+        clipping: Clipping::measure(&audio.samples, fs, &beats),
     };
     Analysis {
         summary,
