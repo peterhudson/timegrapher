@@ -2605,7 +2605,7 @@ impl TimegrapherApp {
                 );
                 ui.label("s");
                 if ui
-                    .small_button("✕")
+                    .small_button("Remove")
                     .on_hover_text("Remove this wheel")
                     .clicked()
                 {

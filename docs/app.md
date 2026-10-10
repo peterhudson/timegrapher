@@ -339,6 +339,16 @@ position.
   clips and changes the shape of the sound; if it is on, the card shows
   an amber warning with **Turn it off**, and otherwise says nothing about
   it.
+- **Calibre.** Not Set, a calibre from the built-in table
+  (`timegrapher_core::calibres`, grouped by maker; each entry's hint gives
+  its beat rate, lift angle and wheel periods), or one of your own.
+  Picking one fills in its lift angle and names the cycles Steadiness
+  finds after its own wheels; if the watch beats at another rate than the
+  calibre, the card says so. **New Custom Calibre** adds one with a name
+  and a list of wheels and their turn periods in seconds, to edit in
+  place; it is kept for next time. Not Set names cycles after the wheels
+  most calibres at the beat rate share. The pick itself, like the lift
+  angle, is about the watch on the stand and isn't kept.
 - **Beat rate.** Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,
