@@ -173,7 +173,7 @@ fn isochronism_from_two_states_of_wind() {
     let readings = vec![
         reading(Position::CH, 0.0, 4.0, 290.0, 0.1),
         reading(Position::H6, 0.0, 1.0, 260.0, 0.1),
-        reading(Position::CH, 24.0, 7.0, 250.0, 0.1),
+        reading(Position::CH, 24.0, 7.0, 250.0, 0.4),
         reading(Position::H6, 24.0, -3.0, 215.0, 0.1),
     ];
     let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
@@ -185,6 +185,16 @@ fn isochronism_from_two_states_of_wind() {
         .find(|i| i.position == Position::CH)
         .unwrap();
     assert!((ch.rate_change - 3.0).abs() < 0.6, "{}", ch.rate_change);
+    assert!(
+        close(ch.amplitude_change, -40.0, 8.0),
+        "{:?}",
+        ch.amplitude_change
+    );
+    assert!(
+        close(ch.beat_error_change, 0.3, 0.1),
+        "{:?}",
+        ch.beat_error_change
+    );
     assert!(close(rep.im, -4.0, 0.6), "Im {:?}", rep.im);
     assert!(close(rep.ie, 0.5, 0.6), "Ie {:?}", rep.ie);
     // The tolerance applies fully wound only: the 215° at 24 h is not judged.

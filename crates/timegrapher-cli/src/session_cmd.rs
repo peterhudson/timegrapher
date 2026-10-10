@@ -648,12 +648,13 @@ fn print_summary(s: &Session) {
     }
     for i in &r.isochronism {
         println!(
-            "Isochronism  {} {} s/d from {:.0} h to {:.0} h ({} deg)",
+            "Isochronism  {} {} s/d from {:.0} h to {:.0} h ({} deg, beat error {} ms)",
             i.position,
             signed(Some(i.rate_change), 1),
             i.from_wind_h,
             i.to_wind_h,
-            signed(i.amplitude_change, 0)
+            signed(i.amplitude_change, 0),
+            signed(i.beat_error_change, 2)
         );
     }
     if r.im.is_some() || r.ie.is_some() {

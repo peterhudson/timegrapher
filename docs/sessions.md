@@ -178,8 +178,9 @@ Per state of wind (readings with the same `wind_h`), following Witschi:
 | DVH | vertical mean minus horizontal mean (rate and amplitude) |
 | Di | 6H minus CH |
 
-Across states of wind: isochronism per position (rate change from the
-fullest to the least wound reading), Im (the largest, excluding 12H, as in
+Across states of wind: isochronism per position (the change in rate,
+amplitude and beat error from the fullest to the least wound reading;
+`rate_change`, `amplitude_change` and `beat_error_change` in the JSON), Im (the largest, excluding 12H, as in
 NIHS 93-10), Im\* (over all positions), Ie (change in X over the
 positions measured in both) and N = 0.15·|Im| + 0.1·D + 0.6 (Witschi's
 quality factor with its default thermal term).
