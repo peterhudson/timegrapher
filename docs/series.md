@@ -133,6 +133,29 @@ scatter and the spread about the trend. If more than 3% of the readings
 would be left out, none are, because then they are part of what the
 watch does.
 
+## Isochronism and the 0 h / 24 h comparison
+
+As the mainspring lets down, the amplitude falls and the rate moves with
+it. The isochronism curve bins the rate's 10 s readings by the amplitude
+of the same reading (2° bins, each with at least 10 readings, between the
+2nd and 98th percentile of the amplitudes) and gives each bin's median
+rate, its quartiles and when in the take its readings fall. A straight
+line through the bins, weighted by readings, gives the s/d per degree; a
+quadratic gives the curve, and the amplitude where it turns (where the
+rate changes least) when that is inside the range. On a short take the
+amplitude covers only a few degrees and the curve is mostly noise; a
+run-down of many hours is what it is for. The cyclic co-movement inside
+half an hour is the rate-to-amplitude line above, not this curve.
+
+The wind-down comparison is the commercial 0 h / 24 h test for one
+position. It compares the median rate, amplitude and beat error of the
+first half hour of the take with the half hour that starts 24 h after
+full wind, or with the take's last half hour when it ends sooner (it
+needs at least two hours). `--wind-h H` says how many hours after full
+wind the take started (default 0: it started at full wind). For several
+positions, record two sessions, at full wind and about 24 h later, with
+`wind_h` set in each (see [sessions.md](sessions.md)).
+
 ## JSON (`timegrapher.series/1`)
 
 The usual envelope (see [agent-interface.md](agent-interface.md)), then:
@@ -142,6 +165,8 @@ The usual envelope (see [agent-interface.md](agent-interface.md)), then:
 | `duration_s`, `bph` | the take |
 | `config` | the thresholds used |
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
+| `isochronism` | the rate by amplitude: `step_s`, `bin_deg`, `bins[]` (`amplitude_deg`, `readings`, `rate_s_per_day`, `rate_q25`, `rate_q75`, `from_wind_h`, `to_wind_h`), `amplitude_from_deg`, `amplitude_to_deg`, `s_per_day_per_deg`, `rate_change_s_per_day`, `curve_centre_deg`, `curve` (`[c0, c1, c2]` in A − centre), `curve_explained`, `turn_deg`, `headline`; null with fewer than three bins |
+| `wind_down` | `start` and `end` (`from_wind_h`, `to_wind_h`, `readings`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`), `hours_apart`, `at_24h`, `rate_change_s_per_day`, `amplitude_change_deg`, `beat_error_change_ms`, `headline`; null under two hours |
 | `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `moves_with`, `headline` |
 | `findings[]` | `code`, `series`, `severity` (`fault`, `warning`, `note`), `title`, `evidence`, `advice`. Codes: `periodic`, `two_states`, `measurement_split`, `shifting_mean`, `drifting`, `wandering`, and `rate_moves_with_amplitude`. A steady series has none. |
 
