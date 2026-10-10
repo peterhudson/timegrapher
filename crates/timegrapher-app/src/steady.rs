@@ -34,7 +34,7 @@ const ESCAPE_TEETH: u32 = 15;
 const MAX_DRAWN: usize = 3000;
 /// Shortest row, and narrowest column, in which a series' plot stays
 /// readable, points.
-const MIN_ROW: f32 = 150.0;
+const MIN_ROW: f32 = 120.0;
 const MIN_COLUMN: f32 = 260.0;
 
 /// What the plot under each verdict shows.
@@ -403,7 +403,7 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: &mut 
     // Each gap also takes the layout's spacing either side of it.
     let step_gap = gap + 2.0 * ui.spacing().item_spacing.y;
     let fits = |count: usize, room: f32| (room - step_gap * (count as f32 - 1.0)) / count as f32;
-    if fits(n, h) >= MIN_ROW || fits(n, w) < MIN_COLUMN {
+    if fits(n, h) - 4.0 >= MIN_ROW || fits(n, w) < MIN_COLUMN {
         // One above another, filling the pane, or scrolling when it is too
         // short for every row to be readable.
         // A little short of the room, so the last axis isn't clipped.
@@ -555,10 +555,12 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .filter(|(p, v)| **p > 0.0 && v.is_finite())
                 .map(|(p, v)| [p.log10(), *v])
                 .collect();
-            let (x_lo, x_hi) = (
-                pts.first().map_or(0.0, |p| p[0]),
-                pts.last().map_or(1.0, |p| p[0]),
-            );
+            // The search runs from long periods to short.
+            let x_lo = pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+            let x_hi = pts.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+            if x_lo.partial_cmp(&x_hi) != Some(std::cmp::Ordering::Less) {
+                return note(ui, "The period search needs a longer session.");
+            }
             let top = pts.iter().map(|p| p[1]).fold(search.threshold, f64::max) * 1.15;
             base.x_grid_spacer(log_grid)
                 .x_axis_formatter(|m, r| log_label(m, r, secs))
@@ -661,11 +663,11 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 p.text(
                     Text::new(
                         "cycle label",
-                        PlotPoint::new(b.max()[0], b.max()[1]),
+                        PlotPoint::new(b.max()[0], b.min()[1]),
                         format!("{label} "),
                     )
                     .color(pal.text_secondary)
-                    .anchor(egui::Align2::RIGHT_TOP),
+                    .anchor(egui::Align2::RIGHT_BOTTOM),
                 );
             });
         }
