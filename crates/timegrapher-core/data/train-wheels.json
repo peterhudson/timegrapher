@@ -1,0 +1,1046 @@
+[
+  {
+    "calibre": "ETA 2824-2",
+    "maker": "ETA",
+    "family": [
+      "2824",
+      "2824-2 (clone)",
+      "2836-2",
+      "2834-2"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 50,
+    "seconds": "centre, direct (fourth wheel at the centre)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "published tooth count"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://17jewels.info/movements/e/eta/eta-2824-2/ (20-tooth steel escape wheel, direct centre seconds, no true centre wheel)",
+      "https://www.uhrwerksarchiv.de/movements/e/eta/eta-2824-2/",
+      "https://www.awci.com/wp-content/uploads/2013/10/TomsTips_Web_Nov13.pdf (lift angle table)",
+      "https://en.wikipedia.org/wiki/List_of_ETA_Movements"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "No true centre wheel: the great wheel sits off centre at 5 o'clock and its period is not known, so it is left out; the minute hand's cannon pinion turns once an hour. 38 h power reserve. Tooth counts of the third and fourth wheels and the barrel were not found. The 2836-2 and 2834-2 add day and date to the same base. The clone on Peter's bench is recorded as '2824-2'."
+  },
+  {
+    "calibre": "Sellita SW200-1",
+    "maker": "Sellita",
+    "family": [
+      "SW200",
+      "SW200-1"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct (fourth wheel at the centre)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: the SW200 copies the 2824-2, whose escape wheel has 20 teeth"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://17jewels.info/movements/e/eta/eta-2824-2/ (the 2824-2 it copies)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Built to the 2824-2 layout after the patents lapsed; no Sellita document with train counts was found. Lift angle not documented by Sellita (50° as the 2824-2 is the usual setting). Power reserve 38 h, 41 h on later versions."
+  },
+  {
+    "calibre": "ETA 2892-A2",
+    "maker": "ETA",
+    "family": [
+      "2892",
+      "2892-2",
+      "Sellita SW300-1",
+      "SW300",
+      "SW300-1"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 51,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://ranfft.org/caliber/4232-ETA-2892",
+      "https://www.awci.com/wp-content/uploads/2013/10/TomsTips_Web_Nov13.pdf (lift 51°)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Whether the seconds are driven directly by the fourth wheel was not confirmed, and the escape wheel's tooth count was not found, so neither the fourth wheel nor the escape wheel is named. 42 h power reserve. The Sellita SW300-1 is a copy; its lift angle is not documented separately."
+  },
+  {
+    "calibre": "Valjoux 7750",
+    "maker": "ETA",
+    "family": [
+      "7750",
+      "ETA 7750",
+      "Sellita SW500",
+      "SW500",
+      "7753",
+      "7751"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 49,
+    "seconds": "small seconds at 9 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://atelierhorlogerie.com/wp-content/uploads/2013/04/the-valjoux-7750-chronograph-doc.pdf (Odets: off-centre centre wheel, indirect motion work, chronograph driven from the fourth wheel)",
+      "https://www.awci.com/wp-content/uploads/2013/10/TomsTips_Web_Nov13.pdf (lift 49°)",
+      "https://en.wikipedia.org/wiki/Valjoux_7750"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Lift angle: 49° in the AWCI table, 50° is also widely used. The centre wheel is off centre and the motion work is driven through an intermediate wheel, so its period is left out. Escape wheel tooth count not found. Some early 7750s ran at 21,600 vph; this entry is the 28,800 version. 'Daytona 4130' clones built on a 7750 base use this train plus extra wheels to move the small seconds to 6."
+  },
+  {
+    "calibre": "Unitas 6497-2",
+    "maker": "ETA",
+    "family": [
+      "6497",
+      "6497-2",
+      "6498",
+      "6498-2",
+      "Unitas 6498-2",
+      "ETA 6497-2",
+      "ETA 6498-2"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 44,
+    "seconds": "small seconds (6497 at 9, 6498 at 6), fourth wheel",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 15,
+        "pinion": 10,
+        "basis": "derived from tooth counts"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "pinion": 8,
+        "basis": "derived from tooth counts"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 450,
+        "teeth": 60,
+        "pinion": 10,
+        "basis": "derived from tooth counts"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 80,
+        "basis": "derived from tooth counts"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://horology-student.org/movements/modern-eta-and-clones/unitas-eta-6497-6498/ (tooth counts, from ETA's training version)",
+      "https://www.awci.com/wp-content/uploads/2013/10/TomsTips_Web_Nov13.pdf (lift 44°)",
+      "https://en.wikipedia.org/wiki/List_of_ETA_Movements"
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "The only calibre here with a published train: escape 15 teeth on a 10-leaf pinion, fourth 120/8, third 60/10, centre 80 teeth (centre pinion and barrel not found, so the barrel is left out). The counts fit 21,600 vph, the -2 versions. The -1 versions run at 18,000 vph with a train not found; they are not in this entry. 56 h power reserve."
+  },
+  {
+    "calibre": "Seagull ST36",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3600",
+      "ST3620",
+      "ST3621",
+      "ST 36"
+    ],
+    "bph": 21600,
+    "seconds": "small seconds (ST3600 at 9, ST3621 at 6), fourth wheel",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/movement/st36/amp/",
+      "https://calibercorner.com/seagull-caliber-st3621"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A copy of the Unitas 6497/6498; it probably shares the 6497-2 train (escape 5 s, third wheel 450 s) but no source confirms it, so those wheels are left out. Lift angle not documented (44° as the 6497 is often used)."
+  },
+  {
+    "calibre": "Powermatic 80",
+    "maker": "ETA",
+    "family": [
+      "C07.111",
+      "C07.611",
+      "ETA C07",
+      "C07",
+      "H-10",
+      "Powermatic 80.111"
+    ],
+    "bph": 21600,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.watchuseek.com/threads/questions-about-eta-c07-powermatic-80-h-10-etc.5104577/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "80 h power reserve from a longer barrel and a slower beat on the 2824 architecture. No tooth counts, escape wheel count or lift angle found (the C07.111 uses a synthetic escape wheel and pallet fork, the C07.611 a conventional one)."
+  },
+  {
+    "calibre": "Omega 8500",
+    "maker": "Omega",
+    "family": [
+      "8500",
+      "8501",
+      "8508",
+      "8520",
+      "8601"
+    ],
+    "bph": 25200,
+    "lift_angle_deg": 38,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.285714,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.manualslib.com/guide/4176610/omega-8500-8501-service-manual.html (25,200 vph, lift 38°)",
+      "https://omegaforums.net/threads/lift-angles-for-new-coaxial-calibres.98306/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Co-axial escapement, two barrels in series, 60 h. The lift angle is the service manual's. The co-axial escape wheel's tooth count was not found, so the escape wheel is left out."
+  },
+  {
+    "calibre": "Omega 8800",
+    "maker": "Omega",
+    "family": [
+      "8800",
+      "8806",
+      "8807",
+      "8900",
+      "8901"
+    ],
+    "bph": 25200,
+    "lift_angle_deg": 38,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.285714,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.manualslib.com/guide/4176610/omega-8500-8501-service-manual.html (25,200 vph, lift 38°)",
+      "https://omegaforums.net/threads/lift-angles-for-new-coaxial-calibres.98306/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Co-axial, 55 h. Lift 38° for all 8xxx except the 8806 and 8807 (36°), per a watchmaker on Omega Forums. Escape wheel tooth count not found."
+  },
+  {
+    "calibre": "Rolex 3135",
+    "maker": "Rolex",
+    "family": [
+      "3135",
+      "3130",
+      "3155",
+      "3175",
+      "3185",
+      "3186"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 52,
+    "seconds": "centre (fourth wheel, the 'seconds wheel' 3135-360)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: Rolex's patent calls 20 teeth its standard Swiss lever; not confirmed for this calibre"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "barrel",
+        "period_s": 18000,
+        "basis": "derived from SJX's 5:1 barrel to minute ratio; tooth counts not found"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/rolex-caliber-3135/",
+      "https://patents.google.com/patent/US8529122 (20-tooth standard escape wheel)",
+      "https://watchesbysjx.com/2024/08/geometric-efficiency-escapements.html",
+      "https://en.watch-spare.com/rolex-cal-3135-escape-wheel-410-rx-3135-410.html (lift 52°)",
+      "https://gleave.london/seconds-wheel-fourth-wheel-rolex-3135-360-generic/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "48 h power reserve. The GMT 3185 and 3186 share the going train (escape wheel 3135-410 is common to the family). Third wheel not counted. Lift 52° is the figure used on timegraphers and by parts sellers, not seen in a Rolex document."
+  },
+  {
+    "calibre": "Rolex 3235",
+    "maker": "Rolex",
+    "family": [
+      "3235",
+      "3230",
+      "3255",
+      "3285"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 55,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred, with the bench: Rolex's patent calls 20 teeth standard, SJX says Chronergy keeps the old count, and a 5.00 s cycle shows on the Yacht-Master 42"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "barrel",
+        "period_s": 22050,
+        "basis": "derived from SJX's 98:16 train ratio, read as barrel teeth to centre pinion leaves"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/rolex-caliber-3235/",
+      "https://watchesbysjx.com/2021/05/rolex-chronergy-analysis.html (Chronergy keeps the tooth count; 98:16 ratio)",
+      "https://patents.google.com/patent/US8529122",
+      "https://www.rolexforums.com/archive/index.php/t-701731.html (lift 55°, later 53°)",
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
+    ],
+    "confidence": "measured",
+    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° was the published figure and is what this project uses; a watchmaker reports Rolex's documents now give 53° for the 32xx, with no change to the movement. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on Peter's Yacht-Master is the fourth wheel."
+  },
+  {
+    "calibre": "Dandong 3235",
+    "maker": "Dandong (clone)",
+    "family": [
+      "DD3235",
+      "VS3235",
+      "3235 (clone)"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 55,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "measured: a 5.00 s rate cycle locked to 40 beats on the bench (dd3235_DU_30min)"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts drop in)",
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
+    ],
+    "confidence": "measured",
+    "notes": "A dimensional copy of the 3235: genuine train parts fit, so its train is taken as the 3235's. The clone's own escape wheel is solid, not skeletonised; Peter's bench example has a genuine escape wheel, pallet fork and balance. Power reserve about 60 to 65 h, so the barrel ratio may differ and the barrel is left out. Lift 55° measured on a VS3235 by a forum user; some use 53°."
+  },
+  {
+    "calibre": "Shanghai VR3235",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "VR3235",
+      "SH3285",
+      "JH3235"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A hybrid: mostly 32xx on the balance side and 3135 parts on the dial side, about 40 h. The escape wheel and pallet fork are not to genuine spec, so the tooth count is left out. Lift 52° is a forum figure."
+  },
+  {
+    "calibre": "Rolex 4130",
+    "maker": "Rolex",
+    "family": [
+      "4130",
+      "4131"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 52,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: Rolex's patent calls 20 teeth standard; not confirmed for this calibre"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "basis": "published: one barrel turn every 7 h (Caliber Corner)"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/rolex-caliber-4130/",
+      "https://www.watch-wiki.net/doku.php?id=rolex_4130",
+      "https://professionalwatches.com/rolex-caliber-4131/",
+      "https://patents.google.com/patent/US8529122"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "72 h power reserve. Lift angle unsettled: Caliber Corner gives 52°; this project reports at 52° and 55°. The 4131 (2023) has Chronergy. The centre of the movement carries the chronograph seconds, so the going train's centre wheel is not named; the minute hand's cannon pinion turns once an hour."
+  },
+  {
+    "calibre": "Dandong 4130",
+    "maker": "Dandong (clone)",
+    "family": [
+      "DD4130",
+      "4130 (clone)",
+      "DD4131"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 52,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "measured: a 5 s rate cycle on the bench (daytona4130_DU_30min)"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone, genuine parts fit)",
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
+    ],
+    "confidence": "measured",
+    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's escapement is not to genuine spec and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry. Lift angle as the 4130 (52° or 55°)."
+  },
+  {
+    "calibre": "Seiko NH35A",
+    "maker": "Seiko (SII)",
+    "family": [
+      "NH35",
+      "NH36",
+      "NH36A",
+      "NH34",
+      "NH34A",
+      "NH38",
+      "NH38A",
+      "NH39",
+      "4R35",
+      "4R36",
+      "Seiko 4R35",
+      "Seiko 4R36"
+    ],
+    "bph": 21600,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/skus/9271_nh34m.pdf (SII technical guide: 21,600 vph, lift 53°, 41 h)",
+      "https://calibercorner.com/seiko-caliber-4r36/",
+      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft (direct seconds on the 7S26)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "The parts list has a 'second reduction wheel' between centre and third, so the third wheel's period cannot be read off. Direct seconds is taken from the 7S26 it grew from. Escape wheel tooth count not found: 15 teeth would give 5.0 s, but it is left out."
+  },
+  {
+    "calibre": "Seiko 6R35",
+    "maker": "Seiko",
+    "family": [
+      "6R35",
+      "6R15",
+      "Seiko 6R15",
+      "6R"
+    ],
+    "bph": 21600,
+    "lift_angle_deg": 53,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf (Seiko technical guide: 21,600 vph, lift 53°, 70 h)",
+      "https://calibercorner.com/seiko-caliber-6r15/ (21,600 vph, 53°, 50 h)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "The 6R35's third wheel has the same part number as the NH35's (0231 070); its escape wheel differs (0251 283 against 0251 383). Escape tooth count not found."
+  },
+  {
+    "calibre": "Seiko 7S26",
+    "maker": "Seiko",
+    "family": [
+      "7S26",
+      "7S36",
+      "7S"
+    ],
+    "bph": 21600,
+    "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/movement/7s26",
+      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "41 h, does not hack. No lift angle found in a Seiko document (53° as the rest of the family is the usual setting). Escape tooth count not found."
+  },
+  {
+    "calibre": "Miyota 8215",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "8215",
+      "8205",
+      "821A",
+      "8217",
+      "8200"
+    ],
+    "bph": 21600,
+    "lift_angle_deg": 49,
+    "seconds": "centre, indirect (a seconds pinion with a friction spring)",
+    "wheels": [
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/miyota-caliber-8215",
+      "https://www.watchrepairtalk.com/topic/20273-citizenmiyota-8200-lift-angle/ (lift 49°)",
+      "https://calibercorner.com/stuttering-seconds-hand-explained"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Lift 49° is documented; 52° is only a timegrapher default. The seconds are driven indirectly, so the fourth wheel's period is not the seconds hand's and is left out. 42 h. Wide positional spread is normal for the type."
+  },
+  {
+    "calibre": "Miyota 9015",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "9015",
+      "9039",
+      "90S5",
+      "9000"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 51,
+    "seconds": "centre, direct",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/jp/uploads/product/product_VFYbHra8C0WGl4Nge3.pdf (Miyota spec: 28,800 vph, 51°, 42 h)",
+      "https://calibercorner.com/miyota-caliber-9015/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Escape wheel tooth count not found (20 teeth would give 5.0 s, 15 teeth 3.75 s), so it is left out. The 90S5 is a newer variant with no data found."
+  },
+  {
+    "calibre": "Seagull ST19",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1901",
+      "ST19",
+      "ST1902"
+    ],
+    "bph": 21600,
+    "seconds": "small seconds at 9 (fourth wheel); centre chronograph seconds",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/movement/st1901/",
+      "https://calibercorner.com/seagull-caliber-st-1901b"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Based on the Venus 175 column-wheel chronograph. Lift angle not documented. Power reserve given as 39, 50 or 51 h by different sources."
+  },
+  {
+    "calibre": "Seagull ST2130",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2130",
+      "TY2130"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: a copy of the 2824-2, whose escape wheel has 20 teeth"
+      },
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/seagull-caliber-ty2130"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A 2824-2 copy, about 40 h. Lift 50° is Caliber Corner's unconfirmed figure, so no lift angle is given here."
+  },
+  {
+    "calibre": "PTS DG2813",
+    "maker": "Various Chinese makers",
+    "family": [
+      "DG2813",
+      "2813",
+      "Mingzhu 2813"
+    ],
+    "bph": 21600,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "inferred: on the Miyota 8200 framework"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/pts-caliber-dg-2813/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "On the Miyota 8200 framework but not a direct copy; about 36 h. Lift angle not documented."
+  },
+  {
+    "calibre": "Patek Philippe 324 S C",
+    "maker": "Patek Philippe",
+    "family": [
+      "324 S C",
+      "324",
+      "324 S QA",
+      "324 S C FUS"
+    ],
+    "bph": 28800,
+    "seconds": "centre, indirect (a centre seconds wheel held by a friction spring)",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://wiki.grail-watch.com/index.php/PP_324",
+      "https://watchbase.com/patek-philippe/caliber/324-s-c-fus-ar",
+      "https://www.watchprosite.com/watchtech/new-engine-for-patek-philippe-5711-/1223.1275781.10746571/ (the 26-330 replaced the 324's friction-spring seconds)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Indirect centre seconds is inferred from what its successor, the 26-330, changed. Does not hack. 35 to 45 h. No lift angle or tooth counts found."
+  },
+  {
+    "calibre": "Dandong 324",
+    "maker": "Dandong (clone)",
+    "family": [
+      "324 (clone)",
+      "DD324",
+      "Dandong 324 S C"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "measured: the 5 s rate cycle every watch on the bench shows"
+      },
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "measured: a 60 s rate and amplitude cycle on the bench (patek324_DU_30min)"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
+      "Peter's bench: 28,800 vph, does not hack"
+    ],
+    "confidence": "measured",
+    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Bench takes use lift 52°, which is a setting, not a documented figure."
+  },
+  {
+    "calibre": "Peacock SL1258",
+    "maker": "Liaoning Peacock (clone)",
+    "family": [
+      "SL1258"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "measured: a 5 s rate cycle on the bench (peacock1258_DU_30min)"
+      },
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "measured: a 60.03 s amplitude cycle on the bench"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
+      "Peter's bench notes: like the Dandong 324, with a monolithic bridge"
+    ],
+    "confidence": "measured",
+    "notes": "No published data found under this name. Taken from this project's recordings only. Bench takes use lift 52°, a setting rather than a documented figure."
+  }
+]

@@ -8,6 +8,7 @@ pub mod amplitude;
 pub mod analysis;
 pub mod audio;
 pub mod beats;
+pub mod calibres;
 pub mod capture;
 pub mod clock;
 pub mod clockstore;
