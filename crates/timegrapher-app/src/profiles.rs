@@ -9,7 +9,7 @@ use egui_plot::{HLine, Line, LineStyle, Plot, Polygon, VLine};
 use timegrapher_core::profile::TickProfile;
 
 /// How the sound's level is drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Scale {
     /// The envelope as it is.
     Linear,
@@ -53,7 +53,8 @@ pub fn summary(p: &TickProfile) -> String {
 }
 
 /// How the pane is drawn: set in the sidebar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Options {
     pub scale: Scale,
     /// Tick beside tock rather than above it.
@@ -63,6 +64,9 @@ pub struct Options {
     pub edges: bool,
     /// Where the three sounds rise.
     pub sounds: bool,
+    /// Both sides on one clock, each moved half the beat error from where
+    /// a watch in beat would put it, rather than each from its own drop.
+    pub shared_clock: bool,
 }
 
 impl Default for Options {
@@ -72,18 +76,32 @@ impl Default for Options {
             side_by_side: false,
             edges: true,
             sounds: true,
+            shared_clock: true,
         }
     }
 }
 
+/// How far each side is drawn from its own drop, ms. On the shared clock
+/// the tick (even beats) sits half the beat error from the time a watch in
+/// beat would drop, and the tock half the other way, so the drops stand a
+/// beat error apart and the unlocks an unlock beat error apart.
+pub fn offsets(opt: Options, drop_beat_error_ms: Option<f64>) -> [f64; 2] {
+    match (opt.shared_clock, drop_beat_error_ms) {
+        (true, Some(be)) if be.is_finite() => [be / 2.0, -be / 2.0],
+        _ => [0.0, 0.0],
+    }
+}
+
 /// Draw both sides, tick above or beside tock, on one scale so their
-/// loudness compares.
+/// loudness compares. `drop_beat_error_ms` places them on the shared clock.
 pub fn draw(
     ui: &mut egui::Ui,
     profiles: &[Option<TickProfile>; 2],
     opt: Options,
+    drop_beat_error_ms: Option<f64>,
     note: Option<&str>,
 ) {
+    let shift = offsets(opt, drop_beat_error_ms);
     let pal = theme::pal(ui);
     if let Some(n) = note {
         ui.label(RichText::new(n).small().color(pal.text_secondary));
@@ -99,8 +117,9 @@ pub fn draw(
         Scale::Linear => (0.0, (top as f64 * 1.08).max(1e-6)),
         Scale::Decibels => (FLOOR_DB, 3.0),
     };
-    let side = |ui: &mut egui::Ui, k: usize, height: f32| {
+    let side = |ui: &mut egui::Ui, k: usize| {
         let p = &profiles[k];
+        let dx = shift[k];
         let name = ["Tick", "Tock"][k];
         let c = colors[k];
         ui.horizontal(|ui| {
@@ -115,8 +134,9 @@ pub fn draw(
             )
             .on_hover_text(s);
         });
+        // Whatever the title row left, so the time axis is never cut off.
         let plot = Plot::new(("profile", k))
-            .height((height - 22.0).max(40.0))
+            .height(ui.available_height().max(40.0))
             .link_axis("profile", [true, false])
             // No crosshair or value box: the marks and the summary above say
             // what matters.
@@ -135,10 +155,16 @@ pub fn draw(
                 Scale::Decibels => format!("{:.0} dB", m.value),
                 Scale::Linear => format!("{:.2}", m.value),
             });
+        // Before there are beats, a typical stretch of time rather than none.
+        let plot = if p.is_none() {
+            plot.default_x_bounds(-20.0, 10.0)
+        } else {
+            plot
+        };
         let resp = plot.show(ui, |pl| {
             pl.set_plot_bounds_y(y_lo..=y_hi);
             let Some(p) = p else { return };
-            let x = |i: usize| p.t0_ms + i as f64 * p.step_ms;
+            let x = |i: usize| p.t0_ms + dx + i as f64 * p.step_ms;
             let (med, lo, hi) = (
                 scaled(&p.median, top, scale),
                 scaled(&p.p10, top, scale),
@@ -185,7 +211,7 @@ pub fn draw(
                     ("Drop Peak", p.peak_ms, pal.peak, 1.0),
                 ] {
                     if let Some(t) = at {
-                        pl.vline(VLine::new(label, t).color(col).width(w));
+                        pl.vline(VLine::new(label, t + dx).color(col).width(w));
                     }
                 }
             }
@@ -197,7 +223,7 @@ pub fn draw(
                 ] {
                     if let Some(t) = at {
                         pl.vline(
-                            VLine::new(label, t)
+                            VLine::new(label, t + dx)
                                 .color(pal.sound)
                                 .width(1.2_f32)
                                 .style(LineStyle::dashed_loose()),
@@ -207,28 +233,42 @@ pub fn draw(
             }
         });
         if let Some(p) = p {
-            label_marks(ui, &resp.transform, p, opt);
+            label_marks(ui, &resp.transform, p, opt, dx);
         }
     };
     if opt.side_by_side {
-        let h = ui.available_height();
         ui.columns(2, |cols| {
             for (k, ui) in cols.iter_mut().enumerate() {
-                side(ui, k, h);
+                side(ui, k);
             }
         });
     } else {
-        let h = ((ui.available_height() - 6.0) / 2.0).max(60.0);
-        side(ui, 0, h);
-        ui.add_space(4.0);
-        side(ui, 1, h);
+        // Each side in its own half, so both keep a whole time axis.
+        let gap = 6.0;
+        let w = ui.available_width();
+        let h = ((ui.available_height() - gap) / 2.0).max(60.0);
+        for k in 0..2 {
+            ui.allocate_ui(egui::vec2(w, h), |ui| {
+                ui.set_height(h);
+                side(ui, k)
+            });
+            if k == 0 {
+                ui.add_space(gap);
+            }
+        }
     }
 }
 
 /// Name each mark on the plot itself, along the top: the engine's edges
 /// first, then the three sounds, each label just right of its line and
 /// moved down a row where it would run into another.
-fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile, opt: Options) {
+fn label_marks(
+    ui: &egui::Ui,
+    t: &egui_plot::PlotTransform,
+    p: &TickProfile,
+    opt: Options,
+    dx: f64,
+) {
     let frame = *t.frame();
     let painter = ui.painter_at(frame);
     let font = egui::FontId::proportional(11.0);
@@ -253,7 +293,7 @@ fn label_marks(ui: &egui::Ui, t: &egui_plot::PlotTransform, p: &TickProfile, opt
     for group in groups {
         let mut marks: Vec<(f32, &str, Color32)> = group
             .into_iter()
-            .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v), l, c)))
+            .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v + dx), l, c)))
             .filter(|(x, _, _)| *x >= frame.left() && *x <= frame.right())
             .collect();
         marks.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -287,5 +327,18 @@ mod tests {
         assert!((v[1] + 20.0).abs() < 1e-6);
         assert_eq!(v[2], FLOOR_DB);
         assert_eq!(scaled(&[0.5], 1.0, Scale::Linear), vec![0.5]);
+    }
+
+    #[test]
+    fn the_shared_clock_puts_the_drops_a_beat_error_apart() {
+        let opt = Options::default();
+        let [tick, tock] = offsets(opt, Some(-0.97));
+        assert!((tick - tock + 0.97).abs() < 1e-12);
+        assert_eq!(offsets(opt, None), [0.0, 0.0]);
+        let own = Options {
+            shared_clock: false,
+            ..opt
+        };
+        assert_eq!(offsets(own, Some(-0.97)), [0.0, 0.0]);
     }
 }

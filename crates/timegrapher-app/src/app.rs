@@ -5,10 +5,11 @@
 use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
+use crate::settings::Settings;
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
-use egui_plot::{Bar, BarChart, Legend, Line, Plot, VLine};
+use egui_plot::{GridMark, Legend, Line, LineStyle, Plot, Points};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
@@ -92,7 +93,7 @@ enum Input {
 
 /// The panes below the readings. Tick shape and the periodicity (FFT)
 /// views will join these.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Pane {
     Strip,
     Sound,
@@ -130,9 +131,9 @@ impl Pane {
             Pane::Rate => "Rate",
             Pane::Amplitude => "Amplitude",
             Pane::BeatError => "Beat Error",
-            Pane::RateHistogram => "Rate Histogram",
-            Pane::AmplitudeHistogram => "Amplitude Histogram",
-            Pane::BeatErrorHistogram => "Beat Error Histogram",
+            Pane::RateHistogram => "Rate Distribution",
+            Pane::AmplitudeHistogram => "Amplitude Distribution",
+            Pane::BeatErrorHistogram => "Beat Error Distribution",
         }
     }
 
@@ -156,16 +157,15 @@ impl Pane {
             Pane::Amplitude => "The amplitude over the whole session, from the ticks and tocks",
             Pane::BeatError => "The beat error over the whole session",
             Pane::RateHistogram => {
-                "How often each rate came up: one count per reading. Two peaks mean the \
-                 rate moves between two states."
+                "The rate readings on probability paper: one steady rate falls on a straight \
+                 line, two states bend it"
             }
             Pane::AmplitudeHistogram => {
-                "How often each amplitude came up: one count per 2 seconds of beats. Two \
-                 peaks mean the balance swings between a high and a low state."
+                "The amplitude readings on probability paper: a balance swinging between a \
+                 high and a low state bends the line"
             }
             Pane::BeatErrorHistogram => {
-                "How often each beat error came up, from the unlock: one count per 2 \
-                 seconds of beats"
+                "The beat error readings, from the unlock, on probability paper"
             }
         }
     }
@@ -221,6 +221,19 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     tree
 }
 
+/// Whether a saved layout holds every pane exactly once.
+fn layout_is_whole(tree: &Tree<Pane>) -> bool {
+    let panes: Vec<Pane> = tree
+        .tiles
+        .tiles()
+        .filter_map(|t| match t {
+            egui_tiles::Tile::Pane(p) => Some(*p),
+            _ => None,
+        })
+        .collect();
+    panes.len() == Pane::ALL.len() && Pane::ALL.iter().all(|p| panes.contains(p))
+}
+
 /// Whether a pane is shown.
 fn pane_visible(tiles: &Tiles<Pane>, pane: Pane) -> bool {
     tiles
@@ -263,16 +276,20 @@ fn sync_containers(tiles: &mut Tiles<Pane>) {
 /// charts' alike, so their time axes line up when stacked.
 const GUTTER: f32 = 76.0;
 
-/// Histogram bin widths offered: times the automatic width, with a name.
-const HIST_DETAIL: [(f64, &str, &str); 4] = [
-    (2.0, "Coarse", "Bins twice the automatic width"),
-    (
-        1.0,
-        "Auto",
-        "Bins as wide as the spread of the values calls for",
-    ),
-    (0.5, "Fine", "Bins half the automatic width"),
-    (0.25, "Finest", "Bins a quarter of the automatic width"),
+/// Shares labelled up the probability plot, percent, as on probability
+/// paper.
+const PROBABILITY_MARKS: [(f64, &str); 11] = [
+    (0.1, "0.1%"),
+    (1.0, "1%"),
+    (5.0, "5%"),
+    (10.0, "10%"),
+    (25.0, "25%"),
+    (50.0, "50%"),
+    (75.0, "75%"),
+    (90.0, "90%"),
+    (95.0, "95%"),
+    (99.0, "99%"),
+    (99.9, "99.9%"),
 ];
 
 /// Averaging times offered for the readings, seconds (Witschi's choices).
@@ -364,9 +381,7 @@ pub struct TimegrapherApp {
     /// The charts and histograms cover only the strip's length, ending
     /// where the strip does, instead of the whole session.
     span_of_strip: bool,
-    /// The histograms' bin width, as an index into `HIST_DETAIL`.
-    hist_detail: usize,
-    /// Show the cumulative share instead of the histogram.
+    /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
@@ -375,8 +390,10 @@ pub struct TimegrapherApp {
     /// cursor on all of them: last frame's, and this frame's so far.
     cursor_t: Option<f64>,
     cursor_next: Option<f64>,
+    /// Light, dark or following the system, kept for the next start.
+    theme: egui::ThemePreference,
     /// Sidebar cards folded down to their caption.
-    folded: std::collections::BTreeSet<&'static str>,
+    folded: std::collections::BTreeSet<String>,
     /// The sidebar is shown.
     sidebar: bool,
     /// The rate, amplitude and beat error figures above the panes.
@@ -424,8 +441,83 @@ pub struct TimegrapherApp {
 }
 
 impl TimegrapherApp {
-    pub fn new(file: Option<PathBuf>, analyse: bool) -> Self {
-        Self::with_devices(capture::list().unwrap_or_default(), file, analyse)
+    pub fn new(file: Option<PathBuf>, analyse: bool, saved: Option<Settings>) -> Self {
+        let mut app = Self::with_devices(capture::list().unwrap_or_default(), file, analyse);
+        if let Some(s) = saved {
+            app.apply_settings(s);
+        }
+        app
+    }
+
+    /// The views and choices kept from the last time the app ran.
+    pub fn settings(&self) -> Settings {
+        Settings {
+            device: self.device.clone(),
+            average_s: self.average_s,
+            strip: self.strip,
+            rate_line: self.rate_line,
+            rate_guides: self.rate_guides,
+            overlays: self.overlays,
+            follow: self.follow,
+            span_of_strip: self.span_of_strip,
+            hist_cumulative: self.hist_cumulative,
+            hist_readings: self.hist_readings,
+            sound: self.sound_opts,
+            folded: self.folded.iter().cloned().collect(),
+            sidebar: self.sidebar,
+            theme: self.theme,
+            panes: Some(self.panes.clone()),
+        }
+    }
+
+    /// Put back the views and choices from the last time. A pane layout
+    /// from another version of the app, missing a pane or holding one twice,
+    /// is set aside for the starting one.
+    pub fn apply_settings(&mut self, s: Settings) {
+        let Settings {
+            device,
+            average_s,
+            strip,
+            rate_line,
+            rate_guides,
+            overlays,
+            follow,
+            span_of_strip,
+            hist_cumulative,
+            hist_readings,
+            sound,
+            folded,
+            sidebar,
+            theme,
+            panes,
+        } = s;
+        if let Some(d) =
+            device.filter(|d| capture::choices(&self.devices).iter().any(|c| &c.id == d))
+        {
+            self.device = Some(d);
+        }
+        if AVERAGES.contains(&average_s) {
+            self.set_average(average_s);
+        }
+        let mut strip = strip;
+        strip.set_half_width(strip.half_width_ms);
+        strip.set_span(strip.span_s);
+        self.strip = strip;
+        self.rate_line = rate_line;
+        self.rate_guides = rate_guides;
+        self.overlays = overlays;
+        self.follow = follow;
+        self.span_of_strip = span_of_strip;
+        self.hist_cumulative = hist_cumulative;
+        self.hist_readings = hist_readings;
+        self.sound_opts = sound;
+        self.folded = folded.into_iter().collect();
+        self.sidebar = sidebar;
+        self.theme = theme;
+        self.panes = match panes {
+            Some(p) if layout_is_whole(&p) => p,
+            _ => default_layout(self.strip.horizontal),
+        };
     }
 
     /// The app with a given device list. Tests pass an empty one: listing
@@ -469,12 +561,12 @@ impl TimegrapherApp {
             rate_guides: true,
             overlays: [true, false, false],
             span_of_strip: false,
-            hist_detail: 1,
             hist_cumulative: false,
             hist_readings: true,
             cursor_t: None,
             cursor_next: None,
             folded: Default::default(),
+            theme: egui::ThemePreference::System,
             sidebar: true,
             view_end: None,
             panes: default_layout(false),
@@ -1309,7 +1401,7 @@ impl TimegrapherApp {
             app.pane_switches(ui, &Pane::CHARTS);
             app.span_setting(ui);
         });
-        self.section(ui, "Histograms", None, help::HISTOGRAMS, |app, ui| {
+        self.section(ui, "Distributions", None, help::HISTOGRAMS, |app, ui| {
             app.pane_switches(ui, &Pane::HISTOGRAMS);
             app.span_setting(ui);
             app.histogram_settings(ui);
@@ -1332,7 +1424,7 @@ impl TimegrapherApp {
         let mut folded = self.folded.contains(title);
         let changed = theme::section_header(ui, title, shown, help, &mut folded);
         if folded {
-            self.folded.insert(title);
+            self.folded.insert(title.to_string());
         } else {
             self.folded.remove(title);
             theme::card_ui(ui, |ui| settings(self, ui));
@@ -1368,7 +1460,7 @@ impl TimegrapherApp {
         theme::row(
             ui,
             "Show",
-            Some("Bars of how often, or the cumulative share"),
+            Some("The values on probability paper, or their cumulative share"),
             |ui| {
                 theme::segmented(
                     ui,
@@ -1376,34 +1468,26 @@ impl TimegrapherApp {
                     &[
                         (
                             false,
-                            "Bars",
-                            "How often each value came up, with a smooth curve over the bars",
+                            "Probability",
+                            "Each value against its rank on a scale of standard deviations: \
+                             one steady state falls on the dashed straight line, two states \
+                             draw two lines joined by a bend",
                         ),
                         (
                             true,
                             "Cumulative",
-                            "The share of values at or below each value. One state rises in one \
-                         steep stretch; two states rise twice with a flat stretch between.",
+                            "The share of values at or below each value: one state rises in \
+                             one steep stretch, two states rise twice with a flatter stretch \
+                             between",
                         ),
                     ],
                 );
             },
         );
-        theme::row(ui, "Bins", Some("How wide each bar is"), |ui| {
-            egui::ComboBox::from_id_salt("hist-bins")
-                .width(ui.available_width())
-                .selected_text(HIST_DETAIL[self.hist_detail].1)
-                .show_ui(ui, |ui| {
-                    for (i, &(_, name, hint)) in HIST_DETAIL.iter().enumerate() {
-                        ui.selectable_value(&mut self.hist_detail, i, name)
-                            .on_hover_text(hint);
-                    }
-                });
-        });
         theme::row(
             ui,
             "Values",
-            Some("What the amplitude and beat error histograms count"),
+            Some("What the amplitude and beat error distributions count"),
             |ui| {
                 theme::segmented(
                     ui,
@@ -1433,7 +1517,7 @@ impl TimegrapherApp {
         theme::row(
             ui,
             "Time Span",
-            Some("How much of the session the charts and histograms cover"),
+            Some("How much of the session the charts and distributions cover"),
             |ui| {
                 theme::segmented(
                     ui,
@@ -1762,6 +1846,30 @@ impl TimegrapherApp {
                 );
             },
         );
+        theme::row(
+            ui,
+            "Time From",
+            Some("Where each side's time is measured from"),
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut o.shared_clock,
+                    &[
+                        (
+                            true,
+                            "Shared",
+                            "Tick and tock on one clock: the drops stand the beat error \
+                             from the drop apart, and the unlocks the beat error from the unlock",
+                        ),
+                        (
+                            false,
+                            "Own Drop",
+                            "Each side from its own drop, so both drops sit at 0 ms",
+                        ),
+                    ],
+                );
+            },
+        );
         theme::row(ui, "Scale", Some("How the loudness is drawn"), |ui| {
             theme::segmented(
                 ui,
@@ -1817,6 +1925,7 @@ impl TimegrapherApp {
         );
         if t != ui.ctx().options(|o| o.theme_preference) {
             ui.ctx().set_theme(t);
+            self.theme = t;
         }
         ui.horizontal(|ui| {
             if ui
@@ -2591,7 +2700,9 @@ impl TimegrapherApp {
                 }
             }
         };
-        profiles::draw(ui, &shown, self.sound_opts, note.as_deref());
+        let i = self.trend.partition_point(|p| p.t <= end + 1e-9);
+        let drop_be = i.checked_sub(1).and_then(|i| self.trend[i].beat_error_drop);
+        profiles::draw(ui, &shown, self.sound_opts, drop_be, note.as_deref());
     }
 
     /// Start working out the sound at `end` from the file, unless one is
@@ -2778,7 +2889,7 @@ impl TimegrapherApp {
         };
         let opt = hist::Options {
             resolution,
-            width_factor: HIST_DETAIL[self.hist_detail].0,
+            width_factor: 1.0,
             trim: 0.005,
         };
         let Some(h) = hist::histogram_with(&values, &opt) else {
@@ -2791,9 +2902,8 @@ impl TimegrapherApp {
         };
         let peaks = h.peaks(0.05);
         let f = |v: f64| format!("{v:.decimals$}{unit}");
-        let bins = fields::plain(h.bin_width);
         let mut line = format!(
-            "{} {per} · median {} · middle 80% {} to {} · bins of {bins}{unit}",
+            "{} {per} · median {} · middle 80% {} to {}",
             h.n,
             f(h.median),
             f(h.p10),
@@ -2809,7 +2919,6 @@ impl TimegrapherApp {
         ui.add(egui::Label::new(RichText::new(&line).small().color(pal.text_secondary)).truncate())
             .on_hover_text(line.clone());
         let (x_lo, x_hi) = (h.start, h.start + h.counts.len() as f64 * h.bin_width);
-        let median = h.median;
         let unit_owned = unit.to_string();
         let cumulative = self.hist_cumulative;
         let plot = Plot::new(pane.title())
@@ -2820,7 +2929,6 @@ impl TimegrapherApp {
             .show_x(false)
             .show_y(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
-            .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
             .x_axis_formatter(move |m, _| {
                 let d = if m.step_size >= 1.0 {
                     0
@@ -2838,17 +2946,7 @@ impl TimegrapherApp {
                 format!("{:.*}{unit_owned}", d, v)
             })
             .y_axis_min_width(44.0)
-            .y_axis_formatter(move |m, _| {
-                if m.value < -1e-9 || (cumulative && m.value > 100.0 + 1e-9) {
-                    String::new()
-                } else if cumulative {
-                    format!("{}%", m.value.abs())
-                } else {
-                    format!("{}", m.value.abs())
-                }
-            })
-            .default_x_bounds(x_lo, x_hi)
-            .include_y(0.0);
+            .default_x_bounds(x_lo, x_hi);
         if cumulative {
             // The share of values at or below each value, as a step line.
             let mut pts: Vec<[f64; 2]> = Vec::new();
@@ -2861,51 +2959,73 @@ impl TimegrapherApp {
                 }
                 pts.push([x, q * 100.0]);
             }
-            plot.include_y(100.0).show(ui, |p| {
-                p.line(
-                    Line::new("share at or below", pts)
-                        .color(color)
-                        .width(1.8_f32),
-                );
-                p.vline(
-                    VLine::new("median", median)
-                        .color(pal.text_secondary)
-                        .width(1.0_f32),
-                );
-            });
+            plot.y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
+                .y_axis_formatter(|m, _| {
+                    if m.value < -1e-9 || m.value > 100.0 + 1e-9 {
+                        String::new()
+                    } else {
+                        format!("{}%", m.value.abs())
+                    }
+                })
+                .default_y_bounds(0.0, 100.0)
+                .show(ui, |p| {
+                    p.line(
+                        Line::new("share at or below", pts)
+                            .color(color)
+                            .width(1.8_f32),
+                    );
+                });
             return;
         }
-        let bars: Vec<Bar> = h
-            .counts
-            .iter()
-            .enumerate()
-            .map(|(i, &c)| {
-                Bar::new(h.centre(i), c as f64)
-                    .width(h.bin_width * 0.92)
-                    .fill(color.gamma_multiply(0.45))
-                    .stroke(egui::Stroke::NONE)
-            })
+        // Probability paper: the share at or below each value on a scale of
+        // standard deviations, labelled in percent.
+        let pts: Vec<[f64; 2]> = hist::probability_plot(&values)
+            .into_iter()
+            .filter(|p| p[0] >= x_lo && p[0] <= x_hi)
             .collect();
-        // A smooth curve over the bars, a little narrower than a bin, so two
-        // peaks stand out even where the bars blur them.
-        let steps = 300;
-        let xs: Vec<f64> = (0..=steps)
-            .map(|k| x_lo + (x_hi - x_lo) * k as f64 / steps as f64)
-            .collect();
-        let kept: Vec<f64> = values
-            .iter()
-            .copied()
-            .filter(|v| *v >= x_lo && *v <= x_hi)
-            .collect();
-        let d = hist::density(&kept, h.bin_width * 0.5, &xs, h.bin_width);
-        let curve: Vec<[f64; 2]> = xs.iter().zip(d).map(|(&x, y)| [x, y]).collect();
-        plot.show(ui, |p| {
-            p.bar_chart(BarChart::new("count", bars).color(color));
-            p.line(Line::new("density", curve).color(color).width(1.8_f32));
-            p.vline(
-                VLine::new("median", median)
-                    .color(pal.text_secondary)
-                    .width(1.0_f32),
+        let z_top = hist::normal_quantile(1.0 - 0.5 / values.len().max(2) as f64).min(3.3) + 0.25;
+        let line = hist::normal_line(&values)
+            .map(|(mid, sd)| vec![[mid - sd * z_top, -z_top], [mid + sd * z_top, z_top]]);
+        plot.y_grid_spacer(move |g| {
+            // From 50% outwards, leaving out a share whose label would crowd
+            // the one before it.
+            let px = 8.0 / g.base_step_size;
+            let mut kept: Vec<f64> = Vec::new();
+            for &(pc, _) in &PROBABILITY_MARKS[5..] {
+                let z = hist::normal_quantile(pc / 100.0);
+                if z <= z_top && kept.last().is_none_or(|&k| (z - k) * px >= 16.0) {
+                    kept.push(z);
+                }
+            }
+            kept.iter()
+                .flat_map(|&z| if z == 0.0 { vec![z] } else { vec![z, -z] })
+                .map(|value| GridMark {
+                    value,
+                    step_size: 1.0,
+                })
+                .collect()
+        })
+        .y_axis_formatter(|m, _| {
+            PROBABILITY_MARKS
+                .iter()
+                .find(|&&(pc, _)| (hist::normal_quantile(pc / 100.0) - m.value).abs() < 1e-6)
+                .map_or(String::new(), |&(_, label)| label.to_string())
+        })
+        .default_y_bounds(-z_top, z_top)
+        .show(ui, |p| {
+            if let Some(l) = line {
+                p.line(
+                    Line::new("one steady state", l)
+                        .color(pal.text_tertiary)
+                        .style(LineStyle::dashed_loose())
+                        .width(1.0_f32),
+                );
+            }
+            p.points(
+                Points::new("values", pts)
+                    .color(color)
+                    .radius(1.6_f32)
+                    .filled(true),
             );
         });
     }
@@ -3401,6 +3521,10 @@ impl eframe::App for TimegrapherApp {
         }
     }
 
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        crate::settings::store(storage, &self.settings());
+    }
+
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
         self.discard_recording();
@@ -3632,6 +3756,46 @@ mod tests {
         app.relayout(true);
         assert!(pane_visible(&app.panes.tiles, Pane::AmplitudeHistogram));
         assert!(!pane_visible(&app.panes.tiles, Pane::RateHistogram));
+    }
+
+    #[test]
+    fn settings_come_back_as_they_were_left() {
+        // A fresh app opens with the defaults the settings describe.
+        let fresh = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let mut first = fresh.settings();
+        first.panes = None;
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(Settings::default()).unwrap()
+        );
+        // Change a few views, keep them, and open a new app with them.
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.strip.horizontal = true;
+        app.relayout(true);
+        app.sound_opts.scale = profiles::Scale::Decibels;
+        app.hist_cumulative = true;
+        app.folded.insert("Window".into());
+        set_pane_visible(&mut app.panes.tiles, Pane::AmplitudeHistogram, true);
+        app.set_average(30.0);
+        let json = serde_json::to_string(&app.settings()).unwrap();
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.apply_settings(serde_json::from_str(&json).unwrap());
+        assert!(again.strip.horizontal);
+        assert_eq!(again.sound_opts.scale, profiles::Scale::Decibels);
+        assert!(again.hist_cumulative);
+        assert!(again.folded.contains("Window"));
+        assert_eq!(again.average_s, 30.0);
+        assert!(pane_visible(&again.panes.tiles, Pane::AmplitudeHistogram));
+        // Settings from an older app, with fields missing, fill in the rest.
+        let old: Settings = serde_json::from_str(r#"{"sidebar": false}"#).unwrap();
+        assert!(!old.sidebar && old.rate_line);
+        // A layout missing panes is set aside for the starting one.
+        let mut broken = app.settings();
+        let mut tiles = Tiles::default();
+        let only = tiles.insert_pane(Pane::Strip);
+        broken.panes = Some(Tree::new("panes", only, tiles));
+        again.apply_settings(broken);
+        assert!(layout_is_whole(&again.panes));
     }
 
     #[test]
