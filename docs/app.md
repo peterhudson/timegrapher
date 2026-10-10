@@ -20,10 +20,13 @@ Along the top, the toolbar: the sidebar button, which hides the sidebar
 to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
 a Mac), **Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
-buttons for the session (see Sessions below; **Analyse All**, **Replay**
-and **Stop** for a recording). Opening a recording, by **Open…**, a drop
-or the command line, analyses it all at once, which is how a watchmaker
-looks back through a take; **Replay** plays it through as if live. On the left, the settings in cards:
+buttons for the session (see Sessions below; **Replay**, **Stop** and,
+while one is being analysed, **Cancel** for a recording). Opening a
+recording, by **Open…**, **Open Folder…**, a path typed into the box and
+Enter, or the command line, analyses it all at once, which is how a
+watchmaker looks back through a take; **Replay** plays a file through as if
+live. Dropping a file or folder on the window opens it too where the
+desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
 **Charts**, **Distributions**), each with its switch to show or hide it and
@@ -37,8 +40,10 @@ three readings in cards and below them the panes. Along the bottom, the
 status line. Every card and reading has a **?** beside its name that opens
 a longer explanation in place (click it again, or anywhere else, to close
 it), and every setting gives a short hint when the pointer rests on it. Before anything is
-open, the main area says how to begin, with buttons to start listening or
-open a recording; a problem shows in a red banner above the readings until
+open, the main area offers the three ways in: **Listen to a Watch**,
+**Open a Recording…** and **Open a Folder…**. While a recording is being
+analysed it shows how far the analysis has got, in hours of sound and time
+left, with **Cancel**; a problem shows in a red banner above the readings until
 it is dismissed or the next start clears it. The app follows the
 desktop's light or dark setting (Appearance, under Window, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
@@ -46,12 +51,15 @@ shift as they change.
 
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
-recording: **Open Folder…** in the toolbar, a folder typed into the path
-box, a folder dropped on the window, or `timegrapher-app FOLDER`. Its WAV
-and FLAC files are analysed in name order, end to end, with **Analyse
-All**; a folder can't be replayed in real time. A 16-hour night takes a
-few minutes to analyse, with a progress bar in the status line, and the
-Steadiness tests then cover the whole night.
+recording: **Open a Folder…** on the opening screen, **Open Folder…** in
+the toolbar, a folder typed into the path box, or `timegrapher-app FOLDER`.
+Its WAV and FLAC files are joined end to end in file-name order, as
+`timegrapher long` and `series` read a folder: name segments so that they
+sort in time order (`audio-001.wav`, `audio-002.wav`, … or a time stamp
+with leading zeros); the files' dates are not used. A folder can't be
+replayed in real time. A 16-hour night takes some minutes to analyse; the
+window shows the hours done, the time left and the files in order, and
+Steadiness then covers the whole night.
 
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
@@ -269,7 +277,7 @@ averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
 lines dashed and the largest excursion labelled). The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
-or the whole file after Analyse All. Rows stack and fill the pane when it is
+or the whole file once it is opened. Rows stack and fill the pane when it is
 tall enough, sit side by side when it is wide and short, and scroll
 otherwise. The plots don't pan, zoom or show values under the pointer.
 
