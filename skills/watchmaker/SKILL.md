@@ -1,6 +1,6 @@
 ---
 name: watchmaker
-description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like), and when the timegrapher program itself seems wrong and the person wants to report it (`timegrapher report`).
+description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `series`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like), and when the timegrapher program itself seems wrong and the person wants to report it (`timegrapher report`).
 ---
 
 # Watchmaker
@@ -64,7 +64,13 @@ Three jobs, in order:
    That gives you the beat rate and the lift angle. If they don't know, say
    so and use the defaults knowingly (see below).
 
-### 2. Test (see [setup-and-microphone.md](references/setup-and-microphone.md#the-test))
+### 2. Test (see [guided-test.md](references/guided-test.md))
+
+When someone wants to know whether their watch is healthy or needs a
+service, walk them through [guided-test.md](references/guided-test.md):
+the script for a first-timer, step by step, with what to say at each one,
+from the microphone check to six positions fully wound and the same six
+24 hours later. The points below are the short version.
 
 - Wind it fully (about 30–40 turns of the crown for most manual-wind and
   automatics; stop at resistance on a manual wind, never force it).
@@ -73,7 +79,8 @@ Three jobs, in order:
 - Record at least 60 s per position; 2 minutes is better. Dial up first.
 - For a proper check: dial up, dial down, crown down, crown up, crown left,
   crown right. Five or six positions tell you far more than one.
-- For the gear train: one position, an hour or more, then `timegrapher long`.
+- For the gear train: one position, an hour or more, then `timegrapher series`
+  (is it steady, and if not, which wheel) and `timegrapher long` (the report).
 - Analyse each file: `timegrapher analyze FILE --lift L --json` (and `--bph`
   if you know it). Then `shape` if the tick needs looking at.
 
@@ -84,14 +91,18 @@ For several positions, name each file after its position (`watch_DU.flac`,
 tolerance class). It gives per-position readings, Witschi's characteristic
 values (X, D, DV, DH, DVH, Di, isochronism) and findings, each with a
 stable `code`, a `severity` (`fault`, `warning`, `note`), the evidence and
-advice. Read the findings, then reason about them as below.
+advice. [findings.md](references/findings.md) says what each code means,
+how much weight it carries and what to tell the person. Read the
+findings, then reason about them as below.
 
 ### 3. Read the results
 
 Work through them in this order. The reasons are in
 [reading-the-numbers.md](references/reading-the-numbers.md).
 
-1. **Is the measurement sound?** Beats found against expected (duration ×
+1. **Is the measurement sound?** First `watch_heard`: when it is false
+   no watch was heard (an empty stand, a stopped watch, no contact), and
+   every number describes noise, so show none of them. Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
    within a few degrees of each other, the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
@@ -242,6 +253,8 @@ your verdict, say so.
 
 | File | When |
 | --- | --- |
+| [guided-test.md](references/guided-test.md) | Walking a first-timer through the whole test: what to ask, what to say, what to run, step by step |
+| [findings.md](references/findings.md) | Every finding code and verdict from `doctor`, `session` and `series`: what it means, how sure, what to do, what to tell the person |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
 | [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means, good/fair/poor values, lift angles by calibre, positions, COSC and chronometer criteria, trace patterns |
