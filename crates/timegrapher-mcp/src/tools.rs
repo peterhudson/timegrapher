@@ -475,12 +475,20 @@ mod tests {
         v.as_object().unwrap().clone()
     }
 
+    /// A full path on whichever system the test runs on.
+    fn full(name: &str) -> String {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     #[test]
     fn analyze_line() {
         let t = find("analyze_recording").unwrap();
         let line = command_line(
             t,
-            &args(json!({"recording": "/w/take.flac", "bph": 28800, "lift_deg": 52.5})),
+            &args(json!({"recording": full("take.flac"), "bph": 28800, "lift_deg": 52.5})),
         )
         .unwrap();
         assert_eq!(
@@ -491,7 +499,7 @@ mod tests {
                 "--lift=52.5",
                 "--json",
                 "--",
-                "/w/take.flac"
+                &full("take.flac")
             ]
         );
     }
@@ -499,8 +507,11 @@ mod tests {
     #[test]
     fn recording_is_a_flag_for_doctor() {
         let t = find("check_recording").unwrap();
-        let line = command_line(t, &args(json!({"recording": "/w/t.wav"}))).unwrap();
-        assert_eq!(line, ["doctor", "--file=/w/t.wav", "--json"]);
+        let line = command_line(t, &args(json!({"recording": full("t.wav")}))).unwrap();
+        assert_eq!(
+            line,
+            ["doctor", &format!("--file={}", full("t.wav")), "--json"]
+        );
     }
 
     #[test]
@@ -508,9 +519,9 @@ mod tests {
         let t = find("analyze_recording").unwrap();
         assert!(command_line(t, &args(json!({}))).is_err());
         assert!(command_line(t, &args(json!({"recording": "take.flac"}))).is_err());
-        assert!(command_line(t, &args(json!({"recording": "/t", "apply": true}))).is_err());
-        assert!(command_line(t, &args(json!({"recording": "/t", "bph": -1}))).is_err());
-        assert!(command_line(t, &args(json!({"recording": "/t", "bph": "x"}))).is_err());
+        assert!(command_line(t, &args(json!({"recording": full("t"), "apply": true}))).is_err());
+        assert!(command_line(t, &args(json!({"recording": full("t"), "bph": -1}))).is_err());
+        assert!(command_line(t, &args(json!({"recording": full("t"), "bph": "x"}))).is_err());
     }
 
     #[test]
