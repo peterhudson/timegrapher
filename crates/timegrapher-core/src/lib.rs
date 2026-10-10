@@ -24,6 +24,7 @@ pub mod profile;
 pub mod recorder;
 pub mod session;
 pub mod shape;
+pub mod steadiness;
 pub mod stream;
 pub mod synth;
 pub mod timing;

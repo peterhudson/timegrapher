@@ -5,6 +5,7 @@ mod output;
 mod profile_cmd;
 mod regress_cmd;
 mod report;
+mod series_cmd;
 mod session_cmd;
 mod session_report;
 mod shape_cmd;
@@ -169,6 +170,46 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
         /// Print the summary as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Is each series of readings steady? Tests the rate, amplitude and
+    /// beat error of a take in time order for independence
+    /// (autocorrelation, Allan deviation, CUSUM, change points), alongside
+    /// the period search and the two-state finder, and gives one verdict
+    /// per series: steady, periodic, two states, measurement, shifting
+    /// mean, drifting or wandering.
+    Series {
+        /// The recording; several files are read as one continuous
+        /// recording, in the order given. A folder stands for its WAV and
+        /// FLAC files, sorted by name.
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Clock log for calibrating the sound card (as for `long`).
+        #[arg(long)]
+        clock: Option<PathBuf>,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees.
+        #[arg(long, default_value_t = 52.0)]
+        lift: f64,
+        /// Comma-separated steady tones to notch out, Hz.
+        #[arg(long, value_delimiter = ',')]
+        notch: Vec<f64>,
+        /// High-pass corner, Hz.
+        #[arg(long, default_value_t = 1500.0)]
+        highpass: f64,
+        /// Escape wheel teeth, used to name periodic components.
+        #[arg(long, default_value_t = 15)]
+        escape_teeth: u32,
+        /// Another wheel to name, as NAME=SECONDS per turn (repeatable).
+        #[arg(long)]
+        wheel: Vec<String>,
+        /// Length of each rate reading, seconds.
+        #[arg(long, default_value_t = 10.0)]
+        reading: f64,
+        /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -479,6 +520,40 @@ fn main() -> ExitCode {
                 out,
                 json,
             )
+        }
+        Command::Series {
+            files,
+            clock,
+            bph,
+            lift,
+            notch,
+            highpass,
+            escape_teeth,
+            wheel,
+            reading,
+            json,
+        } => {
+            let mut cfg = StreamConfig::default();
+            cfg.analysis.bph = bph;
+            cfg.analysis.amplitude.lift_deg = lift;
+            cfg.analysis.envelope.notch_hz = notch;
+            cfg.analysis.envelope.highpass_hz = highpass;
+            if reading.is_nan() || reading <= 0.0 {
+                Err("--reading must be a positive number of seconds".to_string())
+            } else {
+                series_cmd::run(series_cmd::Options {
+                    files: &files,
+                    clock_log: clock.as_deref(),
+                    stream: cfg,
+                    escape_teeth,
+                    wheels: &wheel,
+                    check: timegrapher_core::steadiness::Config {
+                        rate_reading_s: reading,
+                        ..Default::default()
+                    },
+                    json,
+                })
+            }
         }
         Command::Devices { json } => run_devices(json),
         Command::Clock { action, json } => {
