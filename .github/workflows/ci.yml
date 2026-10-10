@@ -34,57 +34,39 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --release
 
-  # The engine against tg on the stored takes (docs/regress.md). The audio
-  # lives in the private recordings repo, read with the RECORDINGS_TOKEN
-  # secret (a read-only token for that repo alone). Without the secret, as
-  # on pull requests from forks, the job says so and passes. The log shows
-  # take names and numbers only: no audio, file names or take notes.
+  # The engine against tg on the public corpus's takes (docs/regress.md),
+  # plus its smoke takes. The audio is downloaded from the corpus's
+  # releases, checked by SHA-256 and cached between runs.
   regress:
     runs-on: ubuntu-latest
-    env:
-      RECORDINGS_TOKEN: ${{ secrets.RECORDINGS_TOKEN }}
     steps:
-      - name: Skip without the recordings
-        if: env.RECORDINGS_TOKEN == ''
-        run: echo "::notice::No RECORDINGS_TOKEN secret here, so the tg regression check is skipped."
       - uses: actions/checkout@v4
-        if: env.RECORDINGS_TOKEN != ''
-      - name: Check out the recordings
-        if: env.RECORDINGS_TOKEN != ''
+      # Metadata in git, audio in releases: no secret, so this also runs on
+      # pull requests from forks.
+      - name: Check out the corpus
         uses: actions/checkout@v4
         with:
-          repository: peterhudson/timegrapher-recordings
-          token: ${{ secrets.RECORDINGS_TOKEN }}
-          path: recordings
+          repository: peterhudson/timegrapher-corpus
+          path: corpus
           fetch-depth: 1
           persist-credentials: false
-      # Takes too big for git keep their audio in a release named after
-      # the take's folder.
-      - name: Fetch audio kept in releases
-        if: env.RECORDINGS_TOKEN != ''
-        env:
-          GH_TOKEN: ${{ secrets.RECORDINGS_TOKEN }}
-        run: |
-          repo=peterhudson/timegrapher-recordings
-          for tag in $(gh api "repos/$repo/releases" --paginate -q '.[].tag_name'); do
-            if [ -d "recordings/$tag" ]; then
-              gh release download "$tag" -R "$repo" -D "recordings/$tag" -p '*.flac' --skip-existing
-            fi
-          done
+      - name: Corpus audio cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            corpus/takes/**/*.flac
+          key: corpus-audio-${{ hashFiles('corpus/corpus.json') }}
+          restore-keys: corpus-audio-
       - uses: dtolnay/rust-toolchain@stable
-        if: env.RECORDINGS_TOKEN != ''
       - uses: Swatinem/rust-cache@v2
-        if: env.RECORDINGS_TOKEN != ''
       - name: Build
-        if: env.RECORDINGS_TOKEN != ''
         run: cargo build --locked --release -p timegrapher-cli --no-default-features
       - name: Engine against tg and the baseline
-        if: env.RECORDINGS_TOKEN != ''
         run: |
           set -o pipefail
-          ./target/release/timegrapher regress recordings --baseline regress/baseline.json --quiet | tee regress.txt
+          ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet | tee regress.txt
       - name: Summary
-        if: always() && env.RECORDINGS_TOKEN != ''
+        if: always()
         run: |
           if [ -f regress.txt ]; then
             { echo '```'; cat regress.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

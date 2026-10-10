@@ -61,6 +61,10 @@ pub struct Options {
     pub json: bool,
     /// No progress lines and no file names, for public logs.
     pub quiet: bool,
+    /// Download the audio of a corpus checkout first.
+    pub fetch: bool,
+    /// Also run a corpus's smoke takes through the engine.
+    pub smoke: bool,
 }
 
 /// What one reading measured, as kept in the baseline.
@@ -171,6 +175,9 @@ pub struct Outcome {
     /// How far the engine is from tg on each take: the largest distance
     /// of any reading, per value.
     pub worst: Vec<Worst>,
+    /// The corpus's smoke takes, with --smoke.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub smoke: Vec<crate::corpus::Smoke>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -180,6 +187,15 @@ pub struct Worst {
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
     pub beat_error_ms: Option<f64>,
+}
+
+/// Whether a baseline label names the entry's file: the file itself, or a
+/// stretch of it (`file (600–1200 s)`, from `start_s` and `end_s`).
+fn same_recording(label: &str, file: &str) -> bool {
+    label == file
+        || label
+            .strip_prefix(file)
+            .is_some_and(|r| r.starts_with(" ("))
 }
 
 /// Session files under `root`, as paths relative to it ('/' separated).
@@ -435,11 +451,27 @@ fn max_of(it: impl Iterator<Item = Option<f64>>) -> Option<f64> {
 }
 
 pub fn run(o: &Options) -> Result<bool, String> {
-    let root = &o.root;
-    if !root.is_dir() {
-        return Err(format!("{}: not a folder", root.display()));
+    if !o.root.is_dir() {
+        return Err(format!("{}: not a folder", o.root.display()));
     }
-    let bpath = o.baseline.clone().unwrap_or_else(|| root.join(BASELINE));
+    let bpath = o.baseline.clone().unwrap_or_else(|| o.root.join(BASELINE));
+    // A corpus checkout keeps its takes in takes/.
+    let corpus = crate::corpus::load(&o.root)?;
+    if corpus.is_none() && (o.fetch || o.smoke) {
+        return Err(format!(
+            "{}: --fetch and --smoke need a corpus checkout (no {} in it)",
+            o.root.display(),
+            crate::corpus::INDEX
+        ));
+    }
+    if let (Some(c), true) = (&corpus, o.fetch) {
+        crate::corpus::fetch(&o.root, c, &o.takes, o.smoke, o.quiet)?;
+    }
+    let root_buf = match corpus {
+        Some(_) => crate::corpus::takes_dir(&o.root),
+        None => o.root.clone(),
+    };
+    let root = &root_buf;
     let old: Option<Baseline> = match fs::read_to_string(&bpath) {
         Ok(text) => {
             let b: Baseline =
@@ -465,7 +497,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
         .into_iter()
         .filter(|s| o.takes.is_empty() || o.takes.iter().any(|t| s.contains(t.as_str())))
         .collect();
-    if sessions.is_empty() {
+    if sessions.is_empty() && !o.smoke {
         return Err(format!(
             "{}: no {MANIFEST} found in it or its folders",
             root.display()
@@ -499,7 +531,9 @@ pub fn run(o: &Options) -> Result<bool, String> {
                 }
             };
             // A baseline reading counts only if it is the same recording.
-            let base = before.and_then(|b| b.get(i)).filter(|b| b.label == e.file);
+            let base = before
+                .and_then(|b| b.get(i))
+                .filter(|b| same_recording(&b.label, &e.file));
             let rs = compare(
                 &take,
                 i + 1,
@@ -541,10 +575,14 @@ pub fn run(o: &Options) -> Result<bool, String> {
                 .collect()
         })
         .unwrap_or_default();
+    let smoke = match (&corpus, o.smoke) {
+        (Some(c), true) => crate::corpus::smoke(&o.root, c, &o.takes),
+        _ => Vec::new(),
+    };
     let mut counts = tally(&rows);
     counts.takes = sessions.len();
     counts.readings = readings;
-    let passed = !rows.iter().any(|r| r.status.fails());
+    let passed = !rows.iter().any(|r| r.status.fails()) && !smoke.iter().any(|s| s.fails());
     let shown: Vec<Row> = rows
         .into_iter()
         .filter(|r| o.all || r.status != Status::Same)
@@ -556,6 +594,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
         not_run,
         rows: shown,
         worst,
+        smoke,
     };
 
     if o.write_baseline {
@@ -574,6 +613,9 @@ pub fn run(o: &Options) -> Result<bool, String> {
     if o.quiet {
         for r in &mut outcome.rows {
             r.label.clear();
+        }
+        for r in &mut outcome.smoke {
+            r.file.clear();
         }
     }
     if o.json {
@@ -675,6 +717,18 @@ fn print_text(o: &Outcome, names: bool) {
     if !o.not_run.is_empty() {
         println!("Not run (in the baseline only): {}", o.not_run.join(", "));
     }
+    for r in &o.smoke {
+        let what = match (r.outcome, r.beats, &r.detail) {
+            ("ran", Some(b), _) => format!("ran, {b} beats"),
+            ("stopped", _, Some(d)) => format!("stopped cleanly: {d}"),
+            (_, _, d) => format!("PANICKED: {}", d.as_deref().unwrap_or("?")),
+        };
+        if names {
+            println!("Smoke {} {}: {what}", r.take, r.file);
+        } else {
+            println!("Smoke {}: {what}", r.take);
+        }
+    }
     println!(
         "Margins: rate {} s/d, amplitude {}°, beat error {} ms, beats {}% (at least {}).",
         o.margins.rate_s_per_day,
@@ -689,6 +743,14 @@ fn print_text(o: &Outcome, names: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stretches_match_their_file() {
+        assert!(same_recording("take", "take"));
+        assert!(same_recording("take (600–1200 s)", "take"));
+        assert!(!same_recording("take2", "take"));
+        assert!(!same_recording("take", "take2"));
+    }
 
     fn v(rate: f64, amp: f64, be: f64, beats: usize) -> Values {
         Values {
