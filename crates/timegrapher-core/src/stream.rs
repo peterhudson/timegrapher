@@ -250,7 +250,11 @@ pub fn analyze_files(
         bph: st.bph,
         lift_deg: cfg.analysis.amplitude.lift_deg,
         beats: st.beats,
-        amplitude_windows: st.amp,
+        amplitude_windows: {
+            let mut amp = st.amp;
+            amplitude::reject_side_outliers(&mut amp, amplitude::OUTLIER_SPAN_S);
+            amp
+        },
         clipped_beats: st.clipped_beats,
         clipped_samples: st.clipped_samples,
     })
