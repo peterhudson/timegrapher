@@ -74,7 +74,7 @@ plus these:
   included, only where it is described as a true clone that takes genuine
   parts (DD3235 and DD3285, JH3235, VR3135, DD4130), or whose maker says
   nearly all parts interchange (DD4131). Design clones and hybrids
-  (SH3135, SA3135, VR3235, SH3285, SH4131) and 7750-based "4130" clones
+  (SH3135, VR3235, SH3285, SH4131) and 7750-based "4130" clones
   get only what follows from the beat rate and layout. Most clone facts
   come from two guides by one author on a watch forum (one on clone
   movements, one on lift angles) and teardown threads, cited by URL per

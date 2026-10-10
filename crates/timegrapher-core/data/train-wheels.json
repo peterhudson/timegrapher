@@ -413,37 +413,6 @@
     "notes": "A clone of the 3135 whose parts are not fully interchangeable with genuine ones, so the escape wheel is left out."
   },
   {
-    "calibre": "SA3135",
-    "maker": "Clone (maker not named)",
-    "family": [],
-    "bph": 28800,
-    "lift_angle_deg": 52,
-    "seconds": "centre (fourth wheel)",
-    "wheels": [
-      {
-        "name": "fourth wheel",
-        "period_s": 60,
-        "basis": "derived from the beat rate"
-      },
-      {
-        "name": "centre wheel",
-        "period_s": 3600,
-        "basis": "derived from the beat rate"
-      },
-      {
-        "name": "balance",
-        "period_s": 0.25,
-        "basis": "derived from the beat rate"
-      }
-    ],
-    "sources": [
-      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a design clone, not 100% compatible with genuine parts; SA means Super Asian)",
-      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
-    ],
-    "confidence": "derived from the beat rate",
-    "notes": "A separate design clone of the 3135, not the SH3135 (its hairspring is wound the other way). Parts are not fully interchangeable, so the escape wheel is left out."
-  },
-  {
     "calibre": "Rolex 3235",
     "maker": "Rolex",
     "family": [
@@ -532,13 +501,13 @@
       }
     ],
     "sources": [
-      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts swap in; 70+ h; the replicas' escape wheels are solid; the DD3285 appears to be based on it and is a true clone)",
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts swap in; 70+ h; the replicas' escape wheels are solid; the DD3285 is a true clone)",
       "https://forum.replica-watch.info/threads/jh3235-free-sprung-movement-tear-down.11040479/ (larger pallet stones than the genuine fork; no Chronergy escape wheel)",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT appears to be built on it."
+    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT is built on it (confirmed by a watchmaker who has serviced many)."
   },
   {
     "calibre": "JH3235",
@@ -819,7 +788,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Its train is taken as the 4131's on the factory's claim that 95% of parts interchange. Whether a genuine balance complete fits is not yet confirmed. Lift 55° as the 4131, probably, not measured."
+    "notes": "Its train is taken as the 4131's on the factory's claim that 95% of parts interchange. It looks like a true clone, but genuine 4131 parts are very hard to get, so no part swap has been tried and a genuine balance complete fitting is unconfirmed. Lift 55° as the 4131, probably, not measured."
   },
   {
     "calibre": "SH4131",
