@@ -214,3 +214,35 @@ fn clipping_is_counted_per_beat() {
     assert!(c.beat_fraction > 0.5, "{c:?}");
     assert!(c.peak_dbfs > -0.1, "{c:?}");
 }
+
+#[test]
+fn an_empty_stand_is_no_watch() {
+    // Hiss with no ticks in it: the tracker still finds "beats", but they
+    // scatter across the beat period.
+    let fs = 48000u32;
+    let mut state = 12345u64;
+    let mut uniform = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((state >> 11) as f64 / (1u64 << 53) as f64) as f32 - 0.5
+    };
+    let samples: Vec<f32> = (0..fs as usize * 30).map(|_| 0.01 * uniform()).collect();
+    let quiet = timegrapher_core::audio::Audio {
+        samples,
+        sample_rate: fs,
+    };
+    let s = analyze(&quiet, &AnalysisConfig::default()).summary;
+    assert!(
+        !s.watch_heard,
+        "noise taken for a watch: jitter {:?} us",
+        s.jitter_us
+    );
+
+    let cfg = SynthConfig {
+        snr_db: 12.0,
+        duration_s: 30.0,
+        ..Default::default()
+    };
+    assert!(run(&cfg, |_| 270.0, |_| 0.0).summary.watch_heard);
+}

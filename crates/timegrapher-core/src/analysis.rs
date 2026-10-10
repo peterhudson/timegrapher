@@ -40,6 +40,10 @@ pub struct Summary {
     pub sample_rate: u32,
     pub bph: u32,
     pub beats_found: usize,
+    /// False when the beats are no steadier than noise, as on an empty
+    /// stand: the readings below then describe noise and must not be shown
+    /// (see [`beats::watch_heard`]).
+    pub watch_heard: bool,
     /// Fit over the whole recording; its beat error is the drop's.
     pub overall: Option<TimingFit>,
     /// Signed beat error measured from the unlock, as tg and commercial
@@ -197,6 +201,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         y: amplitude_windows.iter().filter_map(|w| w.mean()).collect(),
     };
 
+    let jitter_us = median_of(rate_windows.iter().map(|w| w.fit.jitter_us));
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
         amplitude::standard_error(&v)
@@ -206,6 +211,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         sample_rate: audio.sample_rate,
         bph,
         beats_found: beats.len(),
+        watch_heard: beats::watch_heard(jitter_us, bph),
         overall,
         beat_error_unlock_ms: median_of(
             amplitude_windows
@@ -214,7 +220,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
-        jitter_us: median_of(rate_windows.iter().map(|w| w.fit.jitter_us)),
+        jitter_us,
         amplitude_deg: median_of(amplitude_windows.iter().filter_map(|w| w.mean())),
         amplitude_even_deg: median_of(amplitude_windows.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amplitude_windows.iter().filter_map(|w| w.odd_deg)),

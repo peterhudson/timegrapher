@@ -217,6 +217,22 @@ const MAX_MISSES: usize = 16;
 pub const PRE_S: f64 = 0.020;
 pub const POST_S: f64 = 0.008;
 
+/// Timing scatter, as a fraction of the beat period, above which the beats
+/// found are not a watch's. A watch's beats sit within a millisecond of a
+/// straight line (0.7 ms at most in every stored take, 0.6% of the beat);
+/// on an empty stand the tracker still finds a "beat" in each window, but
+/// anywhere in it, and the scatter is 5% of the beat (8.1 and 8.6 ms in the
+/// silence take at 21,600). 2% leaves a factor of three on each side.
+pub const NO_WATCH_JITTER_FRACTION: f64 = 0.02;
+
+/// Whether the beats look like a watch's, from the median timing jitter in
+/// the rate windows (see [`crate::timing::WindowFit`]). No jitter, because
+/// too few beats were found to fit, is no watch.
+pub fn watch_heard(jitter_us: Option<f64>, bph: u32) -> bool {
+    let beat_us = 3.6e9 / bph.max(1) as f64;
+    jitter_us.is_some_and(|j| j < NO_WATCH_JITTER_FRACTION * beat_us)
+}
+
 /// Median of the windows around the given beat times (sample by sample).
 pub fn median_template(env: &[f32], fs: f64, times: &[f64]) -> Vec<f32> {
     median_window(env, fs, times, PRE_S, POST_S)

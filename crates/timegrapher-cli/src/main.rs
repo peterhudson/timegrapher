@@ -951,6 +951,13 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
+    if !s.watch_heard {
+        println!(
+            "No watch heard: the beats found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
+            opt(s.jitter_us, 0)
+        );
+        return;
+    }
     if let Some(f) = &s.overall {
         match clock {
             Some((ppm, from)) => println!(
