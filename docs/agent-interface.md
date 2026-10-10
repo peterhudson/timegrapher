@@ -11,7 +11,8 @@ The [watchmaker skill](../skills/watchmaker/SKILL.md) builds on it.
 - Every command that reports something takes `--json` and then prints
   exactly one JSON document on stdout. Progress and warnings go to stderr.
 - Exit codes: `0` success, `1` error (message on stderr), `3` from `doctor`
-  when the input is not fit to measure with.
+  when the input is not fit to measure with, and from `regress` when the
+  engine moved away from tg ([regress](regress.md)).
 - Nothing changes the computer's settings unless the person asked for it:
   `doctor` proposes mixer changes and only makes them with `--apply`.
   An agent must ask the person before passing `--apply`.

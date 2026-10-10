@@ -2,6 +2,7 @@ mod doctor;
 mod long;
 mod output;
 mod profile_cmd;
+mod regress_cmd;
 mod report;
 mod session_cmd;
 mod session_report;
@@ -231,6 +232,45 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Check the engine against tg on stored takes: every reading of every
+    /// session file under ROOT is measured again and compared with its tg
+    /// reference and a baseline. Exit code 3 when a value moved away from
+    /// tg by more than its margin, or a reading lost beats or a value.
+    Regress {
+        /// A folder of takes, each with a session.toml whose readings carry
+        /// tg's numbers (e.g. a clone of the recordings repo).
+        root: PathBuf,
+        /// Baseline file (default: regress-baseline.json in ROOT).
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+        /// Write the baseline from this run (accepting it) instead of failing.
+        #[arg(long)]
+        write_baseline: bool,
+        /// Only the takes whose folder name contains this (repeatable).
+        #[arg(long = "take")]
+        takes: Vec<String>,
+        /// Readings measured at once (default: one per processor).
+        #[arg(long)]
+        jobs: Option<usize>,
+        /// Margin for rate, s/d.
+        #[arg(long, default_value_t = 0.3)]
+        rate_margin: f64,
+        /// Margin for amplitude, degrees.
+        #[arg(long, default_value_t = 1.5)]
+        amplitude_margin: f64,
+        /// Margin for beat error, ms.
+        #[arg(long, default_value_t = 0.03)]
+        beat_error_margin: f64,
+        /// List every value, not only those that moved.
+        #[arg(long)]
+        all: bool,
+        /// Print the outcome as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+        /// No progress lines or recording file names (for public CI logs).
+        #[arg(long)]
+        quiet: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         out: PathBuf,
@@ -414,6 +454,41 @@ fn main() -> ExitCode {
                 no_cycles,
             },
         ),
+        Command::Regress {
+            root,
+            baseline,
+            write_baseline,
+            takes,
+            jobs,
+            rate_margin,
+            amplitude_margin,
+            beat_error_margin,
+            all,
+            json,
+            quiet,
+        } => {
+            let o = regress_cmd::Options {
+                root,
+                baseline,
+                write_baseline,
+                takes,
+                jobs,
+                margins: regress_cmd::Margins {
+                    rate_s_per_day: rate_margin,
+                    amplitude_deg: amplitude_margin,
+                    beat_error_ms: beat_error_margin,
+                    ..Default::default()
+                },
+                all,
+                json,
+                quiet,
+            };
+            match regress_cmd::run(&o) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(3),
+                Err(e) => Err(e),
+            }
+        }
         Command::Synth {
             out,
             duration,
