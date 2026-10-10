@@ -351,6 +351,11 @@ struct Batch {
 pub struct TimegrapherApp {
     input: Input,
     devices: Vec<InputDevice>,
+    /// Whether `devices` has been filled. Listing the inputs asks each one
+    /// what it supports, which briefly opens it and can disturb another
+    /// program recording from it, so the app lists them only when the
+    /// microphone menu opens, Rescan is pressed or listening starts.
+    devices_listed: bool,
     device: Option<String>,
     file_path: String,
     bph: Option<u32>,
@@ -442,7 +447,9 @@ pub struct TimegrapherApp {
 
 impl TimegrapherApp {
     pub fn new(file: Option<PathBuf>, analyse: bool, saved: Option<Settings>) -> Self {
-        let mut app = Self::with_devices(capture::list().unwrap_or_default(), file, analyse);
+        // No device is touched at launch: see `devices_listed`.
+        let mut app = Self::with_devices(Vec::new(), file, analyse);
+        app.devices_listed = false;
         if let Some(s) = saved {
             app.apply_settings(s);
         }
@@ -491,9 +498,10 @@ impl TimegrapherApp {
             theme,
             panes,
         } = s;
-        if let Some(d) =
-            device.filter(|d| capture::choices(&self.devices).iter().any(|c| &c.id == d))
-        {
+        // Checked against the inputs when they are listed.
+        if let Some(d) = device.filter(|d| {
+            !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
+        }) {
             self.device = Some(d);
         }
         if AVERAGES.contains(&average_s) {
@@ -535,6 +543,7 @@ impl TimegrapherApp {
                 Input::Microphone
             },
             devices,
+            devices_listed: true,
             device,
             file_path: file
                 .as_ref()
@@ -669,9 +678,33 @@ impl TimegrapherApp {
         self.sound_job = None;
     }
 
+    /// List the inputs, once, and keep the chosen one if it is still there,
+    /// else take the first.
+    fn ensure_devices(&mut self) {
+        if !self.devices_listed {
+            self.rescan();
+        }
+    }
+
+    /// List the inputs again, after one is plugged in.
+    fn rescan(&mut self) {
+        self.devices = capture::list().unwrap_or_default();
+        self.devices_listed = true;
+        let there = self
+            .device
+            .as_ref()
+            .is_some_and(|d| self.devices.iter().any(|x| &x.id == d));
+        if !there {
+            self.device = capture::choices(&self.devices)
+                .first()
+                .map(|c| c.id.clone());
+        }
+    }
+
     /// Listen to the microphone: carry on the paused session if there is
     /// one, else start a new one.
     fn start_microphone(&mut self) {
+        self.ensure_devices();
         if self.can_resume() {
             return self.resume_microphone();
         }
@@ -1129,14 +1162,28 @@ impl TimegrapherApp {
             match self.input {
                 Input::Microphone => {
                     let choices = self.input_choices();
+                    let listed = self.devices_listed;
                     let sel = choices
                         .iter()
                         .find(|c| Some(&c.id) == self.device.as_ref())
-                        .map_or_else(|| "Choose a Microphone".to_string(), |c| c.label.clone());
+                        .map_or_else(
+                            || match (&self.device, listed) {
+                                // Not listed yet: name the one kept from last time.
+                                (Some(d), false) => d.strip_prefix("alsa:").unwrap_or(d).into(),
+                                (None, false) => "System Default".to_string(),
+                                _ => "Choose a Microphone".to_string(),
+                            },
+                            |c| c.label.clone(),
+                        );
+                    let mut opened = false;
                     egui::ComboBox::from_id_salt("device")
                         .selected_text(short(&sel, 36))
                         .width(270.0)
                         .show_ui(ui, |ui| {
+                            opened = true;
+                            if !listed {
+                                ui.weak("Looking for microphones…");
+                            }
                             for c in &choices {
                                 let r = ui.selectable_value(
                                     &mut self.device,
@@ -1158,12 +1205,11 @@ impl TimegrapherApp {
                         .on_hover_text("Look for microphones again, after plugging one in")
                         .clicked()
                     {
-                        self.devices = capture::list().unwrap_or_default();
-                        if self.device.is_none() {
-                            self.device = capture::choices(&self.devices)
-                                .first()
-                                .map(|c| c.id.clone());
-                        }
+                        self.rescan();
+                    }
+                    if opened && !listed {
+                        self.ensure_devices();
+                        ui.ctx().request_repaint();
                     }
                 }
                 Input::File => {
@@ -2000,7 +2046,14 @@ impl TimegrapherApp {
     /// Find the selected input's level control and read it.
     fn read_gain(&mut self) {
         self.gain_device = self.device.clone();
-        self.gain = self.device.as_deref().and_then(InputGain::for_device);
+        // Before the inputs are listed, the system default's level control:
+        // reading a mixer does not open the input.
+        let id = match (&self.device, self.devices_listed) {
+            (Some(d), _) => Some(d.as_str()),
+            (None, false) => Some("default"),
+            (None, true) => None,
+        };
+        self.gain = id.and_then(InputGain::for_device);
         self.gain_state = self.gain.as_ref().and_then(|g| g.read());
         self.gain_read_at = Instant::now();
     }
@@ -3756,6 +3809,39 @@ mod tests {
         app.relayout(true);
         assert!(pane_visible(&app.panes.tiles, Pane::AmplitudeHistogram));
         assert!(!pane_visible(&app.panes.tiles, Pane::RateHistogram));
+    }
+
+    #[test]
+    fn launching_and_replaying_touch_no_input() {
+        // `new` lists nothing; a replay never needs to.
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.devices_listed = false;
+        app.apply_settings(Settings {
+            device: Some("alsa:hw:CARD=Device,DEV=0".into()),
+            ..Settings::default()
+        });
+        assert_eq!(app.device.as_deref(), Some("alsa:hw:CARD=Device,DEV=0"));
+        let dir = std::env::temp_dir().join("tg-app-no-input");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("take.wav");
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 4.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&path, &audio).unwrap();
+        app.start_replay(&path);
+        let ctx = themed();
+        frames(&mut app, &ctx, 3);
+        assert!(!app.devices_listed);
+        // Nor does the microphone view, until its menu opens or Start.
+        app.stop();
+        app.input = Input::Microphone;
+        frames(&mut app, &ctx, 2);
+        assert!(!app.devices_listed);
     }
 
     #[test]

@@ -214,6 +214,14 @@ differ. **Reset Panes** puts the panes back as they started.
 **Appearance.** Under Window: Auto follows the desktop's light or dark
 setting; Light and Dark override it.
 
+**No input touched at launch.** Listing the inputs asks each one what it
+supports, which briefly opens it and can disturb another program recording
+from the same microphone (a long take running beside the app, say). So the
+app lists them only when the microphone menu opens, **Rescan** is pressed
+or **Start** is clicked; until then the menu names the microphone kept from
+last time, or System Default. Replaying or analysing a recording never
+touches an input.
+
 **Level meter.** In the toolbar, while listening to a microphone: a bar to
 the loudest sample of the last half second, green when it is right, amber
 when it is very quiet or too hot, red when the input clips, with marks at
