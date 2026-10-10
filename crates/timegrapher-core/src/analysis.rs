@@ -54,6 +54,12 @@ pub struct Summary {
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
+    /// Standard errors of the three amplitudes above, degrees: their
+    /// precision from the spread between windows, not their accuracy,
+    /// which rests on the lift angle (see [`amplitude::standard_error`]).
+    pub amplitude_se_deg: Option<f64>,
+    pub amplitude_even_se_deg: Option<f64>,
+    pub amplitude_odd_se_deg: Option<f64>,
     pub lift_deg: f64,
     /// Strongest periodic components of the timing and the amplitude.
     pub timing_periods: Vec<Component>,
@@ -190,6 +196,10 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         y: amplitude_windows.iter().filter_map(|w| w.mean()).collect(),
     };
 
+    let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
+        let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
+        amplitude::standard_error(&v)
+    };
     let summary = Summary {
         duration_s: duration,
         sample_rate: audio.sample_rate,
@@ -207,6 +217,9 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         amplitude_deg: median_of(amplitude_windows.iter().filter_map(|w| w.mean())),
         amplitude_even_deg: median_of(amplitude_windows.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amplitude_windows.iter().filter_map(|w| w.odd_deg)),
+        amplitude_se_deg: se(&|w| w.mean()),
+        amplitude_even_se_deg: se(&|w| w.even_deg),
+        amplitude_odd_se_deg: se(&|w| w.odd_deg),
         lift_deg: cfg.amplitude.lift_deg,
         timing_periods: search(timing_series),
         amplitude_periods: search(amp_series),
