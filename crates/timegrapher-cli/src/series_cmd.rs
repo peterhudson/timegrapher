@@ -8,7 +8,7 @@ use timegrapher_core::audio;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
-use timegrapher_core::periodicity::{standard_wheels, Wheel};
+use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::stream::{self, StreamConfig};
 
@@ -16,7 +16,7 @@ pub struct Options<'a> {
     pub files: &'a [PathBuf],
     pub clock_log: Option<&'a Path>,
     pub stream: StreamConfig,
-    pub escape_teeth: u32,
+    pub train: crate::long::Train<'a>,
     pub wheels: &'a [String],
     pub check: Config,
     pub json: bool,
@@ -28,6 +28,7 @@ pub fn run(o: Options) -> Result<(), String> {
         .iter()
         .map(|w| crate::long::parse_wheel(w))
         .collect::<Result<_, _>>()?;
+    o.train.calibre()?;
     let files = crate::long::expand_dirs(o.files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -69,7 +70,7 @@ pub fn run(o: Options) -> Result<(), String> {
     }
 
     let mut lc = LongConfig {
-        wheels: standard_wheels(log.bph, o.escape_teeth),
+        wheels: o.train.wheels(log.bph)?,
         ..Default::default()
     };
     lc.wheels.extend(extra);
@@ -83,7 +84,9 @@ pub fn run(o: Options) -> Result<(), String> {
             "lift_deg": o.stream.analysis.amplitude.lift_deg,
             "notch_hz": o.stream.analysis.envelope.notch_hz,
             "highpass_hz": o.stream.analysis.envelope.highpass_hz,
-            "escape_teeth": o.escape_teeth,
+            "calibre": o.train.calibre,
+            "escape_teeth": o.train.escape_teeth,
+            "named_wheels": lc.wheels,
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,
         });
