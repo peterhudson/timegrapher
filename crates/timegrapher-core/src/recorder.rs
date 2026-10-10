@@ -118,6 +118,16 @@ impl Recorder {
         &self.dir
     }
 
+    /// What was known when the recording started.
+    pub fn info(&self) -> &SessionInfo {
+        &self.info
+    }
+
+    /// What happened during it, oldest first.
+    pub fn notes(&self) -> &[Note] {
+        &self.notes
+    }
+
     pub fn duration_s(&self) -> f64 {
         self.frames as f64 / self.info.sample_rate as f64
     }

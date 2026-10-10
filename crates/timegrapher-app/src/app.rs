@@ -31,6 +31,7 @@ type Profiles = [Option<TickProfile>; 2];
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
 use timegrapher_core::recorder::{Recorder, SessionInfo};
+use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
 /// What a question before throwing away unsaved sound is about.
@@ -57,6 +58,12 @@ pub enum Position {
 }
 
 impl Position {
+    /// A position by any name the session files take: DU, CH, "dial up"…
+    fn from_name(s: &str) -> Option<Position> {
+        let common = timegrapher_core::session::Position::parse(s)?.common();
+        Position::ALL.into_iter().find(|p| p.code() == common)
+    }
+
     pub const ALL: [Position; 6] = [
         Position::DialUp,
         Position::DialDown,
@@ -446,6 +453,8 @@ struct Batch {
     files: usize,
     first: String,
     last: String,
+    /// The positions the take's session file gives, to mark once it is in.
+    stretches: Vec<(f64, Position)>,
 }
 
 impl Drop for Batch {
@@ -997,12 +1006,19 @@ impl TimegrapherApp {
 
     fn save_into(&mut self, parent: &Path) {
         let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
+        let manifest = self.take_manifest();
         let Some(r) = self.recorder.as_mut() else {
             return;
         };
         let secs = r.duration_s();
         match r.save_copy(parent, result.as_ref()) {
             Ok(dir) => {
+                let text = toml::to_string_pretty(&manifest).map_err(|e| e.to_string());
+                if let Err(e) = text
+                    .and_then(|t| std::fs::write(dir.join(MANIFEST), t).map_err(|e| e.to_string()))
+                {
+                    self.error(format!("Saved the sound, but not its {MANIFEST}: {e}"));
+                }
                 self.info_msg(format!(
                     "Saved {} of sound in {}",
                     strip::fmt_time(secs),
@@ -1013,6 +1029,102 @@ impl TimegrapherApp {
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
+    }
+
+    /// The session file for the take being kept: the watch, its calibre
+    /// (with the wheels of a custom one), the lift angle and beat rate, and
+    /// one entry per stretch in one position, in seconds into the sound
+    /// saved, which `timegrapher session` reads as well.
+    fn take_manifest(&self) -> Manifest {
+        let mut m = Manifest {
+            watch: (!self.watch.trim().is_empty()).then(|| self.watch.trim().to_string()),
+            calibre: (!self.calibre.is_empty()).then(|| self.calibre.clone()),
+            bph: self.bph.or(self.live.as_ref().and_then(|l| l.bph())),
+            lift: Some(self.lift_deg),
+            ..Default::default()
+        };
+        if let Calibre::Custom(i) = self.calibre_choice() {
+            m.wheels = self.custom_calibres[i]
+                .wheels
+                .iter()
+                .map(|w| (w.name.clone(), w.period_s))
+                .collect();
+        }
+        let Some(r) = self.recorder.as_ref() else {
+            return m;
+        };
+        // The positions in the saved sound's own time, as noted when they
+        // changed (the sound leaves out the pauses the session's clock
+        // counts).
+        let mut stretches = vec![(0.0, r.info().position.clone())];
+        for n in r.notes() {
+            if let Some(code) = n.text.strip_prefix("position ") {
+                if stretches.last().is_some_and(|s| s.0 >= n.audio_s) {
+                    stretches.pop();
+                }
+                if stretches.last().is_none_or(|s| s.1 != code) {
+                    stretches.push((n.audio_s, code.to_string()));
+                }
+            }
+        }
+        let one = stretches.len() == 1;
+        m.recordings = (0..stretches.len())
+            .map(|i| RecordingEntry {
+                file: ".".into(),
+                position: Some(stretches[i].1.clone()),
+                clock: Some("clock.csv".into()),
+                start_s: (!one).then_some(stretches[i].0),
+                end_s: stretches.get(i + 1).map(|s| s.0),
+                ..Default::default()
+            })
+            .collect();
+        m
+    }
+
+    /// Take what a session file says about a recording: the watch, its
+    /// calibre (a custom one is added to Your Calibres from its wheels),
+    /// the lift angle and beat rate. Returns the positions it lists through
+    /// the recording, oldest first.
+    fn apply_manifest(&mut self, m: &Manifest, entries: &[RecordingEntry]) -> Vec<(f64, Position)> {
+        if let Some(w) = &m.watch {
+            self.watch = w.clone();
+        }
+        if let Some(c) = &m.calibre {
+            let known =
+                calibres::find(c).is_some() || self.custom_calibres.iter().any(|x| &x.name == c);
+            if !known && !m.wheels.is_empty() {
+                self.custom_calibres.push(CustomCalibre {
+                    name: c.clone(),
+                    wheels: m
+                        .wheels
+                        .iter()
+                        .map(|(name, &period_s)| CustomWheel {
+                            name: name.clone(),
+                            period_s,
+                        })
+                        .collect(),
+                });
+            }
+            self.set_calibre(c.clone());
+        }
+        if let Some(l) = m.lift {
+            self.set_lift(l);
+        }
+        if m.bph.is_some() {
+            self.bph = m.bph;
+        }
+        let mut out: Vec<(f64, Position)> = entries
+            .iter()
+            .filter_map(|e| {
+                let p = Position::from_name(e.position.as_deref()?)?;
+                Some((e.start_s.unwrap_or(0.0), p))
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some(&(_, p)) = out.first() {
+            self.position = p;
+        }
+        out
     }
 
     fn start_replay(&mut self, path: &Path) {
@@ -1042,6 +1154,16 @@ impl TimegrapherApp {
                 Err(e) => return self.error(format!("Can't read {}: {e}", f.display())),
             }
         }
+        // What the take's session file says: the watch, calibre, lift
+        // angle, beat rate and positions, before the analysis uses them.
+        let stretches = match read_manifest(path) {
+            Ok(Some((m, entries))) => self.apply_manifest(&m, &entries),
+            Ok(None) => Vec::new(),
+            Err(e) => {
+                self.error(e);
+                Vec::new()
+            }
+        };
         let label = if path.is_dir() {
             match files.len() {
                 1 => format!("{} (1 file)", capture_label(path)),
@@ -1091,6 +1213,7 @@ impl TimegrapherApp {
             files: count,
             first,
             last,
+            stretches,
         });
     }
 
@@ -1203,13 +1326,13 @@ impl TimegrapherApp {
             }
         }
         if let Some(r) = done {
-            let label = self
+            let (label, stretches) = self
                 .batch
                 .take()
-                .map(|b| b.label.clone())
+                .map(|b| (b.label.clone(), b.stretches.clone()))
                 .unwrap_or_default();
             match r {
-                Ok(Some(log)) => self.show_log(log, label),
+                Ok(Some(log)) => self.show_log(log, label, stretches),
                 Ok(None) => {}
                 Err(e) => self.error(format!("Analysis failed: {e}")),
             }
@@ -1228,11 +1351,19 @@ impl TimegrapherApp {
         }
     }
 
-    fn show_log(&mut self, log: BeatLog, label: String) {
-        self.live = Some(LiveAnalyzer::from_log(log, self.live_config()));
+    fn show_log(&mut self, log: BeatLog, label: String, stretches: Vec<(f64, Position)>) {
+        let mut live = LiveAnalyzer::from_log(log, self.live_config());
+        self.stretches.clear();
+        if stretches.len() > 1 {
+            live.set_breaks(stretches[1..].iter().map(|s| s.0).collect());
+            self.stretches = stretches;
+        }
+        if let Some(&(_, p)) = self.stretches.last() {
+            self.position = p;
+        }
+        self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
-        self.stretches.clear();
         self.rebuild_trend();
         self.source_label = label;
         self.anchor = None;
@@ -4293,6 +4424,42 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
 /// WAV and FLAC files in name order (the segments of one long take).
+/// The session file a recording's folder may carry (see `timegrapher
+/// session`), which the app writes when it saves a take.
+const MANIFEST: &str = "session.toml";
+
+/// The session file beside a recording or in its folder, and its entries
+/// for that recording: none when there is no session file or it doesn't
+/// list the recording.
+fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>, String> {
+    let dir = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        match path.parent() {
+            Some(p) => p.to_path_buf(),
+            None => return Ok(None),
+        }
+    };
+    let file = dir.join(MANIFEST);
+    if !file.is_file() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let m: Manifest =
+        toml::from_str(&text).map_err(|e| format!("Can't read {}: {e}", file.display()))?;
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    let entries: Vec<RecordingEntry> = m
+        .recordings
+        .iter()
+        .filter(|e| same(&dir.join(&e.file), path))
+        .cloned()
+        .collect();
+    Ok((!entries.is_empty()).then_some((m, entries)))
+}
+
 /// How the files in a folder are put together, said where a folder is
 /// opened. The command line's `long` and `series` read folders the same way.
 const FOLDER_RULE: &str = "A take this app saved, or a folder of WAV or FLAC segments of one \
@@ -4805,6 +4972,80 @@ mod tests {
         frames(&mut app, &ctx, 2);
         app.relayout(false);
         frames(&mut app, &ctx, 2);
+    }
+
+    /// A saved take carries a session file with the watch, its calibre,
+    /// lift angle, beat rate and positions, and opening it takes them back.
+    #[test]
+    fn a_saved_take_brings_back_its_calibre_and_positions() {
+        let base = std::env::temp_dir().join(format!("tg-app-sidecar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = synthetic(5.0, 0.0);
+        app.mic_session = true;
+        app.watch = "Test Watch".into();
+        app.custom_calibres
+            .push(CustomCalibre::new("Bench Calibre".into()));
+        app.calibre = "Bench Calibre".into();
+        app.set_lift(49.0);
+        app.bph = Some(28800);
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 90.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let info = app.info("test", 48000, 16);
+        let mut r = Recorder::start(&base.join("kept"), info).unwrap();
+        let third = audio.samples.len() / 3;
+        for (i, pos) in [(0, None), (1, Some("DD")), (2, Some("DU"))] {
+            if let Some(p) = pos {
+                r.note(&format!("position {p}")).unwrap();
+            }
+            r.write(&timegrapher_core::capture::Block {
+                samples: audio.samples[i * third..(i + 1) * third].to_vec(),
+                at: std::time::SystemTime::now(),
+            })
+            .unwrap();
+        }
+        app.recorder = Some(r);
+        app.save_into(&base.join("saved"));
+        let saved = app.saved_to.clone().expect("saved");
+        let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
+        let m: Manifest = toml::from_str(&text).unwrap();
+        assert_eq!(m.calibre.as_deref(), Some("Bench Calibre"));
+        assert_eq!(m.wheels.len(), 3, "{text}");
+        let starts: Vec<_> = m.recordings.iter().map(|e| e.start_s).collect();
+        assert_eq!(starts, [Some(0.0), Some(30.0), Some(60.0)], "{text}");
+        assert_eq!(m.recordings[2].end_s, None);
+
+        // Opened on a fresh app, the take brings it all back.
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.start_batch(&saved);
+        let t = Instant::now();
+        while again.batch.is_some() && t.elapsed().as_secs() < 120 {
+            again.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(again.live.is_some(), "analysed");
+        assert_eq!(again.watch, "Test Watch");
+        assert_eq!(again.calibre, "Bench Calibre");
+        assert!(matches!(again.calibre_choice(), Calibre::Custom(_)));
+        assert_eq!((again.lift_deg, again.bph), (49.0, Some(28800)));
+        assert_eq!(
+            again.stretches,
+            [
+                (0.0, Position::DialUp),
+                (30.0, Position::DialDown),
+                (60.0, Position::DialUp)
+            ]
+        );
+        assert_eq!(again.live.as_ref().unwrap().breaks(), &[30.0, 60.0]);
+        assert_eq!(again.position, Position::DialUp);
+        // A recording with no session file opens as before.
+        assert!(read_manifest(&base).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

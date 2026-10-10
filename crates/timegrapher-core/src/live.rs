@@ -259,6 +259,12 @@ impl LiveAnalyzer {
         &self.breaks
     }
 
+    /// Mark where each stretch after the first began, seconds, oldest
+    /// first, for a recording analysed at once whose positions are known.
+    pub fn set_breaks(&mut self, breaks: Vec<f64>) {
+        self.breaks = breaks;
+    }
+
     /// Move the audio clock on by `seconds` with no audio, for a pause in
     /// listening: the beat log, template and readings are kept, the audio
     /// buffer starts afresh, and the beats after the pause carry on in time
