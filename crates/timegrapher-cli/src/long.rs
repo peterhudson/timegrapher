@@ -10,7 +10,7 @@ use timegrapher_core::periodicity::{standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, timing};
 
-fn parse_wheel(s: &str) -> Result<Wheel, String> {
+pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
     let (name, secs) = s
         .rsplit_once('=')
         .ok_or_else(|| format!("--wheel '{s}': expected NAME=SECONDS"))?;
