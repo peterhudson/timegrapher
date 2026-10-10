@@ -9,6 +9,7 @@
 //!   engine as fast as it can and prints the readings as JSON lines.
 
 mod app;
+mod applog;
 mod fields;
 mod help;
 mod profiles;
@@ -148,6 +149,8 @@ fn main() -> ExitCode {
             }
         };
     }
+    // The log and crash records live beside the settings.
+    applog::init(eframe::storage_dir("Timegrapher"));
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Timegrapher")

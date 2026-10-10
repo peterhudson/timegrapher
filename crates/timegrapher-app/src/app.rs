@@ -2,6 +2,7 @@
 //! the top, and below them panes (the paper strip and the charts over time)
 //! that can be dragged by their tabs into any arrangement.
 
+use crate::applog;
 use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
@@ -480,6 +481,12 @@ pub struct TimegrapherApp {
     bph: Option<u32>,
     lift_deg: f64,
     position: Position,
+    /// The beat rate the live engine had locked on to, to log a change.
+    locked_bph: Option<u32>,
+    /// A crash record from an earlier run not yet looked at, and whether
+    /// its text is showing.
+    crash: Option<PathBuf>,
+    crash_shown: bool,
     /// Where the watch was put in a new position during the session: the
     /// time and the position from then on, oldest first. Empty while it has
     /// stayed in `position` all along.
@@ -589,6 +596,7 @@ impl TimegrapherApp {
         if let Some(s) = saved {
             app.apply_settings(s);
         }
+        app.crash = applog::dir().and_then(|d| applog::unseen_crashes(&d).pop());
         app
     }
 
@@ -698,6 +706,9 @@ impl TimegrapherApp {
             lift_deg: 52.0,
             position: Position::DialUp,
             stretches: Vec::new(),
+            locked_bph: None,
+            crash: None,
+            crash_shown: false,
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
@@ -869,6 +880,10 @@ impl TimegrapherApp {
         match capture::open_input(self.device.as_deref(), None) {
             Ok(c) => {
                 let label = self.device_label(&c);
+                applog::info(&format!(
+                    "microphone opened: {label}, {} Hz, {}-bit",
+                    c.sample_rate, c.bits
+                ));
                 self.reset_session(
                     c.sample_rate,
                     format!("{label} at {} Hz, {}-bit", c.sample_rate, c.bits),
@@ -916,6 +931,7 @@ impl TimegrapherApp {
         }
         self.capture = None;
         if self.mic_session {
+            applog::info("microphone stopped and released");
             self.paused_at = Some(Instant::now());
             if let Some(r) = self.recorder.as_mut() {
                 let _ = r.pause();
@@ -939,6 +955,7 @@ impl TimegrapherApp {
                 self.audio_at = None;
                 self.view_end = None;
                 self.message = None;
+                applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
                 self.capture = Some(c);
             }
             Ok(c) => self.error(format!(
@@ -1228,10 +1245,12 @@ impl TimegrapherApp {
     }
 
     fn error(&mut self, m: String) {
+        applog::error(&m);
         self.message = Some((m, true));
     }
 
     fn info_msg(&mut self, m: String) {
+        applog::info(&m);
         self.message = Some((m, false));
     }
 
@@ -1316,6 +1335,16 @@ impl TimegrapherApp {
             }
             self.error(f);
         }
+
+        // Beat lock gained or lost, for the log.
+        let bph = self.live.as_ref().and_then(|l| l.bph());
+        if bph != self.locked_bph && self.capture.is_some() {
+            match bph {
+                Some(b) => applog::info(&format!("locked on to the beat at {b} beats per hour")),
+                None => applog::warn("lost the beat"),
+            }
+        }
+        self.locked_bph = bph;
 
         let mut done = None;
         if let Some(b) = &self.batch {
@@ -2146,6 +2175,7 @@ impl TimegrapherApp {
     /// steadiness tests take only the beats in the new position.
     fn set_position(&mut self, pos: Position) {
         let old = self.position;
+        applog::info(&format!("position {} to {}", old.code(), pos.code()));
         self.position = pos;
         let going = self.capture.is_some() || self.can_resume();
         if let (Some(l), true) = (self.live.as_mut(), going) {
@@ -2611,6 +2641,7 @@ impl TimegrapherApp {
                     // on every pixel.
                     if (r.changed() && !r.dragged()) || r.drag_stopped() {
                         self.gain_error = g.set_level(pct / 100.0).err();
+                        applog::info(&format!("input level set to {pct:.0}%"));
                         self.read_gain();
                     } else if r.changed() {
                         if let Some(s) = self.gain_state.as_mut() {
@@ -3408,6 +3439,79 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
+    /// After the app closed unexpectedly: an offer to report it. The report
+    /// is a GitHub issue the user opens with the crash record pasted in;
+    /// nothing is sent from the app.
+    fn crash_banner(&mut self, ui: &mut egui::Ui) {
+        let Some(path) = self.crash.clone() else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let (mut report, mut show, mut dismiss) = (false, false, false);
+        banner(ui, pal.warn, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismiss = ui
+                    .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                    .on_hover_text("Don't ask about this crash again")
+                    .clicked();
+                show = ui
+                    .add(egui::Button::new(if self.crash_shown {
+                        "Hide the Record"
+                    } else {
+                        "Show the Record"
+                    }))
+                    .on_hover_text("What the app wrote down as it closed")
+                    .clicked();
+                report = ui
+                    .add(theme::primary(ui, "Make a Report…"))
+                    .on_hover_text(
+                        "Copy the crash record and open a new bug report on GitHub in \
+                         your browser, to paste it into. Nothing is sent until you submit it.",
+                    )
+                    .clicked();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(
+                                "The timegrapher closed unexpectedly last time. Make a report?",
+                            )
+                            .color(pal.text),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+        });
+        if self.crash_shown {
+            egui::ScrollArea::vertical()
+                .id_salt("crash-record")
+                .max_height(200.0)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(RichText::new(&text).monospace().small()).selectable(true),
+                    );
+                });
+        }
+        if show {
+            self.crash_shown = !self.crash_shown;
+        }
+        if report {
+            ui.ctx().copy_text(text);
+            ui.ctx().open_url(egui::OpenUrl::new_tab(BUG_REPORT_URL));
+            self.info_msg(
+                "The crash record is on the clipboard: paste it into the report that opened \
+                 in your browser."
+                    .into(),
+            );
+        }
+        if report || dismiss {
+            applog::mark_seen(&path);
+            self.crash = None;
+            self.crash_shown = false;
+        }
+    }
+
     /// A problem, where it can't be missed, with a way to put it away.
     fn error_banner(&mut self, ui: &mut egui::Ui) {
         let Some((m, true)) = self.message.clone() else {
@@ -3461,6 +3565,7 @@ impl TimegrapherApp {
     }
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
+        self.crash_banner(ui);
         self.error_banner(ui);
         if self.show_readings {
             self.clipping_banner(ui);
@@ -4424,6 +4529,10 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
 /// WAV and FLAC files in name order (the segments of one long take).
+/// Where a bug report starts: the repository's bug form.
+const BUG_REPORT_URL: &str =
+    "https://github.com/peterhudson/timegrapher/issues/new?template=bug.yml";
+
 /// The session file a recording's folder may carry (see `timegrapher
 /// session`), which the app writes when it saves a take.
 const MANIFEST: &str = "session.toml";
