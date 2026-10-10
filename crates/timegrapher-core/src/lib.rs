@@ -12,6 +12,7 @@ pub mod calibres;
 pub mod capture;
 pub mod clock;
 pub mod clockstore;
+pub mod confidence;
 pub mod diagnose;
 pub mod dsp;
 pub mod excerpt;
@@ -31,6 +32,7 @@ pub mod stream;
 pub mod synth;
 pub mod timing;
 pub mod twostate;
+pub mod usbclock;
 
 pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};
 pub use audio::{load, Audio};
