@@ -865,6 +865,19 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
         opt(s.amplitude_odd_deg, 0),
         s.lift_deg
     );
+    let c = &s.clipping;
+    if c.warns() {
+        println!(
+            "Clipping     in {:.0}% of beats ({} samples): amplitude and beat error may be off; turn the input down",
+            c.beat_fraction * 100.0,
+            c.samples
+        );
+    } else if c.samples > 0 {
+        println!(
+            "Clipping     {} samples, in {} of {} beats: too few to matter",
+            c.samples, c.beats, s.beats_found
+        );
+    }
     for (title, list) in [
         ("timing", &s.timing_periods),
         ("amplitude", &s.amplitude_periods),
