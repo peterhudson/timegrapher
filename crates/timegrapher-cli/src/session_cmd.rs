@@ -275,6 +275,23 @@ pub(crate) struct Ctx<'a> {
     pub quiet: bool,
 }
 
+/// The stretch of a recording an entry reads, seconds from its start:
+/// `start_s` to `end_s`, or the whole recording when they are left out.
+fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
+    let start = e.start_s.unwrap_or(0.0);
+    let stop = e.end_s.unwrap_or(duration_s).min(duration_s);
+    if start < 0.0 || start >= stop {
+        return Err(format!(
+            "{}: start_s {} and end_s {} leave nothing of a {:.0} s recording",
+            e.file,
+            start,
+            e.end_s.map_or("(end)".to_string(), |t| t.to_string()),
+            duration_s
+        ));
+    }
+    Ok((start, stop))
+}
+
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let position = position_of(e)?;
     let path = c.base.join(&e.file);
@@ -298,17 +315,18 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         (None, Some(ppm)) => session::fixed_clock(ppm, log.duration_s),
         (None, None) => None,
     };
-    let settle = e
-        .settle_s
-        .or(c.o.settle)
-        .or(c.m.settle_s)
-        .unwrap_or(20.0)
-        .min(log.duration_s / 2.0);
+    let (start, stop) = span_of(e, log.duration_s)?;
+    let settle = start
+        + e.settle_s
+            .or(c.o.settle)
+            .or(c.m.settle_s)
+            .unwrap_or(20.0)
+            .min((stop - start) / 2.0);
     let end = e
         .measure_s
         .or(c.m.measure_s)
-        .map_or(log.duration_s, |m| settle + m)
-        .min(log.duration_s);
+        .map_or(stop, |m| settle + m)
+        .min(stop);
     let measurement = session::measure(&log, clock.as_ref(), settle, end);
 
     let cycles = if c.o.no_cycles || c.m.cycles == Some(false) {
@@ -340,13 +358,18 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         Some(session::shape_summary(&r, x.len() as f64 / fs))
     };
 
+    let label = if e.start_s.is_some() || e.end_s.is_some() {
+        format!("{} ({:.0}–{:.0} s)", e.file, start, stop)
+    } else {
+        e.file.clone()
+    };
     Ok(Reading {
-        label: e.file.clone(),
+        label,
         position,
         wind_h: e.wind_h,
         date: e.date.clone(),
         notes: e.notes.clone(),
-        duration_s: log.duration_s,
+        duration_s: stop - start,
         bph: log.bph,
         measurement,
         cycles,
@@ -648,5 +671,61 @@ fn print_summary(s: &Session) {
         for f in &r.findings {
             finding_lines(f);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_take_lists_each_position_by_time() {
+        let m: Manifest = toml::from_str(
+            r#"
+            [[recording]]
+            file = "take"
+            position = "DU"
+            end_s = 600
+
+            [[recording]]
+            file = "take"
+            position = "CD"
+            start_s = 600
+            end_s = 1200
+
+            [[recording]]
+            file = "take"
+            position = "CL"
+            start_s = 1200
+            "#,
+        )
+        .unwrap();
+        let spans: Vec<_> = m
+            .recordings
+            .iter()
+            .map(|e| span_of(e, 1500.0).unwrap())
+            .collect();
+        assert_eq!(spans, [(0.0, 600.0), (600.0, 1200.0), (1200.0, 1500.0)]);
+    }
+
+    #[test]
+    fn whole_recording_without_a_span() {
+        let e = RecordingEntry::default();
+        assert_eq!(span_of(&e, 300.0).unwrap(), (0.0, 300.0));
+    }
+
+    #[test]
+    fn empty_span_is_an_error() {
+        let e = RecordingEntry {
+            start_s: Some(400.0),
+            ..Default::default()
+        };
+        assert!(span_of(&e, 300.0).is_err());
+        let e = RecordingEntry {
+            start_s: Some(100.0),
+            end_s: Some(100.0),
+            ..Default::default()
+        };
+        assert!(span_of(&e, 300.0).is_err());
     }
 }

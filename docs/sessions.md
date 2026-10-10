@@ -53,6 +53,24 @@ Paths are relative to the session file. Any recording-level `settle_s` or
 at the top skips those parts. A `[limits]` table changes the project's
 thresholds (below).
 
+One continuous take that moved through several positions is listed once
+per position, each entry naming the same file or folder with `start_s`
+and `end_s` (seconds into the recording; left out means its start or
+end). Each stretch settles for `settle_s` from its own start, and its
+reading is labelled with the stretch, e.g. `take (600–1200 s)`.
+
+```toml
+[[recording]]
+file = "live_take"
+position = "DU"
+end_s = 600
+
+[[recording]]
+file = "live_take"
+position = "CD"
+start_s = 600
+```
+
 ### Positions
 
 | Witschi | Common | Pendant | Watch |

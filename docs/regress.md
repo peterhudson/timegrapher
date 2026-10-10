@@ -64,6 +64,8 @@ rewritten with it.
 The `regress` job in `.github/workflows/ci.yml` checks out the recordings
 repository with the `RECORDINGS_TOKEN` secret, a fine-grained personal
 access token for that repository alone with read-only access to its
-contents. Without the secret, as on pull requests from forks, the job says
+contents. A take too big for git keeps its audio in a release of that
+repository named after the take's folder; the job downloads each such
+release into its folder before the check. Without the secret, as on pull requests from forks, the job says
 so and passes. It runs with `--quiet`, so the public log carries take names
 and numbers only: no audio, recording file names or take notes.

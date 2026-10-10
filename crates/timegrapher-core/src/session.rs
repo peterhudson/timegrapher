@@ -1363,6 +1363,13 @@ pub struct RecordingEntry {
     pub date: Option<String>,
     /// Clock log for this recording (see docs/long-runs.md).
     pub clock: Option<String>,
+    /// Start of this reading, seconds into the file or folder; left out
+    /// means its start. With `end_s`, one continuous take that moved
+    /// through several positions is listed once per position.
+    pub start_s: Option<f64>,
+    /// End of this reading, seconds into the file or folder; left out
+    /// means its end.
+    pub end_s: Option<f64>,
     pub settle_s: Option<f64>,
     pub measure_s: Option<f64>,
     pub notes: Option<String>,
