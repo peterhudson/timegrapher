@@ -154,7 +154,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
     let rates: Vec<f64> = rate_windows.iter().map(|w| w.fit.rate_s_per_day).collect();
     let osc = 2.0 * overall.map(|f| f.period_s).unwrap_or(3600.0 / bph as f64);
-    let amplitude_windows = amplitude::windows(
+    let mut amplitude_windows = amplitude::windows(
         &env,
         fs,
         &beats,
@@ -162,6 +162,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         cfg.amplitude_window_s,
         &cfg.amplitude,
     );
+    amplitude::reject_side_outliers(&mut amplitude_windows, amplitude::OUTLIER_SPAN_S);
 
     // Periodicity: timing residuals and amplitude, in 1 s bins.
     let wheels = periodicity::standard_wheels(bph, cfg.escape_teeth);

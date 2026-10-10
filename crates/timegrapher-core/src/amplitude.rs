@@ -176,6 +176,56 @@ impl AmplitudeWindow {
     }
 }
 
+/// Seconds of neighbouring windows each side's amplitude is checked against.
+pub const OUTLIER_SPAN_S: f64 = 60.0;
+
+/// Leave out one side's amplitude in a window when it sits more than five
+/// robust SDs (at least 0.5°) from the median of that side's neighbours
+/// within `span_s`: an unlock or drop edge marked on the wrong sound, which
+/// moves one side by tens of degrees while the other stays put. Only the
+/// amplitude is left out: the edges stay for the shape view, and the
+/// unlock beat error is a median over windows already. Windows must be in
+/// time order. Returns how many sides were left out.
+pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize {
+    let flag = |get: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Vec<bool> {
+        let vals: Vec<Option<f64>> = wins.iter().map(get).collect();
+        (0..wins.len())
+            .map(|i| {
+                let Some(v) = vals[i] else { return false };
+                let mid = |w: &AmplitudeWindow| (w.start_s + w.end_s) / 2.0;
+                let lo = wins.partition_point(|w| mid(w) < mid(&wins[i]) - span_s / 2.0);
+                let hi = wins.partition_point(|w| mid(w) <= mid(&wins[i]) + span_s / 2.0);
+                let mut near: Vec<f64> = (lo..hi)
+                    .filter(|&j| j != i)
+                    .filter_map(|j| vals[j])
+                    .collect();
+                if near.len() < 5 {
+                    return false;
+                }
+                let med = crate::dsp::median(&mut near.clone());
+                for x in near.iter_mut() {
+                    *x = (*x - med).abs();
+                }
+                let sd = (1.4826 * crate::dsp::median(&mut near)).max(0.5);
+                (v - med).abs() > 5.0 * sd
+            })
+            .collect()
+    };
+    let even = flag(&|w| w.even_deg);
+    let odd = flag(&|w| w.odd_deg);
+    let mut n = 0;
+    for (w, (e, o)) in wins.iter_mut().zip(even.into_iter().zip(odd)) {
+        if e {
+            w.even_deg = None;
+        }
+        if o {
+            w.odd_deg = None;
+        }
+        n += usize::from(e) + usize::from(o);
+    }
+    n
+}
+
 /// Standard error of the median of window amplitudes taken in time order,
 /// degrees: 1.25 s / sqrt(n), with s the spread from one window to the
 /// next (the MAD of successive differences over sqrt 2), so a slow drift
@@ -316,6 +366,39 @@ pub fn windows_between(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn side_outliers_drop_one_side_only() {
+        let mut wins: Vec<super::AmplitudeWindow> = (0..60)
+            .map(|i| super::AmplitudeWindow {
+                start_s: 2.0 * i as f64,
+                end_s: 2.0 * i as f64 + 2.0,
+                // A slow 48 s cycle of ±4° on both sides is the watch.
+                even_deg: Some(
+                    250.0
+                        + 4.0 * (i as f64 * 2.0 * std::f64::consts::PI / 24.0).sin()
+                        + 0.3 * (i % 3) as f64,
+                ),
+                odd_deg: Some(
+                    240.0 + 4.0 * (i as f64 * 2.0 * std::f64::consts::PI / 24.0).sin()
+                        - 0.3 * (i % 2) as f64,
+                ),
+                beat_error_ms: None,
+                beat_error_unlock_ms: Some(0.3),
+                even_unlock_ms: None,
+                odd_unlock_ms: None,
+                even_drop_ms: None,
+                odd_drop_ms: None,
+            })
+            .collect();
+        // Window 30's Tock edge lands on the wrong sound.
+        wins[30].odd_deg = Some(290.0);
+        let n = super::reject_side_outliers(&mut wins, super::OUTLIER_SPAN_S);
+        assert_eq!(n, 1);
+        assert_eq!(wins[30].odd_deg, None);
+        assert!(wins[30].even_deg.is_some());
+        assert_eq!(wins[30].beat_error_unlock_ms, Some(0.3));
+    }
+
     #[test]
     fn standard_error_ignores_slow_change() {
         // Gaussian noise of SD 2 from a fixed seed, alone and on a steep
