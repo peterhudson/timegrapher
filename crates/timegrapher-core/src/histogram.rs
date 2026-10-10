@@ -205,6 +205,96 @@ pub fn ecdf(values: &[f64]) -> Vec<[f64; 2]> {
         .collect()
 }
 
+/// The value below which a share `p` of a standard normal population
+/// falls (the inverse of its cumulative distribution), by Acklam's
+/// rational approximation, good to about 1e-9.
+pub fn normal_quantile(p: f64) -> f64 {
+    if !(p > 0.0 && p < 1.0) {
+        return if p <= 0.0 {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+    const A: [f64; 6] = [
+        -3.969683028665376e1,
+        2.209460984245205e2,
+        -2.759285104469687e2,
+        1.38357751867269e2,
+        -3.066479806614716e1,
+        2.506628277459239,
+    ];
+    const B: [f64; 5] = [
+        -5.447609879822406e1,
+        1.615858368580409e2,
+        -1.556989798598866e2,
+        6.680131188771972e1,
+        -1.328068155288572e1,
+    ];
+    const C: [f64; 6] = [
+        -7.784894002430293e-3,
+        -3.223964580411365e-1,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783,
+    ];
+    const D: [f64; 4] = [
+        7.784695709041462e-3,
+        3.224671290700398e-1,
+        2.445134137142996,
+        3.754408661907416,
+    ];
+    let tail = |q: f64| {
+        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+    };
+    if p < 0.02425 {
+        tail((-2.0 * p.ln()).sqrt())
+    } else if p > 1.0 - 0.02425 {
+        -tail((-2.0 * (1.0 - p).ln()).sqrt())
+    } else {
+        let q = p - 0.5;
+        let r = q * q;
+        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
+    }
+}
+
+/// A normal probability plot: each value against the normal score of its
+/// rank, `[value, z]` sorted by value. A value's share is its Hazen
+/// plotting position, (rank − ½) / n, as on flood-frequency probability
+/// paper. Values from one normal population fall on a straight line; two
+/// populations draw two lines joined by a bend.
+pub fn probability_plot(values: &[f64]) -> Vec<[f64; 2]> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    v.sort_by(f64::total_cmp);
+    let n = v.len() as f64;
+    v.iter()
+        .enumerate()
+        .map(|(i, &x)| [x, normal_quantile((i as f64 + 0.5) / n)])
+        .collect()
+}
+
+/// The straight line one normal population would draw on the probability
+/// plot, as (centre, spread): the median and the interquartile range over
+/// 1.349, so a few strays or a second state do not tilt it. None when the
+/// values have no spread.
+pub fn normal_line(values: &[f64]) -> Option<(f64, f64)> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    if v.len() < 4 {
+        return None;
+    }
+    v.sort_by(f64::total_cmp);
+    let q = |p: f64| {
+        let i = p * (v.len() - 1) as f64;
+        let (lo, hi) = (i.floor() as usize, i.ceil() as usize);
+        v[lo] + (v[hi] - v[lo]) * (i - lo as f64)
+    };
+    let sd = (q(0.75) - q(0.25)) / 1.349;
+    (sd > 0.0).then(|| (q(0.5), sd))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +397,40 @@ mod tests {
         let h = histogram(&[5.0; 10], 0.1).unwrap();
         assert_eq!(h.counts, vec![10]);
         assert!((h.bin_width - 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn normal_quantiles() {
+        assert!(normal_quantile(0.5).abs() < 1e-9);
+        assert!((normal_quantile(0.975) - 1.959964).abs() < 1e-5);
+        assert!((normal_quantile(0.001) + 3.090232).abs() < 1e-5);
+        assert!((normal_quantile(0.1) + normal_quantile(0.9)).abs() < 1e-9);
+        assert_eq!(normal_quantile(0.0), f64::NEG_INFINITY);
+    }
+
+    #[test]
+    fn one_population_draws_a_line_and_two_draw_a_bend() {
+        // One state: every point lies near the line through the median.
+        let one = spread(240.0, 3.0, 2000, 7);
+        let (mid, sd) = normal_line(&one).unwrap();
+        assert!((mid - 240.0).abs() < 0.5 && (sd - 3.0).abs() < 0.5);
+        let off = |pts: &[[f64; 2]], mid: f64, sd: f64| {
+            pts.iter()
+                .filter(|p| p[1].abs() < 2.0)
+                .map(|p| (p[0] - (mid + sd * p[1])).abs() / sd)
+                .fold(0.0, f64::max)
+        };
+        let pts = probability_plot(&one);
+        assert_eq!(pts.len(), 2000);
+        assert!(pts
+            .windows(2)
+            .all(|w| w[0][0] <= w[1][0] && w[0][1] < w[1][1]));
+        assert!(off(&pts, mid, sd) < 0.5);
+        // Two states, 226° and 238°: the middle of the plot leaves the line.
+        let mut two = spread(226.0, 2.0, 1000, 3);
+        two.extend(spread(238.0, 2.0, 1000, 5));
+        let (mid, sd) = normal_line(&two).unwrap();
+        assert!(off(&probability_plot(&two), mid, sd) > 1.0);
+        assert!(normal_line(&[1.0, 1.0, 1.0, 1.0]).is_none());
     }
 }

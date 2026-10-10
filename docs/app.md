@@ -23,7 +23,7 @@ buttons for the session (see Sessions below; **Replay**, **Stop** and
 **Analyse All** for a recording). On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
-**Charts**, **Histograms**), each with its switch to show or hide it and
+**Charts**, **Distributions**), each with its switch to show or hide it and
 its own options, and **Window** for the appearance and the pane layout.
 Clicking a card's name folds the card away to its caption, and clicking it
 again opens it. A choice between two options, such as Stacked and Beside,
@@ -101,8 +101,17 @@ profile card switches the edges and the sounds on and off, sets the scale
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
 grid line is drawn alike.
-Above each plot are the beat count, the marks in ms from the
-beat, the unlock-to-drop time and the amplitude they give. Linear (the
+Each plot has its own time axis. **Time From: Shared** (the default) draws
+tick and tock on one clock: 0 ms is where a watch in beat would drop, and
+each side sits half the beat error from it, so the two drop lines stand
+the beat error from the drop apart and the two unlock lines the beat error
+from the unlock. **Own Drop** measures each side from its own drop, so both
+drops sit at 0 ms. The two beat errors differ when tick and tock take
+different times from unlock to drop, the imbalance that also gives them
+different amplitudes; the unlock figure is the one tg and commercial
+timegraphers report. Above each plot are the beat count, the marks in ms
+from that side's own drop, the unlock-to-drop time and the amplitude they
+give. Linear (the
 default) shows the envelope as the engine measures it; dB shows the level
 below each side's loudest point, so the quiet unlock shows more clearly. Looking back, the pane shows the sound the session
 kept nearest before that moment (one every 2 s); for a recording analysed
@@ -150,7 +159,7 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
 unlock and from the drop) over time. **Time Span**, in the Charts and
-Histograms cards, sets what they cover: **Session**, everything since the
+Distributions cards, sets what they cover: **Session**, everything since the
 session started, or **Strip**, the same stretch of time as the paper strip,
 moving with it, so that with the charts under a strip lying across every
 time axis lines up: the strip and the charts keep the same width of axis
@@ -170,26 +179,37 @@ readings. The scale starts at the 2nd to 98th percentile of the values so
 one glitch doesn't flatten the lines. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
-**Histograms.** How often each value of rate, amplitude and beat error
-came up, over the session or the strip's length (Time Span), switched on in
-the Histograms card (all off at first). An average gives one number; a
-histogram shows whether a watch keeps to one state or moves between two,
-such as a high and a low amplitude, as two peaks. Amplitude and beat error
-count either the readings (**Values: Readings**, the default, averaged
-over Average Over as on the charts and the strip) or each 2 seconds of
-beats (**2 s**, the finest the engine measures them, with more scatter);
-rate counts readings. **Show: Bars** draws the bins with a smooth kernel
-density curve over them, which shows two peaks even where the bars blur
-them; **Cumulative** draws the share of values at or below each value, in
-which two states show as two steep rises with a flatter stretch between,
-with no bins to choose. **Bins** is Auto (rounded Freedman–Diaconis),
-Coarse, Fine or Finest. The scale leaves out the most extreme 0.5% at each
-end so stray readings can't squeeze the rest into one bar. A thin line
-marks the median, and the line above gives the count, the median, the
-middle 80%, the bin width, the outliers left off and the peaks when there
-is more than one. The
-binning is `timegrapher_core::histogram`, so the CLI and reports can share
-it.
+**Distributions.** How the values of rate, amplitude and beat error spread
+over the session or the strip's length (Time Span), switched on in the
+Distributions card (all off at first). An average gives one number; these
+show whether a watch keeps to one state or moves between two, such as a
+high and a low amplitude. Amplitude and beat error count either the
+readings (**Values: Readings**, the default, averaged over Average Over as
+on the charts and the strip) or each 2 seconds of beats (**2 s**, the
+finest the engine measures them, with more scatter); rate counts readings.
+**Show: Probability** (the default) is a normal probability plot, the
+probability paper of flood-frequency analysis: each value against its rank,
+on a vertical scale spaced in standard deviations and labelled in percent
+(Hazen plotting positions). Values from one steady state fall along the
+dashed straight line, drawn through the median with a slope from the
+interquartile range; two states draw two straighter stretches joined by a
+bend, or an S across the line. **Cumulative** draws the share of values at
+or below each value on a plain scale. Neither keeps the time order, so the
+strip and the charts show when a change happens. The scale leaves out the
+most extreme 0.5% at each end so stray readings can't squeeze the rest
+together, and the line above gives the count, the median, the middle 80%,
+the outliers left off and the peaks when there is more than one. The
+statistics are in `timegrapher_core::histogram`, so the CLI and reports can
+share them.
+
+**Remembered settings.** The app keeps its views between runs: the strip's
+direction, width and length and what is drawn over it, the profile's
+layout, scale and Time From, the panes shown and their arrangement, the
+distribution settings, the averaging time, folded cards, the sidebar, the
+appearance, the last microphone (used again when it is plugged in) and the
+window's size and place. Nothing about the watch is kept: the lift angle,
+beat rate and position start fresh, since the next watch on the pickup may
+differ. **Reset Panes** puts the panes back as they started.
 
 **Appearance.** Under Window: Auto follows the desktop's light or dark
 setting; Light and Dark override it.

@@ -12,6 +12,7 @@ mod app;
 mod fields;
 mod help;
 mod profiles;
+mod settings;
 mod strip;
 mod theme;
 
@@ -157,7 +158,11 @@ fn main() -> ExitCode {
         options,
         Box::new(move |cc| {
             theme::install(&cc.egui_ctx);
-            Ok(Box::new(app::TimegrapherApp::new(file, analyse)))
+            let saved = cc.storage.and_then(settings::load);
+            if let Some(s) = &saved {
+                cc.egui_ctx.set_theme(s.theme);
+            }
+            Ok(Box::new(app::TimegrapherApp::new(file, analyse, saved)))
         }),
     ) {
         Ok(()) => ExitCode::SUCCESS,

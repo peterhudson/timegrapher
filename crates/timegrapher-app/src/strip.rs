@@ -57,7 +57,7 @@ pub fn wrap(x: f64, half: f64) -> f64 {
     (x + half).rem_euclid(2.0 * half) - half
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StripView {
     /// Half the strip's width, ms.
     pub half_width_ms: f64,

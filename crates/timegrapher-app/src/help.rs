@@ -119,8 +119,8 @@ pub const PROFILE: &[&str] = &[
     "The typical sound of a tick (blue) and of a tock (orange) over the averaging \
      time, up to 60 s: the line is the beats' typical loudness at each moment, and the \
      shaded band is where the middle 80% of beats fall. Time runs from before the \
-     unlock on the left to after the drop on the right, in milliseconds from the beat's \
-     reference point near the drop. Both sides share one scale, so a quieter side \
+     unlock on the left to after the drop on the right, in milliseconds from the drop (see \
+     Time From). Both sides share one scale, so a quieter side \
      shows as smaller.",
     "Each beat has three sounds: 1, the unlock, when the pallet stone lets go of the \
      escape wheel; 2, the impulse, when the escape wheel pushes the fork; 3, the drop, \
@@ -137,6 +137,15 @@ pub const PROFILE: &[&str] = &[
      neighbour: a soft unlock that merges into the impulse, say. That is a finding in \
      itself, not a fault in the app.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
+    "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
+     in beat would drop, and each side sits half the beat error from it, so the two \
+     drop lines stand the beat error from the drop apart and the two unlock lines the \
+     beat error from the unlock. Own Drop measures each side from its own drop, so both \
+     drops sit at 0 ms and only the unlock lines show a difference.",
+    "The two beat errors differ when the tick and the tock take different times from \
+     unlock to drop, the same imbalance that gives them different amplitudes. The \
+     unlock figure is the beat error tg and commercial timegraphers report; the drop \
+     figure adds that imbalance on top.",
     "Linear shows the loudness as measured; dB shows it in decibels below the loudest \
      point, which makes the quiet unlock easier to see.",
 ];
@@ -154,30 +163,35 @@ pub const CHARTS: &[&str] = &[
 ];
 
 pub const HISTOGRAMS: &[&str] = &[
-    "How often each value of a reading came up, over the session or the strip's length \
-     (Time Span). An average gives one number; a histogram shows whether the values \
-     cluster around it or around two values. Two peaks suggest the watch moves between \
-     two states, say a high and a low amplitude as a rubbing part comes and goes, which \
-     a single average hides.",
+    "How a reading's values spread over the session or the strip's length (Time Span). \
+     An average gives one number; these show whether the values come from one steady \
+     state or from two, say a high and a low amplitude as a rubbing part comes and \
+     goes, which a single average hides.",
+    "Show: Probability is probability paper, as in flood-frequency analysis. Each value \
+     is plotted against its rank, on a scale spaced in standard deviations and labelled \
+     in percent. Values from one steady state, scattered about one mean, fall along the \
+     dashed straight line (drawn through the median, with a slope from the middle half \
+     of the values). Two states draw two straighter stretches joined by a bend, or an S \
+     across the line; a gap between two clusters shows as a flat step. The ends curling \
+     away from the line are a few unusual readings.",
+    "Cumulative draws the share of values at or below each value, on a plain scale: \
+     one state rises in one steep stretch, two states rise twice with a flatter stretch \
+     between.",
+    "Neither plot keeps the time order, so a slow swing between two states shows only \
+     as a bend. The strip and the charts show when it happens.",
     "Values: Readings counts each reading, averaged over Average Over as on the charts \
      and the strip, so states lasting longer than that stand out clearly. 2 s counts \
      each 2 seconds of beats, the finest the app measures amplitude and beat error: it \
-     catches quicker changes, with more scatter, which can blur two close states into \
-     one. Rate always counts readings.",
-    "Show: Bars draws how many values fell in each bin, with a smooth curve (a kernel \
-     density estimate) over them that shows two peaks even where the bars blur them. \
-     Cumulative draws the share of values at or below each value: one state rises in one \
-     steep stretch, two states rise twice with a flatter stretch between, and no choice \
-     of bins is needed.",
-    "Bins: Auto makes them as wide as the spread of the values calls for (the \
-     Freedman–Diaconis rule), rounded to a round number; Fine and Finest split them \
-     further, Coarse merges them. The scale leaves out the most extreme 0.5% at each \
-     end, so a few stray readings can't squeeze the rest into one bar; the line above \
-     says how many were left off. The thin line is the median.",
+     catches quicker changes, with more scatter. Rate always counts readings.",
+    "The scale leaves out the most extreme 0.5% at each end, so a few stray readings \
+     can't squeeze the rest together; the line above says how many were left off.",
 ];
 
 pub const WINDOW: &[&str] = &[
     "Appearance: Auto follows the system's light or dark setting.",
+    "The app remembers its views for next time: the strip, the profile, the panes and \
+     their layout, the averaging time, folded cards, the sidebar, the microphone and the \
+     window's size. The watch's lift angle, beat rate and position start fresh.",
     "The sidebar button at the left of the toolbar, or Ctrl+B (Cmd+B on a Mac), hides the \
      sidebar to give the panes the whole window, and brings it back. Clicking a card's \
      name folds the card away.",
