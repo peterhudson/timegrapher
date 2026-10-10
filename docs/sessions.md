@@ -48,6 +48,12 @@ clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
 names more wheels in the cycle search (seconds per turn).
 
+`--calibre NAME` takes a movement from the calibre table (the same one
+the app's picker and `long --calibre` use; an unknown name lists the
+known ones): its beat rate, lift angle and escape wheel where `--bph`,
+`--lift` and the session file give none, and its train's wheels in the
+cycle search. The `calibre` line in the session file is only a label.
+
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
 at the top skips those parts. A `[limits]` table changes the project's

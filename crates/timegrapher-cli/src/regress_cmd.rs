@@ -250,6 +250,7 @@ fn measure_all(
     let opts = session_cmd::Options {
         bph: None,
         lift: None,
+        calibre: None,
         tolerance: None,
         settle: None,
         out: None,
