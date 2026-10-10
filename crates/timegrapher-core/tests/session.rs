@@ -297,3 +297,54 @@ fn short_rate_cycle_is_sized_in_ms() {
     assert!(c.size_text().ends_with(" ms"), "{}", c.size_text());
     assert!(c.size > 0.0 && c.size < 5.0, "{}", c.size);
 }
+
+#[test]
+fn an_empty_stand_gives_no_readings() {
+    // Hiss with no ticks in it: the session shows no rate, amplitude or
+    // beat error, and says why.
+    let fs = 48000u32;
+    let mut state = 12345u64;
+    let mut uniform = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((state >> 11) as f64 / (1u64 << 53) as f64) as f32 - 0.5
+    };
+    let samples: Vec<f32> = (0..fs as usize * 60).map(|_| 0.01 * uniform()).collect();
+    let audio = timegrapher_core::audio::Audio {
+        samples,
+        sample_rate: fs,
+    };
+    let path = std::env::temp_dir().join(format!("tg-session-empty-{}.wav", std::process::id()));
+    write_wav(&path, &audio).unwrap();
+    let cfg = StreamConfig {
+        analysis: timegrapher_core::analysis::AnalysisConfig {
+            bph: Some(21600),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let log = analyze_file(&path, &cfg, |_| {}).unwrap();
+    std::fs::remove_file(&path).ok();
+    let m = session::measure(&log, None, 20.0, f64::INFINITY);
+    assert!(
+        !m.watch_heard,
+        "noise taken for a watch: jitter {:?} us",
+        m.jitter_us
+    );
+    assert!(m.rate_s_per_day.is_none() && m.amplitude_deg.is_none() && m.beat_error().is_none());
+    let r = Reading {
+        measurement: m,
+        ..reading(Position::CH, 0.0, 5.0, 280.0, 0.2)
+    };
+    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
+    assert_eq!(rep.findings.len(), 1, "{:?}", rep.findings);
+    assert_eq!(rep.findings[0].code, "no_watch_heard");
+
+    // A watch is still heard.
+    assert!(
+        reading(Position::CH, 0.0, 5.0, 280.0, 0.2)
+            .measurement
+            .watch_heard
+    );
+}

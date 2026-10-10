@@ -12,7 +12,7 @@
 //! thresholds Witschi does not give are this project's defaults, in
 //! [`Limits`], and say so in their findings.
 
-use crate::beats::Beat;
+use crate::beats::{self, Beat};
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longrun::LongReport;
@@ -303,6 +303,10 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
+    /// Whether the beats look like a watch's (see [`beats::watch_heard`]).
+    /// When false, as on an empty stand, rate, amplitude and beat error
+    /// would describe noise, and they are left out.
+    pub watch_heard: bool,
     /// Median of the rate in 10 s windows, s/d. For a watch whose rate
     /// wanders with dips, this sits above `rate_s_per_day` (the fit over
     /// every beat, what the hands keep), as tg's median sits above its
@@ -425,7 +429,8 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         .iter()
         .filter(|&&t| t >= from_s && t < to_s)
         .count();
-    Measurement {
+    let jitter_us = median_of(windows.iter().map(|w| w.fit.jitter_us));
+    let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
         beats: beats.len(),
@@ -437,7 +442,8 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
-        jitter_us: median_of(windows.iter().map(|w| w.fit.jitter_us)),
+        jitter_us,
+        watch_heard: beats::watch_heard(jitter_us, log.bph),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
@@ -458,7 +464,25 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         } else {
             clipped as f64 / beats.len() as f64
         },
+    };
+    if !m.watch_heard {
+        m.rate_s_per_day = None;
+        m.beat_error_ms = None;
+        m.beat_error_unlock_ms = None;
+        m.amplitude_deg = None;
+        m.amplitude_even_deg = None;
+        m.amplitude_odd_deg = None;
+        m.rate_window_median_s_per_day = None;
+        m.rate_p05 = None;
+        m.rate_p95 = None;
+        m.amplitude_p05 = None;
+        m.amplitude_p95 = None;
+        m.unlock_coverage = None;
+        let none = twostate::find(&[], &twostate::Params::default());
+        m.amplitude_states = none.clone();
+        m.rate_states = none;
     }
+    m
 }
 
 /// A clock fit for a sound card known to be `ppm` slow (negative: fast),
@@ -966,6 +990,22 @@ fn findings(
     // Per reading.
     for (ri, r) in readings.iter().enumerate() {
         let m = &r.measurement;
+        if !m.watch_heard {
+            push(
+                "no_watch_heard",
+                Some(ri),
+                Severity::Warning,
+                "No watch heard",
+                format!(
+                    "the beats found in {} are no steadier than noise (jitter {} µs, {:.0}% of the beat or more means no watch)",
+                    at(r),
+                    m.jitter_us.map_or("-".into(), |j| format!("{j:.0}")),
+                    100.0 * beats::NO_WATCH_JITTER_FRACTION
+                ),
+                "No readings are shown for this recording. Check that the watch is on the pickup and running, and that the right input was recorded.",
+            );
+            continue;
+        }
         let unsure = m.unlock_unreliable(lim);
         if unsure {
             let sides = match (m.amplitude_even_deg, m.amplitude_odd_deg) {

@@ -116,6 +116,12 @@ of the recording or for `measure_s`:
 
 Repeat readings in the same position and state of wind are averaged.
 
+A recording whose beats are no steadier than noise, as on an empty stand
+(the median jitter is 2% of the beat period or more, the same rule as
+`analyze`), shows no rate, amplitude, beat error, cycles or shape: the
+values would describe noise. Its measurement has `watch_heard` false, and
+the report lists a *No watch heard* finding instead.
+
 ## Two states
 
 Some watches swing at two amplitudes and flip between them every few
@@ -213,6 +219,7 @@ without a number; change them under `[limits]`.
 | Periodic change at a whole fraction of a wheel's turn | as above, the turn is a whole number (2 or more) of the period | note |
 | Periodic change tied to no listed wheel | as above, no wheel | note |
 | Unlocking as loud as the drop; extra sounds around the beat | from the beat shape; not yet checked on watches with confirmed faults | note |
+| No watch heard | the beats are no steadier than noise (median jitter ≥ 2% of the beat period); the recording shows no readings | check |
 | Short measurement | < 40 s measured (Witschi's minimum; `min_measure_s`) | note |
 
 Changes at whole fractions of a wheel's turn (20 s and 10 s beside a 60 s
@@ -235,9 +242,10 @@ index into `readings`, or null for findings across positions), and its
 `beat_error_tolerance`, `rate_tolerance`, `positional_delta`,
 `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_wheel_fraction`, `cycle_other`,
 `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
-`measurement_short`, `unlock_unreliable`. Each reading's `verdicts` entry marks rate,
+`measurement_short`, `unlock_unreliable`, `no_watch_heard`. Each reading's `verdicts` entry marks rate,
 amplitude and beat error `within`, `outside`, `not_judged` or
-`unreliable`; `unlock_coverage` in its measurement is the share of
+`unreliable`; `watch_heard` in its measurement is false when no watch was
+heard, and its readings are then null; `unlock_coverage` in its measurement is the share of
 amplitude windows that found the unlock. `amplitude_states` and
 `rate_states` in each measurement hold the two-state finder's result:
 `verdict` (`one_level`, `two_states`, `regular`, `measurement`,

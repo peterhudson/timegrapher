@@ -4,14 +4,11 @@
 complete and current; check them when this file and the program disagree.
 
 Commands: `devices`, `doctor`, `analyze`, `shape`, `profile`, `long`,
-`session`, `report`, `synth`. `session` (the multi-position report) is documented in the
-repository's `docs/sessions.md`, including its finding codes
-(`overbanking`, `amplitude_very_low`, `amplitude_tolerance`,
-`beat_error_large`, `beat_error_tolerance`, `rate_tolerance`,
-`positional_delta`, `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`,
-`cycle_other`, `dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
-`measurement_short`) and per-reading marks (`within`, `outside`,
-`not_judged`).
+`series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
+multi-position report) is documented in the repository's
+`docs/sessions.md`, `series` in `docs/series.md`. What each finding code
+of `doctor`, `session` and `series` means, and what to do about it, is in
+[findings.md](findings.md).
 
 **Tick and Tock.** When talking to people, call the two sides of the
 beat the **Tick** (the even beats) and the **Tock** (the odd beats), never
@@ -22,7 +19,7 @@ the even beats. Machine fields keep their own names: `even`/`odd` in
 the Tock.
 
 Exit codes: **0** success, **1** error (message on stderr), **3** `doctor`
-found a problem.
+found a problem, or `regress` found the engine moved away from tg.
 
 Input files: WAV or FLAC, any sample rate (44.1 or 48 kHz recommended),
 mono or the first channel.
@@ -138,6 +135,7 @@ JSON body:
 | `duration_s`, `sample_rate` | The recording |
 | `bph` | Beat rate used |
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
+| `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
 | `overall.beat_error_ms` | **Signed** beat error (positive: even beats late); report its absolute value |
 | `overall.period_s` | Fitted beat period |
@@ -264,6 +262,22 @@ sharp event; `explained` the fraction of the detrended variation;
 `peak_to_peak` in s/d (rate) or degrees (amplitude); `wheel` the matching
 wheel's name or null; `nearest_wheel` `[name, percent_off]`. How to read
 it: [long-runs.md](long-runs.md).
+
+## series
+
+```
+timegrapher series FILES... [--clock LOG] [--bph N] [--lift DEG]
+                   [--calibre NAME] [--reading S] [--json]
+```
+
+Is the take steady? Reads rate, amplitude and beat error in time order
+(readings of `--reading` seconds, default 10) and gives each a `verdict`
+(`steady`, `periodic`, `two_states`, `measurement`, `shifting_mean`,
+`drifting`, `wandering`, `too_short`) and a plain `headline`, plus
+`rate_amplitude` (does the rate follow the amplitude) and `findings[]`.
+`--calibre` names periodic changes after that movement's wheels; an
+unknown name lists the calibres the program knows. Same input as `long`.
+What each verdict means for the watch: [findings.md](findings.md#series-long-runs).
 
 ## report
 
