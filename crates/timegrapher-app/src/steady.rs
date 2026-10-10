@@ -138,9 +138,12 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
 
 /// Run the tests over a session. Slow for long sessions (a 2 h take takes
 /// some seconds), so it is run off the window's thread.
-pub fn compute(log: &BeatLog) -> Steadiness {
+/// The tests over `log`, naming cycles after `wheels` (a picked
+/// calibre's train) or, without them, the wheels most calibres at the beat
+/// rate share.
+pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
     let lc = LongConfig {
-        wheels: standard_wheels(log.bph, ESCAPE_TEETH),
+        wheels: wheels.unwrap_or_else(|| standard_wheels(log.bph, ESCAPE_TEETH)),
         ..Default::default()
     };
     let cfg = Config::default();
@@ -974,10 +977,30 @@ mod tests {
             live.push(b);
         }
         let log = log_of(&live).expect("beat rate");
-        let s = compute(&log);
+        let s = compute(&log, None);
         let rate = &s.report.series[0];
         assert_eq!(rate.verdict, Verdict::Periodic, "{}", rate.headline);
         assert!(s.folds[0].is_some());
+
+        // A picked calibre's train names the cycle instead.
+        let named = compute(
+            &log,
+            Some(vec![Wheel {
+                name: "seconds wheel".into(),
+                period_s: 60.0,
+            }]),
+        );
+        let wheel = named.report.series[0]
+            .cycle
+            .as_ref()
+            .and_then(|c| c.wheel.clone())
+            .or_else(|| {
+                named.report.series[0]
+                    .period
+                    .as_ref()
+                    .and_then(|p| p.wheel.clone())
+            });
+        assert_eq!(wheel.as_deref(), Some("seconds wheel"));
 
         let ctx = egui::Context::default();
         theme::install(&ctx);
