@@ -1,0 +1,76 @@
+name: A reading looks wrong
+description: Rate, amplitude or beat error disagrees with another timegrapher, or jumps about when the watch should be steady.
+title: "Reading: "
+labels: ["reading"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A wrong reading can only be fixed with the sound it came from, so the recording matters most. In the app, press **Save…** to keep the session as a folder. On the command line, use the file you analysed.
+
+        GitHub takes attachments up to 25 MB: about 5 minutes as FLAC or 4 minutes as WAV. See [contributing recordings](https://github.com/peterhudson/timegrapher/blob/main/docs/contributing-recordings.md#cutting-a-recording-to-size) for how to cut one to size. A one-command report bundle is coming and will gather all of this for you.
+  - type: textarea
+    id: what
+    attributes:
+      label: What looks wrong
+      description: The number you got, the number you expected, and why you expected it.
+      placeholder: "Amplitude reads 310°, my Weishi No. 1900 says 265° on the same watch in the same position."
+    validations:
+      required: true
+  - type: input
+    id: watch
+    attributes:
+      label: Watch and calibre
+      placeholder: "Seiko SKX007, 7S26, 21,600 vph"
+    validations:
+      required: true
+  - type: input
+    id: lift
+    attributes:
+      label: Lift angle you used
+      description: Amplitude depends on it directly. Say if you are unsure.
+      placeholder: "53°"
+    validations:
+      required: true
+  - type: dropdown
+    id: position
+    attributes:
+      label: Position
+      options: ["Dial up", "Dial down", "Crown up", "Crown down", "Crown left", "Crown right", "Not sure, or it moved"]
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: The other reading, if any
+      description: Which instrument, how long after you started it, and a photo of its screen if you have one. Readings taken at the same moment on the same watch help most.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: |
+        Paste the output of `timegrapher --version` and `timegrapher devices`, say which microphone you used and its input level, and your operating system. If you built from source, add the output of `git log --oneline -1` in your copy. If you ran `timegrapher doctor`, paste that too.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What the timegrapher printed
+      description: The output of `timegrapher analyze FILE --lift N --json`, or a screenshot of the app.
+      render: json
+  - type: textarea
+    id: recording
+    attributes:
+      label: Recording
+      description: Drag the FLAC or WAV here (zip it if GitHub refuses the file type). Say where in it the problem shows, in seconds from the start.
+    validations:
+      required: true
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: The recording
+      options:
+        - label: I listened back and the recording has no voices or other sounds I would not want public. This issue and anything attached to it are public.
+          required: true
+        - label: The project may add this recording to its public test corpus under CC0 (no rights reserved). Leave this unticked to keep it to this issue.

@@ -336,12 +336,39 @@ pub struct Finding {
     pub advice: String,
 }
 
+/// How the rate moves with the amplitude, reading by reading.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossCorrelation {
+    /// Length of each reading, seconds, and the pairs of readings used.
+    pub step_s: f64,
+    pub readings: usize,
+    /// Correlation of the two, reading against the same reading.
+    pub r: f64,
+    /// Readings that are worth as much as independent ones, allowing for
+    /// each series' memory.
+    pub effective_readings: f64,
+    /// Chance of an r this large from unrelated series.
+    pub p_value: f64,
+    /// Rate change per degree of amplitude within half an hour, s/d.
+    pub s_per_day_per_deg: f64,
+    /// The plain correlation and slope over the whole take at no lag,
+    /// slow change included (a shared drift counts here).
+    pub take_r: f64,
+    pub take_s_per_day_per_deg: f64,
+    /// Significant and strong enough to say the rate moves with the
+    /// amplitude.
+    pub moves_with: bool,
+    pub headline: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
     pub duration_s: f64,
     pub bph: u32,
     pub config: Config,
     pub series: Vec<SeriesCheck>,
+    /// The rate against the amplitude, at the rate's reading length.
+    pub rate_amplitude: Option<CrossCorrelation>,
     pub findings: Vec<Finding>,
 }
 
@@ -654,16 +681,83 @@ fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
     })
 }
 
+/// Autocorrelation of readings on a uniform grid (gaps NaN), with the
+/// Ljung–Box test, the memory and a repeat.
+fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
+    let n = y.iter().filter(|v| v.is_finite()).count();
+    let max_lag = ((cfg.max_lag_s / step) as usize)
+        .min(y.len() / 3)
+        .max(cfg.ljung_box_lags.min(y.len() / 3));
+    let r = acf(y, max_lag);
+    let h = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
+    let nf = n as f64;
+    let q: f64 = (1..=h)
+        .filter(|&k| r[k].is_finite())
+        .map(|k| r[k] * r[k] / (nf - k as f64).max(1.0))
+        .sum::<f64>()
+        * nf
+        * (nf + 2.0);
+    let max_short = (1..=h)
+        .filter_map(|k| r.get(k).copied())
+        .filter(|v| v.is_finite())
+        .fold(0.0f64, |a, v| a.max(v.abs()));
+    let memory = r
+        .iter()
+        .position(|&v| v < (-1.0f64).exp())
+        .map(|k| k as f64 * step);
+    let band = 1.96 / nf.sqrt();
+    // A repeat: a local peak, strong, after the correlation has fallen
+    // well below it, and that comes back at twice the lag (a cycle
+    // repeats; a chance bump does not).
+    let repeat = (2..r.len().saturating_sub(1)).find(|&k| {
+        let lo = r[1..k].iter().copied().fold(f64::INFINITY, f64::min);
+        let again = (2 * k * 9 / 10..=(2 * k * 11 / 10).min(r.len() - 1))
+            .map(|j| r[j])
+            .fold(f64::NEG_INFINITY, f64::max);
+        r[k] >= r[k - 1]
+            && r[k] > r[k + 1]
+            && r[k] >= 0.3f64.max(4.0 * band)
+            && lo <= r[k] - 0.3
+            && again >= 0.5 * r[k]
+    });
+    let stride = thin(r.len(), cfg.max_points);
+    let lb_p = chi2_tail(q, h);
+    Autocorrelation {
+        lag_s: (0..r.len())
+            .step_by(stride)
+            .map(|k| k as f64 * step)
+            .collect(),
+        r: r.iter().step_by(stride).copied().collect(),
+        band,
+        ljung_box_q: q,
+        ljung_box_lags: h,
+        p_value: lb_p,
+        max_short_lag_r: max_short,
+        repeat_lag_s: repeat.map(|k| k as f64 * step),
+        repeat_r: repeat.map(|k| r[k]),
+        memory_s: memory,
+    }
+}
+
 /// Test one series. `g` is on a uniform grid of readings with gaps as NaN.
+/// `fine`, when given, holds the same series in shorter windows: the
+/// verdict is judged on `g`, but cycles are looked for in `fine`, which
+/// keeps cycles too short for `g`'s readings.
+#[allow(clippy::too_many_arguments)]
 pub fn check_series(
     kind: SeriesKind,
     mut g: Grid,
+    fine: Option<Grid>,
     period: Option<Period>,
     two_state: Option<TwoState>,
     wheels: &[Wheel],
     cfg: &Config,
 ) -> SeriesCheck {
     let outliers = drop_outliers(&mut g, cfg.outlier_sigma);
+    let fine = fine.map(|mut f| {
+        drop_outliers(&mut f, cfg.outlier_sigma);
+        f
+    });
     let y = &g.y;
     let n = y.iter().filter(|v| v.is_finite()).count();
     let mut out = SeriesCheck {
@@ -692,7 +786,8 @@ pub fn check_series(
     };
     if n < 30 || g.span() < 120.0 {
         out.headline = format!(
-            "Too few {} readings to say whether they are steady.",
+            "Too few {:.0} s {} readings to say whether they are steady.",
+            g.step,
             kind.name()
         );
         return out;
@@ -700,59 +795,8 @@ pub fn check_series(
     let (mean, sd) = mean_sd(y).unwrap();
     let sst = out.short_term_sd.unwrap_or(sd);
 
-    // Autocorrelation and Ljung–Box.
-    let max_lag = ((cfg.max_lag_s / g.step) as usize)
-        .min(y.len() / 3)
-        .max(cfg.ljung_box_lags.min(y.len() / 3));
-    let r = acf(y, max_lag);
-    let h = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
     let nf = n as f64;
-    let q: f64 = (1..=h)
-        .filter(|&k| r[k].is_finite())
-        .map(|k| r[k] * r[k] / (nf - k as f64).max(1.0))
-        .sum::<f64>()
-        * nf
-        * (nf + 2.0);
-    let max_short = (1..=h)
-        .filter_map(|k| r.get(k).copied())
-        .filter(|v| v.is_finite())
-        .fold(0.0f64, |a, v| a.max(v.abs()));
-    let memory = r
-        .iter()
-        .position(|&v| v < (-1.0f64).exp())
-        .map(|k| k as f64 * g.step);
-    let band = 1.96 / nf.sqrt();
-    // A repeat: a local peak, strong, after the correlation has fallen
-    // well below it, and that comes back at twice the lag (a cycle
-    // repeats; a chance bump does not).
-    let repeat = (2..r.len().saturating_sub(1)).find(|&k| {
-        let lo = r[1..k].iter().copied().fold(f64::INFINITY, f64::min);
-        let again = (2 * k * 9 / 10..=(2 * k * 11 / 10).min(r.len() - 1))
-            .map(|j| r[j])
-            .fold(f64::NEG_INFINITY, f64::max);
-        r[k] >= r[k - 1]
-            && r[k] > r[k + 1]
-            && r[k] >= 0.3f64.max(4.0 * band)
-            && lo <= r[k] - 0.3
-            && again >= 0.5 * r[k]
-    });
-    let stride = thin(r.len(), cfg.max_points);
-    let lb_p = chi2_tail(q, h);
-    out.autocorrelation = Some(Autocorrelation {
-        lag_s: (0..r.len())
-            .step_by(stride)
-            .map(|k| k as f64 * g.step)
-            .collect(),
-        r: r.iter().step_by(stride).copied().collect(),
-        band,
-        ljung_box_q: q,
-        ljung_box_lags: h,
-        p_value: lb_p,
-        max_short_lag_r: max_short,
-        repeat_lag_s: repeat.map(|k| k as f64 * g.step),
-        repeat_r: repeat.map(|k| r[k]),
-        memory_s: memory,
-    });
+    out.autocorrelation = Some(autocorrelation(y, g.step, cfg));
 
     // Allan deviation with the line independent readings would follow.
     let ad = allan(y, g.step);
@@ -898,7 +942,7 @@ pub fn check_series(
     }
     out.trend = Some(trend);
 
-    out.cycle = cycle(&out, &g, wheels, cfg);
+    out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.verdict = verdict(&out, cfg);
     out.headline = headline(&out, mean);
     if let Some(more) = also(&out, cfg) {
@@ -996,8 +1040,18 @@ fn wheel_for(period: f64, wheels: &[Wheel]) -> Option<String> {
 /// tested by folding the readings at it, and the one whose cycle explains
 /// the most is kept when that is enough. A period shorter than three
 /// readings cannot show in the readings and is left to the period search
-/// report.
-fn cycle(s: &SeriesCheck, g: &Grid, wheels: &[Wheel], cfg: &Config) -> Option<Cycle> {
+/// report. With `fine` given, the folds and the autocorrelation's
+/// candidates come from its shorter windows.
+fn cycle(
+    s: &SeriesCheck,
+    g: &Grid,
+    fine: Option<&Grid>,
+    wheels: &[Wheel],
+    cfg: &Config,
+) -> Option<Cycle> {
+    let fine_ac = fine.map(|f| autocorrelation(&f.y, f.step, cfg));
+    let ac = fine_ac.as_ref().or(s.autocorrelation.as_ref());
+    let g = fine.unwrap_or(g);
     let d = longterm::detrend(g, 1800.0);
     let mut cands: Vec<(f64, CycleSource)> = Vec::new();
     if let Some(t) = &s.two_state {
@@ -1007,7 +1061,7 @@ fn cycle(s: &SeriesCheck, g: &Grid, wheels: &[Wheel], cfg: &Config) -> Option<Cy
             }
         }
     }
-    if let Some(l) = s.autocorrelation.as_ref().and_then(|a| a.repeat_lag_s) {
+    if let Some(l) = ac.and_then(|a| a.repeat_lag_s) {
         // The lag is only as fine as one reading: try around it.
         let best = (0..=40)
             .map(|i| l * (0.8 + 0.01 * i as f64))
@@ -1018,7 +1072,7 @@ fn cycle(s: &SeriesCheck, g: &Grid, wheels: &[Wheel], cfg: &Config) -> Option<Cy
     }
     // Every later peak of the autocorrelation above three times its 95% band, even one
     // too weak to count as a repeat on its own: the fold below decides.
-    if let Some(a) = &s.autocorrelation {
+    if let Some(a) = ac {
         for k in 2..a.r.len().saturating_sub(1) {
             if a.r[k] >= a.r[k - 1] && a.r[k] > a.r[k + 1] && a.r[k] >= 3.0 * a.band {
                 let l = a.lag_s[k];
@@ -1134,10 +1188,11 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
             format!("{sec:.0} s")
         }
     };
+    let step = every(s.step_s);
     match s.verdict {
-        Verdict::TooShort => format!("Too few {name} readings to say whether they are steady."),
+        Verdict::TooShort => format!("Too few {step} {name} readings to say whether they are steady."),
         Verdict::Steady => format!(
-            "{cap} is steady: readings scatter independently about {} (±{} from one reading to the next).",
+            "{cap} is steady: {step} readings scatter independently about {} (±{} from one {step} reading to the next).",
             k.fmt(s.median.unwrap_or(mean)),
             k.fmt_size(s.short_term_sd.unwrap_or(0.0))
         ),
@@ -1201,7 +1256,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
             )
         }
         Verdict::Wandering => format!(
-            "{cap} wanders: each reading remembers the last ones{}, with no cycle, steps or trend to account for it.",
+            "{cap} wanders: each {step} reading remembers the last ones{}, with no cycle, steps or trend to account for it.",
             s.autocorrelation
                 .as_ref()
                 .and_then(|a| a.memory_s)
@@ -1418,6 +1473,18 @@ pub fn check(
     };
     let amp_grid = grid_of(&|w| w.mean());
     let be_grid = grid_of(&|w| w.beat_error_unlock_ms);
+    // The verdicts judge every series at the rate's reading length: the
+    // amplitude and beat error windows are averaged into the rate's
+    // readings, so one reading means the same time for all three. The
+    // short windows are kept for finding cycles.
+    let (t0, n) = if rate_grid.y.is_empty() {
+        (amp_grid.t0, (amp_grid.span() / r).ceil() as usize)
+    } else {
+        (rate_grid.t0, rate_grid.y.len())
+    };
+    let amp_readings = rebin(&amp_grid, t0, r, n);
+    let be_readings = rebin(&be_grid, t0, r, n);
+    let rate_amplitude = cross_correlation(&rate_grid, &amp_readings, cfg);
     let amp_samples: Vec<twostate::Sample> = aw
         .iter()
         .filter_map(|w| {
@@ -1467,6 +1534,7 @@ pub fn check(
         check_series(
             SeriesKind::Rate,
             rate_grid,
+            None,
             rate_period,
             Some(twostate::find(&rate_samples, &p)),
             &long_cfg.wheels,
@@ -1474,7 +1542,8 @@ pub fn check(
         ),
         check_series(
             SeriesKind::Amplitude,
-            amp_grid,
+            amp_readings,
+            Some(amp_grid),
             amp_period,
             Some(twostate::find(&amp_samples, &p)),
             &long_cfg.wheels,
@@ -1482,7 +1551,8 @@ pub fn check(
         ),
         check_series(
             SeriesKind::BeatError,
-            be_grid,
+            be_readings,
+            Some(be_grid),
             be_period,
             None,
             &long_cfg.wheels,
@@ -1517,13 +1587,151 @@ pub fn check(
             }
         }
     }
-    let findings = series.iter().filter_map(findings).collect();
+    let mut findings: Vec<Finding> = series.iter().filter_map(findings).collect();
+    if let Some(x) = rate_amplitude.as_ref().filter(|x| x.moves_with) {
+        findings.push(Finding {
+            code: "rate_moves_with_amplitude",
+            series: SeriesKind::Rate,
+            severity: Severity::Note,
+            title: "The rate moves with the amplitude".into(),
+            evidence: format!(
+                "{} Evidence: r {:.2} over {} pairs of readings (worth about {:.0} independent ones), p {}.",
+                x.headline,
+                x.r,
+                x.readings,
+                x.effective_readings,
+                p_text(x.p_value)
+            ),
+            advice: "A rate that moves with the amplitude is the movement's isochronism: as the mainspring lets down and the amplitude falls, the rate moves by this much per degree. Compare rates taken at the same amplitude.".into(),
+        });
+    }
     Report {
         duration_s: long.duration_s,
         bph: log.bph,
         config: cfg.clone(),
         series,
+        rate_amplitude,
         findings,
+    }
+}
+
+/// Average the windows of `fine` into `n` readings of `step` seconds
+/// from `t0`. A reading needs at least half its windows.
+fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
+    let mut sum = vec![0.0; n];
+    let mut count = vec![0usize; n];
+    for (i, &v) in fine.y.iter().enumerate() {
+        let b = ((fine.time(i) - t0) / step).floor();
+        if v.is_finite() && b >= 0.0 && (b as usize) < n {
+            sum[b as usize] += v;
+            count[b as usize] += 1;
+        }
+    }
+    let need = ((step / fine.step / 2.0).ceil() as usize).max(1);
+    Grid {
+        t0,
+        step,
+        y: sum
+            .iter()
+            .zip(&count)
+            .map(|(s, &c)| if c >= need { s / c as f64 } else { f64::NAN })
+            .collect(),
+    }
+}
+
+/// The correlation a rate–amplitude link has to reach to be named.
+const FOLLOWS_MIN_R: f64 = 0.3;
+
+/// Correlate the rate with the amplitude, each reading against the same
+/// reading (no lag: the rate answers the amplitude at once, and a lag
+/// search on a shared cycle finds the half-turn where the two
+/// anticorrelate). Both grids share `t0` and step.
+/// The test is on the changes within half an hour (both series with
+/// their slow change taken out): two series that both drift correlate
+/// whether or not one drives the other, and their drift leaves too few
+/// independent readings to tell. The whole-take slope is given beside it.
+fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorrelation> {
+    let (mut x, mut y) = (amp.clone(), rate.clone());
+    drop_outliers(&mut x, cfg.outlier_sigma);
+    drop_outliers(&mut y, cfg.outlier_sigma);
+    let (xd, yd) = (longterm::detrend(&x, 1800.0), longterm::detrend(&y, 1800.0));
+    let pairs = |x: &Grid, y: &Grid| -> Vec<(f64, f64)> {
+        (0..y.y.len().min(x.y.len()))
+            .filter_map(|i| {
+                let (a, b) = (x.y[i], y.y[i]);
+                (a.is_finite() && b.is_finite()).then_some((a, b))
+            })
+            .collect()
+    };
+    let stats = |p: &[(f64, f64)]| {
+        let n = p.len() as f64;
+        let (ma, mb) = (
+            p.iter().map(|q| q.0).sum::<f64>() / n,
+            p.iter().map(|q| q.1).sum::<f64>() / n,
+        );
+        let sab: f64 = p.iter().map(|q| (q.0 - ma) * (q.1 - mb)).sum();
+        let saa: f64 = p.iter().map(|q| (q.0 - ma).powi(2)).sum();
+        let sbb: f64 = p.iter().map(|q| (q.1 - mb).powi(2)).sum();
+        (sab / (saa * sbb).sqrt(), sab / saa)
+    };
+    let p = pairs(&xd, &yd);
+    if p.len() < 30 {
+        return None;
+    }
+    let (r, slope) = stats(&p);
+    if !r.is_finite() {
+        return None;
+    }
+    let (take_r, take_slope) = stats(&pairs(&x, &y));
+    let n = p.len() as f64;
+    let rho = |g: &Grid| {
+        acf(&g.y, 1)
+            .get(1)
+            .copied()
+            .filter(|v| v.is_finite())
+            .unwrap_or(0.0)
+    };
+    let rr = (rho(&xd) * rho(&yd)).clamp(-0.99, 0.99);
+    let n_eff = (n * (1.0 - rr) / (1.0 + rr)).clamp(4.0, n);
+    let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
+    let p_value = chi2_tail(z * z, 1);
+    let moves_with = p_value < cfg.alpha && r.abs() >= FOLLOWS_MIN_R;
+    let step = rate.step;
+    let headline = if moves_with {
+        format!(
+            "Rate moves with amplitude: {:+.2} s/d per degree from one {:.0} s reading to the next (r {:.2}); over the whole take, {:+.2} s/d per degree.",
+            slope,
+            step,
+            r,
+            take_slope
+        )
+    } else {
+        format!(
+            "Rate does not move with amplitude from one {:.0} s reading to the next (r {:.2}, p {}).",
+            step,
+            r,
+            p_text(p_value)
+        )
+    };
+    Some(CrossCorrelation {
+        step_s: step,
+        readings: p.len(),
+        r,
+        effective_readings: n_eff,
+        p_value,
+        s_per_day_per_deg: slope,
+        take_r: finite_or_nan(take_r),
+        take_s_per_day_per_deg: finite_or_nan(take_slope),
+        moves_with,
+        headline,
+    })
+}
+
+fn finite_or_nan(v: f64) -> f64 {
+    if v.is_finite() {
+        v
+    } else {
+        f64::NAN
     }
 }
 
@@ -1567,6 +1775,7 @@ mod tests {
             grid(y, 2.0),
             None,
             None,
+            None,
             &[],
             &Config::default(),
         );
@@ -1585,6 +1794,7 @@ mod tests {
         let s = check_series(
             SeriesKind::Rate,
             grid(y, 2.0),
+            None,
             None,
             None,
             &[],
@@ -1608,6 +1818,7 @@ mod tests {
             grid(y, 2.0),
             None,
             None,
+            None,
             &[],
             &Config::default(),
         );
@@ -1629,6 +1840,7 @@ mod tests {
         let s = check_series(
             SeriesKind::Rate,
             grid(y, 10.0),
+            None,
             None,
             None,
             &[],

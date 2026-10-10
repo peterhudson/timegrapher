@@ -121,6 +121,14 @@ that repeats like a bad tooth.
 
 Validation against tg is in [docs/validation.md](docs/validation.md).
 
+## Reporting problems and sharing recordings
+
+Open an [issue](https://github.com/peterhudson/timegrapher/issues/new/choose):
+there are forms for a wrong reading, a bug, an idea and for contributing a
+recording of a watch to the public test corpus. A wrong reading can only be
+fixed with the sound it came from; [docs/contributing-recordings.md](docs/contributing-recordings.md)
+says what to record and how to cut it to size.
+
 ## Licence
 
 GPL-3.0-or-later. This is a clean implementation; it contains no code from

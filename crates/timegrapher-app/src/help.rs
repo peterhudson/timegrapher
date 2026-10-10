@@ -13,7 +13,10 @@ pub const WATCH: &[&str] = &[
      usual guess when it isn't known.",
     "Position is how the watch lies: dial up or down, or upright with the crown up, \
      down, left or right. Rate and amplitude change between positions, so each is a \
-     separate measurement and changing it starts the readings again.",
+     separate measurement. Changing it while listening keeps the strip and marks each \
+     position's stretch on it and on the charts; the readings, the tick and tock \
+     profile, the distributions and Steadiness then take only the beats in the new \
+     position, every stretch of it in the session together.",
 ];
 
 pub const MICROPHONE: &[&str] = &[

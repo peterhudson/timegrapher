@@ -108,3 +108,22 @@ fn hash_noise(x: f64) -> f64 {
     let v = (x.floor() * 12.9898).sin() * 43758.5453;
     2.0 * (v - v.floor()) - 1.0
 }
+
+#[test]
+fn rate_that_moves_with_amplitude_is_named() {
+    // Amplitude swings ±10° every 75 s as it falls 20° over 20 minutes,
+    // and the rate follows it at 0.5 s/d per degree.
+    let amp =
+        |t: f64| 270.0 - 20.0 * t / 1200.0 + 10.0 * (2.0 * std::f64::consts::PI * t / 75.0).sin();
+    let r = run("isochronism", 1200.0, amp, move |t| 0.5 * (amp(t) - 255.0));
+    for s in &r.series {
+        assert_eq!(s.step_s, 10.0, "{:?}", s.series);
+    }
+    let x = r.rate_amplitude.as_ref().unwrap();
+    assert!(x.moves_with, "{}", x.headline);
+    assert!((x.s_per_day_per_deg - 0.5).abs() < 0.1, "{}", x.headline);
+    assert!(r
+        .findings
+        .iter()
+        .any(|f| f.code == "rate_moves_with_amplitude"));
+}

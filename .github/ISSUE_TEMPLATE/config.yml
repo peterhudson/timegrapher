@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to contribute a recording
+    url: https://github.com/peterhudson/timegrapher/blob/main/docs/contributing-recordings.md
+    about: What to record, how to cut it to size, and the licence.
