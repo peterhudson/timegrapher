@@ -106,7 +106,7 @@ Each entry of `series[]`:
 | `cusum` | `t_s[]`, `s[]` (thinned), `max`, `at_s`, `p_value` |
 | `changes` | `block_s`, `block_sigma`, `segments[]` (`start_s`, `end_s`, `mean`), `explained` |
 | `trend` | `per_hour`, `explained`, `curve_explained`, `start`, `end`, `turn` (`[time, value]` or null) |
-| `period` | the period search's strongest component: `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `wheel` |
+| `period` | the period search's strongest component: `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel` |
 | `two_state` | the two-state finder's full result (rate and amplitude only) |
 | `cycle` | the cycle behind `periodic` (or found under another verdict): `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel` |
 | `unlock_hopping` | amplitude and beat error only: one side's unlock edges split in two |

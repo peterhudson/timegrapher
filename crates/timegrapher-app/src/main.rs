@@ -25,7 +25,8 @@ use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 
 const USAGE: &str = "\
 Usage:
-  timegrapher-app [FILE]            open the window (FILE: a recording to replay)
+  timegrapher-app [FILE]            open the window (FILE: a recording to replay,
+                                    or a folder of segments to analyse as one)
   timegrapher-app --analyse FILE    open the window with FILE analysed all at once
   timegrapher-app --devices         list sound input devices as JSON
   timegrapher-app --headless FILE [--bph N] [--lift DEG] [--average S] [--every S]

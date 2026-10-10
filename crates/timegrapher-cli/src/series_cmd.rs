@@ -209,8 +209,8 @@ fn print_series(s: &SeriesCheck) {
             p.wheel
                 .as_ref()
                 .map_or(String::new(), |w| format!(" ({w})")),
-            p.peak_to_peak,
-            s.unit,
+            p.size,
+            p.size_unit,
             p.explained * 100.0,
             p_text(10f64.powf(-p.significance))
         );

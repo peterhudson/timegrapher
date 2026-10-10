@@ -114,7 +114,21 @@ records it.
    two-hour run (resolution ±0.5 s) is not the fourth wheel.
 
 Rate components are searched on the timing offset and reported as rate:
-minus the slope of the average cycle, in s/d.
+minus the slope of the average cycle, in s/d. A cycle shorter than 30 s
+(three 10 s rate readings) is reported as the timing swing instead, in ms
+peak to peak: an escape wheel's tooth pattern moves each beat by a fraction
+of a millisecond, which as a slope is hundreds of s/d that no rate reading
+would show. The JSON keeps `peak_to_peak` in s/d and adds
+`timing_peak_to_peak_ms`, plus `size` and `size_unit` for the figure to
+show.
+
+The shortest period searched is eight bins of the series (the fold's
+eight phase bins), so 2 s on the 0.25 s grid, 8 s on the 1 s grid of runs
+over 12 hours, and 16 s for amplitude. With fewer bins per turn, a period
+that is a whole number of bins folds onto a few fixed phases, and the slow
+wander the trend leaves behind reads as a cycle. On a 16 h run, the
+21,600 vph escape wheel's 5 s read 10.8 ms that way, where the beats show
+0.5 ms.
 
 ## Limits
 

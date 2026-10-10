@@ -41,6 +41,15 @@ desktop's light or dark setting (Appearance, under Window, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
 
+**A folder of segments.** A long take saved as segments (the recorder's
+hourly files, or an overnight run split into 10-minute FLACs) opens as one
+recording: **Open Folder…** in the toolbar, a folder typed into the path
+box, a folder dropped on the window, or `timegrapher-app FOLDER`. Its WAV
+and FLAC files are analysed in name order, end to end, with **Analyse
+All**; a folder can't be replayed in real time. A 16-hour night takes a
+few minutes to analyse, with a progress bar in the status line, and the
+Steadiness tests then cover the whole night.
+
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
 from 1 s to an hour, or pick one of Witschi's 2 to 60 s; the setting is
@@ -331,13 +340,15 @@ position.
 
 ## Sessions
 
-**Start** begins a session from the microphone. **Pause** stops listening
-and keeps everything: the readings, strip, charts and the sound so far.
+**Start** begins a session from the microphone. **Stop** stops
+listening and lets go of the microphone, so another program can use it
+(Microphone Off shows beside the level meter), and keeps everything: the
+readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
-the paused time out, and the readings start from the beats after the
-pause. **New session**, shown while paused, clears everything for the
+the stopped time out, and the readings start from the beats after the
+stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
-**Save…** can be pressed at any time, running or paused: it asks for a
+**Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session there, and **Save again…** later brings
 that copy up to date. Sound that hasn't been saved is never thrown away
 without asking: New session and closing the window ask whether to save it
