@@ -89,6 +89,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "named_wheels": lc.wheels,
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,
+            "wind_h": o.check.wind_h,
         });
         crate::output::print("series", crate::output::input(&files, settings), &rep)
     } else {
@@ -106,6 +107,26 @@ fn print_text(r: &Report, calibrated: bool) {
     );
     for s in &r.series {
         print_series(s);
+    }
+    if let Some(c) = &r.isochronism {
+        println!();
+        println!("{}", c.headline);
+        for b in &c.bins {
+            println!(
+                "  {:>5.0}°  {:+7.1} s/d  (quartiles {:+.1} to {:+.1}, {} readings, {:.1}–{:.1} h)",
+                b.amplitude_deg,
+                b.rate_s_per_day,
+                b.rate_q25,
+                b.rate_q75,
+                b.readings,
+                b.from_wind_h,
+                b.to_wind_h
+            );
+        }
+    }
+    if let Some(w) = &r.wind_down {
+        println!();
+        println!("{}", w.headline);
     }
     if let Some(x) = &r.rate_amplitude {
         println!();

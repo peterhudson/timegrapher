@@ -224,6 +224,10 @@ enum Command {
         /// Length of each rate reading, seconds.
         #[arg(long, default_value_t = 10.0)]
         reading: f64,
+        /// Hours since the watch was last fully wound when the take
+        /// started (for the 0 h / 24 h comparison).
+        #[arg(long, default_value_t = 0.0)]
+        wind_h: f64,
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -609,6 +613,7 @@ fn main() -> ExitCode {
             escape_teeth,
             wheel,
             reading,
+            wind_h,
             json,
         } => {
             let mut cfg = StreamConfig::default();
@@ -630,6 +635,7 @@ fn main() -> ExitCode {
                     wheels: &wheel,
                     check: timegrapher_core::steadiness::Config {
                         rate_reading_s: reading,
+                        wind_h,
                         ..Default::default()
                     },
                     json,
