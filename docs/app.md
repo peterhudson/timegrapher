@@ -2,13 +2,14 @@
 
 `timegrapher-app` is the live timegrapher screen: put the watch on the
 microphone and it shows the paper-strip trace with rate, amplitude and beat
-error, the way a bench timegrapher does. It can also replay a recording as
-if it were live, or analyse a whole recording at once and let you look
-back through it.
+error, the way a bench timegrapher does. A recording, or a folder of
+segments, opens analysed all at once to look back through; it can also be
+replayed as if it were live.
 
 ```sh
 cargo run --release -p timegrapher-app             # live from a microphone
-cargo run --release -p timegrapher-app -- rec.flac  # replay a recording
+cargo run --release -p timegrapher-app -- rec.flac  # analyse a recording
+cargo run --release -p timegrapher-app -- --replay rec.flac  # replay it as if live
 ```
 
 On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).
@@ -19,8 +20,10 @@ Along the top, the toolbar: the sidebar button, which hides the sidebar
 to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
 a Mac), **Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
-buttons for the session (see Sessions below; **Replay**, **Stop** and
-**Analyse All** for a recording). On the left, the settings in cards:
+buttons for the session (see Sessions below; **Analyse All**, **Replay**
+and **Stop** for a recording). Opening a recording, by **Open…**, a drop
+or the command line, analyses it all at once, which is how a watchmaker
+looks back through a take; **Replay** plays it through as if live. On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
 **Charts**, **Distributions**), each with its switch to show or hide it and
@@ -58,8 +61,12 @@ more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
 been moved or have drifted meanwhile. The big amplitude is the average of the two
-swings; under it are the amplitude from the ticks (blue on the strip and
-charts) and from the tocks (orange). The sound can't tell which beat is
+swings, in whole degrees, with a ± figure: the standard error of the
+median of its 2 s windows, roughly how far it could be off from their
+scatter alone. It is precision, not accuracy: a wrong lift angle moves
+every amplitude together (1° of lift angle moves it about 4°).
+Under it are the amplitude from the ticks (blue dot) and from the tocks
+(orange dot). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
 between tick and tock usually means one side's sounds were misread rather than a fault in the
 watch;
@@ -119,9 +126,9 @@ it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
-and the marks the engine read: unlock (green) and drop (red), from which
-amplitude and the unlock-based beat error come, the drop's peak (purple),
-the three sounds where the engine tells them apart (dashed gold: 1 unlock,
+and the marks the engine read: unlock (green) and drop (indigo), from which
+amplitude and the unlock-based beat error come, the drop's peak (a thinner
+indigo line), the three sounds where the engine tells them apart (dashed brown: 1 unlock,
 2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
 The solid edges and the dashed sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
@@ -164,8 +171,8 @@ describes them well. **Parallel Guides** (on by default) adds faint red
 lines at the same slope across the whole strip, one per grid step, since
 the eye judges whether lines are parallel far better than it judges a
 slope; dots that bend away from the guides show the rate changing. Under
-**Draw over the strip**, amplitude (purple, on by default), rate (green)
-and beat error (gold) readings can be drawn as lines against the same
+**Draw over the strip**, amplitude (purple, on by default), rate (red)
+and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above
 the strip (beside it when the strip lies across), as some versions of tg
 do for amplitude: a wobble in the rate that comes with a dip in amplitude
@@ -191,7 +198,11 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Centre** centres once; **Clear** starts the readings and the strip again.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
-unlock and from the drop) over time. **Time Span**, in the Charts and
+unlock and from the drop) over time. Each reading keeps its colour across
+the app (rate red, amplitude purple, beat error yellow), so a second line
+of the same reading is told apart by its dashes: amplitude from the ticks
+dashed and from the tocks dotted, beat error from the drop dashed, with a
+blue or orange swatch for Tick and Tock in the box at the pointer. **Time Span**, in the Charts and
 Distributions cards, sets what they cover: **Session**, everything since the
 session started, or **Strip**, the same stretch of time as the paper strip,
 moving with it, so that with the charts under a strip lying across every
@@ -312,7 +323,7 @@ position.
   readings, rather than showing an empty strip. The status bar shows the
   sample rate and bit depth the input opened at. Where the desktop passes
   dropped files on (X11, Windows, macOS; not yet Wayland), dropping a file
-  on the window replays it. The app asks the device for 48 kHz in as few
+  or a folder on the window analyses it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
 - **Input level.** In the Microphone card: the microphone's gain and a peak meter
@@ -328,6 +339,16 @@ position.
   clips and changes the shape of the sound; if it is on, the card shows
   an amber warning with **Turn it off**, and otherwise says nothing about
   it.
+- **Calibre.** Not Set, a calibre from the built-in table
+  (`timegrapher_core::calibres`, grouped by maker; each entry's hint gives
+  its beat rate, lift angle and wheel periods), or one of your own.
+  Picking one fills in its lift angle and names the cycles Steadiness
+  finds after its own wheels; if the watch beats at another rate than the
+  calibre, the card says so. **New Custom Calibre** adds one with a name
+  and a list of wheels and their turn periods in seconds, to edit in
+  place; it is kept for next time. Not Set names cycles after the wheels
+  most calibres at the beat rate share. The pick itself, like the lift
+  angle, is about the watch on the stand and isn't kept.
 - **Beat rate.** Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,
@@ -339,6 +360,11 @@ position.
   session` reports them) will build on it.
 
 ## Sessions
+
+Opening the app never touches the microphone; only **Start** opens it.
+When another program records from the same microphone (a long take with
+the recorder, say), don't press Start during its take, and press Stop
+before one begins.
 
 **Start** begins a session from the microphone. **Stop** stops
 listening and lets go of the microphone, so another program can use it

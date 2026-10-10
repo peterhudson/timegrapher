@@ -5,7 +5,7 @@
 use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
-use crate::settings::Settings;
+use crate::settings::{CustomCalibre, CustomWheel, Settings};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -16,11 +16,13 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 use timegrapher_core::beats::STANDARD_BPH;
+use timegrapher_core::calibres;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::mixer::{GainState, InputGain};
+use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::profile::TickProfile;
 
 /// The A and B sides' sounds.
@@ -347,12 +349,53 @@ const MS: Format = Format {
     show: fields::plain,
     parse: fields::parse_number,
 };
+/// A wheel's period: as many decimals as it has, up to three (3.75 s).
+const PERIOD: Format = Format {
+    show: |v| {
+        let s = format!("{v:.3}");
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    },
+    parse: fields::parse_number,
+};
 const DURATION: Format = Format {
     show: fields::duration,
     parse: fields::parse_duration,
 };
 
 /// One point of the charts over time.
+/// The calibre picked under Watch.
+#[derive(Clone, Copy)]
+enum Calibre<'a> {
+    None,
+    Table(&'a calibres::Calibre),
+    Custom(usize),
+}
+
+/// What the table says about a calibre, for its entry in the menu.
+fn calibre_hint(c: &calibres::Calibre) -> String {
+    let mut t = format!("{} bph", c.bph);
+    if let Some(l) = c.lift_angle_deg {
+        t += &format!(", lift angle {}°", fields::plain(l));
+    }
+    for w in &c.wheels {
+        t += &format!("\n{}: {} s", w.name, (PERIOD.show)(w.period_s));
+    }
+    t
+}
+
+/// One line on a reading's chart over the session.
+#[derive(Clone)]
+struct ChartLine {
+    name: String,
+    pts: Vec<[f64; 2]>,
+    color: Color32,
+    style: LineStyle,
+    /// The swatch beside its value under the pointer.
+    key: Color32,
+    /// The reading itself, drawn heavier than the lines beside it.
+    main: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrendPoint {
     t: f64,
@@ -400,6 +443,10 @@ pub struct TimegrapherApp {
     position: Position,
     average_s: f64,
     watch: String,
+    /// The calibre picked under Watch: a name in the built-in table or one
+    /// of `custom_calibres`, or empty when not set.
+    calibre: String,
+    custom_calibres: Vec<CustomCalibre>,
     /// Where the last Save put the session, if it has been saved.
     saved_to: Option<PathBuf>,
     /// The folder Save offers first.
@@ -521,6 +568,7 @@ impl TimegrapherApp {
             theme: self.theme,
             steady_view: self.steady_view,
             panes: Some(self.panes.clone()),
+            custom_calibres: self.custom_calibres.clone(),
         }
     }
 
@@ -545,7 +593,9 @@ impl TimegrapherApp {
             theme,
             steady_view,
             panes,
+            custom_calibres,
         } = s;
+        self.custom_calibres = custom_calibres;
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
             !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
@@ -606,6 +656,8 @@ impl TimegrapherApp {
             position: Position::DialUp,
             average_s: 10.0,
             watch: String::new(),
+            calibre: String::new(),
+            custom_calibres: Vec::new(),
             saved_to: None,
             mic_session: false,
             paused_at: None,
@@ -1251,7 +1303,7 @@ impl TimegrapherApp {
                     (
                         Input::File,
                         "Recording",
-                        "Replay or analyse a WAV or FLAC recording",
+                        "Analyse or replay a WAV or FLAC recording",
                     ),
                 ],
             );
@@ -1312,10 +1364,12 @@ impl TimegrapherApp {
                 Input::File => {
                     if ui
                         .button("Open…")
-                        .on_hover_text("Choose a WAV or FLAC recording")
+                        .on_hover_text("Choose a WAV or FLAC recording and analyse it all")
                         .clicked()
                     {
-                        self.open_file_dialog();
+                        if let Some(p) = self.open_file_dialog() {
+                            self.start_batch(&p);
+                        }
                     }
                     if ui
                         .button("Open Folder…")
@@ -1326,7 +1380,9 @@ impl TimegrapherApp {
                         )
                         .clicked()
                     {
-                        self.open_folder_dialog();
+                        if let Some(p) = self.open_folder_dialog() {
+                            self.start_batch(&p);
+                        }
                     }
                     let w = (ui.available_width() - 260.0).clamp(120.0, 420.0);
                     ui.add(
@@ -1355,8 +1411,13 @@ impl TimegrapherApp {
                             let path = PathBuf::from(self.file_path.trim());
                             let ok = !self.file_path.trim().is_empty();
                             let folder = path.is_dir();
+                            // Laid out right to left: Analyse All, the usual way to
+                            // look at a recording, comes last so it sits first.
                             if ui
-                                .add_enabled(ok && !folder, theme::primary(ui, "Replay"))
+                                .add_enabled(
+                                    ok && !folder,
+                                    egui::Button::new("Replay").min_size(Vec2::new(0.0, 26.0)),
+                                )
                                 .on_hover_text(
                                     "Play the recording through at its own speed, as if live, \
                                      from the start",
@@ -1373,7 +1434,7 @@ impl TimegrapherApp {
                             if ui
                                 .add_enabled(
                                     ok && self.batch.is_none(),
-                                    egui::Button::new("Analyse All").min_size(Vec2::new(0.0, 26.0)),
+                                    theme::primary(ui, "Analyse All"),
                                 )
                                 .on_hover_text(if folder {
                                     "Analyse every segment in the folder, in name order, as one \
@@ -1674,10 +1735,11 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+                let wheels = self.calibre_wheels();
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ui.ctx().clone();
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute(&log));
+                    let _ = tx.send(steady::compute(&log, wheels));
                     ctx.request_repaint();
                 });
                 self.steady_job = Some(rx);
@@ -1737,7 +1799,8 @@ impl TimegrapherApp {
                             true,
                             "Readings",
                             "The readings, each averaged over Average Over, as on the charts \
-                             and the strip: states lasting longer than that stand out clearly",
+                             and the strip, one per Average Over so that no two share beats: \
+                             states lasting longer than that stand out clearly",
                         ),
                         (
                             false,
@@ -1788,6 +1851,7 @@ impl TimegrapherApp {
                     .desired_width(f32::INFINITY),
             );
         });
+        self.calibre_settings(ui);
         let mut bph = self.bph;
         theme::row(
             ui,
@@ -2023,11 +2087,11 @@ impl TimegrapherApp {
             ),
             (
                 "Rate",
-                "The rate readings as a green line against the same time, on their own scale",
+                "The rate readings as a red line against the same time, on their own scale",
             ),
             (
                 "Beat Error",
-                "The beat error readings, from the unlock, as a gold line against the same \
+                "The beat error readings, from the unlock, as a yellow line against the same \
                  time, on their own scale",
             ),
         ]
@@ -2140,7 +2204,7 @@ impl TimegrapherApp {
             ui,
             "Sounds 1, 2 and 3",
             &mut o.sounds,
-            "The dashed gold lines where the three sounds of each beat rise: unlock, \
+            "The dashed brown lines where the three sounds of each beat rise: unlock, \
              impulse and drop",
         );
     }
@@ -2345,6 +2409,255 @@ impl TimegrapherApp {
             ui.label(RichText::new(e).small().color(pal.bad));
         }
     }
+    /// The calibre picked, from the built-in table or typed in.
+    fn calibre_choice(&self) -> Calibre<'_> {
+        if self.calibre.is_empty() {
+            return Calibre::None;
+        }
+        if let Some(i) = self
+            .custom_calibres
+            .iter()
+            .position(|c| c.name == self.calibre)
+        {
+            return Calibre::Custom(i);
+        }
+        calibres::find(&self.calibre).map_or(Calibre::None, Calibre::Table)
+    }
+
+    /// The train the Steadiness tests name cycles after, when a calibre is
+    /// picked; `None` leaves them to the beat rate's usual wheels.
+    fn calibre_wheels(&self) -> Option<Vec<Wheel>> {
+        match self.calibre_choice() {
+            Calibre::None => None,
+            Calibre::Table(c) => Some(c.wheels()),
+            Calibre::Custom(i) => Some(
+                self.custom_calibres[i]
+                    .wheels
+                    .iter()
+                    .filter(|w| w.period_s > 0.0 && !w.name.trim().is_empty())
+                    .map(|w| Wheel {
+                        name: w.name.trim().to_lowercase(),
+                        period_s: w.period_s,
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Pick a calibre: its lift angle, where the table has one, and its
+    /// wheels for naming the cycles Steadiness finds.
+    fn set_calibre(&mut self, name: String) {
+        if name == self.calibre {
+            return;
+        }
+        self.calibre = name;
+        if let Calibre::Table(c) = self.calibre_choice() {
+            if let Some(l) = c.lift_angle_deg {
+                self.set_lift(l);
+            }
+        }
+        // Named afresh with the new wheels.
+        self.steady = None;
+        self.steady_job = None;
+    }
+
+    /// The Calibre row under Watch, and the editor for a typed-in one.
+    fn calibre_settings(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let choice = self.calibre_choice();
+        let shown = match choice {
+            Calibre::None => "Not Set".to_string(),
+            Calibre::Table(c) => c.calibre.clone(),
+            Calibre::Custom(i) => self.custom_calibres[i].name.clone(),
+        };
+        let mut picked: Option<String> = None;
+        let mut new_custom = false;
+        theme::row(
+            ui,
+            "Calibre",
+            Some(
+                "The movement, so that cycles Steadiness finds are named after the right \
+                 wheels and the lift angle is filled in. Pick New Custom Calibre for one \
+                 that isn't listed, and type its wheels' periods.",
+            ),
+            |ui| {
+                egui::ComboBox::from_id_salt("calibre")
+                    .width(ui.available_width())
+                    .height(420.0)
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(matches!(choice, Calibre::None), "Not Set")
+                            .on_hover_text(
+                                "Name cycles after the wheels most calibres at this beat rate \
+                                 share",
+                            )
+                            .clicked()
+                        {
+                            picked = Some(String::new());
+                        }
+                        let mut table: Vec<&calibres::Calibre> = calibres::all().iter().collect();
+                        table.sort_by(|a, b| (&a.maker, &a.calibre).cmp(&(&b.maker, &b.calibre)));
+                        let mut maker = "";
+                        for c in table {
+                            if c.maker != maker {
+                                maker = &c.maker;
+                                ui.separator();
+                                ui.label(RichText::new(maker).small().color(pal.text_tertiary));
+                            }
+                            let on = matches!(choice, Calibre::Table(x) if x.calibre == c.calibre);
+                            if ui
+                                .selectable_label(on, &c.calibre)
+                                .on_hover_text(calibre_hint(c))
+                                .clicked()
+                            {
+                                picked = Some(c.calibre.clone());
+                            }
+                        }
+                        ui.separator();
+                        ui.label(
+                            RichText::new("Your Calibres")
+                                .small()
+                                .color(pal.text_tertiary),
+                        );
+                        for (i, c) in self.custom_calibres.iter().enumerate() {
+                            let on = matches!(choice, Calibre::Custom(x) if x == i);
+                            if ui.selectable_label(on, &c.name).clicked() {
+                                picked = Some(c.name.clone());
+                            }
+                        }
+                        if ui
+                            .selectable_label(false, "New Custom Calibre…")
+                            .on_hover_text(
+                                "Type the turn period of each wheel of a calibre that isn't \
+                                 listed; it is kept for next time",
+                            )
+                            .clicked()
+                        {
+                            new_custom = true;
+                        }
+                    });
+            },
+        );
+        if new_custom {
+            let mut n = self.custom_calibres.len() + 1;
+            let mut name = format!("My Calibre {n}");
+            while self.custom_calibres.iter().any(|c| c.name == name) {
+                n += 1;
+                name = format!("My Calibre {n}");
+            }
+            self.custom_calibres.push(CustomCalibre::new(name.clone()));
+            picked = Some(name);
+        }
+        if let Some(p) = picked {
+            self.set_calibre(p);
+        }
+        match self.calibre_choice() {
+            Calibre::Table(c) => {
+                let heard = self.live.as_ref().and_then(|l| l.bph());
+                if let Some(b) = heard.filter(|&b| b != c.bph) {
+                    ui.label(
+                        RichText::new(format!(
+                            "The {} beats at {} bph, but this watch beats at {b}.",
+                            c.calibre, c.bph
+                        ))
+                        .small()
+                        .color(pal.warn),
+                    );
+                }
+            }
+            Calibre::Custom(i) => self.custom_calibre_editor(ui, i),
+            Calibre::None => {}
+        }
+    }
+
+    /// Name and wheels of a typed-in calibre, edited in place.
+    fn custom_calibre_editor(&mut self, ui: &mut egui::Ui, i: usize) {
+        let pal = theme::pal(ui);
+        let before = self.custom_calibres[i].clone();
+        let mut delete = false;
+        ui.add_space(2.0);
+        let c = &mut self.custom_calibres[i];
+        theme::row(
+            ui,
+            "Calibre Name",
+            Some("What the calibre is called in the menu"),
+            |ui| {
+                ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(f32::INFINITY));
+            },
+        );
+        let mut remove = None;
+        for (j, w) in c.wheels.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut w.name)
+                        .hint_text("wheel")
+                        .desired_width(theme::LABEL_W - 8.0),
+                )
+                .on_hover_text("The wheel's name, as Steadiness labels it");
+                fields::entry(
+                    ui,
+                    &format!("wheel-{i}-{j}"),
+                    &mut w.period_s,
+                    0.01..=1.0e6,
+                    &PERIOD,
+                    60.0,
+                );
+                ui.label("s");
+                if ui
+                    .small_button("Remove")
+                    .on_hover_text("Remove this wheel")
+                    .clicked()
+                {
+                    remove = Some(j);
+                }
+            })
+            .response
+            .on_hover_text("The time the wheel takes to turn once, in seconds");
+        }
+        if let Some(j) = remove {
+            c.wheels.remove(j);
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Add Wheel")
+                .on_hover_text("Another wheel, such as the third wheel or the barrel")
+                .clicked()
+            {
+                c.wheels.push(CustomWheel {
+                    name: String::new(),
+                    period_s: 60.0,
+                });
+            }
+            if ui
+                .button("Delete Calibre")
+                .on_hover_text("Forget this calibre")
+                .clicked()
+            {
+                delete = true;
+            }
+        });
+        ui.label(
+            RichText::new(
+                "A wheel's period is one full turn: 60 s for a fourth wheel carrying the \
+                 seconds hand, 3600 s for the centre wheel.",
+            )
+            .small()
+            .color(pal.text_tertiary),
+        );
+        let renamed = self.custom_calibres[i].name != before.name;
+        if renamed {
+            self.calibre = self.custom_calibres[i].name.clone();
+        }
+        if delete {
+            self.custom_calibres.remove(i);
+            self.set_calibre(String::new());
+        } else if self.custom_calibres[i].wheels != before.wheels {
+            self.steady = None;
+            self.steady_job = None;
+        }
+    }
+
     fn set_lift(&mut self, lift: f64) {
         self.lift_deg = lift;
         if let Some(l) = self.live.as_mut() {
@@ -2503,7 +2816,14 @@ impl TimegrapherApp {
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
             card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
-                figure(ui, amp.map(|v| format!("{v:.0}°")), "");
+                // Whole degrees: a live reading's ± is about a degree, so a
+                // decimal would claim more than the beats can say.
+                let unit = match r.and_then(|r| r.amplitude_error_deg) {
+                    Some(e) if e < 0.95 => format!("± {e:.1}°"),
+                    Some(e) => format!("± {e:.0}°"),
+                    None => String::new(),
+                };
+                figure(ui, amp.map(|v| format!("{v:.0}°")), &unit);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     if let Some(LiveReading {
@@ -2736,12 +3056,12 @@ impl TimegrapherApp {
                                     egui::Button::new("Open a Recording…")
                                         .min_size(Vec2::new(0.0, 26.0)),
                                 )
-                                .on_hover_text("Replay a WAV or FLAC file as if live")
+                                .on_hover_text("Analyse a WAV or FLAC recording all at once")
                                 .clicked()
                             {
                                 self.input = Input::File;
                                 if let Some(p) = self.open_file_dialog() {
-                                    self.start_replay(&p);
+                                    self.start_batch(&p);
                                 }
                             }
                         });
@@ -3117,11 +3437,24 @@ impl TimegrapherApp {
             .live
             .as_ref()
             .map_or(&[][..], |l| l.amplitude_windows());
+        // One reading per averaging time: a new reading comes every half
+        // second, and the ones between share most of their beats, so counting
+        // them all would stack up repeats and look surer than it is.
+        let every = self.average_s;
         let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
+            let mut last = f64::NEG_INFINITY;
             self.trend
                 .iter()
                 .filter(|p| inside(p.t))
-                .filter_map(f)
+                .filter_map(|p| Some((p.t, f(p)?)))
+                .filter(|&(t, _)| {
+                    let keep = t >= last + every - 1e-6;
+                    if keep {
+                        last = t;
+                    }
+                    keep
+                })
+                .map(|(_, v)| v)
                 .collect()
         };
         let short = !self.hist_readings;
@@ -3328,8 +3661,6 @@ impl TimegrapherApp {
 
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
         let pal = theme::pal(ui);
-        let colors = [pal.tick, pal.tock];
-        let main = pal.text;
         let weak = pal.text_tertiary;
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             self.trend
@@ -3337,49 +3668,75 @@ impl TimegrapherApp {
                 .filter_map(|p| f(p).map(|v| [p.t, v]))
                 .collect()
         };
-        type Series = Vec<(String, Vec<[f64; 2]>, Color32)>;
-        let (series, unit, decimals): (Series, &'static str, usize) = match pane {
+        // Each line in its reading's colour, as on the strip and in the
+        // distributions. Tick's amplitude is purple dashed and Tock's purple
+        // dotted, with blue and orange swatches in the box at the pointer;
+        // beat error from the drop is a fainter dashed yellow.
+        let solid = LineStyle::Solid;
+        let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match pane {
             Pane::Rate => (
-                vec![(
-                    format!(
+                vec![ChartLine {
+                    name: format!(
                         "Rate in seconds per day, {} average",
                         fields::duration(self.average_s)
                     ),
-                    pick(|p| p.rate),
-                    main,
-                )],
+                    pts: pick(|p| p.rate),
+                    color: pal.trace_rate,
+                    style: solid,
+                    key: pal.trace_rate,
+                    main: true,
+                }],
                 " s/day",
                 1,
             ),
             Pane::Amplitude => (
                 vec![
-                    ("Average Amplitude".into(), pick(|p| p.amplitude), main),
-                    (
-                        "Amplitude from Tick".into(),
-                        pick(|p| p.amplitude_a),
-                        colors[0],
-                    ),
-                    (
-                        "Amplitude from Tock".into(),
-                        pick(|p| p.amplitude_b),
-                        colors[1],
-                    ),
+                    ChartLine {
+                        name: "Average Amplitude".into(),
+                        pts: pick(|p| p.amplitude),
+                        color: pal.trace_amplitude,
+                        style: solid,
+                        key: pal.trace_amplitude,
+                        main: true,
+                    },
+                    ChartLine {
+                        name: "Amplitude from Tick".into(),
+                        pts: pick(|p| p.amplitude_a),
+                        color: pal.trace_amplitude,
+                        style: LineStyle::dashed_dense(),
+                        key: pal.tick,
+                        main: false,
+                    },
+                    ChartLine {
+                        name: "Amplitude from Tock".into(),
+                        pts: pick(|p| p.amplitude_b),
+                        color: pal.trace_amplitude,
+                        style: LineStyle::dotted_dense(),
+                        key: pal.tock,
+                        main: false,
+                    },
                 ],
                 "°",
                 0,
             ),
             Pane::BeatError => (
                 vec![
-                    (
-                        "From the Unlock".into(),
-                        pick(|p| p.beat_error_unlock),
-                        main,
-                    ),
-                    (
-                        "From the Drop".into(),
-                        pick(|p| p.beat_error_drop),
-                        pal.text_secondary,
-                    ),
+                    ChartLine {
+                        name: "From the Unlock".into(),
+                        pts: pick(|p| p.beat_error_unlock),
+                        color: pal.trace_beat_error,
+                        style: solid,
+                        key: pal.trace_beat_error,
+                        main: true,
+                    },
+                    ChartLine {
+                        name: "From the Drop".into(),
+                        pts: pick(|p| p.beat_error_drop),
+                        color: pal.trace_beat_error.gamma_multiply(0.6),
+                        style: LineStyle::dashed_dense(),
+                        key: pal.trace_beat_error.gamma_multiply(0.6),
+                        main: false,
+                    },
                 ],
                 " ms",
                 2,
@@ -3436,7 +3793,7 @@ impl TimegrapherApp {
         }
         let all: Vec<[f64; 2]> = series
             .iter()
-            .flat_map(|s| s.1.iter().copied())
+            .flat_map(|s| s.pts.iter().copied())
             .filter(|p| window.is_none_or(|(a, b)| p[0] >= a && p[0] <= b))
             .collect();
         let y_range = percentile_range(&all);
@@ -3450,7 +3807,7 @@ impl TimegrapherApp {
                 .allow_double_click_reset(false);
         }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
-        let lookup: Vec<(String, Vec<[f64; 2]>, Color32)> = series.clone();
+        let lookup = series.clone();
         let to_live = self.charts_to_live_now;
         let resp = plot.show(ui, |p| {
             if let Some((a, b)) = window {
@@ -3468,13 +3825,14 @@ impl TimegrapherApp {
                     p.zoom_bounds_around_hovered(Vec2::new((wheel * 0.003).exp(), 1.0));
                 }
             }
-            for (name, pts, c) in series {
-                let w = if c == main || pane == Pane::Rate {
-                    1.8_f32
-                } else {
-                    1.0_f32
-                };
-                p.line(Line::new(name, pts).color(c).width(w));
+            for l in series {
+                let w = if l.main { 1.8_f32 } else { 1.2_f32 };
+                p.line(
+                    Line::new(l.name, l.pts)
+                        .color(l.color)
+                        .style(l.style)
+                        .width(w),
+                );
             }
             let (hovered, clicked) = {
                 let r = p.response();
@@ -3532,10 +3890,10 @@ impl TimegrapherApp {
             resp.response.on_hover_ui_at_pointer(|ui| {
                 ui.set_max_width(300.0);
                 ui.label(RichText::new(strip::fmt_time(x)).strong());
-                for (name, pts, c) in &lookup {
+                for ChartLine { name, pts, key, .. } in &lookup {
                     let v = value_at(pts, x);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("■").color(*c));
+                        ui.label(RichText::new("■").color(*key));
                         ui.label(match v {
                             Some(v) => format!("{name}: {v:.decimals$}{unit}"),
                             None => format!("{name}: none"),
@@ -3816,11 +4174,7 @@ impl eframe::App for TimegrapherApp {
         if let Some(p) = dropped.into_iter().next() {
             self.input = Input::File;
             self.file_path = p.display().to_string();
-            if p.is_dir() {
-                self.start_batch(&p);
-            } else {
-                self.start_replay(&p);
-            }
+            self.start_batch(&p);
         }
 
         self.poll();
@@ -4271,6 +4625,40 @@ mod tests {
         app.input = Input::Microphone;
         frames(&mut app, &ctx, 2);
         assert!(!app.devices_listed);
+    }
+
+    #[test]
+    fn a_calibre_names_the_wheels_and_a_typed_one_is_kept() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        assert!(app.calibre_wheels().is_none());
+        // From the table: its train, and its lift angle where it has one.
+        let c = calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        app.set_calibre(c.calibre.clone());
+        let wheels = app.calibre_wheels().expect("wheels");
+        assert_eq!(wheels.len(), c.wheels.len());
+        if let Some(l) = c.lift_angle_deg {
+            assert_eq!(app.lift_deg, l);
+        }
+        // Typed in: tidied for the tests, and kept with the settings.
+        let mut mine = CustomCalibre::new("Bench Watch".into());
+        mine.wheels.push(CustomWheel {
+            name: " Third Wheel ".into(),
+            period_s: 450.0,
+        });
+        mine.wheels.push(CustomWheel {
+            name: String::new(),
+            period_s: 10.0,
+        });
+        app.custom_calibres.push(mine.clone());
+        app.set_calibre("Bench Watch".into());
+        let wheels = app.calibre_wheels().expect("wheels");
+        assert_eq!(wheels.len(), 4, "the unnamed wheel is left out");
+        assert!(wheels.iter().any(|w| w.name == "third wheel"));
+        let mut next = TimegrapherApp::with_devices(Vec::new(), None, false);
+        next.apply_settings(app.settings());
+        assert_eq!(next.custom_calibres, vec![mine]);
+        // The pick itself is about the watch on the stand, so it isn't kept.
+        assert!(next.calibre.is_empty());
     }
 
     #[test]
