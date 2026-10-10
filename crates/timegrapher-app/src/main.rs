@@ -13,6 +13,7 @@ mod fields;
 mod help;
 mod profiles;
 mod settings;
+mod steady;
 mod strip;
 mod theme;
 

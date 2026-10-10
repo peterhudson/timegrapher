@@ -67,6 +67,25 @@ pub const RATE: &[&str] = &[
      or a loose stand, as well as with a watch that runs unevenly (a rubbing part, a \
      worn tooth, low amplitude), so compare it on the same stand and microphone. \
      Commercial timegraphers rarely show it; tg doesn't.",
+    "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
+     card's crystal runs a steady 10 to 50 parts per million off, which moves every \
+     rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
+     (`timegrapher clock measure --save`, or `clock from-log --save` after a recording \
+     with a clock log), the app shows the corrected rate under the big figure. The big \
+     figure stays on the card's clock, the same clock tg and an analysis of the \
+     recording read, so the two compare directly.",
+];
+
+pub const CLIPPING_BANNER: &[&str] = &[
+    "The loudest part of each tick reaches the top of the input's range and is cut \
+     flat. That moves where the drop seems to be, so the amplitude and the beat error \
+     read wrong. The rate comes from when the beats arrive, which clipping doesn't \
+     change.",
+    "Lower Input Level in the Microphone card until the ticks peak around -10 dBFS and \
+     this note goes away. If the level can't go low enough, move the microphone a \
+     little away from the watch.",
+    "It shows when more than 1% of the beats in the readings have a clipped sample in \
+     their sound, counted the same way `timegrapher analyze` counts them.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -164,6 +183,38 @@ pub const CHARTS: &[&str] = &[
      scale, dragging pans, and a double-click fits the whole session again (and \
      follows new beats while listening). Clicking a moment shows it on the strip and \
      in the readings.",
+];
+
+pub const STEADINESS: &[&str] = &[
+    "Whether the rate, the amplitude and the beat error (from the unlock) each hold \
+     steady over the session. A healthy watch on a quiet bench gives readings that \
+     scatter about one level, each independent of the last. A distribution can't show \
+     a cycle, a step or a slow wander because it throws the time order away; these \
+     tests keep it. They are the same as `timegrapher series`.",
+    "Each series gets one verdict and a sentence saying why. Steady: independent \
+     readings about one level. Periodic: the readings repeat on a cycle, named after \
+     the wheel whose turn it matches (the fourth wheel turns once a minute). Two \
+     States: the readings switch between two levels. Measurement: two levels that come \
+     from the unlock mark hopping between two edges of the sound, a problem with the \
+     measurement rather than the watch. Shifting Mean: the level steps and stays. \
+     Drifting: the level slides slowly. Wandering: each reading remembers the last \
+     ones with no cycle, step or trend to explain it. Too Short: not enough readings.",
+    "The view at the top picks what is drawn under each verdict. Readings: every \
+     reading in time order (10 s rate readings, 2 s amplitude and beat error \
+     readings), with the stretches of constant level and the two state levels. \
+     Periods: how strongly the readings repeat at each period, with the 1% \
+     false-alarm line dashed and the wheels' periods marked. Cycle: the readings \
+     folded at the cycle found. Autocorrelation: how much a reading resembles the one \
+     a lag later, with the band independent readings stay inside. Allan Deviation: the \
+     scatter of averages against the dashed line independent readings follow, on \
+     logarithmic axes; the lowest point is the averaging time that gives the most \
+     repeatable reading. CUSUM: the running sum of distances from the mean, which \
+     stays inside the dashed lines unless the level changes.",
+    "The tests need about 5 minutes of beats, and say more the longer the session: a \
+     cycle has to come round several times to count. They run over the whole session \
+     in the background, again every minute while it grows; for a recording, they \
+     cover what has been replayed, or all of it after Analyse All. Rates are on the \
+     sound card's clock.",
 ];
 
 pub const HISTOGRAMS: &[&str] = &[

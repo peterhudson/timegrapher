@@ -10,7 +10,7 @@
 //! recording read from the same kind of per-beat records.
 
 use crate::amplitude::{self, AmplitudeWindow};
-use crate::analysis::AnalysisConfig;
+use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
 use crate::dsp::{envelope, median, median_f32};
 use crate::profile::{self, Side, TickProfile};
@@ -84,6 +84,20 @@ pub struct LiveReading {
     pub span_s: f64,
     /// Beat peak over the envelope's median on the latest pass.
     pub snr: Option<f32>,
+    /// Beats in the reading with a clipped sample in their sound, counted as
+    /// `analysis::Clipping` counts them for a recording.
+    pub clipped_beats: usize,
+    /// `clipped_beats` as a fraction of the beats in the reading.
+    pub clipped_fraction: Option<f64>,
+}
+
+impl LiveReading {
+    /// Enough clipped beats to doubt the amplitude and beat error, by the
+    /// same threshold as `analysis::Clipping::warns`.
+    pub fn clipping_warns(&self) -> bool {
+        self.clipped_fraction
+            .is_some_and(|f| f > Clipping::WARN_FRACTION)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +114,8 @@ pub struct LiveAnalyzer {
     bph: Option<u32>,
     template: Option<Vec<f32>>,
     beats: Vec<Beat>,
+    /// Times of the settled beats whose sound clipped, oldest first.
+    clipped: Vec<f64>,
     amp: Vec<AmplitudeWindow>,
     next_amp_s: Option<f64>,
     /// Tick and tock sounds over the latest settled beats.
@@ -125,6 +141,7 @@ impl LiveAnalyzer {
             settled_to: 0.0,
             template: None,
             beats: Vec::new(),
+            clipped: Vec::new(),
             amp: Vec::new(),
             next_amp_s: None,
             profiles: [None, None],
@@ -199,6 +216,7 @@ impl LiveAnalyzer {
         self.template = None;
         self.bph = self.cfg.analysis.bph;
         self.beats.clear();
+        self.clipped.clear();
         self.amp.clear();
         self.next_amp_s = None;
         self.profiles = [None, None];
@@ -342,6 +360,9 @@ impl LiveAnalyzer {
                 ..*b
             })
             .collect();
+        // One scan of the window finds whether anything clipped; only then
+        // is each new beat looked at on its own.
+        let any_clipped = Clipping::measure(x, fs, &[]).samples > 0;
         for b in &numbered[anchor..] {
             let t = b.time + off;
             if t >= to {
@@ -353,6 +374,9 @@ impl LiveAnalyzer {
                 }
             }
             self.beats.push(Beat { time: t, ..*b });
+            if any_clipped && Clipping::measure(x, fs, std::slice::from_ref(b)).beats > 0 {
+                self.clipped.push(t);
+            }
             if b.quality > 0.4 {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
                     self.snippets
@@ -363,6 +387,9 @@ impl LiveAnalyzer {
         if self.beats.len() > self.cfg.max_beats {
             let cut = self.beats.len() - self.cfg.max_beats;
             self.beats.drain(..cut);
+            let first = self.beats[0].time;
+            let gone = self.clipped.partition_point(|&t| t < first);
+            self.clipped.drain(..gone);
         }
 
         // Amplitude on a grid of windows that have settled.
@@ -435,6 +462,10 @@ impl LiveAnalyzer {
         } else {
             0.0
         };
+        let clipped_beats = self.clipped.partition_point(|&t| t <= end_s)
+            - self
+                .clipped
+                .partition_point(|&t| t < self.beats.get(lo).map_or(end_s, |b| b.time));
         let fit = self
             .bph
             .and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
@@ -458,6 +489,8 @@ impl LiveAnalyzer {
             beats_used: fit.map_or(0, |f| f.beats_used),
             span_s,
             snr: self.snr,
+            clipped_beats,
+            clipped_fraction: (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64),
         }
     }
 }
@@ -491,6 +524,34 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn clipped_beats_are_counted_as_they_settle() {
+        let cfg = SynthConfig {
+            duration_s: 20.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let clean = a.reading(10.0);
+        assert_eq!(clean.clipped_beats, 0);
+        assert!(!clean.clipping_warns());
+
+        // The next 20 s 12 dB too hot, clipped at full scale.
+        let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        let hot: Vec<f32> = audio
+            .samples
+            .iter()
+            .map(|v| (v * 4.0 / peak).clamp(-1.0, 1.0))
+            .collect();
+        feed(&mut a, &hot);
+        let r = a.reading(10.0);
+        assert!(r.clipping_warns(), "{r:?}");
+        assert!(r.clipped_fraction.unwrap() > 0.5, "{r:?}");
+        // A reading back in the clean stretch carries no warning.
+        assert!(!a.reading_at(15.0, 10.0).clipping_warns());
     }
 
     #[test]

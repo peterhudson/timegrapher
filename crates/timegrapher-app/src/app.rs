@@ -6,6 +6,7 @@ use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
 use crate::settings::Settings;
+use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
@@ -16,6 +17,7 @@ use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
+use timegrapher_core::clockstore;
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::mixer::{GainState, InputGain};
@@ -103,13 +105,15 @@ pub enum Pane {
     RateHistogram,
     AmplitudeHistogram,
     BeatErrorHistogram,
+    Steadiness,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 8] = [
+    const ALL: [Pane; 9] = [
         Pane::Strip,
         Pane::Sound,
+        Pane::Steadiness,
         Pane::Rate,
         Pane::Amplitude,
         Pane::BeatError,
@@ -134,6 +138,7 @@ impl Pane {
             Pane::RateHistogram => "Rate Distribution",
             Pane::AmplitudeHistogram => "Amplitude Distribution",
             Pane::BeatErrorHistogram => "Beat Error Distribution",
+            Pane::Steadiness => "Steadiness",
         }
     }
 
@@ -167,6 +172,10 @@ impl Pane {
             Pane::BeatErrorHistogram => {
                 "The beat error readings, from the unlock, on probability paper"
             }
+            Pane::Steadiness => {
+                "Whether the rate, amplitude and beat error each hold steady over the \
+                 session, or carry a cycle, two states, a step, a drift or wander"
+            }
         }
     }
 }
@@ -187,6 +196,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let sound = tabbed(Pane::Sound);
     let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
     let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
+    // The steadiness tests share the profile's place, as a second tab.
+    let steadiness = tiles.insert_pane(Pane::Steadiness);
+    if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
+        c.add_child(steadiness);
+    }
     let dir = if horizontal {
         LinearDir::Horizontal
     } else {
@@ -219,6 +233,29 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         set_pane_visible(&mut tree.tiles, p, false);
     }
     tree
+}
+
+/// A layout saved before the Steadiness pane existed, with it added as a
+/// tab beside the profile (or at the top, if the profile is not in tabs).
+fn add_missing_steadiness(tree: &mut Tree<Pane>) {
+    if tree.tiles.find_pane(&Pane::Steadiness).is_some() {
+        return;
+    }
+    let pane = tree.tiles.insert_pane(Pane::Steadiness);
+    let host = tree
+        .tiles
+        .find_pane(&Pane::Sound)
+        .and_then(|sound| tree.tiles.parent_of(sound))
+        .filter(|&id| {
+            matches!(
+                tree.tiles.get(id),
+                Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+            )
+        })
+        .or(tree.root());
+    if let Some(Some(egui_tiles::Tile::Container(c))) = host.map(|id| tree.tiles.get_mut(id)) {
+        c.add_child(pane);
+    }
 }
 
 /// Whether a saved layout holds every pane exactly once.
@@ -391,6 +428,12 @@ pub struct TimegrapherApp {
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
     hist_readings: bool,
+    /// What the Steadiness pane draws under each verdict.
+    steady_view: steady::View,
+    /// The steadiness tests' latest answer over the session, and the run
+    /// in the background that will replace it.
+    steady: Option<Steadiness>,
+    steady_job: Option<std::sync::mpsc::Receiver<Steadiness>>,
     /// The time under the pointer on the strip or a chart, drawn as a
     /// cursor on all of them: last frame's, and this frame's so far.
     cursor_t: Option<f64>,
@@ -429,6 +472,9 @@ pub struct TimegrapherApp {
     gain_read_at: Instant,
     /// The device the level control was read for.
     gain_device: Option<String>,
+    /// The stored clock error of the input this session listens to, if one
+    /// was measured (`timegrapher clock measure --save`).
+    clock: Option<clockstore::DeviceClock>,
     gain_error: Option<String>,
     message: Option<(String, bool)>,
     /// The tick and tock sound: how it is drawn, what it was every few
@@ -473,6 +519,7 @@ impl TimegrapherApp {
             folded: self.folded.iter().cloned().collect(),
             sidebar: self.sidebar,
             theme: self.theme,
+            steady_view: self.steady_view,
             panes: Some(self.panes.clone()),
         }
     }
@@ -496,6 +543,7 @@ impl TimegrapherApp {
             folded,
             sidebar,
             theme,
+            steady_view,
             panes,
         } = s;
         // Checked against the inputs when they are listed.
@@ -522,7 +570,11 @@ impl TimegrapherApp {
         self.folded = folded.into_iter().collect();
         self.sidebar = sidebar;
         self.theme = theme;
-        self.panes = match panes {
+        self.steady_view = steady_view;
+        self.panes = match panes.map(|mut p| {
+            add_missing_steadiness(&mut p);
+            p
+        }) {
             Some(p) if layout_is_whole(&p) => p,
             _ => default_layout(self.strip.horizontal),
         };
@@ -571,6 +623,9 @@ impl TimegrapherApp {
             overlays: [true, false, false],
             span_of_strip: false,
             hist_cumulative: false,
+            steady_view: steady::View::default(),
+            steady: None,
+            steady_job: None,
             hist_readings: true,
             cursor_t: None,
             cursor_next: None,
@@ -596,6 +651,7 @@ impl TimegrapherApp {
             gain_state: None,
             gain_read_at: Instant::now(),
             gain_device: None,
+            clock: None,
             gain_error: None,
             message: None,
             sound_opts: profiles::Options::default(),
@@ -664,6 +720,7 @@ impl TimegrapherApp {
     fn reset_session(&mut self, sample_rate: u32, label: String) {
         self.discard_recording();
         self.mic_session = false;
+        self.clock = None;
         self.paused_at = None;
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
         self.source_label = label;
@@ -676,6 +733,8 @@ impl TimegrapherApp {
         self.sound_history.clear();
         self.sound_at = None;
         self.sound_job = None;
+        self.steady = None;
+        self.steady_job = None;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -719,6 +778,9 @@ impl TimegrapherApp {
                 self.opened_at = Instant::now();
                 self.audio_at = None;
                 self.mic_session = true;
+                self.clock = clockstore::ClockStore::load()
+                    .ok()
+                    .and_then(|s| s.get(&c.label).cloned());
                 // Every session is kept as it goes, so it can be saved at any
                 // point; it is thrown away with a new session unless saved.
                 let info = self.info(&c.label, c.sample_rate, c.bits);
@@ -1036,6 +1098,8 @@ impl TimegrapherApp {
 
     fn show_log(&mut self, log: BeatLog, label: String) {
         self.live = Some(LiveAnalyzer::from_log(log, self.live_config()));
+        self.steady = None;
+        self.steady_job = None;
         self.rebuild_trend();
         self.source_label = label;
         self.anchor = None;
@@ -1443,6 +1507,12 @@ impl TimegrapherApp {
         self.show_readings = on;
         self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
         self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
+        self.pane_section(
+            ui,
+            Pane::Steadiness,
+            help::STEADINESS,
+            Self::steady_settings,
+        );
         self.section(ui, "Charts", None, help::CHARTS, |app, ui| {
             app.pane_switches(ui, &Pane::CHARTS);
             app.span_setting(ui);
@@ -1500,6 +1570,65 @@ impl TimegrapherApp {
                 set_pane_visible(&mut self.panes.tiles, pane, on);
             }
         }
+    }
+
+    fn steady_settings(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.add(
+            egui::Label::new(
+                RichText::new(
+                    "Tested over the whole session once it has 5 minutes of beats, and \
+                     again every minute while it grows. Pick the view at the top of the pane.",
+                )
+                .small()
+                .color(pal.text_secondary),
+            )
+            .wrap(),
+        );
+    }
+
+    /// The Steadiness pane: start the tests when there is enough new, show
+    /// the latest answer.
+    fn steady_pane(&mut self, ui: &mut egui::Ui) {
+        if let Some(rx) = &self.steady_job {
+            match rx.try_recv() {
+                Ok(s) => {
+                    self.steady = Some(s);
+                    self.steady_job = None;
+                }
+                Err(TryRecvError::Disconnected) => self.steady_job = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+        let dur = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        let upto = self.steady.as_ref().map(|s| s.upto_s);
+        let due = match upto {
+            None => true,
+            Some(u) if self.running() => dur - u >= steady::RERUN_S,
+            Some(u) => dur - u > 1.0,
+        };
+        if self.steady_job.is_none() && due && dur >= steady::MIN_S {
+            if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let ctx = ui.ctx().clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(steady::compute(&log));
+                    ctx.request_repaint();
+                });
+                self.steady_job = Some(rx);
+            }
+        }
+        let working = self.steady_job.is_some();
+        let status = match upto {
+            Some(u) if working => format!("Tested over {} of beats · updating", strip::fmt_time(u)),
+            Some(u) => format!("Tested over {} of beats", strip::fmt_time(u)),
+            None if working => "Testing the session…".to_string(),
+            None => format!(
+                "The tests need 5 minutes of beats; {} so far",
+                strip::fmt_time(dur)
+            ),
+        };
+        steady::draw(ui, self.steady.as_ref(), &status, &mut self.steady_view);
     }
 
     fn histogram_settings(&mut self, ui: &mut egui::Ui) {
@@ -2198,6 +2327,14 @@ impl TimegrapherApp {
             }
             ui.label(job);
         };
+        // The cards share one height, the tallest's on the last frame, so a
+        // card with an extra line doesn't leave the row ragged.
+        let height_id = ui.id().with("readout height");
+        let height = ui
+            .ctx()
+            .data(|d| d.get_temp::<f32>(height_id))
+            .unwrap_or(0.0);
+        let tallest = std::cell::Cell::new(0f32);
         let card = |ui: &mut egui::Ui, title: &str, help: &[&str], body: &dyn Fn(&mut egui::Ui)| {
             theme::card()
                 .fill(pal.card)
@@ -2205,11 +2342,17 @@ impl TimegrapherApp {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.spacing_mut().item_spacing.y = 2.0;
+                    // Before anything is laid out: the minimum is taken from
+                    // the cursor down.
+                    ui.set_min_height(height);
+                    let top = ui.min_rect().top();
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
                     });
                     body(ui);
+                    let bottom = ui.cursor().top() - ui.spacing().item_spacing.y;
+                    tallest.set(tallest.get().max(bottom - top));
                 });
         };
         ui.spacing_mut().item_spacing.x = theme::GAP;
@@ -2268,6 +2411,29 @@ impl TimegrapherApp {
                         );
                     }
                 });
+                if let (Some(rate), Some(c)) = (rate, &self.clock) {
+                    let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+                    let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
+                    ui.label(
+                        RichText::new(format!("True Clock {v} seconds per day"))
+                            .small()
+                            .color(pal.text_secondary),
+                    )
+                    .on_hover_text(format!(
+                        "The rate corrected for this input's own clock, which runs {:.1} ppm \
+                         {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
+                         figure stays on the card's clock, the one tg and an analysis of \
+                         the recording read, so the two compare directly.",
+                        c.ppm.abs(),
+                        c.rate_error_s_per_day(),
+                        c.measured_utc,
+                        match c.source.as_str() {
+                            "log" => "a recording's clock log",
+                            "measure" => "listening against the system clock",
+                            _ => "a value typed in",
+                        }
+                    ));
+                }
             });
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
@@ -2319,6 +2485,11 @@ impl TimegrapherApp {
                 );
             });
         });
+        if tallest.get() != height {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(height_id, tallest.get()));
+            ui.ctx().request_repaint();
+        }
     }
 
     fn status_bar(&self, ui: &mut egui::Ui) {
@@ -2527,49 +2698,56 @@ impl TimegrapherApp {
         };
         let pal = theme::pal(ui);
         let mut dismiss = false;
-        let resp = theme::card()
-            .fill(pal.bad.gamma_multiply(0.14))
-            .inner_margin(egui::Margin {
-                left: 18,
-                right: 10,
-                top: 10,
-                bottom: 10,
-            })
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        dismiss = ui
-                            .add(egui::Button::new("Dismiss").frame_when_inactive(false))
-                            .on_hover_text("Hide this message")
-                            .clicked();
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.add(egui::Label::new(RichText::new(&m).color(pal.text)).wrap());
-                        });
-                    });
+        banner(ui, pal.bad, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismiss = ui
+                    .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                    .on_hover_text("Hide this message")
+                    .clicked();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(&m).color(pal.text)).wrap());
                 });
             });
-        // A bar down the left edge in red.
-        let r = resp.response.rect;
-        let bar = egui::Rect::from_min_size(r.left_top(), Vec2::new(4.0, r.height()));
-        ui.painter().rect_filled(
-            bar,
-            egui::CornerRadius {
-                nw: theme::CARD_RADIUS,
-                sw: theme::CARD_RADIUS,
-                ne: 0,
-                se: 0,
-            },
-            pal.bad,
-        );
+        });
         if dismiss {
             self.message = None;
         }
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
+    /// A warning over the readings while the sound they come from clips.
+    fn clipping_banner(&self, ui: &mut egui::Ui) {
+        let Some(r) = self.reading().filter(|r| r.clipping_warns()) else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let pct = r.clipped_fraction.unwrap_or(0.0) * 100.0;
+        let what = if self.mic_session {
+            "Lower Input Level in the Microphone card."
+        } else {
+            "Record with the input level lower."
+        };
+        let resp = banner(ui, pal.warn, |ui| {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!(
+                        "Clipping on {pct:.0}% of beats. {what} Amplitude and Beat Error read \
+                         wrong while the sound clips; Rate is unaffected."
+                    ))
+                    .color(pal.text),
+                )
+                .wrap(),
+            );
+        });
+        resp.on_hover_text(help::CLIPPING_BANNER.join("\n\n"));
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
     fn main_view(&mut self, ui: &mut egui::Ui) {
         self.error_banner(ui);
+        if self.show_readings {
+            self.clipping_banner(ui);
+        }
         if self.live.is_none() {
             self.empty_state(ui);
             return;
@@ -3369,6 +3547,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| match pane {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
+            Pane::Steadiness => self.app.steady_pane(ui),
             p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
             p => self.app.chart(ui, *p),
         });
@@ -3584,6 +3763,40 @@ impl eframe::App for TimegrapherApp {
     }
 }
 
+/// A full-width note in a tint of `color`, with a bar of it down the left
+/// edge, for something on the screen that needs attention.
+fn banner(
+    ui: &mut egui::Ui,
+    color: Color32,
+    contents: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    let resp = theme::card()
+        .fill(color.gamma_multiply(0.14))
+        .inner_margin(egui::Margin {
+            left: 18,
+            right: 10,
+            top: 10,
+            bottom: 10,
+        })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(contents);
+        });
+    let r = resp.response.rect;
+    let bar = egui::Rect::from_min_size(r.left_top(), Vec2::new(4.0, r.height()));
+    ui.painter().rect_filled(
+        bar,
+        egui::CornerRadius {
+            nw: theme::CARD_RADIUS,
+            sw: theme::CARD_RADIUS,
+            ne: 0,
+            se: 0,
+        },
+        color,
+    );
+    resp.response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3636,6 +3849,70 @@ mod tests {
                 assert!(!out.shapes.is_empty());
             }
         }
+    }
+
+    /// Every piece of text a frame painted.
+    fn painted_text(out: &egui::FullOutput) -> String {
+        out.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Clipped sound puts a warning over the readings, and a stored clock
+    /// error adds the corrected rate under the card-clock one.
+    #[test]
+    fn clipping_and_the_true_clock_show_with_the_readings() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.reset_session(48000, "syn".into());
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 12.0,
+                rate_s_per_day: 10.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            let hot: Vec<f32> = b
+                .iter()
+                .map(|v| (v * 4.0 / peak).clamp(-1.0, 1.0))
+                .collect();
+            live.push(&hot);
+        }
+        app.clock = Some(clockstore::DeviceClock {
+            device: "syn".into(),
+            ppm: 20.0,
+            ppm_sd: None,
+            span_s: 600.0,
+            measured_utc: "2026-10-10T13:00:00Z".into(),
+            source: "measure".into(),
+        });
+        let ctx = themed();
+        let mut text = String::new();
+        for w in [400.0, 400.0, 1280.0, 1280.0, 1280.0] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(w, 820.0),
+                )),
+                ..Default::default()
+            };
+            text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
+        }
+        assert!(text.contains("Clipping on"), "{text}");
+        assert!(text.contains("True Clock"), "{text}");
+        // 20 ppm slow takes 1.7 s/d off a rate read on the card.
+        let card = app.reading().unwrap().rate_s_per_day.unwrap();
+        let shown = format!("{:+.1}", clockstore::correct_rate(card, 20.0)).replace('-', "−");
+        assert!(text.contains(&format!("True Clock {shown}")), "{text}");
     }
 
     /// A context with the app's fonts and styles, as the window has.
@@ -3882,6 +4159,27 @@ mod tests {
         broken.panes = Some(Tree::new("panes", only, tiles));
         again.apply_settings(broken);
         assert!(layout_is_whole(&again.panes));
+        // A layout from before the Steadiness pane keeps its arrangement
+        // and gains the pane as a tab beside the profile.
+        let mut before = app.settings();
+        let mut tree = app.panes.clone();
+        let id = tree.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let tabs = tree.tiles.parent_of(id).unwrap();
+        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(tabs) {
+            c.remove_child(id);
+        }
+        tree.tiles.remove(id);
+        assert!(!layout_is_whole(&tree));
+        before.panes = Some(tree);
+        again.apply_settings(before);
+        assert!(layout_is_whole(&again.panes));
+        assert!(again.strip.horizontal, "the saved arrangement was kept");
+        let sound = again.panes.tiles.find_pane(&Pane::Sound).unwrap();
+        let steady = again.panes.tiles.find_pane(&Pane::Steadiness).unwrap();
+        assert_eq!(
+            again.panes.tiles.parent_of(sound),
+            again.panes.tiles.parent_of(steady)
+        );
     }
 
     #[test]
