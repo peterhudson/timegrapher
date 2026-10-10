@@ -92,7 +92,7 @@ pub const AMPLITUDE: &[&str] = &[
     "How far the balance swings each way from rest, in degrees, averaged over the \
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
-     solid green and red lines on the tick tock profile) and the lift angle, so it is \
+     solid green and indigo lines on the tick tock profile) and the lift angle, so it is \
      only as right as the lift angle under Watch.",
     "Tick and Tock are the amplitude measured from each kind of beat alone. They \
      should agree to a few degrees; a big difference usually means one side's sounds \
@@ -149,10 +149,10 @@ pub const PROFILE: &[&str] = &[
      escape wheel; 2, the impulse, when the escape wheel pushes the fork; 3, the drop, \
      when the next tooth lands on the other stone.",
     "The solid lines are the edges the readings come from: unlock (green) where the \
-     beat first rises above the noise, drop (red) where the drop starts, and the drop's \
-     peak (purple). Amplitude comes from the time between unlock and drop; the beat \
+     beat first rises above the noise, drop (indigo) where the drop starts, and the \
+     drop's peak (a thinner indigo line). Amplitude comes from the time between unlock and drop; the beat \
      error from the unlocks.",
-    "The dashed gold lines mark where each of the three sounds rises halfway up its own \
+    "The dashed brown lines mark where each of the three sounds rises halfway up its own \
      climb. They come from a separate measurement of the beat's shape, used to \
      recognise escapement faults, so they sit near but not exactly on the edges. Both \
      are measured on the same averaged sound, not on single beats.",

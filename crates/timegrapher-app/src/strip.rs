@@ -421,7 +421,7 @@ pub fn draw_strip(
     let mut at = Pos2::new(r.left(), outer.top() + 3.0);
     let mut keys: Vec<(&str, Color32)> = vec![("Tick", colors[0]), ("Tock", colors[1])];
     if extras.rate_line.is_some() {
-        keys.push(("Rate Line", pal.drop));
+        keys.push(("Rate Line", pal.trace_rate));
     }
     for (o, _) in &overlays {
         keys.push((o.name, o.color));
@@ -555,7 +555,7 @@ pub fn draw_strip(
             };
             if extras.guides {
                 let n = (2.0 * half / step).round().max(1.0) as i64;
-                let faint = Stroke::new(1.0_f32, pal.drop.gamma_multiply(0.3));
+                let faint = Stroke::new(1.0_f32, pal.trace_rate.gamma_multiply(0.3));
                 for k in 0..n {
                     polyline(oldest, end_s, k as f64 * step, faint);
                 }
@@ -567,7 +567,7 @@ pub fn draw_strip(
                 0.0,
                 Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
             );
-            polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.drop));
+            polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.trace_rate));
         }
     }
     if let Some(t) = extras.cursor_t.filter(|t| *t >= oldest && *t <= end_s) {

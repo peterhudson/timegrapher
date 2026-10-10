@@ -115,6 +115,9 @@ pub struct Steadiness {
     /// Each series folded at the cycle it was found to have, if any.
     folds: [Option<Fold>; 3],
     wheels: Vec<Wheel>,
+    /// The periods every series' search covers between them, log10 seconds,
+    /// so the three Periods plots share one time axis.
+    period_span: Option<(f64, f64)>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
 }
@@ -177,11 +180,23 @@ pub fn compute(log: &BeatLog) -> Steadiness {
             longterm::fold(g, period, bins)
         })
     });
+    let logs = searches
+        .iter()
+        .flatten()
+        .flat_map(|x| x.period_s.iter())
+        .filter(|p| **p > 0.0)
+        .map(|p| p.log10());
+    let period_span = logs
+        .fold(None, |r: Option<(f64, f64)>, x| {
+            Some(r.map_or((x, x), |(a, b)| (a.min(x), b.max(x))))
+        })
+        .filter(|(a, b)| a < b);
     Steadiness {
         report,
         grids,
         searches,
         folds,
+        period_span,
         wheels: lc.wheels,
         upto_s: log.duration_s,
     }
@@ -568,8 +583,10 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .map(|(p, v)| [p.log10(), *v])
                 .collect();
             // The search runs from long periods to short.
-            let x_lo = pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
-            let x_hi = pts.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+            let (x_lo, x_hi) = s.period_span.unwrap_or((
+                pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+                pts.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max),
+            ));
             if x_lo.partial_cmp(&x_hi) != Some(std::cmp::Ordering::Less) {
                 return note(ui, "The period search needs a longer session.");
             }

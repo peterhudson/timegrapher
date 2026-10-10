@@ -353,6 +353,19 @@ const DURATION: Format = Format {
 };
 
 /// One point of the charts over time.
+/// One line on a reading's chart over the session.
+#[derive(Clone)]
+struct ChartLine {
+    name: String,
+    pts: Vec<[f64; 2]>,
+    color: Color32,
+    style: LineStyle,
+    /// The swatch beside its value under the pointer.
+    key: Color32,
+    /// The reading itself, drawn heavier than the lines beside it.
+    main: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrendPoint {
     t: f64,
@@ -1737,7 +1750,8 @@ impl TimegrapherApp {
                             true,
                             "Readings",
                             "The readings, each averaged over Average Over, as on the charts \
-                             and the strip: states lasting longer than that stand out clearly",
+                             and the strip, one per Average Over so that no two share beats: \
+                             states lasting longer than that stand out clearly",
                         ),
                         (
                             false,
@@ -2023,11 +2037,11 @@ impl TimegrapherApp {
             ),
             (
                 "Rate",
-                "The rate readings as a green line against the same time, on their own scale",
+                "The rate readings as a red line against the same time, on their own scale",
             ),
             (
                 "Beat Error",
-                "The beat error readings, from the unlock, as a gold line against the same \
+                "The beat error readings, from the unlock, as a yellow line against the same \
                  time, on their own scale",
             ),
         ]
@@ -2140,7 +2154,7 @@ impl TimegrapherApp {
             ui,
             "Sounds 1, 2 and 3",
             &mut o.sounds,
-            "The dashed gold lines where the three sounds of each beat rise: unlock, \
+            "The dashed brown lines where the three sounds of each beat rise: unlock, \
              impulse and drop",
         );
     }
@@ -2503,7 +2517,16 @@ impl TimegrapherApp {
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
             card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
-                figure(ui, amp.map(|v| format!("{v:.0}°")), "");
+                // A decimal only when the windows' scatter justifies one.
+                let pm = r.and_then(|r| r.amplitude_error_deg);
+                let (text, unit) = match (amp, pm) {
+                    (Some(v), Some(e)) if e < 1.0 => {
+                        (Some(format!("{v:.1}°")), format!("± {e:.1} degrees"))
+                    }
+                    (Some(v), Some(e)) => (Some(format!("{v:.0}°")), format!("± {e:.0} degrees")),
+                    (v, _) => (v.map(|v| format!("{v:.0}°")), String::new()),
+                };
+                figure(ui, text, &unit);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     if let Some(LiveReading {
@@ -3117,11 +3140,24 @@ impl TimegrapherApp {
             .live
             .as_ref()
             .map_or(&[][..], |l| l.amplitude_windows());
+        // One reading per averaging time: a new reading comes every half
+        // second, and the ones between share most of their beats, so counting
+        // them all would stack up repeats and look surer than it is.
+        let every = self.average_s;
         let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
+            let mut last = f64::NEG_INFINITY;
             self.trend
                 .iter()
                 .filter(|p| inside(p.t))
-                .filter_map(f)
+                .filter_map(|p| Some((p.t, f(p)?)))
+                .filter(|&(t, _)| {
+                    let keep = t >= last + every - 1e-6;
+                    if keep {
+                        last = t;
+                    }
+                    keep
+                })
+                .map(|(_, v)| v)
                 .collect()
         };
         let short = !self.hist_readings;
@@ -3328,8 +3364,6 @@ impl TimegrapherApp {
 
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
         let pal = theme::pal(ui);
-        let colors = [pal.tick, pal.tock];
-        let main = pal.text;
         let weak = pal.text_tertiary;
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             self.trend
@@ -3337,49 +3371,75 @@ impl TimegrapherApp {
                 .filter_map(|p| f(p).map(|v| [p.t, v]))
                 .collect()
         };
-        type Series = Vec<(String, Vec<[f64; 2]>, Color32)>;
-        let (series, unit, decimals): (Series, &'static str, usize) = match pane {
+        // Each line in its reading's colour, as on the strip and in the
+        // distributions; a second or third line of the same reading is told
+        // apart by its dashes, and by its key's colour (Tick blue, Tock
+        // orange) where it has one.
+        let solid = LineStyle::Solid;
+        let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match pane {
             Pane::Rate => (
-                vec![(
-                    format!(
+                vec![ChartLine {
+                    name: format!(
                         "Rate in seconds per day, {} average",
                         fields::duration(self.average_s)
                     ),
-                    pick(|p| p.rate),
-                    main,
-                )],
+                    pts: pick(|p| p.rate),
+                    color: pal.trace_rate,
+                    style: solid,
+                    key: pal.trace_rate,
+                    main: true,
+                }],
                 " s/day",
                 1,
             ),
             Pane::Amplitude => (
                 vec![
-                    ("Average Amplitude".into(), pick(|p| p.amplitude), main),
-                    (
-                        "Amplitude from Tick".into(),
-                        pick(|p| p.amplitude_a),
-                        colors[0],
-                    ),
-                    (
-                        "Amplitude from Tock".into(),
-                        pick(|p| p.amplitude_b),
-                        colors[1],
-                    ),
+                    ChartLine {
+                        name: "Average Amplitude".into(),
+                        pts: pick(|p| p.amplitude),
+                        color: pal.trace_amplitude,
+                        style: solid,
+                        key: pal.trace_amplitude,
+                        main: true,
+                    },
+                    ChartLine {
+                        name: "Amplitude from Tick".into(),
+                        pts: pick(|p| p.amplitude_a),
+                        color: pal.trace_amplitude,
+                        style: LineStyle::dashed_dense(),
+                        key: pal.tick,
+                        main: false,
+                    },
+                    ChartLine {
+                        name: "Amplitude from Tock".into(),
+                        pts: pick(|p| p.amplitude_b),
+                        color: pal.trace_amplitude,
+                        style: LineStyle::dotted_dense(),
+                        key: pal.tock,
+                        main: false,
+                    },
                 ],
                 "°",
                 0,
             ),
             Pane::BeatError => (
                 vec![
-                    (
-                        "From the Unlock".into(),
-                        pick(|p| p.beat_error_unlock),
-                        main,
-                    ),
-                    (
-                        "From the Drop".into(),
-                        pick(|p| p.beat_error_drop),
-                        pal.text_secondary,
-                    ),
+                    ChartLine {
+                        name: "From the Unlock".into(),
+                        pts: pick(|p| p.beat_error_unlock),
+                        color: pal.trace_beat_error,
+                        style: solid,
+                        key: pal.trace_beat_error,
+                        main: true,
+                    },
+                    ChartLine {
+                        name: "From the Drop".into(),
+                        pts: pick(|p| p.beat_error_drop),
+                        color: pal.trace_beat_error,
+                        style: LineStyle::dashed_dense(),
+                        key: pal.trace_beat_error,
+                        main: false,
+                    },
                 ],
                 " ms",
                 2,
@@ -3436,7 +3496,7 @@ impl TimegrapherApp {
         }
         let all: Vec<[f64; 2]> = series
             .iter()
-            .flat_map(|s| s.1.iter().copied())
+            .flat_map(|s| s.pts.iter().copied())
             .filter(|p| window.is_none_or(|(a, b)| p[0] >= a && p[0] <= b))
             .collect();
         let y_range = percentile_range(&all);
@@ -3450,7 +3510,7 @@ impl TimegrapherApp {
                 .allow_double_click_reset(false);
         }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
-        let lookup: Vec<(String, Vec<[f64; 2]>, Color32)> = series.clone();
+        let lookup = series.clone();
         let to_live = self.charts_to_live_now;
         let resp = plot.show(ui, |p| {
             if let Some((a, b)) = window {
@@ -3468,13 +3528,14 @@ impl TimegrapherApp {
                     p.zoom_bounds_around_hovered(Vec2::new((wheel * 0.003).exp(), 1.0));
                 }
             }
-            for (name, pts, c) in series {
-                let w = if c == main || pane == Pane::Rate {
-                    1.8_f32
-                } else {
-                    1.0_f32
-                };
-                p.line(Line::new(name, pts).color(c).width(w));
+            for l in series {
+                let w = if l.main { 1.8_f32 } else { 1.2_f32 };
+                p.line(
+                    Line::new(l.name, l.pts)
+                        .color(l.color)
+                        .style(l.style)
+                        .width(w),
+                );
             }
             let (hovered, clicked) = {
                 let r = p.response();
@@ -3532,10 +3593,10 @@ impl TimegrapherApp {
             resp.response.on_hover_ui_at_pointer(|ui| {
                 ui.set_max_width(300.0);
                 ui.label(RichText::new(strip::fmt_time(x)).strong());
-                for (name, pts, c) in &lookup {
+                for ChartLine { name, pts, key, .. } in &lookup {
                     let v = value_at(pts, x);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("■").color(*c));
+                        ui.label(RichText::new("■").color(*key));
                         ui.label(match v {
                             Some(v) => format!("{name}: {v:.decimals$}{unit}"),
                             None => format!("{name}: none"),

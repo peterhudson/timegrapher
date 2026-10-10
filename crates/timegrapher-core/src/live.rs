@@ -74,6 +74,11 @@ pub struct LiveReading {
     /// timegraphers measure it: median over the amplitude windows, ms.
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
+    /// Roughly how far `amplitude_deg` could be off from the scatter of
+    /// the 2 s windows alone: the standard error of their median, from a
+    /// robust spread, when there are at least 3 windows. It says nothing
+    /// about a wrong lift angle, which moves every amplitude together.
+    pub amplitude_error_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
     pub jitter_us: Option<f64>,
@@ -481,6 +486,11 @@ impl LiveAnalyzer {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
         };
+        let amplitude_error_deg = {
+            let v: Vec<f64> = wins.iter().filter_map(|w| w.mean()).collect();
+            // The median's standard error is about 1.25 times the mean's.
+            (v.len() >= 3).then(|| 1.2533 * crate::dsp::robust_sd(&v) / (v.len() as f64).sqrt())
+        };
         LiveReading {
             time_s: end_s,
             bph: self.bph,
@@ -488,6 +498,7 @@ impl LiveAnalyzer {
             beat_error_ms: fit.map(|f| f.beat_error_ms),
             beat_error_unlock_ms: med(&|w| w.beat_error_unlock_ms),
             amplitude_deg: med(&|w| w.mean()),
+            amplitude_error_deg,
             amplitude_even_deg: med(&|w| w.even_deg),
             amplitude_odd_deg: med(&|w| w.odd_deg),
             jitter_us: fit.map(|f| f.jitter_us),
@@ -628,6 +639,9 @@ mod tests {
         assert!((be.abs() - 0.5).abs() < 0.05, "beat error {be}");
         let amp = r.amplitude_deg.expect("amplitude");
         assert!((amp - 270.0).abs() < 10.0, "amplitude {amp}");
+        // A steady synthetic amplitude scatters little between windows.
+        let pm = r.amplitude_error_deg.expect("amplitude ±");
+        assert!(pm < 1.0, "amplitude ± {pm}");
         // Both sides' sounds, with the marks behind the amplitude, over the
         // default 3 s (12 beats a side at 28,800 bph).
         for p in a.tick_profiles() {

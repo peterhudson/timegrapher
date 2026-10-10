@@ -58,8 +58,12 @@ more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
 been moved or have drifted meanwhile. The big amplitude is the average of the two
-swings; under it are the amplitude from the ticks (blue on the strip and
-charts) and from the tocks (orange). The sound can't tell which beat is
+swings, with a ± figure: the standard error of the median of its 2 s
+windows, roughly how far it could be off from their scatter alone (it
+says nothing about a wrong lift angle, which moves every amplitude
+together). The amplitude shows a decimal only when the ± is under 1°.
+Under it are the amplitude from the ticks (blue dot) and from the tocks
+(orange dot). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
 between tick and tock usually means one side's sounds were misread rather than a fault in the
 watch;
@@ -119,9 +123,9 @@ it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
-and the marks the engine read: unlock (green) and drop (red), from which
-amplitude and the unlock-based beat error come, the drop's peak (purple),
-the three sounds where the engine tells them apart (dashed gold: 1 unlock,
+and the marks the engine read: unlock (green) and drop (indigo), from which
+amplitude and the unlock-based beat error come, the drop's peak (a thinner
+indigo line), the three sounds where the engine tells them apart (dashed brown: 1 unlock,
 2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
 The solid edges and the dashed sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
@@ -164,8 +168,8 @@ describes them well. **Parallel Guides** (on by default) adds faint red
 lines at the same slope across the whole strip, one per grid step, since
 the eye judges whether lines are parallel far better than it judges a
 slope; dots that bend away from the guides show the rate changing. Under
-**Draw over the strip**, amplitude (purple, on by default), rate (green)
-and beat error (gold) readings can be drawn as lines against the same
+**Draw over the strip**, amplitude (purple, on by default), rate (red)
+and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above
 the strip (beside it when the strip lies across), as some versions of tg
 do for amplitude: a wobble in the rate that comes with a dip in amplitude
@@ -191,7 +195,11 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Centre** centres once; **Clear** starts the readings and the strip again.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
-unlock and from the drop) over time. **Time Span**, in the Charts and
+unlock and from the drop) over time. Each reading keeps its colour across
+the app (rate red, amplitude purple, beat error yellow), so a second line
+of the same reading is told apart by its dashes: amplitude from the ticks
+dashed and from the tocks dotted, beat error from the drop dashed, with a
+blue or orange swatch for Tick and Tock in the box at the pointer. **Time Span**, in the Charts and
 Distributions cards, sets what they cover: **Session**, everything since the
 session started, or **Strip**, the same stretch of time as the paper strip,
 moving with it, so that with the charts under a strip lying across every

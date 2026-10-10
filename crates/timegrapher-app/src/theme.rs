@@ -44,8 +44,10 @@ pub struct Palette {
     pub peak: Color32,
     /// The three sounds on the tick tock profile.
     pub sound: Color32,
-    /// Amplitude, rate and beat error where they are drawn over the strip
-    /// and in their histograms.
+    /// Amplitude, rate and beat error wherever they are drawn: over the
+    /// strip, on their charts, in their distributions and in Steadiness.
+    /// Each colour means one thing across the app, so the profile's marks
+    /// and sounds use colours none of the readings do.
     pub trace_amplitude: Color32,
     pub trace_rate: Color32,
     pub trace_beat_error: Color32,
@@ -74,11 +76,11 @@ pub const DARK: Palette = Palette {
     warn: rgb(0xffb340),
     bad: rgb(0xff453a),
     unlock: rgb(0x30d158),
-    drop: rgb(0xff453a),
-    peak: rgb(0xbf5af2),
-    sound: rgb(0xffd60a),
+    drop: rgb(0x7d7aff),
+    peak: rgb(0x7d7aff),
+    sound: rgb(0xac8e68),
     trace_amplitude: rgb(0xbf5af2),
-    trace_rate: rgb(0x30d158),
+    trace_rate: rgb(0xff453a),
     trace_beat_error: rgb(0xffd60a),
 };
 
@@ -101,11 +103,11 @@ pub const LIGHT: Palette = Palette {
     warn: rgb(0xb25000),
     bad: rgb(0xd70015),
     unlock: rgb(0x248a3d),
-    drop: rgb(0xd70015),
-    peak: rgb(0x8944ab),
-    sound: rgb(0x8a6d00),
+    drop: rgb(0x5856d6),
+    peak: rgb(0x5856d6),
+    sound: rgb(0x7f6545),
     trace_amplitude: rgb(0x8944ab),
-    trace_rate: rgb(0x248a3d),
+    trace_rate: rgb(0xd70015),
     trace_beat_error: rgb(0x8a6d00),
 };
 
