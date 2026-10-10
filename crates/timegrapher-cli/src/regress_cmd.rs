@@ -723,6 +723,14 @@ fn print_text(o: &Outcome, names: bool) {
             ("stopped", _, Some(d)) => format!("stopped cleanly: {d}"),
             (_, _, d) => format!("PANICKED: {}", d.as_deref().unwrap_or("?")),
         };
+        let heard = match (r.watch_heard, r.no_watch) {
+            (Some(false), true) => "; no watch heard, as expected",
+            (Some(true), true) => "; a watch heard on an empty stand: FAIL",
+            (None, true) => "; analyze did not run: FAIL",
+            (Some(false), false) => "; no watch heard",
+            _ => "",
+        };
+        let what = format!("{what}{heard}");
         if names {
             println!("Smoke {} {}: {what}", r.take, r.file);
         } else {

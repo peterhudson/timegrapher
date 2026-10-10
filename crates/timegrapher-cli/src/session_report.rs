@@ -462,7 +462,7 @@ fn states_lines(sn: &Session) -> String {
     let mut s = String::from(
         r#"<h2>Two states</h2><p class="note">Whether amplitude (from 2 s windows) and rate (from 10 s readings) sit at two levels the watch switches between, rather than one level with noise and slow drift. Tested on 10 s medians with the slow drift taken off. A dip that comes back on a fixed period is a cycle (see above); a split that only Tick or only Tock carries is likely the measurement.</p>"#,
     );
-    for r in &sn.readings {
+    for r in sn.readings.iter().filter(|r| r.measurement.watch_heard) {
         let m = &r.measurement;
         let mut line = twostate::describe(&m.amplitude_states, "amplitude");
         if let Some(c) = line.get(..1) {
