@@ -206,6 +206,11 @@ impl LiveAnalyzer {
         self.cfg.profile_s.clamp(0.5, MAX_PROFILE_S)
     }
 
+    /// Times of the settled beats whose sound clipped, oldest first.
+    pub fn clipped_beats(&self) -> &[f64] {
+        &self.clipped
+    }
+
     pub fn amplitude_windows(&self) -> &[AmplitudeWindow] {
         &self.amp
     }

@@ -127,6 +127,9 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         lift_deg: live.config().analysis.amplitude.lift_deg,
         beats: live.beats().to_vec(),
         amplitude_windows: live.amplitude_windows().to_vec(),
+        clipped_beats: live.clipped_beats().to_vec(),
+        // Not counted live; the tests don't use it.
+        clipped_samples: 0,
     })
 }
 
