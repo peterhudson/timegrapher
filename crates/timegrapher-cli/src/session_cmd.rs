@@ -78,7 +78,7 @@ fn rel(p: &Path, base: &Path) -> String {
 }
 
 /// A session file, the folder holding it, and the folder it came from.
-fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), String> {
+pub(crate) fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), String> {
     let single = match paths {
         [p] => Some(p),
         _ => None,
@@ -125,7 +125,7 @@ fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), String> {
     ))
 }
 
-fn position_of(e: &RecordingEntry) -> Result<Position, String> {
+pub(crate) fn position_of(e: &RecordingEntry) -> Result<Position, String> {
     match &e.position {
         Some(p) => Position::parse(p).ok_or_else(|| {
             format!(
@@ -266,14 +266,16 @@ fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
     l
 }
 
-struct Ctx<'a> {
-    m: &'a Manifest,
-    base: &'a Path,
-    o: &'a Options,
-    tty: bool,
+pub(crate) struct Ctx<'a> {
+    pub m: &'a Manifest,
+    pub base: &'a Path,
+    pub o: &'a Options,
+    pub tty: bool,
+    /// No progress lines (the file names stay out of logs).
+    pub quiet: bool,
 }
 
-fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
+pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let position = position_of(e)?;
     let path = c.base.join(&e.file);
     let files = expand_dirs(std::slice::from_ref(&path))?;
@@ -282,7 +284,8 @@ fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     cfg.analysis.amplitude.lift_deg = c.o.lift.or(c.m.lift).unwrap_or(52.0);
     let escape_teeth = c.m.escape_teeth.unwrap_or(15);
     cfg.analysis.escape_teeth = escape_teeth;
-    if c.tty {
+    if c.quiet {
+    } else if c.tty {
         eprint!("\r{:<70}", format!("analysing {} ({})", e.file, position));
     } else {
         eprintln!("analysing {} ({})", e.file, position);
@@ -394,6 +397,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         base: &base,
         o,
         tty: std::io::stderr().is_terminal(),
+        quiet: false,
     };
     let readings: Vec<Reading> = m
         .recordings

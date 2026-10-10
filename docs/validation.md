@@ -19,6 +19,12 @@ come back out (`crates/timegrapher-core/tests/synthetic.rs`):
 The synthetic signal is much cleaner than a real microphone, so these
 tests show the arithmetic is right, not that real recordings will be easy.
 
+## Against tg on every stored take
+
+`timegrapher regress` measures every stored take again and fails when an
+engine change moves a reading away from tg on the same file; CI runs it
+on every pull request. See [regress](regress.md).
+
 ## Against tg on a real recording
 
 Recording: Rolex calibre 3235, dial up, 300 s, 48 kHz 16-bit mono, C-Media
