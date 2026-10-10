@@ -14,6 +14,7 @@ pub mod clock;
 pub mod clockstore;
 pub mod diagnose;
 pub mod dsp;
+pub mod excerpt;
 pub mod filter;
 pub mod histogram;
 pub mod live;
