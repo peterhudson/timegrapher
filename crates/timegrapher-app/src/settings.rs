@@ -5,6 +5,7 @@
 
 use crate::app::Pane;
 use crate::profiles;
+use crate::steady;
 use crate::strip::StripView;
 use eframe::egui::ThemePreference;
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,7 @@ pub struct Settings {
     pub folded: Vec<String>,
     pub sidebar: bool,
     pub theme: ThemePreference,
+    pub steady_view: steady::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
 }
 
@@ -55,6 +57,7 @@ impl Default for Settings {
             folded: Vec::new(),
             sidebar: true,
             theme: ThemePreference::System,
+            steady_view: steady::View::default(),
             panes: None,
         }
     }

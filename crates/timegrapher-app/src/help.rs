@@ -166,6 +166,38 @@ pub const CHARTS: &[&str] = &[
      in the readings.",
 ];
 
+pub const STEADINESS: &[&str] = &[
+    "Whether the rate, the amplitude and the beat error (from the unlock) each hold \
+     steady over the session. A healthy watch on a quiet bench gives readings that \
+     scatter about one level, each independent of the last. A distribution can't show \
+     a cycle, a step or a slow wander because it throws the time order away; these \
+     tests keep it. They are the same as `timegrapher series`.",
+    "Each series gets one verdict and a sentence saying why. Steady: independent \
+     readings about one level. Periodic: the readings repeat on a cycle, named after \
+     the wheel whose turn it matches (the fourth wheel turns once a minute). Two \
+     States: the readings switch between two levels. Measurement: two levels that come \
+     from the unlock mark hopping between two edges of the sound, a problem with the \
+     measurement rather than the watch. Shifting Mean: the level steps and stays. \
+     Drifting: the level slides slowly. Wandering: each reading remembers the last \
+     ones with no cycle, step or trend to explain it. Too Short: not enough readings.",
+    "The view at the top picks what is drawn under each verdict. Readings: every \
+     reading in time order (10 s rate readings, 2 s amplitude and beat error \
+     readings), with the stretches of constant level and the two state levels. \
+     Periods: how strongly the readings repeat at each period, with the 1% \
+     false-alarm line dashed and the wheels' periods marked. Cycle: the readings \
+     folded at the cycle found. Autocorrelation: how much a reading resembles the one \
+     a lag later, with the band independent readings stay inside. Allan Deviation: the \
+     scatter of averages against the dashed line independent readings follow, on \
+     logarithmic axes; the lowest point is the averaging time that gives the most \
+     repeatable reading. CUSUM: the running sum of distances from the mean, which \
+     stays inside the dashed lines unless the level changes.",
+    "The tests need about 5 minutes of beats, and say more the longer the session: a \
+     cycle has to come round several times to count. They run over the whole session \
+     in the background, again every minute while it grows; for a recording, they \
+     cover what has been replayed, or all of it after Analyse All. Rates are on the \
+     sound card's clock.",
+];
+
 pub const HISTOGRAMS: &[&str] = &[
     "How a reading's values spread over the session or the strip's length (Time Span). \
      An average gives one number; these show whether the values come from one steady \

@@ -202,6 +202,33 @@ the outliers left off and the peaks when there is more than one. The
 statistics are in `timegrapher_core::histogram`, so the CLI and reports can
 share them.
 
+**Steadiness.** Whether the rate, the amplitude and the beat error (from
+the unlock) each hold steady over the session, from the same tests as
+`timegrapher series` (see [series.md](series.md)): a tab beside the Tick
+Tock Profile, with its switch in the Steadiness card. Each series gets one
+verdict, with a coloured dot (green for Steady, amber for something to look
+at, grey for Measurement and Too Short), and the sentence `series` writes to
+say why; the verdict's meaning shows when the pointer rests on it.
+Measurement means the two levels come from the unlock mark hopping between
+two edges of the sound, a problem with the measurement and not the watch.
+The picker at the top chooses what is drawn under every verdict:
+**Readings** (the readings in time order, with the stretches of constant
+level the change finder found and, for two states, the two levels dashed),
+**Periods** (the period search's score at each period on a logarithmic
+axis, with the 1% false-alarm line dashed, the escape, fourth and centre
+wheels' periods marked, and the strongest component labelled), **Cycle**
+(the readings folded at the cycle the tests found: every cycle as dots and
+the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
+dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
+(log-log, against the dashed line independent readings follow, with the
+averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
+lines dashed and the largest excursion labelled). The tests need 5 minutes
+of beats. They run over the whole session in the background, again every
+minute while it grows; for a recording they cover what has been replayed,
+or the whole file after Analyse All. Rows stack and fill the pane when it is
+tall enough, sit side by side when it is wide and short, and scroll
+otherwise. The plots don't pan, zoom or show values under the pointer.
+
 **Remembered settings.** The app keeps its views between runs: the strip's
 direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement, the
