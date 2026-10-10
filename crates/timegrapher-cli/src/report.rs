@@ -559,20 +559,25 @@ fn capitalise(s: &str) -> String {
     }
 }
 
-pub fn html(title: &str, r: &LongReport, wheels: &[Wheel]) -> String {
+pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&str>) -> String {
     let mut body = String::new();
     let rate = r.overall.map_or("not enough clean beats".into(), |f| {
         format!("{:+.2} s/d", f.rate_s_per_day)
     });
-    let clock = match &r.clock {
-        Some(c) => format!(
+    let clock = match (&r.clock, clock_note) {
+        (Some(c), Some(note)) => format!(
+            "corrected: sound card {:.2} ppm {} than true time, a steady error {note}",
+            c.ppm.abs(),
+            if c.ppm >= 0.0 { "slower" } else { "faster" },
+        ),
+        (Some(c), None) => format!(
             "calibrated: sound card {:.2} ppm {} than NTP time ({} entries, {:.1} ms rms)",
             c.ppm.abs(),
             if c.ppm >= 0.0 { "slower" } else { "faster" },
             c.points,
             c.residual_ms
         ),
-        None => "not calibrated; the rate is only as good as the sound card's crystal".into(),
+        (None, _) => "not calibrated; the rate is only as good as the sound card's crystal".into(),
     };
     let o = |v: Option<f64>, d: usize| v.map_or("-".into(), |x| format!("{x:.d$}"));
     let _ = write!(
