@@ -246,6 +246,70 @@ pub struct Extras<'a> {
     /// time axis lines up with the charts' below it.
     pub gutter: f32,
     pub overlays: &'a [Overlay],
+    /// Stretches of the session in one position to mark: start, end and
+    /// the position's name. Empty while the watch stayed put.
+    pub bands: &'a [(f64, f64, &'a str)],
+}
+
+/// Mark each stretch of the session in one position across the plotting
+/// area `r`: every other stretch faintly shaded, a line where each new one
+/// begins, and the position's name at its start. `at` places a time on the
+/// time axis; `horizontal` when time runs across.
+pub fn paint_bands(
+    painter: &egui::Painter,
+    r: Rect,
+    bands: &[(f64, f64, &str)],
+    at: impl Fn(f64) -> Pos2,
+    horizontal: bool,
+    vis: &egui::Visuals,
+) {
+    let text = vis.weak_text_color();
+    let shade = text.gamma_multiply(0.07);
+    let edge = Stroke::new(1.0_f32, text.gamma_multiply(0.6));
+    let font = FontId::proportional(11.0);
+    let along = |p: Pos2| if horizontal { p.x } else { p.y };
+    let (lo, hi) = if horizontal {
+        (r.left(), r.right())
+    } else {
+        (r.top(), r.bottom())
+    };
+    for (i, &(a, b, name)) in bands.iter().enumerate() {
+        let (pa, pb) = (along(at(a)), along(at(b.min(1e12))));
+        let (s0, s1) = (pa.min(pb).max(lo), pa.max(pb).min(hi));
+        if s1 <= s0 {
+            continue;
+        }
+        let band = if horizontal {
+            Rect::from_x_y_ranges(s0..=s1, r.y_range())
+        } else {
+            Rect::from_x_y_ranges(r.x_range(), s0..=s1)
+        };
+        if i % 2 == 1 {
+            painter.rect_filled(band, 0.0, shade);
+        }
+        let start_seen = pa >= lo && pa <= hi;
+        if i > 0 && start_seen {
+            if horizontal {
+                painter.vline(pa, r.y_range(), edge);
+            } else {
+                painter.hline(r.x_range(), pa, edge);
+            }
+        }
+        // The name at the stretch's start, or at the edge it runs in from.
+        let (pos, align) = if horizontal {
+            (Pos2::new(s0 + 4.0, r.top() + 2.0), Align2::LEFT_TOP)
+        } else {
+            (Pos2::new(r.left() + 4.0, s1 - 2.0), Align2::LEFT_BOTTOM)
+        };
+        let galley = painter.layout_no_wrap(name.to_string(), font.clone(), text);
+        if galley.size().x + 8.0 <= if horizontal { s1 - s0 } else { r.width() } {
+            // On a backing of the plot's colour, so a line under it can't
+            // hide it.
+            let rect = align.anchor_size(pos, galley.size()).expand(2.0);
+            painter.rect_filled(rect, 2.0, vis.extreme_bg_color.gamma_multiply(0.85));
+            painter.galley(rect.min + Vec2::splat(2.0), galley, text);
+        }
+    }
 }
 
 /// A signed number of ms for an axis label.
@@ -414,6 +478,14 @@ pub fn draw_strip(
         painter.text(at, align, fmt_time(t), font.clone(), text);
         t -= tstep;
     }
+    paint_bands(
+        &painter,
+        r,
+        extras.bands,
+        |t| g.pos(0.0, t),
+        view.horizontal,
+        &vis,
+    );
 
     // The key along the top: Tick, Tock, the rate line and the overlays,
     // each in its colour.

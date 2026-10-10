@@ -454,6 +454,10 @@ pub struct TimegrapherApp {
     bph: Option<u32>,
     lift_deg: f64,
     position: Position,
+    /// Where the watch was put in a new position during the session: the
+    /// time and the position from then on, oldest first. Empty while it has
+    /// stayed in `position` all along.
+    stretches: Vec<(f64, Position)>,
     average_s: f64,
     watch: String,
     /// The calibre picked under Watch: a name in the built-in table or one
@@ -667,6 +671,7 @@ impl TimegrapherApp {
             bph: None,
             lift_deg: 52.0,
             position: Position::DialUp,
+            stretches: Vec::new(),
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
@@ -801,6 +806,7 @@ impl TimegrapherApp {
         self.sound_job = None;
         self.steady = None;
         self.steady_job = None;
+        self.stretches.clear();
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -1181,6 +1187,7 @@ impl TimegrapherApp {
         self.live = Some(LiveAnalyzer::from_log(log, self.live_config()));
         self.steady = None;
         self.steady_job = None;
+        self.stretches.clear();
         self.rebuild_trend();
         self.source_label = label;
         self.anchor = None;
@@ -1716,8 +1723,9 @@ impl TimegrapherApp {
         ui.add(
             egui::Label::new(
                 RichText::new(
-                    "Tested over the whole session once it has 5 minutes of beats, and \
-                     again every minute while it grows. Pick the view at the top of the pane.",
+                    "Tested over the session's beats in the watch's position once there \
+                     are 5 minutes of them, and again every minute while they grow. Pick \
+                     the view at the top of the pane.",
                 )
                 .small()
                 .color(pal.text_secondary),
@@ -1739,7 +1747,13 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        let dur = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        // Only the beats in the position the watch is in now, every stretch
+        // of it joined.
+        let spans = self.current_spans();
+        let dur = self
+            .live
+            .as_ref()
+            .map_or(0.0, |l| steady::joined_duration(&spans, l.duration_s()));
         let upto = self.steady.as_ref().map(|s| s.upto_s);
         let due = match upto {
             None => true,
@@ -1747,7 +1761,9 @@ impl TimegrapherApp {
             Some(u) => dur - u > 1.0,
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
-            if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+            let log = self.live.as_ref().and_then(steady::log_of);
+            let joined = !self.stretches.is_empty();
+            if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
                 let wheels = self.calibre_wheels();
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ui.ctx().clone();
@@ -1759,12 +1775,19 @@ impl TimegrapherApp {
             }
         }
         let working = self.steady_job.is_some();
+        let of = if self.stretches.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", self.position.name())
+        };
         let status = match upto {
-            Some(u) if working => format!("Tested over {} of beats · updating", strip::fmt_time(u)),
-            Some(u) => format!("Tested over {} of beats", strip::fmt_time(u)),
+            Some(u) if working => {
+                format!("Tested over {} of {of}beats · updating", strip::fmt_time(u))
+            }
+            Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
             None if working => "Testing the session…".to_string(),
             None => format!(
-                "The tests need 5 minutes of beats; {} so far",
+                "The tests need 5 minutes of beats in one position; {} so far",
                 strip::fmt_time(dur)
             ),
         };
@@ -1923,8 +1946,9 @@ impl TimegrapherApp {
             ui,
             "Position",
             Some(
-                "Noted in a saved recording, and changing it starts the readings again. \
-                 Guided runs through the positions will use it.",
+                "Noted in a saved recording. Changing it while listening marks a new \
+                 stretch on the strip and the charts, and the readings, profile, \
+                 distributions and Steadiness then use only this position's beats.",
             ),
             |ui| {
                 egui::ComboBox::from_id_salt("position")
@@ -1942,19 +1966,86 @@ impl TimegrapherApp {
             },
         );
         if pos != self.position {
-            self.position = pos;
-            // A new position is a new measurement: start the readings again.
-            if let Some(l) = self.live.as_mut() {
-                if self.capture.is_some() {
-                    l.restart();
-                    self.anchor = None;
-                }
-            }
+            self.set_position(pos);
             if let Some(r) = self.recorder.as_mut() {
                 let _ = r.note(&format!("position {}", pos.code()));
             }
             self.note_settings();
         }
+    }
+
+    /// Put the watch in a new position. Listening (or paused), the session
+    /// carries on with a new stretch: the strip keeps its beats and marks
+    /// the stretch, and the readings, the profile, the distributions and the
+    /// steadiness tests take only the beats in the new position.
+    fn set_position(&mut self, pos: Position) {
+        let old = self.position;
+        self.position = pos;
+        let going = self.capture.is_some() || self.can_resume();
+        if let (Some(l), true) = (self.live.as_mut(), going) {
+            if self.stretches.is_empty() {
+                self.stretches.push((0.0, old));
+            }
+            l.new_stretch();
+            let at = l.duration_s();
+            // A position changed back before any beats came is undone.
+            if self.stretches.last().is_some_and(|s| s.0 >= at) {
+                self.stretches.pop();
+            }
+            if self.stretches.last().is_none_or(|s| s.1 != pos) {
+                self.stretches.push((at, pos));
+            }
+            self.steady = None;
+            self.steady_job = None;
+        }
+    }
+
+    /// Each stretch of the session in one position: start, end and
+    /// position. One stretch over everything while the watch stayed put.
+    fn position_spans(&self) -> Vec<(f64, f64, Position)> {
+        if self.stretches.is_empty() {
+            return vec![(f64::NEG_INFINITY, f64::INFINITY, self.position)];
+        }
+        let n = self.stretches.len();
+        (0..n)
+            .map(|i| {
+                let (a, p) = self.stretches[i];
+                let b = self.stretches.get(i + 1).map_or(f64::INFINITY, |s| s.0);
+                (if i == 0 { f64::NEG_INFINITY } else { a }, b, p)
+            })
+            .collect()
+    }
+
+    /// The stretches in the position the watch is in now, which the
+    /// profile, the distributions and the steadiness tests are made over.
+    fn current_spans(&self) -> Vec<(f64, f64)> {
+        self.position_spans()
+            .into_iter()
+            .filter(|s| s.2 == self.position)
+            .map(|s| (s.0, s.1))
+            .collect()
+    }
+
+    /// Whether a reading ending at `t` comes from the position the watch is
+    /// in now.
+    fn in_position(&self, t: f64) -> bool {
+        self.stretches.is_empty()
+            || self
+                .position_spans()
+                .iter()
+                .any(|s| s.2 == self.position && t > s.0 && t <= s.1)
+    }
+
+    /// The stretches to mark on the strip and the charts, once there is
+    /// more than one: start, end and the position's name.
+    fn position_bands(&self) -> Vec<(f64, f64, &'static str)> {
+        if self.stretches.len() < 2 {
+            return Vec::new();
+        }
+        self.position_spans()
+            .into_iter()
+            .map(|(a, b, p)| (a.max(0.0), b, p.name()))
+            .collect()
     }
 
     fn readings_settings(&mut self, ui: &mut egui::Ui) {
@@ -3269,6 +3360,7 @@ impl TimegrapherApp {
                 points: series(|p| p.beat_error_unlock),
             });
         }
+        let bands = self.position_bands();
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
@@ -3276,6 +3368,7 @@ impl TimegrapherApp {
             overlays: &overlays,
             cursor_t: self.cursor_t,
             gutter: GUTTER,
+            bands: &bands,
         };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
@@ -3446,7 +3539,9 @@ impl TimegrapherApp {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
         let window = self.chart_window();
-        let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b);
+        // Only the position the watch is in now: values from another
+        // position are a different measurement.
+        let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b) && self.in_position(t);
         let windows = self
             .live
             .as_ref()
@@ -3491,7 +3586,7 @@ impl TimegrapherApp {
             Pane::AmplitudeHistogram if short => (
                 windows
                     .iter()
-                    .filter(|w| inside(w.end_s))
+                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.mean())
                     .collect(),
                 0.5,
@@ -3511,7 +3606,7 @@ impl TimegrapherApp {
             Pane::BeatErrorHistogram if short => (
                 windows
                     .iter()
-                    .filter(|w| inside(w.end_s))
+                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.beat_error_unlock_ms)
                     .collect(),
                 0.01,
@@ -3552,6 +3647,9 @@ impl TimegrapherApp {
             f(h.p10),
             f(h.p90),
         );
+        if !self.stretches.is_empty() {
+            line += &format!(" · {} only", self.position.name());
+        }
         if h.below + h.above > 0 {
             line += &format!(" · {} outliers off the scale", h.below + h.above);
         }
@@ -3865,6 +3963,15 @@ impl TimegrapherApp {
         // a little more every frame.
         let frame = *resp.transform.frame();
         let painter = ui.painter_at(frame);
+        let t = resp.transform;
+        strip::paint_bands(
+            &painter,
+            frame,
+            &self.position_bands(),
+            |x| egui::pos2(t.position_from_point_x(x), frame.top()),
+            true,
+            ui.visuals(),
+        );
         if hover.is_some() {
             self.cursor_next = hover;
         }
@@ -4504,6 +4611,84 @@ mod tests {
             "the saved copy stays"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A new position keeps the strip's beats and marks the stretch; the
+    /// readings and the distributions take only the position the watch is
+    /// in, and going back to an earlier position joins its stretches for
+    /// the steadiness tests.
+    #[test]
+    fn a_new_position_marks_a_stretch_and_keeps_the_strip() {
+        let mut app = synthetic(20.0, 0.0);
+        app.mic_session = true;
+        app.paused_at = Some(Instant::now());
+        let feed = |app: &mut TimegrapherApp, rate: f64| {
+            let cfg = SynthConfig {
+                duration_s: 20.0,
+                rate_s_per_day: rate,
+                ..Default::default()
+            };
+            let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+            let live = app.live.as_mut().unwrap();
+            for b in audio.samples.chunks(960) {
+                if live.push(b) {
+                    let r = live.reading(app.average_s);
+                    app.trend.push(TrendPoint::of(r.time_s, &r));
+                }
+            }
+        };
+        let first = app.live.as_ref().unwrap().beats().len();
+        app.set_position(Position::DialDown);
+        assert_eq!(app.live.as_ref().unwrap().beats().len(), first, "kept");
+        feed(&mut app, 60.0);
+        app.set_position(Position::DialUp);
+        feed(&mut app, 0.0);
+        let live = app.live.as_ref().unwrap();
+        assert!(live.beats().len() > 2 * first);
+        assert_eq!(app.stretches.len(), 3);
+        let bands = app.position_bands();
+        assert_eq!(
+            bands.iter().map(|b| b.2).collect::<Vec<_>>(),
+            ["Dial Up", "Dial Down", "Dial Up"]
+        );
+        assert!(app.in_position(10.0) && !app.in_position(30.0) && app.in_position(50.0));
+        // The readings since the move are Dial Up's alone.
+        let r = app.reading().unwrap();
+        assert!(
+            r.rate_s_per_day.unwrap().abs() < 5.0,
+            "{:?}",
+            r.rate_s_per_day
+        );
+        // Dial Up's two stretches joined, without Dial Down's beats.
+        let spans = app.current_spans();
+        assert_eq!(spans.len(), 2);
+        let log = steady::log_of(live).unwrap();
+        let joined = steady::join(&log, &spans);
+        let dd = log
+            .beats
+            .iter()
+            .filter(|b| b.time > spans[0].1 && b.time < spans[1].0)
+            .count();
+        assert!(dd > 100);
+        assert!(joined.beats.len() + dd <= log.beats.len());
+        assert!(joined.beats.len() + dd + 40 > log.beats.len());
+        assert!(joined
+            .beats
+            .windows(2)
+            .all(|w| w[1].time > w[0].time && w[1].index > w[0].index));
+        let want = steady::joined_duration(&spans, live.duration_s());
+        assert!((joined.duration_s - want).abs() < 1e-9);
+        assert!((want - (live.duration_s() - 20.0 + steady::JOIN_S)).abs() < 1.0);
+        let fit = timegrapher_core::timing::fit(&joined.beats, joined.bph).unwrap();
+        assert!(fit.rate_s_per_day.abs() < 5.0, "{}", fit.rate_s_per_day);
+        // And it all draws, bands and all.
+        let ctx = themed();
+        for p in Pane::CHARTS.into_iter().chain(Pane::HISTOGRAMS) {
+            set_pane_visible(&mut app.panes.tiles, p, true);
+        }
+        frames(&mut app, &ctx, 2);
+        app.relayout(false);
+        frames(&mut app, &ctx, 2);
     }
 
     #[test]

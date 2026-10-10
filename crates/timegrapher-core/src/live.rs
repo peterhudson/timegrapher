@@ -131,6 +131,9 @@ pub struct LiveAnalyzer {
     snr: Option<f32>,
     /// Passes in a row with no signal.
     quiet_passes: u32,
+    /// Where each new stretch began (a new position), oldest first: the
+    /// readings never fit across one.
+    breaks: Vec<f64>,
 }
 
 impl LiveAnalyzer {
@@ -153,6 +156,7 @@ impl LiveAnalyzer {
             snippets: VecDeque::new(),
             snr: None,
             quiet_passes: 0,
+            breaks: Vec::new(),
         }
     }
 
@@ -233,6 +237,26 @@ impl LiveAnalyzer {
         self.snippets.clear();
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
+        self.breaks.clear();
+    }
+
+    /// Start a new stretch now, for a new position: the beats so far are
+    /// kept, the sound still being worked on (the watch being handled) is
+    /// let go, the profiles start again, and no reading fits across the
+    /// break.
+    pub fn new_stretch(&mut self) {
+        let now = self.duration_s();
+        self.breaks.push(now);
+        self.profiles = [None, None];
+        self.snippets.clear();
+        self.next_amp_s = None;
+        self.settled_to = now;
+        self.next_pass = self.total;
+    }
+
+    /// Where each stretch after the first began, seconds, oldest first.
+    pub fn breaks(&self) -> &[f64] {
+        &self.breaks
     }
 
     /// Move the audio clock on by `seconds` with no audio, for a pause in
@@ -428,6 +452,11 @@ impl LiveAnalyzer {
                 win.end_s += off;
                 win
             }));
+            // A side's edge marked on the wrong sound, as in a whole file;
+            // only the latest windows can change.
+            let span = amplitude::OUTLIER_SPAN_S;
+            let recent = self.amp.partition_point(|w| w.end_s < to - 2.0 * span);
+            amplitude::reject_side_outliers(&mut self.amp[recent..], span);
             self.next_amp_s = Some(stop);
         } else if self.next_amp_s.is_none() {
             self.next_amp_s = Some(start);
@@ -466,6 +495,14 @@ impl LiveAnalyzer {
         {
             lo = gap;
             from = self.beats[gap].time - 1e-6;
+        }
+        // Nor across the start of a new stretch.
+        let brk = self.breaks.partition_point(|&b| b <= end_s);
+        if let Some(&b) = brk.checked_sub(1).and_then(|i| self.breaks.get(i)) {
+            if b > from {
+                from = b;
+                lo = lo.max(self.beats.partition_point(|x| x.time < b));
+            }
         }
         let span_s = if lo < hi {
             end_s - self.beats[lo].time.max(from)
@@ -538,6 +575,50 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn a_steady_watch_keeps_both_sides_amplitude() {
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |t| 270.0 + 10.0 * (t / 6.0).sin(), |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let w = a.amplitude_windows();
+        assert!(w.len() > 15);
+        assert!(w
+            .iter()
+            .all(|w| w.even_deg.is_some() && w.odd_deg.is_some()));
+    }
+
+    #[test]
+    fn a_new_stretch_keeps_the_beats_and_breaks_the_readings() {
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |t| if t < 20.0 { 0.0 } else { 30.0 });
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        let half = audio.samples.len() / 2;
+        feed(&mut a, &audio.samples[..half]);
+        let first = a.reading(10.0).rate_s_per_day.unwrap();
+        let before = a.beats().len();
+        a.new_stretch();
+        assert_eq!(a.beats().len(), before, "the beats are kept");
+        assert!(a.tick_profiles().iter().all(Option::is_none));
+        assert_eq!(a.breaks(), &[20.0]);
+        feed(&mut a, &audio.samples[half..]);
+        assert!(a.beats().len() > before);
+        let r = a.reading(30.0);
+        assert!(r.span_s <= 20.0 + 1e-6, "{}", r.span_s);
+        let rate = r.rate_s_per_day.unwrap();
+        assert!(
+            (rate - first - 30.0).abs() < 3.0,
+            "only the new stretch: {first} then {rate}"
+        );
+        assert!(a.tick_profiles().iter().any(Option::is_some));
     }
 
     #[test]

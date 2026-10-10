@@ -354,9 +354,17 @@ position.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.
-- **Position.** DU, DD, CU, CD, CL, CR. Changing it starts the readings
-  again, since a new position is a new measurement, and is noted in the
-  saved recording. Guided runs through the positions (as `timegrapher
+- **Position.** DU, DD, CU, CD, CL, CR. A new position is a new
+  measurement, so changing it while listening (or paused) starts a new
+  stretch, noted in the saved recording. The strip keeps its beats and
+  marks each stretch with its position's name, shading every other one,
+  and the Rate, Amplitude and Beat Error charts mark them the same way
+  over the session or the strip's length. The readings don't reach back
+  past the change, the tick and tock profile starts again, and the
+  distributions and Steadiness take only the stretches in the position the
+  watch is in now: dial up for 5 minutes, dial down for 10, then dial up
+  again tests the two dial-up stretches together and leaves the dial-down
+  one out. Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions

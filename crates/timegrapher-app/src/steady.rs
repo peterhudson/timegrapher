@@ -133,6 +133,90 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
     })
 }
 
+/// Room left between two stretches in one position when they are joined
+/// for the tests, seconds: longer than a gap the readings fit across.
+pub const JOIN_S: f64 = 5.0;
+
+/// The length of the stretches `spans` (start, end; the last may run on)
+/// once joined end to end, up to `end_s`, seconds.
+pub fn joined_duration(spans: &[(f64, f64)], end_s: f64) -> f64 {
+    let lens: Vec<f64> = spans
+        .iter()
+        .map(|&(a, b)| b.min(end_s) - a.max(0.0))
+        .filter(|&l| l > 0.0)
+        .collect();
+    lens.iter().sum::<f64>() + JOIN_S * lens.len().saturating_sub(1) as f64
+}
+
+/// The part of `log` inside `spans`, in time order, with the time between
+/// them taken out: one position's beats over a session that moved the
+/// watch, joined so the tests see them as one run, with a short gap at each
+/// join that no reading fits across.
+pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
+    let beat = 3600.0 / log.bph as f64;
+    let mut out = BeatLog {
+        sample_rate: log.sample_rate,
+        duration_s: 0.0,
+        bph: log.bph,
+        lift_deg: log.lift_deg,
+        beats: Vec::new(),
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: log.clipped_samples,
+    };
+    // The last kept span's end and last beat (time, number), joined.
+    let mut prev: Option<(f64, f64, i64)> = None;
+    for &(a, b) in spans {
+        let b = b.min(log.duration_s);
+        let lo = log.beats.partition_point(|x| x.time < a);
+        let hi = log.beats.partition_point(|x| x.time < b);
+        let Some(first) = log.beats.get(lo).filter(|_| lo < hi) else {
+            continue;
+        };
+        // Taken off this span's times and beat numbers: it starts JOIN_S
+        // after the last one ended, its beats numbered on by the beats that
+        // would fit between.
+        let (shift_t, shift_i) = match prev {
+            None => (a.max(0.0), first.index),
+            Some((end, last_t, last_i)) => {
+                let shift_t = a - (end + JOIN_S);
+                let n = ((first.time - shift_t - last_t) / beat).round().max(1.0) as i64;
+                (shift_t, first.index - (last_i + n))
+            }
+        };
+        out.beats.extend(
+            log.beats[lo..hi]
+                .iter()
+                .map(|x| timegrapher_core::beats::Beat {
+                    time: x.time - shift_t,
+                    index: x.index - shift_i,
+                    ..*x
+                }),
+        );
+        out.amplitude_windows.extend(
+            log.amplitude_windows
+                .iter()
+                .filter(|w| w.start_s >= a && w.end_s <= b)
+                .map(|w| {
+                    let mut w = w.clone();
+                    w.start_s -= shift_t;
+                    w.end_s -= shift_t;
+                    w
+                }),
+        );
+        out.clipped_beats.extend(
+            log.clipped_beats
+                .iter()
+                .filter(|&&t| t >= a && t < b)
+                .map(|t| t - shift_t),
+        );
+        let last = out.beats.last().unwrap();
+        out.duration_s = b - shift_t;
+        prev = Some((out.duration_s, last.time, last.index));
+    }
+    out
+}
+
 /// Run the tests over a session. Slow for long sessions (a 2 h take takes
 /// some seconds), so it is run off the window's thread.
 /// The tests over `log`, naming cycles after `wheels` (a picked
