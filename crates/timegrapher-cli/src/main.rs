@@ -1,6 +1,7 @@
 mod archive;
 mod bundle_cmd;
 mod clock_cmd;
+mod corpus;
 mod doctor;
 mod long;
 mod output;
@@ -353,6 +354,15 @@ enum Command {
         /// No progress lines or recording file names (for public CI logs).
         #[arg(long)]
         quiet: bool,
+        /// ROOT is a checkout of the public corpus: download the audio it
+        /// needs from the corpus's releases first (with curl), checked by
+        /// SHA-256.
+        #[arg(long)]
+        fetch: bool,
+        /// Also run the corpus's smoke takes (no tg reference) through the
+        /// engine; they fail only if it panics.
+        #[arg(long)]
+        smoke: bool,
     },
     /// Make a zip to attach to an issue: an excerpt of the recording, what
     /// was measured, the system, clock corrections and logs, with the home
@@ -718,8 +728,12 @@ fn main() -> ExitCode {
             all,
             json,
             quiet,
+            fetch,
+            smoke,
         } => {
             let o = regress_cmd::Options {
+                fetch,
+                smoke,
                 root,
                 baseline,
                 write_baseline,

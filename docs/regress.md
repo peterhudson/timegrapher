@@ -6,14 +6,37 @@ that moves a reading away from tg fails the check, so it is caught before
 the change is merged.
 
 ```sh
-timegrapher regress ../timegrapher-recordings --baseline regress/baseline.json
+git clone https://github.com/peterhudson/timegrapher-corpus
+timegrapher regress timegrapher-corpus --fetch --smoke --baseline regress/baseline.json
 ```
 
 The first argument is a folder of takes. Each take folder (up to three levels
 down) holds a `session.toml` whose readings carry tg's numbers for that file
 (`reference = { rate, amplitude, beat_error, source }`, see
-[sessions](sessions.md)). The recordings themselves are private, in their
-own repository; CI reads them with a token (below).
+[sessions](sessions.md)).
+
+## The public corpus
+
+The takes live in the public
+[timegrapher-corpus](https://github.com/peterhudson/timegrapher-corpus)
+repository, under CC0. Its git history holds each take's metadata under
+`takes/<take>/`, and `corpus.json` lists every audio file with its size and
+SHA-256. The audio itself is attached to a release named after the take.
+When the first argument is a checkout of it (a folder with `corpus.json`),
+`regress` reads the takes in its `takes/` folder.
+
+- `--fetch` first downloads the audio of every take the run will read: those
+  with a `session.toml`, and the smoke takes with `--smoke`, narrowed by
+  `--take`. It skips files already present with the right SHA-256 and checks
+  each download against `corpus.json`. It uses `curl`, which macOS, Windows
+  10 and later and most Linux systems have.
+- `--smoke` also runs the corpus's *smoke* takes, which have no tg reference,
+  through the engine. Such a take fails only if the engine panics. Stopping
+  with an error is fine, and the beats found are listed so odd behaviour
+  shows.
+
+A folder of takes without `corpus.json`, such as a private set of
+recordings, is read as it is.
 
 ## What fails
 
@@ -51,7 +74,7 @@ Run the check, read what moved, and when every move is wanted write a new
 baseline in the same pull request:
 
 ```sh
-timegrapher regress ../timegrapher-recordings --baseline regress/baseline.json --write-baseline
+timegrapher regress timegrapher-corpus --fetch --baseline regress/baseline.json --write-baseline
 ```
 
 `--take NAME` (repeatable) runs, or rewrites, only the takes whose folder
@@ -61,11 +84,9 @@ rewritten with it.
 
 ## In CI
 
-The `regress` job in `.github/workflows/ci.yml` checks out the recordings
-repository with the `RECORDINGS_TOKEN` secret, a fine-grained personal
-access token for that repository alone with read-only access to its
-contents. A take too big for git keeps its audio in a release of that
-repository named after the take's folder; the job downloads each such
-release into its folder before the check. Without the secret, as on pull requests from forks, the job says
-so and passes. It runs with `--quiet`, so the public log carries take names
-and numbers only: no audio, recording file names or take notes.
+The `regress` job in `.github/workflows/ci.yml` checks out the public
+corpus and runs `regress corpus --fetch --smoke --quiet`. It needs no
+secret, so pull requests from forks get the check too. The audio is cached
+between runs and keyed on `corpus.json`, so a run downloads only what
+changed. A take in the baseline that the corpus has no `session.toml` for
+yet is listed as not run, which does not fail the check.
