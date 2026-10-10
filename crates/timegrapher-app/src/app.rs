@@ -663,7 +663,8 @@ impl TimegrapherApp {
             audio_at: None,
         };
         if let Some(f) = file {
-            if analyse {
+            // A folder of segments can only be analysed at once.
+            if analyse || f.is_dir() {
                 app.start_batch(&f);
             } else {
                 app.start_replay(&f);
@@ -939,9 +940,24 @@ impl TimegrapherApp {
 
     fn start_batch(&mut self, path: &Path) {
         self.stop();
-        let info = match timegrapher_core::audio::info(path) {
+        let files = match recordings_in(path) {
+            Ok(f) => f,
+            Err(e) => return self.error(e),
+        };
+        let mut info = match timegrapher_core::audio::info(&files[0]) {
             Ok(i) => i,
-            Err(e) => return self.error(format!("Can't read {}: {e}", path.display())),
+            Err(e) => return self.error(format!("Can't read {}: {e}", files[0].display())),
+        };
+        for f in &files[1..] {
+            match timegrapher_core::audio::info(f) {
+                Ok(i) => info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b),
+                Err(e) => return self.error(format!("Can't read {}: {e}", f.display())),
+            }
+        }
+        let label = if path.is_dir() {
+            format!("{} ({} files)", capture_label(path), files.len())
+        } else {
+            capture_label(path)
         };
         let mut cfg = StreamConfig::default();
         cfg.analysis.bph = self.bph;
@@ -949,20 +965,20 @@ impl TimegrapherApp {
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let p2 = progress.clone();
-        let p = path.to_path_buf();
         std::thread::spawn(move || {
-            let r = stream::analyze_file(&p, &cfg, |s| {
+            let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+            let r = stream::analyze_files(&paths, &cfg, |s| {
                 p2.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed);
             });
             let _ = tx.send(r.map(Some).map_err(|e| e.to_string()));
         });
-        self.reset_session(info.sample_rate, capture_label(path));
+        self.reset_session(info.sample_rate, label.clone());
         self.live = None;
         self.batch = Some(Batch {
             rx,
             progress,
             duration_s: info.frames.map(|f| f as f64 / info.sample_rate as f64),
-            label: capture_label(path),
+            label,
         });
     }
 
@@ -1172,6 +1188,23 @@ impl TimegrapherApp {
         Some(p)
     }
 
+    /// Pick a folder of segments, which is analysed as one recording.
+    fn open_folder_dialog(&mut self) -> Option<PathBuf> {
+        let mut d = rfd::FileDialog::new().set_title("Open a Folder of Segments");
+        let here = Path::new(self.file_path.trim());
+        let start = if here.is_dir() {
+            Some(here)
+        } else {
+            here.parent()
+        };
+        if let Some(dir) = start.filter(|d| d.is_dir()) {
+            d = d.set_directory(dir);
+        }
+        let p = d.pick_folder()?;
+        self.file_path = p.display().to_string();
+        Some(p)
+    }
+
     /// The inputs the device menu offers.
     fn input_choices(&self) -> Vec<capture::InputChoice> {
         if self.all_inputs {
@@ -1284,10 +1317,21 @@ impl TimegrapherApp {
                     {
                         self.open_file_dialog();
                     }
+                    if ui
+                        .button("Open Folder…")
+                        .on_hover_text(
+                            "Choose a folder of WAV or FLAC segments of one long take, such \
+                             as an overnight run: they are analysed in name order as one \
+                             recording",
+                        )
+                        .clicked()
+                    {
+                        self.open_folder_dialog();
+                    }
                     let w = (ui.available_width() - 260.0).clamp(120.0, 420.0);
                     ui.add(
                         egui::TextEdit::singleline(&mut self.file_path)
-                            .hint_text("or type a file's path, or drop it on the window")
+                            .hint_text("or type a file's or folder's path, or drop it here")
                             .desired_width(w),
                     );
                 }
@@ -1310,13 +1354,18 @@ impl TimegrapherApp {
                         } else {
                             let path = PathBuf::from(self.file_path.trim());
                             let ok = !self.file_path.trim().is_empty();
+                            let folder = path.is_dir();
                             if ui
-                                .add_enabled(ok, theme::primary(ui, "Replay"))
+                                .add_enabled(ok && !folder, theme::primary(ui, "Replay"))
                                 .on_hover_text(
                                     "Play the recording through at its own speed, as if live, \
                                      from the start",
                                 )
-                                .on_disabled_hover_text("Open a recording first")
+                                .on_disabled_hover_text(if folder {
+                                    "A folder of segments is analysed all at once: use Analyse All"
+                                } else {
+                                    "Open a recording first"
+                                })
                                 .clicked()
                             {
                                 self.start_replay(&path);
@@ -1326,7 +1375,12 @@ impl TimegrapherApp {
                                     ok && self.batch.is_none(),
                                     egui::Button::new("Analyse All").min_size(Vec2::new(0.0, 26.0)),
                                 )
-                                .on_hover_text("Analyse the whole file now and look through it")
+                                .on_hover_text(if folder {
+                                    "Analyse every segment in the folder, in name order, as one \
+                                     recording, and look through it"
+                                } else {
+                                    "Analyse the whole file now and look through it"
+                                })
                                 .clicked()
                             {
                                 self.start_batch(&path);
@@ -1344,22 +1398,33 @@ impl TimegrapherApp {
                     let (txt, color) = self.level_text(ui);
                     if self.running() {
                         ui.label(RichText::new(txt).small().color(color));
+                    } else {
+                        ui.label(
+                            RichText::new("Microphone Off")
+                                .small()
+                                .color(theme::pal(ui).text_tertiary),
+                        )
+                        .on_hover_text(
+                            "The app isn't listening and has let go of the microphone, so \
+                             another program can use it. Start or Resume opens it again.",
+                        );
                     }
                 }
             });
         });
     }
 
-    /// Start, Pause and Resume, New session and Save, for the microphone.
+    /// Start, Stop and Resume, New session and Save, for the microphone.
     /// Laid out right to left.
     fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
         let mic_data = self.mic_session && self.live.is_some();
         if self.running() {
             if ui
-                .add(theme::secondary(ui, "Pause"))
+                .add(theme::secondary(ui, "Stop"))
                 .on_hover_text(
-                    "Stop listening for now. Everything so far stays: look back through it \
-                     with the time slider, save it, or Resume to carry on.",
+                    "Stop listening and let go of the microphone. Everything so far stays: \
+                     look back through it with the time slider, save it, or Resume to carry \
+                     on in the same session.",
                 )
                 .clicked()
             {
@@ -1370,7 +1435,7 @@ impl TimegrapherApp {
                 .add(theme::primary(ui, "Resume"))
                 .on_hover_text(
                     "Carry on listening in the same session. The readings start afresh \
-                     after the pause, since the watch may have moved; the strip and charts \
+                     after the stop, since the watch may have moved; the strip and charts \
                      keep what came before.",
                 )
                 .clicked()
@@ -3650,6 +3715,32 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     }
 }
 
+/// The recordings to analyse for `path`: the file itself, or a folder's
+/// WAV and FLAC files in name order (the segments of one long take).
+fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
+    if !path.is_dir() {
+        return Ok(vec![path.to_path_buf()]);
+    }
+    let mut files: Vec<PathBuf> = std::fs::read_dir(path)
+        .map_err(|e| format!("Can't read the folder {}: {e}", path.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.is_file()
+                && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac")
+                })
+        })
+        .collect();
+    if files.is_empty() {
+        return Err(format!(
+            "There are no WAV or FLAC files in {}.",
+            path.display()
+        ));
+    }
+    files.sort();
+    Ok(files)
+}
+
 fn capture_label(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -3725,7 +3816,11 @@ impl eframe::App for TimegrapherApp {
         if let Some(p) = dropped.into_iter().next() {
             self.input = Input::File;
             self.file_path = p.display().to_string();
-            self.start_replay(&p);
+            if p.is_dir() {
+                self.start_batch(&p);
+            } else {
+                self.start_replay(&p);
+            }
         }
 
         self.poll();
@@ -3950,6 +4045,63 @@ mod tests {
         app.message = None;
         app.input = Input::File;
         frames(&mut app, &ctx, 1);
+    }
+
+    /// A folder of segments is analysed in name order as one recording,
+    /// and its Steadiness tests cover the whole of it.
+    #[test]
+    fn a_folder_of_segments_is_analysed_as_one_recording() {
+        let dir = std::env::temp_dir().join(format!("tg-app-folder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 360.0,
+                rate_s_per_day: 8.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        // Three 2-minute segments, written out of name order, plus a file
+        // that isn't a recording.
+        let n = audio.samples.len() / 3;
+        for (i, name) in [(2, "seg-03.wav"), (0, "seg-01.wav"), (1, "seg-02.wav")] {
+            let part = timegrapher_core::audio::Audio {
+                samples: audio.samples[i * n..(i + 1) * n].to_vec(),
+                sample_rate: audio.sample_rate,
+            };
+            timegrapher_core::audio::write_wav(&dir.join(name), &part).unwrap();
+        }
+        std::fs::write(dir.join("notes.txt"), "not audio").unwrap();
+        let files = recordings_in(&dir).unwrap();
+        let names: Vec<_> = files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["seg-01.wav", "seg-02.wav", "seg-03.wav"]);
+
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.start_batch(&dir);
+        let t = Instant::now();
+        while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+            app.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let live = app.live.as_ref().expect("analysed");
+        assert!(
+            (live.duration_s() - 360.0).abs() < 1.0,
+            "{}",
+            live.duration_s()
+        );
+        assert!(app.source_label.contains("3 files"), "{}", app.source_label);
+        let rate = live.reading(60.0).rate_s_per_day.unwrap();
+        assert!((rate - 8.0).abs() < 2.0, "rate {rate}");
+        // An empty folder says so instead of failing quietly.
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(recordings_in(&empty).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A microphone session's sound is kept as it goes, can be saved at
