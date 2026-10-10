@@ -58,6 +58,19 @@ jobs:
           path: recordings
           fetch-depth: 1
           persist-credentials: false
+      # Takes too big for git keep their audio in a release named after
+      # the take's folder.
+      - name: Fetch audio kept in releases
+        if: env.RECORDINGS_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.RECORDINGS_TOKEN }}
+        run: |
+          repo=peterhudson/timegrapher-recordings
+          for tag in $(gh api "repos/$repo/releases" --paginate -q '.[].tag_name'); do
+            if [ -d "recordings/$tag" ]; then
+              gh release download "$tag" -R "$repo" -D "recordings/$tag" -p '*.flac' --skip-existing
+            fi
+          done
       - uses: dtolnay/rust-toolchain@stable
         if: env.RECORDINGS_TOKEN != ''
       - uses: Swatinem/rust-cache@v2
