@@ -22,7 +22,7 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
 #[derive(Parser)]
 #[command(
     name = "timegrapher",
-    version,
+    version = env!("TIMEGRAPHER_LONG_VERSION"),
     about = "Analyse mechanical watch recordings beat by beat",
     after_help = "Every command with --json prints one JSON document with a `schema` field \
 (e.g. timegrapher.analyze/1), the software version and the input it read. \

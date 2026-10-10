@@ -24,7 +24,8 @@ Every document starts with the same three fields:
 ```json
 {
   "schema": "timegrapher.analyze/1",
-  "software": { "name": "timegrapher", "version": "0.1.0", "os": "linux", "arch": "x86_64" },
+  "software": { "name": "timegrapher", "version": "0.1.0", "git_hash": "8ec7b89", "git_dirty": false,
+                "build_date": "2026-10-10", "os": "linux", "arch": "x86_64" },
   "input": {
     "files": [ { "path": "take.wav", "recording": { "source": { ... }, "mixer": { ... } } } ],
     "settings": { "bph": null, "lift_deg": 52.0, "notch_hz": [], "highpass_hz": 1500.0 }
@@ -38,6 +39,13 @@ added, never renamed or removed; a change that would break a reader bumps the
 version. `input.files[].recording` appears when the recording has a
 provenance sidecar (`take.wav.json`, written by `doctor --save`), carrying
 the device, its configuration and the mixer settings at the time.
+
+`software` tells builds apart: `git_hash` is the short commit hash
+(`"unknown"` in a build from a source tarball, without git), `git_dirty`
+whether the work tree had uncommitted changes (`null` when unknown), and
+`build_date` the UTC date of the build; `timegrapher --version` prints the
+same, e.g. `timegrapher 0.1.0 (8ec7b89, built 2026-10-10)`. These are not
+readings: anything that compares two documents should leave `software` out.
 
 | Kind | Command | The command's own fields |
 |---|---|---|
