@@ -405,6 +405,13 @@ holding:
 | `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour |
 | `clock.csv` | System time against frames captured, every 10 s |
 | `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, and the readings at the end |
+| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` |
+
+Opening a recording or folder that has a `session.toml` beside it (or in
+it) that lists it takes back the watch, the calibre (a custom one joins
+Your Calibres), the lift angle, the beat rate and the position stretches,
+so the strip and charts mark them and Steadiness tests each position on
+its own. Without one, a recording opens with the settings as they are.
 
 The folder reads straight into the long-run analysis, calibrated against
 the system clock:
