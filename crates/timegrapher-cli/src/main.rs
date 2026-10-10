@@ -1,5 +1,6 @@
 mod archive;
 mod bundle_cmd;
+mod calibres_cmd;
 mod clock_cmd;
 mod corpus;
 mod doctor;
@@ -42,21 +43,28 @@ enum Command {
     /// Analyse a WAV or FLAC recording.
     Analyze {
         file: PathBuf,
-        /// Beat rate in beats per hour (guessed if omitted).
+        /// The movement (e.g. "ETA 2824-2", "Rolex 3235"; see `calibres`):
+        /// sets the beat rate, the lift angle and the escape wheel teeth
+        /// from the table and names periodic components after its wheels.
+        /// --bph, --lift and --escape-teeth still win.
+        #[arg(long)]
+        calibre: Option<String>,
+        /// Beat rate in beats per hour (default: the calibre's, or guessed).
         #[arg(long)]
         bph: Option<u32>,
-        /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0)]
-        lift: f64,
+        /// Lift angle in degrees (default: the calibre's, or 52).
+        #[arg(long)]
+        lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz (e.g. 5000,6000,7000).
         #[arg(long, value_delimiter = ',')]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
         #[arg(long, default_value_t = 1500.0)]
         highpass: f64,
-        /// Escape wheel teeth, used to name periodic components.
-        #[arg(long, default_value_t = 15)]
-        escape_teeth: u32,
+        /// Escape wheel teeth, used to name periodic components (default:
+        /// the calibre's, or 15).
+        #[arg(long)]
+        escape_teeth: Option<u32>,
         /// Write one row per beat to this CSV file.
         #[arg(long)]
         beats: Option<PathBuf>,
@@ -233,6 +241,15 @@ enum Command {
         json: bool,
     },
     /// List the sound inputs, with the sample rates and formats each supports.
+    /// The built-in table of calibres: beat rate, lift angle, escape wheel
+    /// teeth and the turn of each train wheel, for `--calibre`.
+    Calibres {
+        /// Show only this calibre, with its wheels, notes and sources.
+        name: Option<String>,
+        /// Print the table as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     Devices {
         /// Print the list as JSON instead of text.
         #[arg(long)]
@@ -498,6 +515,7 @@ fn main() -> ExitCode {
     let res = match cli.command {
         Command::Analyze {
             file,
+            calibre,
             bph,
             lift,
             notch,
@@ -508,18 +526,22 @@ fn main() -> ExitCode {
             device,
             card_ppm,
             json,
-        } => {
+        } => calibres_cmd::resolve(calibre.as_deref(), bph, lift, escape_teeth).and_then(|r| {
             let mut cfg = AnalysisConfig {
-                bph,
-                escape_teeth,
+                bph: r.bph,
+                escape_teeth: r.escape_teeth,
                 ..Default::default()
             };
-            cfg.amplitude.lift_deg = lift;
+            cfg.amplitude.lift_deg = r.lift_deg;
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
+            let train = long::Train {
+                calibre: calibre.as_deref(),
+                escape_teeth,
+            };
             clock_cmd::correction(&file, device.as_deref(), card_ppm)
-                .and_then(|c| run_analyze(&file, &cfg, beats, windows, c, json))
-        }
+                .and_then(|c| run_analyze(&file, &cfg, &train, beats, windows, c, json))
+        }),
         Command::Shape {
             file,
             bph,
@@ -647,6 +669,7 @@ fn main() -> ExitCode {
                 })
             }
         }
+        Command::Calibres { name, json } => calibres_cmd::run(name.as_deref(), json),
         Command::Devices { json } => run_devices(json),
         Command::Clock { action, json } => {
             let a = match action {
@@ -848,13 +871,21 @@ fn main() -> ExitCode {
 fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
+    train: &long::Train,
     beats: Option<PathBuf>,
     windows: Option<PathBuf>,
     clock: Option<(f64, String)>,
     json: bool,
 ) -> Result<(), String> {
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let a = analyze(&audio, cfg);
+    let mut a = analyze(&audio, cfg);
+    let calibre = train.calibre()?;
+    // A calibre's own wheels name the periodic components.
+    if calibre.is_some() {
+        let wheels = calibres_cmd::wheels(train, a.summary.bph)?;
+        calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
+        calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
+    }
     if let Some(p) = beats {
         write_beats(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
@@ -863,6 +894,7 @@ fn run_analyze(
     }
     if json {
         let settings = serde_json::json!({
+            "calibre": calibre.map(|c| &c.calibre),
             "bph": cfg.bph,
             "lift_deg": cfg.amplitude.lift_deg,
             "notch_hz": cfg.envelope.notch_hz,
@@ -886,6 +918,12 @@ fn run_analyze(
             &body,
         )?;
     } else {
+        if let Some(c) = calibre {
+            println!(
+                "Calibre      {}: {} bph, lift {}°, as set unless a flag said otherwise",
+                c.calibre, c.bph, cfg.amplitude.lift_deg
+            );
+        }
         print_summary(&a, clock.as_ref());
     }
     Ok(())
