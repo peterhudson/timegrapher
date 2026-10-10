@@ -107,6 +107,20 @@ fn print_text(r: &Report, calibrated: bool) {
     for s in &r.series {
         print_series(s);
     }
+    if let Some(x) = &r.rate_amplitude {
+        println!();
+        println!("{}", x.headline);
+        println!(
+            "  {:<14} r {:.2} at a lag of {:.0} s over {} pairs (worth about {:.0} independent); {:+.3} s/d per degree; p {}",
+            "rate vs amp.",
+            x.r,
+            x.lag_s,
+            x.readings,
+            x.effective_readings,
+            x.s_per_day_per_deg,
+            p_text(x.p_value)
+        );
+    }
     if r.findings.is_empty() {
         println!("\nEvery series is steady: the readings look independent about one level.");
     }

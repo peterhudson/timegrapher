@@ -26,10 +26,28 @@ timegrapher series take/ --lift 55 --clock take/clocklog.txt
 It reads the same input as `long`: one recording, several segments in
 order, or a folder. `--clock` corrects for the sound card's clock. The
 other options are the same as for `long`. `--reading` sets the length of
-each rate reading, 10 s by default. The 2 s amplitude windows set the
-length of the amplitude and beat-error readings. The beat error is the
-one measured from the unlock. A 2 h take takes about 30 s, and a 16 h
-run about 4 minutes.
+each rate reading, 10 s by default. The beat error is the one measured
+from the unlock. A 2 h take takes about 30 s, and a 16 h run about 4
+minutes.
+
+All three series are judged on readings of the same length, the rate's.
+The amplitude and the beat error are measured in 2 s windows; the
+windows that fall in each rate reading are averaged into one reading (a
+reading needs at least half its windows). Judging a 2 s series and a
+10 s series side by side would compare different things: a 2 s window
+is noisier, but it also keeps wander that a 10 s reading averages away,
+so the same wander can make one series read `wandering` and the other
+`steady`. The headlines name the reading length ("steady from one 10 s
+reading to the next").
+
+Readings stepped every 10 s cannot show a change faster than 20 s, and a
+10 s average already flattens anything near it (it keeps 93% of a 48 s
+cycle, 64% of a 20 s one, none of a 10 s one). So cycles are looked for
+in the 2 s windows for the amplitude and the beat error: the folds and
+the autocorrelation candidates below use them, and a cycle there can be
+as short as 6 s. The rate's faster lines, such as the escape wheel's,
+come from the period search on the beat timings and are reported in ms
+(see [long-runs.md](long-runs.md)).
 
 ## The views
 
@@ -64,6 +82,19 @@ For each series:
 - **Two states**: the two-state finder over 10 s blocks (see
   [sessions.md](sessions.md)).
 
+Across the series, the rate is correlated with the amplitude, reading
+against reading, at lags up to three readings either way. The test uses
+the changes within half an hour, with each series' slow change taken
+out: two series that both drift correlate whether or not one drives the
+other, and a drift leaves too few independent readings to tell. The
+p-value allows for each series' memory (an effective number of readings
+from their lag-1 correlations) and for the seven lags tried. When p is under
+0.01 and |r| is at least 0.3, the report says the rate moves with the
+amplitude, with the slope in s/d per degree. The whole-take slope, drift
+included, is given beside it: on a run-down that is the movement's
+isochronism, which explains a rate drift that comes with the mainspring
+letting down.
+
 A `periodic` verdict needs one cycle that holds up when the readings are
 folded at its period. Candidates come from the two-state finder's
 regular low level, the autocorrelation's repeat, every later
@@ -75,7 +106,8 @@ candidates the one that explains most wins, and then its shortest whole
 fraction (down to an eighth) that explains at least 85% as much is kept:
 folding at five turns of a cycle explains as much as folding at one, and
 on a lag grid of 10 s readings a 48 s cycle lines up best at 240 s. The cycle must also
-last at least three readings and fit five times in the take (three for
+last at least three readings (2 s windows for the amplitude and the beat
+error) and fit five times in the take (three for
 the period search). The verdicts are tried in this order: two states or
 measurement, then a cycle, then steps or a slide, then wander, and
 otherwise steady. When the take shows something the verdict does not
@@ -98,14 +130,15 @@ The usual envelope (see [agent-interface.md](agent-interface.md)), then:
 | `duration_s`, `bph` | the take |
 | `config` | the thresholds used |
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
-| `findings[]` | `code`, `series`, `severity` (`fault`, `warning`, `note`), `title`, `evidence`, `advice`. Codes: `periodic`, `two_states`, `measurement_split`, `shifting_mean`, `drifting`, `wandering`. A steady series has none. |
+| `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `lag_s` (positive when the rate moves after the amplitude), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `moves_with`, `headline` |
+| `findings[]` | `code`, `series`, `severity` (`fault`, `warning`, `note`), `title`, `evidence`, `advice`. Codes: `periodic`, `two_states`, `measurement_split`, `shifting_mean`, `drifting`, `wandering`, and `rate_moves_with_amplitude`. A steady series has none. |
 
 Each entry of `series[]`:
 
 | Field | Contents |
 |---|---|
 | `series`, `unit`, `verdict`, `headline` | what it is, and the answer in one plain sentence |
-| `step_s`, `readings`, `outliers` | reading length, readings used, readings left out |
+| `step_s`, `readings`, `outliers` | reading length (the rate's for all three series), readings used, readings left out |
 | `median`, `sd`, `short_term_sd` | level, spread, reading-to-reading scatter |
 | `autocorrelation` | `lag_s[]`, `r[]` (thinned to about 600 points), `band`, `ljung_box_q`, `ljung_box_lags`, `p_value`, `max_short_lag_r`, `memory_s`, `repeat_lag_s`, `repeat_r` |
 | `allan` | `tau_s[]`, `deviation[]`, `white[]`, `pairs[]`, `slope_short`, `best_tau_s`, `best_deviation`, `max_excess` (largest deviation over the white line) |
@@ -114,7 +147,7 @@ Each entry of `series[]`:
 | `trend` | `per_hour`, `explained`, `curve_explained`, `start`, `end`, `turn` (`[time, value]` or null) |
 | `period` | the period search's strongest component (`other_periods_s`: the weaker ones, each also tried as a cycle): `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel` |
 | `two_state` | the two-state finder's full result (rate and amplitude only) |
-| `cycle` | the cycle behind `periodic` (or found under another verdict): `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel` |
+| `cycle` | the cycle behind `periodic` (or found under another verdict), from the 2 s windows for the amplitude and the beat error: `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel` |
 | `unlock_hopping` | amplitude and beat error only: one side's unlock edges split in two |
 
 Times are seconds from the start of the take, on the true clock when
