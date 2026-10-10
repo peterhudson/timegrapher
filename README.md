@@ -53,7 +53,8 @@ Periodic components in amplitude:
 ```
 
 Options: `--bph` (guessed if omitted), `--lift` (degrees),
-`--notch 5000,7000` (remove steady interference tones), `--escape-teeth`,
+`--notch 5000,7000` (remove steady interference tones), `--escape-teeth`
+(`long` and `series` also take `--calibre NAME`),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
 beat error and amplitude over time), `--json`.
 

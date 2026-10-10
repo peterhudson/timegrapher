@@ -45,9 +45,22 @@ A capture split into segments with no gaps is read as one recording by
 listing the files in order (`timegrapher long seg01.flac seg02.flac ...`)
 or by giving the folder that holds them, read in name order.
 
-Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`,
-`--escape-teeth`), plus `--wheel "third wheel=450"` (repeatable) to name
-other wheels whose turn period you know for the calibre.
+Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`),
+plus three that name the periodic components after wheels:
+
+- `--calibre NAME` takes the train from the table of common calibres
+  (`crates/timegrapher-core/data/train-wheels.json`): "ETA 2824-2",
+  "Rolex 3235", "NH35" and so on. An unknown name lists the known ones.
+- `--escape-teeth N` sets the escape wheel's teeth. Without it or a
+  calibre that gives them, both common escape wheels are named, 15 teeth
+  (30 beats a turn) and 20 teeth (40 beats, the ETA 2824 family and
+  Rolex's): at 28,800 vph 3.75 s and 5 s, and the line the recording
+  shows picks one.
+- `--wheel "third wheel=450"` (repeatable) names another wheel whose turn
+  period you know.
+
+`series` takes the same three. Both list the wheels they used in the
+JSON's `input.settings.named_wheels`.
 
 ## Calibrating the sound card
 

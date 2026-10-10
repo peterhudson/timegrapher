@@ -158,9 +158,15 @@ enum Command {
         /// High-pass corner, Hz.
         #[arg(long, default_value_t = 1500.0)]
         highpass: f64,
-        /// Escape wheel teeth, used to name periodic components.
-        #[arg(long, default_value_t = 15)]
-        escape_teeth: u32,
+        /// The movement, to name periodic components after its wheels
+        /// (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name lists the
+        /// known ones).
+        #[arg(long)]
+        calibre: Option<String>,
+        /// Escape wheel teeth, used to name periodic components (default:
+        /// the calibre's, or both 15 and 20 when no calibre is given).
+        #[arg(long)]
+        escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable),
         /// e.g. --wheel "third wheel=450".
         #[arg(long)]
@@ -200,9 +206,15 @@ enum Command {
         /// High-pass corner, Hz.
         #[arg(long, default_value_t = 1500.0)]
         highpass: f64,
-        /// Escape wheel teeth, used to name periodic components.
-        #[arg(long, default_value_t = 15)]
-        escape_teeth: u32,
+        /// The movement, to name periodic components after its wheels
+        /// (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name lists the
+        /// known ones).
+        #[arg(long)]
+        calibre: Option<String>,
+        /// Escape wheel teeth, used to name periodic components (default:
+        /// the calibre's, or both 15 and 20 when no calibre is given).
+        #[arg(long)]
+        escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable).
         #[arg(long)]
         wheel: Vec<String>,
@@ -497,6 +509,7 @@ fn main() -> ExitCode {
             lift,
             notch,
             highpass,
+            calibre,
             escape_teeth,
             wheel,
             out,
@@ -515,7 +528,10 @@ fn main() -> ExitCode {
                     card_ppm,
                 },
                 &cfg,
-                escape_teeth,
+                long::Train {
+                    calibre: calibre.as_deref(),
+                    escape_teeth,
+                },
                 &wheel,
                 out,
                 json,
@@ -528,6 +544,7 @@ fn main() -> ExitCode {
             lift,
             notch,
             highpass,
+            calibre,
             escape_teeth,
             wheel,
             reading,
@@ -545,7 +562,10 @@ fn main() -> ExitCode {
                     files: &files,
                     clock_log: clock.as_deref(),
                     stream: cfg,
-                    escape_teeth,
+                    train: long::Train {
+                        calibre: calibre.as_deref(),
+                        escape_teeth,
+                    },
                     wheels: &wheel,
                     check: timegrapher_core::steadiness::Config {
                         rate_reading_s: reading,

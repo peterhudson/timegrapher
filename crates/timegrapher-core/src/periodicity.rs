@@ -35,6 +35,17 @@ pub fn standard_wheels(bph: u32, escape_teeth: u32) -> Vec<Wheel> {
     ]
 }
 
+/// The wheels to name when the movement is not known. Escape wheels have
+/// 15 teeth in many movements and 20 in others (the ETA 2824 family and
+/// Rolex's), so both turn periods are named "escape wheel" and the line
+/// the recording shows picks one: at 28,800 vph they are 3.75 s and 5 s,
+/// and neither is a whole multiple of the other.
+pub fn default_wheels(bph: u32) -> Vec<Wheel> {
+    let mut w = standard_wheels(bph, 15);
+    w.insert(1, standard_wheels(bph, 20).remove(0));
+    w
+}
+
 /// A series sampled into bins of equal length, with gaps left out.
 #[derive(Debug, Clone, Serialize)]
 pub struct Series {
@@ -235,6 +246,17 @@ pub fn peaks(periods: &[f64], power: &[f64], wheels: &[Wheel], count: usize) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_wheels_name_both_escape_wheels() {
+        let escape: Vec<f64> = default_wheels(28800)
+            .iter()
+            .filter(|w| w.name == "escape wheel")
+            .map(|w| w.period_s)
+            .collect();
+        assert_eq!(escape, vec![3.75, 5.0]);
+        assert!(default_wheels(21600).iter().any(|w| w.period_s == 60.0));
+    }
 
     #[test]
     fn finds_a_sinusoid() {
