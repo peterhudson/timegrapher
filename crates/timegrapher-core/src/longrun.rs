@@ -31,6 +31,27 @@ pub struct RateComponent {
     pub rate_shape: Vec<f64>,
     /// Peak-to-peak of `rate_shape`, s/d.
     pub rate_swing_s_per_day: f64,
+    /// Peak-to-peak of the folded timing, ms.
+    pub timing_swing_ms: f64,
+}
+
+/// Below this period (three 10 s rate readings) a rate reading cannot follow
+/// a cycle, and the slope of the folded timing turns a fraction of a
+/// millisecond into hundreds of s/d. Such a cycle, an escape wheel's tooth
+/// pattern for one, is stated as a timing swing in ms instead.
+pub const TIMING_UNIT_BELOW_S: f64 = 30.0;
+
+impl RateComponent {
+    /// The size to show people, with its unit: the timing swing in ms for a
+    /// cycle shorter than [`TIMING_UNIT_BELOW_S`], the rate swing in s/d
+    /// otherwise.
+    pub fn size(&self) -> (f64, &'static str) {
+        if self.component.period_s < TIMING_UNIT_BELOW_S {
+            (self.timing_swing_ms, "ms")
+        } else {
+            (self.rate_swing_s_per_day, "s/d")
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -156,6 +177,7 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
             RateComponent {
                 component: c.clone(),
                 rate_swing_s_per_day: hi - lo,
+                timing_swing_ms: c.peak_to_peak * 1000.0,
                 rate_shape,
             }
         })

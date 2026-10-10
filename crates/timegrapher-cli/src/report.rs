@@ -618,6 +618,23 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
         body.push_str("<p>No periodic change in rate above the 1% false-alarm level.</p>");
     }
     for c in &r.rate_components {
+        // A cycle too short for a rate reading is drawn as timing, in ms.
+        if c.size().1 == "ms" {
+            let ms = |v: &[f64]| v.iter().map(|x| x * 1000.0).collect::<Vec<_>>();
+            body.push_str(&component(
+                &c.component,
+                "Timing",
+                format!(
+                    "Beats run early and late by {:.3} ms peak to peak over each turn",
+                    c.timing_swing_ms
+                ),
+                &ms(&c.component.shape),
+                Some(&ms(&c.component.fold.profile)),
+                "ms",
+                RasterKind::Value(1000.0),
+            ));
+            continue;
+        }
         body.push_str(&component(
             &c.component,
             "Rate",
