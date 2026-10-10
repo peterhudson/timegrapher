@@ -112,7 +112,7 @@ impl Clipping {
 }
 
 /// A sample at or above this magnitude counts as clipped, as in `doctor`.
-const CLIP_LEVEL: f32 = 0.99;
+pub(crate) const CLIP_LEVEL: f32 = 0.99;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Analysis {

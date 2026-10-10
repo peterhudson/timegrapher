@@ -45,6 +45,12 @@ pub struct BeatLog {
     pub lift_deg: f64,
     pub beats: Vec<Beat>,
     pub amplitude_windows: Vec<AmplitudeWindow>,
+    /// Times of the beats with a clipped sample within their template
+    /// window, as [`crate::analysis::Clipping`] counts them.
+    #[serde(skip_serializing)]
+    pub clipped_beats: Vec<f64>,
+    /// Clipped samples in the whole recording.
+    pub clipped_samples: usize,
 }
 
 struct State {
@@ -56,6 +62,8 @@ struct State {
     amp: Vec<AmplitudeWindow>,
     /// Next amplitude window start, seconds.
     next_amp_s: f64,
+    clipped_beats: Vec<f64>,
+    clipped_samples: usize,
 }
 
 impl State {
@@ -101,6 +109,7 @@ impl State {
                 ..*b
             })
             .collect();
+        let kept_from = self.beats.len();
         for b in &numbered[anchor..] {
             let t = b.time + off;
             if t >= core_b {
@@ -112,6 +121,25 @@ impl State {
                 }
             }
             self.beats.push(Beat { time: t, ..*b });
+        }
+
+        // Clipping, counted on this chunk's own stretch.
+        let idx = crate::diagnose::clipped_indices(x, crate::analysis::CLIP_LEVEL);
+        if !idx.is_empty() {
+            let at = |i: usize| off + i as f64 / fs;
+            self.clipped_samples += idx
+                .iter()
+                .filter(|&&i| at(i) >= core_a && at(i) < core_b)
+                .count();
+            let (pre, post) = (beats::PRE_S, beats::POST_S);
+            for b in &self.beats[kept_from..] {
+                let lo = ((b.time - pre - off) * fs).floor().max(0.0) as usize;
+                let hi = ((b.time + post - off) * fs).ceil().max(0.0) as usize;
+                let k = idx.partition_point(|&i| i < lo);
+                if idx.get(k).is_some_and(|&i| i <= hi) {
+                    self.clipped_beats.push(b.time);
+                }
+            }
         }
 
         // Amplitude on a fixed grid of windows starting inside this chunk.
@@ -186,6 +214,8 @@ pub fn analyze_files(
         beats: Vec::new(),
         amp: Vec::new(),
         next_amp_s: 0.0,
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
     };
     // `buf` holds samples from absolute index `buf0`; the next chunk's own
     // stretch starts at `next`.
@@ -221,5 +251,7 @@ pub fn analyze_files(
         lift_deg: cfg.analysis.amplitude.lift_deg,
         beats: st.beats,
         amplitude_windows: st.amp,
+        clipped_beats: st.clipped_beats,
+        clipped_samples: st.clipped_samples,
     })
 }

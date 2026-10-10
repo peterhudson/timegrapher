@@ -220,3 +220,50 @@ fn unlock_missing_in_most_windows_is_not_judged() {
     assert_eq!(rep.verdicts[0].beat_error, session::Mark::Unreliable);
     assert_ne!(rep.verdicts[0].rate, session::Mark::Unreliable);
 }
+
+#[test]
+fn clipped_recording_is_flagged() {
+    let clean = reading(Position::CH, 0.0, 2.0, 280.0, 0.1);
+    assert_eq!(clean.measurement.clipped_beats, 0);
+    let rep = evaluate(
+        std::slice::from_ref(&clean),
+        &Tolerance::default(),
+        &Limits::default(),
+    );
+    assert!(!rep.findings.iter().any(|f| f.code == "clipping"));
+
+    // The same watch with the input level far too high: every tick's peak
+    // is flattened at full scale.
+    let cfg = SynthConfig {
+        duration_s: 60.0,
+        rate_s_per_day: 2.0,
+        beat_error_ms: 0.1,
+        snr_db: 26.0,
+        ..Default::default()
+    };
+    let mut audio = generate(&cfg, |_| 280.0, |_| 0.0);
+    let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+    for v in &mut audio.samples {
+        *v = (*v * 3.0 / peak).clamp(-1.0, 1.0);
+    }
+    let path = std::env::temp_dir().join(format!("tg-session-clipped-{}.wav", std::process::id()));
+    write_wav(&path, &audio).unwrap();
+    let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    std::fs::remove_file(&path).ok();
+    let m = session::measure(&log, None, 20.0, f64::INFINITY);
+    assert!(m.clipped_fraction > 0.5, "{}", m.clipped_fraction);
+    // Counted as `analyze` counts it on the whole recording.
+    let whole = timegrapher_core::analysis::Clipping::measure(
+        &audio.samples,
+        audio.sample_rate as f64,
+        &log.beats,
+    );
+    assert!((whole.beats as i64 - log.clipped_beats.len() as i64).abs() <= 2);
+    let r = Reading {
+        measurement: m,
+        ..clean
+    };
+    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
+    let f = rep.findings.iter().find(|f| f.code == "clipping").unwrap();
+    assert_eq!(f.severity, Severity::Warning);
+}

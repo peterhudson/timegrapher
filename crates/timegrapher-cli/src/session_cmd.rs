@@ -488,13 +488,13 @@ pub fn mark(m: Mark) -> &'static str {
 
 fn csv(s: &Session) -> String {
     let mut t = String::from(
-        "recording,position,wind_h,measured_s,beats,clean_fraction,calibrated,rate_s_per_day,rate_window_median_s_per_day,amplitude_deg,beat_error_unlock_ms,beat_error_drop_ms,jitter_us,rate_p05,rate_p95,ref_rate,ref_amplitude,ref_beat_error\n",
+        "recording,position,wind_h,measured_s,beats,clean_fraction,calibrated,rate_s_per_day,rate_window_median_s_per_day,amplitude_deg,beat_error_unlock_ms,beat_error_drop_ms,jitter_us,rate_p05,rate_p95,clipped_fraction,ref_rate,ref_amplitude,ref_beat_error\n",
     );
     for r in &s.readings {
         let m = &r.measurement;
         let rf = r.reference.clone().unwrap_or_default();
         t.push_str(&format!(
-            "{},{},{},{:.1},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{:.1},{},{:.3},{},{},{},{},{},{},{},{},{},{:.4},{},{},{}\n",
             r.label.replace(',', ";"),
             r.position,
             opt(r.wind_h, 1).replace('-', ""),
@@ -510,6 +510,7 @@ fn csv(s: &Session) -> String {
             opt(m.jitter_us, 0),
             opt(m.rate_p05, 1),
             opt(m.rate_p95, 1),
+            m.clipped_fraction,
             opt(rf.rate_s_per_day, 1),
             opt(rf.amplitude_deg, 0),
             opt(rf.beat_error_ms, 2),

@@ -323,6 +323,11 @@ pub struct Measurement {
     /// readings) sit at two levels the watch switches between.
     pub amplitude_states: TwoState,
     pub rate_states: TwoState,
+    /// Beats in the measured stretch with a clipped sample within their
+    /// template window, and their share of the beats. Clipping flattens
+    /// the loudest part of a tick, which can move amplitude and beat error.
+    pub clipped_beats: usize,
+    pub clipped_fraction: f64,
 }
 
 impl Measurement {
@@ -339,6 +344,12 @@ impl Measurement {
     pub fn unlock_unreliable(&self, lim: &Limits) -> bool {
         self.unlock_coverage
             .is_some_and(|c| c < lim.min_unlock_coverage)
+    }
+
+    /// Enough clipped beats to doubt amplitude and beat error, by the
+    /// same rule as `analyze`.
+    pub fn clipping_warns(&self) -> bool {
+        self.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION
     }
 }
 
@@ -409,6 +420,11 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
     let span = map(to_s) - map(from_s);
     let expected = span * log.bph as f64 / 3600.0;
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
+    let clipped = log
+        .clipped_beats
+        .iter()
+        .filter(|&&t| t >= from_s && t < to_s)
+        .count();
     Measurement {
         start_s: from_s,
         end_s: to_s,
@@ -436,6 +452,12 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
         }),
         amplitude_states: twostate::find(&amp_samples, &twostate::Params::default()),
         rate_states: twostate::find(&rate_samples, &twostate::Params::default()),
+        clipped_beats: clipped,
+        clipped_fraction: if beats.is_empty() {
+            0.0
+        } else {
+            clipped as f64 / beats.len() as f64
+        },
     }
 }
 
@@ -952,6 +974,22 @@ fn findings(
                     100.0 * lim.min_unlock_coverage
                 ),
                 "Amplitude and the beat error from the unlock are shown but not judged; rate is unaffected. A holder or stand that rings, a weak or clipped signal or a noisy room smears the tick; try the watch cased or on another stand.",
+            );
+        }
+        if m.clipping_warns() {
+            push(
+                "clipping",
+                Some(ri),
+                Severity::Warning,
+                "Recording clipped",
+                format!(
+                    "{:.1}% of the {} beats in {} have a clipped sample (above {:.0}% warns)",
+                    100.0 * m.clipped_fraction,
+                    m.beats,
+                    at(r),
+                    100.0 * crate::analysis::Clipping::WARN_FRACTION
+                ),
+                "Clipping flattens the loudest part of the tick, which can move the amplitude and the beat error; rate is unaffected. Turn the input level down for the next take.",
             );
         }
         if let Some(a) = m.amplitude_deg.filter(|_| !unsure) {
