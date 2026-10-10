@@ -66,9 +66,15 @@ For each series:
 
 A `periodic` verdict needs one cycle that holds up when the readings are
 folded at its period. Candidates come from the two-state finder's
-regular low level, the autocorrelation's repeat and the period search.
-Each candidate's folded shape must explain at least 10% of the
-detrended variance beyond what noise would give. The cycle must also
+regular low level, the autocorrelation's repeat, every later
+autocorrelation peak above three times its band, and every line of the
+period search, not only the strongest (a slow cycle can sit behind a
+strong escape-wheel line). Each candidate's folded shape must explain at
+least 10% of the detrended variance beyond what noise would give. Of the
+candidates the one that explains most wins, and then its shortest whole
+fraction (down to an eighth) that explains at least 85% as much is kept:
+folding at five turns of a cycle explains as much as folding at one, and
+on a lag grid of 10 s readings a 48 s cycle lines up best at 240 s. The cycle must also
 last at least three readings and fit five times in the take (three for
 the period search). The verdicts are tried in this order: two states or
 measurement, then a cycle, then steps or a slide, then wander, and
@@ -106,7 +112,7 @@ Each entry of `series[]`:
 | `cusum` | `t_s[]`, `s[]` (thinned), `max`, `at_s`, `p_value` |
 | `changes` | `block_s`, `block_sigma`, `segments[]` (`start_s`, `end_s`, `mean`), `explained` |
 | `trend` | `per_hour`, `explained`, `curve_explained`, `start`, `end`, `turn` (`[time, value]` or null) |
-| `period` | the period search's strongest component: `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel` |
+| `period` | the period search's strongest component (`other_periods_s`: the weaker ones, each also tried as a cycle): `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel` |
 | `two_state` | the two-state finder's full result (rate and amplitude only) |
 | `cycle` | the cycle behind `periodic` (or found under another verdict): `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel` |
 | `unlock_hopping` | amplitude and beat error only: one side's unlock edges split in two |
@@ -124,14 +130,14 @@ give, with the clock log where the take has one:
 | Take | Rate | Amplitude | Beat error |
 |---|---|---|---|
 | Yacht-Master crown left (ym42_CL_90min) | two states, +44 and +75 s/d, switching about every 35 s; also a 60 s cycle (fourth wheel), 26 s/d peak to peak, 41% of the variance | 60 s cycle (fourth wheel), 7° | 60 s cycle (fourth wheel), 0.25 ms |
-| Yacht-Master crown right, part a | two states, −20 and −7 s/d, about every 35 s | 4 min cycle, 6°, flagged as possibly the unlock mark (Tick split alone) | slow change; it flips sign at the suspend gap (1,557 s), where Tick and Tock swap |
-| Yacht-Master crown right, part b | two states, −17 and −4 s/d, about every 30 s | wandering | 60 s cycle (fourth wheel), 0.06 ms |
+| Yacht-Master crown right, part a | two states, −20 and −7 s/d, about every 35 s; also a 257 s cycle, 15 s/d | 4 min cycle, 6°, flagged as possibly the unlock mark (Tick split alone) | slow change; it flips sign at the suspend gap (1,557 s), where Tick and Tock swap |
+| Yacht-Master crown right, part b | two states, −17 and −4 s/d, about every 30 s; also a 60 s cycle (fourth wheel), 10 s/d | 60 s cycle (fourth wheel), 8° | 60 s cycle (fourth wheel), 0.06 ms |
 | Yacht-Master crown up (ym42_CU_8h, 2 h 17 min) | two states, −15 and −8 s/d, about every 50 s; level settles from −18 to −9 s/d | 60 s cycle (fourth wheel), 5° | wandering |
-| Yacht-Master dial up (ym42_DU_2h) | slow change, +55 s/d at the start settling to +6 s/d | two states, 241° and 250°, about every 40 s; also a 60 s cycle (fourth wheel), 11° | wandering |
+| Yacht-Master dial up (ym42_DU_2h) | 60 s cycle (fourth wheel), 12 s/d, 18% of the variance; the level settles from +55 s/d at the start to +6 s/d | two states, 241° and 250°, about every 40 s; also a 60 s cycle (fourth wheel), 11° | 60 s cycle (fourth wheel), 0.09 ms |
 | Dandong 3235 (dd3235_DU_30min) | slow change, −4 s/d in the first 10 min to +2 s/d | steady (±16° from window to window hides any small cycle) | steady |
-| Daytona 4130 (`--escape-teeth 20`) | 60 s cycle (fourth wheel), 2.8 s/d, 82% of the variance | 60 s cycle, 18°, flagged as possibly the unlock mark (Tick split alone) | 2 min cycle, 0.28 ms, flagged the same way |
-| Reverso, whole 2 h | level moves between +18 and +21 s/d | 2 min cycle, 7°; level rises from 237° to 256° and falls back to 242° | wandering |
-| Reverso, file 01 | two states, +17 and +22 s/d, about every 50 s | 48 s cycle, 11° | wandering |
+| Daytona 4130 (`--escape-teeth 20`) | 60 s cycle (fourth wheel), 2.8 s/d, 82% of the variance | 60 s cycle, 17°, flagged as possibly the unlock mark (Tick split alone) | 60 s cycle, 0.35 ms, flagged the same way |
+| Reverso, whole 2 h | 48 s cycle, 0.8 s/d; level moves between +18 and +21 s/d | 4 min cycle, 10°, beside a 48 s one; level rises from 237° to 256° and falls back to 242° | wandering |
+| Reverso, file 01 | two states, +17 and +22 s/d, about every 50 s; also a 47 s cycle, 2.8 s/d | 48 s cycle, 12° | wandering |
 
 The two-state results agree with `session`, and so does the Daytona's
 once-a-minute rate cycle. The Yacht-Master's fourth-wheel cycles are
