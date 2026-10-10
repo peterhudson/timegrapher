@@ -27,6 +27,8 @@ use timegrapher_core::timing;
 pub const MIN_S: f64 = 300.0;
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
+/// Shortest cycle the pane marks, seconds.
+const MIN_PERIOD_S: f64 = 60.0;
 /// Escape wheel teeth for naming the escape wheel's period, as `series`
 /// assumes unless told otherwise.
 const ESCAPE_TEETH: u32 = 15;
@@ -142,7 +144,14 @@ pub fn compute(log: &BeatLog) -> Steadiness {
     };
     let cfg = Config::default();
     let long = longrun::analyse(log, None, &lc);
-    let report = steadiness::check(log, None, &long, &lc, &cfg);
+    let mut report = steadiness::check(log, None, &long, &lc, &cfg);
+    // `long` gives a cycle's size in s/d even when the cycle is shorter than
+    // a reading, which turns an escape wheel's few tenths of a millisecond
+    // into thousands of s/d. Leave those cycles out until it reports them
+    // in milliseconds.
+    for c in &mut report.series {
+        c.period = c.period.take().filter(|p| p.period_s >= MIN_PERIOD_S);
+    }
     let grids = grids(log, cfg.rate_reading_s);
     let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
     let be_search = (readings(&grids[2]) >= 30).then(|| {

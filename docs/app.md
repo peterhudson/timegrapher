@@ -340,13 +340,15 @@ position.
 
 ## Sessions
 
-**Start** begins a session from the microphone. **Pause** stops listening
-and keeps everything: the readings, strip, charts and the sound so far.
+**Start** begins a session from the microphone. **Stop** stops
+listening and lets go of the microphone, so another program can use it
+(Microphone Off shows beside the level meter), and keeps everything: the
+readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
-the paused time out, and the readings start from the beats after the
-pause. **New session**, shown while paused, clears everything for the
+the stopped time out, and the readings start from the beats after the
+stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
-**Save…** can be pressed at any time, running or paused: it asks for a
+**Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session there, and **Save again…** later brings
 that copy up to date. Sound that hasn't been saved is never thrown away
 without asking: New session and closing the window ask whether to save it

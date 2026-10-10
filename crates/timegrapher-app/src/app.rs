@@ -1398,22 +1398,33 @@ impl TimegrapherApp {
                     let (txt, color) = self.level_text(ui);
                     if self.running() {
                         ui.label(RichText::new(txt).small().color(color));
+                    } else {
+                        ui.label(
+                            RichText::new("Microphone Off")
+                                .small()
+                                .color(theme::pal(ui).text_tertiary),
+                        )
+                        .on_hover_text(
+                            "The app isn't listening and has let go of the microphone, so \
+                             another program can use it. Start or Resume opens it again.",
+                        );
                     }
                 }
             });
         });
     }
 
-    /// Start, Pause and Resume, New session and Save, for the microphone.
+    /// Start, Stop and Resume, New session and Save, for the microphone.
     /// Laid out right to left.
     fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
         let mic_data = self.mic_session && self.live.is_some();
         if self.running() {
             if ui
-                .add(theme::secondary(ui, "Pause"))
+                .add(theme::secondary(ui, "Stop"))
                 .on_hover_text(
-                    "Stop listening for now. Everything so far stays: look back through it \
-                     with the time slider, save it, or Resume to carry on.",
+                    "Stop listening and let go of the microphone. Everything so far stays: \
+                     look back through it with the time slider, save it, or Resume to carry \
+                     on in the same session.",
                 )
                 .clicked()
             {
@@ -1424,7 +1435,7 @@ impl TimegrapherApp {
                 .add(theme::primary(ui, "Resume"))
                 .on_hover_text(
                     "Carry on listening in the same session. The readings start afresh \
-                     after the pause, since the watch may have moved; the strip and charts \
+                     after the stop, since the watch may have moved; the strip and charts \
                      keep what came before.",
                 )
                 .clicked()
