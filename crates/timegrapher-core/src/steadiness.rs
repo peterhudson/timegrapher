@@ -266,6 +266,13 @@ pub struct Cycle {
     pub source: CycleSource,
     /// A wheel whose turn is within 6% of the period.
     pub wheel: Option<String>,
+    /// A shorter cycle inside this one, when the period is a whole number
+    /// of its turns (`turns`) and it explains at least half as much on its
+    /// own: the pattern changes from turn to turn and repeats every
+    /// `turns` turns.
+    pub inner_period_s: Option<f64>,
+    pub inner_explained: Option<f64>,
+    pub turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -958,11 +965,12 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
     let mut out = Vec::new();
     if let Some(c) = s.cycle.as_ref().filter(|_| s.verdict != Verdict::Periodic) {
         out.push(format!(
-            "It also repeats every {:.0} s{}, {} peak to peak.",
+            "It also repeats every {:.0} s{}{}, {} peak to peak.",
             c.period_s,
             c.wheel
                 .as_ref()
                 .map_or(String::new(), |w| format!(" (the {w})")),
+            inner_text(c),
             k.fmt_size(c.peak_to_peak)
         ));
     }
@@ -1057,38 +1065,26 @@ fn cycle(
     if let Some(t) = &s.two_state {
         if t.verdict == twostate::Verdict::Regular {
             if let Some(p) = t.period_s {
-                cands.push((p, CycleSource::TwoState));
+                cands.push((refine(&d, p, 0.05), CycleSource::TwoState));
             }
         }
     }
     if let Some(l) = ac.and_then(|a| a.repeat_lag_s) {
         // The lag is only as fine as one reading: try around it.
-        let best = (0..=40)
-            .map(|i| l * (0.8 + 0.01 * i as f64))
-            .map(|p| (p, fold(&d, p).0))
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .unwrap();
-        cands.push((best.0, CycleSource::Autocorrelation));
+        cands.push((refine(&d, l, 0.2), CycleSource::Autocorrelation));
     }
     // Every later peak of the autocorrelation above three times its 95% band, even one
     // too weak to count as a repeat on its own: the fold below decides.
     if let Some(a) = ac {
         for k in 2..a.r.len().saturating_sub(1) {
             if a.r[k] >= a.r[k - 1] && a.r[k] > a.r[k + 1] && a.r[k] >= 3.0 * a.band {
-                let l = a.lag_s[k];
-                let best = (0..=40)
-                    .map(|i| l * (0.8 + 0.01 * i as f64))
-                    .map(|p| (p, fold(&d, p).0))
-                    .max_by(|a, b| a.1.total_cmp(&b.1))
-                    .unwrap();
-                cands.push((best.0, CycleSource::Autocorrelation));
+                cands.push((refine(&d, a.lag_s[k], 0.2), CycleSource::Autocorrelation));
             }
         }
     }
     if let Some(p) = &s.period {
-        cands.push((p.period_s, CycleSource::PeriodSearch));
-        for &q in &p.other_periods_s {
-            cands.push((q, CycleSource::PeriodSearch));
+        for &q in std::iter::once(&p.period_s).chain(&p.other_periods_s) {
+            cands.push((refine(&d, q, 0.01), CycleSource::PeriodSearch));
         }
     }
     let at = |p: f64, src: CycleSource| {
@@ -1099,9 +1095,50 @@ fn cycle(
             explained,
             source: src,
             wheel: wheel_for(p, wheels),
+            inner_period_s: None,
+            inner_explained: None,
+            turns: None,
         }
     };
-    let best = cands
+    // Folding at five turns of a cycle explains as much as folding at one,
+    // and the autocorrelation's lag grid can favour the multiple (a 48 s
+    // cycle in 10 s readings lines up best at 240 s). Each candidate is
+    // first reduced to its shortest whole fraction that explains at least
+    // 85% as much; then the strongest wins. Reducing first keeps a slower,
+    // stronger cycle from being swapped for a weaker fraction of another.
+    let reduce = |best: Cycle| -> Cycle {
+        // A fraction of a fraction too (540 s to 180 s to 60 s).
+        let mut chosen = best;
+        while let Some(c) = (2..=8u32)
+            .rev()
+            .map(|k| chosen.period_s / k as f64)
+            .filter(|&p| p >= 3.0 * g.step)
+            .map(|p| at(refine(&d, p, 0.03), chosen.source))
+            .find(|c| c.explained >= 0.85 * chosen.explained)
+        {
+            chosen = c;
+        }
+        // When the longer period still wins, the shorter cycle inside it
+        // can be the stronger single cycle: its shape changes from turn to
+        // turn and repeats every few turns. Name it when it explains at
+        // least half as much on its own, fits three or more times (half the
+        // period would catch the cycle's own second harmonic) and is at
+        // least 30 s (faster lines are the timing search's, in ms).
+        if let Some(inner) = (3..=8u32)
+            .map(|k| chosen.period_s / k as f64)
+            .filter(|&p| p >= 3.0 * g.step && p >= crate::longrun::TIMING_UNIT_BELOW_S)
+            .map(|p| at(refine(&d, p, 0.03), chosen.source))
+            .max_by(|a, b| a.explained.total_cmp(&b.explained))
+        {
+            if inner.explained >= 0.5 * chosen.explained {
+                chosen.inner_period_s = Some(inner.period_s);
+                chosen.inner_explained = Some(inner.explained);
+                chosen.turns = Some((chosen.period_s / inner.period_s).round() as u32);
+            }
+        }
+        chosen
+    };
+    cands
         .into_iter()
         // At least three turns for the period search, which tests its own
         // significance; five for the others.
@@ -1115,22 +1152,48 @@ fn cycle(
         })
         .map(|(p, src)| at(p, src))
         .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .max_by(|a, b| a.explained.total_cmp(&b.explained))?;
-    // Folding at five turns of a cycle explains as much as folding at one,
-    // and the autocorrelation's lag grid can favour the multiple (a 48 s
-    // cycle in 10 s readings lines up best at 240 s). Keep the shortest
-    // whole fraction that explains at least 85% as much.
-    let shortest = (2..=8)
-        .rev()
-        .map(|k| best.period_s / k as f64)
-        .filter(|&p| p >= 3.0 * g.step)
-        .find_map(|p| {
-            let c = (-5..=5)
-                .map(|i| at(p * (1.0 + 0.006 * i as f64), best.source))
-                .max_by(|a, b| a.explained.total_cmp(&b.explained))?;
-            (c.explained >= 0.85 * best.explained).then_some(c)
-        });
-    Some(shortest.unwrap_or(best))
+        .map(reduce)
+        .filter(|c| c.explained >= cfg.periodic_min_explained)
+        .max_by(|a, b| a.explained.total_cmp(&b.explained))
+}
+
+/// ", N turns of a P s cycle" when the cycle holds a shorter one.
+fn inner_text(c: &Cycle) -> String {
+    match (c.inner_period_s, c.turns) {
+        (Some(p), Some(n)) => {
+            let words = [
+                "", "one", "two", "three", "four", "five", "six", "seven", "eight",
+            ];
+            let n = words
+                .get(n as usize)
+                .map_or(n.to_string(), |w| w.to_string());
+            format!(", {n} turns of a {p:.0} s cycle whose shape changes from turn to turn")
+        }
+        _ => String::new(),
+    }
+}
+
+/// The period near `p` (within ± `rel` of it) whose fold explains the
+/// most. A fold over a long take is sharp: a period off by P²/T drifts a
+/// whole turn over a take of T seconds, so after a coarse scan the search
+/// narrows until its step is a twentieth of that.
+fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
+    let fine = (p * p / (20.0 * d.span().max(p))).max(1e-6 * p);
+    let (mut lo, mut hi) = (p * (1.0 - rel), p * (1.0 + rel));
+    let mut best = p;
+    loop {
+        let step = (hi - lo) / 40.0;
+        best = (0..=40)
+            .map(|i| lo + step * i as f64)
+            .map(|q| (q, fold(d, q).0))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map_or(best, |b| b.0);
+        if step <= fine {
+            return best;
+        }
+        lo = best - step;
+        hi = best + step;
+    }
 }
 
 fn verdict(s: &SeriesCheck, cfg: &Config) -> Verdict {
@@ -1198,11 +1261,12 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
         ),
                 Verdict::Periodic => match (&s.cycle, &s.two_state) {
             (Some(p), _) => format!(
-                "{cap} repeats every {}{}, {} peak to peak.",
+                "{cap} repeats every {}{}{}, {} peak to peak.",
                 every(p.period_s),
                 p.wheel
                     .as_ref()
                     .map_or(String::new(), |w| format!(" (the {w})")),
+                inner_text(p),
                 k.fmt_size(p.peak_to_peak)
             ),
             (None, Some(t)) => format!(
@@ -1856,5 +1920,40 @@ mod tests {
         let a = allan(&y, 1.0);
         let (t, d, _) = a[4];
         assert!((d * t.sqrt() - a[0].1).abs() < 0.15 * a[0].1, "{a:?}");
+    }
+
+    #[test]
+    fn a_long_take_names_the_cycle_inside_a_slower_one() {
+        // 16 h of 10 s readings: a 48.004 s cycle whose shape changes from
+        // turn to turn and repeats every five turns. Over 16 h a period
+        // off by 0.02 s smears the fold, so the period must be found
+        // finely.
+        let mut z = Noise(7);
+        let tau = std::f64::consts::TAU;
+        let y: Vec<f64> = (0..5700)
+            .map(|i| {
+                let t = (i as f64 + 0.5) * 10.0;
+                3.0 * (tau * t / 48.004).sin() + 2.0 * (tau * t / 240.02).sin() + 2.0 * z.next()
+            })
+            .collect();
+        let s = check_series(
+            SeriesKind::Rate,
+            grid(y, 10.0),
+            None,
+            None,
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert_eq!(s.verdict, Verdict::Periodic, "{}", s.headline);
+        let c = s.cycle.unwrap();
+        assert!((c.period_s - 240.02).abs() < 0.1, "{c:?}");
+        assert!((c.inner_period_s.unwrap() - 48.004).abs() < 0.02, "{c:?}");
+        assert_eq!(c.turns, Some(5));
+        assert!(
+            s.headline.contains("five turns of a 48 s cycle"),
+            "{}",
+            s.headline
+        );
     }
 }
