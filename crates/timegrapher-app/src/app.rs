@@ -3227,16 +3227,20 @@ impl TimegrapherApp {
         let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
         ui.label(RichText::new(format!("Analysing {}", b.label)).font(theme::semibold(18.0)));
         let frac = b.duration_s.map(|d| (done / d.max(1e-9)).clamp(0.0, 1.0));
-        ui.add(
-            egui::ProgressBar::new(frac.unwrap_or(0.0) as f32)
-                .desired_width(ui.available_width())
-                .desired_height(16.0)
-                .fill(pal.accent)
-                .text(RichText::new(match frac {
-                    Some(f) => format!("{:.0}%", 100.0 * f),
-                    None => String::new(),
-                })),
-        );
+        // The bar's track in the control colour, to stand out on the card.
+        ui.scope(|ui| {
+            ui.visuals_mut().extreme_bg_color = pal.control;
+            ui.add(
+                egui::ProgressBar::new(frac.unwrap_or(0.0) as f32)
+                    .desired_width(ui.available_width())
+                    .desired_height(16.0)
+                    .fill(pal.accent)
+                    .text(RichText::new(match frac {
+                        Some(f) => format!("{:.0}%", 100.0 * f),
+                        None => String::new(),
+                    })),
+            );
+        });
         let elapsed = b.started.elapsed().as_secs_f64();
         let mut line = match b.duration_s {
             Some(d) => format!(
