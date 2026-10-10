@@ -1,6 +1,6 @@
 ---
 name: watchmaker
-description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like).
+description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like), and when the timegrapher program itself seems wrong and the person wants to report it (`timegrapher report`).
 ---
 
 # Watchmaker
@@ -184,6 +184,55 @@ one moment. Ask for:
 
 Start with the 60-second read in [qc-videos.md](references/qc-videos.md),
 then go deeper as above if they want more.
+
+## When the timegrapher itself looks wrong
+
+Sometimes the tool is at fault, not the watch. Examples: a reading that
+disagrees with another timegrapher on the same watch at the same moment,
+numbers that jump while the trace looks steady, a crash, or a command that
+fails. When that happens, help the person report it, so the people who make
+the program can reproduce it.
+
+1. **Rule out the set-up first**, as always: `clipping` in the output, the
+   lift angle and beat rate, auto gain, a loose clamp. A `series` verdict of
+   `measurement` points at the tool, not the watch. Re-test once with the
+   set-up fixed. If the problem goes away, there is nothing to report.
+2. **Make the report**: `timegrapher report RECORDING --at S --lift N
+   --note "..."`. Use the recording that shows the problem: a file, or the
+   folder the app saved. Set `--at` to just before the problem shows. Pass
+   `--lift` and `--bph` as they were set at the time. Use `--kind bug` and no
+   recording for a crash or a failing command. The zip holds:
+   - a 5-minute lossless FLAC excerpt (`--span` to change it; about 18 MB,
+     under GitHub's 25 MB limit);
+   - readings from the excerpt and from the whole recording;
+   - the clock log and stored clock corrections;
+   - the logs;
+   - a manifest with the version and git hash.
+
+   The home folder, user name and host name are removed. It never opens
+   the microphone, so it is safe to run while something else is recording.
+   [docs/reports.md](../../docs/reports.md) in the repository is the
+   reference.
+3. **Have them listen to the excerpt** (`audio/excerpt.flac` in the zip)
+   before it goes anywhere. A sensitive microphone hears the room. If it
+   holds voices or anything private, make it again from a quieter stretch
+   (`--at`) or with `--no-audio`.
+4. **The two consent flags are theirs alone.** `--listened-back` says they
+   played the excerpt and it holds nothing private. `--cc0` offers it to
+   the public test corpus, with no rights reserved. **Never set either on
+   their behalf.** Give them the command with the flags and let them run it
+   themselves, or leave the flags off.
+5. **Draft the issue with them.** Use the form that fits from
+   `github.com/peterhudson/timegrapher/issues/new/choose`: *A reading looks
+   wrong*, *Something broke*, *An idea* or *Contribute a recording*. Fill it
+   in their words: the number they got, the number they expected and why,
+   the watch and calibre, the position, and their setup. They attach the zip
+   in the browser, because files cannot be attached from the command line.
+   Never post an issue without their say-so.
+
+Nothing is ever sent by the program; the person attaches the zip.
+`timegrapher report --replay ZIP` is the maintainer's half: it reruns the
+bundle with the current build and lists the readings that moved.
 
 ## Reference files
 

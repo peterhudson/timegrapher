@@ -54,7 +54,8 @@ loses nothing.
 
 ## Cutting a recording to size
 
-GitHub takes attachments of up to 25 MB. At 48 kHz, 16-bit mono, that is
+`timegrapher report` cuts the excerpt for you ([below](#the-report-bundle)).
+To cut one by hand: GitHub takes attachments of up to 25 MB. At 48 kHz, 16-bit mono, that is
 about **5 minutes of FLAC** (about 18 MB) or **4 minutes of WAV** (about
 23 MB). If GitHub refuses the file type, zip it first.
 
@@ -109,6 +110,26 @@ handle; otherwise no name is recorded. Once tg has been run on it, it becomes
 one of the takes every engine change is checked against. If it showed
 a problem, the issue tracks the fix.
 
-A one-command report bundle is coming. It will cut the excerpt and gather
-the version, setup and readings into one zip, from the app, the command
-line or an AI agent helping you.
+## The report bundle
+
+`timegrapher report` does the cutting and gathering for you. It makes one
+zip holding:
+
+- a lossless 5-minute FLAC excerpt;
+- the readings from the excerpt and from the whole recording;
+- the clock log and stored clock corrections;
+- the logs;
+- a manifest with the version and git hash.
+
+The home folder, user name and host name are removed, and the microphone
+is never opened. Nothing is sent anywhere: you check the zip and attach it
+to the issue yourself.
+
+```sh
+timegrapher report take.flac --at 60 --lift 52 --note "reads 310°, my No. 1900 says 265°"
+```
+
+Listen to `audio/excerpt.flac` in the zip first. Then make it again with
+`--listened-back`, and with `--cc0` if you want to offer it to the corpus.
+Only you should set those two; an AI agent helping you never sets them for
+you. [Reporting a problem](reports.md) has the details.

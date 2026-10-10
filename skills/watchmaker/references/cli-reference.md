@@ -4,7 +4,7 @@
 complete and current; check them when this file and the program disagree.
 
 Commands: `devices`, `doctor`, `analyze`, `shape`, `profile`, `long`,
-`session`, `synth`. `session` (the multi-position report) is documented in the
+`session`, `report`, `synth`. `session` (the multi-position report) is documented in the
 repository's `docs/sessions.md`, including its finding codes
 (`overbanking`, `amplitude_very_low`, `amplitude_tolerance`,
 `beat_error_large`, `beat_error_tolerance`, `rate_tolerance`,
@@ -264,6 +264,39 @@ sharp event; `explained` the fraction of the detrended variation;
 `peak_to_peak` in s/d (rate) or degrees (amplitude); `wheel` the matching
 wheel's name or null; `nearest_wheel` `[name, percent_off]`. How to read
 it: [long-runs.md](long-runs.md).
+
+## report
+
+```
+timegrapher report [RECORDING...] [--at S] [--span S] [--no-audio]
+                   [--kind bug|reading|setup|idea] [--note TEXT]
+                   [--bph N] [--lift DEG] [--out DIR]
+                   [--listened-back] [--cc0] [--json]
+timegrapher report --replay BUNDLE [--json]
+```
+
+Writes `timegrapher-report-<utc>.zip` for an issue. It never opens the
+microphone and sends nothing anywhere. The zip holds:
+- `manifest.json` (`timegrapher.report/1`: software with git hash, OS,
+  `kind`, `note`, the commands run, every file's SHA-256, the `consent`
+  flags, what was `redacted` and what was `left_out`);
+- `audio/excerpt.flac`: `--span` seconds (default 300) from `--at`, as a
+  lossless cut, with any `doctor --save` sidecar;
+- `results/analyze-excerpt.json`, plus `analyze-whole.json` or
+  `long-whole.json`;
+- a folder's clock log;
+- `env/clock.json`;
+- `logs/`.
+
+The home folder becomes `~`, and the user and host names become `<user>`
+and `<host>`. `--listened-back` and `--cc0` are the person's own consent:
+never pass them for them. `--kind` defaults to `reading` with a recording
+and `bug` without. `--json` prints the manifest.
+
+`--replay` checks the bundle's hashes, reruns the excerpt's `analyze` with
+this build, and marks each command `Same`, `Moved` (with each value then and
+now) or `Not run`. `--json` gives `timegrapher.replay/1`. Reference: the
+repository's `docs/reports.md`.
 
 ## synth
 
