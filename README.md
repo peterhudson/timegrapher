@@ -25,7 +25,7 @@ paper-strip trace; see [docs/app.md](docs/app.md).
 
 ```sh
 cargo run --release -p timegrapher-app            # live from a microphone
-cargo run --release -p timegrapher-app -- rec.flac # replay a recording
+cargo run --release -p timegrapher-app -- rec.flac # analyse a recording
 ```
 
 On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).

@@ -1264,7 +1264,7 @@ impl TimegrapherApp {
                     (
                         Input::File,
                         "Recording",
-                        "Replay or analyse a WAV or FLAC recording",
+                        "Analyse or replay a WAV or FLAC recording",
                     ),
                 ],
             );
@@ -1325,10 +1325,12 @@ impl TimegrapherApp {
                 Input::File => {
                     if ui
                         .button("Open…")
-                        .on_hover_text("Choose a WAV or FLAC recording")
+                        .on_hover_text("Choose a WAV or FLAC recording and analyse it all")
                         .clicked()
                     {
-                        self.open_file_dialog();
+                        if let Some(p) = self.open_file_dialog() {
+                            self.start_batch(&p);
+                        }
                     }
                     if ui
                         .button("Open Folder…")
@@ -1339,7 +1341,9 @@ impl TimegrapherApp {
                         )
                         .clicked()
                     {
-                        self.open_folder_dialog();
+                        if let Some(p) = self.open_folder_dialog() {
+                            self.start_batch(&p);
+                        }
                     }
                     let w = (ui.available_width() - 260.0).clamp(120.0, 420.0);
                     ui.add(
@@ -1368,8 +1372,13 @@ impl TimegrapherApp {
                             let path = PathBuf::from(self.file_path.trim());
                             let ok = !self.file_path.trim().is_empty();
                             let folder = path.is_dir();
+                            // Laid out right to left: Analyse All, the usual way to
+                            // look at a recording, comes last so it sits first.
                             if ui
-                                .add_enabled(ok && !folder, theme::primary(ui, "Replay"))
+                                .add_enabled(
+                                    ok && !folder,
+                                    egui::Button::new("Replay").min_size(Vec2::new(0.0, 26.0)),
+                                )
                                 .on_hover_text(
                                     "Play the recording through at its own speed, as if live, \
                                      from the start",
@@ -1386,7 +1395,7 @@ impl TimegrapherApp {
                             if ui
                                 .add_enabled(
                                     ok && self.batch.is_none(),
-                                    egui::Button::new("Analyse All").min_size(Vec2::new(0.0, 26.0)),
+                                    theme::primary(ui, "Analyse All"),
                                 )
                                 .on_hover_text(if folder {
                                     "Analyse every segment in the folder, in name order, as one \
@@ -2517,16 +2526,14 @@ impl TimegrapherApp {
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
             card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
-                // A decimal only when the windows' scatter justifies one.
-                let pm = r.and_then(|r| r.amplitude_error_deg);
-                let (text, unit) = match (amp, pm) {
-                    (Some(v), Some(e)) if e < 1.0 => {
-                        (Some(format!("{v:.1}°")), format!("± {e:.1} degrees"))
-                    }
-                    (Some(v), Some(e)) => (Some(format!("{v:.0}°")), format!("± {e:.0} degrees")),
-                    (v, _) => (v.map(|v| format!("{v:.0}°")), String::new()),
+                // Whole degrees: a live reading's ± is about a degree, so a
+                // decimal would claim more than the beats can say.
+                let unit = match r.and_then(|r| r.amplitude_error_deg) {
+                    Some(e) if e < 0.95 => format!("± {e:.1}°"),
+                    Some(e) => format!("± {e:.0}°"),
+                    None => String::new(),
                 };
-                figure(ui, text, &unit);
+                figure(ui, amp.map(|v| format!("{v:.0}°")), &unit);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     if let Some(LiveReading {
@@ -2759,12 +2766,12 @@ impl TimegrapherApp {
                                     egui::Button::new("Open a Recording…")
                                         .min_size(Vec2::new(0.0, 26.0)),
                                 )
-                                .on_hover_text("Replay a WAV or FLAC file as if live")
+                                .on_hover_text("Analyse a WAV or FLAC recording all at once")
                                 .clicked()
                             {
                                 self.input = Input::File;
                                 if let Some(p) = self.open_file_dialog() {
-                                    self.start_replay(&p);
+                                    self.start_batch(&p);
                                 }
                             }
                         });
@@ -3372,9 +3379,9 @@ impl TimegrapherApp {
                 .collect()
         };
         // Each line in its reading's colour, as on the strip and in the
-        // distributions; a second or third line of the same reading is told
-        // apart by its dashes, and by its key's colour (Tick blue, Tock
-        // orange) where it has one.
+        // distributions. Tick's amplitude is purple dashed and Tock's purple
+        // dotted, with blue and orange swatches in the box at the pointer;
+        // beat error from the drop is a fainter dashed yellow.
         let solid = LineStyle::Solid;
         let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match pane {
             Pane::Rate => (
@@ -3435,9 +3442,9 @@ impl TimegrapherApp {
                     ChartLine {
                         name: "From the Drop".into(),
                         pts: pick(|p| p.beat_error_drop),
-                        color: pal.trace_beat_error,
+                        color: pal.trace_beat_error.gamma_multiply(0.6),
                         style: LineStyle::dashed_dense(),
-                        key: pal.trace_beat_error,
+                        key: pal.trace_beat_error.gamma_multiply(0.6),
                         main: false,
                     },
                 ],
@@ -3877,11 +3884,7 @@ impl eframe::App for TimegrapherApp {
         if let Some(p) = dropped.into_iter().next() {
             self.input = Input::File;
             self.file_path = p.display().to_string();
-            if p.is_dir() {
-                self.start_batch(&p);
-            } else {
-                self.start_replay(&p);
-            }
+            self.start_batch(&p);
         }
 
         self.poll();

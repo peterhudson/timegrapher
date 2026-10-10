@@ -27,8 +27,6 @@ use timegrapher_core::timing;
 pub const MIN_S: f64 = 300.0;
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
-/// Shortest cycle the pane marks, seconds.
-const MIN_PERIOD_S: f64 = 60.0;
 /// Escape wheel teeth for naming the escape wheel's period, as `series`
 /// assumes unless told otherwise.
 const ESCAPE_TEETH: u32 = 15;
@@ -147,14 +145,7 @@ pub fn compute(log: &BeatLog) -> Steadiness {
     };
     let cfg = Config::default();
     let long = longrun::analyse(log, None, &lc);
-    let mut report = steadiness::check(log, None, &long, &lc, &cfg);
-    // `long` gives a cycle's size in s/d even when the cycle is shorter than
-    // a reading, which turns an escape wheel's few tenths of a millisecond
-    // into thousands of s/d. Leave those cycles out until it reports them
-    // in milliseconds.
-    for c in &mut report.series {
-        c.period = c.period.take().filter(|p| p.period_s >= MIN_PERIOD_S);
-    }
+    let report = steadiness::check(log, None, &long, &lc, &cfg);
     let grids = grids(log, cfg.rate_reading_s);
     let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
     let be_search = (readings(&grids[2]) >= 30).then(|| {
@@ -354,6 +345,16 @@ fn secs(s: f64) -> String {
         format!("{:.0} min", s / 60.0)
     } else {
         format!("{:.1} h", s / 3600.0)
+    }
+}
+
+/// A time on a linear axis: "30 s" under a minute, then "1:30", so ticks
+/// every 30 s don't round to the same whole minute.
+fn lag_text(s: f64) -> String {
+    if s.abs() < 59.5 {
+        format!("{s:.0} s")
+    } else {
+        strip::fmt_time(s)
     }
 }
 
@@ -666,7 +667,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             let range = spread(&dots);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| secs(m.value))
+                .x_axis_formatter(|m, _| lag_text(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size))
                 .default_x_bounds(0.0, f.period_s);
@@ -714,7 +715,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             let x_hi = pts.last().map_or(1.0, |p| p[0]);
             let lo = pts.iter().map(|p| p[1]).fold(-a.band, f64::min).min(-0.2);
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| secs(m.value))
+                .x_axis_formatter(|m, _| lag_text(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(0.0, x_hi)

@@ -94,6 +94,9 @@ pub const AMPLITUDE: &[&str] = &[
     "It is worked out from the time between the unlock and the drop of each beat (the \
      solid green and indigo lines on the tick tock profile) and the lift angle, so it is \
      only as right as the lift angle under Watch.",
+    "The ± figure is roughly how far the amplitude could be off from the scatter of \
+     its 2-second pieces alone. It is precision, not accuracy: 1° of lift angle moves \
+     the amplitude about 4°, so a lift angle that is a little out matters more.",
     "Tick and Tock are the amplitude measured from each kind of beat alone. They \
      should agree to a few degrees; a big difference usually means one side's sounds \
      were misread, not a fault in the watch.",

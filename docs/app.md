@@ -2,13 +2,14 @@
 
 `timegrapher-app` is the live timegrapher screen: put the watch on the
 microphone and it shows the paper-strip trace with rate, amplitude and beat
-error, the way a bench timegrapher does. It can also replay a recording as
-if it were live, or analyse a whole recording at once and let you look
-back through it.
+error, the way a bench timegrapher does. A recording, or a folder of
+segments, opens analysed all at once to look back through; it can also be
+replayed as if it were live.
 
 ```sh
 cargo run --release -p timegrapher-app             # live from a microphone
-cargo run --release -p timegrapher-app -- rec.flac  # replay a recording
+cargo run --release -p timegrapher-app -- rec.flac  # analyse a recording
+cargo run --release -p timegrapher-app -- --replay rec.flac  # replay it as if live
 ```
 
 On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).
@@ -19,8 +20,10 @@ Along the top, the toolbar: the sidebar button, which hides the sidebar
 to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
 a Mac), **Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
-buttons for the session (see Sessions below; **Replay**, **Stop** and
-**Analyse All** for a recording). On the left, the settings in cards:
+buttons for the session (see Sessions below; **Analyse All**, **Replay**
+and **Stop** for a recording). Opening a recording, by **Open…**, a drop
+or the command line, analyses it all at once, which is how a watchmaker
+looks back through a take; **Replay** plays it through as if live. On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
 **Charts**, **Distributions**), each with its switch to show or hide it and
@@ -58,10 +61,10 @@ more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
 been moved or have drifted meanwhile. The big amplitude is the average of the two
-swings, with a ± figure: the standard error of the median of its 2 s
-windows, roughly how far it could be off from their scatter alone (it
-says nothing about a wrong lift angle, which moves every amplitude
-together). The amplitude shows a decimal only when the ± is under 1°.
+swings, in whole degrees, with a ± figure: the standard error of the
+median of its 2 s windows, roughly how far it could be off from their
+scatter alone. It is precision, not accuracy: a wrong lift angle moves
+every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
 (orange dot). The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick. A big gap
@@ -320,7 +323,7 @@ position.
   readings, rather than showing an empty strip. The status bar shows the
   sample rate and bit depth the input opened at. Where the desktop passes
   dropped files on (X11, Windows, macOS; not yet Wayland), dropping a file
-  on the window replays it. The app asks the device for 48 kHz in as few
+  or a folder on the window analyses it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
 - **Input level.** In the Microphone card: the microphone's gain and a peak meter
@@ -347,6 +350,11 @@ position.
   session` reports them) will build on it.
 
 ## Sessions
+
+Opening the app never touches the microphone; only **Start** opens it.
+When another program records from the same microphone (a long take with
+the recorder, say), don't press Start during its take, and press Stop
+before one begins.
 
 **Start** begins a session from the microphone. **Stop** stops
 listening and lets go of the microphone, so another program can use it
