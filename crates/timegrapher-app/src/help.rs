@@ -67,6 +67,25 @@ pub const RATE: &[&str] = &[
      or a loose stand, as well as with a watch that runs unevenly (a rubbing part, a \
      worn tooth, low amplitude), so compare it on the same stand and microphone. \
      Commercial timegraphers rarely show it; tg doesn't.",
+    "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
+     card's crystal runs a steady 10 to 50 parts per million off, which moves every \
+     rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
+     (`timegrapher clock measure --save`, or `clock from-log --save` after a recording \
+     with a clock log), the app shows the corrected rate under the big figure. The big \
+     figure stays on the card's clock, the same clock tg and an analysis of the \
+     recording read, so the two compare directly.",
+];
+
+pub const CLIPPING_BANNER: &[&str] = &[
+    "The loudest part of each tick reaches the top of the input's range and is cut \
+     flat. That moves where the drop seems to be, so the amplitude and the beat error \
+     read wrong. The rate comes from when the beats arrive, which clipping doesn't \
+     change.",
+    "Lower Input Level in the Microphone card until the ticks peak around -10 dBFS and \
+     this note goes away. If the level can't go low enough, move the microphone a \
+     little away from the watch.",
+    "It shows when more than 1% of the beats in the readings have a clipped sample in \
+     their sound, counted the same way `timegrapher analyze` counts them.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[

@@ -70,6 +70,30 @@ rises with noise or a muffled sound as well as with a watch that runs
 unevenly, so compare it on the same stand and microphone. The **?** on
 each reading explains it at length.
 
+**True Clock.** When the microphone's own clock error has been measured
+and stored (`timegrapher clock measure --save`, or `clock from-log --save`
+after a take with a clock log; see `clock` in
+[the agent interface](agent-interface.md#clock)), a
+line under the rate gives the rate corrected onto true time, labelled
+True Clock. A sound card's crystal runs a steady 10 to 50 ppm off, which
+moves every rate read on it by 1 to 4 s/d. The big figure always stays on
+the card's clock, the same clock tg and `timegrapher analyze` read, so it
+compares directly with them; the True Clock line is beside it, never
+instead of it. It is looked up by the input's name when a microphone
+session starts, and is not shown for a replayed recording.
+
+**Clipping.** When more than 1% of the beats in the readings have a
+clipped sample in their sound, counted as `timegrapher analyze` counts
+them, an amber banner above the readings says so and what to do: lower
+Input Level in the Microphone card (or, for a recording, record with the
+level lower). Clipping flattens the loudest part of each tick, which moves
+the drop and so the amplitude and the beat error; the rate is unaffected.
+The banner follows the readings: it shows while the beats being averaged
+clip and goes when they no longer do, and looking back through a
+recording shows it for the stretches that clipped. The level meter in the
+toolbar turns red on any clipped sample at once; the banner is the
+judgement on the readings.
+
 **Panes.** Below the readings are five panes: the paper strip, the tick tock
 profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
