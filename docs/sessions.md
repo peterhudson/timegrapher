@@ -48,6 +48,12 @@ clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
 names more wheels in the cycle search (seconds per turn).
 
+`--calibre NAME` takes a movement from the calibre table (the same one
+the app's picker and `long --calibre` use; an unknown name lists the
+known ones): its beat rate, lift angle and escape wheel where `--bph`,
+`--lift` and the session file give none, and its train's wheels in the
+cycle search. The `calibre` line in the session file is only a label.
+
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
 at the top skips those parts. A `[limits]` table changes the project's
@@ -178,8 +184,9 @@ Per state of wind (readings with the same `wind_h`), following Witschi:
 | DVH | vertical mean minus horizontal mean (rate and amplitude) |
 | Di | 6H minus CH |
 
-Across states of wind: isochronism per position (rate change from the
-fullest to the least wound reading), Im (the largest, excluding 12H, as in
+Across states of wind: isochronism per position (the change in rate,
+amplitude and beat error from the fullest to the least wound reading;
+`rate_change`, `amplitude_change` and `beat_error_change` in the JSON), Im (the largest, excluding 12H, as in
 NIHS 93-10), Im\* (over all positions), Ie (change in X over the
 positions measured in both) and N = 0.15·|Im| + 0.1·D + 0.6 (Witschi's
 quality factor with its default thermal term).

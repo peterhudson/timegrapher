@@ -300,6 +300,11 @@ enum Command {
         /// Lift angle in degrees (overrides the session file; default 52).
         #[arg(long)]
         lift: Option<f64>,
+        /// The movement (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name
+        /// lists the known ones): its beat rate, lift angle and wheels
+        /// where --bph, --lift and the session file give none.
+        #[arg(long)]
+        calibre: Option<String>,
         /// Tolerance class: ladies, mens, cosc-small, cosc, metas (default mens).
         #[arg(long)]
         tolerance: Option<String>,
@@ -702,6 +707,7 @@ fn main() -> ExitCode {
             init,
             bph,
             lift,
+            calibre,
             tolerance,
             settle,
             no_shape,
@@ -713,6 +719,7 @@ fn main() -> ExitCode {
             &session_cmd::Options {
                 bph,
                 lift,
+                calibre,
                 tolerance,
                 settle,
                 out,

@@ -595,16 +595,17 @@ pub fn html(sn: &Session) -> String {
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&r.states));
     if !r.isochronism.is_empty() {
-        body.push_str(r#"<h3>Isochronism</h3><table class="data"><thead><tr><th>Position</th><th class="num">From</th><th class="num">To</th><th class="num">Rate change<br>sec/day</th><th class="num">Amplitude change deg</th></tr></thead><tbody>"#);
+        body.push_str(r#"<h3>Isochronism</h3><table class="data"><thead><tr><th>Position</th><th class="num">From</th><th class="num">To</th><th class="num">Rate change<br>sec/day</th><th class="num">Amplitude change<br>deg</th><th class="num">Beat error change<br>ms</th></tr></thead><tbody>"#);
         for i in &r.isochronism {
             let _ = write!(
                 body,
-                r#"<tr><th>{}</th><td class="num">{:.0} h</td><td class="num">{:.0} h</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
+                r#"<tr><th>{}</th><td class="num">{:.0} h</td><td class="num">{:.0} h</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
                 i.position,
                 i.from_wind_h,
                 i.to_wind_h,
                 signed(Some(i.rate_change), 1),
-                signed(i.amplitude_change, 0)
+                signed(i.amplitude_change, 0),
+                signed(i.beat_error_change, 2)
             );
         }
         let _ = write!(
