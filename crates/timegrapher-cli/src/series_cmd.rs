@@ -201,12 +201,17 @@ fn print_series(s: &SeriesCheck) {
     }
     if let Some(c) = &s.cycle {
         println!(
-            "  {:<14} {:.1} s{}, {:.2} {} p-p, explains {:.0}% (found by {})",
+            "  {:<14} {:.1} s{}{}, {:.2} {} p-p, explains {:.0}% (found by {})",
             "cycle",
             c.period_s,
             c.wheel
                 .as_ref()
                 .map_or(String::new(), |w| format!(" ({w})")),
+            match (c.inner_period_s, c.inner_explained, c.turns) {
+                (Some(p), Some(e), Some(n)) =>
+                    format!(" = {n} × {p:.2} s (which alone explains {:.0}%)", e * 100.0),
+                _ => String::new(),
+            },
             c.peak_to_peak,
             s.unit,
             c.explained * 100.0,
