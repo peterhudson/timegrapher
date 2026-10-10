@@ -31,9 +31,12 @@ When the first argument is a checkout of it (a folder with `corpus.json`),
   each download against `corpus.json`. It uses `curl`, which macOS, Windows
   10 and later and most Linux systems have.
 - `--smoke` also runs the corpus's *smoke* takes, which have no tg reference,
-  through the engine. Such a take fails only if the engine panics. Stopping
+  through the engine. Such a take fails if the engine panics. Stopping
   with an error is fine, and the beats found are listed so odd behaviour
-  shows.
+  shows. The takes recorded with no watch on the stand
+  (`silence_empty_stand`, listed in `corpus::NO_WATCH`) also fail unless
+  `analyze` says no watch is heard (`watch_heard` false) in every file;
+  their readings are not compared.
 
 A folder of takes without `corpus.json`, such as a private set of
 recordings, is read as it is.

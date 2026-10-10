@@ -329,7 +329,9 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         .min(stop);
     let measurement = session::measure(&log, clock.as_ref(), settle, end);
 
-    let cycles = if c.o.no_cycles || c.m.cycles == Some(false) {
+    // Cycles and shape of noise would only mislead.
+    let heard = measurement.watch_heard;
+    let cycles = if !heard || c.o.no_cycles || c.m.cycles == Some(false) {
         Vec::new()
     } else {
         let lc = LongConfig {
@@ -346,7 +348,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         session::cycles(&longrun::analyse(&part, clock.as_ref(), &lc), &lc.wheels)
     };
 
-    let shape = if c.o.no_shape || c.m.shape == Some(false) {
+    let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
         None
     } else {
         let len = SHAPE_S.min(end - settle);
@@ -616,7 +618,7 @@ fn print_summary(s: &Session) {
     }
     println!("* outside tolerance, ? not measured reliably");
     println!();
-    for rd in &s.readings {
+    for rd in s.readings.iter().filter(|r| r.measurement.watch_heard) {
         let m = &rd.measurement;
         println!(
             "States       {:<4} {}; {}",
