@@ -1,0 +1,51 @@
+name: Something broke
+description: A crash, a hang, a wrong screen, a command that fails, or the microphone not working.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. The version and your setup help most. A one-command report bundle with the log and any crash message is coming; until then, paste what you can below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      placeholder: "The app closed when I pressed Start with the USB microphone unplugged."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Open the app
+        2. Unplug the microphone
+        3. Press Start
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: ["Desktop app", "Command line", "An AI agent using the command line", "Not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: |
+        Paste the output of `timegrapher --version` and `timegrapher devices`, and your operating system. If you built from source, add the output of `git log --oneline -1` in your copy. For microphone trouble, paste `timegrapher doctor` too.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: Anything printed in the terminal, the red banner in the app, or a crash message. Running with `RUST_BACKTRACE=1` set adds the detail we need after a crash.
+      render: text
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: A recording or screenshot if the problem depends on one. Recordings are public once attached, so listen back first.
