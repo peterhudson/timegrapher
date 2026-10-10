@@ -342,15 +342,12 @@ pub struct CrossCorrelation {
     /// Length of each reading, seconds, and the pairs of readings used.
     pub step_s: f64,
     pub readings: usize,
-    /// The lag with the strongest correlation, seconds: positive when the
-    /// rate moves after the amplitude.
-    pub lag_s: f64,
+    /// Correlation of the two, reading against the same reading.
     pub r: f64,
     /// Readings that are worth as much as independent ones, allowing for
     /// each series' memory.
     pub effective_readings: f64,
-    /// Chance of an r this large from unrelated series, allowing for the
-    /// lags tried.
+    /// Chance of an r this large from unrelated series.
     pub p_value: f64,
     /// Rate change per degree of amplitude within half an hour, s/d.
     pub s_per_day_per_deg: f64,
@@ -1598,10 +1595,9 @@ pub fn check(
             severity: Severity::Note,
             title: "The rate moves with the amplitude".into(),
             evidence: format!(
-                "{} Evidence: r {:.2} at a lag of {:.0} s over {} pairs of readings (worth about {:.0} independent ones), p {}.",
+                "{} Evidence: r {:.2} over {} pairs of readings (worth about {:.0} independent ones), p {}.",
                 x.headline,
                 x.r,
-                x.lag_s,
                 x.readings,
                 x.effective_readings,
                 p_text(x.p_value)
@@ -1646,8 +1642,10 @@ fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
 /// The correlation a rate–amplitude link has to reach to be named.
 const FOLLOWS_MIN_R: f64 = 0.3;
 
-/// Correlate the rate with the amplitude, reading against reading, at
-/// lags up to three readings either way. Both grids share `t0` and step.
+/// Correlate the rate with the amplitude, each reading against the same
+/// reading (no lag: the rate answers the amplitude at once, and a lag
+/// search on a shared cycle finds the half-turn where the two
+/// anticorrelate). Both grids share `t0` and step.
 /// The test is on the changes within half an hour (both series with
 /// their slow change taken out): two series that both drift correlate
 /// whether or not one drives the other, and their drift leaves too few
@@ -1657,12 +1655,10 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
     drop_outliers(&mut x, cfg.outlier_sigma);
     drop_outliers(&mut y, cfg.outlier_sigma);
     let (xd, yd) = (longterm::detrend(&x, 1800.0), longterm::detrend(&y, 1800.0));
-    const LAGS: i64 = 3;
-    let pairs = |x: &Grid, y: &Grid, k: i64| -> Vec<(f64, f64)> {
-        (0..y.y.len() as i64)
+    let pairs = |x: &Grid, y: &Grid| -> Vec<(f64, f64)> {
+        (0..y.y.len().min(x.y.len()))
             .filter_map(|i| {
-                let j = i - k;
-                let (a, b) = (*x.y.get(usize::try_from(j).ok()?)?, y.y[i as usize]);
+                let (a, b) = (x.y[i], y.y[i]);
                 (a.is_finite() && b.is_finite()).then_some((a, b))
             })
             .collect()
@@ -1678,16 +1674,15 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
         let sbb: f64 = p.iter().map(|q| (q.1 - mb).powi(2)).sum();
         (sab / (saa * sbb).sqrt(), sab / saa)
     };
-    let (k, p, (r, slope)) = (-LAGS..=LAGS)
-        .map(|k| (k, pairs(&xd, &yd, k)))
-        .filter(|(_, p)| p.len() >= 30)
-        .map(|(k, p)| {
-            let st = stats(&p);
-            (k, p, st)
-        })
-        .filter(|(_, _, st)| st.0.is_finite())
-        .max_by(|a, b| a.2 .0.abs().total_cmp(&b.2 .0.abs()))?;
-    let (take_r, take_slope) = stats(&pairs(&x, &y, 0));
+    let p = pairs(&xd, &yd);
+    if p.len() < 30 {
+        return None;
+    }
+    let (r, slope) = stats(&p);
+    if !r.is_finite() {
+        return None;
+    }
+    let (take_r, take_slope) = stats(&pairs(&x, &y));
     let n = p.len() as f64;
     let rho = |g: &Grid| {
         acf(&g.y, 1)
@@ -1699,21 +1694,15 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
     let rr = (rho(&xd) * rho(&yd)).clamp(-0.99, 0.99);
     let n_eff = (n * (1.0 - rr) / (1.0 + rr)).clamp(4.0, n);
     let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
-    let p_value = (chi2_tail(z * z, 1) * (2 * LAGS + 1) as f64).min(1.0);
+    let p_value = chi2_tail(z * z, 1);
     let moves_with = p_value < cfg.alpha && r.abs() >= FOLLOWS_MIN_R;
     let step = rate.step;
-    let lag_s = k as f64 * step;
     let headline = if moves_with {
         format!(
-            "Rate moves with amplitude: {:+.2} s/d per degree from one {:.0} s reading to the next (r {:.2}{}); over the whole take, {:+.2} s/d per degree.",
+            "Rate moves with amplitude: {:+.2} s/d per degree from one {:.0} s reading to the next (r {:.2}); over the whole take, {:+.2} s/d per degree.",
             slope,
             step,
             r,
-            match k {
-                0 => String::new(),
-                k if k > 0 => format!(", the rate {:.0} s behind", lag_s),
-                _ => format!(", the rate {:.0} s ahead", -lag_s),
-            },
             take_slope
         )
     } else {
@@ -1727,7 +1716,6 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
     Some(CrossCorrelation {
         step_s: step,
         readings: p.len(),
-        lag_s,
         r,
         effective_readings: n_eff,
         p_value,

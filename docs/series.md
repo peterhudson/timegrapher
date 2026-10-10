@@ -82,13 +82,15 @@ For each series:
 - **Two states**: the two-state finder over 10 s blocks (see
   [sessions.md](sessions.md)).
 
-Across the series, the rate is correlated with the amplitude, reading
-against reading, at lags up to three readings either way. The test uses
+Across the series, the rate is correlated with the amplitude, each
+reading against the same reading. There is no lag search: the rate
+answers the amplitude at once, and on a shared cycle a lag search finds
+the half-turn where the two anticorrelate. The test uses
 the changes within half an hour, with each series' slow change taken
 out: two series that both drift correlate whether or not one drives the
 other, and a drift leaves too few independent readings to tell. The
 p-value allows for each series' memory (an effective number of readings
-from their lag-1 correlations) and for the seven lags tried. When p is under
+from their lag-1 correlations). When p is under
 0.01 and |r| is at least 0.3, the report says the rate moves with the
 amplitude, with the slope in s/d per degree. The whole-take slope, drift
 included, is given beside it: on a run-down that is the movement's
@@ -130,7 +132,7 @@ The usual envelope (see [agent-interface.md](agent-interface.md)), then:
 | `duration_s`, `bph` | the take |
 | `config` | the thresholds used |
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
-| `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `lag_s` (positive when the rate moves after the amplitude), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `moves_with`, `headline` |
+| `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `moves_with`, `headline` |
 | `findings[]` | `code`, `series`, `severity` (`fault`, `warning`, `note`), `title`, `evidence`, `advice`. Codes: `periodic`, `two_states`, `measurement_split`, `shifting_mean`, `drifting`, `wandering`, and `rate_moves_with_amplitude`. A steady series has none. |
 
 Each entry of `series[]`:

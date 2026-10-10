@@ -111,10 +111,9 @@ fn print_text(r: &Report, calibrated: bool) {
         println!();
         println!("{}", x.headline);
         println!(
-            "  {:<14} r {:.2} at a lag of {:.0} s over {} pairs (worth about {:.0} independent); {:+.3} s/d per degree; p {}",
+            "  {:<14} r {:.2} over {} pairs (worth about {:.0} independent); {:+.3} s/d per degree; p {}",
             "rate vs amp.",
             x.r,
-            x.lag_s,
             x.readings,
             x.effective_readings,
             x.s_per_day_per_deg,
