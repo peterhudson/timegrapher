@@ -188,6 +188,7 @@ without a number; change them under `[limits]`.
 | Large differences between positions | D > 10 s/d (*project*, `delta_rate`) | check |
 | Large vertical amplitude loss | DVH amplitude below −50° (*project*, `vh_amplitude_drop`) | check |
 | Unlock not timed reliably | under 60% of the 2 s amplitude windows find the unlock on both sides (*project*, `min_unlock_coverage`); amplitude and beat error from the unlock are then shown with `?` and not judged | check |
+| Recording clipped | over 1% of the measured beats have a clipped sample in their template window, as `analyze` warns; amplitude and beat error may be off, rate is not | check |
 | Rate unsteady within a reading | 10 s rates spread > 20 s/d (*project*, `rate_spread`) | check |
 | Regular change once per wheel turn | a periodic change above the 1% false-alarm level matching a wheel | check |
 | Vertical and horizontal rates differ | \|DVH\| ≥ 5 s/d, with Witschi's pin advice | note |
