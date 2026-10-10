@@ -107,7 +107,17 @@ least 10% of the detrended variance beyond what noise would give. Of the
 candidates the one that explains most wins, and then its shortest whole
 fraction (down to an eighth) that explains at least 85% as much is kept:
 folding at five turns of a cycle explains as much as folding at one, and
-on a lag grid of 10 s readings a 48 s cycle lines up best at 240 s. The cycle must also
+on a lag grid of 10 s readings a 48 s cycle lines up best at 240 s.
+Every candidate's period is refined by folding: over a take of T
+seconds a period off by P²/T drifts a whole turn, so on a 16 h run a
+48 s cycle has to be found to a few thousandths of a second. The search
+narrows until its step is a twentieth of that. When the longer period
+still wins, the cycle inside it is named if it explains at least half
+as much on its own: on the Reverso's overnight run the rate repeats
+every 240 s as five turns of a 48 s cycle whose shape changes from turn
+to turn. With the 48 s shape taken out, folding at 240 s still explains
+6% of the rate's variance and 8% of the amplitude's, in both halves of
+the night. The cycle must also
 last at least three readings (2 s windows for the amplitude and the beat
 error) and fit five times in the take (three for
 the period search). The verdicts are tried in this order: two states or
@@ -149,7 +159,7 @@ Each entry of `series[]`:
 | `trend` | `per_hour`, `explained`, `curve_explained`, `start`, `end`, `turn` (`[time, value]` or null) |
 | `period` | the period search's strongest component (`other_periods_s`: the weaker ones, each also tried as a cycle): `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak`, `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel` |
 | `two_state` | the two-state finder's full result (rate and amplitude only) |
-| `cycle` | the cycle behind `periodic` (or found under another verdict), from the 2 s windows for the amplitude and the beat error: `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel` |
+| `cycle` | the cycle behind `periodic` (or found under another verdict), from the 2 s windows for the amplitude and the beat error: `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel`, and `inner_period_s`, `inner_explained`, `turns` when the period is a whole number of turns of a shorter cycle that explains at least half as much |
 | `unlock_hopping` | amplitude and beat error only: one side's unlock edges split in two |
 
 Times are seconds from the start of the take, on the true clock when
