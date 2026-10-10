@@ -437,9 +437,26 @@ impl TrendPoint {
 struct Batch {
     rx: std::sync::mpsc::Receiver<Result<Option<BeatLog>, String>>,
     progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Set to stop the analysis.
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     duration_s: Option<f64>,
     label: String,
+    started: Instant,
+    /// How many files, and the first and last names, for a folder.
+    files: usize,
+    first: String,
+    last: String,
 }
+
+impl Drop for Batch {
+    fn drop(&mut self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Unwound through the analysis to stop it when it is cancelled.
+struct Cancelled;
 
 pub struct TimegrapherApp {
     input: Input,
@@ -1035,21 +1052,42 @@ impl TimegrapherApp {
         cfg.analysis.amplitude.lift_deg = self.lift_deg;
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let p2 = progress.clone();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (p2, c2) = (progress.clone(), cancel.clone());
+        let name = |p: &PathBuf| capture_label(p);
+        let (count, first, last) = (files.len(), name(&files[0]), name(&files[files.len() - 1]));
         std::thread::spawn(move || {
             let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-            let r = stream::analyze_files(&paths, &cfg, |s| {
-                p2.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed);
-            });
-            let _ = tx.send(r.map(Some).map_err(|e| e.to_string()));
+            // A cancel unwinds out of the analysis from its progress report
+            // (resume_unwind runs no panic hook, so nothing is printed).
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                stream::analyze_files(&paths, &cfg, |s| {
+                    p2.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                    if c2.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::panic::resume_unwind(Box::new(Cancelled));
+                    }
+                })
+            }));
+            match r {
+                Ok(r) => {
+                    let _ = tx.send(r.map(Some).map_err(|e| e.to_string()));
+                }
+                Err(e) if e.is::<Cancelled>() => {}
+                Err(e) => std::panic::resume_unwind(e),
+            }
         });
         self.reset_session(info.sample_rate, label.clone());
         self.live = None;
         self.batch = Some(Batch {
             rx,
             progress,
+            cancel,
             duration_s: info.frames.map(|f| f as f64 / info.sample_rate as f64),
             label,
+            started: Instant::now(),
+            files: count,
+            first,
+            last,
         });
     }
 
@@ -1162,7 +1200,11 @@ impl TimegrapherApp {
             }
         }
         if let Some(r) = done {
-            let label = self.batch.take().map(|b| b.label).unwrap_or_default();
+            let label = self
+                .batch
+                .take()
+                .map(|b| b.label.clone())
+                .unwrap_or_default();
             match r {
                 Ok(Some(log)) => self.show_log(log, label),
                 Ok(None) => {}
@@ -1393,23 +1435,28 @@ impl TimegrapherApp {
                     }
                     if ui
                         .button("Open Folder…")
-                        .on_hover_text(
-                            "Choose a folder of WAV or FLAC segments of one long take, such \
-                             as an overnight run: they are analysed in name order as one \
-                             recording",
-                        )
+                        .on_hover_text(FOLDER_RULE)
                         .clicked()
                     {
                         if let Some(p) = self.open_folder_dialog() {
                             self.start_batch(&p);
                         }
                     }
-                    let w = (ui.available_width() - 260.0).clamp(120.0, 420.0);
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.file_path)
-                            .hint_text("or type a file's or folder's path, or drop it here")
-                            .desired_width(w),
-                    );
+                    let w = (ui.available_width() - 200.0).clamp(120.0, 480.0);
+                    let r = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.file_path)
+                                .hint_text("or type a file's or folder's path and press Enter")
+                                .desired_width(w),
+                        )
+                        .on_hover_text("A WAV or FLAC file, or a folder; Enter analyses it");
+                    let path = PathBuf::from(self.file_path.trim());
+                    if r.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && !self.file_path.trim().is_empty()
+                    {
+                        self.start_batch(&path);
+                    }
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1427,44 +1474,29 @@ impl TimegrapherApp {
                             {
                                 self.stop();
                             }
+                        } else if self.batch.is_some() {
+                            if ui
+                                .add(theme::secondary(ui, "Cancel"))
+                                .on_hover_text("Stop analysing this recording")
+                                .clicked()
+                            {
+                                self.batch = None;
+                            }
                         } else {
                             let path = PathBuf::from(self.file_path.trim());
-                            let ok = !self.file_path.trim().is_empty();
-                            let folder = path.is_dir();
-                            // Laid out right to left: Analyse All, the usual way to
-                            // look at a recording, comes last so it sits first.
+                            let file = path.is_file();
                             if ui
-                                .add_enabled(
-                                    ok && !folder,
-                                    egui::Button::new("Replay").min_size(Vec2::new(0.0, 26.0)),
-                                )
+                                .add_enabled(file, theme::secondary(ui, "Replay"))
                                 .on_hover_text(
                                     "Play the recording through at its own speed, as if live, \
                                      from the start",
                                 )
-                                .on_disabled_hover_text(if folder {
-                                    "A folder of segments is analysed all at once: use Analyse All"
-                                } else {
-                                    "Open a recording first"
-                                })
+                                .on_disabled_hover_text(
+                                    "Open a recording first. A folder is analysed all at once.",
+                                )
                                 .clicked()
                             {
                                 self.start_replay(&path);
-                            }
-                            if ui
-                                .add_enabled(
-                                    ok && self.batch.is_none(),
-                                    theme::primary(ui, "Analyse All"),
-                                )
-                                .on_hover_text(if folder {
-                                    "Analyse every segment in the folder, in name order, as one \
-                                     recording, and look through it"
-                                } else {
-                                    "Analyse the whole file now and look through it"
-                                })
-                                .clicked()
-                            {
-                                self.start_batch(&path);
                             }
                         }
                     }
@@ -3112,72 +3144,129 @@ impl TimegrapherApp {
 
     /// What shows before there is anything to show: how to begin, and the
     /// two ways to.
+    /// Before anything is open: the three ways in. While a recording is
+    /// being analysed, how far it has got.
     fn empty_state(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        ui.add_space((ui.available_height() * 0.18).clamp(16.0, 120.0));
+        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
         ui.vertical_centered(|ui| {
-            let w = 440.0_f32.min(ui.available_width());
+            let w = 520.0_f32.min(ui.available_width());
             ui.allocate_ui(Vec2::new(w, 0.0), |ui| {
                 theme::card().fill(pal.card).show(ui, |ui| {
                     ui.set_width(w - 28.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 10.0;
-                        ui.label(RichText::new("Ready to Listen").font(theme::semibold(20.0)));
-                        for (n, step) in [
-                            "Put the watch on the microphone, dial up.",
-                            "Choose the microphone at the top and set its level in the sidebar.",
-                            "Press Start. The readings settle once the first beats are in.",
-                        ]
-                        .iter()
-                        .enumerate()
-                        {
-                            ui.horizontal(|ui| {
-                                let (rect, _) =
-                                    ui.allocate_exact_size(Vec2::splat(20.0), egui::Sense::hover());
-                                ui.painter().circle_filled(rect.center(), 10.0, pal.control);
-                                ui.painter().text(
-                                    rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    (n + 1).to_string(),
-                                    theme::semibold(11.0),
-                                    pal.text_secondary,
-                                );
-                                ui.add(egui::Label::new(*step).wrap());
-                            });
+                        if self.batch.is_some() {
+                            self.batch_progress(ui);
+                        } else {
+                            self.ways_in(ui);
                         }
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(theme::primary(ui, "Start Listening"))
-                                .on_hover_text("Listen to the microphone chosen at the top")
-                                .clicked()
-                            {
-                                self.input = Input::Microphone;
-                                self.start_microphone();
-                            }
-                            if ui
-                                .add(
-                                    egui::Button::new("Open a Recording…")
-                                        .min_size(Vec2::new(0.0, 26.0)),
-                                )
-                                .on_hover_text("Analyse a WAV or FLAC recording all at once")
-                                .clicked()
-                            {
-                                self.input = Input::File;
-                                if let Some(p) = self.open_file_dialog() {
-                                    self.start_batch(&p);
-                                }
-                            }
-                        });
-                        ui.label(
-                            RichText::new("You can also drop a WAV or FLAC file on the window.")
-                                .small()
-                                .color(pal.text_tertiary),
-                        );
                     });
                 });
             });
         });
+    }
+
+    fn ways_in(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.label(RichText::new("Timegrapher").font(theme::semibold(20.0)));
+        let row = |ui: &mut egui::Ui, button: egui::Button<'static>, hint: &str, text: &str| {
+            ui.horizontal(|ui| {
+                let b = ui
+                    .add_sized(Vec2::new(178.0, 30.0), button)
+                    .on_hover_text(hint);
+                ui.add(
+                    egui::Label::new(RichText::new(text).small().color(pal.text_secondary)).wrap(),
+                );
+                b.clicked()
+            })
+            .inner
+        };
+        if row(
+            ui,
+            theme::primary(ui, "Listen to a Watch"),
+            "Start listening to the microphone chosen at the top",
+            "Put the watch on the microphone, dial up. Choose the microphone at the top \
+             and set its level in the sidebar.",
+        ) {
+            self.input = Input::Microphone;
+            self.start_microphone();
+        }
+        if row(
+            ui,
+            theme::secondary(ui, "Open a Recording…"),
+            "Choose a WAV or FLAC file and analyse it all at once",
+            "One WAV or FLAC file, analysed all at once.",
+        ) {
+            self.input = Input::File;
+            if let Some(p) = self.open_file_dialog() {
+                self.start_batch(&p);
+            }
+        }
+        if row(
+            ui,
+            theme::secondary(ui, "Open a Folder…"),
+            "Choose a folder saved by this app, or a folder of WAV or FLAC segments of \
+             one long take",
+            FOLDER_RULE,
+        ) {
+            self.input = Input::File;
+            if let Some(p) = self.open_folder_dialog() {
+                self.start_batch(&p);
+            }
+        }
+    }
+
+    /// How far the analysis of a recording has got, and a way to stop it.
+    fn batch_progress(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let Some(b) = &self.batch else { return };
+        let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
+        ui.label(RichText::new(format!("Analysing {}", b.label)).font(theme::semibold(18.0)));
+        let frac = b.duration_s.map(|d| (done / d.max(1e-9)).clamp(0.0, 1.0));
+        ui.add(
+            egui::ProgressBar::new(frac.unwrap_or(0.0) as f32)
+                .desired_height(16.0)
+                .fill(pal.accent)
+                .text(RichText::new(match frac {
+                    Some(f) => format!("{:.0}%", 100.0 * f),
+                    None => String::new(),
+                })),
+        );
+        let elapsed = b.started.elapsed().as_secs_f64();
+        let mut line = match b.duration_s {
+            Some(d) => format!(
+                "{} of {} of sound analysed",
+                strip::fmt_time(done),
+                strip::fmt_time(d)
+            ),
+            None => format!("{} of sound analysed", strip::fmt_time(done)),
+        };
+        // Time left at the pace so far, once there is a pace to go by.
+        if let (Some(d), true) = (b.duration_s, done > 0.0 && elapsed > 3.0) {
+            let left = (d - done).max(0.0) * elapsed / done;
+            line += &format!(" · about {} to go", strip::fmt_time(left));
+        }
+        ui.label(RichText::new(line).color(pal.text_secondary));
+        if b.files > 1 {
+            ui.label(
+                RichText::new(format!(
+                    "{} files joined in name order, {} to {}.",
+                    b.files, b.first, b.last
+                ))
+                .small()
+                .color(pal.text_tertiary),
+            );
+        }
+        if ui
+            .add(theme::secondary(ui, "Cancel"))
+            .on_hover_text("Stop analysing this recording")
+            .clicked()
+        {
+            self.batch = None;
+        }
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
     /// A problem, where it can't be missed, with a way to put it away.
@@ -4196,6 +4285,11 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
 /// WAV and FLAC files in name order (the segments of one long take).
+/// How the files in a folder are put together, said where a folder is
+/// opened. The command line's `long` and `series` read folders the same way.
+const FOLDER_RULE: &str = "A take this app saved, or a folder of WAV or FLAC segments of one \
+     long run, joined end to end in file-name order (audio-001.wav, audio-002.wav, …).";
+
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Ok(vec![path.to_path_buf()]);
@@ -4557,6 +4651,20 @@ mod tests {
         assert_eq!(names, ["seg-01.wav", "seg-02.wav", "seg-03.wav"]);
 
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        // Cancelled, the analysis stops without an answer.
+        app.start_batch(&dir);
+        let b = app.batch.as_ref().unwrap();
+        assert_eq!((b.files, b.first.as_str()), (3, "seg-01.wav"));
+        b.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        let stopped = b.rx.recv_timeout(std::time::Duration::from_secs(60));
+        assert!(
+            matches!(
+                stopped,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+            ),
+            "{stopped:?}"
+        );
+        app.batch = None;
         app.start_batch(&dir);
         let t = Instant::now();
         while app.batch.is_some() && t.elapsed().as_secs() < 120 {
