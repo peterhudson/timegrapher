@@ -22,10 +22,23 @@ pub struct Envelope<'a, T: Serialize> {
     pub body: &'a T,
 }
 
+/// Name, version, build and platform. `git_hash` is the short commit hash
+/// ("unknown" in a build without git), `git_dirty` whether the work tree had
+/// uncommitted changes (null when unknown), `build_date` the UTC date of the
+/// build. These tell builds apart; they are not readings, and anything that
+/// compares documents should leave this block out.
 pub fn software() -> Value {
+    let dirty = match env!("TIMEGRAPHER_GIT_DIRTY") {
+        "true" => json!(true),
+        "false" => json!(false),
+        _ => Value::Null,
+    };
     json!({
         "name": "timegrapher",
         "version": env!("CARGO_PKG_VERSION"),
+        "git_hash": env!("TIMEGRAPHER_GIT_HASH"),
+        "git_dirty": dirty,
+        "build_date": env!("TIMEGRAPHER_BUILD_DATE"),
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
     })
