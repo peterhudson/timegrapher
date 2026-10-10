@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{self, Fold, Grid, LongConfig, Search};
-use timegrapher_core::periodicity::{standard_wheels, Wheel};
+use timegrapher_core::periodicity::{default_wheels, Wheel};
 use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind, Verdict};
 use timegrapher_core::stream::BeatLog;
 use timegrapher_core::timing;
@@ -27,9 +27,6 @@ use timegrapher_core::timing;
 pub const MIN_S: f64 = 300.0;
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
-/// Escape wheel teeth for naming the escape wheel's period, as `series`
-/// assumes unless told otherwise.
-const ESCAPE_TEETH: u32 = 15;
 /// Most readings drawn on the Readings view per series.
 const MAX_DRAWN: usize = 3000;
 /// Shortest row, and narrowest column, in which a series' plot stays
@@ -140,10 +137,10 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
 /// some seconds), so it is run off the window's thread.
 /// The tests over `log`, naming cycles after `wheels` (a picked
 /// calibre's train) or, without them, the wheels most calibres at the beat
-/// rate share.
+/// rate share, with both usual escape wheels (15 and 20 teeth).
 pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
     let lc = LongConfig {
-        wheels: wheels.unwrap_or_else(|| standard_wheels(log.bph, ESCAPE_TEETH)),
+        wheels: wheels.unwrap_or_else(|| default_wheels(log.bph)),
         ..Default::default()
     };
     let cfg = Config::default();
@@ -602,10 +599,21 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(0.0, top)
                 .show(ui, |p| {
-                    for w in &s.wheels {
+                    for (k, w) in s.wheels.iter().enumerate() {
                         let x = w.period_s.log10();
                         if x > x_lo && x < x_hi {
                             p.vline(VLine::new(w.name.clone(), x).color(weak).width(1.0_f32));
+                            // Two candidates of one name (the escape wheel at 15
+                            // and at 20 teeth): the shorter one is labelled on its
+                            // left, so the two names don't overlap.
+                            let shorter_twin = s
+                                .wheels
+                                .iter()
+                                .skip(k + 1)
+                                .any(|o| o.name == w.name && o.period_s > w.period_s)
+                                || s.wheels[..k]
+                                    .iter()
+                                    .any(|o| o.name == w.name && o.period_s > w.period_s);
                             p.text(
                                 Text::new(
                                     "wheel",
@@ -613,7 +621,11 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                                     wheel_title(&w.name),
                                 )
                                 .color(pal.text_secondary)
-                                .anchor(egui::Align2::LEFT_TOP),
+                                .anchor(if shorter_twin {
+                                    egui::Align2::RIGHT_TOP
+                                } else {
+                                    egui::Align2::LEFT_TOP
+                                }),
                             );
                         }
                     }
