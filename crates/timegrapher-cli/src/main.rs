@@ -1,3 +1,5 @@
+mod archive;
+mod bundle_cmd;
 mod clock_cmd;
 mod doctor;
 mod long;
@@ -352,6 +354,55 @@ enum Command {
         #[arg(long)]
         quiet: bool,
     },
+    /// Make a zip to attach to an issue: an excerpt of the recording, what
+    /// was measured, the system, clock corrections and logs, with the home
+    /// folder, user and host names removed. Never opens the microphone.
+    /// With --replay, run a bundle's commands again and show what moved.
+    Report {
+        /// The recording (a file, or a folder of segments), if the report
+        /// is about one.
+        recording: Vec<PathBuf>,
+        /// Start of the excerpt, seconds into the recording.
+        #[arg(long, default_value_t = 0.0)]
+        at: f64,
+        /// Length of the excerpt, seconds (5 minutes of FLAC is about 18 MB;
+        /// GitHub takes attachments up to 25 MB).
+        #[arg(long, default_value_t = 300.0)]
+        span: f64,
+        /// Leave the audio out.
+        #[arg(long)]
+        no_audio: bool,
+        /// What the report is about (default: reading with a recording, bug
+        /// without).
+        #[arg(long, value_enum)]
+        kind: Option<bundle_cmd::Kind>,
+        /// What happened, in your words.
+        #[arg(long)]
+        note: Option<String>,
+        /// Beat rate in beats per hour, as set when the problem showed.
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees, as set.
+        #[arg(long)]
+        lift: Option<f64>,
+        /// Folder for the zip (default: the current folder).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Say you listened to the excerpt and it holds nothing private.
+        #[arg(long)]
+        listened_back: bool,
+        /// Offer the excerpt to the public test corpus under CC0. Only the
+        /// person who made the recording should set this.
+        #[arg(long)]
+        cc0: bool,
+        /// Run the commands of this bundle (zip or unpacked folder) with
+        /// this build and show what moved.
+        #[arg(long, conflicts_with_all = ["recording", "no_audio", "note", "out", "cc0", "listened_back"])]
+        replay: Option<PathBuf>,
+        /// Print the manifest (or the replay) as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         out: PathBuf,
@@ -690,6 +741,44 @@ fn main() -> ExitCode {
                 Err(e) => Err(e),
             }
         }
+        Command::Report {
+            recording,
+            at,
+            span,
+            no_audio,
+            kind,
+            note,
+            bph,
+            lift,
+            out,
+            listened_back,
+            cc0,
+            replay,
+            json,
+        } => match replay {
+            Some(b) => bundle_cmd::replay(&b, json),
+            None => {
+                let kind = kind.unwrap_or(if recording.is_empty() {
+                    bundle_cmd::Kind::Bug
+                } else {
+                    bundle_cmd::Kind::Reading
+                });
+                bundle_cmd::run(&bundle_cmd::Options {
+                    recording,
+                    at,
+                    span,
+                    no_audio,
+                    kind,
+                    note,
+                    bph,
+                    lift,
+                    out,
+                    json,
+                    listened_back,
+                    cc0,
+                })
+            }
+        },
         Command::Synth {
             out,
             duration,
