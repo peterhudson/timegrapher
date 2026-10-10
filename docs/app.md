@@ -290,10 +290,11 @@ window's size and place. Nothing about the watch is kept: the lift angle,
 beat rate and position start fresh, since the next watch on the pickup may
 differ. **Reset Panes** puts the panes back as they started.
 
-**Log and crash records.** The app writes a log, `timegrapher.log`, beside
-its settings (`~/.local/share/timegrapher` on Linux,
-`~/Library/Application Support/Timegrapher` on macOS,
-`%APPDATA%\Timegrapher\data` on Windows): the version, the microphone
+**Log and crash records.** The app writes a log, `logs/timegrapher.log`, in
+the timegrapher settings folder (`~/.config/timegrapher` on Linux,
+`~/Library/Application Support/timegrapher` on macOS,
+`%APPDATA%\timegrapher` on Windows; the folder that holds `clocks.json`),
+where `timegrapher report` collects it: the version, the microphone
 opened, level changes, beat lock gained and lost, position changes and
 every message the app shows. It is kept under 1 MB, with the two files
 before it. If the app panics it also writes `crash-<time>.txt` there with

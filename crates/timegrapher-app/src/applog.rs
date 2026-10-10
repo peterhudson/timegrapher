@@ -23,6 +23,7 @@ const KEEP: usize = 3;
 /// Lines kept in memory for a crash record.
 const RECENT: usize = 200;
 const LOG: &str = "timegrapher.log";
+const LOGS: &str = "logs";
 
 /// Version, build and platform, for the log and a crash record.
 pub fn version() -> String {
@@ -43,7 +44,8 @@ struct Log {
 
 static LOGGER: Mutex<Option<Log>> = Mutex::new(None);
 
-/// Start logging in `dir` (created if missing) and record crashes there.
+/// Start logging in `dir`'s `logs` folder (created if missing) and record
+/// crashes in `dir`, where `timegrapher report` collects both.
 /// Without a folder the log is kept in memory only.
 pub fn init(dir: Option<PathBuf>) {
     start(dir);
@@ -74,7 +76,7 @@ fn start(dir: Option<PathBuf>) {
         recent: VecDeque::new(),
     };
     if let Some(d) = &dir {
-        if fs::create_dir_all(d).is_ok() {
+        if fs::create_dir_all(d.join(LOGS)).is_ok() {
             open(&mut log);
         }
     }
@@ -85,7 +87,7 @@ fn start(dir: Option<PathBuf>) {
 }
 
 fn open(log: &mut Log) {
-    let path = log.dir.join(LOG);
+    let path = log.dir.join(LOGS).join(LOG);
     log.written = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     log.file = OpenOptions::new().create(true).append(true).open(path).ok();
 }
@@ -94,8 +96,8 @@ fn open(log: &mut Log) {
 fn rotate(log: &mut Log) {
     log.file = None;
     let name = |i: usize| match i {
-        0 => log.dir.join(LOG),
-        i => log.dir.join(format!("{LOG}.{i}")),
+        0 => log.dir.join(LOGS).join(LOG),
+        i => log.dir.join(LOGS).join(format!("{LOG}.{i}")),
     };
     for i in (0..KEEP - 1).rev() {
         let _ = fs::rename(name(i), name(i + 1));
@@ -197,7 +199,7 @@ mod tests {
     fn the_log_rotates_and_keeps_three_files() {
         let dir = std::env::temp_dir().join(format!("tg-applog-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join(LOGS)).unwrap();
         let mut log = Log {
             dir: dir.clone(),
             file: None,
@@ -209,7 +211,7 @@ mod tests {
             writeln!(log.file.as_mut().unwrap(), "x").unwrap();
             rotate(&mut log);
         }
-        let mut names: Vec<String> = fs::read_dir(&dir)
+        let mut names: Vec<String> = fs::read_dir(dir.join(LOGS))
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
@@ -236,7 +238,7 @@ mod tests {
             "{text}"
         );
         assert!(text.starts_with("Timegrapher "), "{text}");
-        assert!(fs::read_to_string(dir.join(LOG))
+        assert!(fs::read_to_string(dir.join(LOGS).join(LOG))
             .unwrap()
             .contains("microphone opened"));
         let _ = fs::remove_dir_all(&dir);

@@ -150,7 +150,8 @@ fn main() -> ExitCode {
         };
     }
     // The log and crash records live beside the settings.
-    applog::init(eframe::storage_dir("Timegrapher"));
+    // The settings folder `timegrapher report` collects logs from.
+    applog::init(timegrapher_core::clockstore::config_dir());
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Timegrapher")
