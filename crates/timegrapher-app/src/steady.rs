@@ -363,7 +363,7 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
     let fine = hi - lo < 3.0;
     let mut marks = Vec::new();
     for k in (lo.floor() as i32 - 1)..=(hi.ceil() as i32) {
-        for (m, step) in [(1.0f64, 1.0), (2.0, 0.1), (5.0, 0.1)] {
+        for (m, step) in [(1.0f64, 1.0), (2.0, 0.3), (5.0, 0.3)] {
             if !fine && m != 1.0 {
                 continue;
             }
@@ -406,7 +406,8 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: &mut 
     if fits(n, h) >= MIN_ROW || fits(n, w) < MIN_COLUMN {
         // One above another, filling the pane, or scrolling when it is too
         // short for every row to be readable.
-        let row_h = fits(n, h).max(MIN_ROW);
+        // A little short of the room, so the last axis isn't clipped.
+        let row_h = (fits(n, h) - 4.0).max(MIN_ROW);
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -603,11 +604,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                         if let Some(w) = &per.wheel {
                             t += &format!(", {}", wheel_title(w));
                         }
-                        p.text(
-                            Text::new("peak label", PlotPoint::new(x, y), format!("  {t}"))
-                                .color(pal.text)
-                                .anchor(egui::Align2::LEFT_CENTER),
-                        );
+                        mark_label(p, [x, y], t, pal.text, false);
                     }
                 });
         }
@@ -664,11 +661,11 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 p.text(
                     Text::new(
                         "cycle label",
-                        PlotPoint::new(b.min()[0], b.max()[1]),
-                        format!(" {label}"),
+                        PlotPoint::new(b.max()[0], b.max()[1]),
+                        format!("{label} "),
                     )
                     .color(pal.text_secondary)
-                    .anchor(egui::Align2::LEFT_TOP),
+                    .anchor(egui::Align2::RIGHT_TOP),
                 );
             });
         }
@@ -688,9 +685,10 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
                 .x_axis_formatter(|m, _| secs(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
-                .y_axis_formatter(|m, _| format!("{:.1}", m.value))
+                .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(0.0, x_hi)
-                .default_y_bounds(lo - 0.05, 1.05)
+                // Room above the curve for the Ljung–Box note.
+                .default_y_bounds(lo - 0.05, 1.35)
                 .show(ui, |p| {
                     p.hline(HLine::new("zero", 0.0).color(weak).width(1.0_f32));
                     for b in [a.band, -a.band] {
@@ -708,20 +706,18 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        p.text(
-                            Text::new(
-                                "repeat label",
-                                PlotPoint::new(l, r),
-                                format!("  repeats at {}", secs(l)),
-                            )
-                            .color(pal.text)
-                            .anchor(egui::Align2::LEFT_BOTTOM),
+                        mark_label(
+                            p,
+                            [l, r],
+                            format!("repeats at {}", secs(l)),
+                            pal.text,
+                            false,
                         );
                     }
                     p.text(
                         Text::new(
                             "ljung box",
-                            PlotPoint::new(x_hi, 1.05),
+                            PlotPoint::new(x_hi, 1.35),
                             format!("Ljung–Box p = {} ", steadiness::p_text(a.p_value)),
                         )
                         .color(pal.text_secondary)
@@ -767,14 +763,12 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                     if let (Some(t), Some(d)) = (a.best_tau_s, a.best_deviation) {
                         if t > 0.0 && d > 0.0 {
                             let at = [t.log10(), d.log10()];
-                            p.text(
-                                Text::new(
-                                    "best",
-                                    PlotPoint::new(at[0], at[1]),
-                                    format!("least scatter at {}: {}", secs(t), unit_sig(k, d)),
-                                )
-                                .color(pal.text)
-                                .anchor(egui::Align2::CENTER_TOP),
+                            mark_label(
+                                p,
+                                at,
+                                format!("least scatter at {}: {}", secs(t), unit_sig(k, d)),
+                                pal.text,
+                                false,
                             );
                         }
                     }
@@ -795,7 +789,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
                 .x_axis_formatter(|m, _| strip::fmt_time(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
-                .y_axis_formatter(|m, _| format!("{:.1}", m.value))
+                .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_y_bounds(-m, m)
                 .show(ui, |p| {
                     p.hline(HLine::new("zero", 0.0).color(weak).width(1.0_f32));
@@ -820,23 +814,63 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        p.text(
-                            Text::new(
-                                "corner label",
-                                PlotPoint::new(cu.at_s, y),
-                                format!("  level changes near {}", strip::fmt_time(cu.at_s)),
-                            )
-                            .color(pal.text)
-                            .anchor(if y >= 0.0 {
-                                egui::Align2::LEFT_BOTTOM
-                            } else {
-                                egui::Align2::LEFT_TOP
-                            }),
+                        mark_label(
+                            p,
+                            [cu.at_s, y],
+                            format!("level changes near {}", strip::fmt_time(cu.at_s)),
+                            pal.text,
+                            y >= 0.0,
                         );
                     }
                 });
         }
     }
+}
+
+/// A note beside a marked point, on whichever side keeps it inside the
+/// plot, above or below the point.
+fn mark_label(
+    p: &mut egui_plot::PlotUi<'_>,
+    at: [f64; 2],
+    text: String,
+    color: Color32,
+    above: bool,
+) {
+    let b = p.plot_bounds();
+    let right = at[0] > (b.min()[0] + b.max()[0]) / 2.0;
+    let h = if right {
+        egui::Align::Max
+    } else {
+        egui::Align::Min
+    };
+    let v = if above {
+        egui::Align::Max
+    } else {
+        egui::Align::Min
+    };
+    let text = if right {
+        format!("{text}  ")
+    } else {
+        format!("  {text}")
+    };
+    p.text(
+        Text::new("mark", PlotPoint::new(at[0], at[1]), text)
+            .color(color)
+            .anchor(egui::Align2([h, v])),
+    );
+}
+
+/// A plain number for a linear axis, with no "-0.0".
+fn plain(v: f64, step: f64) -> String {
+    let d = if step >= 1.0 {
+        0
+    } else if step >= 0.1 {
+        1
+    } else {
+        2
+    };
+    let v = if v.abs() < step * 1e-6 { 0.0 } else { v };
+    format!("{v:.d$}")
 }
 
 /// A number in a series' units to about three figures.
