@@ -17,6 +17,10 @@ pub const WATCH: &[&str] = &[
 ];
 
 pub const MICROPHONE: &[&str] = &[
+    "The app looks for microphones only when the microphone menu opens, Rescan is \
+     pressed or Start is clicked, never at launch: asking an input what it supports \
+     briefly opens it, which could disturb another program recording from it. \
+     Replaying a recording never touches the microphone.",
     "Input level is the microphone's gain. Aim for the ticks to peak around -10 dBFS: \
      the light mark on the meter. The red mark is -6 dBFS, the most that leaves room \
      for a louder watch; past it the sound clips, the meter turns red, and amplitude \
