@@ -3,17 +3,24 @@
 //! metadata under `takes/<take>/`; the audio is attached to a release per
 //! take. `--fetch` downloads what the run needs and checks it by SHA-256;
 //! `--smoke` runs the takes that have no tg reference through the engine,
-//! which passes unless the engine panics. See docs/regress.md.
+//! which passes unless the engine panics, or hears a watch in a take
+//! recorded without one. See docs/regress.md.
 
 use crate::archive::sha256_hex;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use timegrapher_core::analysis::{self, AnalysisConfig};
+use timegrapher_core::audio;
 use timegrapher_core::stream::{self, StreamConfig};
 
 /// The repository the release assets live in.
 pub const REPO: &str = "peterhudson/timegrapher-corpus";
 pub const INDEX: &str = "corpus.json";
+
+/// Smoke takes recorded with no watch on the stand: `analyze` must say no
+/// watch is heard in each of their files. Their readings are not compared.
+pub const NO_WATCH: &[&str] = &["silence_empty_stand"];
 
 #[derive(Debug, Deserialize)]
 pub struct Corpus {
@@ -146,11 +153,15 @@ pub struct Smoke {
     pub outcome: &'static str,
     pub beats: Option<usize>,
     pub detail: Option<String>,
+    /// `analyze`'s `watch_heard` for the file; none if it could not run.
+    pub watch_heard: Option<bool>,
+    /// Whether the take was recorded with no watch (see [`NO_WATCH`]).
+    pub no_watch: bool,
 }
 
 impl Smoke {
     pub fn fails(&self) -> bool {
-        self.outcome == "panicked"
+        self.outcome == "panicked" || (self.no_watch && self.watch_heard != Some(false))
     }
 }
 
@@ -178,14 +189,52 @@ pub fn smoke(root: &Path, c: &Corpus, filter: &[String]) -> Vec<Smoke> {
                     ("panicked", None, msg)
                 }
             };
+            let watch_heard = std::panic::catch_unwind(|| {
+                audio::load(&path).ok().map(|a| {
+                    analysis::analyze(&a, &AnalysisConfig::default())
+                        .summary
+                        .watch_heard
+                })
+            })
+            .ok()
+            .flatten();
             out.push(Smoke {
                 take: t.id.clone(),
                 file: f.name.clone(),
                 outcome,
                 beats,
                 detail,
+                watch_heard,
+                no_watch: NO_WATCH.contains(&t.id.as_str()),
             });
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn smoke(outcome: &'static str, watch_heard: Option<bool>, no_watch: bool) -> Smoke {
+        Smoke {
+            take: "t".into(),
+            file: "f.flac".into(),
+            outcome,
+            beats: None,
+            detail: None,
+            watch_heard,
+            no_watch,
+        }
+    }
+
+    #[test]
+    fn a_watch_heard_on_an_empty_stand_fails() {
+        assert!(!smoke("ran", Some(false), true).fails());
+        assert!(smoke("ran", Some(true), true).fails());
+        assert!(smoke("ran", None, true).fails());
+        assert!(!smoke("ran", Some(true), false).fails());
+        assert!(!smoke("stopped", None, false).fails());
+        assert!(smoke("panicked", None, false).fails());
+    }
 }
