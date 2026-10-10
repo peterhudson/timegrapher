@@ -8,7 +8,7 @@ use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, timing};
+use timegrapher_core::{audio, session, timing};
 
 fn parse_wheel(s: &str) -> Result<Wheel, String> {
     let (name, secs) = s
@@ -53,9 +53,18 @@ pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// Where the sound card's clock error comes from: a clock log recorded
+/// with the take, else `--card-ppm`, else the stored error for `device` or
+/// for the input the recording names.
+pub struct ClockArgs<'a> {
+    pub log: Option<&'a Path>,
+    pub device: Option<&'a str>,
+    pub card_ppm: Option<f64>,
+}
+
 pub fn run(
     files: &[PathBuf],
-    clock_log: Option<&Path>,
+    clock_args: ClockArgs,
     cfg: &StreamConfig,
     escape_teeth: u32,
     wheels: &[String],
@@ -73,6 +82,7 @@ pub fn run(
         let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
         info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
     }
+    let clock_log = clock_args.log;
     let clock = match clock_log {
         Some(p) => {
             let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -82,6 +92,20 @@ pub fn run(
         }
         None => None,
     };
+    // Without a log, a stored (or given) correction for the input: one
+    // steady error over the run, which cannot follow drift.
+    let fixed = match clock_log {
+        Some(_) => None,
+        None => crate::clock_cmd::correction(file, clock_args.device, clock_args.card_ppm)?,
+    };
+    let total_s = info
+        .frames
+        .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
+    let clock = match &fixed {
+        Some((ppm, _)) => session::fixed_clock(*ppm, total_s),
+        None => clock,
+    };
+    let clock_note = fixed.as_ref().map(|(_, from)| from.as_str());
     let out = out.unwrap_or_else(|| {
         let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("run");
         file.with_file_name(format!("{stem}_long"))
@@ -137,6 +161,7 @@ pub fn run(
     )?;
     let settings = serde_json::json!({
         "clock_log": clock_log.map(|p| p.display().to_string()),
+        "clock_correction": fixed.as_ref().map(|(ppm, from)| serde_json::json!({ "ppm": ppm, "from": from })),
         "bph": cfg.analysis.bph,
         "lift_deg": cfg.analysis.amplitude.lift_deg,
         "notch_hz": cfg.analysis.envelope.notch_hz,
@@ -166,14 +191,14 @@ pub fn run(
         out.join("report.html"),
         fs::write(
             out.join("report.html"),
-            crate::report::html(&title, &rep, &lc.wheels),
+            crate::report::html(&title, &rep, &lc.wheels, clock_note),
         ),
     )?;
 
     if json {
         println!("{summary}");
     } else {
-        print_summary(&rep);
+        print_summary(&rep, clock_note);
         println!("Report       {}", out.join("report.html").display());
     }
     Ok(())
@@ -287,7 +312,7 @@ fn opt(v: Option<f64>, digits: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.digits$}"))
 }
 
-fn print_summary(r: &LongReport) {
+fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     println!(
         "Recording    {} at {} Hz, {} bph, {} beats ({:.1}% clean)",
         duration(r.duration_s),
@@ -296,8 +321,15 @@ fn print_summary(r: &LongReport) {
         r.beats_found,
         r.clean_fraction * 100.0
     );
-    match &r.clock {
-        Some(c) => println!(
+    match (&r.clock, clock_note) {
+        (Some(c), Some(note)) => println!(
+            "Clock        sound card {:.2} ppm {} than true time, so uncorrected rates read {:.2} s/d {}; corrected with the steady error {note}",
+            c.ppm.abs(),
+            if c.ppm >= 0.0 { "slower" } else { "faster" },
+            c.rate_error_s_per_day.abs(),
+            if c.ppm >= 0.0 { "fast" } else { "slow" },
+        ),
+        (Some(c), None) => println!(
             "Clock        sound card {:.2} ppm {} than NTP time, so uncorrected rates read {:.2} s/d {}; corrected from {} entries, {:.1} ms rms{}",
             c.ppm.abs(),
             if c.ppm >= 0.0 { "slower" } else { "faster" },
@@ -307,7 +339,7 @@ fn print_summary(r: &LongReport) {
             c.residual_ms,
             if c.tracks_drift { ", drift followed" } else { "" }
         ),
-        None => println!("Clock        not calibrated: absolute rate is only as good as the sound card (use --clock)"),
+        (None, _) => println!("Clock        not calibrated: absolute rate is only as good as the sound card (use --clock, or store the card's error with `timegrapher clock`)"),
     }
     match &r.overall {
         Some(f) => println!(

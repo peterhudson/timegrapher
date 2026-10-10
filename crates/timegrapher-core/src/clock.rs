@@ -9,6 +9,7 @@
 
 use crate::dsp::{median, robust_sd};
 use serde::Serialize;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The fitted mapping from audio time to true time.
 #[derive(Debug, Clone, Serialize)]
@@ -23,6 +24,9 @@ pub struct ClockFit {
     pub ppm: f64,
     /// The same as a rate error, s/d: subtract it from an uncorrected rate.
     pub rate_error_s_per_day: f64,
+    /// Standard error of `ppm` from the scatter of the entries about one
+    /// straight line.
+    pub ppm_sd: f64,
     /// RMS of the entries about the mapping, milliseconds.
     pub residual_ms: f64,
     /// Whether the mapping follows slow drift (local fits) rather than
@@ -55,13 +59,26 @@ impl std::error::Error for ClockError {}
 
 /// Least-squares line `y = a + b x`.
 fn line(p: &[(f64, f64)]) -> (f64, f64) {
+    let (a, b, _) = line_sd(p);
+    (a, b)
+}
+
+/// Least-squares line `y = a + b x` and the standard error of `b`.
+fn line_sd(p: &[(f64, f64)]) -> (f64, f64, f64) {
     let n = p.len() as f64;
     let mx = p.iter().map(|q| q.0).sum::<f64>() / n;
     let my = p.iter().map(|q| q.1).sum::<f64>() / n;
     let sxx: f64 = p.iter().map(|q| (q.0 - mx) * (q.0 - mx)).sum();
     let sxy: f64 = p.iter().map(|q| (q.0 - mx) * (q.1 - my)).sum();
     let b = if sxx > 0.0 { sxy / sxx } else { 1.0 };
-    (my - b * mx, b)
+    let a = my - b * mx;
+    let ss: f64 = p.iter().map(|q| (q.1 - a - b * q.0).powi(2)).sum();
+    let sd = if p.len() > 2 && sxx > 0.0 {
+        (ss / (n - 2.0) / sxx).sqrt()
+    } else {
+        f64::INFINITY
+    };
+    (a, b, sd)
 }
 
 /// Runs longer than this get a mapping that follows drift.
@@ -107,7 +124,7 @@ impl ClockFit {
         if p.len() < 3 {
             return Err(ClockError::TooFewPoints(p.len()));
         }
-        let (a, b) = line(&p);
+        let (a, b, b_sd) = line_sd(&p);
         let span = p[p.len() - 1].0 - p[0].0;
         let tracks_drift = span > DRIFT_SPAN_S;
         let knots = if tracks_drift {
@@ -140,6 +157,7 @@ impl ClockFit {
             span_s: span,
             ppm: (b - 1.0) * 1e6,
             rate_error_s_per_day: (b - 1.0) * 86400.0,
+            ppm_sd: b_sd * 1e6,
             residual_ms: 0.0,
             tracks_drift,
             knots,
@@ -179,6 +197,78 @@ impl ClockFit {
     pub fn map(&self, audio_s: f64) -> f64 {
         let zero = self.map_rel(-self.origin.0);
         self.map_rel(audio_s - self.origin.0) - zero
+    }
+}
+
+/// Audio seconds per kept entry in a [`ClockTracker`].
+const TRACK_BUCKET_S: f64 = 1.0;
+
+/// Measures a live input's clock against the system clock as audio
+/// arrives, without a log file.
+///
+/// A block's arrival time is late by however long the driver held it,
+/// which varies from block to block but never makes a block early. So in
+/// each second of audio only the block that arrived least late is kept,
+/// and the line through those follows the sound card's clock to a
+/// fraction of a ppm in twenty minutes, as long as the system clock is
+/// kept by NTP.
+#[derive(Debug, Clone)]
+pub struct ClockTracker {
+    fs: f64,
+    frames: u64,
+    /// The current second's least-late entry: bucket number, audio
+    /// seconds and system seconds.
+    best: Option<(u64, f64, f64)>,
+    pairs: Vec<(f64, f64)>,
+}
+
+impl ClockTracker {
+    pub fn new(sample_rate: u32) -> ClockTracker {
+        ClockTracker {
+            fs: sample_rate as f64,
+            frames: 0,
+            best: None,
+            pairs: Vec::new(),
+        }
+    }
+
+    /// Add a block of `samples` frames that arrived at `at` (its last
+    /// sample's arrival).
+    pub fn push(&mut self, samples: usize, at: SystemTime) {
+        self.frames += samples as u64;
+        let Ok(t) = at.duration_since(UNIX_EPOCH) else {
+            return;
+        };
+        let audio = self.frames as f64 / self.fs;
+        let sys = t.as_secs_f64();
+        let bucket = (audio / TRACK_BUCKET_S) as u64;
+        match self.best {
+            Some((b, a, s)) if b == bucket => {
+                if sys - audio < s - a {
+                    self.best = Some((bucket, audio, sys));
+                }
+            }
+            Some((_, a, s)) => {
+                self.pairs.push((a, s));
+                self.best = Some((bucket, audio, sys));
+            }
+            None => self.best = Some((bucket, audio, sys)),
+        }
+    }
+
+    /// Seconds of audio counted so far.
+    pub fn audio_s(&self) -> f64 {
+        self.frames as f64 / self.fs
+    }
+
+    /// The kept entries: audio seconds against system (Unix) seconds.
+    pub fn pairs(&self) -> &[(f64, f64)] {
+        &self.pairs
+    }
+
+    /// The fit so far; `None` until there are a few seconds of entries.
+    pub fn fit(&self) -> Option<ClockFit> {
+        ClockFit::new(&self.pairs).ok()
     }
 }
 
@@ -352,6 +442,7 @@ mod tests {
         assert!((fit.ppm - 20.0).abs() < 0.5, "{}", fit.ppm);
         assert_eq!(fit.rejected, 1);
         assert!((fit.rate_error_s_per_day - 1.728).abs() < 0.05);
+        assert!(fit.ppm_sd > 0.0 && fit.ppm_sd < 0.2, "{}", fit.ppm_sd);
         assert!((fit.map(3600.0) - 3600.0 * (1.0 + 20e-6)).abs() < 0.002);
         assert!(!fit.tracks_drift);
     }
@@ -371,6 +462,25 @@ mod tests {
         assert!(fit.residual_ms < 1.0, "{}", fit.residual_ms);
         let want = |a: f64| a + 1e-6 * (10.0 * a + 10.0 * a * a / 86400.0);
         assert!((fit.map(43200.0) - want(43200.0)).abs() < 0.005);
+    }
+
+    #[test]
+    fn a_tracker_sees_through_late_blocks() {
+        // A card 20 ppm slow delivering 10 ms blocks, each arriving 2 to 40
+        // ms late (never early), for 20 minutes.
+        let mut rng = Rng::new(7);
+        let mut tr = ClockTracker::new(48_000);
+        let start = UNIX_EPOCH + std::time::Duration::from_secs(1_790_000_000);
+        for i in 1..=120_000u64 {
+            let audio = i as f64 * 0.01;
+            let late = 0.002 + 0.038 * rng.next_f64();
+            let at = start + std::time::Duration::from_secs_f64(audio * (1.0 + 20e-6) + late);
+            tr.push(480, at);
+        }
+        let fit = tr.fit().expect("fit");
+        assert!((fit.ppm - 20.0).abs() < 0.3, "{} ppm", fit.ppm);
+        assert!(fit.ppm_sd < 0.3, "{} ppm sd", fit.ppm_sd);
+        assert!((tr.audio_s() - 1200.0).abs() < 1e-9);
     }
 
     #[test]

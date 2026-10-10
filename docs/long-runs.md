@@ -75,6 +75,14 @@ robust SDs off the fit (a timestamp taken late) are dropped. Runs over
 four hours are mapped with a local straight-line fit every ten minutes
 over two hours, which follows the crystal's drift with temperature.
 
+Without a log, `long` uses the card's error stored with `timegrapher
+clock` (see [agent-interface.md](agent-interface.md#clock)): the one for
+`--device NAME`, else the one for the input the recording's sidecar or
+`session.json` names. `--card-ppm N` gives the error directly. A stored
+error is one steady number, so it cannot follow drift; the report says
+which correction was used, and `summary.json`'s `input.settings.clock_correction`
+records it.
+
 ## How the search works
 
 1. **Watch time.** Each series is placed on the watch's own clock: beat
