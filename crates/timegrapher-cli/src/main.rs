@@ -1,3 +1,4 @@
+mod clock_cmd;
 mod doctor;
 mod long;
 mod output;
@@ -57,6 +58,15 @@ enum Command {
         /// Write rate and amplitude per window to this CSV file.
         #[arg(long)]
         windows: Option<PathBuf>,
+        /// Correct the rate with the clock error stored for this input
+        /// (see `clock`). Without it, the input named in the recording's
+        /// sidecar is used when one is stored.
+        #[arg(long)]
+        device: Option<String>,
+        /// Correct the rate for a sound card this many ppm slow (negative
+        /// if fast), instead of a stored correction.
+        #[arg(long, allow_hyphen_values = true)]
+        card_ppm: Option<f64>,
         /// Print the summary as JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -126,6 +136,14 @@ enum Command {
         /// NTP-synced system time (see `docs/long-runs.md`).
         #[arg(long)]
         clock: Option<PathBuf>,
+        /// Without a clock log: correct with the clock error stored for
+        /// this input (see `clock`).
+        #[arg(long)]
+        device: Option<String>,
+        /// Without a clock log: correct for a sound card this many ppm slow
+        /// (negative if fast).
+        #[arg(long, allow_hyphen_values = true)]
+        card_ppm: Option<f64>,
         /// Beat rate in beats per hour (guessed if omitted).
         #[arg(long)]
         bph: Option<u32>,
@@ -192,6 +210,16 @@ enum Command {
         bph: Option<u32>,
         /// Print the report as JSON instead of text.
         #[arg(long)]
+        json: bool,
+    },
+    /// Each sound input's clock error: a sound card's crystal is off by a
+    /// steady 10-50 ppm (1-4 s/d on every rate). Measure it once and
+    /// `analyze`, `long` and the app correct rates read on that input.
+    Clock {
+        #[command(subcommand)]
+        action: ClockAction,
+        /// Print the result as JSON instead of text.
+        #[arg(long, global = true)]
         json: bool,
     },
     /// Read a watch measured in several positions (and states of wind)
@@ -261,6 +289,47 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ClockAction {
+    /// The stored corrections and where they are kept.
+    List,
+    /// Time an input against the system clock (which must be kept by
+    /// NTP). Nothing needs to be on the microphone. Twenty minutes gives
+    /// the error to a fraction of a ppm.
+    Measure {
+        /// Sound input: part of its name or id from `devices` (default:
+        /// the system's default input).
+        #[arg(long)]
+        device: Option<String>,
+        #[arg(long, default_value_t = 20.0)]
+        minutes: f64,
+        /// Keep the result for this input.
+        #[arg(long)]
+        save: bool,
+    },
+    /// Read the error from a recording's clock log (audio position
+    /// against NTP time; see `long --clock`).
+    FromLog {
+        log: PathBuf,
+        /// The recording the log belongs to (for its sample rate).
+        recording: PathBuf,
+        /// The input it was recorded on, as `devices` names it.
+        #[arg(long)]
+        device: String,
+        /// Keep the result for this input.
+        #[arg(long)]
+        save: bool,
+    },
+    /// Store a known error by hand: ppm slow, negative if fast.
+    Set {
+        device: String,
+        #[arg(allow_hyphen_values = true)]
+        ppm: f64,
+    },
+    /// Remove an input's stored correction.
+    Forget { device: String },
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let res = match cli.command {
@@ -273,6 +342,8 @@ fn main() -> ExitCode {
             escape_teeth,
             beats,
             windows,
+            device,
+            card_ppm,
             json,
         } => {
             let mut cfg = AnalysisConfig {
@@ -283,7 +354,8 @@ fn main() -> ExitCode {
             cfg.amplitude.lift_deg = lift;
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
-            run_analyze(&file, &cfg, beats, windows, json)
+            clock_cmd::correction(&file, device.as_deref(), card_ppm)
+                .and_then(|c| run_analyze(&file, &cfg, beats, windows, c, json))
         }
         Command::Shape {
             file,
@@ -338,6 +410,8 @@ fn main() -> ExitCode {
         Command::Long {
             files,
             clock,
+            device,
+            card_ppm,
             bph,
             lift,
             notch,
@@ -354,7 +428,11 @@ fn main() -> ExitCode {
             cfg.analysis.envelope.highpass_hz = highpass;
             long::run(
                 &files,
-                clock.as_deref(),
+                long::ClockArgs {
+                    log: clock.as_deref(),
+                    device: device.as_deref(),
+                    card_ppm,
+                },
                 &cfg,
                 escape_teeth,
                 &wheel,
@@ -363,6 +441,34 @@ fn main() -> ExitCode {
             )
         }
         Command::Devices { json } => run_devices(json),
+        Command::Clock { action, json } => {
+            let a = match action {
+                ClockAction::List => clock_cmd::Action::List,
+                ClockAction::Measure {
+                    device,
+                    minutes,
+                    save,
+                } => clock_cmd::Action::Measure {
+                    device,
+                    minutes,
+                    save,
+                },
+                ClockAction::FromLog {
+                    log,
+                    recording,
+                    device,
+                    save,
+                } => clock_cmd::Action::FromLog {
+                    log,
+                    recording,
+                    device,
+                    save,
+                },
+                ClockAction::Set { device, ppm } => clock_cmd::Action::Set { device, ppm },
+                ClockAction::Forget { device } => clock_cmd::Action::Forget { device },
+            };
+            clock_cmd::run(a, json)
+        }
         Command::Doctor {
             device,
             card,
@@ -458,6 +564,7 @@ fn run_analyze(
     cfg: &AnalysisConfig,
     beats: Option<PathBuf>,
     windows: Option<PathBuf>,
+    clock: Option<(f64, String)>,
     json: bool,
 ) -> Result<(), String> {
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -476,15 +583,37 @@ fn run_analyze(
             "highpass_hz": cfg.envelope.highpass_hz,
             "escape_teeth": cfg.escape_teeth,
         });
+        // The summary's rates stay on the sound card's clock (what tg reads
+        // and the regression check compares); the correction goes beside
+        // them.
+        let mut body = serde_json::to_value(&a.summary).map_err(|e| e.to_string())?;
+        if let Some((ppm, from)) = &clock {
+            body["clock"] = clock_json(
+                *ppm,
+                from,
+                a.summary.overall.as_ref().map(|f| f.rate_s_per_day),
+            );
+        }
         output::print(
             "analyze",
             output::input(&[file.to_path_buf()], settings),
-            &a.summary,
+            &body,
         )?;
     } else {
-        print_summary(&a);
+        print_summary(&a, clock.as_ref());
     }
     Ok(())
+}
+
+/// The clock correction applied to a rate read on the sound card.
+pub fn clock_json(ppm: f64, from: &str, card_rate: Option<f64>) -> serde_json::Value {
+    use timegrapher_core::clockstore::correct_rate;
+    serde_json::json!({
+        "ppm": ppm,
+        "from": from,
+        "rate_error_s_per_day": ppm * 1e-6 * 86400.0,
+        "rate_s_per_day": card_rate.map(|r| correct_rate(r, ppm)),
+    })
 }
 
 #[cfg(feature = "live")]
@@ -545,15 +674,24 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
     }
 }
 
-fn print_summary(a: &Analysis) {
+fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
     if let Some(f) = &s.overall {
-        println!(
-            "Rate         {:+.1} s/d (uncalibrated sound-card clock)",
-            f.rate_s_per_day
-        );
+        match clock {
+            Some((ppm, from)) => println!(
+                "Rate         {:+.1} s/d, corrected for the sound card's clock ({:.1} ppm {}, {from}); {:+.1} s/d on the card's clock",
+                timegrapher_core::clockstore::correct_rate(f.rate_s_per_day, *ppm),
+                ppm.abs(),
+                if *ppm >= 0.0 { "slow" } else { "fast" },
+                f.rate_s_per_day
+            ),
+            None => println!(
+                "Rate         {:+.1} s/d (uncalibrated sound-card clock)",
+                f.rate_s_per_day
+            ),
+        }
         println!(
             "Beat error   {}",
             beat_error_text(s.beat_error_unlock_ms, f.beat_error_ms)
