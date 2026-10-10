@@ -199,7 +199,11 @@ without a number; change them under `[limits]`.
 
 Changes at whole fractions of a wheel's turn (20 s and 10 s beside a 60 s
 cycle) come from a short, sharp change once per turn; they are listed with
-that wheel's finding rather than on their own.
+that wheel's finding rather than on their own. A rate change shorter than
+30 s (an escape wheel's, for one) is too quick for the 10 s rate readings
+to follow, so its size is the timing swing in ms, as `long` and `series`
+state it; longer ones are in s/d. Each cycle in `summary.json` carries its
+`size` with `size_unit` (`s/d`, `ms` or `deg`).
 
 ## For programs and agents
 

@@ -476,8 +476,13 @@ pub struct Cycle {
     /// "rate" or "amplitude".
     pub series: &'static str,
     pub period_s: f64,
-    /// Peak to peak, in s/d for rate and degrees for amplitude.
+    /// Peak to peak, in `size_unit`: degrees for amplitude; for rate, s/d,
+    /// or the timing swing in ms for a cycle shorter than
+    /// [`crate::longrun::TIMING_UNIT_BELOW_S`], which a rate reading cannot
+    /// follow (see [`crate::longrun::RateComponent::size`]).
     pub size: f64,
+    /// "s/d", "ms" or "deg".
+    pub size_unit: &'static str,
     /// -log10 of the false-alarm probability.
     pub significance: f64,
     pub explained: f64,
@@ -490,10 +495,14 @@ pub struct Cycle {
 
 impl Cycle {
     pub fn unit(&self) -> &'static str {
-        if self.series == "rate" {
-            "s/d"
-        } else {
-            "deg"
+        self.size_unit
+    }
+
+    /// The size with its unit, e.g. "10.9 s/d" or "0.052 ms".
+    pub fn size_text(&self) -> String {
+        match self.size_unit {
+            "ms" => format!("{:.3} ms", self.size),
+            u => format!("{:.1} {u}", self.size),
         }
     }
 }
@@ -515,7 +524,8 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
     let rate = r.rate_components.iter().map(|c| Cycle {
         series: "rate",
         period_s: c.component.period_s,
-        size: c.rate_swing_s_per_day,
+        size: c.size().0,
+        size_unit: c.size().1,
         significance: c.component.significance,
         explained: c.component.explained,
         wheel: c.component.wheel.clone(),
@@ -526,6 +536,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         series: "amplitude",
         period_s: c.period_s,
         size: c.peak_to_peak,
+        size_unit: "deg",
         significance: c.significance,
         explained: c.explained,
         wheel: c.wheel.clone(),
@@ -1114,7 +1125,7 @@ fn findings(
             })
         };
         for c in &r.cycles {
-            let size = format!("{:.1} {} peak to peak", c.size, c.unit());
+            let size = format!("{} peak to peak", c.size_text());
             let fa = 10f64.powf(-c.significance.min(300.0));
             if c.wheel.is_none() && harmonic_of(c).is_some() {
                 continue;

@@ -443,12 +443,11 @@ fn cycles_table(sn: &Session) -> String {
         };
         let _ = write!(
             s,
-            r#"<tr><th>{}</th><td>{}</td><td class="num">{:.2}</td><td class="num">{:.1} {}</td><td class="num">{:.0}%</td><td class="num">{:.0e}</td><td>{}</td><td class="file">{}</td></tr>"#,
+            r#"<tr><th>{}</th><td>{}</td><td class="num">{:.2}</td><td class="num">{}</td><td class="num">{:.0}%</td><td class="num">{:.0e}</td><td>{}</td><td class="file">{}</td></tr>"#,
             r.position.code(),
             c.series,
             c.period_s,
-            c.size,
-            c.unit(),
+            c.size_text(),
             c.explained * 100.0,
             10f64.powf(-c.significance.min(300.0)),
             esc(&wheel),
