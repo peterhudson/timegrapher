@@ -277,6 +277,13 @@ pub struct Period {
     pub explained: f64,
     /// Peak-to-peak over one cycle, the series' units.
     pub peak_to_peak: f64,
+    /// Rate only: peak-to-peak of the folded timing, ms.
+    pub timing_peak_to_peak_ms: Option<f64>,
+    /// The size to show people and its unit: the same as `peak_to_peak`,
+    /// except a rate cycle shorter than 30 s, which is stated as its timing
+    /// swing in ms (see `longrun::TIMING_UNIT_BELOW_S`).
+    pub size: f64,
+    pub size_unit: &'static str,
     pub wheel: Option<String>,
 }
 
@@ -629,15 +636,15 @@ fn drop_outliers(g: &mut Grid, k: f64) -> usize {
     wild.len()
 }
 
-fn period_of(
-    r: &longterm::SeriesReport,
-    ptp: impl Fn(&longterm::Component) -> f64,
-) -> Option<Period> {
+fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
     r.components.first().map(|c| Period {
         period_s: c.period_s,
         significance: c.significance,
         explained: c.explained,
-        peak_to_peak: ptp(c),
+        peak_to_peak: c.peak_to_peak,
+        timing_peak_to_peak_ms: None,
+        size: c.peak_to_peak,
+        size_unit: unit,
         wheel: c.wheel.clone(),
     })
 }
@@ -1390,18 +1397,27 @@ pub fn check(
         .collect();
 
     let p = twostate::Params::default();
-    let rate_period = long.rate_components.first().map(|c| Period {
-        period_s: c.component.period_s,
-        significance: c.component.significance,
-        explained: c.component.explained,
-        peak_to_peak: c.rate_swing_s_per_day,
-        wheel: c.component.wheel.clone(),
+    let rate_period = long.rate_components.first().map(|c| {
+        let (size, size_unit) = c.size();
+        Period {
+            period_s: c.component.period_s,
+            significance: c.component.significance,
+            explained: c.component.explained,
+            peak_to_peak: c.rate_swing_s_per_day,
+            timing_peak_to_peak_ms: Some(c.timing_swing_ms),
+            size,
+            size_unit,
+            wheel: c.component.wheel.clone(),
+        }
     });
-    let amp_period = period_of(&long.amplitude, |c| c.peak_to_peak);
+    let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
     let be_period = {
         let mut lg = be_grid.clone();
         lg.t0 = 0.0;
-        period_of(&longterm::analyse(&lg, long_cfg), |c| c.peak_to_peak)
+        period_of(
+            &longterm::analyse(&lg, long_cfg),
+            SeriesKind::BeatError.unit(),
+        )
     };
 
     let series = vec![

@@ -511,7 +511,12 @@ fn explained_at(g: &Grid, period: f64, bins: usize) -> f64 {
 pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
     let detrended = detrend(g, cfg.detrend_s);
     let span = g.span();
-    let min_p = cfg.min_period_s.max(3.0 * g.step);
+    // At least one reading for each of the fold's 8 bins. With fewer, a
+    // period that is a whole number of steps folds onto a few fixed phases,
+    // and the slow wander the detrend leaves behind shows up as a cycle: a
+    // 5 s escape wheel on a 1 s grid read 10.8 ms where the beats show
+    // 0.5 ms.
+    let min_p = cfg.min_period_s.max(8.0 * g.step);
     let max_p = cfg.max_period_s.unwrap_or(span / 3.0).min(span / 2.0);
     let total_var = variance(&detrended.y);
     let mut work = detrended.clone();
@@ -664,6 +669,21 @@ mod tests {
             false_alarms += analyse(&g, &LongConfig::default()).components.len();
         }
         assert!(false_alarms <= 1, "{false_alarms} false alarms in 20 runs");
+    }
+
+    #[test]
+    fn no_cycle_shorter_than_eight_readings() {
+        // An escape wheel's 5 s on the 1 s grid of a long run folds onto
+        // five fixed phases, too few for the fold's 8 bins: not searched.
+        let g = series(
+            40_000,
+            1.0,
+            |t| (2.0 * std::f64::consts::PI * t / 5.00003).sin(),
+            0.5,
+            7,
+        );
+        let r = analyse(&g, &LongConfig::default());
+        assert!(r.components.iter().all(|c| c.period_s >= 8.0));
     }
 
     #[test]

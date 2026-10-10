@@ -234,11 +234,22 @@ struct SlimComponent {
     explained: f64,
     /// s/d for rate, degrees for amplitude.
     peak_to_peak: f64,
+    /// Rate only: peak-to-peak of the folded timing, ms.
+    timing_peak_to_peak_ms: Option<f64>,
+    /// The size to show and its unit: `peak_to_peak`, except that a rate
+    /// cycle shorter than 30 s is stated as its timing swing in ms.
+    size: f64,
+    size_unit: &'static str,
     wheel: Option<String>,
     nearest_wheel: Option<(String, f64)>,
 }
 
-fn slim(c: &Component, ptp: f64) -> SlimComponent {
+fn slim(
+    c: &Component,
+    ptp: f64,
+    timing_ms: Option<f64>,
+    (size, size_unit): (f64, &'static str),
+) -> SlimComponent {
     SlimComponent {
         period_s: c.period_s,
         resolution_s: c.resolution_s,
@@ -246,6 +257,9 @@ fn slim(c: &Component, ptp: f64) -> SlimComponent {
         harmonics: c.harmonics,
         explained: c.explained,
         peak_to_peak: ptp,
+        timing_peak_to_peak_ms: timing_ms,
+        size,
+        size_unit,
         wheel: c.wheel.clone(),
         nearest_wheel: c.nearest_wheel.clone(),
     }
@@ -271,13 +285,20 @@ impl<'a> From<&'a LongReport> for Summary<'a> {
             rate_periods: r
                 .rate_components
                 .iter()
-                .map(|c| slim(&c.component, c.rate_swing_s_per_day))
+                .map(|c| {
+                    slim(
+                        &c.component,
+                        c.rate_swing_s_per_day,
+                        Some(c.timing_swing_ms),
+                        c.size(),
+                    )
+                })
                 .collect(),
             amplitude_periods: r
                 .amplitude
                 .components
                 .iter()
-                .map(|c| slim(c, c.peak_to_peak))
+                .map(|c| slim(c, c.peak_to_peak, None, (c.peak_to_peak, "deg")))
                 .collect(),
         }
     }
@@ -380,10 +401,11 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         println!("  none above the 1% false-alarm level");
     }
     for c in &r.rate_components {
-        line(
-            &c.component,
-            format!("swing {:.1} s/d p-p", c.rate_swing_s_per_day),
-        );
+        let swing = match c.size() {
+            (ms, "ms") => format!("timing swing {ms:.3} ms p-p"),
+            (sd, unit) => format!("swing {sd:.1} {unit} p-p"),
+        };
+        line(&c.component, swing);
     }
     println!("Periodic changes in amplitude:");
     if r.amplitude.components.is_empty() {
