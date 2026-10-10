@@ -77,3 +77,34 @@ fn a_step_in_rate_is_a_shifting_mean() {
     assert_eq!(ch.segments.len(), 2, "{:?}", ch.segments);
     assert!((ch.segments[1].start_s - 700.0).abs() < 60.0);
 }
+
+#[test]
+fn a_48_s_cycle_is_not_read_as_a_multiple() {
+    // A 48 s cycle in rate and amplitude, behind a strong 5 s escape-wheel
+    // wobble and rate noise. 48 s is not a whole number of 10 s rate
+    // readings, so the autocorrelation peaks fall between lags; the cycle
+    // must still come out at 48 s, not missed and not at 240 s.
+    let w = |t: f64| (2.0 * std::f64::consts::PI * t / 48.0).sin();
+    let r = run(
+        "48s",
+        1800.0,
+        move |t| 250.0 + 3.0 * w(t),
+        move |t| {
+            2.0 * w(t)
+                + 4.0 * hash_noise(t / 3.0)
+                + 100.0 * (2.0 * std::f64::consts::PI * t / 5.0).sin()
+        },
+    );
+    for k in [SeriesKind::Rate, SeriesKind::Amplitude] {
+        let s = series(&r, k);
+        assert_eq!(s.verdict, Verdict::Periodic, "{}", s.headline);
+        let c = s.cycle.as_ref().unwrap();
+        assert!((c.period_s - 48.0).abs() < 2.0, "{k:?}: {}", c.period_s);
+    }
+}
+
+/// Uniform noise in [-1, 1], constant over each unit of `x`.
+fn hash_noise(x: f64) -> f64 {
+    let v = (x.floor() * 12.9898).sin() * 43758.5453;
+    2.0 * (v - v.floor()) - 1.0
+}

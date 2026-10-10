@@ -285,6 +285,10 @@ pub struct Period {
     pub size: f64,
     pub size_unit: &'static str,
     pub wheel: Option<String>,
+    /// The search's weaker components, seconds. Each is also tried as a
+    /// cycle, so a slow cycle behind a stronger fast one (an escape wheel's)
+    /// is still found.
+    pub other_periods_s: Vec<f64>,
 }
 
 /// Everything about one series.
@@ -646,6 +650,7 @@ fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
         size: c.peak_to_peak,
         size_unit: unit,
         wheel: c.wheel.clone(),
+        other_periods_s: r.components[1..].iter().map(|c| c.period_s).collect(),
     })
 }
 
@@ -1011,10 +1016,38 @@ fn cycle(s: &SeriesCheck, g: &Grid, wheels: &[Wheel], cfg: &Config) -> Option<Cy
             .unwrap();
         cands.push((best.0, CycleSource::Autocorrelation));
     }
+    // Every later peak of the autocorrelation above three times its 95% band, even one
+    // too weak to count as a repeat on its own: the fold below decides.
+    if let Some(a) = &s.autocorrelation {
+        for k in 2..a.r.len().saturating_sub(1) {
+            if a.r[k] >= a.r[k - 1] && a.r[k] > a.r[k + 1] && a.r[k] >= 3.0 * a.band {
+                let l = a.lag_s[k];
+                let best = (0..=40)
+                    .map(|i| l * (0.8 + 0.01 * i as f64))
+                    .map(|p| (p, fold(&d, p).0))
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .unwrap();
+                cands.push((best.0, CycleSource::Autocorrelation));
+            }
+        }
+    }
     if let Some(p) = &s.period {
         cands.push((p.period_s, CycleSource::PeriodSearch));
+        for &q in &p.other_periods_s {
+            cands.push((q, CycleSource::PeriodSearch));
+        }
     }
-    cands
+    let at = |p: f64, src: CycleSource| {
+        let (explained, ptp) = fold(&d, p);
+        Cycle {
+            period_s: p,
+            peak_to_peak: ptp,
+            explained,
+            source: src,
+            wheel: wheel_for(p, wheels),
+        }
+    };
+    let best = cands
         .into_iter()
         // At least three turns for the period search, which tests its own
         // significance; five for the others.
@@ -1026,18 +1059,24 @@ fn cycle(s: &SeriesCheck, g: &Grid, wheels: &[Wheel], cfg: &Config) -> Option<Cy
             };
             *p >= 3.0 * g.step && *p <= g.span() / turns
         })
-        .map(|(p, src)| {
-            let (explained, ptp) = fold(&d, p);
-            Cycle {
-                period_s: p,
-                peak_to_peak: ptp,
-                explained,
-                source: src,
-                wheel: wheel_for(p, wheels),
-            }
-        })
+        .map(|(p, src)| at(p, src))
         .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .max_by(|a, b| a.explained.total_cmp(&b.explained))
+        .max_by(|a, b| a.explained.total_cmp(&b.explained))?;
+    // Folding at five turns of a cycle explains as much as folding at one,
+    // and the autocorrelation's lag grid can favour the multiple (a 48 s
+    // cycle in 10 s readings lines up best at 240 s). Keep the shortest
+    // whole fraction that explains at least 85% as much.
+    let shortest = (2..=8)
+        .rev()
+        .map(|k| best.period_s / k as f64)
+        .filter(|&p| p >= 3.0 * g.step)
+        .find_map(|p| {
+            let c = (-5..=5)
+                .map(|i| at(p * (1.0 + 0.006 * i as f64), best.source))
+                .max_by(|a, b| a.explained.total_cmp(&b.explained))?;
+            (c.explained >= 0.85 * best.explained).then_some(c)
+        });
+    Some(shortest.unwrap_or(best))
 }
 
 fn verdict(s: &SeriesCheck, cfg: &Config) -> Verdict {
@@ -1408,6 +1447,10 @@ pub fn check(
             size,
             size_unit,
             wheel: c.component.wheel.clone(),
+            other_periods_s: long.rate_components[1..]
+                .iter()
+                .map(|c| c.component.period_s)
+                .collect(),
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
