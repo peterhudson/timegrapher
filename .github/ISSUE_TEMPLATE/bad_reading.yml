@@ -8,7 +8,7 @@ body:
       value: |
         Thank you. A wrong reading can only be fixed with the sound it came from, so the recording matters most. In the app, press **Save…** to keep the session as a folder. On the command line, use the file you analysed.
 
-        GitHub takes attachments up to 25 MB: about 5 minutes as FLAC or 4 minutes as WAV. See [contributing recordings](https://github.com/peterhudson/timegrapher/blob/main/docs/contributing-recordings.md#cutting-a-recording-to-size) for how to cut one to size. A one-command report bundle is coming and will gather all of this for you.
+        GitHub takes attachments up to 25 MB: about 5 minutes as FLAC or 4 minutes as WAV. `timegrapher report FILE --at S --lift N` cuts a 5-minute FLAC excerpt and gathers the version, setup and readings into one zip to attach here ([reporting a problem](https://github.com/peterhudson/timegrapher/blob/main/docs/reports.md)); to cut a file by hand, see [contributing recordings](https://github.com/peterhudson/timegrapher/blob/main/docs/contributing-recordings.md#cutting-a-recording-to-size).
   - type: textarea
     id: what
     attributes:

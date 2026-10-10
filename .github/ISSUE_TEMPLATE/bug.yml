@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you. The version and your setup help most. A one-command report bundle with the log and any crash message is coming; until then, paste what you can below.
+        Thank you. The version and your setup help most. `timegrapher report --kind bug --note "what happened"` makes a zip with the version, system, clock corrections and logs ([reporting a problem](https://github.com/peterhudson/timegrapher/blob/main/docs/reports.md)); attach it below, or paste what you can.
   - type: textarea
     id: what
     attributes:
