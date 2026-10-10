@@ -42,7 +42,7 @@
       "https://en.wikipedia.org/wiki/List_of_ETA_Movements"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "No true centre wheel: the great wheel sits off centre at 5 o'clock and its period is not known, so it is left out; the minute hand's cannon pinion turns once an hour. 38 h power reserve. Tooth counts of the third and fourth wheels and the barrel were not found. The 2836-2 and 2834-2 add day and date to the same base. The clone on Peter's bench is recorded as '2824-2'."
+    "notes": "No true centre wheel: the great wheel sits off centre at 5 o'clock and its period is not known, so it is left out; the minute hand's cannon pinion turns once an hour. 38 h power reserve. Tooth counts of the third and fourth wheels and the barrel were not found. The 2836-2 and 2834-2 are the day-date versions of the same base (widely known; not separately sourced here). The clone on Peter's bench is recorded as '2824-2'."
   },
   {
     "calibre": "Sellita SW200-1",
@@ -114,11 +114,11 @@
       }
     ],
     "sources": [
-      "https://ranfft.org/caliber/4232-ETA-2892",
+      "https://ranfft.org/caliber/4232-ETA-2892 (lift 53°)",
       "https://www.awci.com/wp-content/uploads/2013/10/TomsTips_Web_Nov13.pdf (lift 51°)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Whether the seconds are driven directly by the fourth wheel was not confirmed, and the escape wheel's tooth count was not found, so neither the fourth wheel nor the escape wheel is named. 42 h power reserve. The Sellita SW300-1 is a copy; its lift angle is not documented separately."
+    "notes": "Whether the seconds are driven directly by the fourth wheel was not confirmed, and the escape wheel's tooth count was not found, so neither the fourth wheel nor the escape wheel is named. 42 h power reserve. Lift angle: 51° in the AWCI table, 53° on Ranfft. The Sellita SW300-1 is a copy; its lift angle is not documented separately."
   },
   {
     "calibre": "Valjoux 7750",
@@ -127,9 +127,7 @@
       "7750",
       "ETA 7750",
       "Sellita SW500",
-      "SW500",
-      "7753",
-      "7751"
+      "SW500"
     ],
     "bph": 28800,
     "lift_angle_deg": 49,
@@ -222,7 +220,6 @@
     "maker": "Tianjin Seagull",
     "family": [
       "ST3600",
-      "ST3620",
       "ST3621",
       "ST 36"
     ],
@@ -286,81 +283,7 @@
       "https://www.watchuseek.com/threads/questions-about-eta-c07-powermatic-80-h-10-etc.5104577/"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "80 h power reserve from a longer barrel and a slower beat on the 2824 architecture. No tooth counts, escape wheel count or lift angle found (the C07.111 uses a synthetic escape wheel and pallet fork, the C07.611 a conventional one)."
-  },
-  {
-    "calibre": "Omega 8500",
-    "maker": "Omega",
-    "family": [
-      "8500",
-      "8501",
-      "8508",
-      "8520",
-      "8601"
-    ],
-    "bph": 25200,
-    "lift_angle_deg": 38,
-    "seconds": "centre",
-    "wheels": [
-      {
-        "name": "seconds wheel",
-        "period_s": 60,
-        "basis": "derived: the seconds hand turns once a minute"
-      },
-      {
-        "name": "cannon pinion",
-        "period_s": 3600,
-        "basis": "derived: carries the minute hand"
-      },
-      {
-        "name": "balance",
-        "period_s": 0.285714,
-        "basis": "derived from the beat rate"
-      }
-    ],
-    "sources": [
-      "https://www.manualslib.com/guide/4176610/omega-8500-8501-service-manual.html (25,200 vph, lift 38°)",
-      "https://omegaforums.net/threads/lift-angles-for-new-coaxial-calibres.98306/"
-    ],
-    "confidence": "derived from the beat rate",
-    "notes": "Co-axial escapement, two barrels in series, 60 h. The lift angle is the service manual's. The co-axial escape wheel's tooth count was not found, so the escape wheel is left out."
-  },
-  {
-    "calibre": "Omega 8800",
-    "maker": "Omega",
-    "family": [
-      "8800",
-      "8806",
-      "8807",
-      "8900",
-      "8901"
-    ],
-    "bph": 25200,
-    "lift_angle_deg": 38,
-    "seconds": "centre",
-    "wheels": [
-      {
-        "name": "seconds wheel",
-        "period_s": 60,
-        "basis": "derived: the seconds hand turns once a minute"
-      },
-      {
-        "name": "cannon pinion",
-        "period_s": 3600,
-        "basis": "derived: carries the minute hand"
-      },
-      {
-        "name": "balance",
-        "period_s": 0.285714,
-        "basis": "derived from the beat rate"
-      }
-    ],
-    "sources": [
-      "https://www.manualslib.com/guide/4176610/omega-8500-8501-service-manual.html (25,200 vph, lift 38°)",
-      "https://omegaforums.net/threads/lift-angles-for-new-coaxial-calibres.98306/"
-    ],
-    "confidence": "derived from the beat rate",
-    "notes": "Co-axial, 55 h. Lift 38° for all 8xxx except the 8806 and 8807 (36°), per a watchmaker on Omega Forums. Escape wheel tooth count not found."
+    "notes": "80 h power reserve from a slimmer barrel arbor with a longer mainspring and a slower beat, on the 2824 architecture. No tooth counts, escape wheel count or lift angle found (the C07.111 uses a synthetic escape wheel and pallet fork, the C07.611 a conventional one)."
   },
   {
     "calibre": "Rolex 3135",
@@ -382,7 +305,7 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "inferred: Rolex's patent calls 20 teeth its standard Swiss lever; not confirmed for this calibre"
+        "basis": "inferred: Rolex's escapement patent uses a standard 20-tooth Swiss lever as its baseline (its own design has 24 teeth); not confirmed for this calibre"
       },
       {
         "name": "fourth wheel",
@@ -407,13 +330,118 @@
     ],
     "sources": [
       "https://calibercorner.com/rolex-caliber-3135/",
-      "https://patents.google.com/patent/US8529122 (20-tooth standard escape wheel)",
+      "https://patents.google.com/patent/US8529122 (a standard 20-tooth Swiss lever as the baseline)",
+      "https://watchesbysjx.com/2021/05/rolex-chronergy-analysis.html (the 313x's 5:1 barrel to minute ratio)",
       "https://watchesbysjx.com/2024/08/geometric-efficiency-escapements.html",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "https://en.watch-spare.com/rolex-cal-3135-escape-wheel-410-rx-3135-410.html (lift 52°)",
       "https://gleave.london/seconds-wheel-fourth-wheel-rolex-3135-360-generic/"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "48 h power reserve. The GMT 3185 and 3186 share the going train (escape wheel 3135-410 is common to the family). Third wheel not counted. Lift 52° is the figure used on timegraphers and by parts sellers, not seen in a Rolex document."
+    "notes": "48 h power reserve. The escape wheel 3135-410 is listed for the 3130, 3155, 3175 and 3185; the 3186 is taken to share the going train, unconfirmed. Third wheel not counted. Lift 52° is the figure used on timegraphers and by parts sellers, not seen in a Rolex document."
+  },
+  {
+    "calibre": "VR3135",
+    "maker": "Clone (maker not named)",
+    "family": [
+      "VR3130",
+      "VR3186"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 52,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: a true clone, part compatible with genuine 3135 parts"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone, part compatible with genuine parts; no shock setting on the escape wheel)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "VR is the prefix from the watch factory that first used it, not the movement maker. Given the 3135's train because genuine parts fit; the barrel is left out because the clone's power reserve is not documented. The VR3186 is a true clone except for its jumping hour hand."
+  },
+  {
+    "calibre": "SH3135",
+    "maker": "Shanghai (clone)",
+    "family": [],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (not fully compatible with genuine parts)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A clone of the 3135 whose parts are not fully interchangeable with genuine ones, so the escape wheel is left out."
+  },
+  {
+    "calibre": "SA3135",
+    "maker": "Clone (maker not named)",
+    "family": [],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a design clone, not 100% compatible with genuine parts; SA means Super Asian)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A separate design clone of the 3135, not the SH3135 (its hairspring is wound the other way). Parts are not fully interchangeable, so the escape wheel is left out."
   },
   {
     "calibre": "Rolex 3235",
@@ -433,7 +461,7 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "inferred, with the bench: Rolex's patent calls 20 teeth standard, SJX says Chronergy keeps the old count, and a 5.00 s cycle shows on the Yacht-Master 42"
+        "basis": "inferred, with the bench: SJX says Chronergy keeps the escape wheel's tooth count, Rolex's patent uses a standard 20-tooth lever as its baseline, and a 5.00 s cycle shows on the Yacht-Master 42"
       },
       {
         "name": "fourth wheel",
@@ -460,11 +488,12 @@
       "https://calibercorner.com/rolex-caliber-3235/",
       "https://watchesbysjx.com/2021/05/rolex-chronergy-analysis.html (Chronergy keeps the tooth count; 98:16 ratio)",
       "https://patents.google.com/patent/US8529122",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "https://www.rolexforums.com/archive/index.php/t-701731.html (lift 55°, later 53°)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° was the published figure and is what this project uses; a watchmaker reports Rolex's documents now give 53° for the 32xx, with no change to the movement. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on Peter's Yacht-Master is the fourth wheel."
+    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on Peter's Yacht-Master is the fourth wheel."
   },
   {
     "calibre": "Dandong 3235",
@@ -472,7 +501,8 @@
     "family": [
       "DD3235",
       "VS3235",
-      "3235 (clone)"
+      "3235 (clone)",
+      "DD3285"
     ],
     "bph": 28800,
     "escape_teeth": 20,
@@ -483,7 +513,7 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "measured: a 5.00 s rate cycle locked to 40 beats on the bench (dd3235_DU_30min)"
+        "basis": "measured: a 5.00 s rate cycle locked to 40 beats on the bench (dd3235_DU_30min, a DD3235 fitted with a genuine balance complete, pallet fork and escape wheel); the clone's own escape wheel is taken to have the same count because the parts interchange"
       },
       {
         "name": "fourth wheel",
@@ -502,19 +532,61 @@
       }
     ],
     "sources": [
-      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts drop in)",
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts swap in; 70+ h; the replicas' escape wheels are solid; the DD3285 appears to be based on it and is a true clone)",
+      "https://forum.replica-watch.info/threads/jh3235-free-sprung-movement-tear-down.11040479/ (larger pallet stones than the genuine fork; no Chronergy escape wheel)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "A dimensional copy of the 3235: genuine train parts fit, so its train is taken as the 3235's. The clone's own escape wheel is solid, not skeletonised; Peter's bench example has a genuine escape wheel, pallet fork and balance. Power reserve about 60 to 65 h, so the barrel ratio may differ and the barrel is left out. Lift 55° measured on a VS3235 by a forum user; some use 53°."
+    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT appears to be built on it."
   },
   {
-    "calibre": "Shanghai VR3235",
+    "calibre": "JH3235",
     "maker": "Shanghai Jinghe (clone)",
     "family": [
-      "VR3235",
-      "SH3285",
-      "JH3235"
+      "JH32xx"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 55,
+    "seconds": "centre (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: a true clone, generally part interchangeable with genuine parts"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (free sprung, flat hairspring, pallet jewel appears to be in the genuine skewed position)",
+      "https://forum.replica-watch.info/threads/jh3235-free-sprung-movement-tear-down.11040479/ (a true clone, generally part interchangeable with genuine parts; a genuine balance ran in it after an end-shake adjustment)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A true 32xx clone with a free-sprung balance and a flat hairspring, not the 31xx/32xx hybrid VR3235. Its own escape wheel is not the skeletonised Chronergy one and, as on the Dandong, its pallet stones are larger than the genuine ones, so the 55° lift angle may not be exact. It has a shock setting for the escape wheel. Power reserve not documented."
+  },
+  {
+    "calibre": "VR3235",
+    "maker": "Shanghai (clone)",
+    "family": [
+      "VR32xx",
+      "SH3235"
     ],
     "bph": 28800,
     "lift_angle_deg": 52,
@@ -537,17 +609,49 @@
       }
     ],
     "sources": [
-      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/"
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a hybrid of the 3135 and 3235, about 40 h)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "A hybrid: mostly 32xx on the balance side and 3135 parts on the dial side, about 40 h. The escape wheel and pallet fork are not to genuine spec, so the tooth count is left out. Lift 52° is a forum figure."
+    "notes": "Not a true clone: a hybrid of the 3135 and 3235, about 40 h, so neither train can be assumed and the escape wheel is left out. VR is the prefix from the watch factory that first used it; the guide credits the Shanghai movement factory in one place and Shanghai Jinghe in another."
+  },
+  {
+    "calibre": "SH3285",
+    "maker": "Shanghai (clone)",
+    "family": [
+      "VR3285",
+      "SH3285-2"
+    ],
+    "bph": 28800,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (closer to genuine than the VR3235; balance, pallet fork and escape wheel not to genuine spec)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Its escapement is not to genuine spec, so the escape wheel and lift angle are left out."
   },
   {
     "calibre": "Rolex 4130",
     "maker": "Rolex",
     "family": [
-      "4130",
-      "4131"
+      "4130"
     ],
     "bph": 28800,
     "escape_teeth": 20,
@@ -558,7 +662,7 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "inferred: Rolex's patent calls 20 teeth standard; not confirmed for this calibre"
+        "basis": "inferred: Rolex's escapement patent uses a standard 20-tooth Swiss lever as its baseline (its own design has 24 teeth); not confirmed for this calibre"
       },
       {
         "name": "fourth wheel",
@@ -584,19 +688,18 @@
     "sources": [
       "https://calibercorner.com/rolex-caliber-4130/",
       "https://www.watch-wiki.net/doku.php?id=rolex_4130",
-      "https://professionalwatches.com/rolex-caliber-4131/",
-      "https://patents.google.com/patent/US8529122"
+      "https://patents.google.com/patent/US8529122",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "72 h power reserve. Lift angle unsettled: Caliber Corner gives 52°; this project reports at 52° and 55°. The 4131 (2023) has Chronergy. The centre of the movement carries the chronograph seconds, so the going train's centre wheel is not named; the minute hand's cannon pinion turns once an hour."
+    "notes": "72 h power reserve. Lift 52° per the clone timegrapher guide and Caliber Corner; this project has also reported its 4130 takes at 55°. The centre of the movement carries the chronograph seconds, so the going train's centre wheel is not named; the minute hand's cannon pinion turns once an hour."
   },
   {
     "calibre": "Dandong 4130",
     "maker": "Dandong (clone)",
     "family": [
       "DD4130",
-      "4130 (clone)",
-      "DD4131"
+      "4130 (clone)"
     ],
     "bph": 28800,
     "escape_teeth": 20,
@@ -626,11 +729,369 @@
       }
     ],
     "sources": [
-      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone, genuine parts fit)",
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone, compatible with genuine parts)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's escapement is not to genuine spec and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry. Lift angle as the 4130 (52° or 55°)."
+    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's balance bridge, pallet fork and escape wheel are not to genuine spec, and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry."
+  },
+  {
+    "calibre": "Rolex 4131",
+    "maker": "Rolex",
+    "family": [
+      "4131"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 55,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: Rolex's escapement patent uses a standard 20-tooth Swiss lever as its baseline (its own design has 24 teeth); not confirmed for this calibre; SJX says Chronergy keeps the old count"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.professionalwatches.com/rolex-caliber-4131/",
+      "https://calibercorner.com/rolex-caliber-4132",
+      "https://patents.google.com/patent/US8529122",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "2023 successor of the 4130 with the Chronergy escapement, 72 h. Lift 55° is the clone timegrapher guide's figure, from the pallet fork's geometry, not measured; Caliber Corner lists the 4132's as unconfirmed. Whether the 4130's 7 h barrel carries over was not found, so the barrel is left out."
+  },
+  {
+    "calibre": "Dandong 4131",
+    "maker": "Dandong (clone)",
+    "family": [
+      "DD4131",
+      "VS4131",
+      "4131 (clone)"
+    ],
+    "bph": 28800,
+    "escape_teeth": 20,
+    "lift_angle_deg": 55,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "basis": "inferred: a gen-like skeletonised escape wheel; the factory says 95% of the parts interchange with the 4131's"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (gen-like Chronergy pallet fork and skeletonised escape wheel)",
+      "https://forum.replica-watch.info/threads/a-comprehensive-info-on-the-vs4131-aka-dd4131.10997243/ (the factory's own write-up: 95% of parts interchange with the genuine)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Its train is taken as the 4131's on the factory's claim that 95% of parts interchange. Whether a genuine balance complete fits is not yet confirmed. Lift 55° as the 4131, probably, not measured."
+  },
+  {
+    "calibre": "SH4131",
+    "maker": "Shanghai (clone)",
+    "family": [],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone except the escapement; not compatible with a genuine 4131 balance)",
+      "https://forum.replica-watch.info/threads/a-comprehensive-info-on-the-vs4131-aka-dd4131.10997243/ (a T-shaped pallet fork as in Asian 7750s; no skeletonised escape wheel and no shock setting for it)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "A clone of the 4131 except for the escapement, which has a T-shaped pallet fork as in Asian 7750s, not the Chronergy one. Lift 52°, as the Rolex 31xx, whose pallet fork geometry it resembles, is a bench setting, not a published figure. The escape wheel is not the genuine one and is left out."
+  },
+  {
+    "calibre": "Audemars Piguet 3120",
+    "maker": "Audemars Piguet",
+    "family": [
+      "AP 3120",
+      "3120"
+    ],
+    "bph": 21600,
+    "lift_angle_deg": 53,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/audemars-piguet-caliber-ap-3120/",
+      "https://watchbase.com/audemars-piguet/caliber/ap-3120",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
+      "https://forum.replica-watch.info/threads/the-ap-questions-thread-all-the-questions-you-want-to-ask-about-ap-but-were-afraid-to.10880676/page-4 (older replicas on a Miyota 9015 at 28,800 vph)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "60 h, hacking. AP publishes no lift angle; 53° is the clone timegrapher guide's. Whether the seconds are driven directly was not found. Clones sold as '3120': see SA3120; older AP replicas built on a Miyota 9015 run at 28,800 vph and match that entry."
+  },
+  {
+    "calibre": "Audemars Piguet 4302",
+    "maker": "Audemars Piguet",
+    "family": [
+      "AP 4302",
+      "4302"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/audemars-piguet-caliber-4302",
+      "https://www.thenakedwatchmaker.com/decon-audemars-piguet",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "70 h. Lift 52° is the clone timegrapher guide's; Caliber Corner lists it as unconfirmed. The 4309 is a no-date version; its train is probably the same but this is not confirmed. Escape wheel tooth count not found."
+  },
+  {
+    "calibre": "Audemars Piguet 4401",
+    "maker": "Audemars Piguet",
+    "family": [
+      "AP 4401",
+      "4401"
+    ],
+    "bph": 28800,
+    "seconds": "small seconds at 6; centre chronograph seconds",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "inferred: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/movement/ap-4401/",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Flyback chronograph, 70 h. Lift angle probably 50 to 52° per the clone timegrapher guide, not settled, so none is given."
+  },
+  {
+    "calibre": "Audemars Piguet 2121",
+    "maker": "Audemars Piguet",
+    "family": [
+      "AP 2121",
+      "2121",
+      "AP 2120",
+      "2120",
+      "JLC 920",
+      "Jaeger-LeCoultre 920"
+    ],
+    "bph": 19800,
+    "seconds": "none (hours and minutes only)",
+    "wheels": [
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.363636,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://apchronicles.audemarspiguet.com/en/calibre/calibre-2120",
+      "https://calibercorner.com/jaeger-lecoultre-caliber-920/"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Ultra-thin, built on the Jaeger-LeCoultre 920, 19,800 vph, 40 h; the 2121 adds a date to the 2120. AP lists hours and minutes only, while Caliber Corner's 920 page shows a seconds hand; no seconds wheel is named. Lift angle not found."
+  },
+  {
+    "calibre": "SA3120",
+    "maker": "APS / ZF (clone)",
+    "family": [
+      "3120 (clone)",
+      "APS 3120",
+      "ZF 3120"
+    ],
+    "bph": 21600,
+    "lift_angle_deg": 53,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/aps-15400-super-clone-3120mvt.10248933/page-10 ('This movement is 21600bph')",
+      "https://forum.replica-watch.info/threads/zf-new-release-15400-with-cal-3120.10367719/page-2 ('21600 vph')",
+      "https://clonology.is/product/audemars-piguet-royal-oak-ref15710st-oo-a027ca-01-off-shore-diver-swiss-3120-clone-movement-replica/ (21,600)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "The 3120 clones from APS and ZF run at 21,600 vph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry."
+  },
+  {
+    "calibre": "SA4302",
+    "maker": "APS / ZF (clone)",
+    "family": [
+      "4302 (clone)",
+      "APS 4302",
+      "ZF 4302"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "seconds wheel",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/apsf-and-zf-royal-oak-15500-w-4302-clone-caliber.10917856/page-16 (a ZF V3 timegrapher reading at 28,800, lift 52°)",
+      "https://clonology.is/product/clone-ap-royal-oak-ref-15500-blue-dial-swiss-movement/ (28,800 BPH, 70 h)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "An all-in-one clone of the 4302 at 28,800 vph, about 65 to 70 h. Earlier ZF versions used a Miyota 9015 instead."
+  },
+  {
+    "calibre": "APS 4401",
+    "maker": "APS (clone)",
+    "family": [
+      "4401 (clone)"
+    ],
+    "bph": 28800,
+    "seconds": "small seconds at 6; centre chronograph seconds",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "inferred: carries the small seconds"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://noobfactory.us/product/aps-factory-audemars-piguet-royal-oak-chronograph-26240-steel-41mm-purple-super-clone/ (28,800 vph, 70 h)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "An integrated flyback chronograph clone of the 4401; the beat rate is a dealer's figure only. Lift angle as the 4401, probably 50 to 52°, not settled."
   },
   {
     "calibre": "Seiko NH35A",
@@ -675,7 +1136,7 @@
       "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft (direct seconds on the 7S26)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "The parts list has a 'second reduction wheel' between centre and third, so the third wheel's period cannot be read off. Direct seconds is taken from the 7S26 it grew from. Escape wheel tooth count not found: 15 teeth would give 5.0 s, but it is left out."
+    "notes": "The parts list has a 'second reduction wheel' whose place in the train is not shown, so the third wheel's period cannot be read off. Direct seconds is taken from the 7S26 it grew from. Escape wheel tooth count not found: 15 teeth would give 5.0 s, but it is left out."
   },
   {
     "calibre": "Seiko 6R35",
@@ -745,7 +1206,7 @@
       "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "41 h, does not hack. No lift angle found in a Seiko document (53° as the rest of the family is the usual setting). Escape tooth count not found."
+    "notes": "41 h. No lift angle found in a Seiko document (53° as the rest of the family is the usual setting). Escape tooth count not found."
   },
   {
     "calibre": "Miyota 8215",
@@ -783,20 +1244,18 @@
       "https://calibercorner.com/stuttering-seconds-hand-explained"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Lift 49° is documented; 52° is only a timegrapher default. The seconds are driven indirectly, so the fourth wheel's period is not the seconds hand's and is left out. 42 h. Wide positional spread is normal for the type."
+    "notes": "Lift 49° as given by Caliber Corner and Watchguy UK; 52° is only a timegrapher default. The seconds are driven indirectly, so the fourth wheel's period is not the seconds hand's and is left out. 42 h. Wide positional spread is normal for the type."
   },
   {
     "calibre": "Miyota 9015",
     "maker": "Miyota (Citizen)",
     "family": [
       "9015",
-      "9039",
-      "90S5",
-      "9000"
+      "9039"
     ],
     "bph": 28800,
     "lift_angle_deg": 51,
-    "seconds": "centre, direct",
+    "seconds": "centre (described as direct drive)",
     "wheels": [
       {
         "name": "fourth wheel",
@@ -816,18 +1275,18 @@
     ],
     "sources": [
       "https://miyotamovement.com/jp/uploads/product/product_VFYbHra8C0WGl4Nge3.pdf (Miyota spec: 28,800 vph, 51°, 42 h)",
-      "https://calibercorner.com/miyota-caliber-9015/"
+      "https://calibercorner.com/miyota-caliber-9015/",
+      "https://calibercorner.com/miyota-caliber-9039/ (no date, 28,800 vph, 51°)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Escape wheel tooth count not found (20 teeth would give 5.0 s, 15 teeth 3.75 s), so it is left out. The 90S5 is a newer variant with no data found."
+    "notes": "Escape wheel tooth count not found (20 teeth would give 5.0 s, 15 teeth 3.75 s), so it is left out. The 90S5 is a newer variant with no data found and is not listed."
   },
   {
     "calibre": "Seagull ST19",
     "maker": "Tianjin Seagull",
     "family": [
       "ST1901",
-      "ST19",
-      "ST1902"
+      "ST19"
     ],
     "bph": 21600,
     "seconds": "small seconds at 9 (fourth wheel); centre chronograph seconds",
@@ -853,7 +1312,7 @@
       "https://calibercorner.com/seagull-caliber-st-1901b"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Based on the Venus 175 column-wheel chronograph. Lift angle not documented. Power reserve given as 39, 50 or 51 h by different sources."
+    "notes": "Based on the Venus 175 column-wheel chronograph. Lift angle not documented. About 50 h, 45 h with the chronograph running."
   },
   {
     "calibre": "Seagull ST2130",
@@ -899,8 +1358,7 @@
     "maker": "Various Chinese makers",
     "family": [
       "DG2813",
-      "2813",
-      "Mingzhu 2813"
+      "2813"
     ],
     "bph": 21600,
     "seconds": "centre",
@@ -933,10 +1391,11 @@
     "family": [
       "324 S C",
       "324",
-      "324 S QA",
+      "324 S QA LU",
       "324 S C FUS"
     ],
     "bph": 28800,
+    "lift_angle_deg": 52,
     "seconds": "centre, indirect (a centre seconds wheel held by a friction spring)",
     "wheels": [
       {
@@ -958,10 +1417,12 @@
     "sources": [
       "https://wiki.grail-watch.com/index.php/PP_324",
       "https://watchbase.com/patek-philippe/caliber/324-s-c-fus-ar",
-      "https://www.watchprosite.com/watchtech/new-engine-for-patek-philippe-5711-/1223.1275781.10746571/ (the 26-330 replaced the 324's friction-spring seconds)"
+      "https://www.watchprosite.com/watchtech/new-engine-for-patek-philippe-5711-/1223.1275781.10746571/ (the 26-330 replaced the 324's friction-spring seconds)",
+      "https://www.watchprosite.com/patek-philippe/324sc-movement/11.1156881.9063951/ (does not hack)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Indirect centre seconds is inferred from what its successor, the 26-330, changed. Does not hack. 35 to 45 h. No lift angle or tooth counts found."
+    "notes": "Indirect centre seconds is inferred from what its successor, the 26-330, changed. Does not hack. 35 to 45 h. Patek publishes no lift angle; 52° is the clone timegrapher guide's. No tooth counts found."
   },
   {
     "calibre": "Dandong 324",
@@ -973,6 +1434,7 @@
     ],
     "bph": 28800,
     "escape_teeth": 20,
+    "lift_angle_deg": 52,
     "seconds": "centre",
     "wheels": [
       {
@@ -999,10 +1461,11 @@
     ],
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
-      "Peter's bench: 28,800 vph, does not hack"
+      "Peter's bench: 28,800 vph, does not hack",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "measured",
-    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Bench takes use lift 52°, which is a setting, not a documented figure."
+    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Lift 52° as the clone timegrapher guide gives for the 324."
   },
   {
     "calibre": "Peacock SL1258",

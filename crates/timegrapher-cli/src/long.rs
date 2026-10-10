@@ -3,12 +3,67 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
-use timegrapher_core::periodicity::{standard_wheels, Wheel};
+use timegrapher_core::periodicity::{default_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, session, timing};
+
+/// Which wheels to name: a calibre's train, the escape wheel at a given
+/// number of teeth, or both common escape wheels when neither is given.
+pub(crate) struct Train<'a> {
+    pub calibre: Option<&'a str>,
+    pub escape_teeth: Option<u32>,
+}
+
+impl Train<'_> {
+    /// The calibre named, checked before any audio is read.
+    pub(crate) fn calibre(&self) -> Result<Option<&'static Calibre>, String> {
+        self.calibre
+            .map(|n| {
+                calibres::find(n).ok_or_else(|| {
+                    let known: Vec<&str> =
+                        calibres::all().iter().map(|c| c.calibre.as_str()).collect();
+                    format!(
+                        "--calibre '{n}' is not in the table; known: {}",
+                        known.join(", ")
+                    )
+                })
+            })
+            .transpose()
+    }
+
+    /// The wheels for a recording at `bph`. A calibre whose table gives no
+    /// escape wheel gets one from its teeth, or `--escape-teeth`, or both
+    /// common ones.
+    pub(crate) fn wheels(&self, bph: u32) -> Result<Vec<Wheel>, String> {
+        let escape = |teeth: Option<u32>| match teeth {
+            Some(t) => standard_wheels(bph, t),
+            None => default_wheels(bph),
+        };
+        let Some(c) = self.calibre()? else {
+            return Ok(escape(self.escape_teeth));
+        };
+        if c.bph != bph {
+            eprintln!(
+                "note: the {} beats at {} vph, the recording at {bph}",
+                c.calibre, c.bph
+            );
+        }
+        let mut w = c.wheels();
+        if !w.iter().any(|w| w.name == "escape wheel") {
+            let teeth = self.escape_teeth.or(c.escape_teeth);
+            w.extend(
+                escape(teeth)
+                    .into_iter()
+                    .filter(|w| w.name == "escape wheel"),
+            );
+        }
+        Ok(w)
+    }
+}
 
 pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
     let (name, secs) = s
@@ -66,7 +121,7 @@ pub fn run(
     files: &[PathBuf],
     clock_args: ClockArgs,
     cfg: &StreamConfig,
-    escape_teeth: u32,
+    train: Train,
     wheels: &[String],
     out: Option<PathBuf>,
     json: bool,
@@ -75,6 +130,7 @@ pub fn run(
         .iter()
         .map(|w| parse_wheel(w))
         .collect::<Result<_, _>>()?;
+    train.calibre()?;
     let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -135,7 +191,7 @@ pub fn run(
     }
 
     let mut lc = LongConfig {
-        wheels: standard_wheels(log.bph, escape_teeth),
+        wheels: train.wheels(log.bph)?,
         ..Default::default()
     };
     lc.wheels.extend(extra);
@@ -166,8 +222,10 @@ pub fn run(
         "lift_deg": cfg.analysis.amplitude.lift_deg,
         "notch_hz": cfg.analysis.envelope.notch_hz,
         "highpass_hz": cfg.analysis.envelope.highpass_hz,
-        "escape_teeth": escape_teeth,
+        "calibre": train.calibre,
+        "escape_teeth": train.escape_teeth,
         "wheels": wheels,
+        "named_wheels": lc.wheels,
         "out": out.display().to_string(),
     });
     let summary = crate::output::to_json(

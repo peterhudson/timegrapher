@@ -27,8 +27,6 @@ use timegrapher_core::timing;
 pub const MIN_S: f64 = 300.0;
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
-/// Shortest cycle the pane marks, seconds.
-const MIN_PERIOD_S: f64 = 60.0;
 /// Escape wheel teeth for naming the escape wheel's period, as `series`
 /// assumes unless told otherwise.
 const ESCAPE_TEETH: u32 = 15;
@@ -115,6 +113,9 @@ pub struct Steadiness {
     /// Each series folded at the cycle it was found to have, if any.
     folds: [Option<Fold>; 3],
     wheels: Vec<Wheel>,
+    /// The periods every series' search covers between them, log10 seconds,
+    /// so the three Periods plots share one time axis.
+    period_span: Option<(f64, f64)>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
 }
@@ -137,21 +138,17 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
 
 /// Run the tests over a session. Slow for long sessions (a 2 h take takes
 /// some seconds), so it is run off the window's thread.
-pub fn compute(log: &BeatLog) -> Steadiness {
+/// The tests over `log`, naming cycles after `wheels` (a picked
+/// calibre's train) or, without them, the wheels most calibres at the beat
+/// rate share.
+pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
     let lc = LongConfig {
-        wheels: standard_wheels(log.bph, ESCAPE_TEETH),
+        wheels: wheels.unwrap_or_else(|| standard_wheels(log.bph, ESCAPE_TEETH)),
         ..Default::default()
     };
     let cfg = Config::default();
     let long = longrun::analyse(log, None, &lc);
-    let mut report = steadiness::check(log, None, &long, &lc, &cfg);
-    // `long` gives a cycle's size in s/d even when the cycle is shorter than
-    // a reading, which turns an escape wheel's few tenths of a millisecond
-    // into thousands of s/d. Leave those cycles out until it reports them
-    // in milliseconds.
-    for c in &mut report.series {
-        c.period = c.period.take().filter(|p| p.period_s >= MIN_PERIOD_S);
-    }
+    let report = steadiness::check(log, None, &long, &lc, &cfg);
     let grids = grids(log, cfg.rate_reading_s);
     let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
     let be_search = (readings(&grids[2]) >= 30).then(|| {
@@ -177,11 +174,23 @@ pub fn compute(log: &BeatLog) -> Steadiness {
             longterm::fold(g, period, bins)
         })
     });
+    let logs = searches
+        .iter()
+        .flatten()
+        .flat_map(|x| x.period_s.iter())
+        .filter(|p| **p > 0.0)
+        .map(|p| p.log10());
+    let period_span = logs
+        .fold(None, |r: Option<(f64, f64)>, x| {
+            Some(r.map_or((x, x), |(a, b)| (a.min(x), b.max(x))))
+        })
+        .filter(|(a, b)| a < b);
     Steadiness {
         report,
         grids,
         searches,
         folds,
+        period_span,
         wheels: lc.wheels,
         upto_s: log.duration_s,
     }
@@ -339,6 +348,16 @@ fn secs(s: f64) -> String {
         format!("{:.0} min", s / 60.0)
     } else {
         format!("{:.1} h", s / 3600.0)
+    }
+}
+
+/// A time on a linear axis: "30 s" under a minute, then "1:30", so ticks
+/// every 30 s don't round to the same whole minute.
+fn lag_text(s: f64) -> String {
+    if s.abs() < 59.5 {
+        format!("{s:.0} s")
+    } else {
+        strip::fmt_time(s)
     }
 }
 
@@ -568,8 +587,10 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .map(|(p, v)| [p.log10(), *v])
                 .collect();
             // The search runs from long periods to short.
-            let x_lo = pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
-            let x_hi = pts.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+            let (x_lo, x_hi) = s.period_span.unwrap_or((
+                pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+                pts.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max),
+            ));
             if x_lo.partial_cmp(&x_hi) != Some(std::cmp::Ordering::Less) {
                 return note(ui, "The period search needs a longer session.");
             }
@@ -649,7 +670,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             let range = spread(&dots);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| secs(m.value))
+                .x_axis_formatter(|m, _| lag_text(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size))
                 .default_x_bounds(0.0, f.period_s);
@@ -697,7 +718,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             let x_hi = pts.last().map_or(1.0, |p| p[0]);
             let lo = pts.iter().map(|p| p[1]).fold(-a.band, f64::min).min(-0.2);
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| secs(m.value))
+                .x_axis_formatter(|m, _| lag_text(m.value))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(0.0, x_hi)
@@ -956,10 +977,30 @@ mod tests {
             live.push(b);
         }
         let log = log_of(&live).expect("beat rate");
-        let s = compute(&log);
+        let s = compute(&log, None);
         let rate = &s.report.series[0];
         assert_eq!(rate.verdict, Verdict::Periodic, "{}", rate.headline);
         assert!(s.folds[0].is_some());
+
+        // A picked calibre's train names the cycle instead.
+        let named = compute(
+            &log,
+            Some(vec![Wheel {
+                name: "seconds wheel".into(),
+                period_s: 60.0,
+            }]),
+        );
+        let wheel = named.report.series[0]
+            .cycle
+            .as_ref()
+            .and_then(|c| c.wheel.clone())
+            .or_else(|| {
+                named.report.series[0]
+                    .period
+                    .as_ref()
+                    .and_then(|p| p.wheel.clone())
+            });
+        assert_eq!(wheel.as_deref(), Some("seconds wheel"));
 
         let ctx = egui::Context::default();
         theme::install(&ctx);

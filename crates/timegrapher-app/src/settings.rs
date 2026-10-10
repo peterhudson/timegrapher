@@ -33,6 +33,44 @@ pub struct Settings {
     pub theme: ThemePreference,
     pub steady_view: steady::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
+    /// Calibres the watchmaker entered by hand, for movements the built-in
+    /// table doesn't have.
+    pub custom_calibres: Vec<CustomCalibre>,
+}
+
+/// A calibre's train, typed in once and picked again later.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomCalibre {
+    pub name: String,
+    pub wheels: Vec<CustomWheel>,
+}
+
+/// One wheel of a typed-in train.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomWheel {
+    pub name: String,
+    /// One full turn, seconds.
+    pub period_s: f64,
+}
+
+impl CustomCalibre {
+    /// A new entry with the wheels whose periods most trains share: a
+    /// 28,800 bph Swiss lever's 20-tooth escape wheel, and the fourth and
+    /// centre wheels that carry the seconds and minute hands.
+    pub fn new(name: String) -> Self {
+        let w = |name: &str, period_s: f64| CustomWheel {
+            name: name.into(),
+            period_s,
+        };
+        CustomCalibre {
+            name,
+            wheels: vec![
+                w("escape wheel", 5.0),
+                w("fourth wheel", 60.0),
+                w("centre wheel", 3600.0),
+            ],
+        }
+    }
 }
 
 impl Default for Settings {
@@ -59,6 +97,7 @@ impl Default for Settings {
             theme: ThemePreference::System,
             steady_view: steady::View::default(),
             panes: None,
+            custom_calibres: Vec::new(),
         }
     }
 }

@@ -25,9 +25,9 @@ use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 
 const USAGE: &str = "\
 Usage:
-  timegrapher-app [FILE]            open the window (FILE: a recording to replay,
-                                    or a folder of segments to analyse as one)
-  timegrapher-app --analyse FILE    open the window with FILE analysed all at once
+  timegrapher-app [FILE]            open the window with FILE analysed all at once
+                                    (a recording, or a folder of segments as one)
+  timegrapher-app --replay FILE     open the window replaying FILE as if live
   timegrapher-app --devices         list sound input devices as JSON
   timegrapher-app --headless FILE [--bph N] [--lift DEG] [--average S] [--every S]
                                     print live readings for FILE as JSON lines";
@@ -36,7 +36,7 @@ struct Args {
     file: Option<PathBuf>,
     headless: bool,
     devices: bool,
-    analyse: bool,
+    replay: bool,
     bph: Option<u32>,
     lift: f64,
     average_s: f64,
@@ -48,7 +48,7 @@ fn parse_args() -> Result<Args, String> {
         file: None,
         headless: false,
         devices: false,
-        analyse: false,
+        replay: false,
         bph: None,
         lift: 52.0,
         average_s: 10.0,
@@ -68,7 +68,9 @@ fn parse_args() -> Result<Args, String> {
         match arg.as_str() {
             "--headless" => a.headless = true,
             "--devices" => a.devices = true,
-            "--analyse" | "--analyze" => a.analyse = true,
+            // Analysing all at once is the default; the old flag still works.
+            "--analyse" | "--analyze" => a.replay = false,
+            "--replay" => a.replay = true,
             "--bph" => a.bph = Some(num(value("--bph")?, "--bph")? as u32),
             "--lift" => a.lift = num(value("--lift")?, "--lift")?,
             "--average" => a.average_s = num(value("--average")?, "--average")?,
@@ -154,7 +156,7 @@ fn main() -> ExitCode {
         ..Default::default()
     };
     let file = args.file.clone();
-    let analyse = args.analyse;
+    let analyse = !args.replay;
     match eframe::run_native(
         "Timegrapher",
         options,
