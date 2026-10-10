@@ -30,11 +30,11 @@ Ask, in one message:
   speaker, a phone case or a laptop with a magnetic clasp, or a sudden
   change in how it keeps time.
 
-Look the calibre up in the program's calibre table (the desktop app's
-calibre menu, or `timegrapher long --calibre X` lists the known names when
-X is not one of them), then in
-[reading-the-numbers.md](reading-the-numbers.md#lift-angle). Note bph and
-lift. If the calibre is not known, say so: you'll use 52° and let the
+Look the calibre up in the program's calibre table: `timegrapher
+calibres NAME --json` (in a build without it, `timegrapher long --calibre
+X` lists the known names when X is not one of them), then in
+[reading-the-numbers.md](reading-the-numbers.md#lift-angle). Take the lift
+angle from the table, never from memory. Note bph and lift. If the calibre is not known, say so: you'll use 52° and let the
 beat rate be found, and the amplitude is then good to ±10–15°.
 
 ## 1. The microphone (5 minutes)
