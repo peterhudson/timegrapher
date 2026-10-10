@@ -10,6 +10,7 @@ pub mod audio;
 pub mod beats;
 pub mod capture;
 pub mod clock;
+pub mod clockstore;
 pub mod diagnose;
 pub mod dsp;
 pub mod filter;
