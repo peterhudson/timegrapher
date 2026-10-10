@@ -1,0 +1,57 @@
+name: Contribute a recording
+description: Share a recording of a watch for the public test corpus, with no problem to report.
+title: "Recording: "
+labels: ["recording"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Recordings from many watches, microphones and rooms are how the engine gets tested. [Contributing recordings](https://github.com/peterhudson/timegrapher/blob/main/docs/contributing-recordings.md) says what helps most and how to cut a file to GitHub's 25 MB limit.
+  - type: input
+    id: watch
+    attributes:
+      label: Watch and calibre
+      placeholder: "Omega Seamaster, cal. 565, 19,800 vph"
+    validations:
+      required: true
+  - type: input
+    id: lift
+    attributes:
+      label: Lift angle
+      description: Leave blank if you do not know it.
+      placeholder: "52°"
+  - type: dropdown
+    id: position
+    attributes:
+      label: Position
+      options: ["Dial up", "Dial down", "Crown up", "Crown down", "Crown left", "Crown right", "Not sure, or it moved"]
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Microphone and room
+      description: The microphone and its input level, how the watch was held (stand, clamp, on a cloth), and anything noisy nearby (air conditioning, a keyboard, traffic).
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Another timegrapher's reading, if any
+      description: Taken at the same moment on the same watch, with a photo of its screen. These are the most valuable recordings of all.
+  - type: textarea
+    id: recording
+    attributes:
+      label: Recording
+      description: Drag the FLAC or WAV here (zip it if GitHub refuses the file type).
+    validations:
+      required: true
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Licence
+      options:
+        - label: I made this recording, I listened back, and it has no voices or other sounds I would not want public.
+          required: true
+        - label: I release this recording and what I wrote above under CC0 (no rights reserved), so the project and anyone else may use it. I understand CC0 cannot be withdrawn, though the project will remove the recording from its corpus if I ask.
+          required: true
