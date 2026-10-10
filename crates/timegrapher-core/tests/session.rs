@@ -267,3 +267,33 @@ fn clipped_recording_is_flagged() {
     let f = rep.findings.iter().find(|f| f.code == "clipping").unwrap();
     assert_eq!(f.severity, Severity::Warning);
 }
+
+#[test]
+fn short_rate_cycle_is_sized_in_ms() {
+    // A 10 s rate swing, too short for 10 s rate readings to follow: the
+    // cycle list states it as a timing swing in ms, as `long` does.
+    let cfg = SynthConfig {
+        duration_s: 240.0,
+        snr_db: 30.0,
+        ..Default::default()
+    };
+    let audio = generate(
+        &cfg,
+        |_| 280.0,
+        |t| 60.0 * (2.0 * std::f64::consts::PI * t / 10.0).sin(),
+    );
+    let path = std::env::temp_dir().join(format!("tg-session-cycle-{}.wav", std::process::id()));
+    write_wav(&path, &audio).unwrap();
+    let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    std::fs::remove_file(&path).ok();
+    let lc = timegrapher_core::longterm::LongConfig::default();
+    let report = timegrapher_core::longrun::analyse(&log, None, &lc);
+    let cycles = session::cycles(&report, &lc.wheels);
+    let c = cycles
+        .iter()
+        .find(|c| c.series == "rate" && (c.period_s - 10.0).abs() < 0.2)
+        .expect("10 s rate cycle");
+    assert_eq!(c.unit(), "ms");
+    assert!(c.size_text().ends_with(" ms"), "{}", c.size_text());
+    assert!(c.size > 0.0 && c.size < 5.0, "{}", c.size);
+}
