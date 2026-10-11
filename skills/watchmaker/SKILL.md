@@ -64,14 +64,16 @@ Three jobs, in order:
    requests), carry on.
 2. `timegrapher devices` to find the microphone.
 3. `timegrapher doctor --device NAME` with the watch clamped in the stand.
-   Exit code 0 means the signal is fit to measure with (there may still be
-   warnings); 3 means at least one fault. Issues carry a code (`silent`,
-   `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `noisy`, `hot`)
-   and proposed fixes, and the signal is banded as in the desktop app
-   (`good` 10× and up; `fair` 5–10×, rate reliable; `poor` 3–5×, only the rate;
-   `none`). Explain the issue in plain words,
-   propose the fix, ask, then apply it (or `--apply` after a yes) and run
-   `doctor` again until it is clean.
+   It reports levels and what it detected, each with a code (`silent`,
+   `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `noisy`, `hot`),
+   with proposed fixes, and the signal figure `signal_x`. Read the levels
+   and codes, not any fault, warning, band or verdict word a build
+   prints: those are fixed cut-offs, and what each level means is in
+   [findings.md](references/findings.md#doctor) (the project's rule of
+   thumb: 10× and up, every reading; 5–10×, the rate, amplitude and beat
+   error may be off; 3–5×, the rate only). Explain what it found in plain
+   words, propose the fix, ask, then apply it (or `--apply` after a yes)
+   and run `doctor` again.
 4. Before analysing anything, ask what the watch is (make, model and
    **calibre** if they know it), and which beat rate and lift angle, if
    any, they are sure of and where those came from. Look the calibre up
@@ -110,10 +112,12 @@ from the microphone check to six positions fully wound and the same six
 - Let it run a few minutes before measuring, and give it 30 s to a minute
   to settle after every change of position.
 - Record at least 60 s per position; 2 minutes is better. Dial up first.
-- For a proper check, Witschi's order: dial up, dial down, crown down,
-  crown left, crown up, crown right (the desktop app's Positions Test
-  leads through the same six, settling 20 s and measuring 60 s each;
-  docs/app.md). Five or six positions tell you far more than one.
+- For a proper check, six positions in the desktop app's order: dial
+  up, dial down, crown down, crown left, crown up, crown right (its
+  Positions Test settles 20 s and measures 60 s each; docs/app.md).
+  Witschi's training course measures the verticals first (6H, 9H, 12H,
+  3H), then dial up and dial down; either order serves. Five or six
+  positions tell you far more than one.
 - For the gear train: one position, an hour or more, then `timegrapher series`
   (is it steady, and if not, which wheel) and `timegrapher long` (the report).
 - Analyse each file: `timegrapher analyze FILE --lift L --json` (and `--bph`
@@ -122,13 +126,15 @@ from the microphone check to six positions fully wound and the same six
 For several positions, name each file after its position (`watch_DU.flac`,
 `watch_CL.flac`, ... or CH, CB, 3H, 6H, 9H, 12H) and run
 `timegrapher session FOLDER --lift L --json`, or `timegrapher session
---init FOLDER` to write a `session.toml` to fill in (calibre, wind state,
-tolerance class). It gives per-position readings, Witschi's characteristic
-values (X, D, DV, DH, DVH, Di, isochronism) and findings, each with a
-stable `code`, a `severity` (`fault`, `warning`, `note`), the evidence and
-advice. [findings.md](references/findings.md) says what each code means,
-how much weight it carries and what to tell the person. Read the
-findings, then reason about them as below. Two of those values are easy
+--init FOLDER` to write a `session.toml` to fill in (calibre, wind
+state). It gives per-position readings and the characteristic values
+(X, D, DV, DH, DVH, Di, isochronism) that docs/sessions.md defines. Some
+builds also print a tolerance class, findings with a `severity` and
+advice, and a grade: those are the program's opinions from fixed
+limits, so read the numbers behind them instead.
+[findings.md](references/findings.md#session-the-positions-test) gives
+the rules to judge the numbers by, each with its source, and what to
+tell the person. Two of those values are easy
 to mix up: `d_amplitude` is the largest difference between any two
 positions, and `dvh_amplitude` is the vertical mean minus the horizontal
 mean (negative when the verticals read lower). For "vertical against
@@ -157,21 +163,23 @@ Work through them in this order. The reasons are in
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.
    **Too few beats** (`beats_found` well under duration × bph ÷ 3600; this
-   skill's working threshold is under 90%) is first a question of the beat rate, before clipping, gain
+   skill's working threshold is under 95%, the project's rule of thumb) is first a question of the beat rate, before clipping, gain
    or the watch: run `analyze` again without `--bph` and see which rate
    the program finds and whether the beats then add up. A forced wrong
    beat rate finds a fraction of the beats and gives a meaningless
    amplitude. If the beat rate changes, ask again about the lift angle.
 2. **Amplitude first.** It is the best single measure of the health of a
    movement: how much energy reaches the balance, after everything the
-   train, the oil and the escapement take out of it. The `session` report
-   judges it, fully wound, against Witschi's tolerances: 260–320°
-   horizontal and 240–280° vertical (docs/sessions.md), and calls under
-   200° a fault (the project's threshold). Vertical positions read lower
-   than horizontal because the balance pivots turn on their sides, so
-   judge them against the vertical range, not the horizontal one. What
-   normal looks like by calibre, with sources:
-   [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
+   train, the oil and the escapement take out of it. Hold it, fully
+   wound, against the set that fits the watch: the maker's figure where
+   one exists (ETA 2824-2 and Sellita SW200-1: at most 315° dial up
+   fully wound, at least 200° at 6H after 24 h), otherwise Witschi's
+   training course (250–330° horizontal, 250–270° vertical, with an
+   example that goes down to 220° vertical). Under 200° fully wound is
+   the project's rule of thumb for "very low". Vertical positions read
+   lower than horizontal because the balance pivots turn on their sides,
+   so judge them against a vertical range. Every set, with sources:
+   [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#tolerance-sets-by-source).
 3. **Lift angle.** Amplitude is only as good as the lift angle you gave it.
    A wrong lift angle scales the amplitude in the same proportion (step
    5 of set-up). Look up the calibre in the table; if unknown, use 52,
@@ -184,9 +192,10 @@ Work through them in this order. The reasons are in
    Where they disagree, treat the drop figure as unreliable: it can
    swing between stretches of one file (docs/validation.md has the
    case).
-   The `session` report holds it to Witschi's tolerance, under 0.5 ms,
-   and calls 2 ms or more a fault (the project's threshold;
-   docs/sessions.md). It is an adjustment, not a fault in itself.
+   Witschi's training course gives 0.0–0.5 ms as acceptable; ETA's
+   2824-2 sheet 0.8 ms (Standard, Elaboré) or 0.6 ms (Top, Chronometer)
+   dial up fully wound; 2 ms or more is the project's rule of thumb for
+   "large". It is an adjustment, not a fault in itself.
 5. **Rate last**, and never on its own. The rate in one position moves with
    position, state of wind, temperature and handling; a watchmaker regulates
    to the average over positions. A rate of +8 dial up says very little. A
@@ -199,11 +208,13 @@ Work through them in this order. The reasons are in
 7. **Positions.** Compare dial up with dial down (friction at the balance
    pivots, end shake, a hairspring out of flat), horizontal with vertical,
    and the vertical positions with each other (poise, hairspring centring).
-8. **Possible faults.** `analyze` lists `faults[]` from the shape of the
-   Tick and the Tock (`session` and `record` don't carry them: analyze
-   each take's `audio-001.wav`). Each is a possible fault worth checking
-   on the bench, never a diagnosis, and it counts only if it repeats; see
-   [findings.md](references/findings.md#faults-the-program-names).
+8. **The shape of the beat.** Run `shape` on each take's
+   `audio-001.wav` and read its measures against
+   [tick-shape.md](references/tick-shape.md#rules-for-possible-faults).
+   Anything they find is a possible fault worth checking on the bench,
+   never a diagnosis, and it counts only if it repeats. Some builds list
+   `faults[]` in `analyze`: the same rules, applied by the program;
+   don't repeat its names as findings.
 
 Then decide. [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md)
 gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
@@ -217,19 +228,17 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   ([when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#demagnetise-first-at-home)),
   then re-test. If it's still hundreds out, it's a
   watchmaker job (hairspring caught, coils touching, or damage).
-- **Amplitude over about 320° dial up**: check the lift angle first, then
+- **Amplitude over 315° dial up** (ETA's and Sellita's maximum, fully
+  wound): check the lift angle first, then
   the microphone (a missed unlock or a doubled sound reads as very high
   amplitude). Real amplitude that high risks **knocking** (overbanking): the
   trace jumps or doubles and you can sometimes hear a double tick. That
-  wants a watchmaker; it can damage the escapement. `analyze` raises no
-  knocking fault at all, because an ETA in a plastic holder already reads
-  320–332° without knocking (docs/fault-signatures.md); only the
-  `session` report warns on a position whose median amplitude, at the take's lift
-  angle, is above 330°, Witschi's knocking limit, as `amplitude_high`, "Very high
-  amplitude": a warning, never a fault (docs/sessions.md). So never raise
-  knocking below 330°, treat a higher reading first as a reason to check
-  the mount and the lift angle, and call it knocking only when the trace
-  jumps.
+  wants a watchmaker; it can damage the escapement. An ETA in a plastic
+  holder already reads 320–332° without knocking
+  (docs/fault-signatures.md), and Witschi's training course names 330°
+  as the amplitude that causes knocking. So never raise knocking below
+  330°, treat a higher reading first as a reason to check the mount and
+  the lift angle, and call it knocking only when the trace jumps.
 - **Low amplitude everywhere**, judged against what *that calibre* normally
   does where a source says (see the table in when-to-see-a-watchmaker.md):
   dirty or dried oil, a tired mainspring, or wear. Weigh it with the time since
@@ -237,8 +246,8 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   service.
 - **Dial up and dial down clearly apart** in amplitude: something at the
   balance pivots or end stones, or a hairspring out of flat. Watchmaker.
-- **Vertical far below horizontal**: the report warns at more than 50°
-  (`vh_amplitude_drop`, the project's threshold): worn or dirty balance
+- **Vertical far below horizontal**: more than 50° is the project's rule
+  of thumb for mentioning it (`dvh_amplitude`): worn or dirty balance
   pivots and jewels, or a lubrication problem. Service.
 - **Rate differs a lot between vertical positions**, and the difference
   changes with amplitude: poise or hairspring centring. An adjustment job.
@@ -362,7 +371,7 @@ and if one decides your verdict, say so.
 | [findings.md](references/findings.md) | Every finding code and verdict from `doctor`, `session` and `series`, and the possible faults from `analyze`: what it means, how sure, what to do, what to tell the person |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
 | [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
-| [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means, good/fair/poor values, lift angles by calibre, positions, COSC and chronometer criteria, trace patterns |
+| [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means and how to read it, the lift angle, positions, COSC and chronometer criteria, trace patterns |
 | [diagnosis.md](references/diagnosis.md) | From symptoms to causes: escapement, balance and hairspring, oil, mainspring, gear train, magnetism, shock |
 | [tick-shape.md](references/tick-shape.md) | Reading `timegrapher shape`: unlock, impulse, drop, the two pallet stones, fault signatures |
 | [long-runs.md](references/long-runs.md) | Reading `timegrapher long`: rate and amplitude over hours, periodic faults by wheel, sound-card clock calibration |

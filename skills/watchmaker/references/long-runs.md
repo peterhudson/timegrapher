@@ -58,7 +58,8 @@ Periodic changes in amplitude:
 (That one is synthetic: a watch made to lose 30 s/d and 15° for 8 s of
 every minute.)
 
-- **Clean percentage.** Beats matched well. Under about 95%, something
+- **Clean percentage.** Beats matched well. Under about 95% (the
+  project's rule of thumb), something
   disturbed the recording or the watch's sound changed; treat the rest
   with care.
 - **Clock.** Whether the sound card's error was corrected, and by how
@@ -79,10 +80,12 @@ every minute.)
     quote that only as "the step between its two states", never as the
     swing;
   - **explains**: how much of the wandering (after slow drift is removed)
-    this cycle accounts for. 5% is a ripple; 40% or more dominates;
+    this cycle accounts for. As a rule of thumb, 5% is a ripple and 40%
+    or more dominates;
   - **false alarm**: the chance noise alone would have produced a
     component this strong anywhere in the search. Only components under 1%
-    are listed. 1e-5 is convincing; 1e-50 is beyond doubt;
+    are listed (the program's cut-off). As a rule of thumb, 1e-5 is
+    convincing and 1e-50 beyond doubt;
   - **wheel**: which wheel turns at that period, or the nearest one and
     how far off. A 57 s cycle in a two-hour run (resolution ±0.5 s) is
     *not* the fourth wheel.
