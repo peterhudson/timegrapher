@@ -581,6 +581,7 @@ pub fn measure_with_breaks(
                 _ => 0.0,
             },
             breaks: m.breaks.len(),
+            average_s: None,
         },
     );
     m.confidence = a.confidence;
