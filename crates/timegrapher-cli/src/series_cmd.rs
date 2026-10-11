@@ -4,7 +4,6 @@
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use timegrapher_core::audio;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
@@ -12,6 +11,7 @@ use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
 use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::{audio, breaks};
 
 pub struct Options<'a> {
     pub files: &'a [PathBuf],
@@ -48,6 +48,18 @@ pub fn run(o: Options) -> Result<(), String> {
         }
         None => None,
     };
+    // Without a log, the same correction `analyze` and `long` would use: a
+    // stored one for the input, else the recording's own USB lines.
+    let clock = match clock {
+        Some(c) => Some(c),
+        None => {
+            let total_s = info
+                .frames
+                .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
+            crate::clock_cmd::correction_or_usb(&files, None, None)?
+                .and_then(|(ppm, _)| timegrapher_core::session::fixed_clock(ppm, total_s))
+        }
+    };
 
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
     let tty = std::io::stderr().is_terminal();
@@ -77,7 +89,10 @@ pub fn run(o: Options) -> Result<(), String> {
         ..Default::default()
     };
     lc.wheels.extend(extra);
-    let long = longrun::analyse(&log, clock.as_ref(), &lc);
+    let mut log = log;
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    let long = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
     let rep = steadiness::check(&log, clock.as_ref(), &long, &lc, &o.check);
 
     if o.json {
@@ -142,7 +157,11 @@ fn print_text(r: &Report, calibrated: bool) {
         "Recording    {} at {} bph{}",
         crate::long::duration(r.duration_s),
         r.bph,
-        if calibrated { ", clock corrected" } else { "" }
+        if calibrated {
+            ", clock corrected (tg, and a session's reference rates, read on the sound card's clock)"
+        } else {
+            ""
+        }
     );
     for s in &r.series {
         print_series(s);

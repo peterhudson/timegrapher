@@ -1,8 +1,6 @@
 # Reading a seller's timegrapher QC in 60 seconds
 
-This is the beginner's layer, from the guide "How to Understand Your
-Timegrapher QC in 60 Seconds" (r/RepTime and the RWI forum) by this
-project's watchmaker. Use it when
+This is the beginner's layer. Use it when
 someone shows you a photo or video of a cheap timegrapher's screen,
 usually a "Multifunction Timegrapher No. 1000/1900" or a Weishi, taken
 before a watch is shipped. The one number that is easy to understand,
@@ -13,7 +11,7 @@ matters.
 
 | Label | What it is | What to do with it at QC |
 | --- | --- | --- |
-| **RATE** (s/d) | Seconds gained or lost per day, in this one position, at this moment. | Ignore it anywhere between +30 and −30. The factory regulates dial up and fully wound to near 0, and shipping knocks it about anyway, especially on a regulated (not free-sprung) balance. For scale: a genuine ETA 2824-2 is "in spec" at ±30 s/d in Standard grade, ±20 Elaborate, ±15 Top, and −4/+6 COSC. |
+| **RATE** (s/d) | Seconds gained or lost per day, in this one position, at this moment. | One position at one moment says little about how the watch keeps time, so don't judge the watch on it. For scale, the makers' and COSC's own figures are means over several positions and days: ETA grades the 2824-2 at a mean of ±12 s/d (Standard), ±7 (Elaboré) and ±4 (Top) (sources in SKILL.md), and [COSC](https://www.cosc.swiss/en/certification/mechanical-movements) certifies a mean daily rate of −4/+6 s/d over its first ten days of testing. |
 | **AMP.** (°) | How far the balance swings each way: like how wide a grandfather clock's pendulum swings. It measures how well energy gets from the mainspring through the train and escapement to the balance. | The number to look at. Dial up and fully wound, you want **230–300°**, after correcting for the lift angle. Too low can mean dirty oil turning to paste in the pivots. Too high can mean the watch is under-lubricated: oil is sticky and costs energy at this scale; its main job is to stop wear. |
 | **B.E.** (ms) | Beat error: the difference in length between tick and tock. | Under **0.7 ms** is fine for a modern movement. |
 | **L.A.** (°) | Lift angle: a setting, not a measurement. It goes into the amplitude sum. | Check it. 52° is the usual default and not bad for most movements; for a 32xx (genuine, Dandong or JH) 55° is closer, so a 52° reading there is about 13° low. Each degree too high adds roughly 5–7° to the amplitude shown. A lift angle of 62–65° is a sign of **amplitude hacking**: making a tired watch look healthy. Don't ask a seller to use a particular lift angle; correct the amplitude yourself at about 5° per degree. |
@@ -51,7 +49,7 @@ And in daily wear an automatic is rarely fully wound (you'd need about
 3. Amplitude 230–300° dial up? That's the health check.
 4. Beat error under 0.7 ms?
 5. Trace straight and full width?
-6. Rate: ignore it within ±30 s/d.
+6. Rate: one position at one moment; note it, but don't judge the watch on it.
 
 For anything beyond that, read the numbers as a watchmaker would:
 [reading-the-numbers.md](reading-the-numbers.md).

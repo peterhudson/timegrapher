@@ -7,6 +7,7 @@
 //! time. Each log entry is a pair: seconds of audio captured so far (from
 //! the frame count) and the system clock at that moment.
 
+use crate::breaks::{self, Break};
 use crate::dsp::{median, robust_sd};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -32,6 +33,10 @@ pub struct ClockFit {
     /// Whether the mapping follows slow drift (local fits) rather than
     /// one straight line.
     pub tracks_drift: bool,
+    /// Pauses in listening seen as steps in the log: the mapping is fitted
+    /// with the gaps taken out, and [`ClockFit::map`] puts them back.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub breaks: Vec<Break>,
     /// Knots of the mapping: audio seconds and true seconds, both from the
     /// first entry's values.
     #[serde(skip)]
@@ -109,6 +114,58 @@ impl ClockFit {
         if p[p.len() - 1].0 <= 0.0 || p[p.len() - 1].1 <= 0.0 {
             return Err(ClockError::NotIncreasing);
         }
+        // A pause in listening steps the system time ahead of the audio.
+        // Fitted across, it would read as a huge clock error, so each
+        // stretch is brought down by its own offset first (the gaps), and
+        // the gaps are then set from where each stretch sits about one line.
+        let mut gaps: Vec<Break> = breaks::from_clock(&p);
+        let piece = |gaps: &[Break], x: f64| breaks::piece(gaps, x);
+        let mut offset: Vec<f64> = std::iter::once(0.0)
+            .chain(gaps.iter().scan(0.0, |acc, g| {
+                *acc += g.gap_s;
+                Some(*acc)
+            }))
+            .collect();
+        if !gaps.is_empty() {
+            // One slope for all stretches, each with its own intercept:
+            // the slope from the scatter within each stretch alone.
+            let mut per: Vec<Vec<(f64, f64)>> = vec![Vec::new(); offset.len()];
+            for q in &p {
+                per[piece(&gaps, q.0)].push(*q);
+            }
+            let means: Vec<(f64, f64)> = per
+                .iter()
+                .map(|r| {
+                    let n = r.len().max(1) as f64;
+                    (
+                        r.iter().map(|q| q.0).sum::<f64>() / n,
+                        r.iter().map(|q| q.1).sum::<f64>() / n,
+                    )
+                })
+                .collect();
+            let (mut sxy, mut sxx) = (0.0, 0.0);
+            for (r, m) in per.iter().zip(&means) {
+                for q in r {
+                    sxy += (q.0 - m.0) * (q.1 - m.1);
+                    sxx += (q.0 - m.0) * (q.0 - m.0);
+                }
+            }
+            if sxx > 0.0 {
+                let b = sxy / sxx;
+                let a0 = means[0].1 - b * means[0].0;
+                for k in 1..offset.len() {
+                    if !per[k].is_empty() {
+                        offset[k] = means[k].1 - b * means[k].0 - a0;
+                    }
+                }
+            }
+            for (k, g) in gaps.iter_mut().enumerate() {
+                g.gap_s = offset[k + 1] - offset[k];
+            }
+            for q in p.iter_mut() {
+                q.1 -= offset[piece(&gaps, q.0)];
+            }
+        }
         let total = p.len();
         let (a, b) = line(&p);
         let res: Vec<f64> = p.iter().map(|q| q.1 - (a + b * q.0)).collect();
@@ -160,23 +217,37 @@ impl ClockFit {
             ppm_sd: b_sd * 1e6,
             residual_ms: 0.0,
             tracks_drift,
+            breaks: Vec::new(),
             knots,
             origin,
         };
         let ss: f64 = p
             .iter()
             .map(|q| {
-                let r = fit.map_rel(q.0) - q.1;
+                let r = fit.map_gapless(q.0) - q.1;
                 r * r
             })
             .sum();
         fit.residual_ms = (ss / p.len() as f64).sqrt() * 1e3;
+        fit.breaks = gaps
+            .into_iter()
+            .map(|g| Break {
+                audio_s: g.audio_s + origin.0,
+                gap_s: g.gap_s,
+            })
+            .collect();
         Ok(fit)
     }
 
-    /// True time relative to the first entry, piecewise linear, extended
-    /// along the end segments.
+    /// True time relative to the first entry, with the gaps of the breaks
+    /// before audio time `x` (also relative to the first entry).
     fn map_rel(&self, x: f64) -> f64 {
+        self.map_gapless(x) + breaks::wall(&self.breaks, x + self.origin.0) - (x + self.origin.0)
+    }
+
+    /// True time relative to the first entry with the gaps taken out,
+    /// piecewise linear, extended along the end segments.
+    fn map_gapless(&self, x: f64) -> f64 {
         let k = &self.knots;
         if k.len() == 1 {
             return k[0].1 + (x - k[0].0);
@@ -400,7 +471,19 @@ pub fn parse_log(
         if dt <= 0.0 {
             return Err("times do not increase".into());
         }
-        let per_s = (a1 - a0) / dt;
+        // The median step, so a pause in the log (time jumps, audio does
+        // not) doesn't hide the unit.
+        let mut steps: Vec<f64> = a
+            .windows(2)
+            .zip(t.windows(2))
+            .filter(|(_, tw)| tw[1] > tw[0])
+            .map(|(aw, tw)| (aw[1] - aw[0]) / ((tw[1] - tw[0]) * tscale))
+            .collect();
+        let per_s = if steps.is_empty() {
+            (a1 - a0) / dt
+        } else {
+            median(&mut steps)
+        };
         let ascale = [1.0, fs, fs * bytes_per_frame as f64]
             .into_iter()
             .map(|u| (u, (per_s / u).ln().abs()))
@@ -518,5 +601,39 @@ mod tests {
     fn rejects_an_audio_column_of_unknown_unit() {
         let text = "1791484354 1000\n1791484414 2000\n";
         assert!(parse_log(text, 48000, 2).is_err());
+    }
+
+    #[test]
+    fn a_pause_is_a_gap_not_a_clock_error() {
+        // A card 20 ppm slow, logged every 5 s for 10 min, paused for 60 s
+        // after 5 min: audio runs straight on, system time jumps. Fitted
+        // across, the jump read as about 646,000 ppm.
+        let k = 1.0 + 20e-6;
+        let pairs: Vec<(f64, f64)> = (0..=120)
+            .map(|i| {
+                let a = i as f64 * 5.0;
+                (a, 1.79e9 + a * k + if a >= 300.0 { 60.0 } else { 0.0 })
+            })
+            .collect();
+        let fit = ClockFit::new(&pairs).unwrap();
+        assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
+        assert_eq!(fit.breaks.len(), 1);
+        assert!((fit.breaks[0].audio_s - 300.0).abs() < 1e-9);
+        assert!(
+            (fit.breaks[0].gap_s - 60.0).abs() < 1e-3,
+            "{:?}",
+            fit.breaks
+        );
+        assert!((fit.map(200.0) - 200.0 * k).abs() < 1e-3);
+        assert!((fit.map(400.0) - (400.0 * k + 60.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_late_timestamp_is_not_a_pause() {
+        let mut pairs: Vec<(f64, f64)> = (0..=60).map(|i| (i as f64, 1.79e9 + i as f64)).collect();
+        pairs[30].1 += 0.8;
+        let fit = ClockFit::new(&pairs).unwrap();
+        assert!(fit.breaks.is_empty(), "{:?}", fit.breaks);
+        assert!(fit.ppm.abs() < 1.0, "ppm {}", fit.ppm);
     }
 }

@@ -9,7 +9,7 @@ use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{default_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, session, timing};
+use timegrapher_core::{audio, breaks, session, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -152,7 +152,9 @@ pub fn run(
     // steady error over the run, which cannot follow drift.
     let fixed = match clock_log {
         Some(_) => None,
-        None => crate::clock_cmd::correction(file, clock_args.device, clock_args.card_ppm)?,
+        None => {
+            crate::clock_cmd::correction_or_usb(&files, clock_args.device, clock_args.card_ppm)?
+        }
     };
     let total_s = info
         .frames
@@ -195,7 +197,10 @@ pub fn run(
         ..Default::default()
     };
     lc.wheels.extend(extra);
-    let rep = longrun::analyse(&log, clock.as_ref(), &lc);
+    let mut log = log;
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
@@ -419,6 +424,9 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             if c.tracks_drift { ", drift followed" } else { "" }
         ),
         (None, _) => println!("Clock        not calibrated: absolute rate is only as good as the sound card (use --clock, or store the card's error with `timegrapher clock`)"),
+    }
+    if r.clock.is_some() {
+        println!("             tg, and a session's reference rates, read on the sound card's clock: add the error above to compare");
     }
     match &r.overall {
         Some(f) => println!(

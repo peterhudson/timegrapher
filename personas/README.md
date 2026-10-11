@@ -1,6 +1,6 @@
 # Persona rounds
 
-Six watch people use a build of the timegrapher the way customers would, and
+Seven watch people use a build of the timegrapher the way customers would, and
 write notes the way a watchmaker gives feedback to a developer. CI checks the
 engine against tg and the corpus, the unit tests and the packages; persona
 rounds check what it is like to *use* the desktop app, the command line with
@@ -14,6 +14,7 @@ the watchmaker skill, and the MCP server.
 | [Lucía](people/4-spanish-speaker.md) | Spanish speaker doing a six-position test | MCP server, recording each position |
 | [Pat](people/5-sceptic.md) | Sceptic who gives wrong details on purpose | Command line and skill |
 | [Brunner](people/6-retired-watchmaker.md) | Retired Swiss lab watchmaker | Desktop app, live and a two-hour recording; also reviews the conversations |
+| [Mika](people/7-designer-watchmaker.md) | Former Apple software designer who services Seikos on weekends | Desktop app, a deep pass on every feature: six positions live and two saved recordings, judged as a product designer and a watchmaker |
 
 ## How a round works
 
@@ -55,7 +56,7 @@ python3 personas/harness/round.py run --out /mnt/project-files/testing/YYYY-MM-D
 `setup` installs the system packages it needs, downloads the build's Linux
 archive (`--build COMMIT` builds from source instead), the watchmaker skill
 at that commit and the corpus index. `run` downloads only the recordings the
-personas use (about 1 GB), runs all six personas in parallel, then writes
+personas use (about 1 GB), runs all the personas in parallel, then writes
 `triage.md`. `--only ID ...` runs some of them; `--model` picks the model for
 every agent.
 
@@ -66,5 +67,8 @@ and a truth sheet in `truth/` named by its `id`. Keys: `id`, `name`,
 `surface` (`app`, `mcp-pair` or `cli-pair`), `language`, `stand` (position to
 corpus `take/file`), `files` (path in the persona's home to `take/file`, or
 `take/*` for a whole take as a folder) and `on_stand` (a position the watch
-starts in). A dossier states no calibre fact beyond the corpus metadata and
+starts in). An app persona can also set `budget` (most actions, default 80),
+`min_actions` (sent back until it has done this many, default 40) and `notes`
+(most numbered notes, default 10); Mika's deep pass uses 300, 150 and 25. A
+dossier states no calibre fact beyond the corpus metadata and
 the program's own calibre table.

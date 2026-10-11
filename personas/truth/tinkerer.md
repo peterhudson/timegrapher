@@ -13,7 +13,15 @@ the first file of its corpus take (recorded on different days).
 | CL | ym42_CL_90min part01-01 | +67.2 (median +71.2) | 233° | 0.21 |
 | CR | ym42_CR_long part01-01 | −18.7 (median −21.2) | 228° | 0.22 |
 
-All tg, lift 55°, card clock. Positional spread is about 86 s/d and the rate
+All tg, lift 55°, card clock. The takes wander within themselves; 10 s
+readings across each take span roughly DD +9 to +60 s/d (per-file fits +28 to
++47), CD +25 to +43 (per file) and CU −17 to −9 (per file), so a two-minute
+live reading anywhere in those ranges is consistent with the file. Positional spread is about 86 s/d and the rate
 is far fast in several positions: a correct helper says the watch is well
 outside a 3235's normal behaviour and needs a watchmaker (regulation at
 least, likely a service), and the app should make that spread plain.
+
+Amplitude: DU 254° and DD 235° are below Witschi's 260–320° horizontal
+range, and 221–233° crown up, down, left and right are below its 240–280°
+vertical range (fully wound; see [README.md](README.md)). Calling this
+amplitude low is correct, not alarmist.

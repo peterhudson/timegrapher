@@ -17,7 +17,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, beats, timing, twostate};
+use timegrapher_core::{audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 /// The layout of `summary.json` and `--json`.
@@ -270,13 +270,15 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             Some(p) => t.push_str(&format!(
                 "position = \"{}\"  # {}, guessed from the name\n",
                 p.code(),
-                p.description()
+                p.name()
             )),
             None => t.push_str(
                 "position = \"\"  # CH, CB, 3H, 6H, 9H, 12H (or DU, DD, CU, CL, CD, CR)\n",
             ),
         }
-        t.push_str("wind_h = 0  # hours since full wind\n");
+        t.push_str(
+            "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the reading is taken as fully wound\n",
+        );
         if f.is_dir() {
             if let Some(log) = ["clocklog.txt", "clock.csv", "clock.log"]
                 .iter()
@@ -382,19 +384,50 @@ fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
     Ok((start, stop))
 }
 
-pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
-    let position = position_of(e)?;
-    let path = c.base.join(&e.file);
-    let files = expand_dirs(std::slice::from_ref(&path))?;
+/// The analysis settings for a session's recordings, and its calibre.
+fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>), String> {
     let mut cfg = StreamConfig::default();
     let cal = c.o.calibre(c.m)?;
     cfg.analysis.bph = c.o.bph(c.m, cal);
     cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
-    let escape_teeth =
+    cfg.analysis.escape_teeth =
         c.m.escape_teeth
             .or(cal.and_then(|k| k.escape_teeth))
             .unwrap_or(15);
-    cfg.analysis.escape_teeth = escape_teeth;
+    Ok((cfg, cal))
+}
+
+/// Longest stretch of a reading that [`faults_of`] reads, seconds.
+pub(crate) const FAULTS_S: f64 = 1800.0;
+
+/// The escapement faults `analyze` finds in a reading's measured stretch
+/// (`from_s` to `to_s`, as in its measurement), at most [`FAULTS_S`] of it.
+pub(crate) fn faults_of(
+    e: &RecordingEntry,
+    c: &Ctx,
+    from_s: f64,
+    to_s: f64,
+) -> Result<Vec<timegrapher_core::faults::Finding>, String> {
+    let files = expand_dirs(&[c.base.join(&e.file)])?;
+    let (mut cfg, cal) = stream_config(c)?;
+    cfg.analysis.lift_known =
+        c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some());
+    let (samples, fs) = excerpt(&files, from_s, (to_s - from_s).min(FAULTS_S))?;
+    let a = audio::Audio {
+        samples,
+        sample_rate: fs as u32,
+    };
+    Ok(timegrapher_core::analysis::analyze(&a, &cfg.analysis)
+        .summary
+        .faults)
+}
+
+pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
+    let position = position_of(e)?;
+    let path = c.base.join(&e.file);
+    let files = expand_dirs(std::slice::from_ref(&path))?;
+    let (cfg, cal) = stream_config(c)?;
+    let escape_teeth = cfg.analysis.escape_teeth;
     if c.quiet {
     } else if c.tty {
         eprint!("\r{:<70}", format!("analysing {} ({})", e.file, position));
@@ -402,13 +435,15 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         eprintln!("analysing {} ({})", e.file, position);
     }
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-    let log =
+    let mut log =
         stream::analyze_files(&paths, &cfg, |_| {}).map_err(|err| format!("{}: {err}", e.file))?;
     let clock = match (&e.clock, c.m.card_ppm) {
         (Some(p), _) => Some(read_clock(&c.base.join(p), &files[0])?),
         (None, Some(ppm)) => session::fixed_clock(ppm, log.duration_s),
         (None, None) => None,
     };
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     let (start, stop) = span_of(e, log.duration_s)?;
     let settle = start
         + e.settle_s
@@ -421,7 +456,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         .or(c.m.measure_s)
         .map_or(stop, |m| settle + m)
         .min(stop);
-    let measurement = session::measure(&log, clock.as_ref(), settle, end);
+    let measurement = session::measure_with_breaks(&log, clock.as_ref(), &breaks, settle, end);
 
     // Cycles and shape of noise would only mislead.
     let heard = measurement.watch_heard;
@@ -446,7 +481,22 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
             ..Default::default()
         };
         let part = trimmed(&log, settle, end);
-        session::cycles(&longrun::analyse(&part, clock.as_ref(), &lc), &lc.wheels)
+        // The part's times start at `settle`, so its breaks move with
+        // it; a clock fit that holds the gaps at their own places is left
+        // out (a ppm or so makes no odds to a cycle's period).
+        let inside: Vec<_> = breaks
+            .iter()
+            .filter(|b| b.audio_s > settle && b.audio_s < end)
+            .map(|b| breaks::Break {
+                audio_s: b.audio_s - settle,
+                gap_s: b.gap_s,
+            })
+            .collect();
+        let part_clock = clock.as_ref().filter(|c| c.breaks.is_empty());
+        session::cycles(
+            &longrun::analyse_with_breaks(&part, part_clock, &inside, &lc),
+            &lc.wheels,
+        )
     };
 
     let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
@@ -583,7 +633,14 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         println!("{json}");
     } else {
         print_summary(&s);
-        println!("Report       {}", out.join("report.html").display());
+        let report = out.join("report.html");
+        println!(
+            "Report       {}",
+            std::path::absolute(&report).unwrap_or(report).display()
+        );
+        println!(
+            "             One page in English: open it in any web browser, or attach it to an email to send it."
+        );
     }
     Ok(())
 }
@@ -598,11 +655,22 @@ pub fn signed(v: Option<f64>, digits: usize) -> String {
         .map_or("-".into(), |x| format!("{x:+.digits$}"))
 }
 
+/// The state of wind in words: `wind_h` is hours since the watch was
+/// fully wound. A reading without it is taken as fully wound.
 pub fn wind(w: Option<f64>) -> String {
     match w {
-        None => "full?".into(),
-        Some(w) if w <= 0.0 => "full".into(),
-        Some(w) => format!("{w:.0} h"),
+        None => "not given".into(),
+        Some(w) if w <= 0.0 => "full wind".into(),
+        Some(w) => format!("{w:.0} h after winding"),
+    }
+}
+
+/// A state of wind in a sentence ("at full wind", "24 h after winding").
+fn wind_state(w: f64) -> String {
+    if w <= 0.0 {
+        "at full wind".into()
+    } else {
+        format!("{w:.0} h after winding")
     }
 }
 
@@ -689,11 +757,11 @@ fn print_summary(s: &Session) {
     );
     println!();
     println!(
-        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}  Recording",
-        "Pos", "Wind", "Rate", "Amp", "BE", "drop", "Jitter", "10 s rates", "Reference"
+        "{:<17} {:<18} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}  Recording",
+        "Position", "Wind", "Rate", "Amp", "BE", "drop", "Jitter", "10 s rates", "Reference"
     );
     println!(
-        "{:<5} {:<6} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}",
+        "{:<17} {:<18} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}",
         "", "", "s/d", "deg", "ms", "ms", "us", "s/d", "s/d, deg, ms"
     );
     for (rd, v) in s.readings.iter().zip(&r.verdicts) {
@@ -711,8 +779,8 @@ fn print_summary(s: &Session) {
             })
             .unwrap_or_default();
         println!(
-            "{:<5} {:<6} {:>7}{:1} {:>5}{:1} {:>5}{:1} {:>5} {:>7} {:>15} {:>17}  {}{}",
-            rd.position.code(),
+            "{:<17} {:<18} {:>7}{:1} {:>5}{:1} {:>5}{:1} {:>5} {:>7} {:>15} {:>17}  {}{}",
+            rd.position.label(),
             wind(rd.wind_h),
             signed(m.rate_s_per_day, 1),
             mark(v.rate),
@@ -729,12 +797,28 @@ fn print_summary(s: &Session) {
         );
     }
     println!("* outside tolerance, ? not measured reliably");
+    println!(
+        "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
+    );
+    println!(
+        "Readings leave out the settling time at the start of each position{}, so they can differ by a few s/d from the quick check shown while recording.",
+        if s.readings.iter().any(|r| r.measurement.calibrated) {
+            " and correct the sound card's clock where it was logged"
+        } else {
+            ""
+        }
+    );
+    if s.readings.iter().any(|r| r.wind_h.is_none()) {
+        println!(
+            "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
+        );
+    }
     println!();
     for rd in s.readings.iter().filter(|r| r.measurement.watch_heard) {
         let m = &rd.measurement;
         println!(
-            "States       {:<4} {}; {}",
-            rd.position.code(),
+            "States       {:<17} {}; {}",
+            rd.position.label(),
             twostate::describe(&m.amplitude_states, "amplitude"),
             twostate::describe(&m.rate_states, "rate")
         );
@@ -742,11 +826,10 @@ fn print_summary(s: &Session) {
     println!();
     for st in &r.states {
         println!(
-            "At {:<10} X {} s/d (H {}, V {}); D {} s/d, {} deg; DVH {} s/d, {} deg; Di {} s/d",
-            if st.wind_h <= 0.0 {
-                "full wind".to_string()
-            } else {
-                format!("{:.0} h", st.wind_h)
+            "{:<21} X {} s/d (H {}, V {}); D {} s/d, {} deg; DVH {} s/d, {} deg; Di {} s/d",
+            {
+                let w = wind_state(st.wind_h);
+                w[..1].to_uppercase() + &w[1..]
             },
             signed(st.x, 1),
             signed(st.xh, 1),
@@ -760,11 +843,11 @@ fn print_summary(s: &Session) {
     }
     for i in &r.isochronism {
         println!(
-            "Isochronism  {} {} s/d from {:.0} h to {:.0} h ({} deg, beat error {} ms)",
-            i.position,
+            "Isochronism  {} {} s/d from {} to {} ({} deg, beat error {} ms)",
+            i.position.label(),
             signed(Some(i.rate_change), 1),
-            i.from_wind_h,
-            i.to_wind_h,
+            wind_state(i.from_wind_h).trim_start_matches("at "),
+            wind_state(i.to_wind_h).trim_start_matches("at "),
             signed(i.amplitude_change, 0),
             signed(i.beat_error_change, 2)
         );

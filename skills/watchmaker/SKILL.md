@@ -186,10 +186,13 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   the microphone (a missed unlock or a doubled sound reads as very high
   amplitude). Real amplitude that high risks **knocking** (overbanking): the
   trace jumps or doubles and you can sometimes hear a double tick. That
-  wants a watchmaker; it can damage the escapement. The program flags
-  `overbanking` only above 330°, Witschi's figure
-  (docs/fault-signatures.md, docs/sessions.md); below that, don't raise
-  knocking at all.
+  wants a watchmaker; it can damage the escapement. `analyze` raises no
+  knocking fault at all, because an ETA in a plastic holder already reads
+  320–332° without knocking (docs/fault-signatures.md); only the
+  `session` report marks amplitude above 330°, Witschi's figure, as
+  `overbanking` (docs/sessions.md). So never raise knocking below 330°,
+  and treat a higher reading first as a reason to check the mount and the
+  lift angle, before any verdict.
 - **Low amplitude everywhere**, judged against what *that calibre* normally
   does (a Seiko NH35 at 235° is fine; an ETA 2824 at 235° is tired): dirty
   or dried oil, a tired mainspring, or wear. Weigh it with the time since

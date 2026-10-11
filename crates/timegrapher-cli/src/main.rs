@@ -361,6 +361,11 @@ enum Command {
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// Keep the latest readings in this file while recording, replaced
+        /// about once a second (`timegrapher.live/1`), for a live view.
+        /// With --file the file is played back in real time.
+        #[arg(long)]
+        live: Option<PathBuf>,
     },
     /// Read a watch measured in several positions (and states of wind)
     /// into one multi-position report, Witschi style.
@@ -451,6 +456,14 @@ enum Command {
         /// engine; they fail only if it panics.
         #[arg(long)]
         smoke: bool,
+        /// Read only the corpus's holdout takes: judged against tg and
+        /// their known faults, printed as counts only, never failing.
+        #[arg(long)]
+        holdout: bool,
+        /// With --holdout, print every reading's numbers too (milestone
+        /// runs only, never in CI).
+        #[arg(long)]
+        reveal: bool,
     },
     /// Make a zip to attach to an issue: an excerpt of the recording, what
     /// was measured, the system, clock corrections and logs, with the home
@@ -807,6 +820,7 @@ fn main() -> ExitCode {
             lift,
             wind_h,
             json,
+            live,
         } => {
             let o = record_cmd::Options {
                 folder,
@@ -820,6 +834,7 @@ fn main() -> ExitCode {
                 lift,
                 wind_h,
                 json,
+                live,
             };
             match record_cmd::run(&o) {
                 Ok(true) => Ok(()),
@@ -868,10 +883,14 @@ fn main() -> ExitCode {
             quiet,
             fetch,
             smoke,
+            holdout,
+            reveal,
         } => {
             let o = regress_cmd::Options {
                 fetch,
                 smoke,
+                holdout,
+                reveal,
                 root,
                 baseline,
                 write_baseline,
@@ -1121,6 +1140,12 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
+    if let Some(heard) = s.bph_heard {
+        println!(
+            "Warning      the beat rate was set to {} bph, but the recording sounds like {heard} bph: every reading below is measured against the wrong beat and graded poor. Check the calibre or --bph.",
+            s.bph
+        );
+    }
     if !s.watch_heard {
         println!(
             "No watch heard: the beats found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
