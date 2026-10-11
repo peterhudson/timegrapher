@@ -304,6 +304,23 @@ report?** with **Make a Report…** (copies the record and opens a new GitHub
 issue to paste it into), **Show the Record** and **Dismiss**. Nothing is
 sent anywhere by the app itself.
 
+**Report a Problem.** **Report a Problem…** at the right of the status line
+makes the same zip as `timegrapher report` (see [reports.md](reports.md)) to
+attach to a GitHub issue. Choose what kind of problem it is (Bug, Reading,
+Setup or Idea) and say what happened. **Include the Sound** adds up to five
+minutes of the sound, cut without changing a sample: the last five minutes of
+a live session (the app keeps the session's sound as it goes), or five
+minutes of the recording open, chosen with **Ends At**. Drag the handles on
+the waveform to keep only the part that shows the problem, and **Play** it.
+**Save Report…** is offered once you tick that you listened and the sound
+holds nothing private, such as voices; ticking the CC0 box offers it to the
+public test corpus. The zip holds the excerpt and `analyze --json` of it
+(which `report --replay` runs again), the app's readings and settings in
+`results/app.json`, the log and crash records from the last week and the
+stored clock corrections, with the home folder, user name and host name
+removed. Saving opens the zip's folder and the matching GitHub form; the app
+sends nothing itself.
+
 **Appearance.** Under Window: Auto follows the desktop's light or dark
 setting; Light and Dark override it.
 

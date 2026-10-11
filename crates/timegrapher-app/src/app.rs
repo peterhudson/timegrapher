@@ -6,6 +6,7 @@ use crate::applog;
 use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
+use crate::report::{self, ReportDialog};
 use crate::settings::{CustomCalibre, CustomWheel, Settings};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
@@ -487,6 +488,8 @@ pub struct TimegrapherApp {
     /// its text is showing.
     crash: Option<PathBuf>,
     crash_shown: bool,
+    /// Report a Problem.
+    report: ReportDialog,
     /// Where the watch was put in a new position during the session: the
     /// time and the position from then on, oldest first. Empty while it has
     /// stayed in `position` all along.
@@ -709,6 +712,7 @@ impl TimegrapherApp {
             locked_bph: None,
             crash: None,
             crash_shown: false,
+            report: ReportDialog::default(),
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
@@ -1046,6 +1050,83 @@ impl TimegrapherApp {
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
+    }
+
+    /// Open Report a Problem with the sound the app has: the live
+    /// session's, or the recording open.
+    fn open_report(&mut self) {
+        let shown = report::Shown {
+            bph: self.bph,
+            lift_deg: self.lift_deg,
+            app: serde_json::json!({
+                "reading": self.reading(),
+                "showing": self.source_label,
+                "watch": self.watch.trim(),
+                "calibre": self.calibre,
+                "position": self.position.code(),
+                "bph_set": self.bph,
+                "lift_deg": self.lift_deg,
+                "averaging_s": self.average_s,
+                "at_s": self.end_s(),
+            }),
+        };
+        let source = self.report_source();
+        self.report.show(report::Kind::Bug, source, shown);
+    }
+
+    fn report_source(&mut self) -> Option<report::Source> {
+        if self.mic_session {
+            let r = self.recorder.as_mut()?;
+            let _ = r.flush();
+            let total = r.duration_s();
+            let about = std::fs::read_to_string(r.dir().join("session.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+                .unwrap_or_default();
+            return (total >= 1.0).then(|| report::Source {
+                files: r.segment_paths(),
+                total_s: total,
+                name: "this session".into(),
+                live: true,
+                end_s: total,
+                about,
+            });
+        }
+        let path = PathBuf::from(self.file_path.trim());
+        if self.file_path.trim().is_empty() || !path.exists() {
+            return None;
+        }
+        let files = recordings_in(&path).ok()?;
+        let mut total = 0.0;
+        for f in &files {
+            let i = timegrapher_core::audio::info(f).ok()?;
+            total += i.frames? as f64 / i.sample_rate as f64;
+        }
+        // The five minutes up to the time on show, when the time slider
+        // has been moved back; else the start.
+        let end = match self.view_end {
+            Some(_) if self.live.is_some() => self.end_s(),
+            _ => report::SPAN_S,
+        }
+        .clamp(report::SPAN_S.min(total), total);
+        let about = std::fs::read_to_string(
+            if path.is_dir() {
+                path.clone()
+            } else {
+                path.parent()?.to_path_buf()
+            }
+            .join(MANIFEST),
+        )
+        .map(serde_json::Value::String)
+        .unwrap_or_default();
+        Some(report::Source {
+            files,
+            total_s: total,
+            name: capture_label(&path),
+            live: false,
+            end_s: end,
+            about,
+        })
     }
 
     /// The session file for the take being kept: the watch, its calibre
@@ -3178,7 +3259,7 @@ impl TimegrapherApp {
         }
     }
 
-    fn status_bar(&self, ui: &mut egui::Ui) {
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
@@ -3272,6 +3353,21 @@ impl TimegrapherApp {
                 ui.label(RichText::new(m).small().color(pal.text_secondary));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new("Report a Problem…").small().color(pal.accent),
+                        )
+                        .frame_when_inactive(false),
+                    )
+                    .on_hover_text(
+                        "Make a zip of what went wrong, with up to five minutes of the sound, \
+                         to attach to a GitHub issue. The app sends nothing itself.",
+                    )
+                    .clicked()
+                {
+                    self.open_report();
+                }
                 ui.label(
                     RichText::new(format!(
                         "{} {}",
@@ -4527,8 +4623,6 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     }
 }
 
-/// The recordings to analyse for `path`: the file itself, or a folder's
-/// WAV and FLAC files in name order (the segments of one long take).
 /// Where a bug report starts: the repository's bug form.
 const BUG_REPORT_URL: &str =
     "https://github.com/peterhudson/timegrapher/issues/new?template=bug.yml";
@@ -4574,6 +4668,8 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
 const FOLDER_RULE: &str = "A take this app saved, or a folder of WAV or FLAC segments of one \
      long run, joined end to end in file-name order (audio-001.wav, audio-002.wav, …).";
 
+/// The recordings to analyse for `path`: the file itself, or a folder's
+/// WAV and FLAC files in name order (the segments of one long take).
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Ok(vec![path.to_path_buf()]);
@@ -4688,6 +4784,9 @@ impl eframe::App for TimegrapherApp {
         }
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        if let Some(m) = self.report.ui(ctx) {
+            self.info_msg(m);
+        }
         // The cursor shared by the strip and the charts follows the pointer;
         // repaint once more when it leaves so the line goes too.
         let next = self.cursor_next.take();

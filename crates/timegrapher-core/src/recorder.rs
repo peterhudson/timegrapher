@@ -190,6 +190,21 @@ impl Recorder {
         Ok(())
     }
 
+    /// Write out what is buffered, so the files on disk hold everything
+    /// so far and can be read while the recording carries on.
+    pub fn flush(&mut self) -> io::Result<()> {
+        if let Some(w) = self.writer.as_mut() {
+            w.flush().map_err(io_err)?;
+        }
+        self.clock.flush()
+    }
+
+    /// The audio files so far, in order (after [`Recorder::flush`] they
+    /// hold everything written).
+    pub fn segment_paths(&self) -> Vec<PathBuf> {
+        self.segments.iter().map(|n| self.dir.join(n)).collect()
+    }
+
     /// Note an event (a change of position, say) at the current audio time.
     pub fn note(&mut self, text: &str) -> io::Result<()> {
         self.notes.push(Note {
@@ -358,6 +373,10 @@ mod tests {
             })
             .unwrap();
         }
+        // Readable while it carries on, after a flush, as a report cuts it.
+        r.flush().unwrap();
+        let now = crate::excerpt::cut(&r.segment_paths(), 20.0, 300.0).unwrap();
+        assert_eq!(now.frames(), 5 * 8000);
         r.note("turned to DD").unwrap();
         let dir = r.finish(Some(serde_json::json!({"rate": 1.0}))).unwrap();
         let audio = crate::audio::load(&dir.join("audio-001.wav")).unwrap();

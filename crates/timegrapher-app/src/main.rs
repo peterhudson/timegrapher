@@ -13,6 +13,7 @@ mod applog;
 mod fields;
 mod help;
 mod profiles;
+mod report;
 mod settings;
 mod steady;
 mod strip;
