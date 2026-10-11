@@ -14,6 +14,12 @@ by amplitude alone:
 
 Then give one of four verdicts, plainly, at the top of your answer:
 **fine**, **keep an eye on it**, **service soon**, **stop wearing it**.
+When the measurement can't carry a verdict (no watch heard, a caveat that
+makes every grade poor) or there is only one position, say **no verdict
+yet** instead: what the reading does show, and the test that would
+settle it (usually the six positions in
+[guided-test.md](guided-test.md)). A clear fault in one position (it
+stops, amplitude under 200°, a rate hundreds out) still gets its verdict.
 
 Working watchmakers are clear that the timegrapher is supporting evidence:
 a watch can time beautifully with dry jewels and perished gaskets, and a
@@ -105,8 +111,11 @@ The watch is healthy. Wear it and enjoy it.
 - Beat error within Witschi's 0.5 ms (the report's `beat_error_tolerance`).
 - The rate over the positions within the maker's own figure for the
   calibre (SKILL.md, "Judge the rate against the maker's own figure").
-- A straight, steady trace across the whole run; no periodic pattern
-  beyond a few degrees.
+- A straight, steady trace across the whole run, and no periodic change
+  the program names as a finding (`cycle_wheel` in `session`, or a
+  wheel `long` confirms). A period listed in `analyze`'s
+  `amplitude_periods` or `timing_periods` is a hint to confirm with
+  `long`, not a finding.
 - Serviced within the interval above, or new.
 
 What to say: "It's in good order. The amplitude is healthy for this

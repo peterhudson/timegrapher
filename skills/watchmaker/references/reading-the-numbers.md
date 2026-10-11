@@ -127,7 +127,7 @@ names: they come from the bench.
 | --- | --- | --- |
 | ETA 2824-2, Sellita SW200-1 | 50° | |
 | Rolex 31xx (3135, 3035 and family) | 52° | |
-| Rolex 32xx (3230, 3235, 3255) | 55°, possibly 58° | Rolex doesn't publish it; 55° is the best estimate. At 52° a 32xx reads about 13° low at 230° |
+| Rolex 32xx (3230, 3235, 3255) | 55°, possibly 58° | Rolex doesn't publish it; 55° is the best estimate. At 52° a 32xx reads about 13° low at 230° (230 × 55 ÷ 52 ≈ 243) |
 | Dandong (DD) and JH clones of the 32xx | 55°, possibly 58° | As the genuine |
 | Shanghai (SH) and VR clones of the 32xx | 52° | Same escapement as the 31xx |
 | DD, VR and SH clones of the 31xx | 52° | |
@@ -146,8 +146,9 @@ names: they come from the bench.
 | Miyota 8215 | 50° | Commonly quoted; check WatchGuy |
 | Omega co-axial (8500, 8800, 8900 and others) | 38° | Commonly quoted. A co-axial escapement doesn't make the Swiss-lever three-sound tick, and this program's amplitude assumes a Swiss lever, so treat co-axial amplitude as unreliable |
 
-Rule of thumb: each degree of lift angle moves the amplitude by about
-5–7°, so correct a reading made at the wrong lift angle by about 5° per
+Amplitude is in proportion to the lift angle: a reading made at the
+wrong lift angle is corrected by multiplying it by right ÷ used (250° at
+52° is about 264° at 55°), which is about amplitude ÷ lift angle per
 degree. A lift angle of 62–65° set on someone else's machine is a sign of
 amplitude hacking.
 
