@@ -36,12 +36,16 @@ case ${1:-status} in
     # Loop the take so the watch keeps ticking for as long as it sits there.
     setsid bash -c "while true; do paplay --device=stand '$file' || sleep 1; done" >/dev/null 2>&1 &
     echo $! > "$pidfile"
-    echo "$pos $(basename "$file")" > "$now"
+    # When the loop started, so a live reading can be matched to its stretch
+    # of the file (seconds since placing, modulo the file's length).
+    echo "$pos $(basename "$file") placed $(date -u +%H:%M:%S)" > "$now"
+    echo "$(date -u +%FT%TZ) place $pos $(basename "$file")" >> "$dir/log.txt"
     echo "The watch is on the stand, $pos."
     ;;
   remove)
     stop
     echo "empty" > "$now"
+    echo "$(date -u +%FT%TZ) remove" >> "$dir/log.txt"
     echo "The stand is empty."
     ;;
   status)
