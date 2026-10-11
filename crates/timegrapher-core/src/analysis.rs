@@ -305,6 +305,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
                 _ => 0.0,
             },
             breaks: 0,
+            average_s: None,
         },
     );
     let doubts = assessment.doubts;

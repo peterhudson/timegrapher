@@ -93,6 +93,24 @@ pub struct Context {
     /// Seconds from the first beat to the last.
     pub span_s: f64,
     pub breaks: usize,
+    /// The seconds a shown rate is averaged over, when shorter than the
+    /// stretch (the live screen's averaging time). `None`: the rate is the
+    /// fit over the whole stretch.
+    pub average_s: Option<f64>,
+}
+
+/// The length of a rate window, s.
+const RATE_WINDOW_S: f64 = 10.0;
+
+/// The rate's ± for a figure averaged over `average_s` within a run whose
+/// rate windows are given: the windows' scatter scaled to that time. Over
+/// the whole run it is the standard error [`confidence::rate_se`] gives;
+/// over a shorter time it is wider, since fewer windows went into it.
+pub fn rate_se_over(rate_windows: &[WindowFit], average_s: f64) -> Option<f64> {
+    let independent = rate_windows.len().div_ceil(2) as f64;
+    let se = confidence::rate_se(rate_windows)?;
+    let averaged = (average_s / RATE_WINDOW_S).clamp(1.0, independent);
+    Some(se * (independent / averaged).sqrt())
 }
 
 /// The judgement on one measurement.
@@ -157,7 +175,10 @@ pub fn assess(
             .filter_map(|w| w.beat_error_unlock_ms)
             .collect();
         let mut k = Confidence::new(
-            confidence::rate_se(rate_windows),
+            match c.average_s {
+                Some(t) => rate_se_over(rate_windows, t),
+                None => confidence::rate_se(rate_windows),
+            },
             standard_error(&amps),
             standard_error(&bes),
             doubts,
@@ -226,6 +247,61 @@ mod tests {
         assert_eq!(a.caveats, vec![Caveat::ShortSpan { span_s: 6.0 }]);
         let c = a.confidence.unwrap();
         assert_eq!(c.amplitude.grade, Grade::Poor);
+    }
+
+    /// Rate windows 5 s apart, alternately reading `rates`' values.
+    fn rate_windows(rates: &[f64]) -> Vec<WindowFit> {
+        rates
+            .iter()
+            .flat_map(|&r| [r, r])
+            .enumerate()
+            .map(|(i, r)| WindowFit {
+                start_s: i as f64 * 5.0,
+                end_s: i as f64 * 5.0 + 10.0,
+                fit: crate::timing::TimingFit {
+                    rate_s_per_day: r,
+                    beat_error_ms: 0.0,
+                    period_s: 0.125,
+                    jitter_us: 0.0,
+                    beats_used: 80,
+                },
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_short_average_has_a_wider_rate_error() {
+        let rates: Vec<f64> = (0..36).map(|i| [1.0, -1.0, 0.5, -0.5][i % 4]).collect();
+        let w = rate_windows(&rates);
+        let whole = confidence::rate_se(&w).unwrap();
+        // Averaged over the whole run, it is the standard error analyze uses.
+        assert_eq!(rate_se_over(&w, 360.0), Some(whole));
+        assert_eq!(rate_se_over(&w, 3600.0), Some(whole));
+        // A 10 s average carries one window's scatter: six times wider
+        // with 36 independent windows.
+        let ten = rate_se_over(&w, 10.0).unwrap();
+        assert!((ten / whole - 6.0).abs() < 1e-9, "{ten} against {whole}");
+        let with = |average_s| {
+            assess(
+                &w,
+                &[],
+                &Context {
+                    average_s,
+                    ..heard()
+                },
+            )
+            .confidence
+            .unwrap()
+            .rate
+            .se
+        };
+        assert_eq!(with(None), Some(whole));
+        assert_eq!(with(Some(10.0)), Some(ten));
+    }
+
+    #[test]
+    fn under_three_windows_the_rate_error_is_unknown() {
+        assert_eq!(rate_se_over(&rate_windows(&[1.0, -1.0]), 10.0), None);
     }
 
     #[test]
