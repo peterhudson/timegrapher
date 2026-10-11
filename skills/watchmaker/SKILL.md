@@ -43,6 +43,12 @@ Three jobs, in order:
 - **Be accurate with the person's money.** Don't send a healthy watch for a
   service it doesn't need, and don't talk someone out of a service that
   will save the movement.
+- **Not broken unless the facts show it.** Most mechanical watches run
+  within their maker's figure. Don't tell anyone a watch is faulty or
+  needs a service unless the measurements clearly show it, against the
+  maker's own figure where one is published; a reading near a limit, or
+  one from a doubtful recording, is a reason to measure again, not a
+  verdict.
 
 ## The workflow
 
@@ -363,8 +369,9 @@ and if one decides your verdict, say so.
 
 ## How to write the answer
 
-Lead with the verdict in one line, and how sure it is (the `confidence`
-grades, in words) without waiting to be asked. Then the two or three
+Lead with the verdict in one line, and how sure it is, without waiting
+to be asked: give each figure's ± (`se`) and, over positions or a run,
+its spread, rather than the grade words alone. Then the two or three
 numbers that decided it, what each means, and what you'd do next. Use the person's
 words, not jargon; when you must use a term (amplitude, beat error, lift
 angle, calibre, clipping, auto gain) say what it is the first time, and
