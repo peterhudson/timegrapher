@@ -176,7 +176,10 @@ The banner follows the readings: it shows while the beats being averaged
 clip and goes when they no longer do, and looking back through a
 recording shows it for the stretches that clipped. The level meter in the
 toolbar turns red on any clipped sample at once; the banner is the
-judgement on the readings.
+judgement on the readings. Even a watch driven several times past full scale is
+still read, with the banner, rather than taken for silence: when most of
+the beats found clip, the flattened peaks no longer count against the
+signal.
 
 **Panes.** Below the readings are five panes: the paper strip, the tick tock
 profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
