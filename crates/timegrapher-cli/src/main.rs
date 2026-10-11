@@ -1140,19 +1140,34 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
 fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
+    if !s.watch_heard {
+        use timegrapher_core::measure::Caveat;
+        // Too short to tell only when the caveats do not say no watch.
+        let short = s
+            .caveats
+            .iter()
+            .find_map(|c| match c {
+                Caveat::ShortSpan { span_s } => Some(*span_s),
+                _ => None,
+            })
+            .filter(|_| !s.caveats.contains(&Caveat::NoWatch));
+        match short {
+            Some(span_s) => println!(
+                "Too short to tell: the beats span {span_s:.1} s, and whether a watch is heard is judged over 10 s, so no readings are shown. Record for longer."
+            ),
+            None => println!(
+                "No watch heard: the sounds found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
+                opt(s.jitter_us, 0)
+            ),
+        }
+        return;
+    }
     println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
     if let Some(heard) = s.bph_heard {
         println!(
             "Warning      the beat rate was set to {} bph, but the recording sounds like {heard} bph: every reading below is measured against the wrong beat and graded poor. Check the calibre or --bph.",
             s.bph
         );
-    }
-    if !s.watch_heard {
-        println!(
-            "No watch heard: the beats found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
-            opt(s.jitter_us, 0)
-        );
-        return;
     }
     if let Some(c) = &s.confidence {
         let g = |r: &timegrapher_core::confidence::Reading, unit: &str, d: usize| {

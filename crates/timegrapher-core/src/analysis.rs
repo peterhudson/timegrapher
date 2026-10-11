@@ -86,6 +86,9 @@ pub struct Summary {
     /// when it has them. Rates above stay on the card's clock, as tg reads
     /// them; [`Summary::rate_corrected_s_per_day`] is the corrected rate.
     pub usb_clock: Option<UsbClock>,
+    /// The whole-recording rate on the card's clock, as tg reads it: the
+    /// same figure as `overall`'s, given here beside the corrected one, s/d.
+    pub rate_s_per_day: Option<f64>,
     /// Rate corrected onto true time with `usb_clock`, s/d.
     pub rate_corrected_s_per_day: Option<f64>,
     /// What lowers the grades below beyond each reading's ±.
@@ -119,6 +122,7 @@ impl Summary {
         self.amplitude_odd_se_deg = None;
         self.timing_periods.clear();
         self.amplitude_periods.clear();
+        self.rate_s_per_day = None;
         self.rate_corrected_s_per_day = None;
         self.confidence = None;
         self.faults.clear();
@@ -351,6 +355,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         amplitude_periods: search(amp_series),
         clipping,
         usb_clock,
+        rate_s_per_day: overall.map(|f| f.rate_s_per_day),
         rate_corrected_s_per_day: usb_clock.and_then(|c| {
             overall.map(|f| crate::clockstore::correct_rate(f.rate_s_per_day, c.ppm))
         }),
