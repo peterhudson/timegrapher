@@ -167,6 +167,99 @@ fn a_2026_07_28_client_gets_complete_results() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A recording a chat app follows live: the server keeps the take's latest
+/// readings in a file, `recording_status` hands them to the view, and the
+/// progress messages carry them. The file is played back in real time, so
+/// this takes about as long as the take, 12 s.
+#[test]
+fn a_recording_can_be_followed_live() {
+    let cli = cli();
+    let dir = std::env::temp_dir().join(format!("timegrapher-mcp-live-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let take = dir.join("take.wav");
+    synth(&cli, &take, "6");
+    let mut c = Client::start(&cli, &take);
+    let status =
+        |c: &mut Client| c.call("recording_status", json!({}))["structuredContent"].clone();
+    assert_eq!(status(&mut c)["recording"], false);
+
+    // The view's tool is listed for the view alone.
+    let tools = c.request("tools/list", json!({}));
+    let st = tools["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "recording_status")
+        .unwrap();
+    assert_eq!(st["_meta"]["ui"]["visibility"], json!(["app"]));
+
+    // Start the take without waiting for it, asking for progress.
+    let folder = dir.join("test").to_string_lossy().into_owned();
+    c.send(
+        json!({ "jsonrpc": "2.0", "id": 900, "method": "tools/call", "params": {
+            "name": "record_position",
+            "arguments": { "folder": folder, "position": "CD", "seconds": 12 },
+            "_meta": { "progressToken": "take" },
+        }}),
+    );
+    let mut progress = Vec::new();
+    let mut live = Vec::new();
+    let mut result = None;
+    let mut next_id = 1000;
+    while result.is_none() {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        c.send(
+            json!({ "jsonrpc": "2.0", "id": next_id, "method": "tools/call",
+                       "params": { "name": "recording_status", "arguments": {} } }),
+        );
+        loop {
+            let mut line = String::new();
+            assert!(c.out.read_line(&mut line).unwrap() > 0, "server closed");
+            let msg: Value = serde_json::from_str(&line).unwrap();
+            if msg["method"] == "notifications/progress" {
+                progress.push(msg["params"]["message"].as_str().unwrap_or("").to_string());
+            } else if msg["id"] == 900 {
+                result = Some(msg["result"].clone());
+            } else if msg["id"] == next_id {
+                live.push(msg["result"]["structuredContent"].clone());
+                break;
+            }
+        }
+        next_id += 1;
+    }
+    let r = result.unwrap();
+    assert_eq!(r["structuredContent"]["verdict"], "ok", "{r}");
+    // The view saw the take as it went, readings and the strip included.
+    let heard: Vec<&Value> = live
+        .iter()
+        .filter(|d| d["recording"] == true && d["reading"]["beats_used"].as_u64().unwrap_or(0) > 0)
+        .collect();
+    assert!(heard.len() >= 3, "{live:?}");
+    let d = heard.last().unwrap();
+    assert_eq!(d["schema"], "timegrapher.live/1");
+    assert_eq!(d["position"], "CD");
+    assert!(!d["strip"]["beats"].as_array().unwrap().is_empty());
+    assert!(
+        progress
+            .iter()
+            .any(|m| m.starts_with("Recording CD") && m.contains("s/day")),
+        "{progress:?}"
+    );
+    // When the call ends the file goes, and nothing is recording.
+    assert_eq!(status(&mut c)["recording"], false);
+    let left = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            n.starts_with(&format!("timegrapher-live-{}-", c.child.id()))
+        });
+    assert!(!left, "the live file was left behind");
+    drop(c);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn synth(cli: &Path, out: &Path, rate: &str) {
     let done = Command::new(cli)
         .arg("synth")
@@ -328,7 +421,9 @@ fn a_chat_app_reads_a_watch() {
             "analyze_recording",
             "run_session",
             "check_steadiness",
-            "tick_tock_profile"
+            "tick_tock_profile",
+            "record_position",
+            "recording_status"
         ]
     );
     let view = c.request(

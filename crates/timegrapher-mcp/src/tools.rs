@@ -393,7 +393,7 @@ pub const TOOLS: &[ToolSpec] = &[
                  recording, for as long as the server runs.",
             ),
         ],
-        charts: false,
+        charts: true,
         read_only: false,
         idempotent: false,
         defaults: &[],
