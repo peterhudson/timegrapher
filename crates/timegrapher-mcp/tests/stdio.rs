@@ -43,20 +43,7 @@ struct Client {
 
 impl Client {
     fn start(cli: &Path, input: &Path) -> Client {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_timegrapher-mcp"))
-            .env("TIMEGRAPHER_CLI", cli)
-            .env("TIMEGRAPHER_MCP_TEST_INPUT", input)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .expect("start timegrapher-mcp");
-        let out = BufReader::new(child.stdout.take().unwrap());
-        let mut c = Client {
-            child,
-            out,
-            next_id: 1,
-        };
+        let mut c = Client::spawn(cli, input);
         let init = c.request(
             "initialize",
             json!({
@@ -68,6 +55,23 @@ impl Client {
         assert_eq!(init["serverInfo"]["name"], "timegrapher");
         c.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
         c
+    }
+
+    fn spawn(cli: &Path, input: &Path) -> Client {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_timegrapher-mcp"))
+            .env("TIMEGRAPHER_CLI", cli)
+            .env("TIMEGRAPHER_MCP_TEST_INPUT", input)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("start timegrapher-mcp");
+        let out = BufReader::new(child.stdout.take().unwrap());
+        Client {
+            child,
+            out,
+            next_id: 1,
+        }
     }
 
     fn send(&mut self, msg: Value) {
@@ -104,6 +108,63 @@ impl Drop for Client {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A client on the 2026-07-28 revision, as Claude Code 2.1.296 speaks it:
+/// no `initialize`, a `server/discover` probe, and the version in each
+/// request's `_meta`. Every result must say `resultType`, or the client
+/// drops it and the chat app shows no tools.
+#[test]
+fn a_2026_07_28_client_gets_complete_results() {
+    let cli = cli();
+    let dir = std::env::temp_dir().join(format!("timegrapher-mcp-2026-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let take = dir.join("take.wav");
+    let mut c = Client::spawn(&cli, &take);
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": { "name": "test", "version": "1" },
+        "io.modelcontextprotocol/clientCapabilities": {},
+    });
+    let mut ask = |method: &str, mut params: Value| {
+        params["_meta"] = meta.clone();
+        let r = c.request(method, params);
+        assert_eq!(r["resultType"], "complete", "{method}: {r}");
+        r
+    };
+    let found = ask("server/discover", json!({}));
+    assert!(found["supportedVersions"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("2026-07-28")));
+    assert!(!ask("tools/list", json!({}))["tools"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    ask("prompts/list", json!({}));
+    ask("resources/list", json!({}));
+    ask(
+        "resources/read",
+        json!({ "uri": "timegrapher://skill/watchmaker" }),
+    );
+    ask(
+        "resources/read",
+        json!({ "uri": "ui://timegrapher/charts" }),
+    );
+    ask("prompts/get", json!({ "name": "test_my_watch" }));
+    let r = ask(
+        "tools/call",
+        json!({ "name": "list_calibres", "arguments": { "name": "ETA 2824-2" } }),
+    );
+    assert_eq!(r["structuredContent"]["calibres"][0]["bph"], 28800);
+    let r = ask(
+        "tools/call",
+        json!({ "name": "analyze_recording", "arguments": { "recording": "take.wav" } }),
+    );
+    assert_eq!(r["isError"], true);
+    drop(c);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 fn synth(cli: &Path, out: &Path, rate: &str) {
@@ -217,12 +278,27 @@ fn a_chat_app_reads_a_watch() {
         let r = c.call(
             "record_position",
             json!({ "folder": path(&folder), "position": pos, "seconds": 30,
-                    "calibre": "ETA 2824-2", "watch": "Test watch" }),
+                    "calibre": "ETA 2824-2", "watch": "Test watch",
+                    "take_id": format!("{pos}-1") }),
         );
         assert!(r.get("isError").is_none(), "{r}");
         assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/1");
         assert_eq!(r["structuredContent"]["verdict"], "ok");
     }
+    // A retried take comes back as it was, and is not recorded again.
+    let first = c.call(
+        "record_position",
+        json!({ "folder": path(&folder), "position": "DU", "seconds": 30, "take_id": "DU-1" }),
+    );
+    assert!(first["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("nothing was recorded again"));
+    assert_eq!(
+        std::fs::read_dir(&folder).unwrap().count(),
+        3,
+        "two takes and session.toml"
+    );
     let r = c.call("run_session", json!({ "paths": [path(&folder)] }));
     assert_eq!(
         r["structuredContent"]["readings"].as_array().unwrap().len(),
@@ -273,12 +349,17 @@ fn a_chat_app_reads_a_watch() {
         .as_str()
         .unwrap()
         .contains("Ground rules"));
+    let guide = c.call("read_guide", json!({ "page": "watchmaker" }));
+    assert!(guide["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Ground rules"));
     let prompt = c.request(
         "prompts/get",
         json!({ "name": "test_my_watch", "arguments": { "watch": "ETA 2824-2" } }),
     );
     let said = prompt["messages"][0]["content"]["text"].as_str().unwrap();
-    assert!(said.contains("ETA 2824-2") && said.contains("timegrapher://skill/watchmaker"));
+    assert!(said.contains("ETA 2824-2") && said.contains("read_guide"));
 
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);

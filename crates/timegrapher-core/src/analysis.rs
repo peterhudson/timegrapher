@@ -260,7 +260,13 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let faults = if faults::judged(confidence.as_ref(), doubts) {
         let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
-        faults::from_shape(&r, confidence.as_ref(), doubts)
+        let mut f = faults::from_shape(&r, confidence.as_ref(), doubts);
+        f.extend(faults::from_timing(
+            &amplitude_windows,
+            confidence.as_ref(),
+            doubts,
+        ));
+        f
     } else {
         Vec::new()
     };

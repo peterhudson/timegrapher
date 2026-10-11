@@ -6,6 +6,7 @@
 mod cli;
 mod guidance;
 mod progress;
+mod takes;
 mod tools;
 mod views;
 
@@ -28,6 +29,15 @@ fn wire<T: DeserializeOwned>(v: Value) -> Result<T, ErrorData> {
     serde_json::from_value(v).map_err(|e| ErrorData::internal_error(e.to_string(), None))
 }
 
+/// A result, built from its wire form, marked complete. The 2026-07-28
+/// revision of MCP requires `resultType` on every result and rmcp leaves it
+/// out of a result built from JSON without it; rmcp takes it off again for
+/// chat apps on older revisions.
+fn complete<T: DeserializeOwned>(mut v: Value) -> Result<T, ErrorData> {
+    v["resultType"] = json!("complete");
+    wire(v)
+}
+
 fn info() -> Value {
     json!({
         "protocolVersion": rmcp::model::ProtocolVersion::default(),
@@ -44,7 +54,7 @@ fn info() -> Value {
 /// A failed call the agent can read and act on (MCP's `isError` result,
 /// rather than a protocol error the chat app would hide).
 fn tool_error(text: String) -> CallToolResult {
-    wire(json!({ "content": [{ "type": "text", "text": text }], "isError": true }))
+    complete(json!({ "content": [{ "type": "text", "text": text }], "isError": true }))
         .expect("a text result")
 }
 
@@ -62,6 +72,22 @@ async fn call(
     let mut line = match tools::command_line(tool, args) {
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
+    };
+    // A recording the chat app retries with the same take_id is answered
+    // from the take already made; two calls never share the microphone.
+    let take = (tool.name == "record_position")
+        .then(|| takes::key(args))
+        .flatten();
+    if let Some(r) = take.as_ref().and_then(takes::recorded) {
+        return complete(r);
+    }
+    let _mic = if tools::listens(tool) {
+        match takes::claim_mic() {
+            Some(mic) => Some(mic),
+            None => return Ok(tool_error(takes::BUSY.into())),
+        }
+    } else {
+        None
     };
     // The Recording view's readings over time come from the same run.
     let recording_view = tool.name == "analyze_recording";
@@ -116,6 +142,10 @@ async fn call(
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
+    for note in tools::notes(tool, args, &doc) {
+        text.push_str("\n\nNote: ");
+        text.push_str(&note);
+    }
     let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
@@ -128,7 +158,10 @@ async fn call(
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
     }
-    wire(result)
+    if let Some(k) = take {
+        takes::remember(k, &result);
+    }
+    complete(result)
 }
 
 impl ServerHandler for Server {
@@ -141,8 +174,12 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let list: Vec<Value> = tools::TOOLS.iter().map(tools::definition).collect();
-        wire(json!({ "tools": list }))
+        let list: Vec<Value> = tools::TOOLS
+            .iter()
+            .map(tools::definition)
+            .chain(std::iter::once(guidance::guide_definition()))
+            .collect();
+        complete(json!({ "tools": list }))
     }
 
     async fn call_tool(
@@ -151,6 +188,10 @@ impl ServerHandler for Server {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let args = request.arguments.unwrap_or_default();
+        if request.name == guidance::GUIDE_TOOL {
+            let page = args.get("page").and_then(Value::as_str);
+            return Ok(complete::<CallToolResult>(guidance::guide(page))?.into());
+        }
         Ok(call(&request.name, &args, &context).await?.into())
     }
 
@@ -173,7 +214,7 @@ impl ServerHandler for Server {
             })
             .chain(std::iter::once(views::resource()))
             .collect();
-        wire(json!({ "resources": list }))
+        complete(json!({ "resources": list }))
     }
 
     async fn read_resource(
@@ -182,7 +223,7 @@ impl ServerHandler for Server {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
         if request.uri == views::URI {
-            let result: ReadResourceResult = wire(json!({ "contents": [views::contents()] }))?;
+            let result: ReadResourceResult = complete(json!({ "contents": [views::contents()] }))?;
             return Ok(result.into());
         }
         let Some(d) = guidance::find(&request.uri) else {
@@ -191,7 +232,7 @@ impl ServerHandler for Server {
                 None,
             ));
         };
-        let result: ReadResourceResult = wire(json!({
+        let result: ReadResourceResult = complete(json!({
             "contents": [{ "uri": d.uri, "mimeType": "text/markdown", "text": d.text }],
         }))?;
         Ok(result.into())
@@ -202,7 +243,7 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        wire(json!({ "prompts": [{
+        complete(json!({ "prompts": [{
             "name": guidance::PROMPT_NAME,
             "title": guidance::PROMPT_TITLE,
             "description": guidance::PROMPT_DESCRIPTION,
@@ -230,7 +271,7 @@ impl ServerHandler for Server {
             .as_ref()
             .and_then(|a| a.get("watch"))
             .and_then(|w| w.as_str());
-        let result: GetPromptResult = wire(json!({
+        let result: GetPromptResult = complete(json!({
             "description": guidance::PROMPT_DESCRIPTION,
             "messages": [{
                 "role": "user",
