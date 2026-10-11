@@ -1361,6 +1361,17 @@ impl TimegrapherApp {
         }
     }
 
+    /// Offered while a recording replays or after: the whole of it
+    /// analysed, without opening it again.
+    fn analyse_all_button(&self, ui: &mut egui::Ui) -> bool {
+        ui.add(theme::secondary(ui, "Analyse All"))
+            .on_hover_text(
+                "Analyse the whole recording at once, as when it was opened, keeping the \
+                 settings chosen under Watch",
+            )
+            .clicked()
+    }
+
     /// A recording couldn't be opened: say why, and put the path box back
     /// to the one still shown.
     fn open_failed(&mut self, e: String) {
@@ -1421,6 +1432,20 @@ impl TimegrapherApp {
     }
 
     fn start_batch(&mut self, path: &Path) {
+        self.analyse_whole(path, None);
+    }
+
+    /// The recording on show, replayed in part, analysed whole: the
+    /// settings chosen during the replay carry over.
+    fn analyse_replayed(&mut self) {
+        let path = PathBuf::from(&self.opened_path);
+        let setup = self.watch_setup();
+        self.analyse_whole(&path, Some(setup));
+    }
+
+    /// Analyse `path` whole. Without a session file it starts from
+    /// `carried`, else from the defaults.
+    fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
         self.stop();
         // A folder a take was saved into holds the take's own folder.
         let inner = match take_folder(path) {
@@ -1457,7 +1482,14 @@ impl TimegrapherApp {
         // Nothing carries over from the take before.
         let manifest = read_manifest(path);
         if !matches!(manifest, Ok(Some(_))) {
-            self.fresh_setup(path, &files);
+            match carried {
+                Some(s) => {
+                    self.keep_mic_setup();
+                    self.set_watch_setup(s);
+                    self.open_note = None;
+                }
+                None => self.fresh_setup(path, &files),
+            }
         } else {
             self.keep_mic_setup();
             self.set_watch_setup(WatchSetup::default());
@@ -2000,6 +2032,10 @@ impl TimegrapherApp {
                 match self.input {
                     Input::Microphone => self.microphone_buttons(ui),
                     Input::File => {
+                        let replayed = matches!(
+                            self.session.state(),
+                            session::State::Replaying | session::State::ReplayStopped
+                        );
                         if self.running() {
                             if ui
                                 .add(theme::destructive(ui, "Stop"))
@@ -2010,6 +2046,10 @@ impl TimegrapherApp {
                                 .clicked()
                             {
                                 self.stop();
+                            }
+                            ui.add_space(4.0);
+                            if self.analyse_all_button(ui) {
+                                self.analyse_replayed();
                             }
                         } else if self.batch.is_some() {
                             if ui
@@ -2034,6 +2074,12 @@ impl TimegrapherApp {
                                 .clicked()
                             {
                                 self.open_recording(&path, true, true);
+                            }
+                            if replayed && !self.opened_path.is_empty() {
+                                ui.add_space(4.0);
+                                if self.analyse_all_button(ui) {
+                                    self.analyse_replayed();
+                                }
                             }
                         }
                     }
@@ -7253,6 +7299,30 @@ mod tests {
         app.input = Input::Microphone;
         frames(&mut app, &ctx, 2);
         assert!(!app.devices_listed);
+    }
+
+    #[test]
+    fn a_replay_can_be_analysed_whole_keeping_its_settings() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let dir = std::env::temp_dir().join("tg-app-replay-whole");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("take.wav");
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 4.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&path, &audio).unwrap();
+        app.start_replay(&path);
+        assert_eq!(app.session.state(), session::State::Replaying);
+        app.lift_deg = 49.0;
+        app.analyse_replayed();
+        assert!(app.batch.is_some(), "analysing the whole recording");
+        assert_eq!(app.lift_deg, 49.0, "the replay's lift angle kept");
+        assert_eq!(app.opened_path, path.display().to_string());
     }
 
     #[test]

@@ -25,7 +25,9 @@ while one is being analysed, **Cancel** for a recording). Opening a
 recording, by **Open…**, **Open Folder…**, a path typed into the box and
 Enter, or the command line, analyses it all at once, which is how a
 watchmaker looks back through a take; **Replay** plays a file through as if
-live. Dropping a file or folder on the window opens it too where the
+live, and **Analyse All**, shown during a replay and after it, goes back
+to the whole recording analysed at once without opening it again,
+keeping the settings chosen under Watch. Dropping a file or folder on the window opens it too where the
 desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
