@@ -17,9 +17,12 @@ All tg, lift 55°, card clock. The takes wander within themselves; 10 s
 readings across each take span roughly DD +9 to +60 s/d (per-file fits +28 to
 +47), CD +25 to +43 (per file) and CU −17 to −9 (per file), so a two-minute
 live reading anywhere in those ranges is consistent with the file. Positional spread is about 86 s/d and the rate
-is far fast in several positions: a correct helper says the watch is well
-outside a 3235's normal behaviour and needs a watchmaker (regulation at
-least, likely a service), and says it in Spanish.
+is far fast in several positions. The app and the MCP server should show
+these facts plainly and grade nothing (project decision, 2026-10-11: the software
+presents facts; interpretation belongs to the skill and the helper). A
+helper interpreting them is right to say the watch is far outside Witschi's
+men's rate class (−5 to +15 s/d) in several positions and that a
+watchmaker should look at it, citing where its figures come from, in Spanish.
 
 Amplitude: DU 254° and DD 235° are below Witschi's 260–320° horizontal
 range, and 221–233° crown up, down, left and right are below its 240–280°

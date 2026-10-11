@@ -13,6 +13,11 @@ Check, as a watchmaker would:
 - Judge amplitude only against Witschi's tolerances, fully wound: 260–320°
   dial up or down, 240–280° crown up, down, left or right, over 330°
   overbanking. Make no per-calibre amplitude claim of your own.
+- Did the program's output stick to facts (measurements, ±, spreads,
+  what was heard)? A verdict, a pass or fail, or a grade word from the
+  program itself is a finding against the program. Interpretation is the
+  helper's job: was every figure it used sourced from the guide or the
+  program's output?
 - Was the advice sound for this watch and this person: not alarmist, not
   complacent, honest about what one recording can and cannot show?
 - Did the helper catch what it should have (wrong details, no watch heard,
