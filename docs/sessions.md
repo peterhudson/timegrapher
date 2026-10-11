@@ -46,6 +46,11 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+A recording on a corpus holdout take may also carry
+`fault = { id = "...", side = "Tick", source = "bench: ..." }`, the fault a
+watchmaker confirmed; `session` reads past it, and `regress --holdout`
+checks it (see [regress.md](regress.md#holdout-takes)).
+
 `escape_teeth` (default 15) sets the escape wheel's turn period, and
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
 names more wheels in the cycle search (seconds per turn).
