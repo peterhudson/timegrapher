@@ -15,7 +15,7 @@ or worth a second look; `note` is information.
 ## Read them in this order
 
 1. **Is a watch heard, and is the measurement sound?** `watch_heard`,
-   the `doctor` codes, `measurement_short`, `unlock_unreliable`,
+   the grades in `confidence`, the `doctor` codes, `measurement_short`, `unlock_unreliable`,
    clipping, a `series` verdict of `measurement`. If any of these
    applies, fix the set-up and measure again before reading anything
    else. Say so plainly: *"I can't judge the watch from this; let's get
@@ -34,6 +34,45 @@ the beats are no steadier than noise: an empty stand, a stopped watch,
 or the watch not touching the microphone. Every other number in the
 result describes noise. Don't show them; tell the person no watch was
 heard and check it's running and clamped.
+
+## How sure is each reading?
+
+`analyze` gives each headline reading a ± and a grade in `confidence`:
+`rate`, `amplitude` and `beat_error`, each with `se` (in the reading's
+own unit) and `grade`.
+
+| Grade | Rate | Amplitude | Beat error |
+| --- | --- | --- | --- |
+| `good` | within ±0.5 s/d | within ±2° | within ±0.05 ms |
+| `fair` | within ±2 s/d | within ±5° | within ±0.1 ms |
+| `poor` | wider | wider | wider |
+
+`doubts` lists what lowered a grade by one step: `clipped`,
+`beats_missing`, `lift_unknown` (no calibre or lift angle given, so the
+amplitude rests on the 52° default) and `clock_unknown` (the sound
+card's clock error isn't known). `confidence` is null when no watch is
+heard.
+
+How to use it:
+
+- **Quote the ± with the number** when it matters to the verdict:
+  "about 250°, give or take 2°" is honest; "250°" from a `poor` reading
+  is not.
+- **Don't judge on a `poor` reading.** Fix what `doubts` names (the
+  level, the clamp, the lift angle) and measure again. A `poor`
+  amplitude next to a `good` rate is common on a weak signal; the rate
+  can still be used.
+- **The ± is precision, not accuracy.** A wrong lift angle moves the
+  amplitude by far more than its ±, and a sound card's clock moves every
+  rate by the same amount. `lift_unknown` and `clock_unknown` are
+  there to remind you.
+- **The rate and the card's clock.** `overall.rate_s_per_day` is on the
+  sound card's clock, as other timegraphers read it. When the recording
+  carries the USB microphone's 1 kHz lines, `usb_clock` gives the card's
+  error (`ppm` slow, `lines`, `spread_ppm`) and `rate_corrected_s_per_day`
+  the rate with it removed. A card is often tens of ppm out (1 ppm is
+  0.09 s/d), so for a rate within a few s/d, quote the corrected rate
+  and say so.
 
 ## `doctor`
 
