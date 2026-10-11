@@ -26,3 +26,12 @@ log has the time of each placing). A live reading covers only the stretch of
 the file it heard, so compare it with the file's range, not its median, and
 before calling a difference the program's fault, check it against that
 stretch of the file. The triage marks such notes "check against the file".
+
+Grade amplitude only against Witschi's tolerances, the table the program and
+the watchmaker skill use (`docs/sessions.md`, "Findings"): fully wound, 260–320°
+dial up or down (horizontal) and 240–280° crown up, down, left or right
+(vertical), with over 330° overbanking. Make no per-calibre amplitude claim
+("a 3235 should be above 250°") without a source. The Yacht-Master 42's
+readings in the corpus (221–254°) are below those ranges in every position,
+so a helper that calls its amplitude low is right, not alarmist; the rate is
+still its bigger fault.

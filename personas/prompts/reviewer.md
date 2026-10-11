@@ -10,6 +10,9 @@ Check, as a watchmaker would:
 - Are the numbers the helper reported consistent with the truth sheet (rate
   ±3 s/d, amplitude ±10°, beat error ±0.1 ms at the same lift angle)? Name
   any that are not, and whether the program or the helper got it wrong.
+- Judge amplitude only against Witschi's tolerances, fully wound: 260–320°
+  dial up or down, 240–280° crown up, down, left or right, over 330°
+  overbanking. Make no per-calibre amplitude claim of your own.
 - Was the advice sound for this watch and this person: not alarmist, not
   complacent, honest about what one recording can and cannot show?
 - Did the helper catch what it should have (wrong details, no watch heard,
