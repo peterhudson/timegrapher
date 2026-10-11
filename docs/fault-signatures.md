@@ -29,6 +29,29 @@ shows on every other beat only. Amplitude is measured from 1 to 3.
 | Grazing balance wheel or hairspring | Sustained rubbing noise after the drop, ending in another burst | Long post-drop energy; periodic rubbing bursts |
 | Escape tooth lands directly on the impulse plane | No distinct unlock; a small sound where the impulse should be, then the drop | Missing sound 1; only two events |
 
+### What `analyze` flags today
+
+`analyze` lists these as **Possible faults** (`faults[]` in the JSON;
+rules in `crates/timegrapher-core/src/faults.rs`). No recording of a watch
+with a confirmed fault has been through them yet, so every finding is
+"possible", and each limit sits well outside what the 16 healthy takes of
+the public corpus measure. Each is also found on a synthetic recording
+made with that fault (`tests/synthetic.rs`).
+
+| Finding | Rule | Healthy corpus reaches |
+| --- | --- | --- |
+| `unlock_too_strong` | Sound 1 at least as loud as sound 3 | 0.78 (Patek 324 clone) |
+| `no_unlock_sound` | Sound 1 missing in most windows, or no sound 2 and a 1-to-3 interval under 75% of the other side's (the impulse taken for the unlock) | sound 1 in 65% of windows or more |
+| `escapement_friction` | Sound 2 not separable from sound 1 in most windows | sound 2 in 94% or more |
+| `unlock_uneven` | One side's 1-to-2 interval 1.8 times the other's: uneven lock, or an extra sound just before the unlock, which is taken for sound 1 | 1.46 (DD 3235); a plastic holder alone gave 1.40 |
+| `rubbing_after_drop` | Level 3 to 15 ms after the drop at least 0.1 of the drop, and 3 times the other side's | about 1.7 times |
+
+Not flagged yet: extra sounds after the drop (case and holder ringing
+gives them on most beats of the ETA, Daytona and Peacock takes), doubled
+sounds (end shake; needs a measured spacing of doubled peaks), and noise
+between beats (a worn pivot; the measure reads about 1 on every take).
+The diagram faults below come in a later change.
+
 ## Diagram (beat timing over time)
 
 | Fault | What the diagram shows | Feature to measure |
