@@ -46,12 +46,6 @@ pub fn amplitude_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) ->
     lift_deg / (2.0 * (std::f64::consts::PI * unlock_to_drop_s / osc_period_s).sin())
 }
 
-/// Unlock-to-drop time on a template whose drop sits `PRE_S` from its start.
-pub fn unlock_to_drop(template: &[f32], fs: f64, onset_fraction: f32) -> Option<f64> {
-    let e = edges(template, fs, (PRE_S * fs).round() as usize, onset_fraction)?;
-    Some((e.drop - e.unlock) / fs)
-}
-
 /// Landmarks of one template, in samples from its start.
 #[derive(Debug, Clone, Copy)]
 pub struct Edges {

@@ -65,6 +65,12 @@ pub struct Options {
     pub fetch: bool,
     /// Also run a corpus's smoke takes through the engine.
     pub smoke: bool,
+    /// Read only the corpus's holdout takes, judged against tg and their
+    /// known faults; prints counts only.
+    pub holdout: bool,
+    /// With `holdout`: print every reading's numbers too (milestone runs,
+    /// never in CI).
+    pub reveal: bool,
 }
 
 /// What one reading measured, as kept in the baseline.
@@ -237,17 +243,9 @@ fn take_name(session: &str) -> String {
         .to_string()
 }
 
-/// A take's session file and what each of its readings measured.
-type Measured = (Manifest, Vec<Result<Reading, String>>);
-
-/// Measure every reading of every take, `jobs` at a time.
-fn measure_all(
-    root: &Path,
-    sessions: &[String],
-    jobs: usize,
-    quiet: bool,
-) -> Result<Vec<Measured>, String> {
-    let opts = session_cmd::Options {
+/// How `regress` reads a session: as its file says, without shape or cycles.
+fn session_opts() -> session_cmd::Options {
+    session_cmd::Options {
         bph: None,
         lift: None,
         calibre: None,
@@ -258,7 +256,20 @@ fn measure_all(
         init: false,
         no_shape: true,
         no_cycles: true,
-    };
+    }
+}
+
+/// A take's session file and what each of its readings measured.
+type Measured = (Manifest, Vec<Result<Reading, String>>);
+
+/// Measure every reading of every take, `jobs` at a time.
+fn measure_all(
+    root: &Path,
+    sessions: &[String],
+    jobs: usize,
+    quiet: bool,
+) -> Result<Vec<Measured>, String> {
+    let opts = session_opts();
     let mut loaded = Vec::new();
     for s in sessions {
         let (m, base) = session_cmd::load_manifest(&[root.join(s)])?;
@@ -458,16 +469,37 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let bpath = o.baseline.clone().unwrap_or_else(|| o.root.join(BASELINE));
     // A corpus checkout keeps its takes in takes/.
     let corpus = crate::corpus::load(&o.root)?;
-    if corpus.is_none() && (o.fetch || o.smoke) {
+    if corpus.is_none() && (o.fetch || o.smoke || o.holdout) {
         return Err(format!(
-            "{}: --fetch and --smoke need a corpus checkout (no {} in it)",
+            "{}: --fetch, --smoke and --holdout need a corpus checkout (no {} in it)",
             o.root.display(),
             crate::corpus::INDEX
         ));
     }
-    if let (Some(c), true) = (&corpus, o.fetch) {
-        crate::corpus::fetch(&o.root, c, &o.takes, o.smoke, o.quiet)?;
+    if o.holdout && (o.write_baseline || o.smoke) {
+        return Err("--holdout runs alone: holdout takes are never in the baseline".into());
     }
+    if o.reveal && !o.holdout {
+        return Err("--reveal goes with --holdout".into());
+    }
+    if let (Some(c), true) = (&corpus, o.fetch) {
+        crate::corpus::fetch(&o.root, c, &o.takes, o.smoke, o.holdout, o.quiet).map_err(|e| {
+            if o.holdout {
+                "the audio of a holdout take could not be fetched".to_string()
+            } else {
+                e
+            }
+        })?;
+    }
+    let holdout_ids: std::collections::BTreeSet<String> = corpus
+        .as_ref()
+        .map(|c| {
+            crate::corpus::holdout_ids(c)
+                .into_iter()
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
     let root_buf = match corpus {
         Some(_) => crate::corpus::takes_dir(&o.root),
         None => o.root.clone(),
@@ -486,7 +518,8 @@ pub fn run(o: &Options) -> Result<bool, String> {
             }
             Some(b)
         }
-        Err(_) if o.write_baseline => None,
+        // Holdout takes are judged against tg alone.
+        Err(_) if o.write_baseline || o.holdout => None,
         Err(e) => {
             return Err(format!(
                 "{}: {e} (write one with --write-baseline)",
@@ -494,10 +527,16 @@ pub fn run(o: &Options) -> Result<bool, String> {
             ))
         }
     };
+    // Holdout takes are read by --holdout and nothing else.
+    let in_holdout = |s: &str| holdout_ids.contains(s.split('/').next().unwrap_or(s));
     let sessions: Vec<String> = find_sessions(root)?
         .into_iter()
         .filter(|s| o.takes.is_empty() || o.takes.iter().any(|t| s.contains(t.as_str())))
+        .filter(|s| in_holdout(s) == o.holdout)
         .collect();
+    if o.holdout {
+        return holdout(root, &sessions, o);
+    }
     if sessions.is_empty() && !o.smoke {
         return Err(format!(
             "{}: no {MANIFEST} found in it or its folders",
@@ -634,6 +673,307 @@ pub fn run(o: &Options) -> Result<bool, String> {
     }
     // Writing a baseline accepts this run, so it never fails.
     Ok(passed || o.write_baseline)
+}
+
+/// How far a holdout reading may be from tg, against tg alone (research's
+/// margins, docs/regress.md).
+pub const HOLDOUT_MARGINS: Margins = Margins {
+    rate_s_per_day: 0.5,
+    amplitude_deg: 4.0,
+    beat_error_ms: 0.2,
+    beats_fraction: 0.0,
+    beats_min: 0,
+};
+
+/// One holdout value against tg: whether it is within the margin, or not
+/// judged (no tg number, or nothing measured).
+#[derive(Debug, Clone, Serialize)]
+pub struct Judged {
+    pub tg: Option<f64>,
+    pub now: Option<f64>,
+    pub off: Option<f64>,
+    pub pass: Option<bool>,
+}
+
+fn judge(tg: Option<f64>, now: Option<f64>, margin: f64, size: bool) -> Judged {
+    let off = tg
+        .zip(now)
+        .map(|(t, n)| ((if size { n.abs() } else { n }) - t).abs());
+    Judged {
+        tg,
+        now,
+        off,
+        pass: off.map(|d| d <= margin),
+    }
+}
+
+/// One holdout reading, judged. Kept from the printout unless --reveal.
+#[derive(Debug, Clone, Serialize)]
+pub struct HoldoutReading {
+    pub take: String,
+    pub reading: usize,
+    pub label: String,
+    pub rate_s_per_day: Judged,
+    pub amplitude_deg: Judged,
+    pub beat_error_ms: Judged,
+    /// The fault the session file names (`id` or `id:side`); none for a
+    /// healthy watch.
+    pub fault: Option<String>,
+    /// What `analyze` found in the measured stretch, as `id:side`.
+    pub found: Vec<String>,
+    /// The named fault was found (on the named side, if one is named).
+    pub fault_found: Option<bool>,
+    /// Findings that are not the named fault.
+    pub false_findings: usize,
+}
+
+/// Pass, fail and not judged, for one value over every holdout reading.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Tally {
+    pub pass: usize,
+    pub fail: usize,
+    pub not_judged: usize,
+}
+
+impl Tally {
+    fn of<'a>(js: impl Iterator<Item = &'a Judged>) -> Tally {
+        let mut t = Tally::default();
+        for j in js {
+            match j.pass {
+                Some(true) => t.pass += 1,
+                Some(false) => t.fail += 1,
+                None => t.not_judged += 1,
+            }
+        }
+        t
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FaultTally {
+    /// Readings whose session file names a fault ...
+    pub named: usize,
+    /// ... and how many of those `analyze` found.
+    pub found: usize,
+    pub missed: usize,
+    /// Healthy readings, and those with any finding.
+    pub healthy: usize,
+    pub healthy_with_findings: usize,
+    /// Findings that are not the named fault, over every reading.
+    pub false_findings: usize,
+}
+
+/// What `regress --holdout` reports. `readings` stays empty unless --reveal.
+#[derive(Debug, Clone, Serialize)]
+pub struct HoldoutOutcome {
+    pub takes: usize,
+    pub readings_measured: usize,
+    /// Readings that could not be measured: the only failure.
+    pub unreadable: usize,
+    pub margins: Margins,
+    pub rate_s_per_day: Tally,
+    pub amplitude_deg: Tally,
+    pub beat_error_ms: Tally,
+    pub faults: FaultTally,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub readings: Vec<HoldoutReading>,
+}
+
+/// Whether a finding is the fault a session file names.
+fn is_named(
+    f: &timegrapher_core::faults::Finding,
+    k: &timegrapher_core::session::KnownFault,
+) -> bool {
+    f.id == k.id
+        && k.side
+            .as_deref()
+            .map_or(true, |s| s.eq_ignore_ascii_case(&format!("{:?}", f.side)))
+}
+
+/// `regress --holdout`: measure the holdout takes, judge them against tg
+/// with [`HOLDOUT_MARGINS`] and against their named faults, and print the
+/// counts. Exits 0 whatever the result; only an unreadable reading fails.
+fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String> {
+    let jobs = o.jobs.unwrap_or_else(|| {
+        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+    });
+    let measured = measure_all(root, sessions, jobs, true)?;
+    let opts = session_opts();
+    let mg = HOLDOUT_MARGINS;
+    let mut readings = Vec::new();
+    let mut unreadable = 0;
+    for (s, (m, rs)) in sessions.iter().zip(&measured) {
+        let (_, base) = session_cmd::load_manifest(&[root.join(s)])?;
+        let ctx = Ctx {
+            m,
+            base: &base,
+            o: &opts,
+            tty: false,
+            quiet: true,
+        };
+        for (i, (e, r)) in m.recordings.iter().zip(rs).enumerate() {
+            let Ok(r) = r else {
+                unreadable += 1;
+                continue;
+            };
+            let me = &r.measurement;
+            let found = if me.watch_heard {
+                match session_cmd::faults_of(e, &ctx, me.start_s, me.end_s) {
+                    Ok(f) => f,
+                    Err(_) => {
+                        unreadable += 1;
+                        continue;
+                    }
+                }
+            } else {
+                Vec::new()
+            };
+            let tg = e.reference.clone().unwrap_or_default();
+            let named = e.fault.as_ref();
+            let hits = found
+                .iter()
+                .filter(|f| named.is_some_and(|k| is_named(f, k)))
+                .count();
+            readings.push(HoldoutReading {
+                take: take_name(s),
+                reading: i + 1,
+                label: r.label.clone(),
+                rate_s_per_day: judge(
+                    tg.rate_s_per_day,
+                    me.rate_s_per_day,
+                    mg.rate_s_per_day,
+                    false,
+                ),
+                amplitude_deg: judge(tg.amplitude_deg, me.amplitude_deg, mg.amplitude_deg, false),
+                beat_error_ms: judge(
+                    tg.beat_error_ms,
+                    me.beat_error_unlock_ms,
+                    mg.beat_error_ms,
+                    true,
+                ),
+                fault: named.map(|k| match &k.side {
+                    Some(side) => format!("{}:{side}", k.id),
+                    None => k.id.clone(),
+                }),
+                found: found
+                    .iter()
+                    .map(|f| format!("{}:{}", f.id, f.side.word()))
+                    .collect(),
+                fault_found: named.map(|_| hits > 0),
+                false_findings: found.len() - hits,
+            });
+        }
+    }
+    let mut faults = FaultTally::default();
+    for r in &readings {
+        match r.fault_found {
+            Some(true) => {
+                faults.named += 1;
+                faults.found += 1;
+            }
+            Some(false) => {
+                faults.named += 1;
+                faults.missed += 1;
+            }
+            None => {
+                faults.healthy += 1;
+                faults.healthy_with_findings += usize::from(r.false_findings > 0);
+            }
+        }
+        faults.false_findings += r.false_findings;
+    }
+    let outcome = HoldoutOutcome {
+        takes: sessions.len(),
+        readings_measured: readings.len(),
+        unreadable,
+        margins: mg,
+        rate_s_per_day: Tally::of(readings.iter().map(|r| &r.rate_s_per_day)),
+        amplitude_deg: Tally::of(readings.iter().map(|r| &r.amplitude_deg)),
+        beat_error_ms: Tally::of(readings.iter().map(|r| &r.beat_error_ms)),
+        faults,
+        readings: if o.reveal { readings } else { Vec::new() },
+    };
+    if o.json {
+        crate::output::print("regress-holdout", serde_json::json!({}), &outcome)?;
+    } else {
+        print_holdout(&outcome);
+    }
+    Ok(unreadable == 0)
+}
+
+fn print_holdout(o: &HoldoutOutcome) {
+    if o.takes == 0 {
+        println!("No holdout takes in this corpus.");
+        return;
+    }
+    if !o.readings.is_empty() {
+        println!(
+            "Holdout readings (revealed: copy into each take's README with the git hash and date):"
+        );
+        let f = |j: &Judged, d: usize| match (j.now, j.tg) {
+            (Some(n), Some(t)) => format!(
+                "{n:.d$} (tg {t:.d$}){}",
+                if j.pass == Some(false) { " FAIL" } else { "" }
+            ),
+            (Some(n), None) => format!("{n:.d$}"),
+            _ => "-".to_string(),
+        };
+        for r in &o.readings {
+            println!(
+                "  {} #{} {}: rate {}, amplitude {}, beat error {}; fault {}, found {}",
+                r.take,
+                r.reading,
+                r.label,
+                f(&r.rate_s_per_day, 2),
+                f(&r.amplitude_deg, 1),
+                f(&r.beat_error_ms, 3),
+                r.fault.as_deref().unwrap_or("none"),
+                if r.found.is_empty() {
+                    "none".to_string()
+                } else {
+                    r.found.join(", ")
+                }
+            );
+        }
+        println!();
+    }
+    println!(
+        "Holdout: {} takes, {} readings measured{}.",
+        o.takes,
+        o.readings_measured,
+        if o.unreadable > 0 {
+            format!(", {} could not be measured", o.unreadable)
+        } else {
+            String::new()
+        }
+    );
+    let t = |name: &str, t: &Tally, margin: String| {
+        println!(
+            "  {name:<11} {} pass, {} fail, {} not judged (margin {margin})",
+            t.pass, t.fail, t.not_judged
+        );
+    };
+    t(
+        "rate",
+        &o.rate_s_per_day,
+        format!("{} s/d", o.margins.rate_s_per_day),
+    );
+    t(
+        "amplitude",
+        &o.amplitude_deg,
+        format!("{}°", o.margins.amplitude_deg),
+    );
+    t(
+        "beat error",
+        &o.beat_error_ms,
+        format!("{} ms", o.margins.beat_error_ms),
+    );
+    let f = &o.faults;
+    println!(
+        "  {:<11} {} of {} named faults found, {} missed; {} of {} healthy readings with a finding; {} findings that are not the named fault",
+        "faults", f.found, f.named, f.missed, f.healthy_with_findings, f.healthy, f.false_findings
+    );
+    println!("Holdout results never fail the run; only a reading that cannot be measured does.");
 }
 
 fn num(v: Option<f64>, value: &str) -> String {
@@ -884,5 +1224,68 @@ mod tests {
             &Margins::default(),
         );
         assert!(rows.iter().all(|r| r.status == Status::New));
+    }
+
+    #[test]
+    fn holdout_values_are_judged_against_tg_alone() {
+        let j = judge(Some(0.25), Some(-0.4), 0.2, true);
+        assert_eq!(j.pass, Some(true));
+        let j = judge(
+            Some(276.0),
+            Some(287.0),
+            HOLDOUT_MARGINS.amplitude_deg,
+            false,
+        );
+        assert_eq!(j.pass, Some(false));
+        assert_eq!(judge(None, Some(1.0), 0.5, false).pass, None);
+        assert_eq!(judge(Some(1.0), None, 0.5, false).pass, None);
+    }
+
+    #[test]
+    fn a_named_fault_matches_its_id_and_side() {
+        use timegrapher_core::faults::{Finding, Side, Strength};
+        use timegrapher_core::session::KnownFault;
+        let f = |side| Finding {
+            id: "unlock_too_strong",
+            label: "",
+            side,
+            strength: Strength::Possible,
+            evidence: Default::default(),
+            see: "",
+        };
+        let k = |side: Option<&str>| KnownFault {
+            id: "unlock_too_strong".into(),
+            side: side.map(String::from),
+            source: None,
+        };
+        assert!(is_named(&f(Side::Tick), &k(Some("Tick"))));
+        assert!(is_named(&f(Side::Tick), &k(Some("tick"))));
+        assert!(is_named(&f(Side::Tock), &k(None)));
+        assert!(is_named(&f(Side::Both), &k(Some("both"))));
+        assert!(!is_named(&f(Side::Tock), &k(Some("Tick"))));
+        let other = KnownFault {
+            id: "unlock_uneven".into(),
+            ..k(None)
+        };
+        assert!(!is_named(&f(Side::Tick), &other));
+    }
+
+    #[test]
+    fn a_session_file_names_a_fault() {
+        let m: Manifest = toml::from_str(
+            r#"
+[[recording]]
+file = "a.flac"
+fault = { id = "unlock_too_strong", side = "Tick", source = "bench: deep lock" }
+
+[[recording]]
+file = "b.flac"
+"#,
+        )
+        .unwrap();
+        let k = m.recordings[0].fault.as_ref().unwrap();
+        assert_eq!(k.id, "unlock_too_strong");
+        assert_eq!(k.side.as_deref(), Some("Tick"));
+        assert!(m.recordings[1].fault.is_none());
     }
 }
