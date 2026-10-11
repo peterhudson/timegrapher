@@ -12,7 +12,9 @@
 use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
+use crate::confidence::Confidence;
 use crate::dsp::{envelope, median, median_f32};
+use crate::measure::{self, Caveat};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
 
@@ -23,6 +25,11 @@ pub const GAP_S: f64 = 2.0;
 
 /// Longest stretch the tick and tock profiles can cover, seconds.
 pub const MAX_PROFILE_S: f64 = 60.0;
+
+/// How far back the rate's ± looks for its 10 s windows, seconds: the
+/// latest unbroken run of beats, up to this long. The averaging time
+/// holds too few windows to judge the rate on its own.
+pub const RATE_RUN_S: f64 = 300.0;
 use crate::stream::BeatLog;
 use crate::timing;
 use serde::Serialize;
@@ -62,7 +69,7 @@ impl Default for LiveConfig {
 }
 
 /// The figures on the live screen, over the last `average_s` seconds.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LiveReading {
     /// Audio time of the reading, seconds from the start.
     pub time_s: f64,
@@ -99,6 +106,11 @@ pub struct LiveReading {
     /// fit's jitter). When not, every reading is `None`, as `analyze`
     /// nulls them; the jitter and the beats used stay, to say why.
     pub watch_heard: bool,
+    /// Each reading's ± and grade, judged by `measure::assess` as
+    /// `analyze` and `session` judge theirs. `None` when no watch is heard.
+    pub confidence: Option<Confidence>,
+    /// What limits the readings, in `measure`'s order.
+    pub caveats: Vec<Caveat>,
 }
 
 impl LiveReading {
@@ -143,6 +155,8 @@ pub struct LiveAnalyzer {
     /// Where each new stretch began (a new position), oldest first: the
     /// readings never fit across one.
     breaks: Vec<f64>,
+    /// Whether the sound card's clock is corrected, for the caveats.
+    clock_known: bool,
 }
 
 impl LiveAnalyzer {
@@ -167,6 +181,7 @@ impl LiveAnalyzer {
             quiet_passes: 0,
             logged_bph: None,
             breaks: Vec::new(),
+            clock_known: false,
         }
     }
 
@@ -299,6 +314,13 @@ impl LiveAnalyzer {
             self.cfg.analysis.bph = bph;
             self.restart();
         }
+    }
+
+    /// Say whether the lift angle is the calibre's and the sound card's
+    /// clock is corrected: each unknown lowers a grade and is a caveat.
+    pub fn set_known(&mut self, lift_known: bool, clock_known: bool) {
+        self.cfg.analysis.lift_known = lift_known;
+        self.clock_known = clock_known;
     }
 
     /// Change the lift angle. Amplitude is proportional to the lift angle
@@ -566,6 +588,45 @@ impl LiveAnalyzer {
         let watch_heard =
             bph.is_some_and(|b| crate::beats::watch_heard(fit.map(|f| f.jitter_us), b));
         let heard = |v: Option<f64>| v.filter(|_| watch_heard);
+        let clipped_fraction = (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64);
+        // The rate's ± from 10 s windows over the run so far (the latest
+        // unbroken run of beats, back to a break, up to RATE_RUN_S), scaled
+        // to the averaging time by `measure`.
+        let rate_windows = bph.map_or_else(Vec::new, |b| {
+            let floor = from.min(end_s - RATE_RUN_S).max(
+                brk.checked_sub(1)
+                    .and_then(|i| self.breaks.get(i))
+                    .copied()
+                    .unwrap_or(f64::NEG_INFINITY),
+            );
+            let mut r0 = self.beats.partition_point(|x| x.time < floor);
+            if let Some(gap) = (r0 + 1..hi)
+                .rev()
+                .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
+            {
+                r0 = gap;
+            }
+            timing::windows(&self.beats[r0.min(lo)..hi], b, 10.0, 5.0)
+        });
+        let assessment = measure::assess(
+            &rate_windows,
+            &wins,
+            &measure::Context {
+                watch_heard,
+                bph_heard: None,
+                lift_known: self.cfg.analysis.lift_known,
+                clock_known: self.clock_known,
+                beats: hi - lo,
+                expected: bph.map_or(0.0, |b| b as f64 / 3600.0 * span_s),
+                clipped_fraction: clipped_fraction.unwrap_or(0.0),
+                // The time the beats stand for, each one beat long: a full
+                // 10 s average is 10 s of beats, though its first and last
+                // beats are one beat less apart.
+                span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
+                breaks: 0,
+                average_s: Some(average_s),
+            },
+        );
         LiveReading {
             time_s: end_s,
             bph,
@@ -581,8 +642,10 @@ impl LiveAnalyzer {
             span_s,
             snr: self.snr,
             clipped_beats,
-            clipped_fraction: (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64),
+            clipped_fraction,
             watch_heard,
+            confidence: assessment.confidence,
+            caveats: assessment.caveats,
         }
     }
 }
@@ -655,6 +718,51 @@ mod tests {
             r.amplitude_deg.is_none() && r.beat_error_unlock_ms.is_none(),
             "{r:?}"
         );
+        assert!(r.confidence.is_none() && r.caveats.first() == Some(&Caveat::NoWatch));
+    }
+
+    /// The readings are judged as `analyze` judges a recording: a short
+    /// stretch grades poor, the rate's ± waits for enough of a run and
+    /// then follows the averaging time, and unknowns are caveats.
+    #[test]
+    fn readings_carry_their_grades_and_caveats() {
+        use crate::confidence::Grade;
+        let cfg = SynthConfig {
+            duration_s: 90.0,
+            rate_s_per_day: 5.0,
+            snr_db: 30.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let early = a.reading_at(8.0, 10.0);
+        assert!(
+            early
+                .caveats
+                .iter()
+                .any(|c| matches!(c, Caveat::ShortSpan { .. })),
+            "{:?}",
+            early.caveats
+        );
+        assert_eq!(early.confidence.unwrap().rate.grade, Grade::Poor);
+        let late = a.reading(10.0);
+        assert!(
+            late.caveats.contains(&Caveat::LiftUnknown),
+            "{:?}",
+            late.caveats
+        );
+        assert!(
+            late.caveats.contains(&Caveat::ClockUnknown),
+            "{:?}",
+            late.caveats
+        );
+        let ten = late.confidence.unwrap().rate.se.expect("rate ±");
+        let sixty = a.reading(60.0).confidence.unwrap().rate.se.unwrap();
+        assert!(sixty < ten, "{sixty} against {ten}");
+        a.set_known(true, true);
+        let known = a.reading(10.0).caveats;
+        assert!(known.is_empty(), "{known:?}");
     }
 
     /// Driven five times past full scale, the beats are still read, and
