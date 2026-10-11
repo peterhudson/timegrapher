@@ -468,14 +468,16 @@ fn live(
 
 fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
     let wav = dir.join("audio-001.wav");
-    // Clipping over the whole take, as `analyze` reports it.
+    // Whether a watch was heard, and clipping, over the whole take, as
+    // `analyze` reports them: the keep-or-redo call, which a short take
+    // still gets.
     let a = audio::load(&wav).map_err(|e| format!("{}: {e}", wav.display()))?;
     let mut cfg = AnalysisConfig {
         bph: set.bph,
         ..Default::default()
     };
     cfg.amplitude.lift_deg = set.lift;
-    let clipping = analyze(&a, &cfg).summary.clipping;
+    let whole = analyze(&a, &cfg).summary;
     // The readings as `session` will take them: the same analysis, after
     // the same settling time, on the sound card's clock.
     let mut scfg = StreamConfig::default();
@@ -485,18 +487,20 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         .map_err(|e| format!("{}: {e}", wav.display()))?;
     let from = set.settle_s.min(log.duration_s / 2.0);
     let m = session::measure(&log, None, from, log.duration_s);
-    let heard = m.watch_heard;
+    // Readings only when that stretch alone hears the watch too; a take
+    // shorter than about twice the settling time may leave too little.
+    let heard = whole.watch_heard && m.watch_heard;
     Ok(Check {
         from_s: m.start_s,
         to_s: m.end_s,
-        watch_heard: heard,
+        watch_heard: whole.watch_heard,
         bph: log.bph,
         beats_found: m.beats,
         beats_expected: ((m.end_s - m.start_s) * log.bph as f64 / 3600.0).round() as usize,
         rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
         amplitude_deg: m.amplitude_deg.filter(|_| heard),
         beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),
-        clipping,
+        clipping: whole.clipping,
     })
 }
 
@@ -604,6 +608,9 @@ fn print_report(r: &Report) {
             c.beat_error_ms
                 .map_or("-".into(), |b| format!("{:.2} ms", b.abs())),
         );
+        if c.rate_s_per_day.is_none() {
+            println!("             Too little left after settling for readings; record longer for figures to quote.");
+        }
     }
     match &r.session_file {
         Some(f) => println!("Added to     {f}"),

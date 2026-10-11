@@ -61,7 +61,7 @@ readings: anything that compares two documents should leave `software` out.
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | `source`, `check`, `mixer`, `fixes[]`, `applied`, `after`, `verdict` (below) |
-| `record` | `record FOLDER --position P --json` | `take` (the take's folder), `session_file` (the session file the take was added to, or null), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping` (over the whole take); the readings are those `session` gives for the take, null when no watch is heard), `verdict` (`ok`, `no_watch_heard`, `clipping`); see [`record`](#record) |
+| `record` | `record FOLDER --position P --json` | `take` (the take's folder), `session_file` (the session file the take was added to, or null), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no watch is heard or the stretch after settling is too short), `verdict` (`ok`, `no_watch_heard`, `clipping`); see [`record`](#record) |
 | `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values, `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) Each reading's measurement has `breaks` too, with the same meaning, when its stretch holds one. |
 | `report` | `report [RECORDING] --json` | the bundle's manifest: `created_utc`, `kind`, `note`, `os_version`, `recording`, `commands[]` (`args`, `cwd`, `output`, `replayable`), `files[]` (`path`, `bytes`, `sha256`), `consent`, `redacted`, `left_out`; the zip's path goes to stdout without `--json`; see [reports.md](reports.md) |
 | `replay` | `report --replay BUNDLE --json` | `bundle` (when and by which build it was made), `damaged[]`, `commands[]` (`args`, `output`, `ran`, `error`, `moved[]` of `path`, `then`, `now`) |
@@ -138,11 +138,14 @@ which way to turn the watch, and never on its own initiative.
 Each run makes one take folder in FOLDER, the same as the desktop app
 saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
 the app opens it with), named after the start time, the watch and the
-position. The take is analysed at once, over the stretch `session` will
-read: the check skips the take's `settle_s` from the session file (30 s
-in a file `record` writes; at most half the take) and reads the rest on
-the sound card's clock, as `session` does, so the check and the report
-agree. When a watch is heard and under
+position. The take is analysed at once. Whether a watch is heard and clipping
+are judged over the whole take, so a short take still gets a verdict.
+The readings come from the stretch `session` will read: the check skips
+the take's `settle_s` from the session file (30 s in a file `record`
+writes; at most half the take) and reads the rest on the sound card's
+clock, as `session` does, so the check and the report agree; they are
+null when that stretch is too short to hear the watch on its own. When a
+watch is heard and under
 1% of beats clip, the take is added to `FOLDER/session.toml` (written on
 the first take with the watch, calibre, bph, lift and `settle_s = 30`,
 then appended to, comments and all) with its position, `wind_h` when
