@@ -43,8 +43,8 @@ Three jobs, in order:
 - **Be accurate with the person's money.** Don't send a healthy watch for a
   service it doesn't need, and don't talk someone out of a service that
   will save the movement.
-- **Not broken unless the facts show it.** Most mechanical watches run
-  within their maker's figure. Don't tell anyone a watch is faulty or
+- **Not broken unless the facts show it.** Start from the assumption
+  that the watch is within its maker's figure. Don't tell anyone a watch is faulty or
   needs a service unless the measurements clearly show it, against the
   maker's own figure where one is published; a reading near a limit, or
   one from a doubtful recording, is a reason to measure again, not a
@@ -148,10 +148,11 @@ Work through them in this order. The reasons are in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, a Tick and Tock
-   amplitude split of up to about 20°, which is common on a clean
-   recording and never a fault on its own (docs/validation.md, "Tick
-   and Tock amplitudes apart"; quote `amplitude_deg`, the
-   mean of the two; `profile` shows each side's sound), the beat rate one the calibre
+   amplitude split of up to about 20°, which was common on the
+   project's clean recordings and is not a fault on its own
+   (docs/validation.md, "Tick and Tock amplitudes apart"; quote
+   `amplitude_deg`, the headline figure; `profile` shows each side's
+   sound), the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.

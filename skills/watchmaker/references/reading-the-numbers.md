@@ -22,8 +22,10 @@ From `timegrapher analyze --json` (field names in
   the even beats are the Tick, the odd the Tock) often differ.
   On clean corpus recordings the split runs from under 1° to about 19°,
   and it does not predict how far the mean is off (docs/validation.md,
-  "Tick and Tock amplitudes apart"), so quote `amplitude_deg` (the mean
-  of the two) and treat a split as normal, never a fault on its own.
+  "Tick and Tock amplitudes apart"), so quote `amplitude_deg` (the headline
+  figure: the median over 2 s windows, which can sit a little off the
+  midpoint of the two sides) and don't treat a split as a fault on its
+  own.
   `profile` shows which sounds were marked on each side; a split well
   beyond 20° on a clean signal is worth a look there (see
   [tick-shape.md](tick-shape.md)).
