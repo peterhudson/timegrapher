@@ -189,6 +189,7 @@ JSON body:
 | `bph` | Beat rate used |
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
+| `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch`, `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`). Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
 | `faults[]` | Possible escapement faults from the shape of the Tick and Tock (from this version): `id`, `label`, `side`, `strength` (all `possible` for now), `evidence`, `see`. Empty when nothing is seen or the shape can't be judged. How to read and report each one: [findings.md](findings.md#faults-the-program-names) |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
 | `beat_error_unlock_ms` | **The beat error to quote**: signed, measured from the unlock (this project's headline beat error); report its absolute value |

@@ -123,7 +123,10 @@ Work through them in this order. The reasons are in
    no watch was heard (an empty stand, a stopped watch, no contact), and
    every number describes noise, so show none of them. Readings that are
    absent (null) beside `watch_heard` false mean the same: no watch was
-   heard. Then beats found against expected (duration ×
+   heard. Then `caveats` (on `analyze` and on each `session` reading):
+   what limits the readings, each code with what to do in
+   [findings.md](references/findings.md#what-limits-the-readings-caveats).
+   Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
    within a few degrees of each other, the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
