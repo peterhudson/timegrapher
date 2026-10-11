@@ -510,12 +510,13 @@ function recordingView(doc, extra) {
     return head + `<div class="card notice"><b>No Watch Heard</b>The beats are no steadier than noise, so there are no readings to show. Check that the watch is on the microphone and running, then record again.</div>`;
   }
   const o = doc.overall || {};
-  // The headline beat error is the unlock's, signed, with the drop's beside
-  // it, as on the app's card.
+  // The headline beat error is the unlock's, with the drop's beside it, as
+  // on the app's card. Both show the size only: which side is Tick can
+  // change between runs of the same take, so a sign would mean nothing.
   const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
   const be = Number.isFinite(unlock) ? unlock : drop;
   const beNote = Number.isFinite(unlock)
-    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${signed(drop, 2)} ms` : ""}` : "from the drop";
+    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
   const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
     ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
   // The headline rate is corrected for the sound card's clock where the
@@ -527,7 +528,7 @@ function recordingView(doc, extra) {
   let html = head + `<div class="tiles">
     ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
     ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
-    ${tile("Beat Error", "--beat-error", signed(be, 2), "milliseconds", beNote)}
+    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
   </div>`;
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
