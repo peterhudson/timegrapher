@@ -304,6 +304,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
                 (Some(a), Some(b)) => b.time - a.time,
                 _ => 0.0,
             },
+            listened_s: duration,
             breaks: 0,
             average_s: None,
         },
