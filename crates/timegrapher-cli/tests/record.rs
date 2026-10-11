@@ -108,6 +108,12 @@ fn takes_build_up_a_session() {
     assert_eq!(j["check"]["bph"], 28800);
     let rate = j["check"]["rate_s_per_day"].as_f64().unwrap();
     assert!((rate - 5.0).abs() < 0.5, "rate {rate}");
+    // No time since winding was given, so none is claimed.
+    assert!(j["wind_h"].is_null());
+    // The check reads the stretch `session` reads: after the settling
+    // time (30 s, capped at half of this 35 s take).
+    assert_eq!(j["check"]["from_s"], 17.5);
+    let du = j["check"].clone();
 
     // The take is a folder as the app saves it, with the app's session file.
     let take = PathBuf::from(j["take"].as_str().unwrap());
@@ -136,6 +142,8 @@ fn takes_build_up_a_session() {
     assert!(text.contains("settle_s = 30.0"));
     assert_eq!(text.matches("[[recording]]").count(), 2);
     assert!(text.contains("position = \"CL\"\nwind_h = 24.0"));
+    assert!(text.contains("position = \"DU\"\ndate = "));
+    assert_eq!(text.matches("wind_h").count(), 1);
 
     // `session` reads the folder as it stands.
     let out = bin()
@@ -157,6 +165,19 @@ fn takes_build_up_a_session() {
     let readings = s["readings"].as_array().unwrap();
     assert_eq!(readings.len(), 2);
     assert_eq!(readings[1]["wind_h"], 24.0);
+    // The quick check and the report agree on the same take.
+    let r0 = &readings[0]["measurement"];
+    for (check, report) in [
+        ("rate_s_per_day", "rate_s_per_day"),
+        ("amplitude_deg", "amplitude_deg"),
+        ("beat_error_ms", "beat_error_unlock_ms"),
+    ] {
+        let a = du[check].as_f64().unwrap();
+        let b = r0[report]
+            .as_f64()
+            .unwrap_or_else(|| panic!("{report} in {r0}"));
+        assert!((a - b).abs() < 1e-9, "{check}: record {a}, session {b}");
+    }
     let _ = fs::remove_dir_all(&d);
 }
 

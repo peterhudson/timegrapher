@@ -358,3 +358,36 @@ fn an_empty_stand_gives_no_readings() {
             .watch_heard
     );
 }
+
+#[test]
+fn amplitude_over_330_is_a_check_not_a_fault() {
+    // A position whose median amplitude is over Witschi's knocking limit:
+    // a check of the lift angle and the microphone, never a fault, since
+    // knocking shows only as jumps in the trace.
+    let mut r = reading(Position::CH, 0.0, 5.0, 280.0, 0.2);
+    r.measurement.amplitude_deg = Some(335.0);
+    let rep = evaluate(&[r.clone()], &Tolerance::default(), &Limits::default());
+    let f = rep
+        .findings
+        .iter()
+        .find(|f| f.code == "amplitude_high")
+        .expect("amplitude check");
+    assert_eq!(f.severity, Severity::Warning);
+    assert!(
+        f.evidence.starts_with("median amplitude 335°"),
+        "{}",
+        f.evidence
+    );
+    assert!(f.advice.contains("Check the lift angle and the microphone"));
+    assert!(!rep.findings.iter().any(|f| f.severity == Severity::Fault));
+    assert!(!rep.findings.iter().any(|f| f.code == "amplitude_tolerance"));
+
+    // At the limit itself, nothing.
+    r.measurement.amplitude_deg = Some(330.0);
+    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
+    assert!(!rep.findings.iter().any(|f| f.code == "amplitude_high"));
+
+    // Session files that set the old `overbanking` key still read.
+    let lim: Limits = serde_json::from_str(r#"{"overbanking": 340.0}"#).unwrap();
+    assert_eq!(lim.amplitude_high, 340.0);
+}

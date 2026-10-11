@@ -78,3 +78,10 @@ a zip that would unpack to more than 1 GB is refused. Which paths a bundle
 may hold and which commands it may run are checked by `report` itself, not
 by the zip crate: no absolute paths, no `..`, and only the recorded
 `analyze` command shape.
+
+The excerpt is encoded with the [`flacenc`](https://crates.io/crates/flacenc)
+crate (core `excerpt.rs`), in 4096-sample blocks, and keeps the recording's
+samples exactly. Before a bundle is written, the excerpt is decoded again with
+[`claxon`](https://crates.io/crates/claxon) and compared sample for sample
+with what was cut. A difference is an error, so a bundle never carries audio
+that is not the recording.

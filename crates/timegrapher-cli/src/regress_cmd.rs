@@ -184,6 +184,9 @@ pub struct Outcome {
     /// The corpus's smoke takes, with --smoke.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub smoke: Vec<crate::corpus::Smoke>,
+    /// Readings whose median amplitude raises session's amplitude check
+    /// (over 330°), as "take #reading". No corpus take should: fails.
+    pub amplitude_high: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -552,15 +555,22 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let mut worst = Vec::new();
     let mut readings = 0;
     let mut fresh: BTreeMap<String, Vec<Values>> = BTreeMap::new();
+    let mut amplitude_high = Vec::new();
     for (s, (m, rs)) in sessions.iter().zip(&measured) {
         let take = take_name(s);
+        let limits = m.limits.clone().unwrap_or_default();
         let before = old.as_ref().and_then(|b| b.takes.get(s));
         let mut values = Vec::new();
         let mut offs = (Vec::new(), Vec::new(), Vec::new());
         for (i, (e, r)) in m.recordings.iter().zip(rs).enumerate() {
             readings += 1;
             let now = match r {
-                Ok(r) => Some(Values::of(r)),
+                Ok(r) => {
+                    if r.measurement.amplitude_over_high(&limits).is_some() {
+                        amplitude_high.push(format!("{take} #{}", i + 1));
+                    }
+                    Some(Values::of(r))
+                }
                 Err(err) => {
                     if o.quiet {
                         eprintln!("{take}: reading {} failed", i + 1);
@@ -622,7 +632,9 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let mut counts = tally(&rows);
     counts.takes = sessions.len();
     counts.readings = readings;
-    let passed = !rows.iter().any(|r| r.status.fails()) && !smoke.iter().any(|s| s.fails());
+    let passed = !rows.iter().any(|r| r.status.fails())
+        && !smoke.iter().any(|s| s.fails())
+        && amplitude_high.is_empty();
     let shown: Vec<Row> = rows
         .into_iter()
         .filter(|r| o.all || r.status != Status::Same)
@@ -635,6 +647,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
         rows: shown,
         worst,
         smoke,
+        amplitude_high,
     };
 
     if o.write_baseline {
@@ -676,10 +689,13 @@ pub fn run(o: &Options) -> Result<bool, String> {
 }
 
 /// How far a holdout reading may be from tg, against tg alone (research's
-/// margins, docs/regress.md).
+/// margins, docs/regress.md). Amplitude is 8° because the engine and tg
+/// place the unlock differently on some movements: on the referenced takes
+/// the engine sits within 8° of tg on 93% of readings, offset by movement
+/// and mount, so a reading further out shows something new.
 pub const HOLDOUT_MARGINS: Margins = Margins {
     rate_s_per_day: 0.5,
-    amplitude_deg: 4.0,
+    amplitude_deg: 8.0,
     beat_error_ms: 0.2,
     beats_fraction: 0.0,
     beats_min: 0,
@@ -961,7 +977,10 @@ fn print_holdout(o: &HoldoutOutcome) {
     t(
         "amplitude",
         &o.amplitude_deg,
-        format!("{}°", o.margins.amplitude_deg),
+        format!(
+            "{}° against tg, which is not the true amplitude",
+            o.margins.amplitude_deg
+        ),
     );
     t(
         "beat error",
@@ -1057,6 +1076,12 @@ fn print_text(o: &Outcome, names: bool) {
     );
     if !o.not_run.is_empty() {
         println!("Not run (in the baseline only): {}", o.not_run.join(", "));
+    }
+    if !o.amplitude_high.is_empty() {
+        println!(
+            "Median amplitude over 330°, which raises session's amplitude check: {}: FAIL",
+            o.amplitude_high.join(", ")
+        );
     }
     for r in &o.smoke {
         let what = match (r.outcome, r.beats, &r.detail) {
