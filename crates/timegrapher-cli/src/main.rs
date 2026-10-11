@@ -53,7 +53,8 @@ enum Command {
         /// Beat rate in beats per hour (default: the calibre's, or guessed).
         #[arg(long)]
         bph: Option<u32>,
-        /// Lift angle in degrees (default: the calibre's, or 52).
+        /// Lift angle in degrees (default: the calibre's, or 52, graded as
+        /// unknown).
         #[arg(long)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz (e.g. 5000,6000,7000).
@@ -574,6 +575,7 @@ fn main() -> ExitCode {
             let mut cfg = AnalysisConfig {
                 bph: r.bph,
                 escape_teeth: r.escape_teeth,
+                lift_known: r.lift_known,
                 ..Default::default()
             };
             cfg.amplitude.lift_deg = r.lift_deg;
@@ -962,6 +964,23 @@ fn run_analyze(
         calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
         calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
     }
+    // A stored or given correction wins; otherwise the USB lines in the
+    // recording, when it has them.
+    let clock = match clock {
+        Some(c) => {
+            a.summary.clock_known();
+            Some(c)
+        }
+        None => a.summary.usb_clock.map(|c| {
+            (
+                c.ppm,
+                format!(
+                    "from {} USB lines in the recording, {:.1} ppm apart",
+                    c.lines, c.spread_ppm
+                ),
+            )
+        }),
+    };
     if let Some(p) = beats {
         write_beats(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
@@ -1084,6 +1103,40 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
             opt(s.jitter_us, 0)
         );
         return;
+    }
+    if let Some(c) = &s.confidence {
+        let g = |r: &timegrapher_core::confidence::Reading, unit: &str, d: usize| {
+            format!(
+                "{:?}{}",
+                r.grade,
+                r.se.map_or(String::new(), |e| format!(" (± {e:.d$} {unit})"))
+            )
+            .to_lowercase()
+        };
+        let mut why = Vec::new();
+        if s.doubts.clipped {
+            why.push("clipping");
+        }
+        if s.doubts.beats_missing {
+            why.push("beats missing");
+        }
+        if s.doubts.lift_unknown {
+            why.push("lift angle not given");
+        }
+        if s.doubts.clock_unknown {
+            why.push("sound card clock unknown");
+        }
+        println!(
+            "Confidence   rate {}, amplitude {}, beat error {}{}",
+            g(&c.rate, "s/d", 1),
+            g(&c.amplitude, "deg", 1),
+            g(&c.beat_error, "ms", 2),
+            if why.is_empty() {
+                String::new()
+            } else {
+                format!("; lowered for {}", why.join(", "))
+            }
+        );
     }
     if let Some(f) = &s.overall {
         match clock {
