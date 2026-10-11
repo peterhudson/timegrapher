@@ -23,15 +23,16 @@ sure you are. Call the two sides of the beat Tick and Tock.
    and beat error are then less sure). Propose any fix and ask first.
 3. **Wind** fully (a hand-wound watch until it gently stops; an automatic
    about 40 turns), clamp dial up, wait a few minutes. Note the time.
-4. **First look**: 60 s dial up, `analyze`. Stop if no watch is heard
+4. **First look**: `record` 60 s dial up into a folder of its own. Stop if no watch is heard
    (`watch_heard` false), if the rate is hundreds of s/d out (magnetism:
    demagnetise first, then start again), if the beat rate is not the
    calibre's, or if the ticks clip.
 5. **Six positions**, 2 minutes each, recording as soon as the watch is
    turned (the first 30 s are skipped while it settles): dial up, dial
-   down, crown down, crown left, crown up, crown right. Check each take
-   before asking them to turn the watch, and redo any that was not heard
-   cleanly.
+   down, crown down, crown left, crown up, crown right, each a `record`
+   into one session folder. Tell them when it starts and when it ends.
+   A take that is not fit to keep (no watch heard, or clipped) is not
+   added; fix it and record that position again before moving on.
 6. **Read** the session: first whether the measurement is sound, then
    faults, warnings and notes, then the numbers behind them. Judge
    against the calibre's normal values, the time since service and the
@@ -41,4 +42,5 @@ sure you are. Call the two sides of the beat Tick and Tock.
    and what to do next.
 8. **Offer the 24-hour half**: no winding or wearing, the same six
    positions a day after full wind. It shows whether the mainspring
-   still keeps the watch going well at the end of a day.
+   still keeps the watch going well at the end of a day. Record it into
+   the same folder with a wind of 24 hours.

@@ -66,8 +66,16 @@ Note the time. It is the start of the 24-hour clock for step 6.
 
 ## 3. A first look, dial up (1 minute)
 
-Record 60 s dial up (see [Recording](#recording) below) and run
-`timegrapher analyze FILE --lift L --bph B --json`.
+Record 60 s dial up into a folder of its own, so it stays out of the
+test (see [Recording](#recording) below):
+
+```sh
+timegrapher record FOLDER/first-look --position DU --seconds 60 --calibre NAME --json
+```
+
+Its `check` is the quick look: `watch_heard`, beats, rate, amplitude,
+beat error and clipping. For a closer look, `timegrapher analyze` the
+take's `audio-001.wav` with the same settings.
 
 Stop here if:
 
@@ -108,25 +116,26 @@ down). Many stands have a clamp that turns; if theirs doesn't, they hold
 the watch on its edge against the microphone with something soft, as long
 as it doesn't move.
 
-Name the files after the position: `watch_DU.flac`, `watch_DD.flac` and
-so on, in one folder for this watch. After each one, check the file
-quickly (`analyze --json`: `watch_heard`, beats found against expected,
-no clipping) before you ask them to turn the watch. A bad position is
-cheaper to redo now than tomorrow.
+Record each position into one session folder for this watch. The first
+take writes the session file, with the watch and calibre:
+
+```sh
+timegrapher record FOLDER --position DU --seconds 120 --calibre NAME --watch "their words" --json
+timegrapher record FOLDER --position DD --seconds 120 --json
+...
+```
+
+Each run says on stderr when it starts and prints `done: the watch can
+be moved` at the end; tell the person both. A take that exits 3
+(`verdict` `no_watch_heard` or `clipping`) is not added to the session:
+fix the cause and record that position again before you ask them to
+turn the watch. A bad position is cheaper to redo now than tomorrow.
 
 ## 5. Read the session
 
-Write the session file once (`timegrapher session --init FOLDER`, then
-fill in):
-
-```toml
-watch = "their words for the watch"
-calibre = "2824-2"
-bph = 28800
-lift = 52
-settle_s = 30
-tolerance = "mens"     # "cosc" for a chronometer; "ladies" for a small ladies' watch
-```
+`record` has written the session file (watch, calibre, bph, lift,
+`settle_s = 30` and one entry per take). Pass `--tolerance cosc` for a
+chronometer, or `ladies` for a small ladies' watch; men's is the default.
 
 Run `timegrapher session FOLDER --json` and read it as
 [findings.md](findings.md) says: first whether the measurement is sound,
@@ -146,22 +155,8 @@ whether the spring still has the strength to keep it going at the end of
 a day."* An automatic left off the wrist does not wind itself, so it is
 the same test.
 
-Then repeat step 4 into the same folder with `_24h` in the names
-(`watch_DU_24h.flac`, ...) and add `wind_h` to each recording in
-session.toml (`0` for the first six, `24` for the second; the file-name
-shortcut assumes full wind):
-
-```toml
-[[recording]]
-file = "watch_DU.flac"
-position = "DU"
-wind_h = 0
-
-[[recording]]
-file = "watch_DU_24h.flac"
-position = "DU"
-wind_h = 24
-```
+Then repeat step 4 into the same folder with `--wind-h 24` on every
+take; `record` marks each take with it in the session file.
 
 `session` then gives the isochronism per position, Im, Ie and N. What
 they mean is in [reading-the-numbers.md](reading-the-numbers.md#isochronism-full-wind-against-24-hours).
@@ -174,14 +169,85 @@ offer a long run: an hour or more in that one position, read with
 `timegrapher series` (is it steady, and if not, which wheel) and
 `timegrapher long` (the report). See [long-runs.md](long-runs.md).
 
+## A worked example: a Rolex 3235, dial up for two hours
+
+The take `ym42_DU_2h` in the project's public test corpus is a Rolex
+3235 (28,800 bph, lift angle 55° from the calibre table) recorded dial up
+for two hours in twelve ten-minute files, one `session` reading each.
+What `session` says, and how to reason from it:
+
+| Readings | Rate s/d | Amplitude | Beat error | Findings |
+| --- | --- | --- | --- | --- |
+| 1–2 (first 20 min) | +49, +48 | 252° | 0.27 ms | `rate_unsteady` (10 s rates +20 to +75), `amplitude_tolerance` |
+| 3–8 (20–80 min) | +35 falling to +14 | 247–252° | 0.30–0.33 ms | `rate_unsteady` in all six, `amplitude_tolerance`, `cycle_wheel` (fourth wheel) in four |
+| 9–12 (last 40 min) | +8 to +10 | 247–251° | 0.33–0.35 ms | `amplitude_tolerance`, `cycle_wheel` in two |
+
+1. **Is the measurement sound?** Yes: a watch is heard in every reading,
+   there is no clipping, the beat rate is the calibre's, and a second
+   program (tg, on three of the files) agrees to within a few s/d and a
+   few degrees. The session file gives no time since winding (`full?` in
+   the report), so the state of wind is not known; say so.
+2. **The rate falls from +49 to about +9 s/d over the first 80 minutes,
+   then holds.** Amplitude barely moves in that time, so it is unlikely to be the
+   mainspring. It looks like the watch settling after being handled. That
+   is why step 2 lets the watch run before measuring: a six-position test
+   started in the first half hour would have mixed the settling into the
+   differences between positions. Judge the rate on the last 40 minutes:
+   about +9 s/d dial up, which says little on its own (rate comes last).
+3. **Amplitude is 247–252° dial up** at the table's lift angle, below the
+   270–310° a recently serviced modern calibre usually shows fully wound,
+   and steady over two hours. On its own that is a reason to look further,
+   not a verdict.
+4. **Beat error 0.27–0.35 ms**: good.
+5. **A once-a-minute change**: amplitude repeats every 60 s, 5–10° peak to
+   peak, in six of the twelve readings (and at a third of a minute in
+   three more), and the rate does too in two of them. The fourth wheel turns once a minute. This is already a two-hour
+   run, so it's repeatable, not chance. It points at the fourth wheel or
+   something meshing with it, typically wear or dirt, and it is a
+   watchmaker's job to find.
+6. **Verdict.** It weighs the numbers with what the owner says. A modern
+   calibre at about 250° dial up, with a repeatable once-a-minute
+   amplitude change and several years since its last service, is
+   **service soon**. Serviced recently, the same numbers say **take it
+   back**: the low amplitude and the once-a-minute change shouldn't be
+   there. Either way, say the verdict needs the other five positions to
+   be firm. One line first: *"It's running well enough to wear, but it's
+   showing signs of wear in the gear train, so I'd book a service."*
+
+## Testing a collection
+
+Someone with several watches usually wants to know which ones need
+attention. Keep each watch separate and the set-up fixed:
+
+- **One session folder per watch**, named in their words
+  (`record "Seamaster 2008/" ...`). Never put two watches in one session.
+- **Check the microphone once** at the start with `doctor`, then leave the
+  stand and the input level alone for the rest of the sitting, so the
+  watches are measured the same way.
+- **Triage first**: a fully wound 60 s first look (step 3) on each watch.
+  The ones that are clearly fine dial up may need nothing more today. Do
+  the six positions on the ones that look off, the ones not serviced for
+  years, and the ones the owner is worried about.
+- **Finish with a table** they can keep, one row per watch: the watch and
+  calibre, the last service as they remember it, amplitude dial up, the
+  rate spread over positions, beat error, the verdict and the next step
+  (nothing, re-test in six months, demagnetise and re-test, service).
+  The program keeps no history of its own; the folders and this table
+  are the record, and next year's test is compared against them.
+
 ## Recording
 
-Until the program has a `record` command, record with the system's tools:
-48 kHz, 16-bit, mono, WAV or FLAC, for the length the step says (the
-commands per OS are in
-[setup-and-microphone.md](setup-and-microphone.md#recording)). Tell the
-person when it starts and when it ends; they will want to know when they
-can move the watch again.
+`timegrapher record` records one position for `--seconds`, then stops; it
+listens only while it runs. Run it only when the person is ready and
+knows it is listening. Tell them when it starts and when it ends; they
+will want to know when they can move the watch again.
+
+A build without `record` (check `timegrapher --help`): record with the
+system's tools, 48 kHz, 16-bit, mono, WAV or FLAC (the commands per OS
+are in [setup-and-microphone.md](setup-and-microphone.md#recording)),
+name each file after its position (`watch_DU.flac`, ...), and write the
+session file with `timegrapher session --init FOLDER`, adding `wind_h =
+24` to the 24-hour takes.
 
 ## What not to do
 
