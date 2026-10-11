@@ -340,6 +340,39 @@ first file and the Yacht-Master dial down 4 to 7 in the file with its knock; the
 window can find them, and a gate that knows where the beats are is
 separate work.
 
+## Tick and Tock amplitudes apart
+
+`analyze` reports the amplitude from each side's beats (`amplitude_even_deg`,
+`amplitude_odd_deg`) as well as their mean (`amplitude_deg`). On clean
+recordings of healthy watches the two sides can sit far apart. The table
+gives the first file of each public corpus take, read at the take's lift
+angle (2026-10-11, after #140), with tg's amplitude for that file where the
+take has one.
+
+| Take | Tick | Tock | Split | Mean | tg |
+|---|---|---|---|---|---|
+| ETA 2824 in its holder | 296.1° | 323.6° | 27.6° | 309.6° | 294° |
+| Dandong 3235 clone | 272.3° | 291.5° | 19.2° | 282.1° | 280° |
+| Reverso, level, overnight | 248.2° | 264.5° | 16.4° | 256.3° | 259° |
+| Daytona 4130 | 327.5° | 313.7° | 13.8° | 320.1° | |
+| Reverso, 2 h | 244.3° | 233.4° | 10.9° | 239.0° | 238° |
+| Peacock SL1258 | 311.9° | 303.9° | 8.0° | 307.5° | |
+| Yacht-Master, dial up | 254.6° | 248.9° | 5.7° | 251.7° | 254° |
+| Yacht-Master, crown down | 229.9° | 235.1° | 5.2° | 232.5° | 225° |
+| Patek 324 clone | 239.0° | 240.3° | 1.2° | 239.5° | |
+| Yacht-Master, crown left | 235.3° | 236.3° | 1.0° | 235.9° | 233° |
+| ETA 2824, bare | 289.2° | 288.5° | 0.7° | 288.7° | 279° |
+| Yacht-Master, crown up | 224.7° | 223.7° | 1.0° | 224.3° | 221° |
+
+The split runs from under 1° to 28°, and it does not predict how far the
+mean is from tg. The Dandong 3235 clone splits by 19° and its mean is 2° from
+tg, while the bare ETA splits by 0.7° and its mean is 10° from tg. So a
+split is not a doubt about `amplitude_deg`, and no caveat lowers a grade
+for it. Quote the mean. A split of up to about 30° is common on clean
+recordings and is not a fault on its own; `profile` shows each side's sound
+for a closer look. Whether a large split means something on the bench
+needs a watch with a confirmed fault recorded before and after repair.
+
 ## Sound 2 after a shoulder on the unlock: the Daytona's Tick
 
 On the Daytona 4130 the Tick's unlock climbs to a shoulder about 1 ms
