@@ -13,6 +13,7 @@ mod series_cmd;
 mod session_cmd;
 mod session_report;
 mod shape_cmd;
+mod update_cmd;
 
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -236,6 +237,13 @@ enum Command {
         /// started (for the 0 h / 24 h comparison).
         #[arg(long, default_value_t = 0.0)]
         wind_h: f64,
+        /// Print the result as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check GitHub for a newer published release (one request; nothing
+    /// is downloaded or installed).
+    Update {
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -671,6 +679,7 @@ fn main() -> ExitCode {
         }
         Command::Calibres { name, json } => calibres_cmd::run(name.as_deref(), json),
         Command::Devices { json } => run_devices(json),
+        Command::Update { json } => update_cmd::run(json),
         Command::Clock { action, json } => {
             let a = match action {
                 ClockAction::List => clock_cmd::Action::List,

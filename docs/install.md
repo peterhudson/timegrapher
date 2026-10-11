@@ -88,6 +88,27 @@ Sound input goes through ALSA (`libasound2`), which every desktop
 distribution installs; PipeWire and PulseAudio systems reach the
 microphone through their ALSA plugin.
 
+## Updating
+
+To update, download the new version and install it the same way as the
+first, over the old one (macOS: replace the app in Applications; Windows:
+extract over the old folder; Linux: replace the AppImage or tarball).
+Settings and saved recordings are kept, since they live elsewhere.
+
+To ask whether a newer version is published:
+
+```sh
+timegrapher update           # "Timegrapher 0.2.0 is available ..." or "up to date"
+timegrapher update --json    # the same as JSON (schema timegrapher.update/1)
+```
+
+This makes one request to GitHub's public releases API
+(`api.github.com/repos/peterhudson/timegrapher/releases/latest`). It sends
+no account, token or identifier; GitHub sees the address it comes from, as
+with any download. Nothing is downloaded or installed: it only names the
+newer version and the page to get it from. Drafts and pre-releases are
+never offered.
+
 ## Checking a download
 
 ```sh

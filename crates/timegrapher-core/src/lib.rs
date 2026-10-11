@@ -32,6 +32,7 @@ pub mod stream;
 pub mod synth;
 pub mod timing;
 pub mod twostate;
+pub mod update;
 
 pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};
 pub use audio::{load, Audio};
