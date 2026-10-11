@@ -491,6 +491,12 @@ pub struct TimegrapherApp {
     crash_shown: bool,
     /// Report a Problem.
     report: ReportDialog,
+    updates: crate::update::Updates,
+    /// Look for a newer release each time the app starts.
+    check_at_start: bool,
+    /// The check at start is still to be made (on the first frame, which
+    /// has the context it repaints).
+    check_pending: bool,
     /// Where the watch was put in a new position during the session: the
     /// time and the position from then on, oldest first. Empty while it has
     /// stayed in `position` all along.
@@ -601,6 +607,7 @@ impl TimegrapherApp {
             app.apply_settings(s);
         }
         app.crash = applog::dir().and_then(|d| applog::unseen_crashes(&d).pop());
+        app.check_pending = app.check_at_start;
         app
     }
 
@@ -624,6 +631,7 @@ impl TimegrapherApp {
             steady_view: self.steady_view,
             panes: Some(self.panes.clone()),
             custom_calibres: self.custom_calibres.clone(),
+            check_updates: self.check_at_start,
         }
     }
 
@@ -649,7 +657,9 @@ impl TimegrapherApp {
             steady_view,
             panes,
             custom_calibres,
+            check_updates,
         } = s;
+        self.check_at_start = check_updates;
         self.custom_calibres = custom_calibres;
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
@@ -714,6 +724,9 @@ impl TimegrapherApp {
             crash: None,
             crash_shown: false,
             report: ReportDialog::default(),
+            updates: Default::default(),
+            check_at_start: true,
+            check_pending: false,
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
@@ -2613,6 +2626,14 @@ impl TimegrapherApp {
             ui.ctx().set_theme(t);
             self.theme = t;
         }
+        theme::switch_row(
+            ui,
+            "Check for Updates at Start",
+            &mut self.check_at_start,
+            "Ask GitHub whether a newer Timegrapher is published each time the app \
+             starts, and say so if there is. It sends no account or identifier, and nothing \
+             installs itself. Check for Updates… in the status bar asks at any time.",
+        );
         ui.horizontal(|ui| {
             if ui
                 .button("Reset Panes")
@@ -3470,6 +3491,29 @@ impl TimegrapherApp {
                 {
                     self.open_report();
                 }
+                let checking = self.updates.checking();
+                if ui
+                    .add_enabled(
+                        !checking,
+                        egui::Button::new(
+                            RichText::new(if checking {
+                                "Checking for Updates…"
+                            } else {
+                                "Check for Updates…"
+                            })
+                            .small()
+                            .color(pal.accent),
+                        )
+                        .frame_when_inactive(false),
+                    )
+                    .on_hover_text(
+                        "Ask GitHub whether a newer Timegrapher is published. Nothing \
+                         downloads or installs itself.",
+                    )
+                    .clicked()
+                {
+                    self.updates.start(ui.ctx(), true);
+                }
                 ui.label(
                     RichText::new(format!(
                         "{} {}",
@@ -3637,6 +3681,47 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
+    /// A newer release is published: its version and a button to its page.
+    fn update_banner(&mut self, ui: &mut egui::Ui) {
+        let Some(r) = self.updates.notice.clone() else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let (mut download, mut dismiss) = (false, false);
+        banner(ui, pal.accent, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismiss = ui
+                    .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                    .on_hover_text("Hide this until the app starts again")
+                    .clicked();
+                download = ui
+                    .add(theme::primary(ui, "Download"))
+                    .on_hover_text(
+                        "Open the release's page in your browser, to download it from. \
+                         Nothing installs itself.",
+                    )
+                    .clicked();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!("Timegrapher {} is available", r.version))
+                                .color(pal.text),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+        });
+        if download {
+            ui.ctx()
+                .open_url(egui::OpenUrl::new_tab(crate::update::page(&r)));
+        }
+        if download || dismiss {
+            self.updates.notice = None;
+        }
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
     /// After the app closed unexpectedly: an offer to report it. The report
     /// is a GitHub issue the user opens with the crash record pasted in;
     /// nothing is sent from the app.
@@ -3764,6 +3849,7 @@ impl TimegrapherApp {
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
         self.crash_banner(ui);
+        self.update_banner(ui);
         self.error_banner(ui);
         if self.show_readings {
             self.clipping_banner(ui);
@@ -4859,6 +4945,12 @@ impl TimegrapherApp {
 
 impl eframe::App for TimegrapherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if std::mem::take(&mut self.check_pending) {
+            self.updates.start(ctx, false);
+        }
+        if let Some(m) = self.updates.poll() {
+            self.info_msg(m);
+        }
         // A file dropped on the window is replayed, where the desktop passes
         // drops on (not yet on Wayland).
         let dropped: Vec<PathBuf> = ctx.input(|i| {

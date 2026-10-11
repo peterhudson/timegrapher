@@ -36,6 +36,8 @@ pub struct Settings {
     /// Calibres the watchmaker entered by hand, for movements the built-in
     /// table doesn't have.
     pub custom_calibres: Vec<CustomCalibre>,
+    /// Look for a newer release each time the app starts.
+    pub check_updates: bool,
 }
 
 /// A calibre's train, typed in once and picked again later.
@@ -98,6 +100,7 @@ impl Default for Settings {
             steady_view: steady::View::default(),
             panes: None,
             custom_calibres: Vec::new(),
+            check_updates: true,
         }
     }
 }

@@ -358,7 +358,18 @@ reads about 2×); its hint says what to do about a low figure. It measures
 loudness, not the shape of the tick, so hum, knocks or a holder that
 smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and on the right the beat rate and the
-position.
+position, **Check for Updates…** and **Report a Problem…**.
+
+**Updates.** With **Check for Updates at Start** on (the Window settings;
+on unless switched off), the app asks GitHub once at start, on a
+background thread, whether a newer release is published
+(`timegrapher_core::update::check`). If one is, a banner says
+"Timegrapher 0.2.0 is available" with **Download**, which opens the
+release's page in the browser. Nothing installs itself. At start, a
+failed check or an up-to-date version says nothing. **Check for
+Updates…** in the status bar makes the same check and always says what it
+found: the notice, "up to date", or why it couldn't check ("no release has
+been published yet"). The request carries no account or identifier.
 
 ## Settings
 
