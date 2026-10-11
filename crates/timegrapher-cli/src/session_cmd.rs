@@ -5,6 +5,7 @@ use crate::long::expand_dirs;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use timegrapher_core::calibres::Calibre;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
@@ -25,6 +26,9 @@ pub const SCHEMA: &str = "timegrapher.session/1";
 pub struct Options {
     pub bph: Option<u32>,
     pub lift: Option<f64>,
+    /// A calibre in the table (`calibres`): its beat rate, lift angle and
+    /// wheels, where the flags and the session file give none.
+    pub calibre: Option<String>,
     pub tolerance: Option<String>,
     pub settle: Option<f64>,
     pub out: Option<PathBuf>,
@@ -32,6 +36,32 @@ pub struct Options {
     pub init: bool,
     pub no_shape: bool,
     pub no_cycles: bool,
+}
+
+impl Options {
+    /// The calibre named with `--calibre`, checked before any audio is read.
+    fn calibre(&self) -> Result<Option<&'static Calibre>, String> {
+        crate::long::Train {
+            calibre: self.calibre.as_deref(),
+            escape_teeth: None,
+        }
+        .calibre()
+    }
+
+    /// Beat rate: the flag, else the session file, else the calibre's;
+    /// none means it is measured.
+    fn bph(&self, m: &Manifest, cal: Option<&Calibre>) -> Option<u32> {
+        self.bph.or(m.bph).or(cal.map(|c| c.bph))
+    }
+
+    /// Lift angle: the flag, else the session file, else the calibre's,
+    /// else 52 degrees.
+    fn lift(&self, m: &Manifest, cal: Option<&Calibre>) -> f64 {
+        self.lift
+            .or(m.lift)
+            .or(cal.and_then(|c| c.lift_angle_deg))
+            .unwrap_or(52.0)
+    }
 }
 
 /// Seconds of audio the beat shape is measured on.
@@ -161,8 +191,17 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     t.push_str("# Test session for `timegrapher session`. Edit and run:\n");
     t.push_str(&format!("#   timegrapher session {}\n\n", dir.display()));
     t.push_str("watch = \"\"\ncalibre = \"\"\n");
-    t.push_str(&format!("bph = {}\n", o.bph.unwrap_or(28800)));
-    t.push_str(&format!("lift = {}\n", o.lift.unwrap_or(52.0)));
+    let cal = o.calibre()?;
+    t.push_str(&format!(
+        "bph = {}\n",
+        o.bph.or(cal.map(|c| c.bph)).unwrap_or(28800)
+    ));
+    t.push_str(&format!(
+        "lift = {}\n",
+        o.lift
+            .or(cal.and_then(|c| c.lift_angle_deg))
+            .unwrap_or(52.0)
+    ));
     t.push_str("# ladies, mens, cosc-small, cosc or metas\n");
     t.push_str(&format!(
         "tolerance = \"{}\"\n",
@@ -297,9 +336,13 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let path = c.base.join(&e.file);
     let files = expand_dirs(std::slice::from_ref(&path))?;
     let mut cfg = StreamConfig::default();
-    cfg.analysis.bph = c.o.bph.or(c.m.bph);
-    cfg.analysis.amplitude.lift_deg = c.o.lift.or(c.m.lift).unwrap_or(52.0);
-    let escape_teeth = c.m.escape_teeth.unwrap_or(15);
+    let cal = c.o.calibre()?;
+    cfg.analysis.bph = c.o.bph(c.m, cal);
+    cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
+    let escape_teeth =
+        c.m.escape_teeth
+            .or(cal.and_then(|k| k.escape_teeth))
+            .unwrap_or(15);
     cfg.analysis.escape_teeth = escape_teeth;
     if c.quiet {
     } else if c.tty {
@@ -335,13 +378,20 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         Vec::new()
     } else {
         let lc = LongConfig {
-            wheels: standard_wheels(log.bph, escape_teeth)
-                .into_iter()
-                .chain(c.m.wheels.iter().map(|(name, &period_s)| Wheel {
-                    name: name.clone(),
-                    period_s,
-                }))
-                .collect(),
+            wheels: match cal {
+                Some(_) => crate::long::Train {
+                    calibre: c.o.calibre.as_deref(),
+                    escape_teeth: Some(escape_teeth),
+                }
+                .wheels(log.bph)?,
+                None => standard_wheels(log.bph, escape_teeth),
+            }
+            .into_iter()
+            .chain(c.m.wheels.iter().map(|(name, &period_s)| Wheel {
+                name: name.clone(),
+                period_s,
+            }))
+            .collect(),
             ..Default::default()
         };
         let part = trimmed(&log, settle, end);
@@ -404,6 +454,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     if o.init {
         return init(paths, o);
     }
+    let cal = o.calibre()?;
     let (m, base) = load_manifest(paths)?;
     for e in &m.recordings {
         position_of(e)?;
@@ -436,8 +487,9 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let bph = readings.first().map_or(0, |r| r.bph);
     let files: Vec<PathBuf> = m.recordings.iter().map(|e| base.join(&e.file)).collect();
     let settings = serde_json::json!({
-        "bph": o.bph.or(m.bph),
-        "lift_deg": o.lift.or(m.lift).unwrap_or(52.0),
+        "bph": o.bph(&m, cal),
+        "lift_deg": o.lift(&m, cal),
+        "calibre": o.calibre,
         "tolerance": tol_name,
         "settle_s": o.settle,
         "shape": !o.no_shape,
@@ -448,11 +500,15 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         software: crate::output::software(),
         input: crate::output::input(&files, settings),
         watch: m.watch.as_deref().filter(|w| !w.is_empty()),
-        calibre: m.calibre.as_deref().filter(|w| !w.is_empty()),
+        calibre: m
+            .calibre
+            .as_deref()
+            .filter(|w| !w.is_empty())
+            .or(cal.map(|c| c.calibre.as_str())),
         owner: m.owner.as_deref(),
         notes: m.notes.as_deref(),
         bph,
-        lift_deg: o.lift.or(m.lift).unwrap_or(52.0),
+        lift_deg: o.lift(&m, cal),
         readings,
         report,
     };
@@ -648,12 +704,13 @@ fn print_summary(s: &Session) {
     }
     for i in &r.isochronism {
         println!(
-            "Isochronism  {} {} s/d from {:.0} h to {:.0} h ({} deg)",
+            "Isochronism  {} {} s/d from {:.0} h to {:.0} h ({} deg, beat error {} ms)",
             i.position,
             signed(Some(i.rate_change), 1),
             i.from_wind_h,
             i.to_wind_h,
-            signed(i.amplitude_change, 0)
+            signed(i.amplitude_change, 0),
+            signed(i.beat_error_change, 2)
         );
     }
     if r.im.is_some() || r.ie.is_some() {
@@ -679,6 +736,46 @@ fn print_summary(s: &Session) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn options(bph: Option<u32>, lift: Option<f64>, calibre: Option<&str>) -> Options {
+        Options {
+            bph,
+            lift,
+            calibre: calibre.map(String::from),
+            tolerance: None,
+            settle: None,
+            out: None,
+            json: false,
+            init: false,
+            no_shape: false,
+            no_cycles: false,
+        }
+    }
+
+    #[test]
+    fn calibre_fills_what_the_flags_and_session_file_leave_out() {
+        let none = Manifest::default();
+        let o = options(None, None, Some("Unitas 6497-2"));
+        let cal = o.calibre().unwrap();
+        assert_eq!(o.bph(&none, cal), Some(21600));
+        assert_eq!(o.lift(&none, cal), 44.0);
+        // The session file wins over the calibre, and a flag over both.
+        let file: Manifest = toml::from_str("bph = 18000\nlift = 50\n").unwrap();
+        assert_eq!(o.bph(&file, cal), Some(18000));
+        assert_eq!(o.lift(&file, cal), 50.0);
+        let o = options(Some(28800), Some(53.0), Some("Unitas 6497-2"));
+        assert_eq!(o.bph(&file, cal), Some(28800));
+        assert_eq!(o.lift(&file, cal), 53.0);
+        // No calibre: measured beat rate and 52 degrees, as before.
+        let o = options(None, None, None);
+        assert_eq!(o.bph(&none, None), None);
+        assert_eq!(o.lift(&none, None), 52.0);
+        // An unknown name lists the known ones.
+        let e = options(None, None, Some("no such calibre"))
+            .calibre()
+            .unwrap_err();
+        assert!(e.contains("Unitas 6497-2"), "{e}");
+    }
 
     #[test]
     fn one_take_lists_each_position_by_time() {

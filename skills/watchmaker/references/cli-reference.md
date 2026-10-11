@@ -3,12 +3,25 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `devices`, `doctor`, `analyze`, `shape`, `profile`, `long`,
-`series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
+Commands: `devices`, `doctor`, `calibres`, `analyze`, `shape`, `profile`,
+`long`, `series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
 `docs/sessions.md`, `series` in `docs/series.md`. What each finding code
 of `doctor`, `session` and `series` means, and what to do about it, is in
 [findings.md](findings.md).
+
+**Calibres** (from this version; `timegrapher --help` shows whether a
+build has them):
+
+```
+timegrapher calibres [NAME] [--json]       the built-in calibre table: vph, lift angle, escape wheel teeth, wheel turn periods, sources
+timegrapher analyze FILE --calibre NAME    beat rate, lift angle and wheel names from the table; --bph, --lift, --escape-teeth win
+timegrapher session FOLDER --calibre NAME  the same for a session: the flag, then session.toml, then the calibre, then the defaults
+```
+
+Take the lift angle from `calibres`, never from memory; a calibre with no
+published lift angle shows "-" and `analyze` uses 52°. `session` also
+gives, per position, the change in beat error between states of wind.
 
 **Tick and Tock.** When talking to people, call the two sides of the
 beat the **Tick** (the even beats) and the **Tock** (the odd beats), never

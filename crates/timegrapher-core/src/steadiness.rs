@@ -67,6 +67,9 @@ pub struct Config {
     pub outlier_sigma: f64,
     /// Curves in the output are thinned to about this many points.
     pub max_points: usize,
+    /// Hours since the watch was last fully wound when the take started,
+    /// for the wind-down comparison.
+    pub wind_h: f64,
 }
 
 impl Default for Config {
@@ -83,6 +86,7 @@ impl Default for Config {
             min_explained: 0.2,
             outlier_sigma: 6.0,
             max_points: 600,
+            wind_h: 0.0,
         }
     }
 }
@@ -343,6 +347,80 @@ pub struct Finding {
     pub advice: String,
 }
 
+/// The rate's median over the readings whose amplitude falls in one bin.
+#[derive(Debug, Clone, Serialize)]
+pub struct AmplitudeBin {
+    /// Middle of the bin, degrees.
+    pub amplitude_deg: f64,
+    pub readings: usize,
+    /// Median rate and its quartiles, s/d.
+    pub rate_s_per_day: f64,
+    pub rate_q25: f64,
+    pub rate_q75: f64,
+    /// When in the take the bin's readings fall: the first and the last,
+    /// hours since full wind.
+    pub from_wind_h: f64,
+    pub to_wind_h: f64,
+}
+
+/// The isochronism curve: the rate by amplitude over the take, as the
+/// mainspring lets down.
+#[derive(Debug, Clone, Serialize)]
+pub struct IsochronismCurve {
+    /// Reading length, seconds, and bin width, degrees.
+    pub step_s: f64,
+    pub bin_deg: f64,
+    /// Bins with enough readings, lowest amplitude first.
+    pub bins: Vec<AmplitudeBin>,
+    /// Amplitudes the take covers (2nd and 98th percentile), degrees.
+    pub amplitude_from_deg: f64,
+    pub amplitude_to_deg: f64,
+    /// Straight line through the bins (weighted by readings): s/d per
+    /// degree, and the rate change over the amplitudes covered, s/d.
+    pub s_per_day_per_deg: f64,
+    pub rate_change_s_per_day: f64,
+    /// A quadratic through the bins: rate = c0 + c1·(A − centre) +
+    /// c2·(A − centre)², and the share of the bins' spread it explains.
+    pub curve_centre_deg: f64,
+    pub curve: [f64; 3],
+    pub curve_explained: f64,
+    /// The amplitude where the curve turns (the rate changes least with
+    /// amplitude), when it falls inside the amplitudes covered.
+    pub turn_deg: Option<f64>,
+    pub headline: String,
+}
+
+/// Rate, amplitude and beat error over one stretch of the take.
+#[derive(Debug, Clone, Serialize)]
+pub struct Stretch {
+    /// Hours since full wind at the stretch's start and end.
+    pub from_wind_h: f64,
+    pub to_wind_h: f64,
+    pub readings: usize,
+    /// Medians of the readings.
+    pub rate_s_per_day: Option<f64>,
+    pub amplitude_deg: Option<f64>,
+    pub beat_error_ms: Option<f64>,
+}
+
+/// The first half hour after the take starts against the half hour 24 h
+/// later (or the take's last half hour when it is shorter): what the
+/// commercial 0 h / 24 h test gives for one position.
+#[derive(Debug, Clone, Serialize)]
+pub struct WindDown {
+    pub start: Stretch,
+    pub end: Stretch,
+    /// Hours between the two stretches' middles, and whether the end
+    /// stretch is the one at 24 h.
+    pub hours_apart: f64,
+    pub at_24h: bool,
+    /// End minus start.
+    pub rate_change_s_per_day: Option<f64>,
+    pub amplitude_change_deg: Option<f64>,
+    pub beat_error_change_ms: Option<f64>,
+    pub headline: String,
+}
+
 /// How the rate moves with the amplitude, reading by reading.
 #[derive(Debug, Clone, Serialize)]
 pub struct CrossCorrelation {
@@ -376,6 +454,10 @@ pub struct Report {
     pub series: Vec<SeriesCheck>,
     /// The rate against the amplitude, at the rate's reading length.
     pub rate_amplitude: Option<CrossCorrelation>,
+    /// The rate by amplitude over the take: the isochronism curve.
+    pub isochronism: Option<IsochronismCurve>,
+    /// The start of the take against 24 h later, or its end.
+    pub wind_down: Option<WindDown>,
     pub findings: Vec<Finding>,
 }
 
@@ -1549,6 +1631,8 @@ pub fn check(
     let amp_readings = rebin(&amp_grid, t0, r, n);
     let be_readings = rebin(&be_grid, t0, r, n);
     let rate_amplitude = cross_correlation(&rate_grid, &amp_readings, cfg);
+    let isochronism = isochronism_curve(&rate_grid, &amp_readings, cfg);
+    let wind_down = wind_down(&rate_grid, &amp_readings, &be_readings, cfg);
     let amp_samples: Vec<twostate::Sample> = aw
         .iter()
         .filter_map(|w| {
@@ -1675,6 +1759,8 @@ pub fn check(
         config: cfg.clone(),
         series,
         rate_amplitude,
+        isochronism,
+        wind_down,
         findings,
     }
 }
@@ -1797,6 +1883,232 @@ fn finite_or_nan(v: f64) -> f64 {
     } else {
         f64::NAN
     }
+}
+
+/// Amplitude bin width for the isochronism curve, degrees, and the
+/// readings a bin needs.
+const ISO_BIN_DEG: f64 = 2.0;
+const ISO_MIN_READINGS: usize = 10;
+
+fn quantile(sorted: &[f64], q: f64) -> f64 {
+    let x = q * (sorted.len() - 1) as f64;
+    let (i, f) = (x.floor() as usize, x - x.floor());
+    let j = (i + 1).min(sorted.len() - 1);
+    sorted[i] * (1.0 - f) + sorted[j] * f
+}
+
+/// Weighted least squares of y on 1, x, x²; returns the coefficients.
+#[allow(clippy::needless_range_loop)]
+fn wquad(x: &[f64], y: &[f64], w: &[f64]) -> Option<[f64; 3]> {
+    let mut a = [[0.0f64; 3]; 3];
+    let mut b = [0.0f64; 3];
+    for ((&xi, &yi), &wi) in x.iter().zip(y).zip(w) {
+        let r = [1.0, xi, xi * xi];
+        for i in 0..3 {
+            b[i] += wi * r[i] * yi;
+            for j in 0..3 {
+                a[i][j] += wi * r[i] * r[j];
+            }
+        }
+    }
+    for c in 0..3 {
+        let p = (c..3).max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))?;
+        a.swap(c, p);
+        b.swap(c, p);
+        if a[c][c].abs() < 1e-12 {
+            return None;
+        }
+        for r in 0..3 {
+            if r != c {
+                let f = a[r][c] / a[c][c];
+                for k in 0..3 {
+                    a[r][k] -= f * a[c][k];
+                }
+                b[r] -= f * b[c];
+            }
+        }
+    }
+    Some([b[0] / a[0][0], b[1] / a[1][1], b[2] / a[2][2]])
+}
+
+/// The rate binned by amplitude, reading against the same reading. Needs
+/// at least three bins with enough readings.
+fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<IsochronismCurve> {
+    let (mut x, mut y) = (amp.clone(), rate.clone());
+    drop_outliers(&mut x, cfg.outlier_sigma);
+    drop_outliers(&mut y, cfg.outlier_sigma);
+    let pairs: Vec<(f64, f64, f64)> = (0..y.y.len().min(x.y.len()))
+        .filter(|&i| x.y[i].is_finite() && y.y[i].is_finite())
+        .map(|i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
+        .collect();
+    if pairs.len() < 3 * ISO_MIN_READINGS {
+        return None;
+    }
+    let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
+    amps.sort_by(f64::total_cmp);
+    let (lo, hi) = (quantile(&amps, 0.02), quantile(&amps, 0.98));
+    let mut bins: Vec<AmplitudeBin> = Vec::new();
+    let first = (lo / ISO_BIN_DEG).floor() as i64;
+    let last = (hi / ISO_BIN_DEG).floor() as i64;
+    for b in first..=last {
+        let (a0, a1) = (b as f64 * ISO_BIN_DEG, (b + 1) as f64 * ISO_BIN_DEG);
+        let inbin: Vec<&(f64, f64, f64)> = pairs.iter().filter(|p| p.0 >= a0 && p.0 < a1).collect();
+        if inbin.len() < ISO_MIN_READINGS {
+            continue;
+        }
+        let mut r: Vec<f64> = inbin.iter().map(|p| p.1).collect();
+        r.sort_by(f64::total_cmp);
+        let hours = inbin.iter().map(|p| p.2);
+        bins.push(AmplitudeBin {
+            amplitude_deg: (a0 + a1) / 2.0,
+            readings: inbin.len(),
+            rate_s_per_day: quantile(&r, 0.5),
+            rate_q25: quantile(&r, 0.25),
+            rate_q75: quantile(&r, 0.75),
+            from_wind_h: hours.clone().fold(f64::INFINITY, f64::min),
+            to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
+        });
+    }
+    if bins.len() < 3 {
+        return None;
+    }
+    let w: Vec<f64> = bins.iter().map(|b| b.readings as f64).collect();
+    let sw: f64 = w.iter().sum();
+    let centre = bins
+        .iter()
+        .zip(&w)
+        .map(|(b, w)| b.amplitude_deg * w)
+        .sum::<f64>()
+        / sw;
+    let bx: Vec<f64> = bins.iter().map(|b| b.amplitude_deg - centre).collect();
+    let by: Vec<f64> = bins.iter().map(|b| b.rate_s_per_day).collect();
+    let my = by.iter().zip(&w).map(|(y, w)| y * w).sum::<f64>() / sw;
+    let sxx: f64 = bx.iter().zip(&w).map(|(x, w)| w * x * x).sum();
+    let sxy: f64 = bx
+        .iter()
+        .zip(&by)
+        .zip(&w)
+        .map(|((x, y), w)| w * x * (y - my))
+        .sum();
+    let slope = sxy / sxx;
+    let curve = wquad(&bx, &by, &w)?;
+    let at = |x: f64| curve[0] + curve[1] * x + curve[2] * x * x;
+    let sst: f64 = by.iter().zip(&w).map(|(y, w)| w * (y - my).powi(2)).sum();
+    let sse: f64 = bx
+        .iter()
+        .zip(&by)
+        .zip(&w)
+        .map(|((x, y), w)| w * (y - at(*x)).powi(2))
+        .sum();
+    let curve_explained = if sst > 0.0 { 1.0 - sse / sst } else { 0.0 };
+    let (b0, b1) = (bins[0].amplitude_deg, bins[bins.len() - 1].amplitude_deg);
+    let turn = (curve[2] != 0.0)
+        .then(|| centre - curve[1] / (2.0 * curve[2]))
+        .filter(|t| *t > b0 + 0.1 * (b1 - b0) && *t < b1 - 0.1 * (b1 - b0));
+    let change = slope * (b1 - b0);
+    let headline = format!(
+        "Between {:.0}° and {:.0}° the rate moves {:+.2} s/d per degree of amplitude: {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}.",
+        b0,
+        b1,
+        slope,
+        by[0],
+        b0,
+        by[by.len() - 1],
+        b1,
+        turn.map_or(String::new(), |t| format!(
+            "; it changes least near {t:.0}°"
+        ))
+    );
+    Some(IsochronismCurve {
+        step_s: rate.step,
+        bin_deg: ISO_BIN_DEG,
+        bins,
+        amplitude_from_deg: lo,
+        amplitude_to_deg: hi,
+        s_per_day_per_deg: slope,
+        rate_change_s_per_day: change,
+        curve_centre_deg: centre,
+        curve,
+        curve_explained,
+        turn_deg: turn,
+        headline,
+    })
+}
+
+/// Length of each stretch in the wind-down comparison, seconds.
+const WIND_STRETCH_S: f64 = 1800.0;
+
+fn stretch(rate: &Grid, amp: &Grid, be: &Grid, from_s: f64, cfg: &Config) -> Stretch {
+    let to_s = from_s + WIND_STRETCH_S;
+    let med = |g: &Grid| {
+        let mut v: Vec<f64> = (0..g.y.len())
+            .filter(|&i| g.time(i) >= from_s && g.time(i) < to_s && g.y[i].is_finite())
+            .map(|i| g.y[i])
+            .collect();
+        (v.len() >= 30).then(|| median(&mut v))
+    };
+    Stretch {
+        from_wind_h: cfg.wind_h + from_s / 3600.0,
+        to_wind_h: cfg.wind_h + to_s / 3600.0,
+        readings: (0..rate.y.len())
+            .filter(|&i| rate.time(i) >= from_s && rate.time(i) < to_s && rate.y[i].is_finite())
+            .count(),
+        rate_s_per_day: med(rate),
+        amplitude_deg: med(amp),
+        beat_error_ms: med(be),
+    }
+}
+
+/// The first half hour against the half hour 24 h after full wind, or the
+/// last half hour when the take ends sooner. Needs a take of at least two
+/// hours.
+fn wind_down(rate: &Grid, amp: &Grid, be: &Grid, cfg: &Config) -> Option<WindDown> {
+    if rate.y.is_empty() {
+        return None;
+    }
+    let t_end = rate.t0 + rate.span();
+    let t_start = rate.t0;
+    if t_end - t_start < 2.0 * 3600.0 {
+        return None;
+    }
+    let at24 = t_start + (24.0 - cfg.wind_h) * 3600.0;
+    let (end_from, at_24h) = if at24 > t_start + WIND_STRETCH_S && at24 + WIND_STRETCH_S <= t_end {
+        (at24, true)
+    } else {
+        (t_end - WIND_STRETCH_S, false)
+    };
+    let start = stretch(rate, amp, be, t_start, cfg);
+    let end = stretch(rate, amp, be, end_from, cfg);
+    let diff = |a: Option<f64>, b: Option<f64>| Some(b? - a?);
+    let rate_change = diff(start.rate_s_per_day, end.rate_s_per_day);
+    let amplitude_change = diff(start.amplitude_deg, end.amplitude_deg);
+    let beat_error_change = diff(start.beat_error_ms, end.beat_error_ms);
+    let hours_apart = (end_from - t_start) / 3600.0;
+    let headline = match (rate_change, amplitude_change) {
+        (Some(r), Some(a)) => format!(
+            "From {:.1} h to {:.1} h after full wind the rate moves {:+.1} s/d ({:+.1} to {:+.1}) and the amplitude {:+.0}° ({:.0}° to {:.0}°){}.",
+            start.from_wind_h,
+            end.from_wind_h,
+            r,
+            start.rate_s_per_day.unwrap_or(f64::NAN),
+            end.rate_s_per_day.unwrap_or(f64::NAN),
+            a,
+            start.amplitude_deg.unwrap_or(f64::NAN),
+            end.amplitude_deg.unwrap_or(f64::NAN),
+            beat_error_change.map_or(String::new(), |b| format!(", beat error {b:+.2} ms"))
+        ),
+        _ => "Too few readings at the start or the end to compare them.".to_string(),
+    };
+    Some(WindDown {
+        start,
+        end,
+        hours_apart,
+        at_24h,
+        rate_change_s_per_day: rate_change,
+        amplitude_change_deg: amplitude_change,
+        beat_error_change_ms: beat_error_change,
+        headline,
+    })
 }
 
 #[cfg(test)]
@@ -1955,5 +2267,37 @@ mod tests {
             "{}",
             s.headline
         );
+    }
+
+    #[test]
+    fn isochronism_curve_and_wind_down_follow_the_run_down() {
+        // 26 h of 10 s readings: amplitude falls from 270° to 218°, and
+        // the rate follows it at 0.5 s/d per degree.
+        let mut z = Noise(11);
+        let n = 26 * 360;
+        let amp: Vec<f64> = (0..n)
+            .map(|i| 270.0 - 52.0 * i as f64 / n as f64 + 2.0 * z.next())
+            .collect();
+        let rate: Vec<f64> = amp
+            .iter()
+            .map(|a| 0.5 * (a - 250.0) + 1.5 * z.next())
+            .collect();
+        let be = vec![0.3; n];
+        let cfg = Config::default();
+        let c =
+            isochronism_curve(&grid(rate.clone(), 10.0), &grid(amp.clone(), 10.0), &cfg).unwrap();
+        assert!((c.s_per_day_per_deg - 0.5).abs() < 0.05, "{}", c.headline);
+        assert!(c.bins.len() >= 20);
+        let w = wind_down(&grid(rate, 10.0), &grid(amp, 10.0), &grid(be, 10.0), &cfg).unwrap();
+        assert!(w.at_24h, "{}", w.headline);
+        // 24 h of 26 at 2° an hour: about −48° and −24 s/d.
+        let da = w.amplitude_change_deg.unwrap();
+        assert!((da + 48.0).abs() < 3.0, "{}", w.headline);
+        assert!(
+            (w.rate_change_s_per_day.unwrap() + 24.0).abs() < 2.0,
+            "{}",
+            w.headline
+        );
+        assert!(w.beat_error_change_ms.unwrap().abs() < 1e-9);
     }
 }

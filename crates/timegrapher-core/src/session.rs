@@ -682,6 +682,9 @@ pub struct Isochronism {
     pub to_wind_h: f64,
     pub rate_change: f64,
     pub amplitude_change: Option<f64>,
+    /// Change in the unsigned beat error (from the unlock where found,
+    /// else from the drop), ms.
+    pub beat_error_change: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -908,6 +911,7 @@ pub fn evaluate(readings: &[Reading], tol: &Tolerance, limits: &Limits) -> Sessi
                     to_wind_h: b.0.wind_h,
                     rate_change: b.1.rate_s_per_day.unwrap() - a.1.rate_s_per_day.unwrap(),
                     amplitude_change: b.1.amplitude_deg.zip(a.1.amplitude_deg).map(|(x, y)| x - y),
+                    beat_error_change: b.1.beat_error_ms.zip(a.1.beat_error_ms).map(|(x, y)| x - y),
                 });
             }
         }
