@@ -134,8 +134,10 @@ Asks GitHub once whether a newer release is published. JSON body
 (`timegrapher.update/1`): `current`, `latest` (`version`, `url` of the
 release page, `published_at`, `notes`) and `update_available`. It sends no
 account or identifier, and downloads and installs nothing; the person
-updates from `latest.url`. Exit 1 with the reason on stderr when GitHub
-can't be reached, is limiting requests, or has no release. Builds without
+updates from `latest.url`. With no release published yet it says
+so and exits 0, with `latest` null and `update_available` false. Exit 1
+with the reason on stderr when GitHub can't be reached or is limiting
+requests. Builds without
 the `update-check` feature say they have no network code.
 
 ## record

@@ -19,12 +19,16 @@ From `timegrapher analyze --json` (field names in
 - **Beats found (`beats_found`)** should be close to duration × bph ÷ 3600.
   A big shortfall means the microphone is missing ticks.
 - **Tick and Tock amplitudes** (`amplitude_even_deg`, `amplitude_odd_deg`:
-  the even beats are the Tick, the odd the Tock) should agree within a few
-  degrees. A big split on a healthy-sounding
-  watch usually means the unlock sound is being missed on one side (level
-  too low, or clipping; `profile` shows which sounds were marked);
-occasionally it's a real escapement asymmetry
-  (see [tick-shape.md](tick-shape.md)).
+  the even beats are the Tick, the odd the Tock) often differ.
+  On clean corpus recordings the split runs from under 1° to about 19°,
+  and it does not predict how far the mean is off (docs/validation.md,
+  "Tick and Tock amplitudes apart"), so quote `amplitude_deg` (the headline
+  figure: the median over 2 s windows, which can sit a little off the
+  midpoint of the two sides) and don't treat a split as a fault on its
+  own.
+  `profile` shows which sounds were marked on each side; a split well
+  beyond 20° on a clean signal is worth a look there (see
+  [tick-shape.md](tick-shape.md)).
 - **Jitter (`jitter_us`)**: scatter of single beats about the local rate.
   Compare it between recordings of the same watch; a sudden jump with
   nothing else changed points at the set-up (loose clamp, noise).
@@ -141,8 +145,8 @@ wrong lift angle is corrected by multiplying it by right ÷ used (250° at
 degree. A lift angle of 62–65° set on someone else's machine is a sign of
 amplitude hacking.
 
-If the calibre is unknown: use 52°, and say in the answer that the
-amplitude might be 10–15° out either way. The *changes* between positions
+If the calibre is unknown: use 52°, say so in the answer, and give the
+range the likely lift angles would give, worked out as above. The *changes* between positions
 and between full wind and 24 hours are still right, because the error is
 the same in every reading.
 
@@ -225,7 +229,7 @@ The full test is six positions (see
   of horizontal. Mostly governed by the regulator pin clearance (on an
   index-regulated watch) and by the amplitude.
 - **Dial up vs dial down**: normally within a few s/d and within about
-  10–15° of amplitude. These two differ only in which pivot carries the
+  10–15° of amplitude (this skill's rule of thumb). These two differ only in which pivot carries the
   balance's weight on its end stone, so a big difference points at one
   pivot, one end stone, the end shake, or a hairspring out of flat.
 - **Between vertical positions**: differences here come from the balance

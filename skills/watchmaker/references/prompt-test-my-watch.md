@@ -17,7 +17,7 @@ sure you are. Call the two sides of the beat Tick and Tock.
    happened to it (a knock, a magnet, a sudden change in timekeeping).
    Look it up with `calibres`: it gives the beat rate and lift angle.
    Take the lift angle from the table, never from memory; without one,
-   use 52° and say the amplitude may be 10–15° out.
+   use 52°, say so, and give the range the likely lift angles would give.
 2. **Microphone.** Watch clamped dial up. Run `doctor`. Go on when the
    verdict is `ok` and the signal is `good` (or `fair`, saying amplitude
    and beat error are then less sure). Propose any fix and ask first.
