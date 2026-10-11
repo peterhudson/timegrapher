@@ -126,11 +126,25 @@ pub fn compare(current: &str, latest: Release) -> Check {
     }
 }
 
+/// The reason `latest_release` and `check` give while nothing is published.
+pub const NO_RELEASE: &str = "no release has been published yet";
+
 /// Asks GitHub for the newest published release. `user_agent` names the
 /// program asking (GitHub requires one), e.g. "timegrapher-app/0.1.0".
-/// Gives up after `timeout`.
+/// Gives up after `timeout`. While nothing is published it gives the
+/// [`NO_RELEASE`] error; [`published_release`] gives `None` instead.
 #[cfg(feature = "update-check")]
 pub fn latest_release(user_agent: &str, timeout: std::time::Duration) -> Result<Release, String> {
+    published_release(user_agent, timeout)?.ok_or_else(|| NO_RELEASE.to_string())
+}
+
+/// As [`latest_release`], but `None` while no release has been published:
+/// nothing to offer is an answer, not a failure.
+#[cfg(feature = "update-check")]
+pub fn published_release(
+    user_agent: &str,
+    timeout: std::time::Duration,
+) -> Result<Option<Release>, String> {
     use ureq::tls::{RootCerts, TlsConfig};
     // The system's own certificate store, so networks that inspect HTTPS
     // with their own authority (offices, schools) work as in a browser.
@@ -152,7 +166,7 @@ pub fn latest_release(user_agent: &str, timeout: std::time::Duration) -> Result<
     let status = resp.status().as_u16();
     match status {
         200 => {}
-        404 => return Err("no release has been published yet".into()),
+        404 => return Ok(None),
         403 | 429 => {
             return Err("GitHub is limiting requests from this address; try again later".into())
         }
@@ -162,7 +176,7 @@ pub fn latest_release(user_agent: &str, timeout: std::time::Duration) -> Result<
         .body_mut()
         .read_to_string()
         .map_err(|e| format!("could not read GitHub's reply: {e}"))?;
-    parse_release(&body)
+    parse_release(&body).map(Some)
 }
 
 /// Checks whether a newer release than `current` is published.
@@ -173,6 +187,16 @@ pub fn check(
     timeout: std::time::Duration,
 ) -> Result<Check, String> {
     Ok(compare(current, latest_release(user_agent, timeout)?))
+}
+
+/// As [`check`], but `None` while no release has been published.
+#[cfg(feature = "update-check")]
+pub fn check_published(
+    current: &str,
+    user_agent: &str,
+    timeout: std::time::Duration,
+) -> Result<Option<Check>, String> {
+    Ok(published_release(user_agent, timeout)?.map(|r| compare(current, r)))
 }
 
 #[cfg(test)]

@@ -257,10 +257,11 @@ Asks GitHub once whether a newer release is published (schema
 `timegrapher.update/1`; `input.source` is the API address). The body is
 `current` (this program's version), `latest` (`version` without the "v",
 `url` of the release page, `published_at`, `notes` in Markdown) and
-`update_available`. It sends no account or identifier, downloads and
-installs nothing, and never offers drafts or pre-releases. When GitHub
-cannot be reached, is limiting requests, or has no release yet, it exits 1
-with the reason on stderr. A person updates by downloading the new release
+`update_available`. While no release has been published, `latest` is
+null and `update_available` false, and it exits 0. It sends no account or
+identifier, downloads and installs nothing, and never offers drafts or
+pre-releases. When GitHub cannot be reached or is limiting requests, it
+exits 1 with the reason on stderr. A person updates by downloading the new release
 from `latest.url` ([install.md](install.md)). Builds without the default
 `update-check` feature have no network code and say so.
 
