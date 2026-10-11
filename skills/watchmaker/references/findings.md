@@ -44,14 +44,14 @@ the ones that apply in plain words.
 
 | Code | Means | Do | Tell them |
 | --- | --- | --- | --- |
-| `no_watch` | No watch heard; the readings are withheld. | As for `watch_heard` false below. | "I couldn't hear the watch." |
+| `no_watch` | No watch heard; the readings are withheld. | As for `watch_heard` false, above. | "I couldn't hear the watch." |
 | `set_rate_disagrees` | The beat rate given (`--bph` or the calibre's) is not the one the recording runs at; `heard` is the one it does. Every grade is poor. | Check the calibre; run `analyze` again without `--bph`. | "The watch isn't beating at the rate I was told; let me check which movement it is." |
 | `short_span` | Under 10 s of beats (`span_s`). Every grade is poor. | Record longer: `record` takes 2 min a position. | "That was too short to judge; let's record it longer." |
 | `clipped` | A share of beats clipped (`fraction`). Amplitude and beat error one grade down; the rate is not affected. | Lower the input level (`doctor`) and record again. | "The microphone was too loud, so the amplitude may be off; the rate is fine." |
 | `beats_missing` | Only a share of the expected beats found (`fraction`). Every grade one step down. | The level, the clamp, then the beat rate (as above). | "I missed some beats; let's get a cleaner recording." |
 | `lift_unknown` | No calibre or lift angle given, so the amplitude rests on the default. Amplitude one grade down. | Ask what the watch is and pass `--calibre` or `--lift`. | "The amplitude depends on the movement; tell me what it is and I'll check it." |
 | `clock_unknown` | The sound card's clock error isn't known. Rate one grade down. | For a rate within a few s/d, see "The rate and the card's clock" below. | "The rate includes the sound card's own clock error, which this recording can't measure." |
-| `breaks` | The take was paused and resumed (`count`). Rate and beat error are fitted on each side of a break apart. | Nothing to fix; say the take was paused. | Only if asked. |
+| `breaks` | The take was paused or resumed (`count`). Rate and beat error are fitted on each side of a break apart. | Nothing to fix; say the take was paused. | Only if asked. |
 
 `session` takes the lift angle as known, so its readings never carry
 `lift_unknown`.
