@@ -1,0 +1,38 @@
+name: Holdout milestone
+
+# The corpus's holdout takes, read only at an announced milestone (see
+# "The holdout seal" in the corpus README and docs/regress.md). Never runs
+# on pull requests or pushes, and prints counts only: no take names, file
+# names or numbers. A holdout result never fails the run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  holdout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the corpus
+        uses: actions/checkout@v4
+        with:
+          repository: peterhudson/timegrapher-corpus
+          path: corpus
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --locked --release -p timegrapher-cli --no-default-features
+      - name: Holdout takes, counts only
+        run: |
+          set -o pipefail
+          ./target/release/timegrapher regress corpus --fetch --holdout --quiet | tee holdout.txt
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f holdout.txt ]; then
+            { echo '```'; cat holdout.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi

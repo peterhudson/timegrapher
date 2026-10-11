@@ -10,8 +10,8 @@
 //! each side (tick and toc), because single beats are too noisy for a
 //! stable onset.
 //!
-//! The same templates give the beat error measured from the unlock, as tg
-//! and commercial timegraphers measure it. Beat times sit near the drop, so
+//! The same templates give the beat error measured from the unlock, the
+//! figure checked against tg's beat error in regress. Beat times sit near the drop, so
 //! the fitted beat error is the drop's. If the even side's unlock comes
 //! `u_e` after its beat time and the odd side's `u_o` after its own, the
 //! unlocks fall at `t0 + k*P + s*e/2 + u_s`, which is the same model with
@@ -44,12 +44,6 @@ impl Default for AmplitudeConfig {
 
 pub fn amplitude_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) -> f64 {
     lift_deg / (2.0 * (std::f64::consts::PI * unlock_to_drop_s / osc_period_s).sin())
-}
-
-/// Unlock-to-drop time on a template whose drop sits `PRE_S` from its start.
-pub fn unlock_to_drop(template: &[f32], fs: f64, onset_fraction: f32) -> Option<f64> {
-    let e = edges(template, fs, (PRE_S * fs).round() as usize, onset_fraction)?;
-    Some((e.drop - e.unlock) / fs)
 }
 
 /// Landmarks of one template, in samples from its start.

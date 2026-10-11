@@ -13,7 +13,9 @@ timegrapher session recordings/dandong-3235/
 
 The command prints a summary and writes `session_report/` next to the
 session file: `report.html` (self-contained), `summary.json` (every number
-in the report) and `readings.csv` (one row per recording).
+in the report) and `readings.csv` (one row per recording). The summary
+ends with the report's full path. `report.html` is one page in English:
+open it in any web browser, or attach it to an email to send it.
 
 Without a session file, `timegrapher session a.flac b.flac ...` (or a
 folder) takes each recording's position from its file name and assumes
@@ -43,6 +45,11 @@ file = "ym42_DU_2h"
 position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
+
+A recording on a corpus holdout take may also carry
+`fault = { id = "...", side = "Tick", source = "bench: ..." }`, the fault a
+watchmaker confirmed; `session` reads past it, and `regress --holdout`
+checks it (see [regress.md](regress.md#holdout-takes)).
 
 `escape_teeth` (default 15) sets the escape wheel's turn period, and
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
@@ -119,7 +126,10 @@ of the recording or for `measure_s`:
 - beat error measured from the unlock, as tg and bench timegraphers do
   (median of the 2 s windows); this is the value judged against the
   tolerance. The beat error from the drop (the same fit as the rate) is
-  shown beside it, and used when no unlock is found;
+  shown beside it, and used when no unlock is found. Both are shown as a
+  size. Which beat is longer is not shown: Tick is the first beat the
+  analysis locks on, so the sign can change from one run to the next.
+  `summary.json` keeps the signed values;
 - amplitude, the median of the 2 s windows, with Tick and Tock beside it
   (the two kinds of beat, one per pallet stone; Tick is the even beats
   and Tock the odd ones, `amplitude_even_deg` and `amplitude_odd_deg` in
@@ -135,6 +145,10 @@ of the recording or for `measure_s`:
 - beat shape (as `shape`) on the first 60 s after settling;
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
+
+Because the settling time is left out, and the sound card's clock is
+corrected where it was logged, these readings can differ by a few s/d
+from the quick check `record` prints while recording.
 
 Repeat readings in the same position and state of wind are averaged.
 
