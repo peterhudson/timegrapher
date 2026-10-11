@@ -2,7 +2,7 @@
 //! envelope, so an agent can tell what it is reading and where it came from.
 //!
 //! The `schema` field names the kind of document and its version
-//! (`timegrapher.analyze/1`). Within a version, fields are only ever added;
+//! (`timegrapher.analyze/2`). Within a version, fields are only ever added;
 //! a change that would break a reader bumps the version. See
 //! `docs/agent-interface.md`.
 
@@ -10,8 +10,18 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// Current version of each document kind.
+/// Current version of the document kinds not listed in [`version`].
 pub const SCHEMA_VERSION: u32 = 1;
+
+/// Current version of a document kind. `analyze`, `doctor` and
+/// `regress-holdout` are at 2: version 2 dropped their grades, verdicts,
+/// named faults and advice.
+pub fn version(kind: &str) -> u32 {
+    match kind {
+        "analyze" | "doctor" | "regress-holdout" => 2,
+        _ => SCHEMA_VERSION,
+    }
+}
 
 #[derive(Serialize)]
 pub struct Envelope<'a, T: Serialize> {
@@ -47,7 +57,7 @@ pub fn software() -> Value {
 /// The JSON text of a document of `kind`.
 pub fn to_json<T: Serialize>(kind: &str, input: Value, body: &T) -> Result<String, String> {
     serde_json::to_string_pretty(&Envelope {
-        schema: format!("timegrapher.{kind}/{SCHEMA_VERSION}"),
+        schema: format!("timegrapher.{kind}/{}", version(kind)),
         software: software(),
         input,
         body,

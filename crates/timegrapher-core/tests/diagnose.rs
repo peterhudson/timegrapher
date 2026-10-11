@@ -1,7 +1,7 @@
-//! The microphone checks on synthetic recordings with known faults.
+//! The microphone checks on synthetic recordings with known conditions.
 
 use timegrapher_core::audio::Audio;
-use timegrapher_core::diagnose::{check, DiagnoseConfig, IssueCode, Severity, SignalBand};
+use timegrapher_core::diagnose::{check, DiagnoseConfig, IssueCode};
 use timegrapher_core::synth::{generate, SynthConfig};
 
 fn watch(snr_db: f64) -> Audio {
@@ -27,10 +27,9 @@ fn codes(a: &Audio) -> Vec<IssueCode> {
 }
 
 #[test]
-fn clean_signal_is_ok() {
+fn a_clean_signal_has_no_conditions() {
     let a = watch(40.0);
     let c = check(&a, &DiagnoseConfig::default());
-    assert!(c.ok(), "{:?}", c.issues);
     assert!(c.issues.is_empty(), "{:?}", c.issues);
     assert_eq!(c.bph, 28800);
     assert!(c.beats_found as f64 > 0.9 * c.beats_expected as f64);
@@ -44,7 +43,6 @@ fn clipping_is_found_and_turned_down() {
     let a = scaled(watch(40.0), 6.0);
     let c = check(&a, &DiagnoseConfig::default());
     assert!(c.has(IssueCode::Clipping), "{:?}", c.issues);
-    assert!(!c.ok());
     assert!(c.suggested_gain_change_db.unwrap() < 0.0);
 }
 
@@ -67,7 +65,6 @@ fn peaks_within_a_few_db_of_full_scale_are_hot() {
     let c = check(&a, &DiagnoseConfig::default());
     assert!(c.has(IssueCode::Hot), "{:?}", c.issues);
     assert!(!c.has(IssueCode::Clipping));
-    assert!(c.ok(), "a warning, not a fault");
     let change = c.suggested_gain_change_db.unwrap();
     assert!((-8.0..=-6.0).contains(&change), "{change}");
 }
@@ -97,38 +94,19 @@ fn silence_and_noise_only() {
     assert!(codes(&noise).contains(&IssueCode::NoTicks));
 }
 
-/// The desktop app's bands: 10x and above good, 5 to 10x fair (a
-/// warning), 3 to 5x poor (a fault), below 3x no watch heard.
+/// The signal above noise is reported as a figure, and only under 3×
+/// (pure noise reads about 2×) is no regular beat named.
 #[test]
-fn signal_bands_match_the_app() {
+fn signal_above_noise_is_a_figure() {
     let cfg = DiagnoseConfig::default();
-    let fair = check(&watch(21.0), &cfg);
-    assert_eq!(fair.signal_band, SignalBand::Fair, "{:?}", fair.signal_x);
-    let i = fair
-        .issues
-        .iter()
-        .find(|i| i.code == IssueCode::Noisy)
-        .unwrap();
-    assert_eq!(i.severity, Severity::Warning);
-    assert!(fair.ok());
-
-    let poor = check(&watch(16.0), &cfg);
-    assert_eq!(poor.signal_band, SignalBand::Poor, "{:?}", poor.signal_x);
-    let i = poor
-        .issues
-        .iter()
-        .find(|i| i.code == IssueCode::Noisy)
-        .unwrap();
-    assert_eq!(i.severity, Severity::Fault);
-    assert!(!poor.ok());
-
+    for snr in [16.0, 21.0, 40.0] {
+        let c = check(&watch(snr), &cfg);
+        assert!(c.signal_x.unwrap() >= 3.0, "{snr}: {:?}", c.signal_x);
+        assert!(!c.has(IssueCode::NoTicks), "{snr}: {:?}", c.issues);
+    }
+    assert!(check(&watch(40.0), &cfg).signal_x.unwrap() >= 10.0);
     let none = check(&watch(11.0), &cfg);
-    assert_eq!(none.signal_band, SignalBand::None, "{:?}", none.signal_x);
-    assert!(none.has(IssueCode::NoTicks));
-
-    let good = check(&watch(40.0), &cfg);
-    assert_eq!(good.signal_band, SignalBand::Good);
-    assert!(good.signal_x.unwrap() >= 10.0);
+    assert!(none.has(IssueCode::NoTicks), "{:?}", none.signal_x);
 }
 
 #[test]

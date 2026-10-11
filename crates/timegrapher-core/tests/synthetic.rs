@@ -1,6 +1,5 @@
 //! End-to-end checks on synthetic recordings with known answers.
 
-use timegrapher_core::faults::Side;
 use timegrapher_core::synth::{generate, ExtraSound, Rub, Sound, SynthConfig};
 use timegrapher_core::{analyze, AnalysisConfig};
 
@@ -202,7 +201,7 @@ fn clipping_is_counted_per_beat() {
     let mut audio = generate(&cfg, |_| 280.0, |_| 0.0);
     let clean = analyze(&audio, &AnalysisConfig::default()).summary;
     assert_eq!(clean.clipping.samples, 0);
-    assert!(!clean.clipping.warns());
+    assert!(!clean.clipping.noted());
 
     // Drive it 12 dB too hot and clip at full scale, as a converter does.
     let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
@@ -211,7 +210,7 @@ fn clipping_is_counted_per_beat() {
     }
     let hot = analyze(&audio, &AnalysisConfig::default()).summary;
     let c = hot.clipping;
-    assert!(c.warns(), "{c:?}");
+    assert!(c.noted(), "{c:?}");
     assert!(c.beat_fraction > 0.5, "{c:?}");
     assert!(c.peak_dbfs > -0.1, "{c:?}");
 }
@@ -245,7 +244,7 @@ fn an_empty_stand_is_no_watch() {
         duration_s: 30.0,
         ..Default::default()
     };
-    assert!(s.confidence.is_none(), "graded readings with no watch");
+    assert!(s.confidence.is_none(), "a ± for readings of noise");
     assert!(
         s.overall.is_none() && s.amplitude_deg.is_none() && s.beat_error_unlock_ms.is_none(),
         "readings of noise kept"
@@ -256,78 +255,95 @@ fn an_empty_stand_is_no_watch() {
         ..Default::default()
     };
     let watch = run(&clean, |_| 270.0, |_| 0.0).summary;
-    // A clean synthetic watch: graded, with no USB lines to correct the
-    // clock and no lift angle given, so rate and amplitude are lowered.
-    let c = watch.confidence.expect("graded");
+    // A clean synthetic watch: each reading has its ±, with no USB lines
+    // to correct the clock and no lift angle given, both named.
+    let c = watch.confidence.expect("a ± for each reading");
     assert!(watch.doubts.clock_unknown && watch.doubts.lift_unknown);
     assert!(watch.usb_clock.is_none());
-    assert_eq!(
-        c.beat_error.grade,
-        timegrapher_core::confidence::Grade::Good,
-        "{c:?}"
-    );
+    assert!(c.beat_error.se.is_some_and(|e| e < 0.05), "{c:?}");
 }
 
-/// Each synthetic fault is found, on one side or both as made, and nothing
-/// else is. Which side the detector calls the Tick depends on which beat it
-/// hears first, so one-sided faults are checked as one-sided only.
+/// The shape measures move as each synthetic escapement change is made,
+/// on the side it is made on: the program reports them as figures and
+/// names nothing. Which side the detector calls the Tick depends on which
+/// beat it hears first, so one-sided changes are checked as one-sided.
 #[test]
-fn faults_are_found() {
+fn shape_measures_follow_the_sound() {
+    use timegrapher_core::shape::{Measures, SideMeasures};
     let base = || SynthConfig {
         duration_s: 40.0,
         ..Default::default()
     };
-    let found = |cfg: &SynthConfig| -> Vec<(&'static str, bool)> {
+    let measures = |cfg: &SynthConfig| -> Measures {
         run(cfg, |_| 270.0, |_| 0.0)
             .summary
-            .faults
-            .iter()
-            .map(|f| (f.id, f.side == Side::Both))
-            .collect()
+            .shape
+            .expect("measured")
     };
-    assert_eq!(found(&base()), vec![], "a healthy watch");
+    let v = |x: Option<f64>| x.unwrap_or(f64::NAN);
+    // The larger and smaller of a measure over the two sides.
+    let both = |m: &Measures, f: &dyn Fn(&SideMeasures) -> f64| {
+        let (a, b) = (f(&m.even), f(&m.odd));
+        (a.max(b), a.min(b))
+    };
+    let healthy = measures(&base());
+    println!("healthy {healthy:?}");
+    assert!(both(&healthy, &|s| v(s.share_with_sound_1)).1 > 0.9);
+    assert!(both(&healthy, &|s| v(s.share_with_sound_2)).1 > 0.9);
+    assert!(both(&healthy, &|s| v(s.ratio13)).0 < 1.0);
+    assert!(healthy.even.windows_measured >= 5 && healthy.odd.windows_measured >= 5);
 
     let knock = Sound {
         gain: 0.15,
         freq_hz: 4500.0,
         decay_s: 0.0003,
     };
-    type Case = (&'static str, SynthConfig, Vec<(&'static str, bool)>);
-    let cases: Vec<Case> = vec![
+    type Check = Box<dyn Fn(&Measures) -> bool>;
+    let cases: Vec<(&str, SynthConfig, Check)> = vec![
         (
-            "a loud unlock on one side",
+            "a loud unlock on one side: sound 1 louder than sound 3 there only",
             SynthConfig {
                 odd_gains: Some([1.6, 0.25, 1.0]),
                 ..base()
             },
-            vec![("unlock_too_strong", false)],
+            Box::new(move |m| {
+                let (hi, lo) = both(m, &|s| v(s.ratio13));
+                hi >= 1.0 && lo < 1.0
+            }),
         ),
         (
-            "no unlock on one side",
+            "no unlock on one side: sound 1 or 2 rarely found there",
             SynthConfig {
                 odd_gains: Some([0.0, 0.25, 1.0]),
                 ..base()
             },
-            vec![("no_unlock_sound", false)],
+            Box::new(move |m| {
+                let one = both(m, &|s| v(s.share_with_sound_1));
+                let two = both(m, &|s| v(s.share_with_sound_2));
+                (one.1 < 0.3 || two.1 < 0.5) && one.0 > 0.9 && two.0 > 0.9
+            }),
         ),
         (
-            "unlock and impulse merged on both sides",
+            "unlock and impulse merged on both sides: sound 2 rarely apart",
             SynthConfig {
                 impulse_at: 0.03,
                 ..base()
             },
-            vec![("escapement_friction", true)],
+            Box::new(move |m| both(m, &|s| v(s.share_with_sound_2)).0 < 0.5),
         ),
         (
-            "a shallow lock on one side",
+            "a shallow lock on one side: 1-to-2 far longer on one side",
             SynthConfig {
                 odd_impulse_at: Some(0.18),
                 ..base()
             },
-            vec![("unlock_uneven", false)],
+            Box::new(move |m| {
+                let (hi, lo) = both(m, &|s| v(s.i12_ms));
+                hi / lo >= 1.8
+            }),
         ),
         (
-            "a knock before one side's unlock",
+            "a knock before one side's unlock: 1-to-2 far longer on one side",
             SynthConfig {
                 extra: Some(ExtraSound {
                     offset_s: -0.016,
@@ -336,10 +352,13 @@ fn faults_are_found() {
                 }),
                 ..base()
             },
-            vec![("unlock_uneven", false)],
+            Box::new(move |m| {
+                let (hi, lo) = both(m, &|s| v(s.i12_ms));
+                hi / lo >= 1.8
+            }),
         ),
         (
-            "rubbing after one side's drop",
+            "rubbing after one side's drop: a longer tail on that side",
             SynthConfig {
                 rub: Some(Rub {
                     even: false,
@@ -348,7 +367,10 @@ fn faults_are_found() {
                 }),
                 ..base()
             },
-            vec![("rubbing_after_drop", false)],
+            Box::new(move |m| {
+                let (hi, lo) = both(m, &|s| v(s.tail_ratio));
+                hi / lo >= 3.0 && hi >= 0.1
+            }),
         ),
         (
             "beat error drifting by 2 ms over two minutes",
@@ -357,29 +379,35 @@ fn faults_are_found() {
                 beat_error_drift_ms_per_s: 0.017,
                 ..base()
             },
-            vec![("beat_error_drift", true)],
+            Box::new(move |m| {
+                let d = v(m.beat_error_last_quarter_ms) - v(m.beat_error_first_quarter_ms);
+                d.abs() >= 1.0
+            }),
         ),
         (
-            "beat error drifting by 0.4 ms, as the corpus does at most",
+            "beat error drifting by 0.4 ms",
             SynthConfig {
                 duration_s: 120.0,
                 beat_error_drift_ms_per_s: 0.0035,
                 ..base()
             },
-            vec![],
+            Box::new(move |m| {
+                let d = v(m.beat_error_last_quarter_ms) - v(m.beat_error_first_quarter_ms);
+                (0.2..1.0).contains(&d.abs())
+            }),
         ),
     ];
     let wrong: Vec<String> = cases
         .into_iter()
-        .filter_map(|(name, cfg, want)| {
-            let got = found(&cfg);
-            (got != want).then(|| format!("{name}: found {got:?}, wanted {want:?}"))
+        .filter_map(|(name, cfg, ok)| {
+            let m = measures(&cfg);
+            (!ok(&m)).then(|| format!("{name}: {m:?}"))
         })
         .collect();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-/// A beat rate set wrong is flagged, and every grade is poor.
+/// A beat rate set wrong is named, with the rate heard.
 #[test]
 fn a_wrong_set_beat_rate_is_flagged() {
     let audio = generate(&SynthConfig::default(), |_| 270.0, |_| 0.0);
@@ -389,12 +417,9 @@ fn a_wrong_set_beat_rate_is_flagged() {
     };
     let s = analyze(&audio, &wrong).summary;
     assert_eq!(s.bph_heard, Some(28800));
-    if let Some(c) = s.confidence {
-        use timegrapher_core::confidence::Grade;
-        assert!([c.rate.grade, c.amplitude.grade, c.beat_error.grade]
-            .iter()
-            .all(|&g| g == Grade::Poor));
-    }
+    assert!(s
+        .caveats
+        .contains(&timegrapher_core::measure::Caveat::SetRateDisagrees { heard: 28800 }));
     let right = AnalysisConfig {
         bph: Some(28800),
         ..Default::default()

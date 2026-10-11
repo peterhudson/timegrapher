@@ -330,9 +330,16 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
-    /// Whether the beats look like a watch's (see [`beats::watch_heard`]).
-    /// When false, as on an empty stand, rate, amplitude and beat error
-    /// would describe noise, and they are left out.
+    /// `jitter_us` as a share of the beat period at `bph`, 0 to 1 (see
+    /// [`beats::timing_scatter_fraction`]); what `watch_heard` is decided on.
+    pub timing_scatter_fraction: Option<f64>,
+    /// The beat rate the stretch was measured at, bph.
+    pub bph: u32,
+    /// False when a regular beat was looked for and not found (see
+    /// [`crate::measure::watch_heard`]), as on an empty stand: rate,
+    /// amplitude and beat error would describe noise, and they are left
+    /// out. Under 10 s of sound regularity is not assessed and this is
+    /// true.
     pub watch_heard: bool,
     /// Median of the rate in 10 s windows, s/d. For a watch whose rate
     /// wanders with dips, this sits above `rate_s_per_day` (the fit over
@@ -359,44 +366,19 @@ pub struct Measurement {
     /// the loudest part of a tick, which can move amplitude and beat error.
     pub clipped_beats: usize,
     pub clipped_fraction: f64,
-    /// A ± and a grade for rate, amplitude and beat error, judged as
-    /// `analyze` judges them (see [`crate::measure`]); `None` when no
-    /// watch is heard.
+    /// The ± of rate, amplitude and beat error, as `analyze` gives them
+    /// (see [`crate::measure`]); `None` when no regular beat is found.
     pub confidence: Option<crate::confidence::Confidence>,
-    /// What limits how far the readings can be trusted.
+    /// Conditions detected that the readings rest on.
     pub caveats: Vec<crate::measure::Caveat>,
 }
 
 impl Measurement {
-    /// The lift angle was a default, not the calibre's: amplitude is
-    /// graded one step lower and the caveat named, as `analyze` does.
-    /// [`measure`] takes the lift angle as known.
+    /// The lift angle was a default, not the calibre's: the caveat is
+    /// named, as `analyze` names it. [`measure`] takes the lift angle as
+    /// known.
     pub fn lift_unknown(&mut self) {
-        use crate::measure::Caveat;
-        if self.caveats.contains(&Caveat::LiftUnknown) {
-            return;
-        }
-        crate::measure::add(&mut self.caveats, Caveat::LiftUnknown);
-        let poor = self.caveats.iter().any(|c| {
-            matches!(
-                c,
-                Caveat::SetRateDisagrees { .. } | Caveat::ShortSpan { .. }
-            )
-        });
-        let d = crate::confidence::Doubts {
-            clipped: self.clipping_warns(),
-            beats_missing: self
-                .caveats
-                .iter()
-                .any(|c| matches!(c, Caveat::BeatsMissing { .. })),
-            lift_unknown: true,
-            clock_unknown: !self.calibrated,
-        };
-        if let Some(c) = &mut self.confidence {
-            if !poor {
-                c.amplitude = crate::confidence::amplitude(c.amplitude.se, d);
-            }
-        }
+        crate::measure::add(&mut self.caveats, crate::measure::Caveat::LiftUnknown);
     }
 
     /// The beat error the report judges: from the unlock where it was
@@ -421,10 +403,10 @@ impl Measurement {
             .filter(|&a| a > lim.amplitude_high && !self.unlock_unreliable(lim))
     }
 
-    /// Enough clipped beats to doubt amplitude and beat error, by the
-    /// same rule as `analyze`.
+    /// More than `analysis::Clipping::NOTED_FRACTION` of the beats
+    /// clipped: the `clipped` condition, by the same rule as `analyze`.
     pub fn clipping_warns(&self) -> bool {
-        self.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION
+        self.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION
     }
 }
 
@@ -541,7 +523,9 @@ pub fn measure_with_breaks(
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
         jitter_us,
-        watch_heard: beats::watch_heard(jitter_us, log.bph),
+        timing_scatter_fraction: beats::timing_scatter_fraction(jitter_us, log.bph),
+        bph: log.bph,
+        watch_heard: crate::measure::watch_heard(jitter_us, log.bph, to_s - from_s),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
@@ -1164,7 +1148,7 @@ fn findings(
                     100.0 * m.clipped_fraction,
                     m.beats,
                     at(r),
-                    100.0 * crate::analysis::Clipping::WARN_FRACTION
+                    100.0 * crate::analysis::Clipping::NOTED_FRACTION
                 ),
                 "Clipping flattens the loudest part of the tick, which can move the amplitude and the beat error; rate is unaffected. Turn the input level down for the next take.",
             );

@@ -798,7 +798,7 @@ fn analyze_like_the_cli(flac: &[u8], bph: Option<u32>, lift_deg: f64) -> Result<
     cfg.envelope.highpass_hz = 1500.0;
     let a = analyze(&audio, &cfg);
     let mut doc = json!({
-        "schema": "timegrapher.analyze/1",
+        "schema": "timegrapher.analyze/2",
         "software": software(),
         "input": {
             "files": [{ "path": "audio/excerpt.flac" }],

@@ -11,9 +11,17 @@ possible that no open-source tool offers today:
   and amplitude for periodic components points at the wheel: the escape
   wheel turns every few seconds, the fourth wheel every minute, the centre
   wheel every hour.
-- **Tick-shape characterisation.** Each beat has three sounds (unlock,
-  impulse, drop). Their timing and shape on each pallet stone reveal
-  escapement faults (see [docs/fault-signatures.md](docs/fault-signatures.md)).
+- **Tick-shape measurement.** Each beat has three sounds (unlock,
+  impulse, drop). Their timing, levels and separation are measured on each
+  pallet stone and reported as figures (see
+  [docs/fault-signatures.md](docs/fault-signatures.md)).
+
+The software is a measuring tool: it reports what it measured and the
+conditions it detected (clipping, a short take, an unknown lift angle, no
+regular beat found), with no grades, verdicts or fault names. Reading
+those figures against a watch's tolerances is left to the person, or to an
+AI assistant using the [watchmaker skill](skills/watchmaker/SKILL.md),
+which cites a source for each judgement.
 
 Status: early. The per-beat engine and a command-line tool analyse
 recordings, from a few minutes (`analyze`, `shape`) to days (`long`), and
@@ -86,16 +94,16 @@ ticks are heard; it names the exact mixer setting to change (on Linux, the
 ### For AI agents
 
 Every command takes `--json` and prints one document on a versioned schema
-with the software version and the input it read; `doctor` exits 3 when the
-microphone needs attention. See [docs/agent-interface.md](docs/agent-interface.md).
-The [watchmaker skill](skills/watchmaker/SKILL.md) teaches an agent to run
-the tool and read the results like an experienced watchmaker.
+with the software version and the input it read. See
+[docs/agent-interface.md](docs/agent-interface.md). The
+[watchmaker skill](skills/watchmaker/SKILL.md) teaches an agent to run the
+tool and interpret the figures it reports.
 
 `timegrapher session folder/` reads one watch measured in several
 positions (and states of wind) into a multi-position report in the style
-of Witschi's SEQ mode: rate, amplitude and beat error per position against
-the tolerances, the characteristic values X, D, DV, DH, DVH, Di, Im and
-Ie, and findings with the evidence behind each. `--init` writes a
+of Witschi's SEQ mode: rate, amplitude and beat error per position, and
+the characteristic values X, D, DV, DH, DVH, Di, Im and Ie, with the
+measurements behind each. `--init` writes a
 `session.toml` to edit. See [docs/sessions.md](docs/sessions.md).
 
 `timegrapher synth out.wav` writes a synthetic recording with known rate,

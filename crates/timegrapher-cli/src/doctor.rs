@@ -1,17 +1,17 @@
-//! `timegrapher doctor`: is the microphone set up well enough to measure
-//! a watch, and if not, what exactly should change?
+//! `timegrapher doctor`: what the microphone input measures.
 //!
-//! It records a few seconds (or reads a file), checks the level, clipping,
-//! automatic gain, background noise and whether a steady beat is heard,
-//! reads the sound card's mixer where it can, and proposes fixes. It
-//! changes nothing on the computer unless `--apply` is given.
+//! It records a few seconds (or reads a file), measures the level,
+//! clipping, the background between ticks, the signal above noise and
+//! whether a regular beat is found, reads the sound card's mixer where it
+//! can, and lists the mixer changes `--apply` would make. It changes
+//! nothing on the computer unless `--apply` is given.
 
 use crate::output;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use timegrapher_core::audio::{self, Audio};
-use timegrapher_core::diagnose::{self, DiagnoseConfig, Severity, SignalCheck};
+use timegrapher_core::diagnose::{self, DiagnoseConfig, SignalCheck};
 use timegrapher_core::mixer::{self, Fix, Mixer};
 
 pub struct Options {
@@ -40,12 +40,9 @@ struct Report {
     /// The check repeated after applying, when recording live.
     #[serde(skip_serializing_if = "Option::is_none")]
     after: Option<SignalCheck>,
-    /// `ok` when nothing spoils a measurement, else `needs_attention`.
-    verdict: &'static str,
 }
 
-/// Returns whether the input is fit to measure with.
-pub fn run(o: &Options) -> Result<bool, String> {
+pub fn run(o: &Options) -> Result<(), String> {
     let cfg = DiagnoseConfig {
         bph: o.bph,
         ..Default::default()
@@ -83,7 +80,6 @@ pub fn run(o: &Options) -> Result<bool, String> {
             after = Some(diagnose::check(&audio, &cfg));
         }
     }
-    let ok = after.as_ref().unwrap_or(&check).ok();
     let rep = Report {
         source,
         check,
@@ -91,7 +87,6 @@ pub fn run(o: &Options) -> Result<bool, String> {
         fixes,
         applied,
         after,
-        verdict: if ok { "ok" } else { "needs_attention" },
     };
     if o.json {
         let files: Vec<PathBuf> = o.file.iter().cloned().collect();
@@ -101,7 +96,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
     } else {
         print_report(&rep, o.apply);
     }
-    Ok(ok)
+    Ok(())
 }
 
 fn acquire(o: &Options) -> Result<(Audio, Value), String> {
@@ -162,26 +157,21 @@ fn print_check(c: &SignalCheck) {
         c.noise_level_dbfs,
     );
     println!(
-        "Signal       {}{}",
-        c.signal_x.map_or(String::new(), |x| format!("{x:.0}×, ")),
-        c.signal_band.word()
+        "Signal       {} above the background",
+        c.signal_x.map_or("-".to_string(), |x| format!("{x:.0}×"))
     );
     println!(
-        "Gain pumping background rises {} between ticks",
+        "Gap rise     background rises {} between ticks",
         opt(c.gap_rise_db, " dB")
     );
     if let (Some(r), Some(b)) = (c.rate_s_per_day, c.beat_error_ms) {
-        println!("Quick look   rate {r:+.1} s/d, beat error {b:.1} ms (sound-card clock; use analyze for a full reading)");
+        println!("Quick look   rate {r:+.1} s/d, beat error {b:.1} ms (on the sound card's clock)");
     }
     if c.issues.is_empty() {
-        println!("No problems found.");
+        println!("None of the checked conditions detected.");
     }
     for i in &c.issues {
-        let tag = match i.severity {
-            Severity::Fault => "FAULT  ",
-            Severity::Warning => "warning",
-        };
-        println!("{tag}      {} ({}). {}", i.title, i.evidence, i.advice);
+        println!("Detected     {} ({})", i.title, i.evidence);
     }
 }
 
@@ -226,7 +216,7 @@ fn print_report(r: &Report, apply: bool) {
     }
     if !r.fixes.is_empty() {
         println!(
-            "Suggested changes{}:",
+            "Changes --apply makes{}:",
             if r.applied { " (applied)" } else { "" }
         );
         for f in &r.fixes {

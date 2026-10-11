@@ -10,14 +10,14 @@ The [watchmaker skill](../skills/watchmaker/SKILL.md) builds on it.
 - Every command has `--help`, and `timegrapher --help` lists them all.
 - Every command that reports something takes `--json` and then prints
   exactly one JSON document on stdout. Progress and warnings go to stderr.
-- Exit codes: `0` success, `1` error (message on stderr), `3` from `doctor`
-  when the input is not fit to measure with, and from `regress` when the
-  engine moved away from tg ([regress](regress.md)), and from `record` when
-  the take was not fit to keep.
+- Exit codes: `0` success, `1` error (message on stderr), `3` from
+  `regress` when the engine moved away from tg ([regress](regress.md)), and
+  from `record` when the take was not fit to keep. `doctor` exits `0`
+  whatever it detects.
 - Nothing listens unless asked: `doctor` and `record` open the microphone
   only while they run, for the time they say.
 - Nothing changes the computer's settings unless the person asked for it:
-  `doctor` proposes mixer changes and only makes them with `--apply`.
+  `doctor` lists mixer changes and only makes them with `--apply`.
   An agent must ask the person before passing `--apply`.
 
 ## The JSON envelope
@@ -26,7 +26,7 @@ Every document starts with the same three fields:
 
 ```json
 {
-  "schema": "timegrapher.analyze/1",
+  "schema": "timegrapher.analyze/2",
   "software": { "name": "timegrapher", "version": "0.1.0", "git_hash": "8ec7b89", "git_dirty": false,
                 "build_date": "2026-10-10", "os": "linux", "arch": "x86_64" },
   "input": {
@@ -39,7 +39,10 @@ Every document starts with the same three fields:
 
 `schema` is `timegrapher.<kind>/<version>`. Within a version, fields are only
 added, never renamed or removed; a change that would break a reader bumps the
-version. `input.files[].recording` appears when the recording has a
+version. `analyze` and `doctor` are at version 2: it removed their grades,
+verdicts, named faults and advice (the software reports what it measured
+and detected; the [watchmaker skill](../skills/watchmaker/SKILL.md)
+interprets it). Other kinds are at version 1. `input.files[].recording` appears when the recording has a
 provenance sidecar (`take.wav.json`, written by `doctor --save`), carrying
 the device, its configuration and the mixer settings at the time.
 
@@ -52,7 +55,7 @@ readings: anything that compares two documents should leave `software` out.
 
 | Kind | Command | The command's own fields |
 |---|---|---|
-| `analyze` | `analyze FILE --json` | `duration_s`, `sample_rate`, `bph`, `beats_found`, `watch_heard` (false when the beats are no steadier than noise, as on an empty stand: the median jitter is 2% of the beat period or more; every reading in the result then describes noise and must not be shown), `overall` (`rate_s_per_day`, `beat_error_ms`, `period_s`, `jitter_us`), `rate_p05`, `rate_p95`, `jitter_us`, `amplitude_deg` (+ even/odd), `amplitude_se_deg` (+ even/odd: the standard error from the spread between 2 s windows; precision, not accuracy, which rests on the lift angle), `lift_deg`, `timing_periods`, `amplitude_periods`, `clipping` (`samples`, `beats`, `beat_fraction`, `peak_dbfs`; more than 1% of beats clipped means the amplitude and beat error may be off), `usb_clock` (`ppm` the sound card runs slow, `lines`, `spread_ppm`: read from the USB 1 kHz lines in the recording, `null` when it has none), `rate_s_per_day` (the whole-recording rate on the card's clock, as tg reads it; the same figure as `overall.rate_s_per_day`), `rate_corrected_s_per_day` (that rate corrected with `usb_clock`), `doubts` (`clipped`, `beats_missing`, `lift_unknown`, `clock_unknown`: each lowers the grades it touches by one step), `confidence` (`rate`, `amplitude`, `beat_error`, each `se` in the reading's unit and `grade` `good`, `fair` or `poor`; `null` when no watch is heard). Good means a ± within 0.5 s/d, 2° or 0.05 ms; fair within 2 s/d, 5° or 0.1 ms. Fewer than 10 s of beats, or a set beat rate the recording disagrees with, grades every reading poor (the `short_span` and `set_rate_disagrees` caveats), so `confidence` keeps its shape. `faults[]`: possible escapement faults from the shape of the Tick and Tock, each `id` (`unlock_too_strong`, `no_unlock_sound`, `escapement_friction`, `unlock_uneven`, `rubbing_after_drop`, `beat_error_drift`), `label` (the fault in a watchmaker's words), `side` (`tick`, `tock` or `both`), `strength` (`possible`, or `likely` once a rule has been confirmed on a real fault; every rule is `possible` for now), `evidence` (the measures behind it, by name), `see` (where the fault is described). Empty when nothing is seen, and also when the shape cannot be judged: no watch heard, clipping, or amplitude or beat error too unsteady to grade fair. A finding is worth checking on the bench, not a diagnosis. A `clock` block (`ppm`, `from`, `rate_s_per_day`) appears when a correction is stored, given or read from the USB lines, in that order of preference. When `watch_heard` is false every reading is `null` (`overall`, the amplitudes, `beat_error_unlock_ms`, `rate_p05`/`rate_p95`, `rate_s_per_day`, `rate_corrected_s_per_day`, `confidence`) and `timing_periods`, `amplitude_periods` and `faults` are empty: no watch was heard, or, with `short_span`, the beats are too short to tell. `bph` and `beats_found` stay, but then only say what rate was listened for and how many sounds were found: they are not a watch's readings and must not be shown. `bph_heard` appears when a set beat rate (`--bph` or `--calibre`) differs from the rate the recording sounds like; every grade is then `poor`. `beat_error_unlock_ms` is the signed beat error measured from the unlock (the median over the 2 s amplitude windows), the figure checked against tg's beat error in regress; `overall.beat_error_ms` is the drop's. Sign, for both: positive means Tick comes late, so the half-beat from Tock to Tick is longer than the one from Tick to Tock, by twice the value. Tick is the first beat of the run, so the sign holds within one run but not across runs or between `analyze` and a live reading of the same take; show the size, and compare signs only within one run. `caveats[]`: what limits how far the readings can be trusted, each with a `code`: `no_watch` (readings withheld), `set_rate_disagrees` (`heard`; every grade poor), `short_span` (`span_s`, under 10 s of beats; every grade poor; too short to tell whether a watch is heard, so when `watch_heard` is false the readings are withheld with this caveat alone, not `no_watch`), `clipped` (`fraction`; amplitude and beat error one step down), `beats_missing` (`fraction` found; all one step down), `lift_unknown` (amplitude one step down), `clock_unknown` (rate one step down), `breaks` (`count`). Empty when nothing limits them. `analyze` and `session` share one beat pipeline (the chunked stream that `long`, `series` and `regress` read too), so the same file gives the same beats and readings in both. |
+| `analyze` | `analyze FILE --json` | Schema `timegrapher.analyze/2`. `duration_s`, `sample_rate`, `bph`, `beats_found`, `beats_found_fraction` (`beats_found` over the beats the recording's length holds at `bph`), `watch_heard` (false when a regular beat was looked for and not found: with 10 s of sound or more, the timing scatter `jitter_us` is 2% of the beat period or more, as on an empty stand; with less than 10 s, regularity is not assessed and `watch_heard` is true), `overall` (`rate_s_per_day`, `beat_error_ms`, `period_s`, `jitter_us`), `rate_p05`, `rate_p95`, `jitter_us` (the timing scatter, median over the 10 s windows, µs), `timing_scatter_fraction` (`jitter_us` as a share of the beat period, 0 to 1; `watch_heard` is false when it is 0.02 or more), `amplitude_deg` (+ even/odd), `amplitude_se_deg` (+ even/odd: the standard error from the spread between 2 s windows; precision, not accuracy, which rests on the lift angle), `lift_deg`, `timing_periods`, `amplitude_periods`, `clipping` (`samples`, `beats`, `beat_fraction`, `peak_dbfs`), `usb_clock` (`ppm` the sound card runs slow, `lines`, `spread_ppm`: read from the USB 1 kHz lines in the recording, `null` when it has none), `rate_s_per_day` (the whole-recording rate on the card's clock, as tg reads it; the same figure as `overall.rate_s_per_day`), `rate_corrected_s_per_day` (that rate corrected with `usb_clock`), `doubts` (`clipped`, `beats_missing`, `lift_unknown`, `clock_unknown`: conditions detected, as flags; each one set is also in `caveats`), `confidence` (`rate`, `amplitude`, `beat_error`, each `se`, the standard error in the reading's unit; `null` when no regular beat is found), `shape` (`even` and `odd`, the Tick and the Tock, each `windows_measured`, `share_with_sound_1`, `share_with_sound_2`, `i12_ms`, `i13_ms`, `ratio13`, `tail_ratio`; and `beat_error_first_quarter_ms`, `beat_error_last_quarter_ms`, `beat_error_quarter_windows`: the unlock beat error early and late in the recording; see [fault-signatures.md](fault-signatures.md); `null` when no regular beat is found). A `clock` block (`ppm`, `from`, `rate_s_per_day`) appears when a correction is stored, given or read from the USB lines, in that order of preference. When `watch_heard` is false every reading is `null` (`overall`, the amplitudes, `beat_error_unlock_ms`, `rate_p05`/`rate_p95`, `rate_s_per_day`, `rate_corrected_s_per_day`, `confidence`, `shape`) and `timing_periods` and `amplitude_periods` are empty; `jitter_us`, `timing_scatter_fraction`, `bph` and `beats_found` stay (the rate listened for and the sounds found, not a watch's readings). `bph_heard` appears when a set beat rate (`--bph` or `--calibre`) differs from the rate the recording sounds like. `beat_error_unlock_ms` is the signed beat error measured from the unlock (the median over the 2 s amplitude windows), the figure checked against tg's beat error in regress; `overall.beat_error_ms` is the drop's. Sign, for both: positive means Tick comes late, so the half-beat from Tock to Tick is longer than the one from Tick to Tock, by twice the value. Tick is the first beat of the run, so the sign holds within one run but not across runs or between `analyze` and a live reading of the same take; show the size, and compare signs only within one run. `caveats[]`: conditions detected, each with a `code`: `no_watch` (no regular beat found; readings withheld), `set_rate_disagrees` (`heard`), `short_span` (`span_s`, the beats span under 10 s), `clipped` (`fraction`, more than 1% of beats clipped), `beats_missing` (`fraction` found, under 95%), `lift_unknown` (the lift angle is the default), `clock_unknown` (the sound card's clock is not corrected), `breaks` (`count`). None of them changes a reading or its ±. Empty when none is detected. Version 2 removed `confidence.*.grade`, `faults[]` and every grading rule. `analyze` and `session` share one beat pipeline (the chunked stream that `long`, `series` and `regress` read too), so the same file gives the same beats and readings in both. |
 | `calibres` | `calibres [NAME] --json` | `calibres[]`: `calibre`, `maker`, `family` (other names that match), `bph`, `lift_angle_deg`, `escape_teeth`, `seconds`, `wheels[]` (`name`, `period_s` for one full turn, `teeth`, `pinion`, `basis`), `sources`, `confidence`, `notes`; a figure no source gives is `null` or left out (below) |
 | `shape` | `shape FILE --json` | per pallet stone (even/odd beats): unlock, impulse and drop timing and level; see [fault-signatures.md](fault-signatures.md) |
 | `profile` | `profile FILE --at S --span S --json` | `a` (the tick: even beats) and `b` (the tock: odd beats): `beats`, `t0_ms`, `step_ms`, `median`, `p10`, `p90` (envelope point by point), `floor`, `unlock_ms`, `drop_ms`, `peak_ms`, `amplitude_deg`, `sound1_ms`, `sound2_ms`, `sound3_ms`; times in ms from the beat. `--svg FILE` also draws them |
@@ -60,9 +63,9 @@ readings: anything that compares two documents should leave `software` out.
 | `series` | `series FILES --json` | per series (`rate`, `amplitude`, `beat_error`): `verdict` (`steady`, `periodic`, `two_states`, `measurement`, `shifting_mean`, `drifting`, `wandering`, `too_short`), `headline`, and the views behind it (`autocorrelation`, `allan`, `cusum`, `changes`, `trend`, `period` (with `other_periods_s`), `two_state`, `cycle`), all three on readings of the rate's length; `isochronism` (rate by 2° amplitude bins, `s_per_day_per_deg`, `turn_deg`, `headline`); `wind_down` (first half hour against 24 h after full wind or the last half hour, `--wind-h`: `rate_change_s_per_day`, `amplitude_change_deg`, `beat_error_change_ms`); `rate_amplitude` (`r`, `p_value`, `s_per_day_per_deg`, `moves_with`, `headline`); `distributions` (the app's histograms over the take and each `--stretch-min` stretch: `series`, `values` (`readings` or `2 s`), `edges`, `counts`, `below`, `above`, `median`, `p10`, `p90`, `peaks`, `normal_line`, `quantiles`, `summary`); `findings` (`code`, `series`, `severity`, `title`, `evidence`, `advice`); with `--views`, the chart data as well (each series' `views`: `readings`, `search`, `fold`; `period_span`; the whole take's distributions' `points`, `[value, z]`); see [series.md](series.md) Without a clock log, the clock is corrected as `analyze` corrects it: a stored or given error, else the recording's USB lines. tg and a session's `reference` rates are on the sound card's clock. `breaks` (`audio_s`, `gap_s`; present only for a take that was paused or resumed): times run on with each gap in, rate and beat error are fitted on each side of a break apart, and no window or slice spans one. |
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
-| `doctor` | `doctor --json` | `source`, `check`, `mixer`, `fixes[]`, `applied`, `after`, `verdict` (below) |
+| `doctor` | `doctor --json` | Schema `timegrapher.doctor/2`. `source`, `check`, `mixer`, `fixes[]`, `applied`, `after` (below). Version 2 removed `verdict`, `check.signal_band`, `issues[].severity`, `issues[].advice` and the `noisy` issue. |
 | `record` | `record FOLDER --position P --json` | `take` (the take's folder), `session_file` (the session file the take was added to, or null), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no watch is heard or the stretch after settling is too short), `verdict` (`ok`, `no_watch_heard`, `clipping`); see [`record`](#record) |
-| `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values (`d_rate`, `d_amplitude`: the largest difference between any two positions; `dv_rate`, `dh_rate`: the same among the vertical or the horizontal positions; `dvh_rate`, `dvh_amplitude`: the vertical mean minus the horizontal mean), `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) Each reading's measurement has `breaks` too, with the same meaning, when its stretch holds one. Each reading's `measurement` also carries `confidence` (`rate`, `amplitude`, `beat_error`, each `se` and `grade`, judged as `analyze` judges them; `null` when no watch is heard) and `caveats[]` (as for `analyze`; `lift_unknown` when no `--lift`, session-file `lift` or known calibre gave the lift angle). |
+| `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values (`d_rate`, `d_amplitude`: the largest difference between any two positions; `dv_rate`, `dh_rate`: the same among the vertical or the horizontal positions; `dvh_rate`, `dvh_amplitude`: the vertical mean minus the horizontal mean), `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) Each reading's measurement has `breaks` too, with the same meaning, when its stretch holds one. Each reading's `measurement` also carries `confidence` (`rate`, `amplitude`, `beat_error`, each `se`, as `analyze` gives them; `null` when no regular beat is found), `jitter_us`, `timing_scatter_fraction` and `bph` (the timing scatter, as for `analyze`) and `caveats[]` (as for `analyze`; `lift_unknown` when no `--lift`, session-file `lift` or known calibre gave the lift angle). |
 | `report` | `report [RECORDING] --json` | the bundle's manifest: `created_utc`, `kind`, `note`, `os_version`, `recording`, `commands[]` (`args`, `cwd`, `output`, `replayable`), `files[]` (`path`, `bytes`, `sha256`), `consent`, `redacted`, `left_out`; the zip's path goes to stdout without `--json`; see [reports.md](reports.md) |
 | `replay` | `report --replay BUNDLE --json` | `bundle` (when and by which build it was made), `damaged[]`, `commands[]` (`args`, `output`, `ran`, `error`, `moved[]` of `path`, `then`, `now`) |
 
@@ -181,7 +184,7 @@ The file holds one `timegrapher.live/1` document:
 | `done` | The recording has ended (the take is still being checked) |
 | `average_s` | The averaging time of `reading`, 10 s as in the app |
 | `beats_heard` | Beats heard so far |
-| `reading` | The live reading as the app shows it: `rate_s_per_day`, `amplitude_deg` (`amplitude_error_deg`), `beat_error_unlock_ms` (the headline) and `beat_error_ms` (from the drop), `bph`, `beats_used`, `span_s`, `jitter_us`, `snr`, `clipped_beats`, `clipped_fraction`, `watch_heard`, `rate_error_s_per_day` (the scatter of 10 s windows over the run so far scaled to `average_s`, `null` until about 30 s of unbroken beats), `beat_error_unlock_error_ms` (the standard error of the 2 s windows) and `caveats[]` (as `analyze` gives them, over the averaging time); readings are null until enough beats are heard, and whenever `watch_heard` is false (beats scattered like noise, as `analyze` nulls them) |
+| `reading` | The live reading as the app shows it: `rate_s_per_day`, `amplitude_deg` (`amplitude_error_deg`), `beat_error_unlock_ms` (the headline) and `beat_error_ms` (from the drop), `bph`, `beats_used`, `span_s`, `jitter_us`, `timing_scatter_fraction` (as for `analyze`), `snr`, `clipped_beats`, `clipped_fraction`, `watch_heard`, `rate_error_s_per_day` (the scatter of 10 s windows over the run so far scaled to `average_s`, `null` until about 30 s of unbroken beats), `beat_error_unlock_error_ms` (the standard error of the 2 s windows) and `caveats[]` (as `analyze` gives them, over the averaging time); readings are null until enough beats are heard, and whenever `watch_heard` is false (no regular beat found over an averaging time of 10 s or more, as `analyze` nulls them; under 10 s regularity is not assessed) |
 | `strip` | The paper strip: `span_s` (30), `period_s`, and `beats` as `[time_s, lead_ms, side]` for the last 30 s. `lead_ms` is how early the beat came against a clock at the nominal rate, anchored on the first 16 beats as the app anchors its strip. `side` is 0 for the Tick and 1 for the Tock |
 | `trend` | The readings about once a second as columns `t_s`, `rate`, `amplitude`, `beat_error` (from the unlock). It keeps the whole take, up to 300 points: past that, every other point of the older half is dropped |
 
@@ -202,24 +205,19 @@ the id or name from `devices`), or reads `--file`, and reports in `check`:
 |---|---|
 | `peak_dbfs`, `rms_dbfs` | level relative to full scale |
 | `clipped_samples` | samples at full scale, plus flat tops below it (clipping before the converter) |
-| `bph`, `beats_expected`, `beats_found` | is a steady beat heard? |
+| `bph`, `beats_expected`, `beats_found` | the beat rate used and the beats found |
 | `tick_level_dbfs`, `noise_level_dbfs`, `tick_to_noise_db` | ticks against the background between them (high-passed at 1.5 kHz) |
-| `signal_x`, `signal_band` | median beat peak over the median envelope, the desktop app's "signal N×", and its band (below) |
-| `gap_rise_db` | background late in the gap over early in it; several dB means automatic gain is pumping |
-| `rate_s_per_day`, `beat_error_ms` | a quick look only |
-| `suggested_gain_change_db` | what would bring the ticks to about −10 dBFS (−6 dB step when clipped) |
-| `issues[]` | `code`, `severity` (`fault` spoils measurements, `warning` does not), `title`, `evidence`, `advice`: the same shape as a test session's findings |
+| `signal_x` | median beat peak over the median envelope, the desktop app's "signal N×"; pure noise reads about 2× (see [validation.md](validation.md#signal-above-noise-signal_x-what-the-added-noise-tests-showed)) |
+| `gap_rise_db` | background late in the gap over early in it, dB |
+| `rate_s_per_day`, `beat_error_ms` | from a few seconds, on the sound card's clock |
+| `suggested_gain_change_db` | the change `--apply` makes: it sets the peak to about −10 dBFS (a −6 dB step when clipped) |
+| `issues[]` | the conditions detected, each `code`, `title` (the condition with its figure) and `evidence` (the measurements) |
 
-Issue codes: `silent`, `too_quiet`, `clipping`, `hot`, `agc_suspected`,
-`no_ticks`, `noisy`.
-
-`signal_band` is `good` (10× and above: all readings can be trusted),
-`fair` (5 to 10×: rate reliable, amplitude and beat error may be off),
-`poor` (3 to 5×: only the rate) or `none` (below 3×: no watch heard;
-pure noise reads about 2×). These are the desktop app's bands and its
-"signal N×" figure, so an agent and the app's status bar agree. `no_ticks` is raised when the band is `none` (or
-fewer than half the beats are found), `noisy` as a fault when it is `poor`
-and as a warning when it is `fair`.
+Issue codes, each a condition detected: `silent` (peak under −80 dBFS),
+`too_quiet` (peak under −30 dBFS), `clipping` (three or more clipped
+samples), `hot` (peak above −6 dBFS, not clipped), `agc_suspected` (the
+background rises more than 3 dB between ticks), `no_ticks` (no regular
+beat found: fewer than half the beats expected, or `signal_x` under 3×).
 
 On Linux, `mixer` holds the sound card's ALSA controls (read with
 `amixer -c CARD scontents`; the card comes from `--card`, the device id, or
@@ -229,8 +227,7 @@ measured while it acts mean little. On macOS and Windows the fixes say
 which setting to change. Every fix has `requires_consent: true`.
 
 With `--apply` the commands run and, when listening live, the check runs
-again and appears as `after`. `verdict` is `ok` or `needs_attention`, and
-the exit code follows it.
+again and appears as `after`. `doctor` exits 0 whatever it detects.
 
 Example (illustrative): the C-Media USB timegrapher microphone arrives with automatic gain
 on and the level at 16/16, and clips every tick:
@@ -239,9 +236,9 @@ on and the level at 16/16, and clips every tick:
 $ timegrapher doctor
 Level        peak 0.0 dBFS, RMS -10.7 dBFS, 10731 clipped samples
 ...
-FAULT        The input clips (10731 samples clipped, peak 0.0 dBFS). Turn the input level down ...
+Detected     Clipping: 10731 samples (10731 samples clipped, peak 0.0 dBFS)
 Mixer        card 2: 'Mic' 16/16 (+23.8 dB), 'Auto Gain Control' on
-Suggested changes:
+Changes --apply makes:
   - Turn off 'Auto Gain Control' on card 2 so the gain stays fixed, then run doctor again.
       amixer -c 2 sset 'Auto Gain Control' off
 Nothing was changed. Run again with --apply to make these changes.

@@ -123,7 +123,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let check = check(&dir, &set)?;
     let verdict = if !check.watch_heard {
         "no_watch_heard"
-    } else if check.clipping.beat_fraction > Clipping::WARN_FRACTION {
+    } else if check.clipping.beat_fraction > Clipping::NOTED_FRACTION {
         "clipping"
     } else {
         "ok"

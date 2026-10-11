@@ -323,7 +323,7 @@ fn a_chat_app_reads_a_watch() {
     );
     assert!(r.get("isError").is_none(), "{r}");
     let doc = &r["structuredContent"];
-    assert_eq!(doc["schema"], "timegrapher.analyze/1");
+    assert_eq!(doc["schema"], "timegrapher.analyze/2");
     assert_eq!(doc["watch_heard"], true);
     let rate = doc["overall"]["rate_s_per_day"].as_f64().unwrap();
     assert!((rate - 6.0).abs() < 1.0, "rate {rate}");
@@ -377,7 +377,7 @@ fn a_chat_app_reads_a_watch() {
     assert!(said.contains("(dvh_amplitude)"), "{said}");
 
     let r = c.call("check_recording", json!({ "recording": path(&take) }));
-    assert_eq!(r["structuredContent"]["schema"], "timegrapher.doctor/1");
+    assert_eq!(r["structuredContent"]["schema"], "timegrapher.doctor/2");
 
     // Mistakes come back as results the agent can read, not protocol errors.
     let r = c.call("analyze_recording", json!({ "recording": "take.wav" }));
