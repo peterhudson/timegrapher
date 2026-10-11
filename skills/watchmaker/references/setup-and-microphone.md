@@ -195,9 +195,8 @@ card's control, with a peak meter marked at the −10 dBFS target and the
   whichever app runs `timegrapher`) must be allowed, or the input is
   silent.
 - Turn off *Voice Isolation* / *Mic Mode* effects if offered; they're
-  processing, and processing destroys tick shape (check: these modes apply
-  to apps using the system voice-processing path; a plain recording may not
-  be affected).
+  processing, and processing destroys tick shape. A plain recording may
+  not pass through them, but turning them off costs nothing.
 
 **Windows**
 
@@ -235,15 +234,16 @@ card's control, with a peak meter marked at the −10 dBFS target and the
 ### Wind and settle
 
 - **Fully wind.** A manual-wind watch: wind until you feel it stop, gently,
-  never force. An automatic: 30–40 turns of the crown is roughly full for
-  most (check per calibre; some need more), or a session on a winder. A
+  never force. An automatic: the maker's manual gives the number of crown
+  turns where it says; otherwise this skill's rule of thumb is 30–40 turns,
+  or a session on a winder. A
   fully wound watch gives the reference figures; a run-down one reads low
   and is a different test.
 - **Let it settle.** After winding or handling, give it a few minutes
-  running before the first reading. Witschi's procedure runs the watch for
-  about 20 minutes before measuring (check this is worth asking of a
-  layperson). After each position change, wait 30 s to a minute; amplitude
-  takes a while to settle, especially going from horizontal to vertical.
+  running before the first reading. After each position change, amplitude
+  takes a while to settle, especially going from horizontal to vertical;
+  `record` leaves the first 30 s of each take out of its readings for this
+  (`settle_s`).
 - Note the time of winding. The 24-hour test is the same positions a day
   later without winding again.
 
@@ -260,8 +260,9 @@ card's control, with a peak meter marked at the −10 dBFS target and the
 
 (For a watch with the crown at 3 o'clock; for a left-hand-crown or 4 o'clock
 crown, name the position by the dial number that's up.) COSC tests five
-positions (check which five); Witschi's procedure uses all six and starts
-dial down.
+positions: 3, 6 and 9 o'clock up, dial up and dial down
+([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)),
+that is CU, CL, CD, DU and DD; the `session` report uses all six.
 
 ### How long to record
 

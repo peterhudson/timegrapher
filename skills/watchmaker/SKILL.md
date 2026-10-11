@@ -193,8 +193,8 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   wants a watchmaker; it can damage the escapement. `analyze` raises no
   knocking fault at all, because an ETA in a plastic holder already reads
   320–332° without knocking (docs/fault-signatures.md); only the
-  `session` report warns on a position whose median amplitude is above
-  330°, Witschi's knocking limit, as `amplitude_high`, "Very high
+  `session` report warns on a position whose median amplitude, at the take's lift
+  angle, is above 330°, Witschi's knocking limit, as `amplitude_high`, "Very high
   amplitude": a warning, never a fault (docs/sessions.md). So never raise
   knocking below 330°, treat a higher reading first as a reason to check
   the mount and the lift angle, and call it knocking only when the trace

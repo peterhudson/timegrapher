@@ -241,9 +241,11 @@ The full test is six positions (see
 - **Between vertical positions**: differences here come from the balance
   being out of poise (heavier on one side) or the hairspring off centre.
 
-Amplitude across positions tells you as much as the rate. A healthy
-watch loses 20–50° from horizontal to vertical and is roughly even between
-the four vertical positions.
+Amplitude across positions tells you as much as the rate. Witschi's
+tolerances put vertical at 240–280° against 260–320° horizontal
+(docs/sessions.md), and the `session` report warns when vertical is more
+than 50° below horizontal (the project's threshold). A big difference
+between the four vertical positions is worth a second look.
 
 ## Isochronism: full wind against 24 hours
 
