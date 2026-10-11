@@ -480,7 +480,9 @@ def run(args):
     work = os.path.abspath(args.work)
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
-    chosen = [p for p in personas() if not args.only or p["id"] in args.only]
+    # Parked personas sit out unless named with --only.
+    chosen = [p for p in personas()
+              if (p["id"] in args.only if args.only else not p.get("parked"))]
     if args.notes:
         # What changed since the last round: every persona has read it, and the triage checks it was covered.
         with open(args.notes) as f:
@@ -527,7 +529,7 @@ def main():
     s.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r = sub.add_parser("run")
     r.add_argument("--out", required=True, help="where the reports go, e.g. /mnt/project-files/testing/2026-10-11")
-    r.add_argument("--only", nargs="*", help="persona ids (default: all)")
+    r.add_argument("--only", nargs="*", help="persona ids (default: every persona not parked)")
     r.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r.add_argument("--model", help="model for every agent (default: claude's default)")
     r.add_argument("--no-triage", action="store_true")

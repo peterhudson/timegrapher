@@ -5,6 +5,8 @@ surface = "cli-pair"
 language = "English"
 stand = {}
 files = { "Recordings/vintage_18000_dialup.flac" = "eta2824_bare_DU_30min/eta2824_bare_DU_48000-01.flac", "Recordings/my_watch_test.flac" = "silence_empty_stand/silence_mic10.flac" }
+# Parked: rounds before a public release use the watchmaking and UX experts only.
+parked = true
 +++
 
 # Pat, the sceptic who gives wrong details

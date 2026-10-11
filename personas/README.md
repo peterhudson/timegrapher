@@ -16,6 +16,11 @@ the watchmaker skill, and the MCP server.
 | [Brunner](people/6-retired-watchmaker.md) | Retired Swiss lab watchmaker | Desktop app, live and a two-hour recording; also reviews the conversations |
 | [Mika](people/7-designer-watchmaker.md) | Former Apple software designer who services Seikos on weekends | Desktop app, a deep pass on every feature: six positions live and two saved recordings, judged as a product designer and a watchmaker |
 
+Until rounds get close to a public release, only the watchmaking and design
+experts, Brunner and Mika, take part. The other five carry `parked = true` and
+sit out unless a round names them with `--only`. While they are parked, the
+command line and the MCP server get no persona round.
+
 ## How a round works
 
 - **The build** is a release (drafts too) or a commit built from source.
@@ -56,7 +61,7 @@ python3 personas/harness/round.py run --out /mnt/project-files/testing/YYYY-MM-D
 `setup` installs the system packages it needs, downloads the build's Linux
 archive (`--build COMMIT` builds from source instead), the watchmaker skill
 at that commit and the corpus index. `run` downloads only the recordings the
-personas use (about 1 GB), runs all the personas in parallel, then writes
+personas use (about 1 GB), runs the personas that are not parked in parallel, then writes
 `triage.md`. `--only ID ...` runs some of them; `--model` picks the model for
 every agent. `--notes FILE` gives every persona the build's release notes
 (what changed since the last round), and the triage then lists who tried each
