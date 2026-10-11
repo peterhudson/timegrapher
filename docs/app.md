@@ -74,7 +74,7 @@ Steadiness then covers the whole night.
 
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
-from 1 s to an hour, or pick one of Witschi's 2 to 60 s; the setting is
+from 1 s to an hour, or pick one of the presets from 2 to 60 s; the setting is
 in the Readings card). Early in a session, or after a pause or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
@@ -142,8 +142,8 @@ with core `session::measure`, as `session` does (rate on the input's
 measured clock when there is one), and a window shows them as a table:
 each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
 less the mean of the six, its amplitude and its beat error (a size), a
-Mean row, the largest difference between the rates (D), and
-vertical less horizontal for rate and amplitude (DVH). Under
+Mean row, the largest difference between the rates (D), and vertical
+less horizontal for rate and amplitude (DVH). Under
 them, a plain line for each condition found in a position's sound: no
 regular beat (with its timing scatter), clipping, or under 10 s of
 beats. The figures are `session`'s for the same stretches. It gives no verdict and no
@@ -238,7 +238,8 @@ When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
 **Scope.** The sound itself, beat by beat, like the scope view on a
-Witschi: what the engine heard, high-passed at 1 kHz, not an average. A
+Witschi (whose training course, doc. 71.1010D35e p. 12, gives the
+same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not an average. A
 tab beside the Tick Tock Profile, set in the Scope section of the sidebar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
@@ -256,7 +257,8 @@ headers (`span.rs`). No crosshair, as on the other sound plots.
 **Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating
 exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
-before that clock's beat is early, after it late, the words Witschi uses.
+before that clock's beat is early, after it late, the words Witschi's
+training course uses (doc. 71.1010D35e p. 6).
 Along it is time; both axes are labelled, in ms across and in minutes and
 seconds along, and every grid line is drawn alike. **Rate Line** (on by
 default) draws the Rate reading as a thin solid red line over the beats it was
