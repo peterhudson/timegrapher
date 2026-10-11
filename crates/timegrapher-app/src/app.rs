@@ -2760,13 +2760,17 @@ impl TimegrapherApp {
             }
             _ => {
                 theme::row(ui, "Input Level", Some(hint), |ui| {
-                    ui.label(
-                        RichText::new(if cfg!(target_os = "linux") {
-                            "not adjustable here"
-                        } else {
-                            "set it in the system's sound settings"
-                        })
-                        .color(pal.text_secondary),
+                    // Wrapped, so a longer line doesn't widen the sidebar.
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(if cfg!(target_os = "linux") {
+                                "not adjustable here"
+                            } else {
+                                "set it in the system's sound settings"
+                            })
+                            .color(pal.text_secondary),
+                        )
+                        .wrap(),
                     );
                 });
             }
@@ -4798,6 +4802,14 @@ impl eframe::App for TimegrapherApp {
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
         }
+    }
+
+    /// What shows where no panel paints (the seam beside the sidebar): the
+    /// window colour, not eframe's near-black.
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        theme::palette(visuals.dark_mode)
+            .window
+            .to_normalized_gamma_f32()
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
