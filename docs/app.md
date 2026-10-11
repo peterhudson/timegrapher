@@ -322,7 +322,9 @@ time axis lines up: the strip and the charts keep the same width of axis
 on the left and of overlay scales on the right, so their times sit one
 above the other. In Strip mode the strip sets the time, so only the
 vertical scale can be dragged or zoomed. Wherever the pointer is on the
-strip or a chart, a thin line marks that moment on all of them. With the pointer
+strip or a chart, a thin line marks that moment on all of them, and on the
+strip a label gives its time from the start to the hundredth of a second
+(such as 1:23.45). With the pointer
 anywhere over a chart, a vertical line marks that moment and a box lists
 every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
