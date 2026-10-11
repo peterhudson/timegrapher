@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timegrapher</title>
+<!--
+  The MCP App view: the chat app shows this page next to a tool's result and
+  hands it the result (docs/mcp.md). It draws the readings the way the
+  desktop app does, from the tool's JSON alone: no scripts or fonts from
+  elsewhere, no network.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --window: #f2f2f5; --card: #ffffff; --control: #e9e9ee; --separator: #dcdce1;
+  --text: #1d1d1f; --text2: #6e6e73; --text3: #9a9aa0;
+  --tick: #0068c9; --tock: #c45100;
+  --rate: #d70015; --amplitude: #8944ab; --beat-error: #8a6d00;
+  --good: #248a3d; --warn: #b25000; --bad: #d70015;
+  --unlock: #248a3d; --drop: #5856d6; --peak: #5856d6; --sound: #7f6545;
+  --grid: rgba(29, 29, 31, 0.12); --tolerance: rgba(36, 138, 61, 0.16);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --window: #161618; --card: #232326; --control: #343438; --separator: #303034;
+  --text: #f5f5f7; --text2: #a1a1a6; --text3: #6e6e73;
+  --tick: #64d2ff; --tock: #ff9f0a;
+  --rate: #ff453a; --amplitude: #bf5af2; --beat-error: #ffd60a;
+  --good: #30d158; --warn: #ffb340; --bad: #ff453a;
+  --unlock: #30d158; --drop: #7d7aff; --peak: #7d7aff; --sound: #ac8e68;
+  --grid: rgba(245, 245, 247, 0.12); --tolerance: rgba(48, 209, 88, 0.18);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--window); color: var(--text);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  padding: 12px;
+}
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--text2); }
+.sub { color: var(--text2); font-size: 12px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.card { background: var(--card); border-radius: 10px; padding: 12px; margin: 0 0 10px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0 0 10px; }
+.tile { background: var(--card); border-radius: 10px; padding: 10px 12px; }
+.tile .label { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+.tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .unit { font-size: 13px; color: var(--text2); font-weight: 400; }
+.tile .note { font-size: 12px; color: var(--text2); }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.notice { border-left: 4px solid var(--warn); }
+.notice b { display: block; margin-bottom: 2px; }
+.dot { border-radius: 50%; width: 8px; height: 8px; }
+/* The legend sits inside the plot, top right, as the app's does. */
+.legend {
+  position: absolute; display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  font-size: 11px; color: var(--text); padding: 3px 6px; border-radius: 5px;
+  background: color-mix(in srgb, var(--card) 85%, transparent); pointer-events: none;
+}
+.legend.above { position: static; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; gap: 2px 12px; padding: 0 0 4px; background: none; }
+.legend > span { display: inline-flex; align-items: center; gap: 5px; }
+svg.key { display: inline-block; }
+.side { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin: 0 0 3px; min-width: 0; }
+.side .sum { color: var(--text2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+svg { display: block; max-width: 100%; height: auto; }
+svg text { fill: var(--text2); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .plot { fill: var(--card); stroke: var(--separator); stroke-width: 1; }
+svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg .zero { stroke: var(--text3); stroke-width: 1; }
+svg .tol { fill: var(--tolerance); }
+svg .cursor { stroke: var(--text3); stroke-width: 1; }
+.tolkey { display: inline-block; vertical-align: -1px; background: var(--tolerance); border: 1px solid var(--good); }
+.chart { position: relative; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--card); color: var(--text);
+  border: 1px solid var(--separator); border-radius: 6px; padding: 4px 8px; font-size: 12px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); display: none;
+  font-variant-numeric: tabular-nums;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--separator); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text2); font-weight: 500; }
+.out { color: var(--bad); font-weight: 600; }
+.sub.off { margin: 4px 0 0; }
+.hint { color: var(--text2); font-size: 12px; margin: -2px 0 8px; }
+svg text.out { font-weight: 600; }
+.findings { list-style: none; margin: 0; padding: 0; }
+.findings li { padding: 8px 0; border-bottom: 1px solid var(--separator); }
+.findings li:last-child { border-bottom: none; }
+.sev { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 6px; }
+.sev-fault, .sev-serious { color: var(--bad); }
+.sev-warning, .sev-warn { color: var(--warn); }
+.sev-note, .sev-info { color: var(--text2); }
+.findings .evidence, .findings .advice { color: var(--text2); font-size: 12px; margin-top: 2px; }
+.empty { color: var(--text2); padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div id="root"><p class="empty">Waiting for the reading…</p></div>
+<script>
+"use strict";
+
+// ---- The host bridge (MCP Apps, JSON-RPC over postMessage) -------------
+
+let nextId = 1;
+const pending = new Map();
+
+function send(msg) { window.parent.postMessage(msg, "*"); }
+
+function request(method, params) {
+  const id = nextId++;
+  send({ jsonrpc: "2.0", id, method, params });
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+function notify(method, params) { send({ jsonrpc: "2.0", method, params: params || {} }); }
+
+function applyContext(ctx) {
+  if (!ctx) return;
+  if (ctx.theme === "dark" || ctx.theme === "light") {
+    document.documentElement.dataset.theme = ctx.theme;
+  }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const msg = event.data;
+  if (!msg || msg.jsonrpc !== "2.0") return;
+  if (msg.id != null && pending.has(msg.id) && !msg.method) {
+    const { resolve, reject } = pending.get(msg.id);
+    pending.delete(msg.id);
+    msg.error ? reject(msg.error) : resolve(msg.result);
+    return;
+  }
+  if (msg.method === "ui/notifications/tool-result") render(msg.params || {});
+  else if (msg.method === "ui/notifications/host-context-changed") { applyContext(msg.params); redraw(); }
+});
+
+if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+  document.documentElement.dataset.theme = "dark";
+}
+
+request("ui/initialize", {
+  protocolVersion: "2026-01-26",
+  clientInfo: { name: "timegrapher-charts", version: "1" },
+  appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
+}).then((result) => {
+  applyContext(result && result.hostContext);
+  notify("ui/notifications/initialized");
+}).catch(() => notify("ui/notifications/initialized"));
+
+let lastWidth = 0;
+window.addEventListener("resize", () => {
+  const w = document.getElementById("root").clientWidth;
+  if (Math.abs(w - lastWidth) > 4) { lastWidth = w; redraw(); }
+});
+
+let lastHeight = 0;
+new ResizeObserver(() => {
+  const height = Math.ceil(document.documentElement.scrollHeight);
+  if (height !== lastHeight) {
+    lastHeight = height;
+    notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height });
+  }
+}).observe(document.body);
+
+// ---- Formatting ---------------------------------------------------------
+
+// The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
+const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
+const POSITIONS = {
+  CH: ["DU", "Dial Up"], CB: ["DD", "Dial Down"], "3H": ["CU", "Crown Up"],
+  "6H": ["CL", "Crown Left"], "9H": ["CD", "Crown Down"], "12H": ["CR", "Crown Right"],
+};
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function num(v, digits) { return Number.isFinite(v) ? v.toFixed(digits) : "–"; }
+function signed(v, digits) { return Number.isFinite(v) ? (v > 0 ? "+" : "") + v.toFixed(digits) : "–"; }
+function abs(v) { return Number.isFinite(v) ? Math.abs(v) : v; }
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// `note` is HTML: callers build it from numbers or escape it.
+function tile(label, color, value, unit, note, suffix) {
+  return `<div class="tile"><div class="label">${color ? `<span class="swatch" style="background:var(${color})"></span>` : ""}${esc(label)}</div>
+    <div class="value">${value}${suffix ? esc(suffix) : ""}${unit && unit.length <= 4 ? `<span class="unit">${unit.startsWith("°") ? "" : " "}${esc(unit)}</span>` : ""}</div>${unit && unit.length > 4 ? `<div class="unit">${esc(unit)}</div>` : ""}${note ? `<div class="note">${note}</div>` : ""}</div>`;
+}
+
+// ---- Charts (inline SVG), drawn as the app's plots ------------------------
+//
+// As in the app (/mnt/project-files/app/chart-style.md on the project, and
+// theme.rs): the plot is the card's colour with a faint grid, the units are on
+// the value axis, time reads m:ss, and nothing is drawn outside the plot:
+// marks are clipped to it and values off the scale are counted below it.
+
+// Room for one character of the 11px axis text.
+const CHAR_W = 6.6;
+// The app's time steps (theme::TIME_STEPS), seconds.
+const TIME_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+  3600, 7200, 10800, 21600, 43200, 86400, 172800];
+// The app's line styles.
+const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5" };
+
+// Charts are drawn at the width they are shown, so their text stays at its size.
+function chartWidth() {
+  return Math.max(300, (document.getElementById("root").clientWidth || 640) - 24);
+}
+
+// Grid values at least `minPx` apart, on steps of 1, 2 and 5 (or the ladder's).
+function gridFor(lo, hi, px, minPx, ladder) {
+  if (!(hi > lo)) return { step: 1, ticks: [] };
+  const want = (hi - lo) / Math.max(1, px / minPx);
+  let step;
+  if (ladder) step = ladder.find((s) => s >= want) || ladder[ladder.length - 1];
+  else {
+    const p = Math.pow(10, Math.floor(Math.log10(want)));
+    step = [1, 2, 5, 10].map((m) => m * p).find((s) => s >= want * (1 - 1e-9));
+  }
+  const ticks = [];
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return { step, ticks };
+}
+
+// An axis value as the app writes it: decimals from the step, the unit, no "-0".
+function axisLabel(v, step, unit) {
+  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+  if (Math.abs(v) < step * 1e-6) v = 0;
+  return v.toFixed(d) + (unit || "");
+}
+
+// strip::fmt_time: m:ss, or h:mm:ss from an hour.
+function fmtTime(t) {
+  const s = Math.round(Math.max(0, t));
+  const pad = (n) => String(n).padStart(2, "0");
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
+    : `${Math.floor(s / 60)}:${pad(s % 60)}`;
+}
+
+// The app's scale for its charts: the 2nd to 98th percentile, padded, so one
+// glitch doesn't flatten the line.
+function percentileRange(values) {
+  if (values.length < 2) return null;
+  const ys = values.slice().sort((a, b) => a - b);
+  const q = (f) => ys[Math.round((ys.length - 1) * f)];
+  const lo = q(0.02), hi = q(0.98);
+  const pad = Math.max((hi - lo) * 0.15, 0.05);
+  return [lo - pad, hi + pad];
+}
+
+let clipCount = 0;
+
+// The plot's background and the clip that keeps the marks inside it.
+function plotArea(x, y, w, h) {
+  const id = "clip" + (++clipCount);
+  return {
+    id,
+    svg: `<defs><clipPath id="${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath></defs>
+      <rect class="plot" x="${x}" y="${y}" width="${w}" height="${h}" rx="3"/>`,
+  };
+}
+
+function lineSample(s) {
+  return `<svg class="key" width="18" height="8" viewBox="0 0 18 8"><line x1="1" x2="17" y1="4" y2="4" stroke="var(${s.color})" stroke-width="${s.main === false ? 1.5 : 2}"${s.dash ? ` stroke-dasharray="${DASH[s.dash]}"` : ""}${s.opacity ? ` opacity="${s.opacity}"` : ""}/></svg>`;
+}
+
+// A line chart with one value axis.
+//   series: [{name, color, key, dash, opacity, main, points: [[x, y]], band: [[x, lo, hi]]}]
+//   unit, decimals: the value's; time: x is seconds, read m:ss; xUnit otherwise
+//   robust: scale to the 2nd to 98th percentile; yRange: [lo, hi] instead
+//   marks: [{x, color, label, width, dash, row}]; hlines: [{y, color, dash}]
+//   hover: false for no readout (the sound plots have none, as in the app)
+function lineChart(o) {
+  const W = chartWidth(), H = o.height || 150, T = 4, B = 20, R = 6;
+  const ys = [], xs = [];
+  for (const s of o.series) {
+    for (const [x, y] of s.points) if (Number.isFinite(y)) { xs.push(x); ys.push(y); }
+    for (const [x, lo, hi] of s.band || []) { xs.push(x); ys.push(lo, hi); }
+  }
+  if (!ys.length) return `<p class="empty">No ${esc(o.title || "data")} to draw.</p>`;
+  const lo = Math.min(...ys), hi = Math.max(...ys);
+  let [y0, y1] = o.yRange || [lo - (hi - lo) * 0.08, hi + (hi - lo) * 0.08];
+  if (o.robust && !o.yRange) {
+    const r = percentileRange(ys);
+    if (r) [y0, y1] = r;
+  }
+  if (y1 - y0 < (o.minSpan || 1e-9)) { const m = (y0 + y1) / 2, h = (o.minSpan || 1) / 2; y0 = m - h; y1 = m + h; }
+  let [x0, x1] = o.xRange || [Math.min(...xs), Math.max(...xs)];
+  if (!(x1 > x0)) x1 = x0 + 1;
+  const plotH = H - T - B;
+  const yg = gridFor(y0, y1, plotH, 30);
+  const ylab = yg.ticks.map((v) => [v, axisLabel(v, yg.step, o.unit)]);
+  const L = Math.ceil(10 + CHAR_W * Math.max(3, ...ylab.map(([, t]) => t.length)));
+  const plotW = W - L - R;
+  // At least three or four labels on a narrow chart.
+  const xMin = Math.min(80, plotW / 4);
+  const xg = o.time ? gridFor(x0, x1, plotW, xMin, TIME_STEPS) : gridFor(x0, x1, plotW, xMin);
+  const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
+  const sy = (y) => T + (y1 - y) / (y1 - y0) * plotH;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, inside = "";
+  for (const [v, t] of ylab) {
+    inside += `<line class="grid" x1="${L}" x2="${L + plotW}" y1="${sy(v)}" y2="${sy(v)}"/>`;
+    g += `<text x="${L - 5}" y="${sy(v) + 4}" text-anchor="end">${esc(t)}</text>`;
+  }
+  for (const v of xg.ticks) {
+    inside += `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${T + plotH}"/>`;
+    const t = o.time ? fmtTime(v) : axisLabel(v, xg.step, o.xUnit);
+    // The first and last labels stay inside the chart.
+    const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
+  }
+  for (const h of o.hlines || []) {
+    inside += `<line x1="${L}" x2="${L + plotW}" y1="${sy(h.y)}" y2="${sy(h.y)}" stroke="var(${h.color})" stroke-width="1"${h.dash ? ` stroke-dasharray="${DASH[h.dash]}"` : ""}/>`;
+  }
+  for (const s of o.series) {
+    if (s.band && s.band.length) {
+      const top = s.band.map(([x, , hi]) => `${sx(x).toFixed(1)},${sy(hi).toFixed(1)}`);
+      const bottom = s.band.slice().reverse().map(([x, lo]) => `${sx(x).toFixed(1)},${sy(lo).toFixed(1)}`);
+      inside += `<polygon points="${top.concat(bottom).join(" ")}" fill="var(${s.color})" opacity="0.25"/>`;
+    }
+  }
+  for (const m of o.marks || []) {
+    inside += `<line x1="${sx(m.x)}" x2="${sx(m.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${m.color})" stroke-width="${m.width || 1.5}"${m.dash ? ` stroke-dasharray="${DASH[m.dash]}"` : ""}/>`;
+  }
+  // Main lines last, so they are on top.
+  for (const s of o.series.slice().sort((a, b) => (a.main !== false) - (b.main !== false))) {
+    let d = "", pen = false;
+    for (const [x, y] of s.points) {
+      if (!Number.isFinite(y)) { pen = false; continue; }
+      d += `${pen ? "L" : "M"}${sx(x).toFixed(1)},${sy(y).toFixed(1)}`;
+      pen = true;
+    }
+    inside += `<path d="${d}" fill="none" stroke="var(${s.color})" stroke-width="${s.main === false ? 1.2 : 1.8}"${s.dash ? ` stroke-dasharray="${DASH[s.dash]}"` : ""}${s.opacity ? ` opacity="${s.opacity}"` : ""} stroke-linejoin="round"/>`;
+  }
+  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
+  g += markLabels(o.marks || [], sx, L, L + plotW, T);
+  const id = "c" + (++clipCount);
+  charts.set(id, { o, sx, x0, x1, L, plotW, W, T, plotH });
+  // Values off the scale are counted under the chart.
+  let off = 0;
+  for (const s of o.series) for (const [, y] of s.points) if (y < y0 || y > y1) off++;
+  const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "outlier" : "outliers"} off the scale</p>` : "";
+  const legend = o.series.length > 1 || o.legend
+    // Inside the plot, as in the app, where there is room; above it on a phone.
+    ? `<div class="legend${W < 520 ? " above" : ""}" style="top:${T + 4}px;right:${R + 4}px">${o.series.map((s) =>
+      `<span>${esc(s.name)}${lineSample(s)}${s.key && s.key !== s.color ? `<span class="swatch dot" style="background:var(${s.key})"></span>` : ""}</span>`).join("")}</div>` : "";
+  const hover = o.hover === false ? "" : `<line class="cursor" x1="0" x2="0" y1="${T}" y2="${T + plotH}" style="display:none"/>
+    <rect x="${L}" y="${T}" width="${plotW}" height="${plotH}" fill="transparent"/>`;
+  const above = W < 520;
+  return `${above ? legend : ""}<div class="chart"${o.hover === false ? "" : ` data-chart="${id}"`}><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}${hover}</svg>${above ? "" : legend}<div class="tip"></div></div>${offNote}`;
+}
+
+// Each mark named along the top of the plot in its colour, just right of its
+// line, moved down a row where it would run into another (profiles::label_marks).
+function markLabels(marks, sx, left, right, top) {
+  let out = "";
+  const ends = [];
+  const groups = [...new Set(marks.map((m) => m.group || 0))];
+  for (const gname of groups) {
+    const first = ends.length;
+    const ms = marks.filter((m) => (m.group || 0) === gname && m.label && sx(m.x) >= left && sx(m.x) <= right)
+      .sort((a, b) => a.x - b.x);
+    for (const m of ms) {
+      const x = sx(m.x), w = m.label.length * CHAR_W;
+      // A label that would leave the plot sits left of its line instead.
+      const flip = x + 3 + w > right;
+      const from = flip ? x - 3 - w : x + 3;
+      let row = -1;
+      for (let r = first; r < ends.length; r++) if (ends[r] + 4 < from) { row = r; break; }
+      if (row < 0) { row = ends.length; ends.push(0); }
+      ends[row] = Math.max(ends[row], from + w);
+      out += `<text x="${flip ? x - 3 : x + 3}" y="${top + 12 + row * 13}" text-anchor="${flip ? "end" : "start"}" style="fill:var(${m.color})">${esc(m.label)}</text>`;
+    }
+  }
+  return out;
+}
+
+const charts = new Map();
+
+function nearest(points, x) {
+  let best = null, bd = Infinity;
+  for (const p of points) { const d = Math.abs(p[0] - x); if (d < bd && Number.isFinite(p[1])) { bd = d; best = p; } }
+  return best;
+}
+
+// Every line's value at the pointer, in one box, as the app does.
+function wireCharts(root) {
+  for (const el of root.querySelectorAll(".chart[data-chart]")) {
+    const c = charts.get(el.dataset.chart);
+    if (!c) continue;
+    const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), cursor = el.querySelector(".cursor");
+    svg.addEventListener("pointermove", (ev) => {
+      const box = svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * c.W;
+      if (px < c.L || px > c.L + c.plotW) { tip.style.display = "none"; cursor.style.display = "none"; return; }
+      const x = c.x0 + (px - c.L) / c.plotW * (c.x1 - c.x0);
+      const rows = [];
+      let at = x;
+      for (const s of c.o.series) {
+        const p = nearest(s.points, x);
+        if (p) {
+          at = p[0];
+          rows.push(`<span class="swatch dot" style="display:inline-block;background:var(${s.key || s.color})"></span> ${esc(s.name)} ${esc(p[1].toFixed(c.o.decimals || 0) + (c.o.unit || ""))}`);
+        }
+      }
+      if (!rows.length) return;
+      cursor.setAttribute("x1", c.sx(at)); cursor.setAttribute("x2", c.sx(at)); cursor.style.display = "";
+      tip.innerHTML = `<div style="color:var(--text2)">${esc(c.o.time ? fmtTime(at) : at.toFixed(2) + (c.o.xUnit || ""))}</div>${rows.join("<br>")}`;
+      tip.style.display = "block";
+      const left = (c.sx(at) / c.W) * box.width;
+      tip.style.left = Math.min(Math.max(0, left + 10), box.width - tip.offsetWidth) + "px";
+      tip.style.top = (c.T + 4) + "px";
+    });
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cursor.style.display = "none"; });
+  }
+}
+
+function timeLabel(s) {
+  if (!Number.isFinite(s)) return "";
+  if (s < 120) return `${s.toFixed(0)} s`;
+  if (s < 7200) return `${(s / 60).toFixed(1)} min`;
+  return `${(s / 3600).toFixed(2)} h`;
+}
+
+// ---- Views ----------------------------------------------------------------
+
+// The app's three charts over time: rate, amplitude and beat error, each in
+// its reading's colour.
+function stripCards(strip) {
+  if (!strip) return "";
+  const has = (k) => strip[k] && strip[k].length;
+  const cards = [];
+  if (has("rate")) {
+    cards.push(["Rate", "The rate over the whole recording", lineChart({
+      title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
+      series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
+    })]);
+  }
+  if (has("amplitude")) {
+    cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
+      title: "Amplitude", time: true, legend: true, robust: true, unit: "°", decimals: 0, minSpan: 4,
+      series: [
+        { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
+        { name: "Amplitude from Tick", color: "--amplitude", key: "--tick", dash: "dashed", main: false, points: strip.amplitude_tick || [] },
+        { name: "Amplitude from Tock", color: "--amplitude", key: "--tock", dash: "dotted", main: false, points: strip.amplitude_tock || [] },
+      ].filter((s) => s.points.length),
+    })]);
+  }
+  if (has("beat_error_unlock") || has("beat_error_drop")) {
+    cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
+      title: "Beat Error", time: true, legend: true, robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
+      series: [
+        { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
+        { name: "From the Drop", color: "--beat-error", opacity: 0.6, dash: "dashed", main: false, points: strip.beat_error_drop || [] },
+      ].filter((s) => s.points.length),
+    })]);
+  }
+  return cards.map(([title, hint, chart]) => `<div class="card"><h2>${title}</h2><p class="hint">${hint}</p>${chart}</div>`).join("");
+}
+
+// profiles::summary
+function profileSummary(p) {
+  const ms = (v) => Number.isFinite(v) ? `${signed(v, 2)} ms` : "not found";
+  let s = `${p.beats} beats · unlock ${ms(p.unlock_ms)} · drop ${ms(p.drop_ms)}`;
+  if (Number.isFinite(p.unlock_ms) && Number.isFinite(p.drop_ms)) s += ` · unlock to drop ${num(p.drop_ms - p.unlock_ms, 2)} ms`;
+  s += Number.isFinite(p.amplitude_deg) ? ` · amplitude ${num(p.amplitude_deg, 0)}°` : " · amplitude out of range";
+  return s;
+}
+
+// The Tick and Tock sounds as the app's sound pane draws them: Tick above
+// Tock on one scale and one clock, each with the band 80% of beats fall in,
+// the noise floor, the engine's edges and the three sounds, and no readout.
+// `dropBeatError` (ms) puts the two on the shared clock, as the app does.
+function profileCard(p, title, dropBeatError) {
+  if (!p || !p.a || !p.b) return "";
+  const shift = Number.isFinite(dropBeatError) ? [dropBeatError / 2, -dropBeatError / 2] : [0, 0];
+  const sides = [p.a, p.b];
+  const top = Math.max(1e-6, ...sides.flatMap((s) => s.p90 || s.median || []));
+  const xs = sides.flatMap((s, k) => (s.median || []).length ? [s.t0_ms + shift[k], s.t0_ms + shift[k] + (s.median.length - 1) * s.step_ms] : []);
+  const xRange = [Math.min(...xs), Math.max(...xs)];
+  const plot = (s, k) => {
+    const dx = shift[k], color = k ? "--tock" : "--tick";
+    const x = (i) => s.t0_ms + dx + i * s.step_ms;
+    const pts = (s.median || []).map((v, i) => [x(i), v]);
+    const band = s.p10 && s.p90 ? s.p10.map((lo, i) => [x(i), lo, s.p90[i]]) : [];
+    const marks = [];
+    for (const [label, at, c, w] of [["Unlock", s.unlock_ms, "--unlock", 1.5], ["Drop", s.drop_ms, "--drop", 1.5], ["Peak", s.peak_ms, "--peak", 1]]) {
+      if (Number.isFinite(at)) marks.push({ x: at + dx, color: c, width: w, label, group: 0 });
+    }
+    for (const [label, at] of [["1 Unlock", s.sound1_ms], ["2 Impulse", s.sound2_ms], ["3 Drop", s.sound3_ms]]) {
+      if (Number.isFinite(at)) marks.push({ x: at + dx, color: "--sound", width: 1.2, dash: "loose", label, group: 1 });
+    }
+    return `<div class="side"><span class="swatch dot" style="background:var(${color})"></span><b style="color:var(${color})">${k ? "Tock" : "Tick"}</b><span class="sum">${esc(profileSummary(s))}</span></div>${lineChart({
+      title: k ? "Tock" : "Tick", height: 130, hover: false, xUnit: " ms", xRange, yRange: [0, top * 1.08],
+      series: [{ name: k ? "Tock" : "Tick", color, points: pts, band }],
+      hlines: Number.isFinite(s.floor) ? [{ y: s.floor, color: "--text3", dash: "dashed" }] : [],
+      marks,
+    })}`;
+  };
+  return `<div class="card"><h2>${esc(title || "Tick and Tock")}</h2><p class="hint">The typical tick and tock sound, with the edges the readings come from</p>${plot(p.a, 0)}<div style="height:6px"></div>${plot(p.b, 1)}</div>`;
+}
+
+function fileName(doc) {
+  const f = doc.input && doc.input.files && doc.input.files[0];
+  return f && f.path ? String(f.path).split(/[\\/]/).pop() : "";
+}
+
+function recordingView(doc, extra) {
+  const name = fileName(doc);
+  const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
+  if (doc.watch_heard === false) {
+    return head + `<div class="card notice"><b>No Watch Heard</b>The beats are no steadier than noise, so there are no readings to show. Check that the watch is on the microphone and running, then record again.</div>`;
+  }
+  const o = doc.overall || {};
+  // The headline beat error is the unlock's, signed, with the drop's beside
+  // it, as on the app's card.
+  const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
+  const be = Number.isFinite(unlock) ? unlock : drop;
+  const beNote = Number.isFinite(unlock)
+    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${signed(drop, 2)} ms` : ""}` : "from the drop";
+  const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
+    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
+  // The headline rate is corrected for the sound card's clock where the
+  // recording tells it (rate_corrected_s_per_day), as in the CLI's text.
+  const conf = doc.confidence || {};
+  const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
+  const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
+  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
+  let html = head + `<div class="tiles">
+    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+    ${tile("Beat Error", "--beat-error", signed(be, 2), "milliseconds", beNote)}
+    ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
+  </div>`;
+  if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
+  html += stripCards(extra && extra.strip);
+  html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
+  return html;
+}
+
+function sessionView(doc) {
+  const rep = doc.report || {};
+  const tol = rep.tolerance || {};
+  // Keep each reading's index: the verdicts are listed in the same order.
+  const readings = (doc.readings || []).map((r, i) => Object.assign({ index: i }, r));
+  const rank = (r) => { const k = ORDER.indexOf(r.position); return k < 0 ? ORDER.length : k; };
+  readings.sort((a, b) => rank(a) - rank(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
+  const title = [doc.watch, doc.calibre].filter(Boolean).join(" · ");
+  let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°${tol.name ? ` · tolerance ${esc(tol.name)}` : ""}</p>`;
+  const state = (rep.states || [])[0];
+  if (state) {
+    html += `<div class="tiles">
+      ${tile("Mean Rate", "--rate", signed(state.x, 1), "s/d", "")}
+      ${tile("Largest Difference", "--rate", num(state.d_rate, 1), "s/d", "between positions")}
+      ${tile("Mean Amplitude", "--amplitude", num(state.amplitude_mean, 0), "°", Number.isFinite(state.dvh_amplitude) ? `vertical minus horizontal ${signed(state.dvh_amplitude, 0)}°` : "")}
+    </div>`;
+  }
+  const verdicts = rep.verdicts || [];
+  const cell = (v, verdict, digits, sign) => {
+    const text = sign ? signed(v, digits) : num(v, digits);
+    return verdict && verdict !== "within" ? `<td class="out" title="Outside tolerance">${text}</td>` : `<td>${text}</td>`;
+  };
+  html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
+  readings.forEach((r) => {
+    const m = r.measurement || {};
+    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const v = verdicts[r.index] || {};
+    const heard = m.watch_heard !== false;
+    html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
+      (heard ? cell(m.rate_s_per_day, v.rate, 1, true) + cell(m.amplitude_deg, v.amplitude, 0) +
+        cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), v.beat_error, 2)
+        : `<td colspan="3" style="text-align:center;color:var(--text2)">No watch heard</td>`) +
+      `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
+  if (heard.length) {
+    const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
+    const horizontal = (r) => r.position === "CH" || r.position === "CB";
+    const rateTol = Number.isFinite(tol.rate_min) ? [tol.rate_min, tol.rate_max] : null;
+    const ampTol = (r) => (horizontal(r) ? tol.amplitude_h : tol.amplitude_v) || null;
+    const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day, tol: rateTol, out: (verdicts[r.index] || {}).rate && verdicts[r.index].rate !== "within" }));
+    const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg, tol: ampTol(r), out: (verdicts[r.index] || {}).amplitude && verdicts[r.index].amplitude !== "within" }));
+    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate, against the tolerance</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
+    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2><p class="hint">Each position's amplitude, against the tolerance for that position</p>${bars(amp, "--amplitude", "°", 0)}</div>`;
+  }
+  html += findingsCard(rep.findings);
+  return html;
+}
+
+// Horizontal bars from zero, one per position, on a plot area wide enough
+// for every bar and its value. Each row's tolerance is a green band behind
+// its bar; a value outside it is red, as in the table.
+//   rows: [{label, value, tol: [lo, hi] or null, out}]
+function bars(rows, color, unit, decimals) {
+  const W = chartWidth(), rowH = 26, T = 4, B = 20, R = 6;
+  const fmt = (v) => (v > 0 && unit !== "°" ? "+" : "") + v.toFixed(decimals) + unit;
+  const L = Math.ceil(12 + 7 * Math.max(...rows.map((r) => r.label.length)));
+  const plotW = W - L - R, plotH = rowH * rows.length;
+  let lo = 0, hi = 0;
+  for (const r of rows) {
+    lo = Math.min(lo, r.value); hi = Math.max(hi, r.value);
+    if (r.tol) { lo = Math.min(lo, r.tol[0]); hi = Math.max(hi, r.tol[1]); }
+  }
+  if (!(hi > lo)) hi = lo + 1;
+  // Room inside the plot for the values beside the bars' ends.
+  const labelW = 10 + CHAR_W * Math.max(...rows.map((r) => fmt(r.value).length));
+  const padL = rows.some((r) => r.value < 0) ? labelW : 8;
+  const padR = rows.some((r) => r.value >= 0) ? labelW : 8;
+  // The data plus 15% of its span on each side a bar ends, and room for
+  // the values beside the bars' ends.
+  const span = hi - lo, neg = lo < 0, pos = hi > 0;
+  const fl = neg ? 0.15 : 0, fr = pos ? 0.15 : 0;
+  const k = Math.min(
+    (plotW - padL - padR) / span,
+    (plotW - padR) / (span * (1 + fl)),
+    (plotW - padL) / (span * (1 + fr)),
+    plotW / (span * (1 + fl + fr)));
+  const d0 = lo - Math.max(padL / k, fl * span), d1 = d0 + plotW / k;
+  const sx = (v) => L + (v - d0) * k;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, inside = "";
+  const grid = gridFor(d0, d1, plotW, 70);
+  for (const v of grid.ticks) {
+    inside += `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${T + plotH}"/>`;
+    const t = axisLabel(v, grid.step, unit);
+    const anchor = sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(v)}" y="${T + plotH + 15}" text-anchor="${anchor}">${esc(t)}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const y = T + i * rowH;
+    if (r.tol) inside += `<rect class="tol" x="${sx(r.tol[0])}" y="${y + 1}" width="${sx(r.tol[1]) - sx(r.tol[0])}" height="${rowH - 2}"/>`;
+  });
+  inside += `<line class="zero" x1="${sx(0)}" x2="${sx(0)}" y1="${T}" y2="${T + plotH}"/>`;
+  rows.forEach((r, i) => {
+    const y = T + i * rowH, v = r.value;
+    const x0 = Math.min(sx(0), sx(v)), w = Math.max(2, Math.abs(sx(v) - sx(0)));
+    g += `<text x="${L - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" style="fill:var(--text)">${esc(r.label)}</text>`;
+    inside += `<rect x="${x0}" y="${y + 6}" width="${w}" height="${rowH - 12}" rx="3" fill="var(${color})"><title>${esc(r.label)}: ${esc(fmt(v))}</title></rect>`;
+    const right = v >= 0;
+    inside += `<text x="${right ? sx(v) + 5 : sx(v) - 5}" y="${y + rowH / 2 + 4}" text-anchor="${right ? "start" : "end"}" class="${r.out ? "out" : ""}" style="fill:var(${r.out ? "--bad" : "--text"})">${esc(fmt(v))}</text>`;
+  });
+  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
+  const note = rows.some((r) => r.tol) ? `<p class="sub" style="margin:6px 0 0"><span class="swatch tolkey"></span> Tolerance</p>` : "";
+  return `<svg viewBox="0 0 ${W} ${T + plotH + B}" width="${W}" height="${T + plotH + B}" role="img">${g}</svg>${note}`;
+}
+
+function findingsCard(findings) {
+  if (!findings || !findings.length) return "";
+  return `<div class="card"><h2>Findings</h2><ul class="findings">${findings.map((f) => `<li>
+    <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><b>${esc(f.title)}</b>
+    ${f.evidence ? `<div class="evidence">${esc(f.evidence)}</div>` : ""}
+    ${f.advice ? `<div class="advice">${esc(f.advice)}</div>` : ""}</li>`).join("")}</ul></div>`;
+}
+
+function profileView(doc) {
+  const name = fileName(doc);
+  return `<h1>Tick and Tock</h1><p class="sub">${esc(name)}</p>${profileCard(doc, "Tick and Tock Profiles")}`;
+}
+
+// ---- Dispatch -------------------------------------------------------------
+
+let last = null;
+
+function render(result) {
+  last = result;
+  redraw();
+}
+
+function redraw() {
+  const root = document.getElementById("root");
+  if (!last) return;
+  charts.clear();
+  const doc = last.structuredContent;
+  const extra = last._meta && last._meta["timegrapher/charts"];
+  let html;
+  if (last.isError || !doc || !doc.schema) {
+    const text = (last.content || []).map((c) => c.text || "").join("\n");
+    html = `<div class="card notice"><b>No Reading</b>${esc(text || "The tool returned nothing to draw.")}</div>`;
+  } else if (doc.schema.startsWith("timegrapher.analyze/")) {
+    html = recordingView(doc, extra);
+  } else if (doc.schema.startsWith("timegrapher.session/")) {
+    html = sessionView(doc);
+  } else if (doc.schema.startsWith("timegrapher.profile/")) {
+    html = profileView(doc);
+  } else {
+    html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
+  }
+  lastWidth = root.clientWidth;
+  root.innerHTML = html;
+  wireCharts(root);
+}
+</script>
+</body>
+</html>
