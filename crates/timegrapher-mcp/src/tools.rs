@@ -519,15 +519,15 @@ pub fn listens(t: &ToolSpec) -> bool {
 }
 
 /// Plain notes before a result's document, for what the numbers alone do
-/// not say: a microphone check's readings are too short to trust. What
+/// not say: a microphone check's readings come from a few seconds. What
 /// limits a recording's or a test's readings is in its lead (summary.rs).
 pub fn notes(t: &ToolSpec) -> Vec<String> {
     let mut notes = Vec::new();
     if t.name == "check_microphone" {
         notes.push(
-            "The rate and beat error here come from a few seconds of sound and are \
-             too short to trust; they only show that ticks are heard. Do not give them \
-             as the watch's readings: record_position or analyze_recording measures it."
+            "The rate and beat error here come from a few seconds of sound; they show \
+             that ticks are heard. They are not the watch's readings: record_position \
+             or analyze_recording measures it."
                 .to_string(),
         );
     }
@@ -789,7 +789,7 @@ mod tests {
     #[test]
     fn a_quick_check_is_called_out() {
         let mic = find("check_microphone").unwrap();
-        assert!(notes(mic)[0].contains("too short to trust"));
+        assert!(notes(mic)[0].contains("a few seconds of sound"));
         assert!(notes(find("analyze_recording").unwrap()).is_empty());
     }
 

@@ -207,11 +207,10 @@ document, about what the numbers alone do not say:
   the lift angle and whether it was given, the calibre's or the default,
   how many of the expected beats were found and clipped, and whether the
   take was added to the test.
-- `check_microphone`: its rate and beat error come from a few seconds, so
-  they are too short to give as the watch's readings.
+- `check_microphone`: its rate and beat error come from a few seconds of
+  sound, so they are not the watch's readings.
 
-The charts list the caveats under **What Limits These Readings**, and the
-`analyze_recording` charts give each reading's confidence grade.
+The charts list the same facts under **What Limits These Readings**.
 
 The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced

@@ -527,9 +527,9 @@ function recordingView(doc, extra, limits) {
   const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
   const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", graded(Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "", conf.rate))}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", graded(sides, conf.amplitude), "°")}
-    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", graded(beNote, conf.beat_error))}
+    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
   </div>`;
   // The caveats say what limits the readings, clipping among them; a
@@ -653,12 +653,6 @@ function bars(rows, color, unit, decimals) {
 // with the positions it is about when not every one.
 function limitsCard(limits) {
   return `<div class="card"><h2>What Limits These Readings</h2><ul class="findings limits">${limits.map((l) => `<li>${l.where ? `<b>${esc(l.where)}</b> ` : ""}${esc(l.text)}</li>`).join("")}</ul></div>`;
-}
-
-// A tile's note with the reading's confidence grade after it.
-function graded(note, c) {
-  const g = c && c.grade ? `${esc(c.grade)} confidence` : "";
-  return [note, g].filter(Boolean).join(" · ");
 }
 
 function findingsCard(findings) {

@@ -1,7 +1,7 @@
 //! What limits the readings, in words. `analyze` and each `session`
 //! reading carry `caveats[]` (docs/agent-interface.md); this turns them into
-//! plain sentences for the result's lead (summary.rs) and for the views, so both say the
-//! same thing. A position's caveats are grouped across the positions that
+//! plain facts for the result's lead (summary.rs) and for the views, so both say the
+//! same thing, with no grades or advice. A position's caveats are grouped across the positions that
 //! share them, so a caveat every take has is said once.
 
 use serde_json::{json, Value};
@@ -9,65 +9,9 @@ use serde_json::{json, Value};
 /// The `_meta` key the views read the sentences from.
 pub const META_KEY: &str = "timegrapher/limits";
 
-/// One caveat as a sentence, or `None` for a code this server does not
-/// know yet (the model still reads it in the JSON).
-pub fn sentence(c: &Value, lift_deg: Option<f64>) -> Option<String> {
-    let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
-    Some(match c["code"].as_str()? {
-        "no_watch" => "No watch was heard, so there are no readings.".into(),
-        "set_rate_disagrees" => match c["heard"].as_u64() {
-            Some(h) => format!(
-                "The beat rate set for this watch is not the one heard ({h} beats per \
-                 hour), so every reading is poor. Check the calibre or beat rate."
-            ),
-            None => "The beat rate set for this watch is not the one heard, so every \
-                     reading is poor. Check the calibre or beat rate."
-                .into(),
-        },
-        "short_span" => format!(
-            "Only {} s of beats were heard, fewer than the 10 s a sure reading \
-             needs. Record longer.",
-            c["span_s"]
-                .as_f64()
-                .map_or("a few".into(), |s| format!("{s:.0}"))
-        ),
-        "clipped" => format!(
-            "{} of the beats were clipped, so the amplitude and beat error are less \
-             sure. Turn the microphone down.",
-            pct("fraction").map_or("Some".into(), |p| format!("{p:.0}%"))
-        ),
-        "beats_missing" => format!(
-            "Only {} of the beats expected were found, so every reading is less sure. \
-             Check that the watch sits firmly on the microphone and the room is quiet.",
-            pct("fraction").map_or("some".into(), |p| format!("{p:.0}%"))
-        ),
-        "lift_unknown" => match lift_deg {
-            Some(l) => format!(
-                "No calibre or lift angle was given, so the amplitude assumes a lift \
-                 angle of {l}°. Another lift angle changes the amplitude, so ask for the \
-                 calibre."
-            ),
-            None => "The lift angle is a default, not the calibre's, so the amplitude \
-                     is less sure. Ask for the calibre."
-                .into(),
-        },
-        "clock_unknown" => "The sound card's clock was not checked against a \
-                            reference, so the rate is a little less sure."
-            .into(),
-        "breaks" => match c["count"].as_u64() {
-            Some(1) => "The recording was paused once; the readings leave the pause out.".into(),
-            Some(n) => {
-                format!("The recording was paused {n} times; the readings leave the pauses out.")
-            }
-            None => "The recording was paused; the readings leave the pauses out.".into(),
-        },
-        _ => return None,
-    })
-}
-
-/// One caveat as a plain fact, with no judgement of the readings: what the
-/// result leads with for the model. `None` for a code this server does not
-/// know yet.
+/// One caveat as a plain fact, with no judgement of the readings or advice
+/// (that is the skill's), or `None` for a code this server does not know
+/// yet (the model still reads it in the JSON).
 pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
     Some(match c["code"].as_str()? {
@@ -101,7 +45,13 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
                 .into(),
         },
         "clock_unknown" => "The sound card's clock was not checked against a reference.".into(),
-        "breaks" => return sentence(c, lift_deg),
+        "breaks" => match c["count"].as_u64() {
+            Some(1) => "The recording was paused once; the readings leave the pause out.".into(),
+            Some(n) => {
+                format!("The recording was paused {n} times; the readings leave the pauses out.")
+            }
+            None => "The recording was paused; the readings leave the pauses out.".into(),
+        },
         _ => return None,
     })
 }
@@ -130,10 +80,6 @@ fn reading_name(r: &Value) -> String {
 /// about, or is null for a single recording (or every position). Empty for
 /// any other document.
 pub fn limits(doc: &Value) -> Vec<Value> {
-    limits_in(doc, sentence)
-}
-
-fn limits_in(doc: &Value, sentence: fn(&Value, Option<f64>) -> Option<String>) -> Vec<Value> {
     let schema = doc["schema"].as_str().unwrap_or("");
     let lift = doc["input"]["settings"]["lift_deg"]
         .as_f64()
@@ -143,7 +89,7 @@ fn limits_in(doc: &Value, sentence: fn(&Value, Option<f64>) -> Option<String>) -
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|c| sentence(c, lift))
+            .filter_map(|c| fact(c, lift))
             .map(|text| json!({ "where": null, "text": text }))
             .collect();
     }
@@ -156,7 +102,7 @@ fn limits_in(doc: &Value, sentence: fn(&Value, Option<f64>) -> Option<String>) -
     let mut out: Vec<(String, Vec<String>)> = Vec::new();
     for r in &readings {
         for c in r["measurement"]["caveats"].as_array().into_iter().flatten() {
-            let Some(text) = sentence(c, lift) else {
+            let Some(text) = fact(c, lift) else {
                 continue;
             };
             let name = reading_name(r);
@@ -197,10 +143,9 @@ fn join(names: &[String]) -> String {
     }
 }
 
-/// The caveats as plain facts for the model, grouped as `limits` groups
-/// them.
+/// The same facts as lines for the model's lead.
 pub fn notes(doc: &Value) -> Vec<String> {
-    limits_in(doc, fact)
+    limits(doc)
         .into_iter()
         .map(|l| match l["where"].as_str() {
             Some(w) => format!("{w}: {}", l["text"].as_str().unwrap_or("")),
@@ -271,6 +216,34 @@ mod tests {
             said[0].starts_with("Dial Down: No watch was heard") && said[0].contains("span 3 s"),
             "{said:?}"
         );
+    }
+
+    #[test]
+    fn the_facts_carry_no_grades_or_advice() {
+        let codes = json!([
+            { "code": "no_watch" }, { "code": "set_rate_disagrees", "heard": 21600 },
+            { "code": "short_span", "span_s": 4.0 }, { "code": "clipped", "fraction": 0.03 },
+            { "code": "beats_missing", "fraction": 0.8 }, { "code": "lift_unknown" },
+            { "code": "clock_unknown" }, { "code": "breaks", "count": 2 },
+        ]);
+        for c in codes.as_array().unwrap() {
+            for lift in [Some(52.0), None] {
+                let s = fact(c, lift).unwrap().to_lowercase();
+                for word in [
+                    "sure",
+                    "poor",
+                    "fair",
+                    "good",
+                    "trust",
+                    "check the",
+                    "turn ",
+                    "ask for",
+                    "record longer",
+                ] {
+                    assert!(!s.contains(word), "{word}: {s}");
+                }
+            }
+        }
     }
 
     #[test]

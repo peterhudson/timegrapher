@@ -177,7 +177,9 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
         lines.push(if n == 0 {
             "No beats were clipped.".to_string()
         } else {
-            format!("{n} beats ({pct:.1}%) were clipped.")
+            let beats = if n == 1 { "beat" } else { "beats" };
+            let were = if n == 1 { "was" } else { "were" };
+            format!("{n} {beats} ({pct:.1}%) {were} clipped.")
         });
     }
     lines.push(
