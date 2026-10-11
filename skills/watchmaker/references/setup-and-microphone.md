@@ -128,8 +128,8 @@ live `doctor` checks again and reports the result under `after`.
 
 The signal figure (`signal_x`) is how many times louder the typical
 beat is than the background between beats. What each level is good for
-is the project's rule of thumb, from its added-noise tests of
-2026-10-09, not a property of the microphone; some builds print it as a
+is the project's rule of thumb, from its own added-noise tests of
+2026-10-09 (not yet published), not a property of the microphone; some builds print it as a
 band word (`signal_band`), which you should not repeat:
 
 | Signal | What the project's tests found could be trusted |

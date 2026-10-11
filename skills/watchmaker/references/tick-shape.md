@@ -141,7 +141,7 @@ error's within 0.1 ms, and a side has at least 5 windows measured.
 The program's session report also noted two shapes: sound 1 as loud as
 the drop (the `ratio13` rule above), and extra sounds around the beat
 (`extra_pre` and `extra_post`, `windows_with_extra_pre`), which Witschi's
-course links to the safety pin (dart) touching the roller, too little
+*Testing methods for mechanical watches* (2025, "Fault Detection") links to the safety pin (dart) touching the roller, too little
 impulse-pin clearance, and the impulse pin knocking the fork horn.
 
 How to report what they find:

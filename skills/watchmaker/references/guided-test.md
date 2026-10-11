@@ -260,7 +260,7 @@ offer a long run: an hour or more in that one position, read with
 ## A worked example: a Rolex 3235, dial up for two hours
 
 The take `ym42_DU_2h` in the project's public test corpus is a Rolex
-3235 (28,800 bph, lift angle 55° from the calibre table) recorded dial up
+3235 (28,800 bph, the lift angle from the program's calibre table) recorded dial up
 for two hours in twelve ten-minute files, one `session` reading each.
 What `session` says, and how to reason from it:
 

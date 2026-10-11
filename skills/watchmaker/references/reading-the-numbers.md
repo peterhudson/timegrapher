@@ -68,7 +68,7 @@ hours. Otherwise Witschi's training course: 250–330° horizontal and
 250–270° vertical, with a worked example going down to 220° vertical.
 Under 200° fully wound and vertical more than 50° below horizontal are
 the project's rules of thumb for "worth saying"; 330° is the amplitude
-Witschi's course names as causing knocking, and only jumps in the trace
+Witschi's course (p. 15) names as causing knocking, and only jumps in the trace
 confirm it. Sources and the limits of these figures are in
 [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source).
 
@@ -92,7 +92,7 @@ trend between tests of the same watch and on the trace.
    amplitude while it wears). Around 320–340°, depending
    on the calibre, the impulse pin can strike the outside of the fork horn:
    **knocking**, or rebanking. It upsets the rate and can damage the
-   escapement. Witschi's training course names 330°.
+   escapement. Witschi's training course (p. 15) names 330°.
 
 People who know the trick can make a tired watch look good on a photo
 by raising the lift angle on the machine. Always ask what lift angle was
@@ -217,7 +217,7 @@ not out of spec.
 | --- | --- | --- |
 | COSC / ISO 3159, category 1 (fitting diameter over 20 mm) | −4 to +6 s/d | Uncased movement, five positions (3, 6 and 9 o'clock, dial up, dial down) and several temperatures, 15 days. Also: mean variation 2 s/d, greatest variation 5, horizontal to vertical −6 to +8, largest variation 10, thermal ±0.6, rate resumption ±5 ([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)) |
 | COSC, category 2 (20 mm or under) | −5 to +8 s/d | Same tests; the other limits are a little wider (same source) |
-| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
+| METAS Master Chronometer | 0 to +5 s/d | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
 | Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)) |
 
 ## Positions and the positional delta

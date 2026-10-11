@@ -95,7 +95,7 @@ Rates are measured 1 to 3 hours after full wind.
 | Chronometer | five | "COSC criteria" | | | 0.6 ms |
 
 All grades: amplitude at most 315° dial up fully wound, at least 200° at
-6H after 24 hours; lift angle 50°; 95% of a lot within the limits. The
+6H after 24 hours; 95% of a lot within the limits. The
 mean rate is quoted as ETA prints it: the sheet doesn't say what "12 ±12"
 means, so don't turn it into a range. Sites that write "±12 to ±30 s/d"
 have merged the mean rate with the largest difference.
@@ -103,8 +103,7 @@ have merged the mean rate with the largest difference.
 **Sellita SW200-1**, from Sellita's technical documentation (v06, 2021,
 [copy](https://watchangels-live-171a32ea5b4446588cdf25-2d56b1d.divio-media.com/filer_public/d9/9a/d99abed7-ceec-4b9f-b2dd-cc797de80398/brochure_technique-sw200-1_6.pdf)):
 the same figures as the ETA 2824-2 for Elaboré (Sellita's Spécial) and
-Top (Premium), the same amplitude limits (315° and 200°) and lift angle
-(50°), and a timegrapher set to 20 s to stabilise and 40 s to measure.
+Top (Premium), the same amplitude limits (315° and 200°), and a timegrapher set to 20 s to stabilise and 40 s to measure.
 The SW200-1 sheet lists no Standard grade; Sellita's sheets for its
 sibling calibres give the same Standard figures as ETA's
 ([SW288-1](https://www.sellita.ch/scripts/calibres/images/Brochure_technique-SW288-1_1.pdf)).
@@ -124,10 +123,10 @@ wrist (worn, 5–35 °C), and the technical guides' bench figures.
 
 | Calibre | On the wrist | On the bench |
 | --- | --- | --- |
-| NH35, NH36 | | −20 to +40 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up; posture difference under 60 s; lift angle 53° (SII technical guide, NH3 series, [copy](https://cousinsuk.com/pdf/categories/6810_seiko%20nh3%20series%20part%20sheet.pdf)); NH36A at 23 ± 2 °C ([copy](https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf)) |
+| NH35, NH36 | | −20 to +40 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up; posture difference under 60 s (SII technical guide, NH3 series, [copy](https://cousinsuk.com/pdf/categories/6810_seiko%20nh3%20series%20part%20sheet.pdf)); NH36A at 23 ± 2 °C ([copy](https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf)) |
 | 4R35 | +45 to −35 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_4R35_4R36_D_EN/BONDSYkqbeszsf)) | dial up ±20 s/d, 6 and 9 o'clock up ±30 s/d, dial up full wind to 24 h ±30 s/d, within 30 min of full wind (technical guide, [copy](https://www.cousinsuk.com/pdf/skus/9022_4r35b_4r36a.pdf)) |
 | 6R15 | +25 to −15 s/d (instruction booklet, [copy](https://api.seikoboutique.hu/Instructions/6R15D_EN.pdf)) | as the 4R35 (technical guide, [copy](https://www.cousinsuk.com/pdf/categories/8955_pao024_14267_191030121314_1_6r15cd.pdf)) |
-| 6R35 | +25 to −15 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_6R35_D_EN/BONDSYkqbeszsf)) | −15 to +25 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up; lift angle 53° (technical guide, [copy](https://cousinsuk.com/pdf/skus/9509_6r35.pdf)) |
+| 6R35 | +25 to −15 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_6R35_D_EN/BONDSYkqbeszsf)) | −15 to +25 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up (technical guide, [copy](https://cousinsuk.com/pdf/skus/9509_6r35.pdf)) |
 | 8L35 | +15 to −10 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_8L35_8L55_D_EN/BONDSYkqbeszsf)) | |
 
 No beat-error or amplitude limit was found for any Miyota or Seiko
@@ -151,7 +150,7 @@ dial up, dial down) and several temperatures; the limits are absolute.
 
 COSC sets no beat-error, amplitude or isochronism limit.
 
-**METAS Master Chronometer**: 0 to +5 s/d (up to 0 to +7 by calibre),
+**METAS Master Chronometer**: 0 to +5 s/d,
 the cased watch, after chronometer certification of the movement
 ([Omega](https://www.omegawatches.com/masterchronometercertification)).
 

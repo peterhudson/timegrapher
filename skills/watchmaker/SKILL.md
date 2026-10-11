@@ -237,7 +237,7 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   trace jumps or doubles and you can sometimes hear a double tick. That
   wants a watchmaker; it can damage the escapement. An ETA in a plastic
   holder already reads 320–332° without knocking
-  (docs/fault-signatures.md), and Witschi's training course names 330°
+  (docs/fault-signatures.md), and Witschi's training course (p. 15) names 330°
   as the amplitude that causes knocking. So never raise knocking below
   330°, treat a higher reading first as a reason to check the mount and
   the lift angle, and call it knocking only when the trace jumps.
@@ -265,14 +265,13 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   settling, a loose clamp, or the room. Re-test before concluding.
 - **Judge the rate against the maker's own figure**, not a general rule.
   Rolex states −2/+2 s/d for a cased Superlative Chronometer
-  ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)); ETA grades
-  the 2824-2 at a mean of ±12 s/d (Standard, two positions), ±7
-  (Elaboré, three) and ±4 (Top, five)
-  ([uhrinstinkt](https://www.uhrinstinkt.de/en/blogs/magazine/eta-movements-quality-levels-in-comparison),
-  [Caliber Corner](https://calibercorner.com/eta-caliber-2824-2/)); Seiko's Time Module
-  gives the NH35A −20 to +40 s/d
-  ([Caliber Corner](https://calibercorner.com/seiko-caliber-nh35a)). With
-  no published figure for the calibre, say so rather than guess.
+  ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)); ETA's
+  2824-2 *Manufacturing Information* sheet prints the mean rate as
+  "12 ±12 s/d" (Standard, two positions), "7 ±7" (Elaboré, three) and
+  "4 ±4" (Top, five), quoted as printed; Seiko's NH3 series technical
+  guide gives −20 to +40 s/d. Both, with links, are in
+  [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#tolerance-sets-by-source).
+  With no published figure for the calibre, say so rather than guess.
 - **A rate far outside the maker's figure needs a watchmaker, whatever
   the cause.** A mean over the positions, or a spread between them,
   several times the maker's tolerance (once magnetism is ruled out) is a
@@ -370,7 +369,7 @@ and if one decides your verdict, say so.
 | File | When |
 | --- | --- |
 | [guided-test.md](references/guided-test.md) | Walking a first-timer through the whole test: what to ask, what to say, what to run, step by step |
-| [findings.md](references/findings.md) | Every finding code and verdict from `doctor`, `session` and `series`, and the possible faults from `analyze`: what it means, how sure, what to do, what to tell the person |
+| [findings.md](references/findings.md) | How to read each command's measured fields from `doctor`, `session` and `series`, and the possible faults from `analyze`: what it means, how sure, what to do, what to tell the person |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
 | [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means and how to read it, the lift angle, positions, COSC and chronometer criteria, trace patterns |
