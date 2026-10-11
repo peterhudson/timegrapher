@@ -89,6 +89,9 @@ pub const RATE: &[&str] = &[
      with a clock log), the app shows the corrected rate under the big figure. The big \
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
+    "The confidence beside it (High, Medium or Low) grades the measurement, not the \
+     watch: High when the ± is within 0.5 seconds per day, Medium within 2, Low beyond. Stopped after a long \
+     run, a line under it gives the whole take's mean and spread.",
 ];
 
 pub const CLIPPING_BANNER: &[&str] = &[
@@ -115,6 +118,9 @@ pub const AMPLITUDE: &[&str] = &[
     "Tick and Tock are the amplitude measured from each kind of beat alone. They \
      should agree to a few degrees; a big difference usually means one side's sounds \
      were misread, not a fault in the watch.",
+    "The confidence beside it (High, Medium or Low) grades the measurement, not the \
+     watch: High when the ± is within 2°, Medium within 5°, Low beyond. A lift angle that isn't known lowers \
+     it one step.",
 ];
 
 pub const BEAT_ERROR: &[&str] = &[
@@ -124,6 +130,10 @@ pub const BEAT_ERROR: &[&str] = &[
     "The big figure is timed from the unlock, the first sound of each beat, as tg \
      measures it (checked against tg in the regression tests). The smaller one is timed from the beat as a \
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
+    "It is shown as a size. Which beat is the tick depends on where the analysis first \
+     locks on, so which side is longer can flip from one run to the next. \
+     The confidence beside it (High, Medium or Low) grades the measurement, not the \
+     watch: High when the ± is within 0.05 ms, Medium within 0.1 ms, Low beyond.",
 ];
 
 pub const STRIP: &[&str] = &[
@@ -211,7 +221,7 @@ pub const FAULTS: &[&str] = &[
      rub after the drop. Each names the beat it is on.",
     "Each is a measure well outside what healthy watches give: worth checking on the \
      bench, not a diagnosis. Nothing shows when the sound can't be judged: no watch \
-     heard, clipping, or amplitude or beat error too unsteady to grade Fair. Hovering \
+     heard, clipping, or amplitude or beat error too unsteady for Medium confidence. Hovering \
      on a fault shows the measures behind it; docs/fault-signatures.md describes each.",
 ];
 
