@@ -518,10 +518,10 @@ pub fn listens(t: &ToolSpec) -> bool {
                 .any(|p| matches!(p.arg, Arg::Flag("--file"))))
 }
 
-/// Plain notes after a result's document, for what the numbers alone do
-/// not say: a microphone check's readings are too short to trust, and an
-/// amplitude worked out with a lift angle nobody gave.
-pub fn notes(t: &ToolSpec, doc: &Value) -> Vec<String> {
+/// Plain notes before a result's document, for what the numbers alone do
+/// not say: a microphone check's readings are too short to trust. What
+/// limits a recording's or a test's readings is in its lead (summary.rs).
+pub fn notes(t: &ToolSpec) -> Vec<String> {
     let mut notes = Vec::new();
     if t.name == "check_microphone" {
         notes.push(
@@ -530,11 +530,6 @@ pub fn notes(t: &ToolSpec, doc: &Value) -> Vec<String> {
              as the watch's readings: record_position or analyze_recording measures it."
                 .to_string(),
         );
-    }
-    // What limits the readings, from the document's caveats: an assumed
-    // lift angle, too short a take, clipping and the like.
-    if t.name == "analyze_recording" || t.name == "run_session" {
-        notes.extend(crate::caveats::notes(doc));
     }
     notes
 }
@@ -792,17 +787,10 @@ mod tests {
     }
 
     #[test]
-    fn an_assumed_lift_angle_and_a_quick_check_are_called_out() {
-        let doc = json!({"schema": "timegrapher.analyze/1",
-            "input": {"settings": {"lift_deg": 52.0}}, "caveats": [{"code": "lift_unknown"}]});
-        let analyze = find("analyze_recording").unwrap();
-        let said = notes(analyze, &doc);
-        assert!(said[0].contains("lift angle of 52°"), "{said:?}");
-        // With a calibre, `analyze` reports no lift_unknown.
-        let known = json!({"schema": "timegrapher.analyze/1", "caveats": []});
-        assert!(notes(analyze, &known).is_empty());
+    fn a_quick_check_is_called_out() {
         let mic = find("check_microphone").unwrap();
-        assert!(notes(mic, &doc)[0].contains("too short to trust"));
+        assert!(notes(mic)[0].contains("too short to trust"));
+        assert!(notes(find("analyze_recording").unwrap()).is_empty());
     }
 
     #[test]
