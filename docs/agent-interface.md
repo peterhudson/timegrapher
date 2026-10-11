@@ -139,9 +139,10 @@ Each run makes one take folder in FOLDER, the same as the desktop app
 saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
 the app opens it with), named after the start time, the watch and the
 position. The take is analysed at once, over the stretch `session` will
-read: after the session file's `settle_s` (30 s for a file `record`
-writes; at most half the take), on the sound card's clock, so the check
-and the report agree. When a watch is heard and under
+read: the check skips the take's `settle_s` from the session file (30 s
+in a file `record` writes; at most half the take) and reads the rest on
+the sound card's clock, as `session` does, so the check and the report
+agree. When a watch is heard and under
 1% of beats clip, the take is added to `FOLDER/session.toml` (written on
 the first take with the watch, calibre, bph, lift and `settle_s = 30`,
 then appended to, comments and all) with its position, `wind_h` when
