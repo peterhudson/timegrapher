@@ -13,6 +13,8 @@ pub enum Arg {
     Positional,
     /// `--flag VALUE`.
     Flag(&'static str),
+    /// Read by the server itself; never on the command line.
+    Server,
 }
 
 #[derive(Clone, Copy)]
@@ -43,6 +45,9 @@ pub struct ToolSpec {
     pub params: &'static [Param],
     /// Changes nothing on the computer.
     pub read_only: bool,
+    /// Calling it again with the same arguments leaves things as one call
+    /// would: false for the tools that add a new take or a new file each time.
+    pub idempotent: bool,
     /// The chat app shows the charts view beside the result.
     pub charts: bool,
     /// Flags added when the call leaves them out, as (flag, value); a value
@@ -136,6 +141,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDING, CALIBRE_READING, BPH, LIFT],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -184,6 +190,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: false,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -209,6 +216,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -222,6 +230,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDINGS, BPH, LIFT, CALIBRE],
         charts: false,
         read_only: false,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -253,6 +262,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -265,6 +275,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDING, BPH, LIFT],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -286,6 +297,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -305,6 +317,7 @@ pub const TOOLS: &[ToolSpec] = &[
         )],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -367,9 +380,20 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Lift angle in degrees (the calibre's if left out, else 52).",
             ),
             DEVICE,
+            p(
+                TAKE_ID,
+                Kind::Text,
+                Arg::Server,
+                false,
+                "A name for this take, new for each take, e.g. \"DU-1\". If the call is \
+                 made again with the same take_id, folder and position (say the answer \
+                 was lost), the take already recorded comes back instead of a second \
+                 recording, for as long as the server runs.",
+            ),
         ],
         charts: false,
         read_only: false,
+        idempotent: false,
         defaults: &[],
     },
     ToolSpec {
@@ -393,6 +417,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -404,6 +429,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -470,11 +496,26 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: false,
+        idempotent: false,
         // The CLI's default is the current folder, which for a server the
         // chat app started is nowhere the person would look.
         defaults: &[("--out", "~")],
     },
 ];
+
+/// Whether the tool opens the microphone: recording a position, and the
+/// microphone check, which has no recording to read instead.
+pub fn listens(t: &ToolSpec) -> bool {
+    t.command[0] == "record"
+        || (t.command[0] == "doctor"
+            && !t
+                .params
+                .iter()
+                .any(|p| matches!(p.arg, Arg::Flag("--file"))))
+}
+
+/// `record_position`'s retry identifier, read by the server.
+pub const TAKE_ID: &str = "take_id";
 
 pub fn find(name: &str) -> Option<&'static ToolSpec> {
     TOOLS.iter().find(|t| t.name == name)
@@ -513,7 +554,7 @@ pub fn definition(t: &ToolSpec) -> Value {
             "title": t.title,
             "readOnlyHint": t.read_only,
             "destructiveHint": false,
-            "idempotentHint": true,
+            "idempotentHint": t.idempotent,
             "openWorldHint": false,
         },
     });
@@ -570,6 +611,7 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                     options.push(format!("{flag}={v}"));
                 }
             }
+            Arg::Server => {}
         }
     }
     for (flag, value) in t.defaults {
@@ -685,14 +727,6 @@ mod tests {
     /// decided (docs/mcp.md): recording a position and the live check.
     #[test]
     fn only_the_listening_tools_use_the_mic() {
-        let listens = |t: &ToolSpec| {
-            t.command[0] == "record"
-                || (t.command[0] == "doctor"
-                    && !t
-                        .params
-                        .iter()
-                        .any(|p| matches!(p.arg, Arg::Flag("--file"))))
-        };
         let mut listening: Vec<&str> = TOOLS
             .iter()
             .filter(|t| listens(t))
@@ -714,6 +748,33 @@ mod tests {
             .params
             .iter()
             .any(|p| p.required && matches!(p.arg, Arg::Flag("--file"))));
+    }
+
+    /// A chat app may repeat a call it thinks is harmless to repeat: only
+    /// the tools that make something new each time say they are not.
+    #[test]
+    fn only_the_tools_that_add_files_are_not_idempotent() {
+        let mut not: Vec<&str> = TOOLS
+            .iter()
+            .filter(|t| definition(t)["annotations"]["idempotentHint"] == false)
+            .map(|t| t.name)
+            .collect();
+        not.sort();
+        assert_eq!(not, ["make_report_bundle", "record_position"]);
+        for t in TOOLS.iter().filter(|t| t.read_only) {
+            assert!(t.idempotent, "{}", t.name);
+        }
+    }
+
+    #[test]
+    fn the_take_id_stays_off_the_command_line() {
+        let t = find("record_position").unwrap();
+        let line = command_line(
+            t,
+            &args(json!({"folder": full("test"), "position": "DU", "take_id": "DU-1"})),
+        )
+        .unwrap();
+        assert!(!line.iter().any(|a| a.contains("DU-1")), "{line:?}");
     }
 
     #[test]

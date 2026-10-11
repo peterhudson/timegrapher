@@ -6,6 +6,7 @@
 mod cli;
 mod guidance;
 mod progress;
+mod takes;
 mod tools;
 mod views;
 
@@ -72,6 +73,22 @@ async fn call(
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
     };
+    // A recording the chat app retries with the same take_id is answered
+    // from the take already made; two calls never share the microphone.
+    let take = (tool.name == "record_position")
+        .then(|| takes::key(args))
+        .flatten();
+    if let Some(r) = take.as_ref().and_then(takes::recorded) {
+        return complete(r);
+    }
+    let _mic = if tools::listens(tool) {
+        match takes::claim_mic() {
+            Some(mic) => Some(mic),
+            None => return Ok(tool_error(takes::BUSY.into())),
+        }
+    } else {
+        None
+    };
     // The Recording view's readings over time come from the same run.
     let recording_view = tool.name == "analyze_recording";
     let (extras, _windows) = views::analyze_extras();
@@ -136,6 +153,9 @@ async fn call(
     }
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
+    }
+    if let Some(k) = take {
+        takes::remember(k, &result);
     }
     complete(result)
 }

@@ -110,6 +110,28 @@ Before each take it tells you how to place the watch and waits for you; your
 chat app also asks you to allow each tool call. A take in which no watch is
 heard is not added to the test.
 
+### Repeated and overlapping calls
+
+Each tool tells the chat app whether it changes anything (`readOnlyHint`)
+and whether calling it again with the same arguments is harmless
+(`idempotentHint`). Two tools are not harmless to repeat, because each call
+makes something new:
+
+- `record_position` adds a take to the folder and to its `session.toml`.
+- `make_report_bundle` writes a new, time-stamped zip.
+
+All the others are. `run_session` and `long_run` write `report.html`, but
+the same call writes the same file again.
+
+A chat app that retries a recording, for example after a lost answer, can
+pass the same `take_id` with the same folder and position. The take
+already made then comes back, marked as such, instead of a second
+recording. The server remembers takes only while it runs.
+
+Only one tool uses the microphone at a time. While `record_position` or
+`check_microphone` runs, another call to either one gets an error saying
+so, and records nothing.
+
 Recordings made elsewhere work too. They are given by their full path on
 your computer (`~` for your home folder works). For a multi-position test,
 put the position in each file name (`watch_DU.flac`, `watch_DD.flac`, ...)
