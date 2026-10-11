@@ -172,9 +172,40 @@ More in [long-runs.md](long-runs.md) and the repository's docs/series.md.
 
 ## Faults the program names
 
-Space for the faults the program will name from the shape of the Tick
-and the Tock, each said as likely or possible, never certain. No entries
-yet.
+`analyze` lists possible escapement faults from the shape of the Tick
+and the Tock in `faults[]`: `id`, `label` (the fault in a watchmaker's
+words), `side` (`tick`, `tock` or `both`), `strength`, `evidence` (the
+measures behind it) and `see` (where it is described). `strength` is
+`possible`, or `likely` once a rule has been confirmed on a real fault;
+for now every rule is `possible`, because no watch with a confirmed fault
+has been through them. The list is empty when nothing is seen, and also
+when the shape can't be judged: no watch heard, clipping, or amplitude or
+beat error too unsteady to grade fair. Empty is not a clean bill of
+health; it means nothing stood out.
+
+| `id` | What the program heard | Weigh it with | Tell them |
+| --- | --- | --- | --- |
+| `unlock_too_strong` | The first sound (the unlock) as loud as the last (the drop). | The side named, and whether it repeats in other positions. | "On the Tock, the start of the beat is louder than it should be; worth a watchmaker checking how the escapement is set." |
+| `no_unlock_sound` | The first sound missing on that side, or only two sounds where there should be three. In Witschi's list, an escape tooth landing straight on the impulse face of the pallet stone. | A weak or noisy signal hides quiet sounds: check the grades are good and `doctor` says `good` before believing it. | "I can't hear the first part of the beat on the Tick; on a clean signal that points at the escapement." |
+| `escapement_friction` | The second sound merges into the first: extra friction in the escapement. | Low amplitude and years since the last service point the same way: old or dried oil is the usual reason, but only opening it tells. | "It sounds like there's friction in the escapement, which is usually a sign it wants cleaning and oiling." |
+| `unlock_uneven` | One side's first-to-second interval much longer than the other's: the lock deeper on one pallet stone than the other, or an extra sound just before the unlock (the impulse pin touching the fork horn) taken for it. The label names both, and the program can't tell them apart. | Beat error and the side named. | "The two halves of the beat differ more than they should; a watchmaker can tell which of two causes it is." |
+| `rubbing_after_drop` | Sound lingering after the drop on one side, well above the other: in Witschi's list, the balance or hairspring grazing. | The holder and the case can ring; re-clamp and test again before believing it. | "Something may be rubbing on the Tick side; if it shows again after re-clamping, it's worth a look." |
+
+How to report them:
+
+- **Always "possible"**, in the program's words and yours: a finding is
+  worth checking on the bench, not a diagnosis. Never name a broken part
+  from it.
+- **Check it repeats.** A fault seen in one position and not another, or
+  not again after re-clamping, is more likely the set-up. One that shows
+  in every position, on the same side, is worth passing on.
+- **Put it with the rest.** A possible fault on a watch with good
+  amplitude, small beat error and steady rate is a note for the next
+  service. With low amplitude or `escapement_friction` beside it, it
+  supports a service-soon verdict.
+- **Give the owner the words to pass on**: the `label`, the side (Tick or
+  Tock) and the position, so the watchmaker knows where to look. `see`
+  points at the description in the repository's docs/fault-signatures.md.
 
 ## When the tool looks wrong
 

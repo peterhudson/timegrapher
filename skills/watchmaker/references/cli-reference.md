@@ -3,7 +3,7 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `devices`, `doctor`, `calibres`, `record`, `analyze`, `shape`, `profile`,
+Commands: `update`, `devices`, `doctor`, `calibres`, `record`, `analyze`, `shape`, `profile`,
 `long`, `series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
 `docs/sessions.md`, `series` in `docs/series.md`. What each finding code
@@ -124,6 +124,20 @@ and `signal_band` (the desktop app's "signal N×" and its band: `good`,
 `no_ticks`, `noisy`. What each means and how to fix it:
 [setup-and-microphone.md](setup-and-microphone.md#checking-the-signal-with-doctor).
 
+## update
+
+```
+timegrapher update [--json]
+```
+
+Asks GitHub once whether a newer release is published. JSON body
+(`timegrapher.update/1`): `current`, `latest` (`version`, `url` of the
+release page, `published_at`, `notes`) and `update_available`. It sends no
+account or identifier, and downloads and installs nothing; the person
+updates from `latest.url`. Exit 1 with the reason on stderr when GitHub
+can't be reached, is limiting requests, or has no release. Builds without
+the `update-check` feature say they have no network code.
+
 ## record
 
 ```
@@ -175,6 +189,7 @@ JSON body:
 | `bph` | Beat rate used |
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
+| `faults[]` | Possible escapement faults from the shape of the Tick and Tock (from this version): `id`, `label`, `side`, `strength` (all `possible` for now), `evidence`, `see`. Empty when nothing is seen or the shape can't be judged. How to read and report each one: [findings.md](findings.md#faults-the-program-names) |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
 | `overall.beat_error_ms` | **Signed** beat error (positive: even beats late); report its absolute value |
 | `overall.period_s` | Fitted beat period |

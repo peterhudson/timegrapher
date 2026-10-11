@@ -34,7 +34,10 @@ sure you are. Call the two sides of the beat Tick and Tock.
    A take that is not fit to keep (no watch heard, or clipped) is not
    added; fix it and record that position again before moving on.
 6. **Read** the session: first whether the measurement is sound, then
-   faults, warnings and notes, then the numbers behind them. Judge
+   faults, warnings and notes, then the numbers behind them. `analyze`
+   each take for `faults[]`, the possible faults in the shape of the Tick
+   and the Tock: worth checking on the bench, never a diagnosis, and only
+   when they repeat across positions. Judge
    against the calibre's normal values, the time since service and the
    wear, never on one number.
 7. **Answer** in one line first: fine, keep an eye on it, service soon,

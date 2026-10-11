@@ -48,8 +48,14 @@ Three jobs, in order:
 
 ### 1. Set up (see [setup-and-microphone.md](references/setup-and-microphone.md))
 
-1. Check the program is there: `timegrapher --version`. If not, build it
-   (`cargo build --release` in the repo; binary in `target/release/`).
+1. Check the program is there: `timegrapher --version`. If not, point
+   them to the release downloads, or build it (`cargo build --release` in
+   the repo; binary in `target/release/`). Then `timegrapher update
+   --json`, once per sitting: when `update_available` is true, tell them,
+   with `latest.url` and a line from `latest.notes` if it touches what
+   they are doing. Updating is theirs to do; never download or install
+   anything for them. If the check fails (offline, GitHub limiting
+   requests), carry on.
 2. `timegrapher devices` to find the microphone.
 3. `timegrapher doctor --device NAME` with the watch clamped in the stand.
    Exit code 0 means the signal is fit to measure with (there may still be
@@ -134,6 +140,11 @@ Work through them in this order. The reasons are in
 7. **Positions.** Compare dial up with dial down (friction at the balance
    pivots, end shake, a hairspring out of flat), horizontal with vertical,
    and the vertical positions with each other (poise, hairspring centring).
+8. **Possible faults.** `analyze` lists `faults[]` from the shape of the
+   Tick and the Tock (`session` and `record` don't carry them: analyze
+   each take's `audio-001.wav`). Each is a possible fault worth checking
+   on the bench, never a diagnosis, and it counts only if it repeats; see
+   [findings.md](references/findings.md#faults-the-program-names).
 
 Then decide. [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md)
 gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
@@ -254,7 +265,7 @@ your verdict, say so.
 | File | When |
 | --- | --- |
 | [guided-test.md](references/guided-test.md) | Walking a first-timer through the whole test: what to ask, what to say, what to run, step by step |
-| [findings.md](references/findings.md) | Every finding code and verdict from `doctor`, `session` and `series`: what it means, how sure, what to do, what to tell the person |
+| [findings.md](references/findings.md) | Every finding code and verdict from `doctor`, `session` and `series`, and the possible faults from `analyze`: what it means, how sure, what to do, what to tell the person |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
 | [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means, good/fair/poor values, lift angles by calibre, positions, COSC and chronometer criteria, trace patterns |
