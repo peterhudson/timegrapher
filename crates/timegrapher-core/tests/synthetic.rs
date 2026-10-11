@@ -1,6 +1,7 @@
 //! End-to-end checks on synthetic recordings with known answers.
 
-use timegrapher_core::synth::{generate, Sound, SynthConfig};
+use timegrapher_core::faults::Side;
+use timegrapher_core::synth::{generate, ExtraSound, Rub, Sound, SynthConfig};
 use timegrapher_core::{analyze, AnalysisConfig};
 
 fn run(
@@ -261,4 +262,97 @@ fn an_empty_stand_is_no_watch() {
         timegrapher_core::confidence::Grade::Good,
         "{c:?}"
     );
+}
+
+/// Each synthetic fault is found, on one side or both as made, and nothing
+/// else is. Which side the detector calls the Tick depends on which beat it
+/// hears first, so one-sided faults are checked as one-sided only.
+#[test]
+fn shape_faults_are_found() {
+    let base = || SynthConfig {
+        duration_s: 40.0,
+        ..Default::default()
+    };
+    let found = |cfg: &SynthConfig| -> Vec<(&'static str, bool)> {
+        run(cfg, |_| 270.0, |_| 0.0)
+            .summary
+            .faults
+            .iter()
+            .map(|f| (f.id, f.side == Side::Both))
+            .collect()
+    };
+    assert_eq!(found(&base()), vec![], "a healthy watch");
+
+    let knock = Sound {
+        gain: 0.15,
+        freq_hz: 4500.0,
+        decay_s: 0.0003,
+    };
+    type Case = (&'static str, SynthConfig, Vec<(&'static str, bool)>);
+    let cases: Vec<Case> = vec![
+        (
+            "a loud unlock on one side",
+            SynthConfig {
+                odd_gains: Some([1.6, 0.25, 1.0]),
+                ..base()
+            },
+            vec![("unlock_too_strong", false)],
+        ),
+        (
+            "no unlock on one side",
+            SynthConfig {
+                odd_gains: Some([0.0, 0.25, 1.0]),
+                ..base()
+            },
+            vec![("no_unlock_sound", false)],
+        ),
+        (
+            "unlock and impulse merged on both sides",
+            SynthConfig {
+                impulse_at: 0.03,
+                ..base()
+            },
+            vec![("escapement_friction", true)],
+        ),
+        (
+            "a shallow lock on one side",
+            SynthConfig {
+                odd_impulse_at: Some(0.18),
+                ..base()
+            },
+            vec![("unlock_uneven", false)],
+        ),
+        (
+            "a knock before one side's unlock",
+            SynthConfig {
+                extra: Some(ExtraSound {
+                    offset_s: -0.016,
+                    even: true,
+                    sound: knock,
+                }),
+                ..base()
+            },
+            vec![("unlock_uneven", false)],
+        ),
+        (
+            "rubbing after one side's drop",
+            SynthConfig {
+                rub: Some(Rub {
+                    even: false,
+                    gain: 0.07,
+                    length_s: 0.014,
+                }),
+                ..base()
+            },
+            vec![("rubbing_after_drop", false)],
+        ),
+    ];
+    let wrong: Vec<String> = cases
+        .into_iter()
+        .filter_map(|(name, cfg, want)| {
+            let got = found(&cfg);
+            (got != want).then(|| format!("{name}: found {got:?}, wanted {want:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }

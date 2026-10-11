@@ -5,6 +5,7 @@ use crate::audio::Audio;
 use crate::beats::{self, Beat};
 use crate::confidence::{self, Confidence, Doubts};
 use crate::dsp::{envelope, median, EnvelopeConfig};
+use crate::faults::{self, Finding};
 use crate::periodicity::{self, Component, Series};
 use crate::timing::{self, TimingFit, WindowFit};
 use crate::usbclock::{self, UsbClock};
@@ -86,6 +87,10 @@ pub struct Summary {
     /// A ± and a grade for rate, amplitude and beat error; `None` when no
     /// watch is heard.
     pub confidence: Option<Confidence>,
+    /// Possible escapement faults from the shape of the Tick and Tock;
+    /// empty when none is seen, or when the shape cannot be judged (no
+    /// watch heard, clipping, or unsteady readings; see [`faults`]).
+    pub faults: Vec<Finding>,
 }
 
 impl Summary {
@@ -252,6 +257,13 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             doubts,
         )
     });
+    let faults = if faults::judged(confidence.as_ref(), doubts) {
+        let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
+        let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
+        faults::from_shape(&r, confidence.as_ref(), doubts)
+    } else {
+        Vec::new()
+    };
     let summary = Summary {
         duration_s: duration,
         sample_rate: audio.sample_rate,
@@ -283,6 +295,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         }),
         doubts,
         confidence,
+        faults,
     };
     Analysis {
         summary,
