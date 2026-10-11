@@ -53,6 +53,9 @@ shift as they change.
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
 recording: **Open a Folder…** on the opening screen, **Open Folder…** in
 the toolbar, a folder typed into the path box, or `timegrapher-app FOLDER`.
+A saved take opens from its own folder or from the folder it was saved
+into, when that holds just the one take; with several, the message names
+them so one can be picked.
 Its WAV and FLAC files are joined end to end in file-name order, as
 `timegrapher long` and `series` read a folder: name segments so that they
 sort in time order (`audio-001.wav`, `audio-002.wav`, … or a time stamp
@@ -505,7 +508,7 @@ the stopped time out, and the readings start from the beats after the
 stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
-folder and copies the session there, and **Save again…** later brings
+folder and copies the session into a folder of its own inside it, and **Save again…** later brings
 that copy up to date. Sound that hasn't been saved is never thrown away
 without asking: New session and closing the window ask whether to save it
 first.

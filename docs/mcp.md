@@ -103,12 +103,35 @@ That route has not been tried with this server yet.
 | `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
+| `read_guide` | (none) | The watchmaker skill and its pages, for the chat app to read |
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
 Before each take it tells you how to place the watch and waits for you; your
 chat app also asks you to allow each tool call. A take in which no watch is
 heard is not added to the test.
+
+### Repeated and overlapping calls
+
+Each tool tells the chat app whether it changes anything (`readOnlyHint`)
+and whether calling it again with the same arguments is harmless
+(`idempotentHint`). Two tools are not harmless to repeat, because each call
+makes something new:
+
+- `record_position` adds a take to the folder and to its `session.toml`.
+- `make_report_bundle` writes a new, time-stamped zip.
+
+All the others are. `run_session` and `long_run` write `report.html`, but
+the same call writes the same file again.
+
+A chat app that retries a recording, for example after a lost answer, can
+pass the same `take_id` with the same folder and position. The take
+already made then comes back, marked as such, instead of a second
+recording. The server remembers takes only while it runs.
+
+Only one tool uses the microphone at a time. While `record_position` or
+`check_microphone` runs, another call to either one gets an error saying
+so, and records nothing.
 
 Recordings made elsewhere work too. They are given by their full path on
 your computer (`~` for your home folder works). For a multi-position test,
@@ -147,9 +170,18 @@ nothing from the internet. Chat apps without MCP Apps show the same results
 as text.
 
 The server also gives the chat app the watchmaker skill and the reference
-pages behind it as resources (`timegrapher://skill/...` and
-`timegrapher://docs/...`), and instructions to read the skill before
-guiding anyone. The **Test My Watch** prompt is the skill's own
+pages behind it, and instructions to read the skill before guiding anyone.
+The model reads them with the `read_guide` tool, because many chat apps
+leave resources for you to attach yourself. The same pages are also
+resources (`timegrapher://skill/...` and `timegrapher://docs/...`).
+
+Some results end with a plain note for the model about what the numbers
+alone do not say:
+
+- `check_microphone`: its rate and beat error come from a few seconds, so
+  they are too short to give as the watch's readings.
+- `analyze_recording`, when no calibre or lift angle was given: the
+  amplitude assumed a lift angle of 52°. The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced
 watchmaker would run, from the calibre and the microphone through the six
 positions to a plain answer, with the watch you name added at the end.

@@ -45,12 +45,19 @@ made with that fault (`tests/synthetic.rs`).
 | `escapement_friction` | Sound 2 not separable from sound 1 in most windows | sound 2 in 94% or more |
 | `unlock_uneven` | One side's 1-to-2 interval 1.8 times the other's: uneven lock, or an extra sound just before the unlock, which is taken for sound 1 | 1.46 (DD 3235); a plastic holder alone gave 1.40 |
 | `rubbing_after_drop` | Level 3 to 15 ms after the drop at least 0.1 of the drop, and 3 times the other side's | about 1.7 times |
+| `beat_error_drift` | Unlock beat error in the last quarter of the recording at least 1 ms from the first quarter (needs about a minute of beat error) | 0.44 ms (Yacht-Master, crown right) |
 
 Not flagged yet: extra sounds after the drop (case and holder ringing
 gives them on most beats of the ETA, Daytona and Peacock takes), doubled
 sounds (end shake; needs a measured spacing of doubled peaks), and noise
 between beats (a worn pivot; the measure reads about 1 on every take).
-The diagram faults below come in a later change.
+From the diagram, only the hairspring's drifting beat error is flagged.
+The pallet fork's late outliers are not, because healthy watches already
+show them: on the corpus, up to 14% of one side's beats sit more than four
+spreads late of their neighbours (Yacht-Master, Daytona, ETA in its
+holder), against almost none early. Overbanking is not flagged either: no
+corpus take shows it, and the ETA in its plastic holder already reads 320
+to 332°, so amplitude above 330° alone would be a false finding.
 
 ## Diagram (beat timing over time)
 

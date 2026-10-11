@@ -1078,7 +1078,8 @@ impl TimegrapherApp {
     /// Save a copy of the session's sound so far, with its clock log and
     /// settings, in a folder the user picks. Listening carries on.
     fn save_recording(&mut self) {
-        let mut d = rfd::FileDialog::new().set_title("Save the recording in…");
+        let mut d = rfd::FileDialog::new()
+            .set_title("Choose Where to Save (the Take Gets Its Own Folder Inside)");
         let start = self
             .saved_to
             .as_ref()
@@ -1306,6 +1307,22 @@ impl TimegrapherApp {
 
     fn start_batch(&mut self, path: &Path) {
         self.stop();
+        // A folder a take was saved into holds the take's own folder.
+        let inner = match take_folder(path) {
+            Ok(p) => p,
+            Err(e) => return self.error(e),
+        };
+        if inner != path {
+            self.info_msg(format!(
+                "Opened the take saved inside {}: {}",
+                capture_label(path),
+                capture_label(&inner)
+            ));
+        }
+        let path = inner.as_path();
+        if self.file_path.trim() != path.display().to_string() {
+            self.file_path = path.display().to_string();
+        }
         let files = match recordings_in(path) {
             Ok(f) => f,
             Err(e) => return self.error(e),
@@ -1616,7 +1633,7 @@ impl TimegrapherApp {
 
     /// Pick a folder of segments, which is analysed as one recording.
     fn open_folder_dialog(&mut self) -> Option<PathBuf> {
-        let mut d = rfd::FileDialog::new().set_title("Open a Folder of Segments");
+        let mut d = rfd::FileDialog::new().set_title("Open a Saved Take or a Folder of Segments");
         let here = Path::new(self.file_path.trim());
         let start = if here.is_dir() {
             Some(here)
@@ -1910,7 +1927,9 @@ impl TimegrapherApp {
                 )
                 .on_hover_text(
                     "Save the sound of this session so far, with its clock log and \
-                     settings, to analyse again later. Listening carries on. Unsaved \
+                     settings, to analyse again later. The take goes in a folder of \
+                     its own, named for its time and watch, inside the folder you \
+                     choose; open either folder later. Listening carries on. Unsaved \
                      sound is thrown away by New Session or quitting.",
                 )
                 .clicked()
@@ -5355,8 +5374,9 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
 
 /// How the files in a folder are put together, said where a folder is
 /// opened. The command line's `long` and `series` read folders the same way.
-const FOLDER_RULE: &str = "A recording this app saved, or a folder of WAV or FLAC segments of one \
-     long run, joined end to end in file-name order (audio-001.wav, audio-002.wav, …).";
+const FOLDER_RULE: &str = "A recording this app saved (its own folder, or the folder you saved it \
+     into), or a folder of WAV or FLAC segments of one long run, joined end to end in file-name \
+     order (audio-001.wav, audio-002.wav, …).";
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
 /// WAV and FLAC files in name order (the segments of one long recording).
@@ -5382,6 +5402,35 @@ fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     }
     files.sort();
     Ok(files)
+}
+
+/// The folder to open for `path`: itself when it holds sound (or isn't a
+/// folder), else the one take folder inside it, which is where the app
+/// saves a take. Several takes inside are named so one can be picked.
+fn take_folder(path: &Path) -> Result<PathBuf, String> {
+    if !path.is_dir() || recordings_in(path).is_ok() {
+        return Ok(path.to_path_buf());
+    }
+    let mut takes: Vec<PathBuf> = std::fs::read_dir(path)
+        .map_err(|e| format!("Can't read the folder {}: {e}", path.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir() && recordings_in(p).is_ok())
+        .collect();
+    takes.sort();
+    match takes.len() {
+        0 => recordings_in(path).map(|_| path.to_path_buf()),
+        1 => Ok(takes.remove(0)),
+        _ => Err(format!(
+            "{} holds {} takes; open one of them: {}.",
+            path.display(),
+            takes.len(),
+            takes
+                .iter()
+                .map(|p| capture_label(p))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
 }
 
 fn capture_label(path: &Path) -> String {
@@ -5806,6 +5855,32 @@ mod tests {
         frames(&mut app, &ctx, 1);
     }
 
+    /// The folder a take was saved into opens the take inside it; with two
+    /// takes inside, the message names them.
+    #[test]
+    fn a_save_folder_opens_the_take_inside() {
+        let base = std::env::temp_dir().join(format!("tg-app-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let take = base.join("2026-10-11_DD3235");
+        std::fs::create_dir_all(&take).unwrap();
+        let tone = timegrapher_core::audio::Audio {
+            samples: vec![0.0; 800],
+            sample_rate: 8000,
+        };
+        timegrapher_core::audio::write_wav(&take.join("audio-001.wav"), &tone).unwrap();
+        assert_eq!(take_folder(&base).unwrap(), take);
+        assert_eq!(take_folder(&take).unwrap(), take);
+        let other = base.join("2026-10-12_DD3235");
+        std::fs::create_dir_all(&other).unwrap();
+        timegrapher_core::audio::write_wav(&other.join("audio-001.wav"), &tone).unwrap();
+        let e = take_folder(&base).unwrap_err();
+        assert!(
+            e.contains("2 takes") && e.contains("2026-10-12_DD3235"),
+            "{e}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// A folder of segments is analysed in name order as one recording,
     /// and its Steadiness tests cover the whole of it.
     #[test]
@@ -5874,6 +5949,7 @@ mod tests {
         let empty = dir.join("empty");
         std::fs::create_dir_all(&empty).unwrap();
         assert!(recordings_in(&empty).is_err());
+        assert!(take_folder(&empty).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

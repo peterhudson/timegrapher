@@ -37,11 +37,8 @@ VS3235 (Dandong clone of the Rolex 3235) at lift angle 55°, fully wound:
 Amplitude is highest flat, because the pivots run on their tips; on its
 side they run on their sides, more contact, more friction, less
 amplitude, and the rate shifts. Keeping the same rate across amplitudes
-is **isochronism**. Genuine high-end hairsprings (exotic alloys, Breguet
-overcoils) are very good at it; a $5 clone hairspring is not, so a clone
-holds its rate over a much narrower band of amplitude. Here 251° to 222°
-moved the rate from 0 to −11 s/d, and this was a *good* example; most
-clones vary more.
+is **isochronism**. Here 251° to 222° moved the rate from 0 to −11 s/d;
+how much another watch moves is for its own measurement to say.
 
 And in daily wear an automatic is rarely fully wound (you'd need about
 30,000 steps a day), so the rate on the wrist differs from the QC rate.
