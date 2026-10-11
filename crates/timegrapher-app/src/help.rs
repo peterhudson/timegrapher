@@ -89,9 +89,11 @@ pub const RATE: &[&str] = &[
      with a clock log), the app shows the corrected rate under the big figure. The big \
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
-    "The confidence beside it (High, Medium or Low) grades the measurement, not the \
-     watch: High when the ± is within 0.5 seconds per day, Medium within 2, Low beyond. Stopped after a long \
-     run, a line under it gives the whole take's mean and spread.",
+    "The ± is how far the figure could be off from the scatter of 10-second rates over \
+     the run so far: it says how sure the measurement is, not how steady the watch is. \
+     It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
+     an unmeasured clock) is named beside the title. Stopped after a long run, a line \
+     under the figure gives the whole take's mean and spread.",
 ];
 
 pub const CLIPPING_BANNER: &[&str] = &[
@@ -118,9 +120,8 @@ pub const AMPLITUDE: &[&str] = &[
     "Tick and Tock are the amplitude measured from each kind of beat alone. They \
      should agree to a few degrees; a big difference usually means one side's sounds \
      were misread, not a fault in the watch.",
-    "The confidence beside it (High, Medium or Low) grades the measurement, not the \
-     watch: High when the ± is within 2°, Medium within 5°, Low beyond. A lift angle that isn't known lowers \
-     it one step.",
+    "Anything the ± can't show (a lift angle assumed, clipped beats, a short stretch) \
+     is named beside the title.",
 ];
 
 pub const BEAT_ERROR: &[&str] = &[
@@ -132,8 +133,8 @@ pub const BEAT_ERROR: &[&str] = &[
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
     "It is shown as a size. Which beat is the tick depends on where the analysis first \
      locks on, so which side is longer can flip from one run to the next. \
-     The confidence beside it (High, Medium or Low) grades the measurement, not the \
-     watch: High when the ± is within 0.05 ms, Medium within 0.1 ms, Low beyond.",
+     The ± is the scatter of its 2-second pieces; anything it can't show (clipped \
+     beats, a short stretch) is named beside the title.",
 ];
 
 pub const STRIP: &[&str] = &[
@@ -221,7 +222,7 @@ pub const FAULTS: &[&str] = &[
      rub after the drop. Each names the beat it is on.",
     "Each is a measure well outside what healthy watches give: worth checking on the \
      bench, not a diagnosis. Nothing shows when the sound can't be judged: no watch \
-     heard, clipping, or amplitude or beat error too unsteady for Medium confidence. Hovering \
+     heard, clipping, or amplitude or beat error too scattered to read the shape. Hovering \
      on a fault shows the measures behind it; docs/fault-signatures.md describes each.",
 ];
 

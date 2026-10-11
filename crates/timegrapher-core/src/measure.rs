@@ -96,6 +96,10 @@ pub struct Context {
     pub clipped_fraction: f64,
     /// Seconds from the first beat to the last.
     pub span_s: f64,
+    /// Seconds of sound the beats were sought in: the recording, the
+    /// stretch, or the live screen's averaging time so far. Shorter than
+    /// [`SHORT_SPAN_S`], whether a watch is heard cannot be told.
+    pub listened_s: f64,
     pub breaks: usize,
     /// The seconds a shown rate is averaged over, when shorter than the
     /// stretch (the live screen's averaging time). `None`: the rate is the
@@ -146,10 +150,11 @@ pub fn assess(
     };
     let mut caveats = Vec::new();
     let short = c.span_s < SHORT_SPAN_S;
-    // Whether a watch is heard is judged on 10 s windows of beats, so a
-    // shorter stretch cannot show one: its readings are withheld, but
-    // `short_span` alone says why.
-    if !c.watch_heard && !short {
+    // Whether a watch is heard is judged on 10 s windows of beats, so less
+    // than 10 s of sound cannot show one: its readings are withheld, but
+    // `short_span` alone says why. Beats too scattered to span 10 s in
+    // longer sound are no watch.
+    if !c.watch_heard && c.listened_s >= SHORT_SPAN_S {
         caveats.push(Caveat::NoWatch);
     }
     if let Some(heard) = c.bph_heard {
@@ -216,6 +221,7 @@ mod tests {
             beats: 100,
             expected: 100.0,
             span_s: 60.0,
+            listened_s: 60.0,
             ..Default::default()
         }
     }
@@ -319,11 +325,31 @@ mod tests {
             &Context {
                 watch_heard: false,
                 span_s: 8.0,
+                listened_s: 8.0,
                 ..heard()
             },
         );
         assert_eq!(a.caveats, vec![Caveat::ShortSpan { span_s: 8.0 }]);
         assert!(a.confidence.is_none());
+    }
+
+    /// Beats too scattered to make 10 s of a run, in a minute of sound, as
+    /// on an empty stand heard live: no watch, not too short to tell.
+    #[test]
+    fn scattered_beats_in_long_sound_are_no_watch() {
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                watch_heard: false,
+                span_s: 0.0,
+                ..heard()
+            },
+        );
+        assert_eq!(
+            a.caveats,
+            vec![Caveat::NoWatch, Caveat::ShortSpan { span_s: 0.0 }]
+        );
     }
 
     #[test]

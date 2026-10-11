@@ -704,22 +704,6 @@ pub fn sidebar_button(ui: &mut Ui, shown: bool) -> Response {
 
 /// A coloured dot, the key to a line or side. Its response joins the
 /// label beside it (`Response::union`), so its hover text shows over both.
-/// A three-dot meter with `filled` dots filled from the left, the rest
-/// drawn as rings, in one colour.
-pub fn meter(ui: &mut Ui, filled: usize, color: Color32) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(24.0, 14.0), Sense::hover());
-    for i in 0..3 {
-        let c = egui::pos2(rect.left() + 4.0 + 8.0 * i as f32, rect.center().y);
-        if i < filled {
-            ui.painter().circle_filled(c, 3.0, color);
-        } else {
-            ui.painter()
-                .circle_stroke(c, 2.5, egui::Stroke::new(1.0_f32, color));
-        }
-    }
-    resp
-}
-
 pub fn dot(ui: &mut Ui, color: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(8.0, 14.0), Sense::hover());
     ui.painter().circle_filled(rect.center(), 3.5, color);

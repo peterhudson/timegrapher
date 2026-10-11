@@ -12,7 +12,6 @@
 use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
-use crate::confidence::Confidence;
 use crate::dsp::{envelope, median, median_f32};
 use crate::measure::{self, Caveat};
 use crate::profile::{self, Side, TickProfile};
@@ -106,9 +105,14 @@ pub struct LiveReading {
     /// fit's jitter). When not, every reading is `None`, as `analyze`
     /// nulls them; the jitter and the beats used stay, to say why.
     pub watch_heard: bool,
-    /// Each reading's ± and grade, judged by `measure::assess` as
-    /// `analyze` and `session` judge theirs. `None` when no watch is heard.
-    pub confidence: Option<Confidence>,
+    /// The rate's ±, from `measure::assess` as `analyze` and `session`
+    /// give theirs: the scatter of 10 s windows over the run so far,
+    /// scaled to the averaging time. `None` until about 30 s of unbroken
+    /// beats, and when no watch is heard.
+    pub rate_error_s_per_day: Option<f64>,
+    /// `beat_error_unlock_ms`'s ±: the standard error of its 2 s windows
+    /// in the averaging time.
+    pub beat_error_unlock_error_ms: Option<f64>,
     /// What limits the readings, in `measure`'s order.
     pub caveats: Vec<Caveat>,
 }
@@ -317,7 +321,7 @@ impl LiveAnalyzer {
     }
 
     /// Say whether the lift angle is the calibre's and the sound card's
-    /// clock is corrected: each unknown lowers a grade and is a caveat.
+    /// clock is corrected: each unknown is a caveat.
     pub fn set_known(&mut self, lift_known: bool, clock_known: bool) {
         self.cfg.analysis.lift_known = lift_known;
         self.clock_known = clock_known;
@@ -544,6 +548,16 @@ impl LiveAnalyzer {
     /// Readings over the `average_s` seconds before `end_s`.
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
         let mut from = end_s - average_s;
+        // The sound heard over the averaging time, since the start or the
+        // latest break.
+        let since = self
+            .breaks
+            .iter()
+            .rev()
+            .find(|&&b| b <= end_s)
+            .copied()
+            .unwrap_or(0.0);
+        let listened_s = (end_s - from.max(since).max(0.0)).max(0.0);
         let mut lo = self.beats.partition_point(|b| b.time < from);
         let hi = self.beats.partition_point(|b| b.time <= end_s);
         // Only the latest unbroken run of beats.
@@ -623,6 +637,7 @@ impl LiveAnalyzer {
                 // 10 s average is 10 s of beats, though its first and last
                 // beats are one beat less apart.
                 span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
+                listened_s,
                 breaks: 0,
                 average_s: Some(average_s),
             },
@@ -644,7 +659,8 @@ impl LiveAnalyzer {
             clipped_beats,
             clipped_fraction,
             watch_heard,
-            confidence: assessment.confidence,
+            rate_error_s_per_day: assessment.confidence.and_then(|c| c.rate.se),
+            beat_error_unlock_error_ms: assessment.confidence.and_then(|c| c.beat_error.se),
             caveats: assessment.caveats,
         }
     }
@@ -718,15 +734,14 @@ mod tests {
             r.amplitude_deg.is_none() && r.beat_error_unlock_ms.is_none(),
             "{r:?}"
         );
-        assert!(r.confidence.is_none() && r.caveats.first() == Some(&Caveat::NoWatch));
+        assert!(r.rate_error_s_per_day.is_none() && r.caveats.first() == Some(&Caveat::NoWatch));
     }
 
-    /// The readings are judged as `analyze` judges a recording: a short
-    /// stretch grades poor, the rate's ± waits for enough of a run and
-    /// then follows the averaging time, and unknowns are caveats.
+    /// The readings carry what `analyze` gives a recording: a short
+    /// stretch is said, the rate's ± waits for enough of a run and then
+    /// follows the averaging time, and unknowns are caveats.
     #[test]
-    fn readings_carry_their_grades_and_caveats() {
-        use crate::confidence::Grade;
+    fn readings_carry_their_errors_and_caveats() {
         let cfg = SynthConfig {
             duration_s: 90.0,
             rate_s_per_day: 5.0,
@@ -745,7 +760,7 @@ mod tests {
             "{:?}",
             early.caveats
         );
-        assert_eq!(early.confidence.unwrap().rate.grade, Grade::Poor);
+        assert!(early.rate_error_s_per_day.is_none(), "{early:?}");
         let late = a.reading(10.0);
         assert!(
             late.caveats.contains(&Caveat::LiftUnknown),
@@ -757,8 +772,9 @@ mod tests {
             "{:?}",
             late.caveats
         );
-        let ten = late.confidence.unwrap().rate.se.expect("rate ±");
-        let sixty = a.reading(60.0).confidence.unwrap().rate.se.unwrap();
+        assert!(late.beat_error_unlock_error_ms.is_some(), "{late:?}");
+        let ten = late.rate_error_s_per_day.expect("rate ±");
+        let sixty = a.reading(60.0).rate_error_s_per_day.unwrap();
         assert!(sixty < ten, "{sixty} against {ten}");
         a.set_known(true, true);
         let known = a.reading(10.0).caveats;
