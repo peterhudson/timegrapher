@@ -150,7 +150,7 @@ async fn call(
     // that before the numbers; then the same document as the structured
     // content, for chat apps that show the model only text, with any
     // warnings from stderr after it.
-    let mut lead: Vec<String> = summary::lead(&doc).into_iter().collect();
+    let mut lead: Vec<String> = summary::lead(&doc, args).into_iter().collect();
     lead.extend(tools::notes(tool).into_iter().map(|n| format!("Note: {n}")));
     let mut text = serde_json::to_string(&doc).unwrap_or_default();
     if !out.stderr.is_empty() {

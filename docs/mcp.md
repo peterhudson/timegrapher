@@ -203,6 +203,10 @@ document, about what the numbers alone do not say:
   mistaken for vertical minus horizontal, `dvh_amplitude`), and what limits
   the readings. A sentence names the positions it is about, unless it is
   about every one.
+- `record_position`: what was recorded, what the take's check measured,
+  the lift angle and whether it was given, the calibre's or the default,
+  how many of the expected beats were found and clipped, and whether the
+  take was added to the test.
 - `check_microphone`: its rate and beat error come from a few seconds, so
   they are too short to give as the watch's readings.
 
