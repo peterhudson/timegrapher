@@ -320,12 +320,17 @@ class Persona:
     def run_app(self):
         files = ", ".join(self.p.get("files", {})) or "none"
         positions = " ".join(self.p.get("stand", {})) or "none (no stand)"
+        # A deep-pass persona sets budget, min_actions and notes in its front matter.
+        budget = self.p.get("budget", 80)
+        min_actions = self.p.get("min_actions", MIN_ACTIONS)
+        report_format = prompt("report-format").replace(
+            "Ten notes at most", f"{self.p.get('notes', 10)} notes at most")
         system = (prompt("app-tester")
                   .replace("{app}", os.path.join(HERE, "app.sh"))
                   .replace("{stand}", os.path.join(HERE, "stand.sh"))
                   .replace("{positions}", positions).replace("{files}", files)
-                  .replace("{home}", self.home).replace("{budget}", "80")
-                  .replace("{report_format}", prompt("report-format"))
+                  .replace("{home}", self.home).replace("{budget}", str(budget))
+                  .replace("{report_format}", report_format)
                   + self.p["dossier"])
         # The tester's commands see the persona's screen and stand.
         kw = dict(tools=["Bash", "Read"],
@@ -337,8 +342,8 @@ class Persona:
         notes, events, sess = self.claude("Begin. Open the app and do what you came to do.", system, "tester", **kw)
         actions = count_actions(events)
         # Agents tend to stop long before a person would; send them back in.
-        for _ in range(3):
-            if actions >= MIN_ACTIONS:
+        for _ in range(3 + min_actions // 80):
+            if actions >= min_actions:
                 break
             log(self.id, f"stopped after {actions} actions; sending back")
             notes, events, sess = self.claude(

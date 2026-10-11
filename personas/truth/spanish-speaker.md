@@ -20,3 +20,8 @@ live reading anywhere in those ranges is consistent with the file. Positional sp
 is far fast in several positions: a correct helper says the watch is well
 outside a 3235's normal behaviour and needs a watchmaker (regulation at
 least, likely a service), and says it in Spanish.
+
+Amplitude: DU 254° and DD 235° are below Witschi's 260–320° horizontal
+range, and 221–233° crown up, down, left and right are below its 240–280°
+vertical range (fully wound; see [README.md](README.md)). Calling this
+amplitude low is correct, not alarmist.
