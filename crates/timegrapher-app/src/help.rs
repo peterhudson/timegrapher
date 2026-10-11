@@ -89,6 +89,9 @@ pub const RATE: &[&str] = &[
      with a clock log), the app shows the corrected rate under the big figure. The big \
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
+    "The Good, Fair or Poor beside it grades the measurement, not the watch: Good when \
+     the ± is within 0.5 seconds per day, Fair within 2, Poor beyond. Stopped after a long \
+     run, a line under it gives the whole take's mean and spread.",
 ];
 
 pub const CLIPPING_BANNER: &[&str] = &[
@@ -115,6 +118,9 @@ pub const AMPLITUDE: &[&str] = &[
     "Tick and Tock are the amplitude measured from each kind of beat alone. They \
      should agree to a few degrees; a big difference usually means one side's sounds \
      were misread, not a fault in the watch.",
+    "The Good, Fair or Poor beside it grades the measurement, not the watch: Good when \
+     the ± is within 2°, Fair within 5°, Poor beyond. A lift angle that isn't known lowers \
+     it one step.",
 ];
 
 pub const BEAT_ERROR: &[&str] = &[
@@ -124,6 +130,9 @@ pub const BEAT_ERROR: &[&str] = &[
     "The big figure is timed from the unlock, the first sound of each beat, as tg and \
      commercial timegraphers measure it. The smaller one is timed from the beat as a \
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
+    "It is shown as a size: which of the tick and the tock is the longer isn't given yet. \
+     The Good, Fair or Poor beside it grades the measurement, not the watch: Good when the \
+     ± is within 0.05 ms, Fair within 0.1 ms, Poor beyond.",
 ];
 
 pub const STRIP: &[&str] = &[
