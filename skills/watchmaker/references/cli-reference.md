@@ -191,7 +191,8 @@ JSON body:
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
 | `faults[]` | Possible escapement faults from the shape of the Tick and Tock (from this version): `id`, `label`, `side`, `strength` (all `possible` for now), `evidence`, `see`. Empty when nothing is seen or the shape can't be judged. How to read and report each one: [findings.md](findings.md#faults-the-program-names) |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
-| `overall.beat_error_ms` | **Signed** beat error (positive: even beats late); report its absolute value |
+| `beat_error_unlock_ms` | **The beat error to quote**: signed, measured from the unlock, as tg and commercial timegraphers measure it; report its absolute value |
+| `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop |
 | `overall.period_s` | Fitted beat period |
 | `overall.jitter_us`, `jitter_us` | Scatter of single beats, microseconds (overall, and the median within 10 s windows) |
 | `overall.beats_used` | Beats in the fit |

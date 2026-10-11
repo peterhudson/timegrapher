@@ -66,9 +66,21 @@ Three jobs, in order:
    `none`). Explain the issue in plain words,
    propose the fix, ask, then apply it (or `--apply` after a yes) and run
    `doctor` again until it is clean.
-4. Find out what the watch is: make, model and **calibre** if they know it.
-   That gives you the beat rate and the lift angle. If they don't know, say
-   so and use the defaults knowingly (see below).
+4. Before analysing anything, ask what the watch is (make, model and
+   **calibre** if they know it), and which beat rate and lift angle, if
+   any, they are sure of and where those came from. Look the calibre up
+   with `timegrapher calibres NAME --json`. A beat rate or lift angle the
+   person gives that disagrees with the table is a question to settle
+   first, not a setting to run with. If they don't know the calibre, say
+   so, leave the beat rate to the program (no `--bph`) and use the default
+   lift angle knowingly (see below).
+5. Say the lift angle's standing up front, in the first answer that gives
+   an amplitude: the table's `confidence` and `notes` say whether it is
+   the maker's published figure or an assumption (many makers publish
+   none). When it is not
+   published, say so, and that amplitude moves by about amplitude ÷ lift
+   angle per degree (about 5° at 250° and 52°). Name the lift angle in
+   any figure they will repeat to someone else.
 
 ### 2. Test (see [guided-test.md](references/guided-test.md))
 
@@ -114,17 +126,28 @@ Work through them in this order. The reasons are in
    actually runs at. If not, back to set-up. If the signal is clean but
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.
+   **Too few beats** (`beats_found` well under duration × bph ÷ 3600, say
+   under 90%) is first a question of the beat rate, before clipping, gain
+   or the watch: run `analyze` again without `--bph` and see which rate
+   the program finds and whether the beats then add up. A forced wrong
+   beat rate finds a fraction of the beats and gives a meaningless
+   amplitude. If the beat rate changes, ask again about the lift angle.
 2. **Amplitude first.** It is the best single measure of the health of a
    movement: how much energy reaches the balance, after everything the
    train, the oil and the escapement take out of it. Fully wound and dial
    up, a healthy modern watch shows roughly 270–310°; 250° is fine, 230° is
    acceptable on many calibres, under 200° dial up wants looking at. Vertical
-   positions run 20–50° lower than horizontal.
+   positions run 20–50° lower than horizontal, so judge them against the
+   dial-up range less 20–50°, not against the dial-up range itself.
 3. **Lift angle.** Amplitude is only as good as the lift angle you gave it.
    A wrong lift angle scales the amplitude: 2° out at 52° is about 4%, or
    ±11° at 280°. Look up the calibre in the table; if unknown, use 52 and say
    the amplitude could be ±10–15° out.
-4. **Beat error.** Under about 0.5 ms is good, under 0.7 ms fine for a
+4. **Beat error.** Quote the unlock figure, `beat_error_unlock_ms`
+   (as a positive number): it is what tg and commercial timegraphers
+   show. `overall.beat_error_ms` is measured from the drop; the two
+   differ when Tick and Tock take different times from unlock to drop.
+   Under about 0.5 ms is good, under 0.7 ms fine for a
    modern watch, up to about 1 ms acceptable on an older one. It is an
    adjustment, not a fault in itself, but a large one makes a low-amplitude
    watch reluctant to start.
@@ -162,7 +185,8 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   the microphone (a missed unlock or a doubled sound reads as very high
   amplitude). Real amplitude that high risks **knocking** (overbanking): the
   trace jumps or doubles and you can sometimes hear a double tick. That
-  wants a watchmaker; it can damage the escapement.
+  wants a watchmaker; it can damage the escapement. Below about 320°,
+  don't raise knocking at all.
 - **Low amplitude everywhere**, judged against what *that calibre* normally
   does (a Seiko NH35 at 235° is fine; an ETA 2824 at 235° is tired): dirty
   or dried oil, a tired mainspring, or wear. Weigh it with the time since
@@ -183,11 +207,27 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   comes out at the next service.
 - **A trace that wanders while everything else is good** may be the watch
   settling, a loose clamp, or the room. Re-test before concluding.
-- **Budget movements** (and the clone movements in homage and replica
-  watches) vary more between positions than well-adjusted Swiss or Japanese
-  ones, because the hairspring and its fitting are simpler. A 30 s/d
-  positional spread is normal on a budget calibre; on a chronometer it
-  isn't. Judge each watch against its own kind.
+- **Judge the rate against the maker's own figure**, not a general rule.
+  Rolex states −2/+2 s/d for a cased Superlative Chronometer
+  ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)); ETA grades
+  the 2824-2 at a mean of ±12 s/d (Standard, two positions), ±7
+  (Elaboré, three) and ±4 (Top, five)
+  ([uhrinstinkt](https://www.uhrinstinkt.de/en/blogs/magazine/eta-movements-quality-levels-in-comparison),
+  [Caliber Corner](https://calibercorner.com/eta-caliber-2824-2/), which
+  adds up to ±30, ±20 and ±15 in any one position); Seiko's Time Module
+  gives the NH35A −20 to +40 s/d
+  ([Caliber Corner](https://calibercorner.com/seiko-caliber-nh35a)). With
+  no published figure for the calibre, say so rather than guess.
+- **A rate far outside the maker's figure needs a watchmaker, whatever
+  the cause.** A mean over the positions, or a spread between them,
+  several times the maker's tolerance (once magnetism is ruled out) is a
+  plain "take it to a watchmaker": regulation at least, probably a
+  service. Don't soften it to "it may be nothing".
+- **Say only what was measured or what a source here says.** No general
+  rules of thumb about positions ("dial up is usually the fastest"), about
+  movement types ("common on clones"), or about causes ("a tooth
+  catching") that the program didn't find and this skill doesn't source.
+  A wander or wave the program didn't name as a finding is not a finding.
 - **On a cheap, common movement, mention replacing it**: a new NH35 or
   Miyota can cost less than a service.
 

@@ -87,8 +87,8 @@ The watch is healthy. Wear it and enjoy it.
 - Amplitude within the normal range for its calibre, and holding up at
   24 hours.
 - Beat error under about 0.7 ms (1.0 ms on an older watch).
-- The positions within about 15–20 s/d of each other on a good calibre,
-  more on a budget one (30 s/d is common on cheap and clone movements).
+- The rate over the positions within the maker's own figure for the
+  calibre (SKILL.md, "Judge the rate against the maker's own figure").
 - A straight, steady trace across the whole run; no periodic pattern
   beyond a few degrees.
 - Serviced within the interval above, or new.
@@ -127,6 +127,11 @@ it gets worse.
   short of the maker's figure.
 - Rate spread or average the owner can't live with: regulation is usually
   done with a service.
+- A mean rate over the positions, or a spread between them, several
+  times the maker's figure for the calibre, after demagnetising. Say it
+  plainly: it needs a watchmaker whatever the cause. Example: a Rolex
+  3235 at +46 s/d dial up and −18 crown right, a spread of 84 s/d and a
+  mean of +23, against Rolex's −2/+2 for the cased watch.
 - Beat error over about 1.5 ms.
 - A clear periodic fault confirmed on a long run.
 - Still gaining hundreds of seconds a day after demagnetising properly
