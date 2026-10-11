@@ -14,6 +14,12 @@ by amplitude alone:
 
 Then give one of four verdicts, plainly, at the top of your answer:
 **fine**, **keep an eye on it**, **service soon**, **stop wearing it**.
+When the measurement can't carry a verdict (no watch heard, a caveat that
+makes every grade poor) or there is only one position, say **no verdict
+yet** instead: what the reading does show, and the test that would
+settle it (usually the six positions in
+[guided-test.md](guided-test.md)). A clear fault in one position (it
+stops, amplitude under 200°, a rate hundreds out) still gets its verdict.
 
 Working watchmakers are clear that the timegrapher is supporting evidence:
 a watch can time beautifully with dry jewels and perished gaskets, and a
@@ -89,12 +95,9 @@ use the time since service as one input among the measurements, not a
 verdict on its own. Factor that in even when the numbers look fine: a watch that
 measures well but hasn't been serviced in 12 years is still due.
 
-**New watches with cheap or clone movements** are a special case. Factory
-assembly and cleanliness vary a lot, and debris has been found in new
-clone movements, so if the owner plans to keep it, an early service (within
-the first 18 months or so) is sensible. This applies to budget and
-replica movements, not to a new watch from an established maker, which
-comes with a warranty: send that back to the maker if it misbehaves.
+**A new watch** that measures badly goes back to whoever sold it, under
+its warranty, with what was measured; don't advise a service on a new
+watch.
 
 ## Fine
 
@@ -105,8 +108,11 @@ The watch is healthy. Wear it and enjoy it.
 - Beat error within Witschi's 0.5 ms (the report's `beat_error_tolerance`).
 - The rate over the positions within the maker's own figure for the
   calibre (SKILL.md, "Judge the rate against the maker's own figure").
-- A straight, steady trace across the whole run; no periodic pattern
-  beyond a few degrees.
+- A straight, steady trace across the whole run, and no periodic change
+  the program names as a finding (`cycle_wheel` in `session`, or a
+  wheel `long` confirms). A period listed in `analyze`'s
+  `amplitude_periods` or `timing_periods` is a hint to confirm with
+  `long`, not a finding.
 - Serviced within the interval above, or new.
 
 What to say: "It's in good order. The amplitude is healthy for this

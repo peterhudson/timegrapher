@@ -369,7 +369,6 @@ fn an_empty_stand_gives_no_readings() {
 }
 
 #[test]
-#[ignore = "gap 6: a stored empty-stand take replayed in the live analyser still reads a rate and beat error (the recordings' silence file: -28 s/d, 0.51 ms); LiveReading has no watch_heard"]
 fn an_empty_stand_replayed_gives_no_readings() {
     let a = empty_stand();
     let path = on_disk(&a, "t5b");
@@ -411,7 +410,6 @@ fn clipping_warns_in_every_pipeline() {
 }
 
 #[test]
-#[ignore = "gap 7: driven five times past full scale, the live analyser hears no watch at all while analyze reads every beat and warns of clipping"]
 fn heavy_clipping_still_reads_live() {
     let a = clipped(5.0);
     let s = analyze(&a, &AnalysisConfig::default()).summary;

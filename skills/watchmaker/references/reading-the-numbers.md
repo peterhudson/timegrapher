@@ -117,37 +117,27 @@ numbers on ETA bases. Look the watch's calibre up on **Caliber Corner**
 angle and beat rate. Caliber Corner also gives the base's specifications,
 such as the ETA 2824-2 grades.
 
-For the lift angle itself, the most complete list is **WatchGuy's**
-(watchguy.co.uk/cgi-bin/lift_angles), with well over a thousand calibres by
-maker. Look the calibre up there when you can fetch web pages. Where it and
-the table below disagree, prefer the table for the calibres the table
-names: they come from the bench.
+For the lift angle and beat rate, use the program's calibre table:
+`timegrapher calibres NAME --json` (or the MCP server's calibre lookup)
+gives them with how sure the table is (`confidence`, `notes`). Give
+that standing with any amplitude, in your own words; the table's source
+names and links are for checking, not for reading out. For a calibre the table doesn't have,
+the most complete list is **WatchGuy's**
+(watchguy.co.uk/cgi-bin/lift_angles), with well over a thousand calibres
+by maker; look it up there when you can fetch web pages, and say where
+the figure came from. Where the two disagree, prefer the program's table:
+its figures come from the bench.
 
-| Calibre | Lift angle | Note |
-| --- | --- | --- |
-| ETA 2824-2, Sellita SW200-1 | 50° | |
-| Rolex 31xx (3135, 3035 and family) | 52° | |
-| Rolex 32xx (3230, 3235, 3255) | 55°, possibly 58° | Rolex doesn't publish it; 55° is the best estimate. At 52° a 32xx reads about 13° low at 230° |
-| Dandong (DD) and JH clones of the 32xx | 55°, possibly 58° | As the genuine |
-| Shanghai (SH) and VR clones of the 32xx | 52° | Same escapement as the 31xx |
-| DD, VR and SH clones of the 31xx | 52° | |
-| Rolex 4130; SH 4131 | 52° | |
-| DD 4131 | 55° | Probably, from the pallet fork geometry; not measured |
-| Miyota 9015 | 51° | |
-| Patek 324 and 240 (and clones) | 52° | |
-| AP 3120 | 53° | |
-| AP 4302 | 52° | |
-| AP 4401 (chronograph) | 50–52° | Not documented for the genuine; a clone may differ |
-| ETA 2836-2 | 50° | WatchGuy |
-| ETA 2892-A2, 2893-2 | 52° | WatchGuy |
-| Valjoux/ETA 7750 | 49° | WatchGuy; check the SW500 separately |
-| ETA/Unitas 6497 | 44° | WatchGuy |
-| Seiko NH35/NH36, 4R35/4R36, 7S26 | 53° | Commonly quoted; check WatchGuy |
-| Miyota 8215 | 50° | Commonly quoted; check WatchGuy |
-| Omega co-axial (8500, 8800, 8900 and others) | 38° | Commonly quoted. A co-axial escapement doesn't make the Swiss-lever three-sound tick, and this program's amplitude assumes a Swiss lever, so treat co-axial amplitude as unreliable |
+Name a particular factory or copy of a movement only when the person
+has named it. Never suggest that a watch may be a copy.
 
-Rule of thumb: each degree of lift angle moves the amplitude by about
-5–7°, so correct a reading made at the wrong lift angle by about 5° per
+An Omega co-axial escapement doesn't make the Swiss-lever three-sound
+tick, and this program's amplitude assumes a Swiss lever, so treat a
+co-axial's amplitude as unreliable whatever lift angle is set.
+
+Amplitude is in proportion to the lift angle: a reading made at the
+wrong lift angle is corrected by multiplying it by right ÷ used (250° at
+52° is about 264° at 55°), which is about amplitude ÷ lift angle per
 degree. A lift angle of 62–65° set on someone else's machine is a sign of
 amplitude hacking.
 

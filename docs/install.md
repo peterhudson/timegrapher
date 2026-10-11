@@ -134,12 +134,16 @@ a personal computer.
    is the version released. Raise it in a pull request before each release
    after the first, following [semantic versioning](https://semver.org):
    0.1.0 to 0.1.1 for fixes, to 0.2.0 for new features.
-2. Start the build, either way:
+2. Write the release notes, for watchmakers rather than developers, in
+   `packaging/release-notes/X.Y.Z.md` (the new version), in the same pull
+   request. They become the draft's text; without them the draft lists the
+   pull requests merged since the last release.
+3. Start the build, either way:
    - On GitHub: **Actions**, **Release**, **Run workflow**, branch `main`,
      tick **Draft a release**, **Run workflow**.
    - Or from a clone: `git fetch origin && git tag v0.1.0 origin/main && git push origin v0.1.0`
      (the tag must be `v` plus the Cargo.toml version, or the build stops).
-3. When the run is green, **Releases** shows a draft with every file. Try
+4. When the run is green, **Releases** shows a draft with every file. Try
    the download for your platform, edit the notes if needed, and click
    **Publish release**. Until then nobody sees it and the app's update check
    does not offer it.
