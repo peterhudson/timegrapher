@@ -8,15 +8,63 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 use serde_json::{json, Map, Value};
+use timegrapher_core::palette::{Palette, Rgb, DARK, LIGHT};
 
 use crate::cli;
 
 pub const URI: &str = "ui://timegrapher/charts";
 pub const MIME: &str = "text/html;profile=mcp-app";
 pub const META_KEY: &str = "timegrapher/charts";
-pub const HTML: &str = include_str!("view.html");
+const HTML: &str = include_str!("view.html");
+
+/// The page with the app's palette in it, so the charts and the app cannot
+/// drift apart.
+pub fn page() -> &'static str {
+    static PAGE: OnceLock<String> = OnceLock::new();
+    PAGE.get_or_init(|| {
+        let css = format!(
+            ":root {{\n  color-scheme: light;\n{}}}\n:root[data-theme=\"dark\"] {{\n  color-scheme: dark;\n{}}}",
+            variables(&LIGHT, 0.16),
+            variables(&DARK, 0.18)
+        );
+        HTML.replace("/*PALETTE*/", &css)
+    })
+}
+
+/// One theme as the page's CSS variables.
+fn variables(p: &Palette, tolerance: f64) -> String {
+    let rgba = |c: Rgb, a: f64| format!("rgba({}, {}, {}, {a})", c.r, c.g, c.b);
+    [
+        ("window", p.window.css()),
+        ("card", p.card.css()),
+        ("control", p.control.css()),
+        ("separator", p.separator.css()),
+        ("text", p.text.css()),
+        ("text2", p.text_secondary.css()),
+        ("text3", p.text_tertiary.css()),
+        ("tick", p.tick.css()),
+        ("tock", p.tock.css()),
+        ("rate", p.trace_rate.css()),
+        ("amplitude", p.trace_amplitude.css()),
+        ("beat-error", p.trace_beat_error.css()),
+        ("good", p.good.css()),
+        ("warn", p.warn.css()),
+        ("bad", p.bad.css()),
+        ("unlock", p.unlock.css()),
+        ("drop", p.drop.css()),
+        ("peak", p.peak.css()),
+        ("sound", p.sound.css()),
+        // The grid is the text colour, faint, as in the app.
+        ("grid", rgba(p.text, 0.12)),
+        ("tolerance", rgba(p.good, tolerance)),
+    ]
+    .iter()
+    .map(|(name, value)| format!("  --{name}: {value};\n"))
+    .collect()
+}
 
 /// Most points drawn per series: plenty for a chat-sized chart, and it keeps
 /// a day-long run's result small.
@@ -44,7 +92,7 @@ pub fn contents() -> Value {
     json!({
         "uri": URI,
         "mimeType": MIME,
-        "text": HTML,
+        "text": page(),
         "_meta": { "ui": { "prefersBorder": false } },
     })
 }
@@ -221,9 +269,18 @@ mod tests {
     }
 
     #[test]
+    fn the_view_takes_the_apps_colours() {
+        let page = page();
+        assert!(!page.contains("/*PALETTE*/"));
+        for c in [LIGHT.trace_rate, DARK.trace_rate, LIGHT.tick, DARK.tock] {
+            assert!(page.contains(&c.css()), "{}", c.css());
+        }
+    }
+
+    #[test]
     fn the_view_needs_no_network() {
         for banned in ["http://", "https://", "<script src", "@import", "fetch("] {
-            assert!(!HTML.contains(banned), "view.html contains {banned}");
+            assert!(!page().contains(banned), "view.html contains {banned}");
         }
     }
 }
