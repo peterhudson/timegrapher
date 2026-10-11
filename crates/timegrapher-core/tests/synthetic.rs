@@ -286,12 +286,12 @@ fn shape_measures_follow_the_sound() {
         let (a, b) = (f(&m.even), f(&m.odd));
         (a.max(b), a.min(b))
     };
-    let healthy = measures(&base());
-    println!("healthy {healthy:?}");
-    assert!(both(&healthy, &|s| v(s.share_with_sound_1)).1 > 0.9);
-    assert!(both(&healthy, &|s| v(s.share_with_sound_2)).1 > 0.9);
-    assert!(both(&healthy, &|s| v(s.ratio13)).0 < 1.0);
-    assert!(healthy.even.windows_measured >= 5 && healthy.odd.windows_measured >= 5);
+    let clean = measures(&base());
+    println!("clean {clean:?}");
+    assert!(both(&clean, &|s| v(s.share_with_sound_1)).1 > 0.9);
+    assert!(both(&clean, &|s| v(s.share_with_sound_2)).1 > 0.9);
+    assert!(both(&clean, &|s| v(s.ratio13)).0 < 1.0);
+    assert!(clean.even.windows_measured >= 5 && clean.odd.windows_measured >= 5);
 
     let knock = Sound {
         gain: 0.15,
