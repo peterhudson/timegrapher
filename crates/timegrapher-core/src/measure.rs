@@ -18,6 +18,10 @@
 //! | `clock_unknown` | one step down | | |
 //! | `breaks` | | | |
 //!
+//! Whether a watch is heard is judged on 10 s windows, so a stretch under
+//! [`SHORT_SPAN_S`] cannot show one: its readings are withheld with
+//! `short_span` alone, not `no_watch`.
+//!
 //! The beat error's sign: positive means Tick, the first beat of the run,
 //! comes late. Tick is whichever beat a reading locks on first, so the sign
 //! holds within one run only; text shows the size.
@@ -141,13 +145,16 @@ pub fn assess(
         clock_unknown: !c.clock_known,
     };
     let mut caveats = Vec::new();
-    if !c.watch_heard {
+    let short = c.span_s < SHORT_SPAN_S;
+    // Whether a watch is heard is judged on 10 s windows of beats, so a
+    // shorter stretch cannot show one: its readings are withheld, but
+    // `short_span` alone says why.
+    if !c.watch_heard && !short {
         caveats.push(Caveat::NoWatch);
     }
     if let Some(heard) = c.bph_heard {
         caveats.push(Caveat::SetRateDisagrees { heard });
     }
-    let short = c.span_s < SHORT_SPAN_S;
     if short {
         caveats.push(Caveat::ShortSpan { span_s: c.span_s });
     }
@@ -302,6 +309,21 @@ mod tests {
     #[test]
     fn under_three_windows_the_rate_error_is_unknown() {
         assert_eq!(rate_se_over(&rate_windows(&[1.0, -1.0]), 10.0), None);
+    }
+
+    #[test]
+    fn a_stretch_too_short_to_judge_is_short_not_silent() {
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                watch_heard: false,
+                span_s: 8.0,
+                ..heard()
+            },
+        );
+        assert_eq!(a.caveats, vec![Caveat::ShortSpan { span_s: 8.0 }]);
+        assert!(a.confidence.is_none());
     }
 
     #[test]
