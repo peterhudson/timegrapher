@@ -521,7 +521,7 @@ pub fn listens(t: &ToolSpec) -> bool {
 /// Plain notes after a result's document, for what the numbers alone do
 /// not say: a microphone check's readings are too short to trust, and an
 /// amplitude worked out with a lift angle nobody gave.
-pub fn notes(t: &ToolSpec, args: &Map<String, Value>, doc: &Value) -> Vec<String> {
+pub fn notes(t: &ToolSpec, doc: &Value) -> Vec<String> {
     let mut notes = Vec::new();
     if t.name == "check_microphone" {
         notes.push(
@@ -531,15 +531,10 @@ pub fn notes(t: &ToolSpec, args: &Map<String, Value>, doc: &Value) -> Vec<String
                 .to_string(),
         );
     }
-    let given = |k: &str| args.get(k).is_some_and(|v| !v.is_null());
-    if t.name == "analyze_recording" && !given("calibre") && !given("lift_deg") {
-        if let Some(lift) = doc["input"]["settings"]["lift_deg"].as_f64() {
-            notes.push(format!(
-                "No calibre or lift angle was given, so the amplitude assumes a lift \
-                 angle of {lift}°. Tell the person, and ask for the calibre: with \
-                 another lift angle the amplitude changes."
-            ));
-        }
+    // What limits the readings, from the document's caveats: an assumed
+    // lift angle, too short a take, clipping and the like.
+    if t.name == "analyze_recording" || t.name == "run_session" {
+        notes.extend(crate::caveats::notes(doc));
     }
     notes
 }
@@ -798,14 +793,16 @@ mod tests {
 
     #[test]
     fn an_assumed_lift_angle_and_a_quick_check_are_called_out() {
-        let doc = json!({"input": {"settings": {"lift_deg": 52.0}}});
+        let doc = json!({"schema": "timegrapher.analyze/1",
+            "input": {"settings": {"lift_deg": 52.0}}, "caveats": [{"code": "lift_unknown"}]});
         let analyze = find("analyze_recording").unwrap();
-        let said = notes(analyze, &args(json!({"recording": full("w.wav")})), &doc);
+        let said = notes(analyze, &doc);
         assert!(said[0].contains("lift angle of 52°"), "{said:?}");
-        let with = args(json!({"recording": full("w.wav"), "calibre": "ETA 2824-2"}));
-        assert!(notes(analyze, &with, &doc).is_empty());
+        // With a calibre, `analyze` reports no lift_unknown.
+        let known = json!({"schema": "timegrapher.analyze/1", "caveats": []});
+        assert!(notes(analyze, &known).is_empty());
         let mic = find("check_microphone").unwrap();
-        assert!(notes(mic, &Map::new(), &doc)[0].contains("too short to trust"));
+        assert!(notes(mic, &doc)[0].contains("too short to trust"));
     }
 
     #[test]

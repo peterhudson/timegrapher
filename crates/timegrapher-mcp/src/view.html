@@ -77,6 +77,7 @@ svg text.out { font-weight: 600; }
 .sev-warning, .sev-warn { color: var(--warn); }
 .sev-note, .sev-info { color: var(--text2); }
 .findings .evidence, .findings .advice { color: var(--text2); font-size: 12px; margin-top: 2px; }
+.limits li { font-size: 13px; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .seg button { font: inherit; font-size: 12px; color: var(--text); background: var(--control); border: 0; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--text); color: var(--card); }
@@ -503,7 +504,7 @@ function fileName(doc) {
   return f && f.path ? String(f.path).split(/[\\/]/).pop() : "";
 }
 
-function recordingView(doc, extra) {
+function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
@@ -526,18 +527,21 @@ function recordingView(doc, extra) {
   const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
   const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
-    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
+    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", graded(Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "", conf.rate))}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", graded(sides, conf.amplitude), "°")}
+    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", graded(beNote, conf.beat_error))}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
   </div>`;
-  if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
+  // The caveats say what limits the readings, clipping among them; a
+  // server without them still gets the clipping notice.
+  if (limits && limits.length) html += limitsCard(limits);
+  else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
   html += stripCards(extra && extra.strip);
   html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
   return html;
 }
 
-function sessionView(doc) {
+function sessionView(doc, limits) {
   const rep = doc.report || {};
   const tol = rep.tolerance || {};
   // Keep each reading's index: the verdicts are listed in the same order.
@@ -572,6 +576,7 @@ function sessionView(doc) {
       `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
   });
   html += `</tbody></table></div>`;
+  if (limits && limits.length) html += limitsCard(limits);
   const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
   if (heard.length) {
     const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
@@ -642,6 +647,18 @@ function bars(rows, color, unit, decimals) {
   g += `<g clip-path="url(#${area.id})">${inside}</g>`;
   const note = rows.some((r) => r.tol) ? `<p class="sub" style="margin:6px 0 0"><span class="swatch tolkey"></span> Tolerance</p>` : "";
   return `<svg viewBox="0 0 ${W} ${T + plotH + B}" width="${W}" height="${T + plotH + B}" role="img">${g}</svg>${note}`;
+}
+
+// What limits the readings: the server's sentences from the caveats, each
+// with the positions it is about when not every one.
+function limitsCard(limits) {
+  return `<div class="card"><h2>What Limits These Readings</h2><ul class="findings limits">${limits.map((l) => `<li>${l.where ? `<b>${esc(l.where)}</b> ` : ""}${esc(l.text)}</li>`).join("")}</ul></div>`;
+}
+
+// A tile's note with the reading's confidence grade after it.
+function graded(note, c) {
+  const g = c && c.grade ? `${esc(c.grade)} confidence` : "";
+  return [note, g].filter(Boolean).join(" · ");
 }
 
 function findingsCard(findings) {
@@ -1261,14 +1278,15 @@ function redraw() {
   }
   const doc = last.structuredContent;
   const extra = last._meta && last._meta["timegrapher/charts"];
+  const limits = last._meta && last._meta["timegrapher/limits"];
   let html;
   if (last.isError || !doc || !doc.schema) {
     const text = (last.content || []).map((c) => c.text || "").join("\n");
     html = `<div class="card notice"><b>No Reading</b>${esc(text || "The tool returned nothing to draw.")}</div>`;
   } else if (doc.schema.startsWith("timegrapher.analyze/")) {
-    html = recordingView(doc, extra);
+    html = recordingView(doc, extra, limits);
   } else if (doc.schema.startsWith("timegrapher.session/")) {
-    html = sessionView(doc);
+    html = sessionView(doc, limits);
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
     html = profileView(doc);
   } else if (doc.schema.startsWith("timegrapher.series/")) {

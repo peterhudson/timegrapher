@@ -192,8 +192,15 @@ alone do not say:
 
 - `check_microphone`: its rate and beat error come from a few seconds, so
   they are too short to give as the watch's readings.
-- `analyze_recording`, when no calibre or lift angle was given: the
-  amplitude assumed a lift angle of 52°. The **Test My Watch** prompt is the skill's own
+- `analyze_recording` and `run_session`: what limits the readings, one
+  sentence for each of the result's `caveats` (for example an assumed lift
+  angle of 52°, too short a take, clipping, or a sound card clock nobody
+  checked). In `run_session` a sentence names the positions it is about,
+  unless it is about every one. The charts show the same sentences under
+  **What Limits These Readings**, and the `analyze_recording` charts give
+  each reading's confidence grade (good, fair or poor).
+
+The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced
 watchmaker would run, from the calibre and the microphone through the six
 positions to a plain answer, with the watch you name added at the end.
