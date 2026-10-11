@@ -192,11 +192,12 @@ Some results begin with a few plain lines for the model, before the
 document, about what the numbers alone do not say:
 
 - `analyze_recording`: the rate, amplitude and beat error, each with its
-  confidence grade (good, fair or poor), then what limits them, one
-  sentence for each of the result's `caveats` (for example an assumed lift
-  angle of 52°, too short a take, clipping, or a sound card clock nobody
-  checked).
-- `run_session`: each position's readings with their grades, the
+  standard error (±) where the result gives one, then one plain fact for
+  each of the result's `caveats` (for example the lift angle assumed, how
+  many seconds of beats were heard, the share of beats clipped, or that
+  the sound card's clock was not checked). These lines give facts, not
+  grades or verdicts.
+- `run_session`: each position's readings with their standard errors, the
   characteristic values each named by what it compares (so the largest
   amplitude difference between any two positions, `d_amplitude`, is not
   mistaken for vertical minus horizontal, `dvh_amplitude`), and what limits
@@ -205,8 +206,8 @@ document, about what the numbers alone do not say:
 - `check_microphone`: its rate and beat error come from a few seconds, so
   they are too short to give as the watch's readings.
 
-The charts show the same sentences under **What Limits These Readings**,
-and the `analyze_recording` charts give each reading's confidence grade.
+The charts list the caveats under **What Limits These Readings**, and the
+`analyze_recording` charts give each reading's confidence grade.
 
 The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced
