@@ -203,59 +203,110 @@ pub fn analyze_files(
             )));
         }
     }
-    let fs = info.sample_rate as f64;
-    let core = (cfg.chunk_s * fs).round() as usize;
-    let margin = (cfg.margin_s * fs).round() as usize;
-    let mut st = State {
-        fs,
-        cfg: cfg.clone(),
-        template: None,
-        bph: cfg.analysis.bph.unwrap_or(0),
-        beats: Vec::new(),
-        amp: Vec::new(),
-        next_amp_s: 0.0,
-        clipped_beats: Vec::new(),
-        clipped_samples: 0,
-    };
-    // `buf` holds samples from absolute index `buf0`; the next chunk's own
-    // stretch starts at `next`.
-    let mut buf: Vec<f32> = Vec::new();
-    let mut buf0 = 0usize;
-    let mut next = 0usize;
-    let mut total = 0usize;
+    let mut c = Chunker::new(info.sample_rate, cfg);
     for path in paths {
         audio::stream(path, 1 << 16, |block| {
-            buf.extend_from_slice(block);
-            total += block.len();
-            while buf0 + buf.len() >= next + core + margin {
-                let from = next.saturating_sub(margin);
-                let x = &buf[from - buf0..next + core + margin - buf0];
-                st.chunk(x, from, next as f64 / fs, (next + core) as f64 / fs);
-                next += core;
-                let keep_from = next.saturating_sub(margin);
-                buf.drain(..keep_from - buf0);
-                buf0 = keep_from;
-                progress(next as f64 / fs);
-            }
+            c.push(block);
+            progress(c.next as f64 / c.st.fs);
         })?;
     }
-    if total > next {
-        let from = next.saturating_sub(margin);
-        st.chunk(&buf[from - buf0..], from, next as f64 / fs, f64::INFINITY);
+    progress(c.total as f64 / c.st.fs);
+    Ok(c.finish())
+}
+
+/// Analyse a recording held in memory into a beat log, chunk by chunk
+/// exactly as [`analyze_files`] reads a file, so that a reading of a file
+/// and of the same audio in memory rest on the same beats.
+pub fn analyze_samples(samples: &[f32], sample_rate: u32, cfg: &StreamConfig) -> BeatLog {
+    let mut c = Chunker::new(sample_rate, cfg);
+    for block in samples.chunks(1 << 16) {
+        c.push(block);
     }
-    progress(total as f64 / fs);
-    Ok(BeatLog {
-        sample_rate: info.sample_rate,
-        duration_s: total as f64 / fs,
-        bph: st.bph,
-        lift_deg: cfg.analysis.amplitude.lift_deg,
-        beats: st.beats,
-        amplitude_windows: {
-            let mut amp = st.amp;
-            amplitude::reject_side_outliers(&mut amp, amplitude::OUTLIER_SPAN_S);
-            amp
-        },
-        clipped_beats: st.clipped_beats,
-        clipped_samples: st.clipped_samples,
-    })
+    c.finish()
+}
+
+/// The chunked reading of one recording: audio goes in in blocks of any
+/// size, beats come out on a fixed grid of chunks.
+struct Chunker {
+    st: State,
+    core: usize,
+    margin: usize,
+    /// `buf` holds samples from absolute index `buf0`; the next chunk's own
+    /// stretch starts at `next`.
+    buf: Vec<f32>,
+    buf0: usize,
+    next: usize,
+    total: usize,
+    sample_rate: u32,
+}
+
+impl Chunker {
+    fn new(sample_rate: u32, cfg: &StreamConfig) -> Self {
+        let fs = sample_rate as f64;
+        Chunker {
+            st: State {
+                fs,
+                cfg: cfg.clone(),
+                template: None,
+                bph: cfg.analysis.bph.unwrap_or(0),
+                beats: Vec::new(),
+                amp: Vec::new(),
+                next_amp_s: 0.0,
+                clipped_beats: Vec::new(),
+                clipped_samples: 0,
+            },
+            core: (cfg.chunk_s * fs).round() as usize,
+            margin: (cfg.margin_s * fs).round() as usize,
+            buf: Vec::new(),
+            buf0: 0,
+            next: 0,
+            total: 0,
+            sample_rate,
+        }
+    }
+
+    fn push(&mut self, block: &[f32]) {
+        let (core, margin) = (self.core, self.margin);
+        self.buf.extend_from_slice(block);
+        self.total += block.len();
+        while self.buf0 + self.buf.len() >= self.next + core + margin {
+            let from = self.next.saturating_sub(margin);
+            let x = &self.buf[from - self.buf0..self.next + core + margin - self.buf0];
+            let fs = self.st.fs;
+            self.st.chunk(
+                x,
+                from,
+                self.next as f64 / fs,
+                (self.next + core) as f64 / fs,
+            );
+            self.next += core;
+            let keep_from = self.next.saturating_sub(margin);
+            self.buf.drain(..keep_from - self.buf0);
+            self.buf0 = keep_from;
+        }
+    }
+
+    fn finish(mut self) -> BeatLog {
+        let fs = self.st.fs;
+        if self.total > self.next {
+            let from = self.next.saturating_sub(self.margin);
+            let x = &self.buf[from - self.buf0..];
+            self.st.chunk(x, from, self.next as f64 / fs, f64::INFINITY);
+        }
+        let st = self.st;
+        BeatLog {
+            sample_rate: self.sample_rate,
+            duration_s: self.total as f64 / fs,
+            bph: st.bph,
+            lift_deg: st.cfg.analysis.amplitude.lift_deg,
+            beats: st.beats,
+            amplitude_windows: {
+                let mut amp = st.amp;
+                amplitude::reject_side_outliers(&mut amp, amplitude::OUTLIER_SPAN_S);
+                amp
+            },
+            clipped_beats: st.clipped_beats,
+            clipped_samples: st.clipped_samples,
+        }
+    }
 }

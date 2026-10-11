@@ -93,6 +93,9 @@ pub struct Summary {
     /// A ± and a grade for rate, amplitude and beat error; `None` when no
     /// watch is heard.
     pub confidence: Option<Confidence>,
+    /// What limits how far the readings can be trusted, each with what it
+    /// does to the grades (see [`crate::measure`]); empty when nothing does.
+    pub caveats: Vec<crate::measure::Caveat>,
     /// Possible escapement faults from the shape of the Tick and Tock;
     /// empty when none is seen, or when the shape cannot be judged (no
     /// watch heard, clipping, or unsteady readings; see [`faults`]).
@@ -125,8 +128,19 @@ impl Summary {
     /// stored correction), which lifts the rate's clock doubt.
     pub fn clock_known(&mut self) {
         self.doubts.clock_unknown = false;
+        self.caveats
+            .retain(|c| *c != crate::measure::Caveat::ClockUnknown);
+        let poor = self.caveats.iter().any(|c| {
+            matches!(
+                c,
+                crate::measure::Caveat::SetRateDisagrees { .. }
+                    | crate::measure::Caveat::ShortSpan { .. }
+            )
+        });
         if let Some(c) = &mut self.confidence {
-            c.rate = confidence::rate(c.rate.se, self.doubts);
+            if !poor {
+                c.rate = confidence::rate(c.rate.se, self.doubts);
+            }
         }
     }
 }
@@ -212,21 +226,26 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let env = envelope(&audio.samples, fs, &cfg.envelope);
     let guessed = beats::guess_bph(&env, fs);
     let bph = cfg.bph.unwrap_or(guessed);
-    let (beats, _template) = beats::detect(&env, fs, bph);
+    // The beats and the amplitude windows come from the chunked stream,
+    // the one beat pipeline every reading of a recording rests on (session,
+    // long, series and regress read files through it).
+    let log = crate::stream::analyze_samples(
+        &audio.samples,
+        audio.sample_rate,
+        &crate::stream::StreamConfig {
+            analysis: AnalysisConfig {
+                bph: Some(bph),
+                ..cfg.clone()
+            },
+            ..Default::default()
+        },
+    );
+    let beats = log.beats;
+    let amplitude_windows = log.amplitude_windows;
     let overall = timing::fit(&beats, bph);
     let residuals = timing::residuals(&beats).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
     let rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
     let rates: Vec<f64> = rate_windows.iter().map(|w| w.fit.rate_s_per_day).collect();
-    let osc = 2.0 * overall.map(|f| f.period_s).unwrap_or(3600.0 / bph as f64);
-    let mut amplitude_windows = amplitude::windows(
-        &env,
-        fs,
-        &beats,
-        osc,
-        cfg.amplitude_window_s,
-        &cfg.amplitude,
-    );
-    amplitude::reject_side_outliers(&mut amplitude_windows, amplitude::OUTLIER_SPAN_S);
 
     // Periodicity: timing residuals and amplitude, in 1 s bins.
     let wheels = periodicity::standard_wheels(bph, cfg.escape_teeth);
@@ -269,22 +288,27 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let watch_heard = beats::watch_heard(jitter_us, bph);
     let clipping = Clipping::measure(&audio.samples, fs, &beats);
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
-    let doubts = Doubts {
-        clipped: clipping.warns(),
-        beats_missing: (beats.len() as f64)
-            < confidence::MIN_BEAT_FRACTION * duration * bph as f64 / 3600.0,
-        lift_unknown: !cfg.lift_known,
-        clock_unknown: usb_clock.is_none(),
-    };
     let amplitude_se_deg = se(&|w| w.mean());
-    let confidence = watch_heard.then(|| {
-        Confidence::new(
-            confidence::rate_se(&rate_windows),
-            amplitude_se_deg,
-            confidence::beat_error_se(&amplitude_windows),
-            doubts,
-        )
-    });
+    let assessment = crate::measure::assess(
+        &rate_windows,
+        &amplitude_windows.iter().collect::<Vec<_>>(),
+        &crate::measure::Context {
+            watch_heard,
+            bph_heard: (bph != guessed).then_some(guessed),
+            lift_known: cfg.lift_known,
+            clock_known: usb_clock.is_some(),
+            beats: beats.len(),
+            expected: duration * bph as f64 / 3600.0,
+            clipped_fraction: clipping.beat_fraction,
+            span_s: match (beats.first(), beats.last()) {
+                (Some(a), Some(b)) => b.time - a.time,
+                _ => 0.0,
+            },
+            breaks: 0,
+        },
+    );
+    let doubts = assessment.doubts;
+    let confidence = assessment.confidence;
     let faults = if faults::judged(confidence.as_ref(), doubts) {
         let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
@@ -330,15 +354,9 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         }),
         doubts,
         confidence,
+        caveats: assessment.caveats,
         faults,
     };
-    if summary.bph_heard.is_some() {
-        if let Some(c) = summary.confidence.as_mut() {
-            for r in [&mut c.rate, &mut c.amplitude, &mut c.beat_error] {
-                r.grade = confidence::Grade::Poor;
-            }
-        }
-    }
     if !summary.watch_heard {
         summary.withhold_readings();
     }
