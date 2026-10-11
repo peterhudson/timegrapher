@@ -135,10 +135,13 @@ and say how sure you are.
 The skill names command-line commands; here each is a tool that runs it for you and \
 returns the same JSON: analyze is analyze_recording, session is run_session, series is \
 check_steadiness, long is long_run, profile is tick_tock_profile, shape is beat_shape, \
-doctor --file is check_recording, devices is list_sound_inputs and report is \
-make_report_bundle. This server does not record or open the microphone: the person \
-records with the timegrapher app (or another recorder) and tells you the file's full path. \
-Say Tick and Tock to people; in the JSON, even/a is the Tick and odd/b the Tock.";
+doctor --file is check_recording, doctor is check_microphone, devices is \
+list_sound_inputs, calibres is list_calibres, record is record_position and report is \
+make_report_bundle. Two tools use the microphone, record_position and check_microphone: \
+before each, tell the person how to place the watch and wait until they say it is ready. \
+For a multi-position test, record each position into one folder with record_position, \
+then read the folder with run_session. Recordings made elsewhere work too: ask for the \
+file's full path. Say Tick and Tock to people; in the JSON, even/a is the Tick and odd/b the Tock.";
 
 pub const PROMPT_NAME: &str = "test_my_watch";
 pub const PROMPT_TITLE: &str = "Test My Watch";
