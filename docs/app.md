@@ -153,10 +153,14 @@ with core `session::measure` and `session::evaluate`, as `session` does
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the
 first half hour against the half hour 24 hours later (or the session's last),
-as the commercial 0 h / 24 h test gives it. It needs the amplitude to fall
+the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
+Later. It needs the amplitude to fall
 through at least three 2° steps, which a run-down over some hours gives.
 Its switch and a note on what it needs are in the Isochronism section of
-the sidebar.
+the sidebar. Until there are 5 minutes of beats in one position, the
+Steadiness and Isochronism tabs say so; during a Positions Test they say
+that the test never stays that long in one position. Both scroll with a
+bar always showing when the pane is too short for every row.
 
 **True Clock.** When the microphone's own clock error has been measured
 and stored (`timegrapher clock measure --save`, or `clock from-log --save`

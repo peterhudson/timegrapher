@@ -1424,7 +1424,7 @@ impl TimegrapherApp {
 
     fn error(&mut self, m: String) {
         applog::error(&m);
-        self.message = Some((m, true));
+        self.message = Some((plain_error(&m), true));
     }
 
     fn info_msg(&mut self, m: String) {
@@ -2315,6 +2315,7 @@ impl TimegrapherApp {
             Some(s) => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .show(ui, |ui| {
                         isochronism::ui(
                             ui,
@@ -2326,14 +2327,29 @@ impl TimegrapherApp {
             None if self.steady_job.is_some() => {}
             None => {
                 ui.label(
-                    RichText::new(format!(
-                        "The tests need 5 minutes of beats in one position; {} so far",
-                        strip::fmt_time(dur)
-                    ))
+                    RichText::new(
+                        self.steady_wait(dur)
+                            + " The full-wind comparison needs 2 hours, and 24 for the full test.",
+                    )
                     .small()
                     .color(pal.text_secondary),
                 );
             }
+        }
+    }
+
+    /// What the steadiness tests wait for, in the terms of what is being
+    /// done: a Positions Test never stays long enough in one position.
+    fn steady_wait(&self, dur: f64) -> String {
+        if self.guided.is_some() {
+            "Needs 5 minutes of beats in one position, longer than a Positions Test \
+             stays in each. Record one position for 5 minutes or more to see it."
+                .to_string()
+        } else {
+            format!(
+                "Needs 5 minutes of beats in one position; {} so far.",
+                strip::fmt_time(dur)
+            )
         }
     }
 
@@ -2350,10 +2366,7 @@ impl TimegrapherApp {
         let status = match upto {
             Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
             None if working => String::new(),
-            None => format!(
-                "The tests need 5 minutes of beats in one position; {} so far",
-                strip::fmt_time(dur)
-            ),
+            None => self.steady_wait(dur),
         };
         steady::draw(ui, self.steady.as_ref(), &status, self.steady_view);
     }
@@ -5680,7 +5693,7 @@ impl TimegrapherApp {
         }
         egui::SidePanel::left("controls")
             .resizable(false)
-            .exact_width(300.0)
+            .exact_width(320.0)
             .show_separator_line(false)
             .frame(bar.inner_margin(egui::Margin {
                 left: 12,
@@ -5851,6 +5864,22 @@ type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
 
+/// An error as a person reads it: the system's own words for the common
+/// file errors, and no "(os error 2)" codes. The log keeps the original.
+fn plain_error(m: &str) -> String {
+    let mut t = m
+        .replace("No such file or directory", "nothing is there")
+        .replace("Permission denied", "it isn't allowed to be read here")
+        .replace("Is a directory", "it is a folder, not a file");
+    while let Some(i) = t.find(" (os error ") {
+        match t[i..].find(')') {
+            Some(j) => t.replace_range(i..i + j + 1, ""),
+            None => break,
+        }
+    }
+    t
+}
+
 /// What limits a reading, as facts: a short form for the card's caption
 /// and a sentence for its hover. Nothing graded: the ± beside the figure
 /// says how far it could be off; these say what the ± can't show.
@@ -5915,6 +5944,15 @@ fn reading_limits(title: &str, caveats: &[Caveat], lift_deg: f64) -> Vec<(String
 mod tests {
     use super::*;
     use timegrapher_core::recorder::SETTLE_S;
+
+    #[test]
+    fn errors_read_without_codes() {
+        assert_eq!(
+            plain_error("Can't read /x/y.flac: No such file or directory (os error 2)"),
+            "Can't read /x/y.flac: nothing is there"
+        );
+        assert_eq!(plain_error("Saving failed"), "Saving failed");
+    }
 
     #[test]
     fn a_reading_says_what_limits_it_as_facts() {

@@ -167,7 +167,12 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
 /// wind, or against its last half hour.
 fn table(ui: &mut egui::Ui, wind: Option<&WindDown>) {
     let pal = theme::pal(ui);
-    ui.label(theme::caption("0 h / 24 h").color(pal.text_secondary));
+    ui.label(theme::caption("Full Wind Against 24 Hours Later").color(pal.text_secondary))
+        .on_hover_text(
+            "The readings in the first stretch after full wind beside the same readings 24 \
+             hours on, as the mainspring lets down: how much the amplitude falls and the rate \
+             moves over a day's wear. Without a 24 hour take, the last half hour stands in.",
+        );
     let Some(w) = wind else {
         ui.label(
             RichText::new(

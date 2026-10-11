@@ -547,6 +547,9 @@ impl ReportDialog {
             ui.colored_label(pal.warn, format!("Can't play it here: {e}"));
         }
         ui.add_space(4.0);
+        // The boxes ringed, so they show on the card in the dark theme.
+        let ring = egui::Stroke::new(1.0_f32, pal.text_tertiary);
+        ui.visuals_mut().widgets.inactive.bg_stroke = ring;
         ui.checkbox(
             &mut self.listened,
             "I listened to this sound, and it holds nothing private, such as voices",

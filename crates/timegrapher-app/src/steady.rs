@@ -473,8 +473,11 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
         // short for every row to be readable.
         // A little short of the room, so the last axis isn't clipped.
         let row_h = (fits(n, h) - 4.0).max(MIN_ROW);
+        // The bar always shows, so a row below the pane's edge is not
+        // missed.
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .show(ui, |ui| {
                 for (i, c) in s.report.series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
