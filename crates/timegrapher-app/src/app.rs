@@ -4801,6 +4801,10 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
+        } else if self.sound_job.is_some() {
+            // Show the profile when it's worked out, without waiting for
+            // the pointer to move.
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
     }
 
