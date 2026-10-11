@@ -98,7 +98,10 @@ closer to tg always passes, so does crossing tg at the same distance.
 | Beats found | 0.05%, at least 3 | the baseline: fewer beats fail |
 
 A reading also fails when it loses a value it had, or cannot be read at
-all. The beat error from the drop has no tg counterpart: when it moves by
+all, or when its median amplitude is over 330° and so raises `session`'s
+amplitude check (docs/sessions.md): no take in the corpus does, and one
+that starts to is a sign the engine reads amplitude high. The JSON lists
+such readings in `amplitude_high`, as `take #reading`. The beat error from the drop has no tg counterpart: when it moves by
 more than 0.03 ms it is listed as changed, without failing.
 
 The margins sit just above how far readings move between engine builds that

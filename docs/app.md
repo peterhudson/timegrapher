@@ -97,16 +97,18 @@ rises with noise or a muffled sound as well as with a watch that runs
 unevenly, so compare it on the same stand and microphone. The **?** on
 each reading explains it at length.
 
-**Grades.** Each reading's caption ends with a dot and a word, Good
-(green), Fair (amber) or Poor (red), from `timegrapher_core::confidence`,
-the same grades `analyze` reports. The ± sets it: Good within 0.5 s/d,
-2° or 0.05 ms, Fair within 2 s/d, 5° or 0.1 ms. The beat error's ± is
+**Confidence.** Each reading's caption ends with its confidence, High,
+Medium or Low, and a meter of three grey dots. It is the grade
+`analyze` reports (`timegrapher_core::confidence`: Good, Fair, Poor),
+shown as confidence and kept grey because it grades the measurement,
+not the watch. The ± sets it: High within 0.5 s/d, 2° or 0.05 ms,
+Medium within 2 s/d, 5° or 0.1 ms. The beat error's ± is
 the standard error of its 2 s windows in the averaging time. Things
 the ± can't show lower a grade one step each: fewer than 95% of the beats
 the beat rate expects (all three), more than 1% of beats clipped
 (amplitude and beat error), the default 52° lift angle with no calibre
 picked (amplitude) and an input whose clock hasn't been measured (rate).
-Hovering on the grade says which applied. When the beats found scatter
+Hovering on the confidence says which applied. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
 
@@ -120,7 +122,7 @@ recording while listening) and analyses it as `analyze` does, in the
 background: every 30 s while listening, and when the moment shown moves.
 Hovering on a fault shows the measures behind it. Nothing shows when
 nothing is seen, or when the sound can't be judged (no watch heard,
-clipping, or readings too unsteady to grade Fair). A finding is worth
+clipping, or readings too unsteady for Medium confidence). A finding is worth
 checking on the bench, not a diagnosis; see
 [fault-signatures.md](fault-signatures.md).
 

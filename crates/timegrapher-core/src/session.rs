@@ -253,8 +253,11 @@ pub struct Limits {
     pub beat_error_fault: f64,
     /// Amplitude below which the movement needs service, deg.
     pub amplitude_fault: f64,
-    /// Amplitude above which the balance can knock (Witschi: 330°), deg.
-    pub overbanking: f64,
+    /// Median amplitude of a position above which the lift angle and the
+    /// microphone are to be checked (Witschi's knocking limit, 330°), deg.
+    /// A check, not a fault: knocking shows as jumps in the trace.
+    #[serde(alias = "overbanking")]
+    pub amplitude_high: f64,
     /// Spread of the 10 s rate readings (5th to 95th percentile) before
     /// the rate counts as unsteady, s/d.
     pub rate_spread: f64,
@@ -275,7 +278,7 @@ impl Default for Limits {
             vh_amplitude_drop: 50.0,
             beat_error_fault: 2.0,
             amplitude_fault: 200.0,
-            overbanking: 330.0,
+            amplitude_high: 330.0,
             rate_spread: 20.0,
             min_measure_s: 40.0,
             full_wind_h: 2.0,
@@ -409,6 +412,13 @@ impl Measurement {
     pub fn unlock_unreliable(&self, lim: &Limits) -> bool {
         self.unlock_coverage
             .is_some_and(|c| c < lim.min_unlock_coverage)
+    }
+
+    /// The position's median amplitude, when it is above `amplitude_high`
+    /// and the unlock was timed reliably enough to judge it, deg.
+    pub fn amplitude_over_high(&self, lim: &Limits) -> Option<f64> {
+        self.amplitude_deg
+            .filter(|&a| a > lim.amplitude_high && !self.unlock_unreliable(lim))
     }
 
     /// Enough clipped beats to doubt amplitude and beat error, by the
@@ -1158,14 +1168,18 @@ fn findings(
             );
         }
         if let Some(a) = m.amplitude_deg.filter(|_| !unsure) {
-            if a > lim.overbanking {
+            if m.amplitude_over_high(lim).is_some() {
                 push(
-                    "overbanking",
+                    "amplitude_high",
                     Some(ri),
-                    Severity::Fault,
-                    "Amplitude high enough to knock (overbanking)",
-                    format!("{a:.0}° in {}; Witschi's limit is {:.0}°", at(r), lim.overbanking),
-                    "Listen for a double tick. Witschi: replace the mainspring, pallet fork and/or escape wheel.",
+                    Severity::Warning,
+                    "Very high amplitude",
+                    format!(
+                        "median amplitude {a:.0}° in {}, at the lift angle set for this take; above {:.0}°, Witschi's knocking limit",
+                        at(r),
+                        lim.amplitude_high
+                    ),
+                    "Check the lift angle and the microphone; knocking is confirmed only by jumps in the trace. A lift angle set too high, or a pickup that misses the first sound of the beat, reads amplitude high.",
                 );
             } else if a < lim.amplitude_fault {
                 push(

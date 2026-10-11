@@ -56,31 +56,25 @@ beat rate, the swing follows: `A = L / (2 sin(π t / T))`. So a wrong lift
 angle gives a wrong amplitude, and a missed unlock sound gives a wildly
 wrong one.
 
-**Typical values, fully wound** (28,800 vph modern Swiss). Other calibres differ: Seiko's 21,600 vph movements, for one, normally run 20–30° lower. See the calibre table in [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre) before judging:
+**What to judge it against, fully wound.** Witschi's tolerance, which
+the `session` report uses, is 260–320° horizontal and 240–280° vertical
+(docs/sessions.md); the report calls under 200° a fault, vertical more
+than 50° below horizontal a warning, and over 330° a "Very high
+amplitude" warning, never a fault, since only jumps in the trace confirm
+knocking (the first two are the project's thresholds, the last Witschi's
+knocking limit). Sellita
+allows its SW200 at most 315–320° dial up at full wind and at least 200°
+crown left (6H, 6 o'clock up) after 24 hours. Sources and the limits of these figures are in
+[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
 
-| | Dial up / dial down | Vertical (crown positions) |
-| --- | --- | --- |
-| Good | 270–310° | 240–280° |
-| Fair | 230–270° | 200–240° |
-| Poor, wants a service | under about 220° | under about 200° |
-| Suspicious, check it | over about 320° | over about 300° |
+Vertical positions read lower than horizontal: there the balance pivots
+run on their sides in the jewel holes, which is more friction than
+running on their tips on the end stones. So judge a vertical reading
+against the vertical tolerance.
 
-Witschi's tolerance for a fully wound watch is 260–320° horizontal and
-240–280° vertical. A fall of 20–50° from horizontal to vertical is normal:
-in the vertical positions the balance pivots run on their sides in the
-jewel holes, which is more friction than running on their tips on the end
-stones.
-
-**Older, slower watches** (18,000 and 21,600 vph, 1950s–1970s): healthy
-figures run a little lower, roughly 240–290° dial up fully wound, and a
-well-serviced vintage watch at 220–250° is often perfectly good (check).
-Judge them against their own kind.
-
-**Known low-amplitude calibres.** Some modern calibres are known to run
-lower than the textbook. Rolex's 32xx family (3230, 3235, 3255) is widely
-reported running low after 24 hours, with Rolex reportedly allowing about
-200–310° after 24 h (check: secondary sources only). Don't condemn one of
-those on amplitude alone; look at the trend and the trace.
+These tolerances are for modern watches. For older, slower or simpler
+calibres no published figure is given here: say so, and lean on the
+trend between tests of the same watch and on the trace.
 
 **Too high.** Over about 320° dial up, check in this order:
 
@@ -176,14 +170,11 @@ amplitude (run down, or dirty) it can stop or be reluctant to start after
 it stops. It's corrected by turning the hairspring stud carrier or collet;
 a watchmaker's adjustment, not a repair.
 
-| | Modern 28,800 | Older 18,000–21,600 |
-| --- | --- | --- |
-| Good | under 0.5 ms (Witschi's tolerance) | under 0.8 ms (check) |
-| Fine | up to about 0.7 ms | up to about 1.0 ms |
-| Adjust at next service | 0.7–1.5 ms | 1.0–2.0 ms |
-| Have it seen to | over about 2 ms | over about 3 ms |
+Witschi's tolerance, which the `session` report uses, is under 0.5 ms;
+the report calls 2 ms or more a fault (the project's threshold;
+docs/sessions.md). Between the two is a matter for the next service.
 
-Why the slower watch is allowed more: the same small *angle* of being out
+A slower watch shows more beat error for the same fault: the same small *angle* of being out
 of beat takes longer in milliseconds on a slower balance, and on a smaller
 swing. For the same reason **beat error in ms rises as amplitude falls**: a
 watch at 0.4 ms fully wound may show 0.6 ms at 24 hours. That's physics,
@@ -225,10 +216,10 @@ not out of spec.
 
 | Standard | What it requires (mean daily rate) | Note |
 | --- | --- | --- |
-| COSC / ISO 3159, movement over 20 mm | −4 to +6 s/d | Uncased movement, 15 days, five positions, three temperatures (8, 23, 38 °C). Also: mean variation 2 s/d, greatest variation 5 s/d, flat to hanging −6 to +8 s/d, largest variation 10 s/d, thermal ±0.6 s/d per °C, rate resumption ±5 s/d (check these secondary limits) |
-| COSC, movement 20 mm or under | −5 to +8 s/d | (check) |
-| METAS Master Chronometer (Omega, Tudor some) | 0 to +5 s/d | Cased watch; also magnetic resistance to 15,000 gauss (check scope) |
-| Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC (since 2015) |
+| COSC / ISO 3159, category 1 (fitting diameter over 20 mm) | −4 to +6 s/d | Uncased movement, five positions (3, 6 and 9 o'clock, dial up, dial down) and several temperatures, 15 days. Also: mean variation 2 s/d, greatest variation 5, horizontal to vertical −6 to +8, largest variation 10, thermal ±0.6, rate resumption ±5 ([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)) |
+| COSC, category 2 (20 mm or under) | −5 to +8 s/d | Same tests; the other limits are a little wider (same source) |
+| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
+| Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)) |
 
 ## Positions and the positional delta
 
@@ -260,18 +251,15 @@ A mainspring delivers less torque as it runs down, so the amplitude
 falls. Test fully wound, and again 24 hours later without winding, same
 positions.
 
-| Amplitude drop, full wind to 24 h | Reading |
-| --- | --- |
-| Up to about 30° | Good |
-| 30–50° | Normal for many calibres; fine |
-| Over about 60° | Mainspring, barrel or train friction; mention it |
+The `session` report gives the change per position between states of
+wind (`isochronism`); no maker publishes a normal drop. Sellita's SW200
+limit, at least 200° crown left (6H, 6 o'clock up) after 24 hours
+([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf)),
+is one published floor. Compare the drop with the same watch's earlier
+tests: a drop that grows between tests is the useful sign.
 
-The rate should change by only a few s/d between 0 and 24 hours. A watch
-that's fine fully wound but goes badly off at 24 hours is telling you it
-lacks reserve of power at the balance.
-
-(These bands are rules of thumb (check); a long-reserve calibre built for
-70 hours or more has a flatter torque curve over its first 24 hours.)
+A watch that's fine fully wound but goes badly off at 24 hours is telling
+you it lacks power at the balance by the end of a day.
 
 ## The trace
 

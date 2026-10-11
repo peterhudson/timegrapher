@@ -462,6 +462,8 @@ struct TrendPoint {
     amplitude_b: Option<f64>,
     beat_error_unlock: Option<f64>,
     beat_error_drop: Option<f64>,
+    /// The beats were spaced like a watch's, not scattered like noise.
+    heard: bool,
 }
 
 impl TrendPoint {
@@ -474,6 +476,11 @@ impl TrendPoint {
             amplitude_b: r.amplitude_odd_deg,
             beat_error_unlock: r.beat_error_unlock_ms,
             beat_error_drop: r.beat_error_ms,
+            heard: r.beats_used > 0
+                && match (r.jitter_us, r.bph) {
+                    (Some(j), Some(b)) => timegrapher_core::beats::watch_heard(Some(j), b),
+                    _ => true,
+                },
         }
     }
 }
@@ -1688,6 +1695,40 @@ impl TimegrapherApp {
             .map_or(0.0, |l| l.beats().last().map_or(l.duration_s(), |b| b.time))
     }
 
+    /// The end of the last reading with a watch heard; the end when none
+    /// was.
+    fn last_heard_s(&self) -> f64 {
+        self.trend
+            .iter()
+            .rev()
+            .find(|p| p.heard)
+            .map_or(f64::INFINITY, |p| p.t)
+    }
+
+    /// Over the whole take in the position the watch is in now, once it is
+    /// stopped and longer than a few readings: the mean of each reading's
+    /// points with a watch heard, their spread (standard deviation) and the
+    /// time they cover.
+    fn whole_take(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
+        if self.running() || self.view_end.is_some() {
+            return None;
+        }
+        let pts: Vec<(f64, f64)> = self
+            .trend
+            .iter()
+            .filter(|p| p.heard && self.in_position(p.t))
+            .filter_map(|p| Some((p.t, f(p)?)))
+            .collect();
+        let span = pts.last()?.0 - pts.first()?.0;
+        if pts.len() < 6 || span < 3.0 * self.average_s {
+            return None;
+        }
+        let n = pts.len() as f64;
+        let mean = pts.iter().map(|p| p.1).sum::<f64>() / n;
+        let sd = (pts.iter().map(|p| (p.1 - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+        Some((mean, sd, span))
+    }
+
     fn end_s(&self) -> f64 {
         let latest = self.latest_s();
         self.view_end.unwrap_or(latest).min(latest)
@@ -1699,8 +1740,12 @@ impl TimegrapherApp {
         if self.settling_left().is_some() {
             return None;
         }
-        Some(if self.view_end.is_some() || !self.running() {
+        Some(if self.view_end.is_some() {
             live.reading_at(self.end_s(), self.average_s)
+        } else if !self.running() {
+            // Stopped: the last window with a watch heard, so the silence
+            // after it is taken off the stand doesn't change the readings.
+            live.reading_at(self.end_s().min(self.last_heard_s()), self.average_s)
         } else {
             live.reading(self.average_s)
         })
@@ -3508,6 +3553,24 @@ impl TimegrapherApp {
         let conf = r
             .as_ref()
             .map(|r| Confidence::new(pm, r.amplitude_error_deg, be_pm, doubts));
+        // Over the whole take, once it is stopped: the mean and spread of
+        // the readings beside the last window's figure.
+        let whole_line = |ui: &mut egui::Ui, mean: String, sd: String, span: f64| {
+            ui.label(
+                RichText::new(format!(
+                    "whole take {mean}, spread {sd} over {}",
+                    strip::fmt_time(span)
+                ))
+                .small()
+                .color(pal.text_secondary),
+            )
+            .on_hover_text(
+                "The big figure is the last stretch of Average Over. This is every reading \
+                 of the take in this position with a watch heard, settling left out: their \
+                 mean, and their spread as a standard deviation. A steady watch has a small \
+                 spread.",
+            );
+        };
         let unheard = |ui: &mut egui::Ui| {
             ui.label(
                 RichText::new("No watch heard")
@@ -3551,12 +3614,12 @@ impl TimegrapherApp {
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     ui.spacing_mut().item_spacing.x = 4.0;
-                                    let (word, color) = grade_look(g.grade, pal);
+                                    let (word, filled) = grade_look(g.grade);
                                     let resp = ui.label(
                                         RichText::new(word).small().color(pal.text_secondary),
                                     );
-                                    // The dot as much as the word.
-                                    resp.union(theme::dot(ui, color))
+                                    // The meter as much as the words.
+                                    resp.union(theme::meter(ui, filled, pal.text_secondary))
                                         .on_hover_text(grade_hint(title, g, doubts));
                                 },
                             );
@@ -3653,6 +3716,14 @@ impl TimegrapherApp {
                             }
                         ));
                     }
+                    if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
+                        whole_line(
+                            ui,
+                            format!("{m:+.1} s/d").replace('-', "−"),
+                            format!("{sd:.1} s/d"),
+                            span,
+                        );
+                    }
                 },
             );
             let amp = r.and_then(|r| r.amplitude_deg);
@@ -3699,6 +3770,9 @@ impl TimegrapherApp {
                                 .color(pal.text_secondary),
                         );
                     });
+                    if let Some((m, sd, span)) = self.whole_take(|p| p.amplitude) {
+                        whole_line(ui, format!("{m:.0}°"), format!("{sd:.0}°"), span);
+                    }
                 },
             );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
@@ -3713,7 +3787,12 @@ impl TimegrapherApp {
                         Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
                         _ => "milliseconds".to_string(),
                     };
-                    figure(ui, unlock.or(drop).map(|v| format!("{v:+.2}")), &unit);
+                    // The size only: which beat is the tick can flip between runs.
+                    figure(
+                        ui,
+                        unlock.or(drop).map(|v| format!("{:.2}", v.abs())),
+                        &unit,
+                    );
                     if !heard {
                         unheard(ui);
                         return;
@@ -3721,14 +3800,29 @@ impl TimegrapherApp {
                     ui.label(
                         RichText::new(match (unlock, drop) {
                             (Some(_), Some(d)) => {
-                                format!("from the unlock · from the drop {d:+.2} ms")
+                                format!(
+                                    "from the unlock, the usual reading · from the drop {:.2} ms",
+                                    d.abs()
+                                )
                             }
                             (None, Some(_)) => "from the drop".into(),
-                            _ => "from the unlock".into(),
+                            _ => "from the unlock, the usual reading".into(),
                         })
                         .small()
                         .color(pal.text_secondary),
+                    )
+                    .on_hover_text(
+                        "The big figure is timed from the unlock, as tg shows it: quote \
+                         that one. The drop figure is a second opinion.",
                     );
+                    if let Some((m, sd, span)) = self.whole_take(|p| p.beat_error_unlock) {
+                        whole_line(
+                            ui,
+                            format!("{:.2} ms", m.abs()),
+                            format!("{sd:.2} ms"),
+                            span,
+                        );
+                    }
                 },
             );
         });
@@ -5792,7 +5886,7 @@ type ScopeKey = (i64, u64, scope::Zoom);
 
 /// Everything Average Over sets, and what it leaves alone.
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
-     the three readings, their ± and their Good, Fair or Poor; every point on the Rate, \
+     the three readings, their ± and their confidence; every point on the Rate, \
      Amplitude and Beat Error charts; the Amplitude, Rate and Beat Error lines drawn over \
      the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
      the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
@@ -5811,12 +5905,14 @@ type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
 
-/// A grade's word and the colour of its dot.
-fn grade_look(g: Grade, pal: &theme::Palette) -> (&'static str, egui::Color32) {
+/// A grade shown as the measurement's confidence: its words and how many
+/// of the meter's three dots are filled. Grey, not green to red: it says
+/// how sure the reading is, not how good the watch is.
+fn grade_look(g: Grade) -> (&'static str, usize) {
     match g {
-        Grade::Good => ("Good", pal.good),
-        Grade::Fair => ("Fair", pal.warn),
-        Grade::Poor => ("Poor", pal.bad),
+        Grade::Good => ("High Confidence", 3),
+        Grade::Fair => ("Medium Confidence", 2),
+        Grade::Poor => ("Low Confidence", 1),
     }
 }
 
@@ -5836,9 +5932,11 @@ fn grade_hint(title: &str, g: confidence::Reading, d: Doubts) -> String {
         ),
     };
     let mut t = format!(
-        "How far this reading can be trusted. Good when its ± is within {good}{unit}, Fair \
-         within {fair}{unit}, Poor beyond that or when there is no ± yet. The ± says how much \
-         the reading would move on another stretch of the same sound."
+        "Confidence: how far this reading can be trusted. It grades the measurement, not \
+         the watch: High when its ± is within {good}{unit}, Medium within {fair}{unit}, Low \
+         beyond that or when there is no ± yet. The ± says how much the reading would move \
+         on another stretch of the same sound; a watch far off time can still be measured \
+         with High confidence."
     );
     let mut lowered = Vec::new();
     if d.beats_missing {
@@ -5904,6 +6002,40 @@ mod tests {
         }
         app.poll();
         app
+    }
+
+    /// Stopped after the watch is taken off the stand, the readings stay on
+    /// the last stretch with a watch heard, and a long enough take shows
+    /// its whole-take mean and spread.
+    #[test]
+    fn stopping_keeps_the_last_heard_readings() {
+        let mut app = synthetic(60.0, 12.0);
+        let before = app.reading().unwrap();
+        let whole = app.whole_take(|p| p.rate).expect("whole take");
+        assert!((whole.0 - 12.0).abs() < 2.0, "{whole:?}");
+        assert!(whole.2 > 40.0, "{whole:?}");
+        // Then 20 s of hiss with the watch gone.
+        let mut seed = 1u32;
+        let noise: Vec<f32> = (0..48000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1u32 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let live = app.live.as_mut().unwrap();
+        for b in noise.chunks(960) {
+            if live.push(b) {
+                let r = live.reading(app.average_s);
+                app.trend.push(TrendPoint::of(r.time_s, &r));
+            }
+        }
+        let after = app.reading().unwrap();
+        let (a, b) = (
+            before.rate_s_per_day.unwrap(),
+            after.rate_s_per_day.unwrap(),
+        );
+        assert!((a - b).abs() < 1.0, "{a} then {b}");
+        assert!(after.time_s <= 62.0, "{}", after.time_s);
     }
 
     /// Lay out and paint frames without a window, in both strip directions,

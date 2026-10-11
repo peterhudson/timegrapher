@@ -132,6 +132,10 @@ pub struct LiveAnalyzer {
     snr: Option<f32>,
     /// Passes in a row with no signal.
     quiet_passes: u32,
+    /// The beat rate the logged beats were numbered at, kept when a long
+    /// silence lets a guessed rate go, so readings back in the log still
+    /// fit.
+    logged_bph: Option<u32>,
     /// Where each new stretch began (a new position), oldest first: the
     /// readings never fit across one.
     breaks: Vec<f64>,
@@ -157,6 +161,7 @@ impl LiveAnalyzer {
             snippets: VecDeque::new(),
             snr: None,
             quiet_passes: 0,
+            logged_bph: None,
             breaks: Vec::new(),
         }
     }
@@ -169,6 +174,7 @@ impl LiveAnalyzer {
         a.total = (log.duration_s * a.fs).round() as u64;
         a.settled_to = log.duration_s;
         a.bph = Some(log.bph);
+        a.logged_bph = Some(log.bph);
         a.beats = log.beats;
         a.amp = log.amplitude_windows;
         a.clipped = log.clipped_beats;
@@ -231,6 +237,7 @@ impl LiveAnalyzer {
     pub fn restart(&mut self) {
         self.template = None;
         self.bph = self.cfg.analysis.bph;
+        self.logged_bph = self.bph;
         self.beats.clear();
         self.clipped.clear();
         self.amp.clear();
@@ -358,6 +365,7 @@ impl LiveAnalyzer {
                 if snr(&env, fs, &b) >= self.cfg.min_snr && b.len() >= 8 {
                     self.template = Some(t);
                     self.bph = Some(bph);
+                    self.logged_bph = Some(bph);
                 }
                 (bph, b)
             }
@@ -535,9 +543,8 @@ impl LiveAnalyzer {
             - self
                 .clipped
                 .partition_point(|&t| t < self.beats.get(lo).map_or(end_s, |b| b.time));
-        let fit = self
-            .bph
-            .and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
+        let bph = self.bph.or(self.logged_bph);
+        let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
         let a0 = self.amp.partition_point(|w| w.end_s <= from);
         let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
         let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)].iter().collect();
@@ -550,7 +557,7 @@ impl LiveAnalyzer {
         );
         LiveReading {
             time_s: end_s,
-            bph: self.bph,
+            bph,
             rate_s_per_day: fit.map(|f| f.rate_s_per_day),
             beat_error_ms: fit.map(|f| f.beat_error_ms),
             beat_error_unlock_ms: med(&|w| w.beat_error_unlock_ms),
