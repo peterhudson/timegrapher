@@ -36,7 +36,7 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
-use crate::session::Session;
+use crate::session::{self, Action, Session};
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
@@ -973,7 +973,7 @@ impl TimegrapherApp {
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.session.mic = true;
+                self.session.listen();
                 self.clock = clockstore::ClockStore::load()
                     .ok()
                     .and_then(|s| s.get(&c.label).cloned());
@@ -1004,7 +1004,7 @@ impl TimegrapherApp {
 
     /// A microphone session that is paused and can carry on.
     fn can_resume(&self) -> bool {
-        self.session.mic && self.session.paused() && self.live.is_some() && !self.running()
+        self.session.allows(Action::Resume) && self.live.is_some() && !self.running()
     }
 
     /// Stop listening for now, keeping everything.
@@ -1013,9 +1013,11 @@ impl TimegrapherApp {
             return;
         }
         self.capture = None;
-        if self.session.mic {
+        if self.session.mic() {
             applog::info("microphone stopped and released");
-            self.session.pause();
+            if let Ok(Err(e)) = self.session.pause() {
+                self.error(format!("Couldn't close the kept sound at the pause: {e}"));
+            }
         }
     }
 
@@ -1024,7 +1026,10 @@ impl TimegrapherApp {
         let rate = self.live.as_ref().map(|l| l.sample_rate());
         match capture::open_input(self.device.as_deref(), rate) {
             Ok(c) if Some(c.sample_rate) == rate => {
-                let paused = self.session.resume(&c.label);
+                let paused = match self.session.resume(&c.label) {
+                    Ok(p) => p,
+                    Err(e) => return self.error(e.to_string()),
+                };
                 if let Some(l) = self.live.as_mut() {
                     l.skip(paused);
                     self.session.resumed_at(l.duration_s());
@@ -1138,7 +1143,7 @@ impl TimegrapherApp {
     }
 
     fn report_source(&mut self) -> Option<report::Source> {
-        if self.session.mic {
+        if self.session.mic() {
             let r = self.session.recorder.as_mut()?;
             let _ = r.flush();
             let total = r.duration_s();
@@ -1298,6 +1303,7 @@ impl TimegrapherApp {
         match capture::replay_file(path) {
             Ok(c) => {
                 self.reset_session(c.sample_rate, c.label.clone());
+                self.session.replay();
                 self.capture = Some(c);
             }
             Err(e) => self.error(format!("Can't read {}: {e}", path.display())),
@@ -1384,6 +1390,7 @@ impl TimegrapherApp {
             }
         });
         self.reset_session(info.sample_rate, label.clone());
+        self.session.analyse();
         self.live = None;
         self.batch = Some(Batch {
             rx,
@@ -1405,6 +1412,11 @@ impl TimegrapherApp {
     fn stop(&mut self) {
         if self.capture.as_ref().is_some_and(|c| !c.is_file) {
             self.pause();
+        } else if matches!(
+            self.session.state(),
+            session::State::Replaying | session::State::Analysing
+        ) {
+            let _ = self.session.stop();
         }
         self.capture = None;
         self.batch = None;
@@ -1565,6 +1577,7 @@ impl TimegrapherApp {
     ) {
         let mut live = LiveAnalyzer::from_log(log, self.live_config());
         self.session.load(&[], &[]);
+        self.session.analysed();
         if stretches.len() > 1 {
             // No reading fits across a move, nor across a settling's end.
             let mut breaks: Vec<f64> = stretches[1..]
@@ -1925,7 +1938,7 @@ impl TimegrapherApp {
     /// Start, Stop and Resume, New session and Save, for the microphone.
     /// Laid out right to left.
     fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
-        let mic_data = self.session.mic && self.live.is_some();
+        let mic_data = self.session.mic() && self.live.is_some();
         if self.running() {
             if ui
                 .add(theme::secondary(ui, "Stop"))
@@ -1984,7 +1997,7 @@ impl TimegrapherApp {
         {
             self.start_guided();
         }
-        if self.session.recorder.is_some() {
+        if self.session.allows(Action::Save) {
             let saved = self.session.saved_to().is_some();
             if ui
                 .add(
@@ -2538,11 +2551,11 @@ impl TimegrapherApp {
         let old = self.position;
         applog::info(&format!("position {} to {}", old.code(), pos.code()));
         self.position = pos;
-        let going = self.capture.is_some() || self.can_resume();
+        let going = self.session.allows(Action::Move);
         if let (Some(l), true) = (self.live.as_mut(), going) {
             l.new_stretch();
             let at = l.duration_s();
-            self.session.move_to(at, old, pos, self.capture.is_some());
+            let _ = self.session.move_to(at, old, pos);
             self.steady = None;
             self.steady_job = None;
         }
@@ -4049,7 +4062,7 @@ impl TimegrapherApp {
         self.faults.poll();
         let end = self.end_s();
         if self.faults.due(end, self.running()) {
-            let files = if self.session.mic {
+            let files = if self.session.mic() {
                 self.session.recorder.as_mut().map(|r| {
                     let _ = r.flush();
                     r.segment_paths()
@@ -4228,7 +4241,7 @@ impl TimegrapherApp {
         };
         let pal = theme::pal(ui);
         let pct = r.clipped_fraction.unwrap_or(0.0) * 100.0;
-        let what = if self.session.mic {
+        let what = if self.session.mic() {
             "Lower Input Level in the Microphone card."
         } else {
             "Record with the input level lower."
@@ -4646,7 +4659,7 @@ impl TimegrapherApp {
         if self.scope_job.is_some() {
             return true;
         }
-        if self.input != Input::File || self.session.mic {
+        if self.input != Input::File || self.session.mic() {
             return false;
         }
         let Ok(files) = recordings_in(&PathBuf::from(self.file_path.trim())) else {
@@ -4672,7 +4685,7 @@ impl TimegrapherApp {
         let path = PathBuf::from(self.file_path.trim());
         let Some(live) = &self.live else { return false };
         let Some(bph) = live.bph() else { return false };
-        if self.input != Input::File || self.session.mic {
+        if self.input != Input::File || self.session.mic() {
             return false;
         }
         let Ok(files) = recordings_in(&path) else {
@@ -6142,7 +6155,7 @@ mod tests {
     fn sessions_keep_save_and_discard_their_sound() {
         let base = std::env::temp_dir().join(format!("tg-app-save-{}", std::process::id()));
         let mut app = synthetic(12.0, 20.0);
-        app.session.mic = true;
+        app.session.listen();
         let info = app.info("test", 48000, 16);
         let mut r = Recorder::start(&base.join("kept"), info).unwrap();
         r.write(&timegrapher_core::capture::Block {
@@ -6162,7 +6175,9 @@ mod tests {
         assert!(saved.join("audio-001.wav").is_file());
         assert_eq!(app.unsaved_s(), 0.0);
         // Paused, a session can carry on; a new session forgets it.
-        app.session.set_paused(Some(Instant::now()));
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
         assert!(app.can_resume());
         app.new_session();
         assert!(app.live.is_none() && app.session.recorder.is_none() && !app.can_resume());
@@ -6182,7 +6197,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let mut app = synthetic(5.0, 0.0);
-        app.session.mic = true;
+        app.session.listen();
         app.bph = Some(28800);
         let audio = generate(
             &SynthConfig {
@@ -6216,10 +6231,12 @@ mod tests {
             .unwrap();
         assert!((app.unsaved_s() - 30.0).abs() < 0.1, "{}", app.unsaved_s());
         // Paused, moved to dial down, resumed.
-        app.session.set_paused(Some(Instant::now()));
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
         app.session.recorder.as_mut().unwrap().pause().unwrap();
         app.change_position(Position::DialDown);
-        app.session.set_paused(None);
+        app.session.set_state(session::State::Listening);
         app.session
             .recorder
             .as_mut()
@@ -6283,8 +6300,10 @@ mod tests {
     #[test]
     fn a_new_position_marks_a_stretch_and_keeps_the_strip() {
         let mut app = synthetic(20.0, 0.0);
-        app.session.mic = true;
-        app.session.set_paused(Some(Instant::now()));
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
         let feed = |app: &mut TimegrapherApp, rate: f64| {
             let cfg = SynthConfig {
                 duration_s: 20.0,
@@ -6361,7 +6380,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("tg-app-sidecar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let mut app = synthetic(5.0, 0.0);
-        app.session.mic = true;
+        app.session.listen();
         app.watch = "Test Watch".into();
         app.custom_calibres
             .push(CustomCalibre::new("Bench Calibre".into()));
@@ -6388,7 +6407,7 @@ mod tests {
             if let Some((old, new)) = pos {
                 let r = app.session.recorder.as_mut().unwrap();
                 r.note(&format!("position {}", new.code())).unwrap();
-                app.session.move_to(i as f64 * 30.0, old, new, true);
+                app.session.move_to(i as f64 * 30.0, old, new).unwrap();
             }
             let r = app.session.recorder.as_mut().unwrap();
             r.write(&timegrapher_core::capture::Block {

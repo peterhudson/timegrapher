@@ -8,8 +8,24 @@
 //! charts run on (it counts pauses). A move also keeps the seconds of
 //! saved sound at that moment, which leave pauses out, for the take's
 //! `session.toml`.
+//!
+//! What each state allows ([`Session::allows`]):
+//!
+//! | State          | Pause | Resume | Move | Save | Stop |
+//! |----------------|-------|--------|------|------|------|
+//! | Idle           |       |        |      |      |      |
+//! | Listening      | yes   |        | yes  | yes  | yes  |
+//! | Paused         |       | yes    | yes  | yes  |      |
+//! | Replaying      |       |        | yes  |      | yes  |
+//! | ReplayStopped  |       |        |      |      |      |
+//! | Analysing      |       |        |      |      | yes  |
+//! | Analysed       |       |        |      |      |      |
+//!
+//! Listen, Replay, Open and New Session are allowed in every state: each
+//! stops what is under way first. Save needs the sound kept as well.
 
 use crate::app::Position;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use timegrapher_core::recorder::{Recorder, SETTLE_S};
@@ -31,14 +47,55 @@ pub enum Event {
     Saved { through_s: f64, to: PathBuf },
 }
 
+/// Where a session is in its life.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum State {
+    /// Nothing heard yet, or a new session.
+    #[default]
+    Idle,
+    /// Listening to the microphone.
+    Listening,
+    /// A microphone session let go for now, since then: it can carry on
+    /// or be saved.
+    Paused { since: Instant },
+    /// A recording played through at its own pace.
+    Replaying,
+    /// A replay at its end, or stopped.
+    ReplayStopped,
+    /// A recording or a take being analysed whole.
+    Analysing,
+    /// A recording or a take analysed whole.
+    Analysed,
+}
+
+/// The actions whose state matters; see the module's table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Pause,
+    Resume,
+    Move,
+    Save,
+    Stop,
+}
+
+/// An action the session's state doesn't allow.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Refused {
+    pub action: Action,
+    pub state: State,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} isn't possible while {:?}", self.action, self.state)
+    }
+}
+
 #[derive(Default)]
 pub struct Session {
-    /// A microphone session, which can be paused and carried on; a
-    /// recording opened is not one.
-    pub mic: bool,
+    state: State,
     /// The sound kept as it comes in, for saving.
     pub recorder: Option<Recorder>,
-    paused_since: Option<Instant>,
     /// Moved while paused: the settling starts on Resume.
     settle_pending: bool,
     /// The end of the settling under way, when the readings start afresh.
@@ -50,37 +107,106 @@ impl Session {
     /// Forget everything but the recorder, which the caller discards or
     /// keeps.
     pub fn clear(&mut self) {
-        self.mic = false;
-        self.paused_since = None;
+        self.state = State::Idle;
         self.settle_pending = false;
         self.settle_to = None;
         self.events.clear();
     }
 
-    pub fn paused(&self) -> bool {
-        self.paused_since.is_some()
+    pub fn state(&self) -> State {
+        self.state
     }
 
-    /// Paused now (the microphone let go).
-    pub fn pause(&mut self) {
-        self.paused_since = Some(Instant::now());
-        if let Some(r) = self.recorder.as_mut() {
-            let _ = r.pause();
+    /// Whether `action` is allowed now.
+    pub fn allows(&self, action: Action) -> bool {
+        use State::*;
+        match action {
+            Action::Pause => self.state == Listening,
+            Action::Resume => matches!(self.state, Paused { .. }),
+            Action::Move => matches!(self.state, Listening | Paused { .. } | Replaying),
+            Action::Save => {
+                matches!(self.state, Listening | Paused { .. }) && self.recorder.is_some()
+            }
+            Action::Stop => matches!(self.state, Listening | Replaying | Analysing),
         }
+    }
+
+    fn check(&self, action: Action) -> Result<(), Refused> {
+        if self.allows(action) {
+            Ok(())
+        } else {
+            Err(Refused {
+                action,
+                state: self.state,
+            })
+        }
+    }
+
+    /// A microphone session, which can be paused and carried on; a
+    /// recording opened is not one.
+    pub fn mic(&self) -> bool {
+        matches!(self.state, State::Listening | State::Paused { .. })
+    }
+
+    pub fn paused(&self) -> bool {
+        matches!(self.state, State::Paused { .. })
+    }
+
+    /// A new microphone session is listening (after [`Session::clear`]).
+    pub fn listen(&mut self) {
+        self.state = State::Listening;
+    }
+
+    /// A recording is playing through.
+    pub fn replay(&mut self) {
+        self.state = State::Replaying;
+    }
+
+    /// A recording or take is being analysed whole.
+    pub fn analyse(&mut self) {
+        self.state = State::Analysing;
+    }
+
+    /// The analysis is done (from a file, or a log read back).
+    pub fn analysed(&mut self) {
+        self.state = State::Analysed;
+    }
+
+    /// Stop what is under way: a microphone session pauses, a replay or
+    /// an analysis stops where it is.
+    pub fn stop(&mut self) -> Result<io::Result<()>, Refused> {
+        self.check(Action::Stop)?;
+        match self.state {
+            State::Listening => return self.pause(),
+            State::Replaying => self.state = State::ReplayStopped,
+            _ => self.state = State::Idle,
+        }
+        Ok(Ok(()))
+    }
+
+    /// Paused now (the microphone let go). The inner error is the
+    /// recorder's, when it couldn't close the stretch.
+    pub fn pause(&mut self) -> Result<io::Result<()>, Refused> {
+        self.check(Action::Pause)?;
+        self.state = State::Paused {
+            since: Instant::now(),
+        };
+        Ok(self.recorder.as_mut().map_or(Ok(()), Recorder::pause))
     }
 
     /// Carrying on at `device`: the seconds the pause lasted, for the
     /// session's clock.
-    pub fn resume(&mut self, device: &str) -> f64 {
-        let paused = self
-            .paused_since
-            .take()
-            .map_or(0.0, |t| t.elapsed().as_secs_f64());
+    pub fn resume(&mut self, device: &str) -> Result<f64, Refused> {
+        self.check(Action::Resume)?;
+        let State::Paused { since } = self.state else {
+            unreachable!("checked")
+        };
+        self.state = State::Listening;
         // The recorder starts a break, on this input.
         if let Some(r) = self.recorder.as_mut() {
             r.resume(device);
         }
-        paused
+        Ok(since.elapsed().as_secs_f64())
     }
 
     /// After [`Session::resume`] has moved the session's clock on to `now`:
@@ -91,16 +217,16 @@ impl Session {
         }
     }
 
-    /// Stopped for a test: as if paused at `since`.
+    /// For a test: as if in `state`.
     #[cfg(test)]
-    pub fn set_paused(&mut self, since: Option<Instant>) {
-        self.paused_since = since;
+    pub fn set_state(&mut self, state: State) {
+        self.state = state;
     }
 
-    /// The watch put in `pos` at `at` (it was in `old`), while listening
-    /// (`listening`) or paused. Returns whether the position stretches
-    /// changed.
-    pub fn move_to(&mut self, at: f64, old: Position, pos: Position, listening: bool) {
+    /// The watch put in `pos` at `at` (it was in `old`), while listening,
+    /// replaying or paused.
+    pub fn move_to(&mut self, at: f64, old: Position, pos: Position) -> Result<(), Refused> {
+        self.check(Action::Move)?;
         if !self
             .events
             .iter()
@@ -129,11 +255,12 @@ impl Session {
         }
         // The watch settles in its new position, from now while
         // listening, else from Resume.
-        if listening {
-            self.start_settle(at);
-        } else {
+        if self.paused() {
             self.settle_pending = true;
+        } else {
+            self.start_settle(at);
         }
+        Ok(())
     }
 
     fn last_position_index(&self) -> Option<usize> {
@@ -377,11 +504,13 @@ mod tests {
     #[test]
     fn events_give_stretches_settles_and_spans() {
         let mut s = Session::default();
+        s.listen();
         assert_eq!(
             s.position_spans(Position::DialUp),
             [(f64::NEG_INFINITY, f64::INFINITY, Position::DialUp)]
         );
-        s.move_to(30.0, Position::DialUp, Position::DialDown, true);
+        s.move_to(30.0, Position::DialUp, Position::DialDown)
+            .unwrap();
         assert_eq!(
             s.stretches(),
             [(0.0, Position::DialUp), (30.0, Position::DialDown)]
@@ -397,12 +526,17 @@ mod tests {
         assert!(!s.in_position(35.0, Position::DialDown));
         assert!(s.in_position(45.0, Position::DialDown));
         // Moved again and straight back before a beat: undone.
-        s.move_to(60.0, Position::DialDown, Position::CrownUp, true);
-        s.move_to(60.0, Position::CrownUp, Position::DialDown, true);
+        s.move_to(60.0, Position::DialDown, Position::CrownUp)
+            .unwrap();
+        s.move_to(60.0, Position::CrownUp, Position::DialDown)
+            .unwrap();
         assert_eq!(s.stretches().len(), 2, "{:?}", s.stretches());
         // Paused, moved: the settling waits for Resume.
         let mut p = Session::default();
-        p.move_to(20.0, Position::DialUp, Position::CrownLeft, false);
+        p.listen();
+        p.pause().unwrap().unwrap();
+        p.move_to(20.0, Position::DialUp, Position::CrownLeft)
+            .unwrap();
         assert!(p.settles().is_empty());
         p.resumed_at(80.0);
         assert_eq!(p.settles(), [(80.0, 80.0 + SETTLE_S)]);
@@ -413,5 +547,70 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Dial Up (DU)", "Crown Left (CL)"]
         );
+    }
+
+    /// Each action is done where the table allows it and refused, leaving
+    /// the state as it was, everywhere else.
+    #[test]
+    fn every_action_in_every_state() {
+        let since = Instant::now();
+        let states = [
+            State::Idle,
+            State::Listening,
+            State::Paused { since },
+            State::Replaying,
+            State::ReplayStopped,
+            State::Analysing,
+            State::Analysed,
+        ];
+        let actions = [
+            Action::Pause,
+            Action::Resume,
+            Action::Move,
+            Action::Save,
+            Action::Stop,
+        ];
+        let allowed = |st: State, a: Action| match a {
+            Action::Pause => st == State::Listening,
+            Action::Resume => st == State::Paused { since },
+            Action::Move => matches!(
+                st,
+                State::Listening | State::Paused { .. } | State::Replaying
+            ),
+            // No sound kept here, so never.
+            Action::Save => false,
+            Action::Stop => matches!(st, State::Listening | State::Replaying | State::Analysing),
+        };
+        for st in states {
+            for a in actions {
+                let mut s = Session::default();
+                s.set_state(st);
+                assert_eq!(s.allows(a), allowed(st, a), "{a:?} in {st:?}");
+                let done = match a {
+                    Action::Pause => s.pause().map(|_| ()),
+                    Action::Resume => s.resume("test").map(|_| ()),
+                    Action::Move => s.move_to(5.0, Position::DialUp, Position::DialDown),
+                    Action::Save => continue,
+                    Action::Stop => s.stop().map(|_| ()),
+                };
+                assert_eq!(done.is_ok(), allowed(st, a), "{a:?} in {st:?}");
+                if done.is_err() {
+                    assert_eq!(s.state(), st, "{a:?} in {st:?}");
+                }
+            }
+        }
+        // Where each one leads.
+        let mut s = Session::default();
+        s.listen();
+        s.stop().unwrap().unwrap();
+        assert!(s.paused() && s.mic());
+        s.resume("test").unwrap();
+        assert_eq!(s.state(), State::Listening);
+        s.replay();
+        s.stop().unwrap().unwrap();
+        assert_eq!(s.state(), State::ReplayStopped);
+        s.analyse();
+        s.stop().unwrap().unwrap();
+        assert_eq!(s.state(), State::Idle);
     }
 }
