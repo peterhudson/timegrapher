@@ -36,7 +36,8 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
-use timegrapher_core::recorder::{Recorder, SessionInfo, SETTLE_S};
+use crate::session::{self, Action, Session};
+use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -546,18 +547,9 @@ pub struct TimegrapherApp {
     /// The check at start is still to be made (on the first frame, which
     /// has the context it repaints).
     check_pending: bool,
-    /// Where the watch was put in a new position during the session: the
-    /// time and the position from then on, oldest first. Empty while it has
-    /// stayed in `position` all along.
-    stretches: Vec<(f64, Position)>,
-    /// The settling after each move to a new position: start and end,
-    /// seconds, oldest first. Its beats are drawn faintly and left out of
-    /// the readings, the distributions and the steadiness tests.
-    settles: Vec<(f64, f64)>,
-    /// The end of the settling under way, when the readings start afresh.
-    settle_to: Option<f64>,
-    /// The position changed while paused: the settling starts on Resume.
-    settle_pending: bool,
+    /// Listening, paused, the positions and settling, the kept sound and
+    /// what of it is saved.
+    session: Session,
     average_s: f64,
     watch: String,
     /// The calibre picked under Watch: a name in the built-in table or one
@@ -565,15 +557,8 @@ pub struct TimegrapherApp {
     calibre: String,
     custom_calibres: Vec<CustomCalibre>,
     /// Where the last Save put the session, if it has been saved.
-    saved_to: Option<PathBuf>,
-    /// Seconds of the session's sound in that copy, so sound recorded
-    /// after a save still counts as unsaved.
-    saved_through_s: f64,
     /// The folder Save offers first.
     save_dir: String,
-    /// The session came from the microphone, and when it was paused.
-    mic_session: bool,
-    paused_at: Option<Instant>,
     /// Asking before something throws away unsaved sound.
     confirm: Option<Confirm>,
     /// The window may close: the user has said what to do with the sound.
@@ -638,7 +623,6 @@ pub struct TimegrapherApp {
     capture: Option<Capture>,
     live: Option<LiveAnalyzer>,
     source_label: String,
-    recorder: Option<Recorder>,
     batch: Option<Batch>,
     anchor: Option<Anchor>,
     trend: Vec<TrendPoint>,
@@ -797,10 +781,7 @@ impl TimegrapherApp {
             bph: None,
             lift_deg: DEFAULT_LIFT_DEG,
             position: Position::DialUp,
-            stretches: Vec::new(),
-            settles: Vec::new(),
-            settle_to: None,
-            settle_pending: false,
+            session: Session::default(),
             locked_bph: None,
             crash: None,
             crash_shown: false,
@@ -814,10 +795,6 @@ impl TimegrapherApp {
             watch: String::new(),
             calibre: String::new(),
             custom_calibres: Vec::new(),
-            saved_to: None,
-            saved_through_s: 0.0,
-            mic_session: false,
-            paused_at: None,
             confirm: None,
             may_close: false,
             save_dir: home.join("Timegrapher recordings").display().to_string(),
@@ -854,7 +831,6 @@ impl TimegrapherApp {
             capture: None,
             live: None,
             source_label: String::new(),
-            recorder: None,
             batch: None,
             anchor: None,
             trend: Vec::new(),
@@ -933,10 +909,9 @@ impl TimegrapherApp {
     }
 
     fn reset_session(&mut self, sample_rate: u32, label: String) {
-        self.discard_recording();
-        self.mic_session = false;
+        self.session.discard_recording();
+        self.session.clear();
         self.clock = None;
-        self.paused_at = None;
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
         self.source_label = label;
         self.anchor = None;
@@ -952,10 +927,6 @@ impl TimegrapherApp {
         self.sound_job = None;
         self.steady = None;
         self.steady_job = None;
-        self.stretches.clear();
-        self.settles.clear();
-        self.settle_to = None;
-        self.settle_pending = false;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -1002,7 +973,7 @@ impl TimegrapherApp {
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.mic_session = true;
+                self.session.listen();
                 self.clock = clockstore::ClockStore::load()
                     .ok()
                     .and_then(|s| s.get(&c.label).cloned());
@@ -1010,7 +981,7 @@ impl TimegrapherApp {
                 // point; it is thrown away with a new session unless saved.
                 let info = self.info(&c.label, c.sample_rate, c.bits);
                 match Recorder::start(&scratch_dir(), info) {
-                    Ok(r) => self.recorder = Some(r),
+                    Ok(r) => self.session.recorder = Some(r),
                     Err(e) => self.error(format!(
                         "Can't keep the sound for saving later: {e}. The readings still work."
                     )),
@@ -1033,7 +1004,7 @@ impl TimegrapherApp {
 
     /// A microphone session that is paused and can carry on.
     fn can_resume(&self) -> bool {
-        self.mic_session && self.paused_at.is_some() && self.live.is_some() && !self.running()
+        self.session.allows(Action::Resume) && self.live.is_some() && !self.running()
     }
 
     /// Stop listening for now, keeping everything.
@@ -1042,11 +1013,10 @@ impl TimegrapherApp {
             return;
         }
         self.capture = None;
-        if self.mic_session {
+        if self.session.mic() {
             applog::info("microphone stopped and released");
-            self.paused_at = Some(Instant::now());
-            if let Some(r) = self.recorder.as_mut() {
-                let _ = r.pause();
+            if let Ok(Err(e)) = self.session.pause() {
+                self.error(format!("Couldn't close the kept sound at the pause: {e}"));
             }
         }
     }
@@ -1056,21 +1026,13 @@ impl TimegrapherApp {
         let rate = self.live.as_ref().map(|l| l.sample_rate());
         match capture::open_input(self.device.as_deref(), rate) {
             Ok(c) if Some(c.sample_rate) == rate => {
-                let paused = self
-                    .paused_at
-                    .take()
-                    .map_or(0.0, |t| t.elapsed().as_secs_f64());
+                let paused = match self.session.resume(&c.label) {
+                    Ok(p) => p,
+                    Err(e) => return self.error(e.to_string()),
+                };
                 if let Some(l) = self.live.as_mut() {
                     l.skip(paused);
-                }
-                if self.settle_pending {
-                    if let Some(t) = self.live.as_ref().map(|l| l.duration_s()) {
-                        self.start_settle(t);
-                    }
-                }
-                // The recorder starts a break, on this input.
-                if let Some(r) = self.recorder.as_mut() {
-                    r.resume(&c.label);
+                    self.session.resumed_at(l.duration_s());
                 }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
@@ -1096,10 +1058,9 @@ impl TimegrapherApp {
     /// to start another.
     fn new_session(&mut self) {
         self.stop();
-        self.discard_recording();
+        self.session.discard_recording();
+        self.session.clear();
         self.live = None;
-        self.mic_session = false;
-        self.paused_at = None;
         self.trend.clear();
         self.sound_history.clear();
         self.faults.clear();
@@ -1110,21 +1071,7 @@ impl TimegrapherApp {
 
     /// Unsaved sound that a new session would throw away, seconds.
     fn unsaved_s(&self) -> f64 {
-        match &self.recorder {
-            Some(r) => (r.duration_s() - self.saved_through_s).max(0.0),
-            None => 0.0,
-        }
-    }
-
-    /// Close and delete the sound kept for saving.
-    fn discard_recording(&mut self) {
-        if let Some(r) = self.recorder.take() {
-            if let Ok(dir) = r.finish(None) {
-                let _ = std::fs::remove_dir_all(dir);
-            }
-        }
-        self.saved_to = None;
-        self.saved_through_s = 0.0;
+        self.session.unsaved_s()
     }
 
     /// Save a copy of the session's sound so far, with its clock log and
@@ -1133,8 +1080,8 @@ impl TimegrapherApp {
         let mut d = rfd::FileDialog::new()
             .set_title("Choose Where to Save (the Take Gets Its Own Folder Inside)");
         let start = self
-            .saved_to
-            .as_ref()
+            .session
+            .saved_to()
             .and_then(|p| p.parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from(&self.save_dir));
         if start.is_dir() {
@@ -1149,7 +1096,7 @@ impl TimegrapherApp {
     fn save_into(&mut self, parent: &Path) {
         let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
         let manifest = self.take_manifest();
-        let Some(r) = self.recorder.as_mut() else {
+        let Some(r) = self.session.recorder.as_mut() else {
             return;
         };
         let secs = r.duration_s();
@@ -1167,8 +1114,7 @@ impl TimegrapherApp {
                     dir.display()
                 ));
                 self.save_dir = parent.display().to_string();
-                self.saved_to = Some(dir);
-                self.saved_through_s = secs;
+                self.session.mark_saved(secs, dir);
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
@@ -1197,8 +1143,8 @@ impl TimegrapherApp {
     }
 
     fn report_source(&mut self) -> Option<report::Source> {
-        if self.mic_session {
-            let r = self.recorder.as_mut()?;
+        if self.session.mic() {
+            let r = self.session.recorder.as_mut()?;
             let _ = r.flush();
             let total = r.duration_s();
             let about = std::fs::read_to_string(r.dir().join("session.json"))
@@ -1270,38 +1216,19 @@ impl TimegrapherApp {
                 .map(|w| (w.name.clone(), w.period_s))
                 .collect();
         }
-        let Some(r) = self.recorder.as_ref() else {
-            return m;
-        };
-        // The positions in the saved sound's own time, as noted when they
-        // changed (the sound leaves out the pauses the session's clock
-        // counts).
-        let mut stretches = vec![(0.0, r.first_position().to_string())];
-        for n in r.notes() {
-            if let Some(code) = n.text.strip_prefix("position ") {
-                if stretches.last().is_some_and(|s| s.0 >= n.audio_s) {
-                    stretches.pop();
-                }
-                if stretches.last().is_none_or(|s| s.1 != code) {
-                    stretches.push((n.audio_s, code.to_string()));
-                }
-            }
-        }
-        let one = stretches.len() == 1;
-        m.recordings = (0..stretches.len())
-            .map(|i| {
-                let end_s = stretches.get(i + 1).map(|s| s.0);
-                // Each later position's readings start once it has settled.
-                let settle = if i == 0 { 0.0 } else { SETTLE_S };
-                let start = (stretches[i].0 + settle).min(end_s.unwrap_or(f64::INFINITY));
-                RecordingEntry {
-                    file: ".".into(),
-                    position: Some(stretches[i].1.clone()),
-                    clock: Some("clock.csv".into()),
-                    start_s: (!one).then_some(start),
-                    end_s,
-                    ..Default::default()
-                }
+        // The positions in the saved sound's own time (the sound leaves
+        // out the pauses the session's clock counts).
+        m.recordings = self
+            .session
+            .take_ranges()
+            .into_iter()
+            .map(|(start_s, end_s, code)| RecordingEntry {
+                file: ".".into(),
+                position: Some(code),
+                clock: Some("clock.csv".into()),
+                start_s,
+                end_s,
+                ..Default::default()
             })
             .collect();
         m
@@ -1376,6 +1303,7 @@ impl TimegrapherApp {
         match capture::replay_file(path) {
             Ok(c) => {
                 self.reset_session(c.sample_rate, c.label.clone());
+                self.session.replay();
                 self.capture = Some(c);
             }
             Err(e) => self.error(format!("Can't read {}: {e}", path.display())),
@@ -1462,6 +1390,7 @@ impl TimegrapherApp {
             }
         });
         self.reset_session(info.sample_rate, label.clone());
+        self.session.analyse();
         self.live = None;
         self.batch = Some(Batch {
             rx,
@@ -1483,6 +1412,11 @@ impl TimegrapherApp {
     fn stop(&mut self) {
         if self.capture.as_ref().is_some_and(|c| !c.is_file) {
             self.pause();
+        } else if matches!(
+            self.session.state(),
+            session::State::Replaying | session::State::Analysing
+        ) {
+            let _ = self.session.stop();
         }
         self.capture = None;
         self.batch = None;
@@ -1517,7 +1451,7 @@ impl TimegrapherApp {
                         if l.clipped_fraction > 0.0 {
                             self.clipped_at = Some(Instant::now());
                         }
-                        if let Some(r) = self.recorder.as_mut() {
+                        if let Some(r) = self.session.recorder.as_mut() {
                             if let Err(e) = r.write(&b) {
                                 failure = Some(format!("Saving stopped: {e}"));
                             }
@@ -1525,13 +1459,13 @@ impl TimegrapherApp {
                         if live.push(&b.samples) {
                             // While the watch settles after a move nothing is
                             // read; then the readings start afresh.
-                            if let Some(end) = self.settle_to {
-                                if live.duration_s() < end {
+                            match self.session.settling_now(live.duration_s()) {
+                                Some(true) => continue,
+                                Some(false) => {
+                                    live.new_stretch();
                                     continue;
                                 }
-                                live.new_stretch();
-                                self.settle_to = None;
-                                continue;
+                                None => {}
                             }
                             let r = live.reading(self.average_s);
                             self.trend.push(TrendPoint::of(r.time_s, &r));
@@ -1585,7 +1519,7 @@ impl TimegrapherApp {
         }
         if let Some(f) = failure {
             if f.starts_with("Saving") {
-                self.recorder = None;
+                self.session.recorder = None;
             }
             self.error(f);
         }
@@ -1642,10 +1576,8 @@ impl TimegrapherApp {
         settles: Vec<(f64, f64)>,
     ) {
         let mut live = LiveAnalyzer::from_log(log, self.live_config());
-        self.stretches.clear();
-        self.settles.clear();
-        self.settle_to = None;
-        self.settle_pending = false;
+        self.session.load(&[], &[]);
+        self.session.analysed();
         if stretches.len() > 1 {
             // No reading fits across a move, nor across a settling's end.
             let mut breaks: Vec<f64> = stretches[1..]
@@ -1656,10 +1588,9 @@ impl TimegrapherApp {
             breaks.sort_by(f64::total_cmp);
             breaks.dedup();
             live.set_breaks(breaks);
-            self.stretches = stretches;
-            self.settles = settles;
+            self.session.load(&stretches, &settles);
         }
-        if let Some(&(_, p)) = self.stretches.last() {
+        if let Some(&(_, p)) = self.session.stretches().last() {
             self.position = p;
         }
         self.live = Some(live);
@@ -2007,7 +1938,7 @@ impl TimegrapherApp {
     /// Start, Stop and Resume, New session and Save, for the microphone.
     /// Laid out right to left.
     fn microphone_buttons(&mut self, ui: &mut egui::Ui) {
-        let mic_data = self.mic_session && self.live.is_some();
+        let mic_data = self.session.mic() && self.live.is_some();
         if self.running() {
             if ui
                 .add(theme::secondary(ui, "Stop"))
@@ -2066,8 +1997,8 @@ impl TimegrapherApp {
         {
             self.start_guided();
         }
-        if self.recorder.is_some() {
-            let saved = self.saved_to.is_some();
+        if self.session.allows(Action::Save) {
+            let saved = self.session.saved_to().is_some();
             if ui
                 .add(
                     egui::Button::new(if saved { "Save Again…" } else { "Save…" })
@@ -2131,7 +2062,7 @@ impl TimegrapherApp {
         match choice {
             Some(0) => {
                 // Saved before: the rest goes to the same copy.
-                match self.saved_to.as_ref().and_then(|p| p.parent()) {
+                match self.session.saved_to().and_then(|p| p.parent()) {
                     Some(parent) => {
                         let parent = parent.to_path_buf();
                         self.save_into(&parent);
@@ -2327,7 +2258,7 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             let log = self.live.as_ref().and_then(steady::log_of);
-            let joined = !self.stretches.is_empty();
+            let joined = !self.session.stretches().is_empty();
             if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
                 let wheels = self.calibre_wheels();
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -2410,7 +2341,7 @@ impl TimegrapherApp {
         let dur = self.update_steady(ui.ctx());
         let upto = self.steady.as_ref().map(|s| s.upto_s);
         let working = self.steady_job.is_some();
-        let of = if self.stretches.is_empty() {
+        let of = if self.session.stretches().is_empty() {
             String::new()
         } else {
             format!("{} ", self.position.name())
@@ -2606,7 +2537,7 @@ impl TimegrapherApp {
     /// The position picked: a new stretch, noted in the recording.
     fn change_position(&mut self, pos: Position) {
         self.set_position(pos);
-        if let Some(r) = self.recorder.as_mut() {
+        if let Some(r) = self.session.recorder.as_mut() {
             let _ = r.note(&format!("position {}", pos.code()));
         }
         self.note_settings();
@@ -2620,113 +2551,37 @@ impl TimegrapherApp {
         let old = self.position;
         applog::info(&format!("position {} to {}", old.code(), pos.code()));
         self.position = pos;
-        let going = self.capture.is_some() || self.can_resume();
+        let going = self.session.allows(Action::Move);
         if let (Some(l), true) = (self.live.as_mut(), going) {
-            if self.stretches.is_empty() {
-                self.stretches.push((0.0, old));
-            }
             l.new_stretch();
             let at = l.duration_s();
-            // A position changed back before any beats came is undone.
-            if self.stretches.last().is_some_and(|s| s.0 >= at) {
-                self.stretches.pop();
-            }
-            if self.stretches.last().is_none_or(|s| s.1 != pos) {
-                self.stretches.push((at, pos));
-            }
-            // The watch settles in its new position, from now while
-            // listening, else from Resume.
-            if self.capture.is_some() {
-                self.start_settle(at);
-            } else {
-                self.settle_pending = true;
-            }
+            let _ = self.session.move_to(at, old, pos);
             self.steady = None;
             self.steady_job = None;
         }
     }
 
-    /// Start the settling at `t`, seconds into the session.
-    fn start_settle(&mut self, t: f64) {
-        self.settle_pending = false;
-        // A move during a settling starts it again.
-        if let Some(s) = self.settles.last_mut().filter(|s| s.1 > t) {
-            s.1 = t;
-        }
-        self.settles.retain(|s| s.1 > s.0);
-        self.settles.push((t, t + SETTLE_S));
-        self.settle_to = Some(t + SETTLE_S);
-    }
-
-    /// Whether `t` falls in a settling after a move.
-    fn settling_at(&self, t: f64) -> bool {
-        self.settles.iter().any(|s| t > s.0 && t <= s.1)
-    }
-
     /// Seconds of settling still to come at the time on show.
     fn settling_left(&self) -> Option<f64> {
-        let t = self.end_s();
-        self.settles
-            .iter()
-            .find(|s| t >= s.0 && t < s.1)
-            .map(|s| s.1 - t)
-    }
-
-    /// Each stretch of the session in one position: start, end and
-    /// position. One stretch over everything while the watch stayed put.
-    fn position_spans(&self) -> Vec<(f64, f64, Position)> {
-        if self.stretches.is_empty() {
-            return vec![(f64::NEG_INFINITY, f64::INFINITY, self.position)];
-        }
-        let n = self.stretches.len();
-        (0..n)
-            .map(|i| {
-                let (a, p) = self.stretches[i];
-                let b = self.stretches.get(i + 1).map_or(f64::INFINITY, |s| s.0);
-                (if i == 0 { f64::NEG_INFINITY } else { a }, b, p)
-            })
-            .collect()
+        self.session.settling_left(self.end_s())
     }
 
     /// The stretches in the position the watch is in now, which the
     /// profile, the distributions and the steadiness tests are made over.
     fn current_spans(&self) -> Vec<(f64, f64)> {
-        self.position_spans()
-            .into_iter()
-            .filter(|s| s.2 == self.position)
-            .filter_map(|(a, b, _)| {
-                // Without the settling it began with.
-                let a = self
-                    .settles
-                    .iter()
-                    .filter(|s| s.0 >= a && s.0 < b)
-                    .fold(a, |a, s| a.max(s.1));
-                (a < b).then_some((a, b))
-            })
-            .collect()
+        self.session.current_spans(self.position)
     }
 
     /// Whether a reading ending at `t` comes from the position the watch is
     /// in now.
     fn in_position(&self, t: f64) -> bool {
-        self.stretches.is_empty()
-            || !self.settling_at(t)
-                && self
-                    .position_spans()
-                    .iter()
-                    .any(|s| s.2 == self.position && t > s.0 && t <= s.1)
+        self.session.in_position(t, self.position)
     }
 
     /// The stretches to mark on the strip and the charts, once there is
     /// more than one: start, end and the position's name.
     fn position_bands(&self) -> Vec<(f64, f64, &'static str)> {
-        if self.stretches.len() < 2 {
-            return Vec::new();
-        }
-        self.position_spans()
-            .into_iter()
-            .map(|(a, b, p)| (a.max(0.0), b, p.label()))
-            .collect()
+        self.session.position_bands(self.position)
     }
 
     fn readings_settings(&mut self, ui: &mut egui::Ui) {
@@ -3471,7 +3326,7 @@ impl TimegrapherApp {
     }
 
     fn note_settings(&mut self) {
-        if let Some(r) = self.recorder.as_mut() {
+        if let Some(r) = self.session.recorder.as_mut() {
             let info = SessionInfo {
                 watch: self.watch.clone(),
                 position: self.position.code().into(),
@@ -3889,9 +3744,9 @@ impl TimegrapherApp {
                     .on_hover_text(help::SIGNAL);
                 }
             }
-            if let Some(r) = &self.recorder {
+            if let Some(r) = &self.session.recorder {
                 let since = self.unsaved_s();
-                let (text, color, hint) = match &self.saved_to {
+                let (text, color, hint) = match self.session.saved_to() {
                     Some(p) => (
                         if since >= 1.0 {
                             format!(
@@ -4207,8 +4062,8 @@ impl TimegrapherApp {
         self.faults.poll();
         let end = self.end_s();
         if self.faults.due(end, self.running()) {
-            let files = if self.mic_session {
-                self.recorder.as_mut().map(|r| {
+            let files = if self.session.mic() {
+                self.session.recorder.as_mut().map(|r| {
                     let _ = r.flush();
                     r.segment_paths()
                 })
@@ -4386,7 +4241,7 @@ impl TimegrapherApp {
         };
         let pal = theme::pal(ui);
         let pct = r.clipped_fraction.unwrap_or(0.0) * 100.0;
-        let what = if self.mic_session {
+        let what = if self.session.mic() {
             "Lower Input Level in the Microphone card."
         } else {
             "Record with the input level lower."
@@ -4541,6 +4396,7 @@ impl TimegrapherApp {
             });
         }
         let bands = self.position_bands();
+        let settles = self.session.settles();
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
@@ -4549,7 +4405,7 @@ impl TimegrapherApp {
             cursor_t: self.cursor_t,
             gutter: GUTTER,
             bands: &bands,
-            settles: &self.settles,
+            settles: &settles,
         };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
@@ -4803,7 +4659,7 @@ impl TimegrapherApp {
         if self.scope_job.is_some() {
             return true;
         }
-        if self.input != Input::File || self.mic_session {
+        if self.input != Input::File || self.session.mic() {
             return false;
         }
         let Ok(files) = recordings_in(&PathBuf::from(self.file_path.trim())) else {
@@ -4829,7 +4685,7 @@ impl TimegrapherApp {
         let path = PathBuf::from(self.file_path.trim());
         let Some(live) = &self.live else { return false };
         let Some(bph) = live.bph() else { return false };
-        if self.input != Input::File || self.mic_session {
+        if self.input != Input::File || self.session.mic() {
             return false;
         }
         let Ok(files) = recordings_in(&path) else {
@@ -5045,7 +4901,7 @@ impl TimegrapherApp {
             f(h.p10),
             f(h.p90),
         );
-        if !self.stretches.is_empty() {
+        if !self.session.stretches().is_empty() {
             line += &format!(" · {} only", self.position.name());
         }
         if h.below + h.above > 0 {
@@ -5842,7 +5698,7 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
-        self.discard_recording();
+        self.session.discard_recording();
     }
 }
 
@@ -5964,6 +5820,7 @@ fn grade_hint(title: &str, g: confidence::Reading, d: Doubts) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use timegrapher_core::recorder::SETTLE_S;
 
     #[test]
     fn a_grade_says_what_lowered_it() {
@@ -6174,10 +6031,11 @@ mod tests {
     #[test]
     fn a_move_settles_before_it_is_read() {
         let mut app = synthetic(60.0, 0.0);
-        app.stretches = vec![(0.0, Position::DialUp), (30.0, Position::DialDown)];
+        app.session
+            .load(&[(0.0, Position::DialUp), (30.0, Position::DialDown)], &[]);
         app.position = Position::DialDown;
-        app.start_settle(30.0);
-        assert_eq!(app.settles, [(30.0, 30.0 + SETTLE_S)]);
+        app.session.start_settle(30.0);
+        assert_eq!(app.session.settles(), [(30.0, 30.0 + SETTLE_S)]);
         assert!(!app.in_position(35.0) && app.in_position(45.0));
         assert_eq!(app.current_spans(), [(30.0 + SETTLE_S, f64::INFINITY)]);
         app.view_end = Some(35.0);
@@ -6185,9 +6043,12 @@ mod tests {
         app.view_end = Some(50.0);
         assert!(app.settling_left().is_none() && app.reading().is_some());
         // Moved again 4 s in: the first settling ends there.
-        app.start_settle(34.0);
-        assert_eq!(app.settles, [(30.0, 34.0), (34.0, 34.0 + SETTLE_S)]);
-        assert_eq!(app.settle_to, Some(34.0 + SETTLE_S));
+        app.session.start_settle(34.0);
+        assert_eq!(
+            app.session.settles(),
+            [(30.0, 34.0), (34.0, 34.0 + SETTLE_S)]
+        );
+        assert_eq!(app.session.settle_to(), Some(34.0 + SETTLE_S));
     }
 
     /// The folder a take was saved into opens the take inside it; with two
@@ -6294,7 +6155,7 @@ mod tests {
     fn sessions_keep_save_and_discard_their_sound() {
         let base = std::env::temp_dir().join(format!("tg-app-save-{}", std::process::id()));
         let mut app = synthetic(12.0, 20.0);
-        app.mic_session = true;
+        app.session.listen();
         let info = app.info("test", 48000, 16);
         let mut r = Recorder::start(&base.join("kept"), info).unwrap();
         r.write(&timegrapher_core::capture::Block {
@@ -6303,17 +6164,23 @@ mod tests {
         })
         .unwrap();
         let kept = r.dir().to_path_buf();
-        app.recorder = Some(r);
+        app.session.recorder = Some(r);
         assert!(app.unsaved_s() > 5.0, "unsaved sound to ask about");
         app.save_into(&base.join("saved"));
-        let saved = app.saved_to.clone().expect("saved");
+        let saved = app
+            .session
+            .saved_to()
+            .map(Path::to_path_buf)
+            .expect("saved");
         assert!(saved.join("audio-001.wav").is_file());
         assert_eq!(app.unsaved_s(), 0.0);
         // Paused, a session can carry on; a new session forgets it.
-        app.paused_at = Some(Instant::now());
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
         assert!(app.can_resume());
         app.new_session();
-        assert!(app.live.is_none() && app.recorder.is_none() && !app.can_resume());
+        assert!(app.live.is_none() && app.session.recorder.is_none() && !app.can_resume());
         assert!(!kept.exists(), "the unsaved copy is thrown away");
         assert!(
             saved.join("audio-001.wav").is_file(),
@@ -6330,7 +6197,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let mut app = synthetic(5.0, 0.0);
-        app.mic_session = true;
+        app.session.listen();
         app.bph = Some(28800);
         let audio = generate(
             &SynthConfig {
@@ -6346,23 +6213,44 @@ mod tests {
             at: std::time::SystemTime::now(),
         };
         let info = app.info("test", 48000, 16);
-        app.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
-        app.recorder.as_mut().unwrap().write(&block(0)).unwrap();
+        app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&block(0))
+            .unwrap();
         app.save_into(&base.join("saved"));
         assert_eq!(app.unsaved_s(), 0.0);
         // Carrying on after the save: that sound isn't saved yet.
-        app.recorder.as_mut().unwrap().write(&block(1)).unwrap();
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&block(1))
+            .unwrap();
         assert!((app.unsaved_s() - 30.0).abs() < 0.1, "{}", app.unsaved_s());
         // Paused, moved to dial down, resumed.
-        app.paused_at = Some(Instant::now());
-        app.recorder.as_mut().unwrap().pause().unwrap();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.session.recorder.as_mut().unwrap().pause().unwrap();
         app.change_position(Position::DialDown);
-        app.paused_at = None;
-        app.recorder.as_mut().unwrap().write(&block(2)).unwrap();
+        app.session.set_state(session::State::Listening);
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&block(2))
+            .unwrap();
         assert!((app.unsaved_s() - 60.0).abs() < 0.1, "{}", app.unsaved_s());
         app.save_into(&base.join("saved"));
         assert_eq!(app.unsaved_s(), 0.0);
-        let saved = app.saved_to.clone().expect("saved");
+        let saved = app
+            .session
+            .saved_to()
+            .map(Path::to_path_buf)
+            .expect("saved");
         let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
         let m: Manifest = toml::from_str(&text).unwrap();
         let got: Vec<_> = m
@@ -6399,7 +6287,7 @@ mod tests {
             live.duration_s()
         );
         assert_eq!(
-            again.stretches,
+            again.session.stretches(),
             [(0.0, Position::DialUp), (60.0, Position::DialDown)]
         );
         let _ = std::fs::remove_dir_all(&base);
@@ -6412,8 +6300,10 @@ mod tests {
     #[test]
     fn a_new_position_marks_a_stretch_and_keeps_the_strip() {
         let mut app = synthetic(20.0, 0.0);
-        app.mic_session = true;
-        app.paused_at = Some(Instant::now());
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
         let feed = |app: &mut TimegrapherApp, rate: f64| {
             let cfg = SynthConfig {
                 duration_s: 20.0,
@@ -6437,7 +6327,7 @@ mod tests {
         feed(&mut app, 0.0);
         let live = app.live.as_ref().unwrap();
         assert!(live.beats().len() > 2 * first);
-        assert_eq!(app.stretches.len(), 3);
+        assert_eq!(app.session.stretches().len(), 3);
         let bands = app.position_bands();
         assert_eq!(
             bands.iter().map(|b| b.2).collect::<Vec<_>>(),
@@ -6490,7 +6380,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("tg-app-sidecar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let mut app = synthetic(5.0, 0.0);
-        app.mic_session = true;
+        app.session.listen();
         app.watch = "Test Watch".into();
         app.custom_calibres
             .push(CustomCalibre::new("Bench Calibre".into()));
@@ -6506,21 +6396,32 @@ mod tests {
             |_| 0.0,
         );
         let info = app.info("test", 48000, 16);
-        let mut r = Recorder::start(&base.join("kept"), info).unwrap();
+        app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
         let third = audio.samples.len() / 3;
-        for (i, pos) in [(0, None), (1, Some("DD")), (2, Some("DU"))] {
-            if let Some(p) = pos {
-                r.note(&format!("position {p}")).unwrap();
+        let moves = [
+            (0, None),
+            (1, Some((Position::DialUp, Position::DialDown))),
+            (2, Some((Position::DialDown, Position::DialUp))),
+        ];
+        for (i, pos) in moves {
+            if let Some((old, new)) = pos {
+                let r = app.session.recorder.as_mut().unwrap();
+                r.note(&format!("position {}", new.code())).unwrap();
+                app.session.move_to(i as f64 * 30.0, old, new).unwrap();
             }
+            let r = app.session.recorder.as_mut().unwrap();
             r.write(&timegrapher_core::capture::Block {
                 samples: audio.samples[i * third..(i + 1) * third].to_vec(),
                 at: std::time::SystemTime::now(),
             })
             .unwrap();
         }
-        app.recorder = Some(r);
         app.save_into(&base.join("saved"));
-        let saved = app.saved_to.clone().expect("saved");
+        let saved = app
+            .session
+            .saved_to()
+            .map(Path::to_path_buf)
+            .expect("saved");
         let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
         let m: Manifest = toml::from_str(&text).unwrap();
         assert_eq!(m.calibre.as_deref(), Some("Bench Calibre"));
@@ -6546,14 +6447,14 @@ mod tests {
         assert!(matches!(again.calibre_choice(), Calibre::Custom(_)));
         assert_eq!((again.lift_deg, again.bph), (49.0, Some(28800)));
         assert_eq!(
-            again.stretches,
+            again.session.stretches(),
             [
                 (0.0, Position::DialUp),
                 (30.0, Position::DialDown),
                 (60.0, Position::DialUp)
             ]
         );
-        assert_eq!(again.settles, [(30.0, 40.0), (60.0, 70.0)]);
+        assert_eq!(again.session.settles(), [(30.0, 40.0), (60.0, 70.0)]);
         assert_eq!(
             again.live.as_ref().unwrap().breaks(),
             &[30.0, 40.0, 60.0, 70.0]

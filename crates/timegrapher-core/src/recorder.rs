@@ -389,6 +389,11 @@ impl Recorder {
     /// Copy the recording so far into a new folder of the same name under
     /// `parent`, keeping on recording here. `result` is saved with the
     /// settings as the readings at the time of the copy. Returns the copy.
+    ///
+    /// Saved again into the same place, only what changed is written: an
+    /// audio file closed by a pause that is already there at its full
+    /// length is left alone, so Save Again copies the new sound, the open
+    /// file, clock.csv and session.json.
     pub fn save_copy(
         &mut self,
         parent: &Path,
@@ -408,11 +413,27 @@ impl Recorder {
             return Ok(dest);
         }
         fs::create_dir_all(&dest)?;
+        let open = self
+            .writer
+            .as_ref()
+            .and_then(|_| self.segments.last())
+            .map(|n| n.as_str());
         for e in fs::read_dir(&self.dir)? {
             let e = e?;
-            if e.file_type()?.is_file() {
-                fs::copy(e.path(), dest.join(e.file_name()))?;
+            if !e.file_type()?.is_file() {
+                continue;
             }
+            let name = e.file_name();
+            let to = dest.join(&name);
+            let closed = name
+                .to_str()
+                .is_some_and(|n| self.segments.iter().any(|s| s == n) && Some(n) != open);
+            let there =
+                fs::metadata(&to).is_ok_and(|m| m.len() == e.metadata().map_or(0, |m| m.len()));
+            if closed && there {
+                continue;
+            }
+            fs::copy(e.path(), to)?;
         }
         // Back to an open session here.
         self.write_session(None, None)?;
@@ -560,11 +581,24 @@ mod tests {
             r.write(&block(k)).unwrap();
         }
         let copy = r.save_copy(&base.join("saved"), None).unwrap();
-        // The sound after the pause is in a file of its own.
+        // Saved again: the file closed by the pause is not copied again
+        // (a mark put in the saved copy stays), the open one is.
+        let first = copy.join("audio-001.wav");
+        let mut bytes = fs::read(&first).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        fs::write(&first, &bytes).unwrap();
+        r.write(&block(65)).unwrap();
+        assert_eq!(r.save_copy(&base.join("saved"), None).unwrap(), copy);
+        assert_eq!(fs::read(&first).unwrap(), bytes);
+        bytes[last] ^= 1;
+        fs::write(&first, &bytes).unwrap();
         let load = |f: &str| crate::audio::load(&copy.join(f)).unwrap().samples.len();
+        assert_eq!(load("audio-002.wav"), 3 * 8000);
+        // The sound after the pause is in a file of its own.
         assert_eq!(
             (load("audio-001.wav"), load("audio-002.wav")),
-            (3 * 8000, 2 * 8000)
+            (3 * 8000, 3 * 8000)
         );
         let clock = fs::read_to_string(copy.join("clock.csv")).unwrap();
         let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
@@ -588,8 +622,8 @@ mod tests {
         assert!((b["gap_s"].as_f64().unwrap() - 60.0).abs() < 1e-6, "{b}");
         assert_eq!(b["utc"], utc(t0 + Duration::from_secs(62)));
         assert_eq!(v["breaks"].as_array().unwrap().len(), 1);
-        // Recording carries on in the original folder, in the new file.
-        r.write(&block(65)).unwrap();
+        // Recording carried on in the original folder, in the new file
+        // (the block written before the second save).
         // A pause with no resume named still breaks, on the take's input.
         r.pause().unwrap();
         r.write(&block(90)).unwrap();
