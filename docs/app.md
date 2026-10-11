@@ -152,13 +152,13 @@ knock for instance, and **Stop** ends the test. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
-with core `session::measure` and `session::evaluate`, as `session` does
-(rate on the input's measured clock when there is one). A window shows:
-- each position's rate, amplitude and beat error, red when outside the
-  chosen tolerances (Men's, Ladies' or COSC);
-- the mean rate X, the largest difference D, and vertical minus
-  horizontal for rate and amplitude;
-- the findings, each with its evidence and Witschi's advice in its hint.
+with core `session::measure`, as `session` does (rate on the input's
+measured clock when there is one), and a window shows them as a table:
+each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
+less the mean of the six, its amplitude and its beat error (a size), a
+Mean row, and the largest difference between the rates (Witschi's D). The
+figures are `session`'s for the same stretches. It gives no verdict and no
+pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
