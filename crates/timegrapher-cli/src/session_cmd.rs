@@ -5,7 +5,7 @@ use crate::long::expand_dirs;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use timegrapher_core::calibres::Calibre;
+use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
@@ -39,13 +39,64 @@ pub struct Options {
 }
 
 impl Options {
-    /// The calibre named with `--calibre`, checked before any audio is read.
-    fn calibre(&self) -> Result<Option<&'static Calibre>, String> {
-        crate::long::Train {
-            calibre: self.calibre.as_deref(),
-            escape_teeth: None,
+    /// The calibre named with `--calibre` (checked before any audio is
+    /// read), else the session file's `calibre` line when the table knows
+    /// it; a name the table does not know is only a label.
+    fn calibre(&self, m: &Manifest) -> Result<Option<&'static Calibre>, String> {
+        if self.calibre.is_some() {
+            return crate::long::Train {
+                calibre: self.calibre.as_deref(),
+                escape_teeth: None,
+            }
+            .calibre();
         }
-        .calibre()
+        Ok(m.calibre.as_deref().and_then(calibres::find))
+    }
+
+    /// Where the calibre and the values that win over it disagree, with
+    /// the value used.
+    fn calibre_notes(&self, m: &Manifest, cal: Option<&Calibre>) -> Vec<String> {
+        let Some(c) = cal else {
+            return Vec::new();
+        };
+        let mut notes = Vec::new();
+        if self.calibre.is_some() {
+            if let Some(other) = m.calibre.as_deref().and_then(calibres::find) {
+                if other.calibre != c.calibre {
+                    notes.push(format!(
+                        "the session file names the {}, --calibre the {}; using the {}",
+                        other.calibre, c.calibre, c.calibre
+                    ));
+                }
+            }
+        }
+        let from = |flag: bool| if flag { "the flag" } else { "the session file" };
+        if let Some(b) = self.bph.or(m.bph).filter(|&b| b != c.bph) {
+            notes.push(format!(
+                "the {} beats at {} bph, {} says {b}; using {b}",
+                c.calibre,
+                c.bph,
+                from(self.bph.is_some())
+            ));
+        }
+        if let (Some(l), Some(cl)) = (self.lift.or(m.lift), c.lift_angle_deg) {
+            if (l - cl).abs() > 1e-9 {
+                notes.push(format!(
+                    "the {}'s lift angle is {cl}°, {} says {l}°; using {l}°",
+                    c.calibre,
+                    from(self.lift.is_some())
+                ));
+            }
+        }
+        if let (Some(t), Some(ct)) = (m.escape_teeth, c.escape_teeth) {
+            if t != ct {
+                notes.push(format!(
+                    "the {}'s escape wheel has {ct} teeth, the session file says {t}; using {t}",
+                    c.calibre
+                ));
+            }
+        }
+        notes
     }
 
     /// Beat rate: the flag, else the session file, else the calibre's;
@@ -191,7 +242,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     t.push_str("# Test session for `timegrapher session`. Edit and run:\n");
     t.push_str(&format!("#   timegrapher session {}\n\n", dir.display()));
     t.push_str("watch = \"\"\ncalibre = \"\"\n");
-    let cal = o.calibre()?;
+    let cal = o.calibre(&Manifest::default())?;
     t.push_str(&format!(
         "bph = {}\n",
         o.bph.or(cal.map(|c| c.bph)).unwrap_or(28800)
@@ -336,7 +387,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let path = c.base.join(&e.file);
     let files = expand_dirs(std::slice::from_ref(&path))?;
     let mut cfg = StreamConfig::default();
-    let cal = c.o.calibre()?;
+    let cal = c.o.calibre(c.m)?;
     cfg.analysis.bph = c.o.bph(c.m, cal);
     cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
     let escape_teeth =
@@ -379,8 +430,8 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     } else {
         let lc = LongConfig {
             wheels: match cal {
-                Some(_) => crate::long::Train {
-                    calibre: c.o.calibre.as_deref(),
+                Some(k) => crate::long::Train {
+                    calibre: Some(k.calibre.as_str()),
                     escape_teeth: Some(escape_teeth),
                 }
                 .wheels(log.bph)?,
@@ -454,8 +505,12 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     if o.init {
         return init(paths, o);
     }
-    let cal = o.calibre()?;
     let (m, base) = load_manifest(paths)?;
+    let cal = o.calibre(&m)?;
+    let calibre_notes = o.calibre_notes(&m, cal);
+    for n in &calibre_notes {
+        eprintln!("note: {n}");
+    }
     for e in &m.recordings {
         position_of(e)?;
     }
@@ -489,7 +544,8 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let settings = serde_json::json!({
         "bph": o.bph(&m, cal),
         "lift_deg": o.lift(&m, cal),
-        "calibre": o.calibre,
+        "calibre": cal.map(|c| c.calibre.as_str()),
+        "calibre_notes": calibre_notes,
         "tolerance": tol_name,
         "settle_s": o.settle,
         "shape": !o.no_shape,
@@ -756,7 +812,7 @@ mod tests {
     fn calibre_fills_what_the_flags_and_session_file_leave_out() {
         let none = Manifest::default();
         let o = options(None, None, Some("Unitas 6497-2"));
-        let cal = o.calibre().unwrap();
+        let cal = o.calibre(&none).unwrap();
         assert_eq!(o.bph(&none, cal), Some(21600));
         assert_eq!(o.lift(&none, cal), 44.0);
         // The session file wins over the calibre, and a flag over both.
@@ -772,9 +828,44 @@ mod tests {
         assert_eq!(o.lift(&none, None), 52.0);
         // An unknown name lists the known ones.
         let e = options(None, None, Some("no such calibre"))
-            .calibre()
+            .calibre(&Manifest::default())
             .unwrap_err();
         assert!(e.contains("Unitas 6497-2"), "{e}");
+    }
+
+    #[test]
+    fn the_session_files_calibre_line_counts_when_the_table_knows_it() {
+        let o = options(None, None, None);
+        let m: Manifest = toml::from_str("calibre = \"2824-2\"\n").unwrap();
+        let cal = o.calibre(&m).unwrap();
+        assert_eq!(cal.map(|c| c.calibre.as_str()), Some("ETA 2824-2"));
+        assert_eq!(o.bph(&m, cal), Some(28800));
+        assert_eq!(o.lift(&m, cal), 50.0);
+        assert!(o.calibre_notes(&m, cal).is_empty());
+        // A name the table does not know is only a label.
+        let m: Manifest = toml::from_str("calibre = \"Bespoke 9999\"\n").unwrap();
+        assert!(o.calibre(&m).unwrap().is_none());
+        // --calibre wins over the line, and explicit values over both, with
+        // a note for each disagreement.
+        let m: Manifest =
+            toml::from_str("calibre = \"2824-2\"\nbph = 21600\nlift = 52\nescape_teeth = 15\n")
+                .unwrap();
+        let cal = o.calibre(&m).unwrap();
+        assert_eq!(o.bph(&m, cal), Some(21600));
+        assert_eq!(o.lift(&m, cal), 52.0);
+        assert_eq!(
+            o.calibre_notes(&m, cal).len(),
+            3,
+            "{:?}",
+            o.calibre_notes(&m, cal)
+        );
+        let o = options(None, Some(55.0), Some("Rolex 3235"));
+        let cal = o.calibre(&m).unwrap();
+        assert_eq!(cal.map(|c| c.calibre.as_str()), Some("Rolex 3235"));
+        assert_eq!(o.lift(&m, cal), 55.0);
+        let notes = o.calibre_notes(&m, cal);
+        assert!(notes[0].contains("ETA 2824-2"), "{notes:?}");
+        assert_eq!(notes.len(), 3, "{notes:?}");
     }
 
     #[test]

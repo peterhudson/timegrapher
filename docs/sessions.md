@@ -48,11 +48,17 @@ clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
 names more wheels in the cycle search (seconds per turn).
 
-`--calibre NAME` takes a movement from the calibre table (the same one
-the app's picker and `long --calibre` use; an unknown name lists the
-known ones): its beat rate, lift angle and escape wheel where `--bph`,
-`--lift` and the session file give none, and its train's wheels in the
-cycle search. The `calibre` line in the session file is only a label.
+The `calibre` line, when the calibre table knows the name (the same table
+the app's picker, `calibres` and `long --calibre` use; "3235", "2824-2" and
+"4130 (clone)" all match), gives the beat rate, lift angle and escape wheel
+where the session file leaves them out, and the train's wheels in the cycle
+search. A name the table does not know is only a label. `--calibre NAME`
+picks a calibre from the table in its place (an unknown name lists the
+known ones). `--bph` and `--lift`, then the session file's `bph`, `lift`
+and `escape_teeth`, win over the calibre's; where they disagree with it,
+`session` says so (`note: the Dandong 4130's lift angle is 52°, the session
+file says 55°; using 55°`), and `summary.json` lists the same notes under
+`input.settings.calibre_notes`, beside the `calibre` used.
 
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`

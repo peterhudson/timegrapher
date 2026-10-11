@@ -3,9 +3,11 @@
 use crate::amplitude::{self, AmplitudeConfig, AmplitudeWindow};
 use crate::audio::Audio;
 use crate::beats::{self, Beat};
+use crate::confidence::{self, Confidence, Doubts};
 use crate::dsp::{envelope, median, EnvelopeConfig};
 use crate::periodicity::{self, Component, Series};
 use crate::timing::{self, TimingFit, WindowFit};
+use crate::usbclock::{self, UsbClock};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -19,6 +21,8 @@ pub struct AnalysisConfig {
     /// Window for amplitude measurements, seconds.
     pub amplitude_window_s: f64,
     pub escape_teeth: u32,
+    /// The lift angle comes from the calibre or the user, not a default.
+    pub lift_known: bool,
 }
 
 impl Default for AnalysisConfig {
@@ -30,6 +34,7 @@ impl Default for AnalysisConfig {
             rate_window_s: 10.0,
             amplitude_window_s: 2.0,
             escape_teeth: 15,
+            lift_known: false,
         }
     }
 }
@@ -70,6 +75,28 @@ pub struct Summary {
     pub amplitude_periods: Vec<Component>,
     /// How much of the recording is clipped.
     pub clipping: Clipping,
+    /// The sound card's clock error from the USB lines in the recording,
+    /// when it has them. Rates above stay on the card's clock, as tg reads
+    /// them; [`Summary::rate_corrected_s_per_day`] is the corrected rate.
+    pub usb_clock: Option<UsbClock>,
+    /// Rate corrected onto true time with `usb_clock`, s/d.
+    pub rate_corrected_s_per_day: Option<f64>,
+    /// What lowers the grades below beyond each reading's ±.
+    pub doubts: Doubts,
+    /// A ± and a grade for rate, amplitude and beat error; `None` when no
+    /// watch is heard.
+    pub confidence: Option<Confidence>,
+}
+
+impl Summary {
+    /// Grade again once the sound card's clock is known from elsewhere (a
+    /// stored correction), which lifts the rate's clock doubt.
+    pub fn clock_known(&mut self) {
+        self.doubts.clock_unknown = false;
+        if let Some(c) = &mut self.confidence {
+            c.rate = confidence::rate(c.rate.se, self.doubts);
+        }
+    }
 }
 
 /// Clipping flattens the loudest part of a tick, which moves the drop and
@@ -206,12 +233,31 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
         amplitude::standard_error(&v)
     };
+    let watch_heard = beats::watch_heard(jitter_us, bph);
+    let clipping = Clipping::measure(&audio.samples, fs, &beats);
+    let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
+    let doubts = Doubts {
+        clipped: clipping.warns(),
+        beats_missing: (beats.len() as f64)
+            < confidence::MIN_BEAT_FRACTION * duration * bph as f64 / 3600.0,
+        lift_unknown: !cfg.lift_known,
+        clock_unknown: usb_clock.is_none(),
+    };
+    let amplitude_se_deg = se(&|w| w.mean());
+    let confidence = watch_heard.then(|| {
+        Confidence::new(
+            confidence::rate_se(&rate_windows),
+            amplitude_se_deg,
+            confidence::beat_error_se(&amplitude_windows),
+            doubts,
+        )
+    });
     let summary = Summary {
         duration_s: duration,
         sample_rate: audio.sample_rate,
         bph,
         beats_found: beats.len(),
-        watch_heard: beats::watch_heard(jitter_us, bph),
+        watch_heard,
         overall,
         beat_error_unlock_ms: median_of(
             amplitude_windows
@@ -224,13 +270,19 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         amplitude_deg: median_of(amplitude_windows.iter().filter_map(|w| w.mean())),
         amplitude_even_deg: median_of(amplitude_windows.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amplitude_windows.iter().filter_map(|w| w.odd_deg)),
-        amplitude_se_deg: se(&|w| w.mean()),
+        amplitude_se_deg,
         amplitude_even_se_deg: se(&|w| w.even_deg),
         amplitude_odd_se_deg: se(&|w| w.odd_deg),
         lift_deg: cfg.amplitude.lift_deg,
         timing_periods: search(timing_series),
         amplitude_periods: search(amp_series),
-        clipping: Clipping::measure(&audio.samples, fs, &beats),
+        clipping,
+        usb_clock,
+        rate_corrected_s_per_day: usb_clock.and_then(|c| {
+            overall.map(|f| crate::clockstore::correct_rate(f.rate_s_per_day, c.ppm))
+        }),
+        doubts,
+        confidence,
     };
     Analysis {
         summary,
