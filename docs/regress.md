@@ -50,9 +50,19 @@ tuned on. Plain `regress`, `--fetch` and `--smoke` leave them out.
 judged against tg alone, and against the fault its session file names.
 
 - Rate, amplitude and beat error (from the unlock, by size) pass within
-  0.5 s/d, 4° and 0.2 ms of tg on the same file at the same lift angle
+  0.5 s/d, 8° and 0.2 ms of tg on the same file at the same lift angle
   (research's margins, `HOLDOUT_MARGINS`). A reading with no tg number for
   a value is counted as not judged.
+- The amplitude margin is wide on purpose, and the count says it is against
+  tg: tg is not the true amplitude. On the 90 referenced amplitude readings
+  (`regress --all --json` on 814b681), the engine minus tg has a median size
+  of 2.8°, 7.5° at the 90th percentile and 11.2° at the 95th; 93% are
+  within 8°. The offset goes with the movement and its mount, not with the
+  lift angle or the amplitude level: the ETA 2824 reads 7 to 21° above tg
+  in its holder and bare, the Daytona about 2° below, the Yacht-Master up to
+  8° above crown down. The two methods place the unlock differently on some
+  movements. At 4° about a third of holdout readings would fail for that
+  known reason; at 8° a failure shows something new.
 - A `[[recording]]` entry may name a fault confirmed at the bench:
   `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
   `id` is one of `analyze`'s `faults[]` ids and `side` (Tick, Tock or both)

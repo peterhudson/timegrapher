@@ -676,10 +676,13 @@ pub fn run(o: &Options) -> Result<bool, String> {
 }
 
 /// How far a holdout reading may be from tg, against tg alone (research's
-/// margins, docs/regress.md).
+/// margins, docs/regress.md). Amplitude is 8° because the engine and tg
+/// place the unlock differently on some movements: on the referenced takes
+/// the engine sits within 8° of tg on 93% of readings, offset by movement
+/// and mount, so a reading further out shows something new.
 pub const HOLDOUT_MARGINS: Margins = Margins {
     rate_s_per_day: 0.5,
-    amplitude_deg: 4.0,
+    amplitude_deg: 8.0,
     beat_error_ms: 0.2,
     beats_fraction: 0.0,
     beats_min: 0,
@@ -961,7 +964,10 @@ fn print_holdout(o: &HoldoutOutcome) {
     t(
         "amplitude",
         &o.amplitude_deg,
-        format!("{}°", o.margins.amplitude_deg),
+        format!(
+            "{}° against tg, which is not the true amplitude",
+            o.margins.amplitude_deg
+        ),
     );
     t(
         "beat error",

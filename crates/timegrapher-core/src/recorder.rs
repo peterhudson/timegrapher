@@ -6,6 +6,16 @@
 //! `session.json` with the watch, position, lift angle and settings.
 //! `timegrapher long <folder>/ --clock <folder>/clock.csv` reads it as one
 //! continuous recording calibrated against the system clock.
+//!
+//! A pause leaves the audio running straight on but the time between out:
+//! listening again starts a new file, the clock log gets a line either side
+//! of the gap (frames running on, none made up across it), and
+//! `session.json` gains a `breaks` entry with the frame it starts at, its
+//! file, the host time of its first frame, the gap and the input. A take
+//! never paused has no `breaks` key at all. `frame` counts from the take's
+//! first frame (frame 0 of `audio-001.wav`) and runs on across files, so
+//! `audio_s` is `frame` over the sample rate; readers key on `frame`, and
+//! `segment`, `utc` and `device` are for people.
 
 use crate::capture::Block;
 use serde::Serialize;
@@ -47,6 +57,10 @@ struct SessionFile<'a> {
     duration_s: f64,
     segments: Vec<String>,
     notes: &'a [Note],
+    /// Left out altogether while there are none, so a take that was never
+    /// paused reads as it always has.
+    #[serde(skip_serializing_if = "<[Break]>::is_empty")]
+    breaks: &'a [Break],
     /// Readings at the end, as the program saw them.
     result: Option<&'a serde_json::Value>,
 }
@@ -55,6 +69,27 @@ struct SessionFile<'a> {
 /// its readings while it settles (the hand leaving the stand, the balance
 /// steadying). The sound is still kept.
 pub const SETTLE_S: f64 = 10.0;
+
+/// Where listening carried on after a pause. The audio runs straight on
+/// across it, but the time between is missing, so a reader starts afresh
+/// there: a fresh lock on the beats, and a clock fit that doesn't span it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Break {
+    /// Seconds of audio before it, for people.
+    pub audio_s: f64,
+    /// Frames in the whole take before it; readers key on this.
+    pub frame: u64,
+    /// The first file after it: each resume starts a new one.
+    pub segment: String,
+    /// Host time of the first frame after it.
+    pub utc: String,
+    /// Host time from the last frame before it to the first after it, from
+    /// the clock log's lines either side.
+    pub gap_s: f64,
+    /// The input listened to after it (another card has its own clock
+    /// error).
+    pub device: String,
+}
 
 const SEGMENT_S: u64 = 3600;
 const CLOCK_EVERY_S: f64 = 10.0;
@@ -72,6 +107,14 @@ pub struct Recorder {
     frames: u64,
     clock: BufWriter<File>,
     last_clock: Option<SystemTime>,
+    /// The latest block's arrival and the frames written by then.
+    last_block: Option<(SystemTime, u64)>,
+    /// Paused: the host time of the last frame before the pause, until
+    /// listening carries on.
+    paused_at: Option<SystemTime>,
+    /// The input listened to after the pause, when it was named.
+    resumed_on: Option<String>,
+    breaks: Vec<Break>,
     notes: Vec<Note>,
 }
 
@@ -117,6 +160,10 @@ impl Recorder {
             frames: 0,
             clock,
             last_clock: None,
+            last_block: None,
+            paused_at: None,
+            resumed_on: None,
+            breaks: Vec::new(),
             notes: Vec::new(),
         };
         r.write_session(None, None)?;
@@ -147,6 +194,43 @@ impl Recorder {
         self.frames as f64 / self.info.sample_rate as f64
     }
 
+    /// Mark a break before block `b`, the first after a pause whose last
+    /// frame was heard at `before`, and start a new file for it.
+    fn start_break(&mut self, b: &Block, before: SystemTime, device: String) -> io::Result<()> {
+        if self.frames == 0 {
+            return Ok(());
+        }
+        if let Some(w) = self.writer.take() {
+            w.finalize().map_err(io_err)?;
+        }
+        self.open_segment()?;
+        let fs = self.info.sample_rate as f64;
+        // A block arrives with its last frame; its first came earlier.
+        let first =
+            b.at.checked_sub(std::time::Duration::from_secs_f64(
+                b.samples.len() as f64 / fs,
+            ))
+            .unwrap_or(b.at);
+        let gap_s = match first.duration_since(before) {
+            Ok(d) => d.as_secs_f64(),
+            Err(e) => -e.duration().as_secs_f64(),
+        };
+        self.breaks.push(Break {
+            audio_s: self.frames as f64 / fs,
+            frame: self.frames,
+            segment: self.segments.last().cloned().unwrap_or_default(),
+            utc: utc(first),
+            gap_s,
+            device,
+        });
+        Ok(())
+    }
+
+    /// Where listening carried on after a pause, oldest first.
+    pub fn breaks(&self) -> &[Break] {
+        &self.breaks
+    }
+
     fn open_segment(&mut self) -> io::Result<()> {
         let name = format!("audio-{:03}.wav", self.segments.len() + 1);
         let spec = hound::WavSpec {
@@ -164,6 +248,13 @@ impl Recorder {
     /// Append a block of audio.
     pub fn write(&mut self, b: &Block) -> io::Result<()> {
         let fs = self.info.sample_rate as u64;
+        if let Some(before) = self.paused_at.take() {
+            let device = self
+                .resumed_on
+                .take()
+                .unwrap_or_else(|| self.info.device.clone());
+            self.start_break(b, before, device)?;
+        }
         let full = ((1u64 << (self.info.bits - 1)) - 1) as f32;
         for &s in &b.samples {
             if self.writer.is_none() || self.seg_frames >= SEGMENT_S * fs {
@@ -202,6 +293,7 @@ impl Recorder {
             }
             self.last_clock = Some(b.at);
         }
+        self.last_block = Some((b.at, self.frames));
         Ok(())
     }
 
@@ -251,22 +343,46 @@ impl Recorder {
             duration_s: self.duration_s(),
             segments: self.segments.clone(),
             notes: &self.notes,
+            breaks: &self.breaks,
             result,
         };
         let text = serde_json::to_string_pretty(&f).map_err(io::Error::other)?;
         fs::write(self.dir.join("session.json"), text)
     }
 
-    /// Note a pause in listening. Audio written after it follows straight
-    /// on in the WAV file, and the clock log gets a line with the first block
-    /// after it, so the gap shows in `clock.csv`.
+    /// Note a pause in listening. The clock log gets a line for the last
+    /// block before it and another for the first block after it, so both
+    /// sides of the gap are measured; audio written after [`Recorder::resume`]
+    /// starts a new file and a [`Break`].
     pub fn pause(&mut self) -> io::Result<()> {
+        if let Some((at, frames)) = self.last_block {
+            if self.last_clock != Some(at) {
+                let unix = at.duration_since(UNIX_EPOCH).unwrap_or_default();
+                writeln!(
+                    self.clock,
+                    "{}.{:09},{}",
+                    unix.as_secs(),
+                    unix.subsec_nanos(),
+                    frames
+                )?;
+            }
+            self.paused_at = Some(at);
+        }
         self.last_clock = None;
         if let Some(w) = self.writer.as_mut() {
             w.flush().map_err(io_err)?;
         }
         self.clock.flush()?;
         self.note("paused")
+    }
+
+    /// Carry on after [`Recorder::pause`], listening to `device` at the
+    /// take's own sample rate (the caller refuses any other). The next block
+    /// written starts a break either way; this names its input.
+    pub fn resume(&mut self, device: &str) {
+        if self.paused_at.is_some() {
+            self.resumed_on = Some(device.to_string());
+        }
     }
 
     /// Copy the recording so far into a new folder of the same name under
@@ -403,6 +519,8 @@ mod tests {
         assert!((pairs[1].0 - 11.0).abs() < 1e-9, "{:?}", pairs[1]);
         let session = fs::read_to_string(dir.join("session.json")).unwrap();
         assert!(session.contains("\"position\": \"DU\""));
+        // Never paused: no breaks key at all, as before there were breaks.
+        assert!(!session.contains("breaks"), "{session}");
         assert!(session.contains("turned to DD"));
         assert!(dir
             .file_name()
@@ -435,29 +553,54 @@ mod tests {
             r.write(&block(k)).unwrap();
         }
         r.pause().unwrap();
-        // A minute later, listening again.
+        // A minute later, listening again on another input.
+        r.resume("USB mic");
         for k in 63..65 {
             r.write(&block(k)).unwrap();
         }
         let copy = r.save_copy(&base.join("saved"), None).unwrap();
-        let audio = crate::audio::load(&copy.join("audio-001.wav")).unwrap();
-        assert_eq!(audio.samples.len(), 5 * 8000);
+        // The sound after the pause is in a file of its own.
+        let load = |f: &str| crate::audio::load(&copy.join(f)).unwrap().samples.len();
+        assert_eq!(
+            (load("audio-001.wav"), load("audio-002.wav")),
+            (3 * 8000, 2 * 8000)
+        );
         let clock = fs::read_to_string(copy.join("clock.csv")).unwrap();
         let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
-        // One line at the start, one after the pause.
-        assert_eq!(pairs.len(), 2, "{clock}");
+        // The start, the last block before the pause, the first after it;
+        // frames running on, no line made up across the gap.
+        let frames: Vec<u64> = clock
+            .lines()
+            .filter_map(|l| l.split(',').nth(1)?.parse().ok())
+            .collect();
+        assert_eq!(frames, [8000, 3 * 8000, 4 * 8000], "{clock}");
+        assert_eq!(pairs.len(), 3, "{clock}");
         let session = fs::read_to_string(copy.join("session.json")).unwrap();
         assert!(session.contains("paused"));
-        // Recording carries on in the original folder.
+        let v: serde_json::Value = serde_json::from_str(&session).unwrap();
+        let b = &v["breaks"][0];
+        assert_eq!(b["frame"], 3 * 8000);
+        assert_eq!(b["audio_s"], 3.0);
+        assert_eq!(b["segment"], "audio-002.wav");
+        assert_eq!(b["device"], "USB mic");
+        // Last frame before at 2 s, first after at 63 - 1 = 62 s.
+        assert!((b["gap_s"].as_f64().unwrap() - 60.0).abs() < 1e-6, "{b}");
+        assert_eq!(b["utc"], utc(t0 + Duration::from_secs(62)));
+        assert_eq!(v["breaks"].as_array().unwrap().len(), 1);
+        // Recording carries on in the original folder, in the new file.
         r.write(&block(65)).unwrap();
+        // A pause with no resume named still breaks, on the take's input.
+        r.pause().unwrap();
+        r.write(&block(90)).unwrap();
+        assert_eq!(r.breaks().len(), 2);
+        assert_eq!(r.breaks()[1].device, "test");
+        assert_eq!(r.breaks()[1].segment, "audio-003.wav");
         let dir = r.finish(None).unwrap();
-        assert_eq!(
-            crate::audio::load(&dir.join("audio-001.wav"))
-                .unwrap()
-                .samples
-                .len(),
-            6 * 8000
-        );
+        let total: usize = ["audio-001.wav", "audio-002.wav", "audio-003.wav"]
+            .iter()
+            .map(|f| crate::audio::load(&dir.join(f)).unwrap().samples.len())
+            .sum();
+        assert_eq!(total, 7 * 8000);
         fs::remove_dir_all(&base).unwrap();
     }
 }
