@@ -309,9 +309,9 @@ bundle with the current build and lists the readings that moved.
 
 ## Reference files
 
-Load the one you need; don't read them all up front. A value marked
-"(check)" is commonly quoted but not verified at the bench: if one decides
-your verdict, say so.
+Load the one you need; don't read them all up front. Figures in them
+carry their source; a figure with none is this skill's own rule of thumb,
+and if one decides your verdict, say so.
 
 | File | When |
 | --- | --- |

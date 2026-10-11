@@ -214,10 +214,10 @@ not out of spec.
 
 | Standard | What it requires (mean daily rate) | Note |
 | --- | --- | --- |
-| COSC / ISO 3159, movement over 20 mm | −4 to +6 s/d | Uncased movement, 15 days, five positions, three temperatures (8, 23, 38 °C). Also: mean variation 2 s/d, greatest variation 5 s/d, flat to hanging −6 to +8 s/d, largest variation 10 s/d, thermal ±0.6 s/d per °C, rate resumption ±5 s/d (check these secondary limits) |
-| COSC, movement 20 mm or under | −5 to +8 s/d | (check) |
-| METAS Master Chronometer (Omega, Tudor some) | 0 to +5 s/d | Cased watch; also magnetic resistance to 15,000 gauss (check scope) |
-| Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC (since 2015) |
+| COSC / ISO 3159, category 1 (fitting diameter over 20 mm) | −4 to +6 s/d | Uncased movement, five positions (3, 6 and 9 o'clock, dial up, dial down) and several temperatures, 15 days. Also: mean variation 2 s/d, greatest variation 5, horizontal to vertical −6 to +8, largest variation 10, thermal ±0.6, rate resumption ±5 ([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)) |
+| COSC, category 2 (20 mm or under) | −5 to +8 s/d | Same tests; the other limits are a little wider (same source) |
+| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after COSC; also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
+| Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)) |
 
 ## Positions and the positional delta
 
@@ -249,18 +249,15 @@ A mainspring delivers less torque as it runs down, so the amplitude
 falls. Test fully wound, and again 24 hours later without winding, same
 positions.
 
-| Amplitude drop, full wind to 24 h | Reading |
-| --- | --- |
-| Up to about 30° | Good |
-| 30–50° | Normal for many calibres; fine |
-| Over about 60° | Mainspring, barrel or train friction; mention it |
+The `session` report gives the change per position between states of
+wind (`isochronism`); no maker publishes a normal drop. Sellita's SW200
+limit, at least 200° crown down after 24 hours
+([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf)),
+is one published floor. Compare the drop with the same watch's earlier
+tests: a drop that grows between tests is the useful sign.
 
-The rate should change by only a few s/d between 0 and 24 hours. A watch
-that's fine fully wound but goes badly off at 24 hours is telling you it
-lacks reserve of power at the balance.
-
-(These bands are rules of thumb (check); a long-reserve calibre built for
-70 hours or more has a flatter torque curve over its first 24 hours.)
+A watch that's fine fully wound but goes badly off at 24 hours is telling
+you it lacks power at the balance by the end of a day.
 
 ## The trace
 

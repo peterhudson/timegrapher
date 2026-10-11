@@ -65,23 +65,28 @@ beat error and history.
 
 ## How long since the service?
 
-Lubricants age whether or not the watch runs; running and heat age them
-faster. Roughly, in a sealed case at 20 °C with the watch *not* running,
-the train oil (Moebius 9010 type) lasts 10–15 years, the heavy oil
-(HP1300 / 9104) 12–20, synthetic grease (9504) 10–15, the escapement
-grease (9415) 7–12, and the barrel greases 7–10; halve those for a watch
-that runs, and halve them again for every 10 °C warmer it is kept (the
-Arrhenius rule). A watch kept at 30 °C, or worn daily in a hot climate,
-wants servicing far more often. An old watch that lived in a hot attic
-should not be wound at all until it has been serviced: the oil will be
-varnish.
+Lubricants age whether or not the watch runs, and heat ages them
+faster: for industrial lubricants the common rule of thumb is that the
+rate of oxidation roughly doubles for every 10 °C warmer
+([Machinery Lubrication](https://www.machinerylubrication.com/Read/32752/how-heat-affects-lubricants-understanding-the-arrhenius-rate-rule));
+no figure is published for watch oils, and the makers of watch
+lubricants publish no service lifetimes. So a watch kept warm, or worn
+daily in a hot climate, is due sooner than its maker's interval.
 
-The makers' own intervals vary: Rolex and Tudor say about 10 years,
-Omega about 5–8 (check), Seiko and Grand Seiko about 3–4. Many
-independent watchmakers say 5 years is safe and 7 about the most they'd
-leave it. A practical rule: **every 5 years for a watch worn daily or kept
-on a winder, up to 10 for one that mostly sits in a drawer, sooner in a hot
-climate.** Factor that in even when the numbers look fine: a watch that
+The makers' own intervals, where they publish one: Seiko about every
+2–3 years for its 4R and 6R mechanical calibres
+([Seiko 6R35](https://www.seikowatches.com/instructions/html/SEIKO_6R35_D_EN/BONDSYrgdkveiw)),
+Grand Seiko 3–4 years for its 9S
+([Grand Seiko](https://www.grand-seiko.com/instructions/html/GS_9S_en/AGFISYcisgnzsq)),
+Omega 5–8 years
+([Omega](https://www.omegawatches.com/en-us/customer-service/preserve-your-omega/watches)),
+Longines 6–8 years
+([Longines](https://www.longines.com/en-us/customer-service/services)).
+Rolex and Tudor say only "periodic" or "regular" servicing in the
+documents we could read; about 10 years is widely reported for Rolex
+but not confirmed from Rolex itself. With no maker figure, say so and
+use the time since service as one input among the measurements, not a
+verdict on its own. Factor that in even when the numbers look fine: a watch that
 measures well but hasn't been serviced in 12 years is still due.
 
 **New watches with cheap or clone movements** are a special case. Factory
