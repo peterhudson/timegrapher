@@ -50,8 +50,8 @@ dial-up recording of a hand-wound Reverso-style watch at 21,600 bph (lift
   and contrast, consistency of names and controls, how help is offered,
   empty and error states, and whether each chart reads at a glance and says
   what it shows. As a watchmaker: are the numbers that matter the ones that
-  stand out, and does the app lead someone to the right conclusion about
-  the watch?
+  stand out, and can someone read the facts correctly without the app
+  judging the watch for them?
 - Before his numbered notes, he lists every feature he found, one line
   each, saying whether he tried it and how it went in a few words, and
   which ones he could not reach.

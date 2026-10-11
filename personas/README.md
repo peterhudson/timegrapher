@@ -1,6 +1,6 @@
 # Persona rounds
 
-Seven watch people use a build of the timegrapher the way customers would, and
+Eight watch people use a build of the timegrapher the way customers would, and
 write notes the way a watchmaker gives feedback to a developer. CI checks the
 engine against tg and the corpus, the unit tests and the packages; persona
 rounds check what it is like to *use* the desktop app, the command line with
@@ -15,11 +15,13 @@ the watchmaker skill, and the MCP server.
 | [Pat](people/5-sceptic.md) | Sceptic who gives wrong details on purpose | Command line and skill |
 | [Brunner](people/6-retired-watchmaker.md) | Retired Swiss lab watchmaker | Desktop app, live and a two-hour recording; also reviews the conversations |
 | [Mika](people/7-designer-watchmaker.md) | Former Apple software designer who services Seikos on weekends | Desktop app, a deep pass on every feature: six positions live and two saved recordings, judged as a product designer and a watchmaker |
+| [Owen](people/8-agent-specialist.md) | Designer of tools for AI agents, formerly an AWCI-trained watchmaker | Command line, MCP server and skill, used directly: a deep pass on every command and tool |
 
-Until rounds get close to a public release, only the watchmaking and design
-experts, Brunner and Mika, take part. The other five carry `parked = true` and
-sit out unless a round names them with `--only`. While they are parked, the
-command line and the MCP server get no persona round.
+Until rounds get close to a public release, only the experts take part:
+Brunner and Mika on the app, Owen on the command line and the MCP server. The
+other five carry `parked = true` and sit out unless a round names them with
+`--only`. Owen works the interfaces himself rather than through a helper, and
+his report links every call he made and what came back.
 
 ## How a round works
 
