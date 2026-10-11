@@ -278,12 +278,27 @@ fn a_chat_app_reads_a_watch() {
         let r = c.call(
             "record_position",
             json!({ "folder": path(&folder), "position": pos, "seconds": 30,
-                    "calibre": "ETA 2824-2", "watch": "Test watch" }),
+                    "calibre": "ETA 2824-2", "watch": "Test watch",
+                    "take_id": format!("{pos}-1") }),
         );
         assert!(r.get("isError").is_none(), "{r}");
         assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/1");
         assert_eq!(r["structuredContent"]["verdict"], "ok");
     }
+    // A retried take comes back as it was, and is not recorded again.
+    let first = c.call(
+        "record_position",
+        json!({ "folder": path(&folder), "position": "DU", "seconds": 30, "take_id": "DU-1" }),
+    );
+    assert!(first["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("nothing was recorded again"));
+    assert_eq!(
+        std::fs::read_dir(&folder).unwrap().count(),
+        3,
+        "two takes and session.toml"
+    );
     let r = c.call("run_session", json!({ "paths": [path(&folder)] }));
     assert_eq!(
         r["structuredContent"]["readings"].as_array().unwrap().len(),
@@ -334,12 +349,17 @@ fn a_chat_app_reads_a_watch() {
         .as_str()
         .unwrap()
         .contains("Ground rules"));
+    let guide = c.call("read_guide", json!({ "page": "watchmaker" }));
+    assert!(guide["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Ground rules"));
     let prompt = c.request(
         "prompts/get",
         json!({ "name": "test_my_watch", "arguments": { "watch": "ETA 2824-2" } }),
     );
     let said = prompt["messages"][0]["content"]["text"].as_str().unwrap();
-    assert!(said.contains("ETA 2824-2") && said.contains("timegrapher://skill/watchmaker"));
+    assert!(said.contains("ETA 2824-2") && said.contains("read_guide"));
 
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);

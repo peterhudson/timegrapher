@@ -1,7 +1,8 @@
-//! Possible escapement faults, read from the shape of the Tick and Tock.
+//! Possible escapement faults, read from the shape of the Tick and Tock
+//! and from the beat error over the recording.
 //!
-//! Each rule looks at one measure from [`crate::shape`] on each side and
-//! names the fault in the words of `docs/fault-signatures.md`. No recording
+//! Each shape rule looks at one measure from [`crate::shape`] on each side;
+//! every rule names the fault in the words of `docs/fault-signatures.md`. No recording
 //! of a watch with a confirmed fault has passed through these rules yet, so
 //! every finding is [`Strength::Possible`], and each limit sits well outside
 //! what the 16 healthy takes of the public corpus measure (see the note on
@@ -13,6 +14,7 @@
 //! error with no spread at all is let through, since a side whose unlock
 //! is lost (a fault this module looks for) has no unlock beat error.
 
+use crate::amplitude::AmplitudeWindow;
 use crate::confidence::{self, Confidence, Doubts};
 use crate::shape::{ShapeReport, SideReport};
 use serde::Serialize;
@@ -92,6 +94,13 @@ pub const SHORT_1_TO_3: f64 = 0.75;
 /// 1.7.
 pub const TAIL_SIDE_RATIO: f64 = 3.0;
 pub const MIN_TAIL: f64 = 0.1;
+/// Change of the unlock beat error from the first quarter of the recording
+/// to the last, ms. The corpus reaches 0.44 ms (the Yacht-Master on its
+/// crown right); a beat error that wanders without a trend, as the
+/// Yacht-Master's dial-down take does over 1.5 ms, is not counted.
+pub const BEAT_ERROR_DRIFT_MS: f64 = 1.0;
+/// Fewest 2 s windows with a beat error in each quarter.
+pub const MIN_QUARTER_WINDOWS: usize = 8;
 
 fn share(n: usize, of: usize) -> f64 {
     n as f64 / of.max(1) as f64
@@ -251,4 +260,41 @@ pub fn from_shape(
         }
     }
     merged
+}
+
+/// Findings from the timing over the recording, or none when the readings
+/// are too poor to judge.
+pub fn from_timing(
+    windows: &[AmplitudeWindow],
+    confidence: Option<&Confidence>,
+    doubts: Doubts,
+) -> Vec<Finding> {
+    if !judged(confidence, doubts) {
+        return Vec::new();
+    }
+    let be: Vec<f64> = windows
+        .iter()
+        .filter_map(|w| w.beat_error_unlock_ms)
+        .filter(|v| v.is_finite())
+        .collect();
+    let q = be.len() / 4;
+    if q < MIN_QUARTER_WINDOWS {
+        return Vec::new();
+    }
+    let first = crate::dsp::median(&mut be[..q].to_vec());
+    let last = crate::dsp::median(&mut be[be.len() - q..].to_vec());
+    let change = last - first;
+    if change.abs() < BEAT_ERROR_DRIFT_MS {
+        return Vec::new();
+    }
+    vec![finding(
+        "beat_error_drift",
+        "Beat error drifting through the recording: hairspring rubbing",
+        Side::Both,
+        &[
+            ("first_quarter_ms", first),
+            ("last_quarter_ms", last),
+            ("change_ms", change),
+        ],
+    )]
 }

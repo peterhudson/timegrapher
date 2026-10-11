@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn menu_keeps_the_default_and_direct_devices() {
-        // As cpal lists them on Peter's workstation (some of them).
+        // As cpal lists them on a Linux workstation (some of them).
         let usb = "USB PnP Sound Device, USB Audio";
         let list = vec![
             dev(

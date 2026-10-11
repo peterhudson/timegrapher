@@ -26,6 +26,9 @@ Ask, in one message:
 - **When was it last serviced**, roughly, and **how is it worn**: every
   day, now and then, or in a drawer. You need both to judge the results;
   the numbers alone are not a service verdict.
+- **What are you sure of?** If they give a beat rate or a lift angle,
+  ask where it came from (the maker, a seller, a forum, a guess). Check it
+  against the calibre table before using it.
 - **Has anything happened to it?** A knock, a fall, sitting next to a
   speaker, a phone case or a laptop with a magnetic clasp, or a sudden
   change in how it keeps time.
@@ -242,6 +245,36 @@ attention. Keep each watch separate and the set-up fixed:
   (nothing, re-test in six months, demagnetise and re-test, service).
   The program keeps no history of its own; the folders and this table
   are the record, and next year's test is compared against them.
+
+## Figures for a sale listing
+
+A seller often has only dial-up recordings and wants a line for the
+listing. Say plainly what that can and can't support.
+
+- **It supports**: that the watch runs and was heard cleanly; its
+  amplitude dial up, fully wound or not (say which), at a named lift
+  angle; its beat error (the unlock figure); and its dial-up rate at that
+  state of wind.
+- **It doesn't support**: how it keeps time on the wrist, its rate in
+  other positions or the spread between them, how it holds up at 24
+  hours, or any chronometer-like claim. Don't offer general figures for
+  the positions in their place.
+- **Name the conditions in the line**: the lift angle used (and that it
+  is an assumption when the calibre table says so), whether the sound
+  card's clock was calibrated (without a clock log or a stored
+  correction it wasn't, and a buyer's timegrapher may read a few s/d
+  differently), and that it is one position.
+- **A once-a-minute wobble** (`cycle_wheel`) belongs in the listing as
+  measured, with its size: "amplitude varies by about 18° once a minute,
+  dial up". Tell the seller what it means for a buyer: something worth a
+  watchmaker's look at the next service, not a fault that stops the watch.
+  Ten minutes in one position can't say more.
+
+An example: *"Timegraphed dial up, fully wound, three 10-minute
+recordings: about 240° amplitude (lift angle 52° assumed; the maker
+publishes none), beat error about 0.4 ms, rate about −5 to −8 s/d
+(sound card clock not calibrated). Amplitude varies about 18° once a
+minute. One position only."*
 
 ## Recording
 
