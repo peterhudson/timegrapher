@@ -128,9 +128,8 @@ mainspring's energy before it reaches the balance.
 lower than it was. That's what a service is for, and it's the commonest
 finding by far.
 
-**Odd case:** some watches run *higher* amplitude just after a service
-with very fresh oil, or lower for the first few days while the oil beds
-in (check). Re-test after a week before judging a freshly serviced watch.
+**A freshly serviced watch:** re-test after a week before judging it,
+so the first days after the service don't decide the verdict.
 
 ## Mainspring and barrel
 
@@ -139,7 +138,7 @@ in (check). Re-test after a week before judging a freshly serviced watch.
 | Amplitude low even fully wound, steady, everything else fine | Tired ("set") mainspring, or the train taking too much; a service with a new mainspring usually restores it |
 | Large drop from full wind to 24 h (over about 60°), or a short power reserve | Weak mainspring, barrel friction, dry barrel |
 | Automatic: amplitude drops briefly when wound past full | Normal slipping of the bridle; a ragged sawtooth or slipping too early is a worn bridle or barrel wall (check how this shows on a timegrapher) |
-| Periodic change over hours | Barrel turn (5–7 hours on many calibres; about 6 h on Rolex 32xx (check)) |
+| Periodic change over hours | Barrel turn: its period is in the calibre's entry (`timegrapher calibres NAME`) where a source gives it, with the table's notes on how sure it is |
 | Periodic change over minutes (e.g. every 5 min) | A barrel tooth meshing with the centre pinion: worn barrel arbor hole letting the barrel tilt (a documented Orient 48748 case, 5 min) |
 | Amplitude too high, knocking | A mainspring too strong for the calibre (a wrong replacement spring) |
 

@@ -46,9 +46,11 @@ made with other tools. On Linux, `doctor` also uses `amixer` (package
   silent room, but rate is all you'll get with any confidence; the
   amplitude needs the faint unlock sound, which gets lost.
 
-Sample rate: 44.1 or 48 kHz is fine. The tick's useful sound is in roughly
-the 2–20 kHz band (check), so anything lower than 44.1 kHz throws some of it
-away.
+Sample rate: record at 44.1 or 48 kHz. The tick is a broadband impact
+sound; tg, the open-source timegrapher this project is checked against,
+samples at 44.1 kHz and filters around 3 kHz
+([tg.h](https://raw.githubusercontent.com/vacaboja/tg/master/src/tg.h)).
+A lower sample rate throws some of it away.
 
 ### Worked example: the cheap USB C-Media stand
 
