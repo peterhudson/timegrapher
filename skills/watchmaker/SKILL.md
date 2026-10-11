@@ -115,8 +115,10 @@ from the microphone check to six positions fully wound and the same six
 - For a proper check, six positions in the desktop app's order: dial
   up, dial down, crown down, crown left, crown up, crown right (its
   Positions Test settles 20 s and measures 60 s each; docs/app.md).
-  Witschi's training course measures the verticals first (6H, 9H, 12H,
-  3H), then dial up and dial down; either order serves. Five or six
+  Witschi's 2010 training course (p. 53) measures the verticals first
+  (6H, 9H, 12H, 3H), then dial up and dial down; its 2025 *Testing
+  methods* (doc. D40e, about p. 33; the page is approximate) starts dial
+  down, then dial up, 9H, 6H, 3H, 12H. Any order serves. Five or six
   positions tell you far more than one.
 - For the gear train: one position, an hour or more, then `timegrapher series`
   (is it steady, and if not, which wheel) and `timegrapher long` (the report).

@@ -72,8 +72,12 @@ After 24 hours, "approx −10% to −15% is ok". The same course's worked
 example on p. 14 gives vertical as 220–270°, so treat the vertical floor
 as soft. Witschi's later *Testing methods for mechanical watches*
 (2025, doc. D40e, about p. 34; the page is approximate) gives 260–320°
-horizontal and 240–280° vertical: when you quote those, name that
-document, not the course. Caliber Corner's "about 260° – 310°" was not
+horizontal and 240–280° vertical in its "Standard Tolerances": when you
+quote those, name that document, not the course. The same list agrees
+with the course on rate (men's −5 to +15 s/d, women's −5 to +25) and
+beat error (under 0.5 ms), and its COSC and METAS figures match the
+table below; only the amplitude ranges differ between the two Witschi
+documents. Caliber Corner's "about 260° – 310°" was not
 verified here.
 
 ### Makers' figures by movement

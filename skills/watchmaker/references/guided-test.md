@@ -171,9 +171,10 @@ whether the measurement is sound, then the per-position readings and
 the characteristic values, then hold them against the tolerance set
 that fits the watch
 ([when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source)).
-Any grade, `findings[]` code or `--tolerance` class an older build
-prints is the program's opinion from fixed limits: read the numbers
-behind it instead. Write the answer as SKILL.md's "How to write the
+The program applies no tolerance: hold the numbers against the tables
+yourself. Any grade, finding code or tolerance class an older build
+prints is its opinion from fixed limits: read the numbers behind it
+instead. Write the answer as SKILL.md's "How to write the
 answer" says, with the service history and wear from step 0 in it.
 
 Then look at the shape of the Tick and the Tock: run `timegrapher shape
