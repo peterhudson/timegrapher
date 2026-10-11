@@ -33,8 +33,9 @@ read files through, and since 2026-10-11 `analyze` too, which before then
 found its beats with one template over the whole file. The two had drifted
 apart on real takes: on the Yacht-Master dial down `analyze` lost 47 beats
 of the first file and read the beat error from the drop as +0.89 ms against
-`session`'s −0.19 ms, and on the ETA 2824 in its holder it read 332° against
-321°. regress checks the stream's readings against tg, so those are the ones
+`session`'s −0.19 ms, and on the first file of the ETA 2824 in its holder it
+read 332° against 321° at the default lift angle of 52° (321° against 310° at
+the take's 50°). regress checks the stream's readings against tg, so those are the ones
 kept. `crates/timegrapher-core/tests/equivalence.rs` holds the pipelines to
 one another (and records where the live screen still differs).
 

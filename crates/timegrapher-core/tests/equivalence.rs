@@ -278,7 +278,7 @@ fn a_replayed_take_matches_session() {
 }
 
 #[test]
-#[ignore = "gap 4: on real takes live readings differ from analyze (Daytona beat error from the unlock 0.19 against 0.36 ms; ETA holder amplitude 324° against 332°, beat error from the drop 0.56 against 0.13 ms; Patek both beat errors' signs flipped)"]
+#[ignore = "gap 4: on real takes live readings differ from analyze (Daytona beat error from the unlock 0.19 against 0.36 ms; ETA holder amplitude 324° against 332° at lift 52°, measured before analyze shared the stream's beats, beat error from the drop 0.56 against 0.13 ms; Patek both beat errors' signs flipped)"]
 fn live_matches_analyze_on_real_takes() {
     for path in corpus_files() {
         let a = load(&path).unwrap();
