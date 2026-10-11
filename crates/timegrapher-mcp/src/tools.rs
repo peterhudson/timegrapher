@@ -753,8 +753,8 @@ mod tests {
         }
     }
 
-    /// The microphone is used by exactly the tools that say so, as Peter
-    /// decided (docs/mcp.md): recording a position and the live check.
+    /// The microphone is used by exactly the tools that say so, as
+    /// docs/mcp.md decides: recording a position and the live check.
     #[test]
     fn only_the_listening_tools_use_the_mic() {
         let mut listening: Vec<&str> = TOOLS
