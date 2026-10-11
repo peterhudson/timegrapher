@@ -341,15 +341,14 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th>Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>sec/day</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th title="Hours since the watch was fully wound (wind_h in the session file). Where it is not given, the reading is taken as fully wound.">Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>sec/day</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num">Beat error<br>ms</th><th class="num">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for (r, v) in sn.readings.iter().zip(&sn.report.verdicts) {
         let m = &r.measurement;
         let _ = write!(
             s,
-            r#"<tr><th>{} <span class="sub">{}</span></th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
-            r.position.code(),
-            r.position.description(),
+            r#"<tr><th>{}</th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
+            r.position.label(),
             wind(r.wind_h),
             cell(signed(m.rate_s_per_day, 1), v.rate),
             signed(m.rate_window_median_s_per_day, 1),
@@ -402,7 +401,7 @@ fn reference_table(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<tr><th>{}</th><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
-            r.position.code(),
+            r.position.label(),
             signed(m.rate_s_per_day, 1),
             signed(f.rate_s_per_day, 1),
             signed(
@@ -444,7 +443,7 @@ fn cycles_table(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<tr><th>{}</th><td>{}</td><td class="num">{:.2}</td><td class="num">{}</td><td class="num">{:.0}%</td><td class="num">{:.0e}</td><td>{}</td><td class="file">{}</td></tr>"#,
-            r.position.code(),
+            r.position.label(),
             c.series,
             c.period_s,
             c.size_text(),
@@ -471,7 +470,7 @@ fn states_lines(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<p class="states"><b>{}</b> {}; {}. <span class="file">{}</span></p>"#,
-            r.position.code(),
+            r.position.label(),
             esc(&line),
             esc(&twostate::describe(&m.rate_states, "rate")),
             esc(&r.label)
@@ -497,7 +496,11 @@ fn shape_table(sn: &Session) -> String {
             let _ = write!(
                 s,
                 r#"<tr><th>{}</th><td>{side}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{:.0}%</td><td class="num">{} / {}</td></tr>"#,
-                if k == 0 { r.position.code() } else { "" },
+                if k == 0 {
+                    r.position.label()
+                } else {
+                    String::new()
+                },
                 opt(v.i12_ms, 2),
                 opt(v.i13_ms, 2),
                 opt(v.ratio13, 2),
@@ -599,10 +602,10 @@ pub fn html(sn: &Session) -> String {
         for i in &r.isochronism {
             let _ = write!(
                 body,
-                r#"<tr><th>{}</th><td class="num">{:.0} h</td><td class="num">{:.0} h</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
-                i.position,
-                i.from_wind_h,
-                i.to_wind_h,
+                r#"<tr><th>{}</th><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
+                i.position.label(),
+                wind_words(i.from_wind_h),
+                wind_words(i.to_wind_h),
                 signed(Some(i.rate_change), 1),
                 signed(i.amplitude_change, 0),
                 signed(i.beat_error_change, 2)
@@ -706,4 +709,9 @@ code {{ font-size: 13px; }}
             .map(|o| format!(" · {}", esc(o)))
             .unwrap_or_default()
     )
+}
+
+/// A state of wind in a table cell: "full wind" or "24 h after winding".
+fn wind_words(w: f64) -> String {
+    wind(Some(w))
 }

@@ -96,6 +96,25 @@ impl Position {
         }
     }
 
+    /// The name in words, in Title Case as the app shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Position::CH => "Dial Up",
+            Position::CB => "Dial Down",
+            Position::H9 => "Crown Down",
+            Position::H6 => "Crown Left",
+            Position::H3 => "Crown Up",
+            Position::H12 => "Crown Right",
+        }
+    }
+
+    /// The name with Witschi's code, e.g. "Crown Up (3H)": the crown sits
+    /// at 3 o'clock, so crown up is 3H, crown left 6H, crown down 9H and
+    /// crown right 12H.
+    pub fn label(self) -> String {
+        format!("{} ({})", self.name(), self.code())
+    }
+
     /// The short name most hobby timegraphers use.
     pub fn common(self) -> &'static str {
         match self {
@@ -1020,7 +1039,7 @@ fn findings(
             .rsplit(['/', '\\'])
             .find(|s| !s.is_empty())
             .unwrap_or(&r.label);
-        format!("{} ({name}{w})", r.position)
+        format!("{} ({name}{w})", r.position.label())
     };
 
     // Per reading.
@@ -1382,8 +1401,9 @@ fn extremes(st: &StateIndices) -> (String, String) {
         .iter()
         .filter_map(|v| v.rate_s_per_day.map(|r| (v.position, r)))
         .collect();
-    let fmt =
-        |o: Option<&(Position, f64)>| o.map_or("-".into(), |(p, r)| format!("{} in {p}", s(*r)));
+    let fmt = |o: Option<&(Position, f64)>| {
+        o.map_or("-".into(), |(p, r)| format!("{} in {}", s(*r), p.label()))
+    };
     let hi = with.iter().max_by(|a, b| a.1.total_cmp(&b.1));
     let lo = with.iter().min_by(|a, b| a.1.total_cmp(&b.1));
     (fmt(hi), fmt(lo))
