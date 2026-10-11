@@ -130,7 +130,8 @@ pub const BEAT_ERROR: &[&str] = &[
     "The big figure is timed from the unlock, the first sound of each beat, as tg \
      measures it (checked against tg in the regression tests). The smaller one is timed from the beat as a \
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
-    "It is shown as a size: which of the tick and the tock is the longer isn't given yet. \
+    "It is shown as a size. Which beat is the tick depends on where the analysis first \
+     locks on, so which side is longer can flip from one run to the next. \
      The Good, Fair or Poor beside it grades the measurement, not the watch: Good when the \
      ± is within 0.05 ms, Fair within 0.1 ms, Poor beyond.",
 ];

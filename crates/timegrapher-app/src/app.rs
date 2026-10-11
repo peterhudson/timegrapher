@@ -3787,7 +3787,7 @@ impl TimegrapherApp {
                         Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
                         _ => "milliseconds".to_string(),
                     };
-                    // The size only: which side is longer isn't settled yet.
+                    // The size only: which beat is the tick can flip between runs.
                     figure(
                         ui,
                         unlock.or(drop).map(|v| format!("{:.2}", v.abs())),
@@ -3812,8 +3812,8 @@ impl TimegrapherApp {
                         .color(pal.text_secondary),
                     )
                     .on_hover_text(
-                        "The big figure is timed from the unlock, as most timegraphers \
-                         show it: quote that one. The drop figure is a second opinion.",
+                        "The big figure is timed from the unlock, as tg shows it: quote \
+                         that one. The drop figure is a second opinion.",
                     );
                     if let Some((m, sd, span)) = self.whole_take(|p| p.beat_error_unlock) {
                         whole_line(
