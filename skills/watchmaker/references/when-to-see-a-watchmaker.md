@@ -53,7 +53,7 @@ conditions, not a range. What there is:
   ([SW200-2](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-2.pdf)).
 - **The project's own thresholds** in the `session` report: under 200°
   is a fault, vertical more than 50° below horizontal a warning, over
-  330° (Witschi's figure) overbanking.
+  330° (Witschi's knocking limit) a "Very high amplitude" warning.
 
 Use those, and the watch's own earlier tests, rather than a figure per
 calibre. For calibres not built like a Swiss 28,800 vph lever movement

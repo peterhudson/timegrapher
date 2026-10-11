@@ -59,8 +59,10 @@ wrong one.
 **What to judge it against, fully wound.** Witschi's tolerance, which
 the `session` report uses, is 260–320° horizontal and 240–280° vertical
 (docs/sessions.md); the report calls under 200° a fault, vertical more
-than 50° below horizontal a warning, and over 330° overbanking (the
-first two are the project's thresholds, the last Witschi's). Sellita
+than 50° below horizontal a warning, and over 330° a "Very high
+amplitude" warning, never a fault, since only jumps in the trace confirm
+knocking (the first two are the project's thresholds, the last Witschi's
+knocking limit). Sellita
 allows its SW200 at most 315–320° dial up at full wind and at least 200°
 crown left (6H, 6 o'clock up) after 24 hours. Sources and the limits of these figures are in
 [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
