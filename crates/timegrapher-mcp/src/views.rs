@@ -88,7 +88,9 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     let be = col("beat_error_ms");
     let be_unlock = col("beat_error_unlock_ms");
     let amp = [col("amplitude_even_deg"), col("amplitude_odd_deg")];
-    let (mut rates, mut amps, mut bes) = (Vec::new(), Vec::new(), Vec::new());
+    let mut rates = Vec::new();
+    let (mut amps, mut ticks, mut tocks) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut unlocks, mut drops) = (Vec::new(), Vec::new());
     for line in lines {
         let f: Vec<&str> = line.split(',').collect();
         let get = |i: Option<usize>| {
@@ -107,14 +109,25 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 }
             }
             Some("amplitude") => {
-                let sides: Vec<f64> = amp.iter().filter_map(|&i| get(i)).collect();
+                // As the app's Amplitude chart: the average of the two sides,
+                // and each side's own (the Tick is the even beats).
+                let (tick, tock) = (get(amp[0]), get(amp[1]));
+                let sides: Vec<f64> = [tick, tock].into_iter().flatten().collect();
                 if !sides.is_empty() {
                     amps.push([t, sides.iter().sum::<f64>() / sides.len() as f64]);
                 }
-                // The headline beat error is the unlock's; the drop's stands in
-                // where the unlock was not found.
-                if let Some(v) = get(be_unlock).or_else(|| get(be)) {
-                    bes.push([t, v.abs()]);
+                if let Some(v) = tick {
+                    ticks.push([t, v]);
+                }
+                if let Some(v) = tock {
+                    tocks.push([t, v]);
+                }
+                // Signed, as the app draws them: the unlock's is the headline.
+                if let Some(v) = get(be_unlock) {
+                    unlocks.push([t, v]);
+                }
+                if let Some(v) = get(be) {
+                    drops.push([t, v]);
                 }
             }
             _ => {}
@@ -124,7 +137,10 @@ fn strip(csv: &str, duration_s: f64) -> Value {
         "duration_s": duration_s,
         "rate": thin(rates),
         "amplitude": thin(amps),
-        "beat_error": thin(bes),
+        "amplitude_tick": thin(ticks),
+        "amplitude_tock": thin(tocks),
+        "beat_error_unlock": thin(unlocks),
+        "beat_error_drop": thin(drops),
     })
 }
 
@@ -192,7 +208,10 @@ mod tests {
         let s = strip(csv, 30.0);
         assert_eq!(s["rate"], json!([[5.0, 4.5]]));
         assert_eq!(s["amplitude"], json!([[1.0, 269.0], [3.0, 272.0]]));
-        assert_eq!(s["beat_error"], json!([[1.0, 0.38], [3.0, 0.41]]));
+        assert_eq!(s["amplitude_tick"], json!([[1.0, 270.0], [3.0, 272.0]]));
+        assert_eq!(s["amplitude_tock"], json!([[1.0, 268.0]]));
+        assert_eq!(s["beat_error_unlock"], json!([[1.0, -0.38]]));
+        assert_eq!(s["beat_error_drop"], json!([[1.0, -0.39], [3.0, -0.41]]));
     }
 
     #[test]

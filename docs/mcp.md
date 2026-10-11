@@ -101,11 +101,15 @@ the timegrapher app draws them:
   time, and the Tick and Tock profiles from ten seconds in the middle of the
   recording.
 - `run_session`: each position's readings against the tolerance, the
-  characteristic values, rate and amplitude by position, and the findings.
+  characteristic values, rate and amplitude by position with each
+  position's tolerance behind its bar, and the findings.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
 
-Hover over a chart to read its values. The charts follow the chat app's
-light or dark look. They are one page served by this program, so they load
+The charts use the app's colours for each reading (rate red, amplitude
+purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
+app, a chart over time leaves out a glitch far from the rest and says how
+many readings are off the scale. Hover over a chart over time to read its
+values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
 as text.
 
