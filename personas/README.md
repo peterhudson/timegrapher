@@ -14,7 +14,7 @@ the watchmaker skill, and the MCP server.
 | [Lucía](people/4-spanish-speaker.md) | Spanish speaker doing a six-position test | MCP server, recording each position |
 | [Pat](people/5-sceptic.md) | Sceptic who gives wrong details on purpose | Command line and skill |
 | [Brunner](people/6-retired-watchmaker.md) | Retired Swiss lab watchmaker | Desktop app, live and a two-hour recording; also reviews the conversations |
-| [Mika](people/7-designer-watchmaker.md) | Former Apple software designer who services Seikos on weekends | Desktop app, live and a saved recording, judged as a product designer |
+| [Mika](people/7-designer-watchmaker.md) | Former Apple software designer who services Seikos on weekends | Desktop app, a deep pass on every feature: six positions live and two saved recordings, judged as a product designer and a watchmaker |
 
 ## How a round works
 
@@ -67,5 +67,8 @@ and a truth sheet in `truth/` named by its `id`. Keys: `id`, `name`,
 `surface` (`app`, `mcp-pair` or `cli-pair`), `language`, `stand` (position to
 corpus `take/file`), `files` (path in the persona's home to `take/file`, or
 `take/*` for a whole take as a folder) and `on_stand` (a position the watch
-starts in). A dossier states no calibre fact beyond the corpus metadata and
+starts in). An app persona can also set `budget` (most actions, default 80),
+`min_actions` (sent back until it has done this many, default 40) and `notes`
+(most numbered notes, default 10); Mika's deep pass uses 300, 150 and 25. A
+dossier states no calibre fact beyond the corpus metadata and
 the program's own calibre table.
