@@ -89,8 +89,9 @@ Three jobs, in order:
    bench estimate"); don't read the table's source names or links aloud.
    When it is not
    published, say so, and how much it matters: the program computes
-   amplitude in proportion to the lift angle it is given (amplitude =
-   lift ÷ (2 sin(π t ÷ T)), the formula Witschi and tg use), so each
+   amplitude in proportion to the lift angle it is given (its formula
+   is amplitude = lift ÷ (2 sin(π t ÷ T)), t the time from unlock to
+   drop and T the balance's period), so each
    degree of lift moves it by amplitude ÷ lift angle (about 5° at 250°
    and 52°). Work that out for the reading in front of you; never quote
    a per-degree figure from memory. Name the lift angle in
