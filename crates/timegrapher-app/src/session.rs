@@ -457,6 +457,27 @@ impl Session {
         self.events.retain(|e| !matches!(e, Event::Saved { .. }));
     }
 
+    /// `t` seconds of the session as seconds of the kept sound, from the
+    /// last position change at or before it (the sound leaves out the
+    /// pauses the session's clock counts).
+    pub fn audio_of(&self, t: f64) -> Option<f64> {
+        self.recorder.as_ref()?;
+        let (at, a) = self
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Position {
+                    at_s,
+                    audio_s: Some(a),
+                    ..
+                } if *at_s <= t + 1e-9 => Some((*at_s, *a)),
+                _ => None,
+            })
+            .next_back()
+            .unwrap_or((0.0, 0.0));
+        Some(a + (t - at))
+    }
+
     /// The saved take's positions in its sound's own seconds (which leave
     /// out the pauses): start, end and position code. Each later position
     /// starts once it has settled; one entry with no times while the watch

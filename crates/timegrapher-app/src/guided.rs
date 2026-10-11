@@ -1,8 +1,9 @@
 //! The Positions Test: the app leads the watchmaker through the six
 //! positions in Witschi's order, waits for the watch to settle in each,
-//! measures it, and then reads the six together as `timegrapher session`
-//! does (core `session::evaluate`: the mean rate X, the largest difference
-//! D, vertical minus horizontal, and the findings).
+//! measures it, and then shows the six in a table with the figures
+//! `timegrapher session` reads for the same stretches: each rate, its
+//! difference from the mean, amplitude and beat error, and the means. No
+//! verdict is given.
 //!
 //! Each position is a stretch of the one listening session, so the strip,
 //! the charts and a saved session keep the positions as any change of
@@ -12,9 +13,7 @@ use crate::app::Position;
 use crate::theme;
 use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
-use timegrapher_core::session::{
-    self, evaluate, Limits, Mark, Measurement, Reading, Severity, Tolerance,
-};
+use timegrapher_core::session::{self, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
 /// Seconds the watch is left to settle after it is turned, and then
@@ -54,24 +53,6 @@ pub enum Action {
     Results,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Standard {
-    Mens,
-    Ladies,
-    Cosc,
-}
-
-impl Standard {
-    fn tolerance(self) -> Tolerance {
-        Tolerance::named(match self {
-            Standard::Mens => "mens",
-            Standard::Ladies => "ladies",
-            Standard::Cosc => "cosc",
-        })
-        .unwrap_or_default()
-    }
-}
-
 pub struct Test {
     pub step: usize,
     /// When the watch was put in this step's position, seconds of the
@@ -82,7 +63,6 @@ pub struct Test {
     /// The six readings, once the last position is measured.
     pub readings: Option<Vec<Reading>>,
     pub show_results: bool,
-    pub standard: Standard,
 }
 
 impl Test {
@@ -93,12 +73,17 @@ impl Test {
             spans: Vec::new(),
             readings: None,
             show_results: false,
-            standard: Standard::Mens,
         }
     }
 
     pub fn position(&self) -> Position {
         ORDER[self.step.min(ORDER.len() - 1)]
+    }
+
+    /// The measured stretch of each position done so far: position,
+    /// start and end in seconds of the session.
+    pub fn stretches(&self) -> &[(Position, f64, f64)] {
+        &self.spans
     }
 
     pub fn next_position(&self) -> Option<Position> {
@@ -214,7 +199,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 Phase::Turn => match test.next_position() {
                     Some(p) => (
                         format!("Turn the watch to {}", p.name()),
-                        "then press Next".to_string(),
+                        format!("then press Start {} Measurement", p.code()),
                         1.0,
                     ),
                     None => (
@@ -244,21 +229,36 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 }
                 match phase {
                     Phase::Turn => {
-                        let last = test.next_position().is_none();
+                        let (next, next_hint) = match test.next_position() {
+                            Some(p) => (
+                                format!("Start {} Measurement", p.code()),
+                                format!(
+                                    "Press once the watch is {}: it settles for {SETTLE_S:.0} s, \
+                                     then {} is measured for {MEASURE_S:.0} s",
+                                    p.name().to_lowercase(),
+                                    p.name()
+                                ),
+                            ),
+                            None => (
+                                "Finish".to_string(),
+                                "Read the six positions together".to_string(),
+                            ),
+                        };
                         if ui
-                            .add(theme::primary(ui, if last { "Finish" } else { "Next" }))
-                            .on_hover_text(if last {
-                                "Read the six positions together"
-                            } else {
-                                "The watch is in the new position: settle it and measure"
-                            })
+                            .add(theme::primary(ui, &next))
+                            .on_hover_text(next_hint)
                             .clicked()
                         {
                             action = Some(Action::Next);
                         }
                         if ui
-                            .button("Measure Again")
-                            .on_hover_text("Measure this position again, from now")
+                            .button(format!("Measure {} Again", test.position().code()))
+                            .on_hover_text(format!(
+                                "The {} measurement was disturbed (a knock, a noise): put the \
+                                 watch back {} and settle and measure it again",
+                                test.position().name(),
+                                test.position().name().to_lowercase()
+                            ))
                             .clicked()
                         {
                             action = Some(Action::Redo);
@@ -271,11 +271,11 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     }
                     _ => {
                         if ui
-                            .button("Start Again")
-                            .on_hover_text(
-                                "Settle and measure this position again from now, as after \
-                                 a knock",
-                            )
+                            .button(format!("Measure {} Again", test.position().code()))
+                            .on_hover_text(format!(
+                                "Settle and measure {} again from now, as after a knock",
+                                test.position().name()
+                            ))
                             .clicked()
                         {
                             action = Some(Action::Redo);
@@ -295,15 +295,89 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     action
 }
 
-/// The results: each position's rate, amplitude and beat error, marked
-/// against the chosen standard, Witschi's characteristic values, and the
-/// findings.
+/// A row of the table: position, rate, rate less the mean, amplitude and
+/// beat error.
+pub type Row = (String, Option<f64>, Option<f64>, Option<f64>, Option<f64>);
+
+/// The figures behind the results table: each position's label, rate,
+/// rate less the mean, amplitude and beat error (a size), then the means.
+pub struct Table {
+    pub rows: Vec<Row>,
+    pub mean_rate: Option<f64>,
+    pub mean_amplitude: Option<f64>,
+    pub mean_beat_error: Option<f64>,
+    /// The largest difference between the rates, s/d (Witschi's D).
+    pub largest_difference: Option<f64>,
+    /// The vertical positions' mean rate less the horizontal ones', s/d
+    /// (Witschi's DVH).
+    pub dvh_rate: Option<f64>,
+    /// The same for amplitude, degrees.
+    pub dvh_amplitude: Option<f64>,
+}
+
+fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
+    let v: Vec<f64> = v.flatten().collect();
+    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+}
+
+/// The table from the readings, with the figures `timegrapher session`
+/// prints for the same stretches and its position names.
+pub fn table(readings: &[Reading]) -> Table {
+    let mean_rate = mean(readings.iter().map(|r| r.measurement.rate_s_per_day));
+    let rates: Vec<f64> = readings
+        .iter()
+        .filter_map(|r| r.measurement.rate_s_per_day)
+        .collect();
+    let largest_difference = (rates.len() >= 2).then(|| {
+        rates.iter().copied().fold(f64::MIN, f64::max)
+            - rates.iter().copied().fold(f64::MAX, f64::min)
+    });
+    // Vertical less horizontal, as `session` takes it.
+    let side = |vertical: bool, f: fn(&Measurement) -> Option<f64>| {
+        mean(
+            readings
+                .iter()
+                .filter(|r| r.position.is_vertical() == vertical)
+                .map(|r| f(&r.measurement)),
+        )
+    };
+    let dvh =
+        |f: fn(&Measurement) -> Option<f64>| side(true, f).zip(side(false, f)).map(|(v, h)| v - h);
+    let dvh_rate = dvh(|m| m.rate_s_per_day);
+    let dvh_amplitude = dvh(|m| m.amplitude_deg);
+    Table {
+        rows: readings
+            .iter()
+            .map(|r| {
+                let m = &r.measurement;
+                (
+                    r.position.label(),
+                    m.rate_s_per_day,
+                    m.rate_s_per_day.zip(mean_rate).map(|(x, x0)| x - x0),
+                    m.amplitude_deg,
+                    m.beat_error(),
+                )
+            })
+            .collect(),
+        mean_rate,
+        mean_amplitude: mean(readings.iter().map(|r| r.measurement.amplitude_deg)),
+        mean_beat_error: mean(readings.iter().map(|r| r.measurement.beat_error())),
+        largest_difference,
+        dvh_rate,
+        dvh_amplitude,
+    }
+}
+
+/// The results: a table of each position's rate, its difference from the
+/// mean, amplitude and beat error, with the means, as `timegrapher
+/// session` reads them. No verdict: the figures are for the watchmaker to
+/// judge.
 pub fn results(ctx: &egui::Context, test: &mut Test) {
     let Some(readings) = &test.readings else {
         return;
     };
     let mut open = test.show_results;
-    let mut standard = test.standard;
+    let t = table(readings);
     egui::Window::new("Positions Test")
         .open(&mut open)
         .collapsible(false)
@@ -311,127 +385,90 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
         .default_width(560.0)
         .show(ctx, |ui| {
             let pal = theme::pal(ui);
-            theme::row(
-                ui,
-                "Judged Against",
-                Some("The tolerances for rate, amplitude and beat error"),
-                |ui| {
-                    theme::segmented(
-                        ui,
-                        &mut standard,
-                        &[
-                            (Standard::Mens, "Men's", "−5 to +15 s/d"),
-                            (Standard::Ladies, "Ladies'", "−5 to +25 s/d"),
-                            (Standard::Cosc, "COSC", "−4 to +6 s/d"),
-                        ],
-                    );
-                },
-            );
-            let tol = standard.tolerance();
-            let report = evaluate(readings, &tol, &Limits::default());
-            ui.add_space(6.0);
-            let mark_color = |m: Mark| match m {
-                Mark::Within => pal.text,
-                Mark::Outside => pal.bad,
-                Mark::NotJudged | Mark::Unreliable => pal.text_secondary,
+            let dash = || "—".to_string();
+            let signed =
+                |v: Option<f64>| v.map_or_else(dash, |x| format!("{x:+.1}").replace('-', "−"));
+            let plain = |v: Option<f64>, d: usize| v.map_or_else(dash, |x| format!("{x:.d$}"));
+            let right = |ui: &mut egui::Ui, text: String, strong: bool| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let t = RichText::new(text).color(pal.text);
+                    ui.label(if strong { t.strong() } else { t });
+                });
             };
             egui::Grid::new("positions")
-                .num_columns(4)
+                .num_columns(5)
                 .spacing(Vec2::new(24.0, 6.0))
                 .show(ui, |ui| {
-                    for h in ["Position", "Rate", "Amplitude", "Beat Error"] {
-                        ui.label(theme::caption(h).color(pal.text_secondary));
+                    ui.label(theme::caption("Position").color(pal.text_secondary));
+                    for (h, hint) in [
+                        ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
+                        (
+                            "From Mean, s/d",
+                            "This position's rate less the mean of all six",
+                        ),
+                        (
+                            "Amplitude, °",
+                            "The balance's swing, from the lift angle set",
+                        ),
+                        ("Beat Error, ms", "From the unlock, as a size"),
+                    ] {
+                        ui.label(theme::caption(h).color(pal.text_secondary))
+                            .on_hover_text(hint);
                     }
                     ui.end_row();
-                    for (r, v) in readings.iter().zip(&report.verdicts) {
-                        let m = &r.measurement;
-                        ui.label(&r.label);
-                        let dash = || "—".to_string();
-                        ui.label(
-                            RichText::new(
-                                m.rate_s_per_day
-                                    .map_or_else(dash, |x| format!("{x:+.1} s/d"))
-                                    .replace('-', "−"),
-                            )
-                            .color(mark_color(v.rate)),
-                        );
-                        ui.label(
-                            RichText::new(
-                                m.amplitude_deg.map_or_else(dash, |x| format!("{x:.0}°")),
-                            )
-                            .color(mark_color(v.amplitude)),
-                        );
-                        ui.label(
-                            RichText::new(
-                                m.beat_error_unlock_ms
-                                    .or(m.beat_error_ms)
-                                    .map_or_else(dash, |x| format!("{:.2} ms", x.abs())),
-                            )
-                            .color(mark_color(v.beat_error)),
-                        );
+                    for (label, rate, from_mean, amp, be) in &t.rows {
+                        ui.label(label);
+                        right(ui, signed(*rate), false);
+                        right(ui, signed(*from_mean), false);
+                        right(ui, plain(*amp, 0), false);
+                        right(ui, plain(*be, 2), false);
                         ui.end_row();
                     }
+                    ui.label(RichText::new("Mean").strong());
+                    right(ui, signed(t.mean_rate), true);
+                    right(ui, String::new(), false);
+                    right(ui, plain(t.mean_amplitude, 0), true);
+                    right(ui, plain(t.mean_beat_error, 2), true);
+                    ui.end_row();
                 });
-            if let Some(s) = report.states.first() {
-                ui.add_space(8.0);
-                let f = |v: Option<f64>, unit: &str| {
-                    v.map_or("—".to_string(), |x| {
-                        format!("{x:+.1}{unit}").replace('-', "−")
-                    })
-                };
-                let line = format!(
-                    "Mean rate {} · largest difference {} · vertical minus horizontal {} · \
-                     amplitude vertical minus horizontal {}",
-                    f(s.x, " s/d"),
-                    s.d_rate.map_or("—".into(), |x| format!("{x:.1} s/d")),
-                    f(s.dvh_rate, " s/d"),
-                    f(s.dvh_amplitude, "°"),
-                );
-                ui.add(egui::Label::new(RichText::new(line).color(pal.text)).wrap())
-                    .on_hover_text(
-                        "Witschi's characteristic values: X, the mean of the six rates; D, \
-                         the largest difference between them; DVH, the vertical positions' \
-                         mean minus the horizontal ones'. A large D or DVH points at poise \
-                         or a hairspring out of true rather than the rate setting.",
-                    );
-            }
-            ui.add_space(8.0);
-            if report.findings.is_empty() {
-                ui.label(
-                    RichText::new(format!("Nothing outside {} tolerances.", tol.name))
-                        .color(pal.text_secondary),
-                );
-            }
-            for f in &report.findings {
-                let color = match f.severity {
-                    Severity::Fault => pal.bad,
-                    Severity::Warning => pal.warn,
-                    Severity::Note => pal.text_secondary,
-                };
-                let title = match f.recording.and_then(|i| readings.get(i)) {
-                    Some(r) => format!("{}: {}", r.label, f.title),
-                    None => f.title.clone(),
-                };
-                ui.horizontal(|ui| {
-                    let dot = theme::dot(ui, color);
-                    ui.add(egui::Label::new(RichText::new(title).color(pal.text)).wrap())
-                        .union(dot)
-                        .on_hover_text(format!("{}\n\n{}", f.evidence, f.advice));
-                });
-            }
             ui.add_space(8.0);
             ui.label(
                 RichText::new(format!(
-                    "Each position settled {SETTLE_S:.0} s and was measured for {MEASURE_S:.0} s. \
-                     Save the session to keep the positions with the sound; \
-                     `timegrapher session` reads it the same way."
+                    "Largest difference between the positions' rates: {} s/d.",
+                    plain(t.largest_difference, 1)
                 ))
-                .small()
-                .color(pal.text_tertiary),
+                .color(pal.text),
+            )
+            .on_hover_text("Witschi's D: the fastest position's rate less the slowest's");
+            ui.label(
+                RichText::new(format!(
+                    "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
+                    signed(t.dvh_rate),
+                    t.dvh_amplitude
+                        .map_or_else(dash, |x| format!("{x:+.0}").replace('-', "−"))
+                ))
+                .color(pal.text),
+            )
+            .on_hover_text(
+                "Witschi's DVH: the vertical positions' mean less the horizontal ones', \
+                 for rate and for amplitude",
+            );
+            ui.add_space(8.0);
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!(
+                        "Each position settled {SETTLE_S:.0} s and was measured for \
+                         {MEASURE_S:.0} s. Beat error is a size: which beat is longer depends on \
+                         the beat the analysis locked on first. Save the session to keep the \
+                         positions with the sound; `timegrapher session` reads it the same way."
+                    ))
+                    .small()
+                    .color(pal.text_tertiary),
+                )
+                .wrap(),
             );
         });
     test.show_results = open;
-    test.standard = standard;
 }
 
 #[cfg(test)]
@@ -471,9 +508,20 @@ mod tests {
             let got = r.measurement.rate_s_per_day.unwrap();
             assert!((got - want).abs() < 1.0, "{}: {got} for {want}", r.label);
         }
-        let report = evaluate(readings, &Tolerance::default(), &Limits::default());
-        let d = report.states[0].d_rate.unwrap();
+        // The table's figures are session's: its D and mean X, its names.
+        let tbl = table(readings);
+        let report = session::evaluate(readings, &Default::default(), &Default::default());
+        let d = tbl.largest_difference.unwrap();
+        assert!((d - report.states[0].d_rate.unwrap()).abs() < 1e-9);
+        assert!((tbl.mean_rate.unwrap() - report.states[0].x.unwrap()).abs() < 1e-9);
+        let dvh = tbl.dvh_rate.unwrap();
+        assert!((dvh - report.states[0].dvh_rate.unwrap()).abs() < 1e-9);
+        let dvh_a = tbl.dvh_amplitude.unwrap();
+        assert!((dvh_a - report.states[0].dvh_amplitude.unwrap()).abs() < 1e-9);
         assert!((d - 9.0).abs() < 1.5, "D {d}");
+        assert_eq!(tbl.rows[4].0, "Crown Up (3H)");
+        let spread: f64 = tbl.rows.iter().filter_map(|r| r.2).sum();
+        assert!(spread.abs() < 1e-9, "differences from the mean sum to zero");
     }
 
     #[test]
