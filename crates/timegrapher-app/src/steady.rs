@@ -237,14 +237,38 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
 /// The tests over `log`, naming cycles after `wheels` (a picked
 /// calibre's train) or, without them, the wheels most calibres at the beat
 /// rate share, with both usual escape wheels (15 and 20 teeth).
+#[cfg(test)]
 pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
+    compute_with(log, wheels, &std::sync::atomic::AtomicU8::new(0))
+}
+
+/// What a run of [`compute_with`] is doing, from the step it last stored.
+pub fn stage_text(stage: u8) -> &'static str {
+    match stage {
+        0 | 1 => "Searching the readings for cycles",
+        2 => "Testing the rate, amplitude and beat error",
+        _ => "Drawing the results",
+    }
+}
+
+/// [`compute`], storing each step as it starts in `stage` (see
+/// [`stage_text`]) so the panes can say what the tests are doing.
+pub fn compute_with(
+    log: &BeatLog,
+    wheels: Option<Vec<Wheel>>,
+    stage: &std::sync::atomic::AtomicU8,
+) -> Steadiness {
+    use std::sync::atomic::Ordering::Relaxed;
+    stage.store(1, Relaxed);
     let lc = LongConfig {
         wheels: wheels.unwrap_or_else(|| default_wheels(log.bph)),
         ..Default::default()
     };
     let cfg = Config::default();
     let long = longrun::analyse(log, None, &lc);
+    stage.store(2, Relaxed);
     let report = steadiness::check(log, None, &long, &lc, &cfg);
+    stage.store(3, Relaxed);
     let grids = grids(log, cfg.rate_reading_s);
     let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
     let be_search = (readings(&grids[2]) >= 30).then(|| {
@@ -540,7 +564,9 @@ pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
 /// with its verdict, its one-line reason and the chosen view behind it.
 pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View) {
     let pal = theme::pal(ui);
-    ui.label(RichText::new(status).small().color(pal.text_secondary));
+    if !status.is_empty() {
+        ui.label(RichText::new(status).small().color(pal.text_secondary));
+    }
     let Some(s) = s else {
         return;
     };
@@ -1012,7 +1038,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
 }
 
 /// A note beside a marked point, on whichever side keeps it inside the
-/// plot, above or below the point.
+/// plot: left or right of it, and above it when `above` asks and there is
+/// room there, else below (and the other way round).
 fn mark_label(
     p: &mut egui_plot::PlotUi<'_>,
     at: [f64; 2],
@@ -1020,6 +1047,15 @@ fn mark_label(
     color: Color32,
     above: bool,
 ) {
+    // A line of small text and a little air, points.
+    const ROOM: f32 = 18.0;
+    let frame = *p.transform().frame();
+    let y = p.screen_from_plot(PlotPoint::new(at[0], at[1])).y;
+    let above = if above {
+        y - frame.top() >= ROOM || frame.bottom() - y < ROOM
+    } else {
+        frame.bottom() - y < ROOM && y - frame.top() >= ROOM
+    };
     let b = p.plot_bounds();
     let right = at[0] > (b.min()[0] + b.max()[0]) / 2.0;
     let h = if right {

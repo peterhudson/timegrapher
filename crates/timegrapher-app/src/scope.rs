@@ -11,7 +11,7 @@ use timegrapher_core::beats::Beat;
 use timegrapher_core::filter::highpass4;
 
 /// How much of each beat is drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Zoom {
     Ms20,
     Ms200,
