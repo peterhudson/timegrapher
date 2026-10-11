@@ -15,7 +15,7 @@ pub const META_KEY: &str = "timegrapher/limits";
 pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
     Some(match c["code"].as_str()? {
-        "no_watch" => "No watch was heard, so there are no readings.".into(),
+        "no_watch" => "No regular beat was found, so there are no readings.".into(),
         "set_rate_disagrees" => match c["heard"].as_u64() {
             Some(h) => format!(
                 "The beat rate set for this watch differs from the one heard ({h} beats \
@@ -213,7 +213,8 @@ mod tests {
         let said = notes(&doc);
         assert_eq!(said.len(), 1, "{said:?}");
         assert!(
-            said[0].starts_with("Dial Down: No watch was heard") && said[0].contains("span 3 s"),
+            said[0].starts_with("Dial Down: No regular beat was found")
+                && said[0].contains("span 3 s"),
             "{said:?}"
         );
     }
