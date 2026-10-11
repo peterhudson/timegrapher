@@ -61,7 +61,11 @@ fn a_live_take_keeps_its_readings_in_the_file() {
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
         {
-            if d["done"] == false && d["reading"]["beats_used"].as_u64().unwrap_or(0) > 0 {
+            // The first reading seen, well before the end.
+            if seen_mid_take.is_none()
+                && d["done"] == false
+                && d["reading"]["beats_used"].as_u64().unwrap_or(0) > 0
+            {
                 seen_mid_take = Some(d);
             }
         }
@@ -75,7 +79,7 @@ fn a_live_take_keeps_its_readings_in_the_file() {
     let mid = seen_mid_take.expect("a reading while recording");
     assert_eq!(mid["schema"], "timegrapher.live/1");
     assert_eq!(mid["position"], "CD");
-    assert!(mid["recorded_s"].as_f64().unwrap() < seconds);
+    assert!(mid["recorded_s"].as_f64().unwrap() < seconds - 2.0, "{mid}");
 
     let last: Value = serde_json::from_str(&fs::read_to_string(&feed).unwrap()).unwrap();
     assert_eq!(last["done"], true);
