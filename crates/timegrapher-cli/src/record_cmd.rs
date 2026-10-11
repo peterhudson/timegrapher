@@ -21,13 +21,15 @@ use timegrapher_core::calibres;
 use timegrapher_core::capture::Block;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
-use timegrapher_core::session::{Manifest, Position};
+use timegrapher_core::session::{self, Manifest, Position};
+use timegrapher_core::stream::{self, StreamConfig};
 use timegrapher_core::{analyze, AnalysisConfig};
 
 const MANIFEST: &str = "session.toml";
 
 /// Seconds skipped at the start of each take in a session file this
-/// command writes: the watch has just been turned to a new position.
+/// command writes: the watch has just been turned to a new position. The
+/// quick check skips the same, so it reads what `session` will.
 const SETTLE_S: f64 = 30.0;
 
 pub struct Options {
@@ -40,15 +42,20 @@ pub struct Options {
     pub calibre: Option<String>,
     pub bph: Option<u32>,
     pub lift: Option<f64>,
-    pub wind_h: f64,
+    /// Hours since full wind; left out of the session file when not given.
+    pub wind_h: Option<f64>,
     pub json: bool,
     /// Keep the latest readings here while recording (`timegrapher.live/1`).
     pub live: Option<PathBuf>,
 }
 
-/// A quick look at the take, enough to say whether to keep it.
+/// A quick look at the take, enough to say whether to keep it: the
+/// stretch `session` will read, after the settling time.
 #[derive(Serialize)]
 struct Check {
+    /// The stretch read, seconds from the start of the take.
+    from_s: f64,
+    to_s: f64,
     watch_heard: bool,
     bph: u32,
     beats_found: usize,
@@ -66,7 +73,7 @@ struct Report {
     /// The session file the take was added to; null when it was not.
     session_file: Option<String>,
     position: &'static str,
-    wind_h: f64,
+    wind_h: Option<f64>,
     seconds: f64,
     source: String,
     sample_rate: u32,
@@ -83,6 +90,8 @@ struct Settings {
     calibre: Option<String>,
     bph: Option<u32>,
     lift: f64,
+    /// Seconds `session` skips at the start of each take.
+    settle_s: f64,
     existing: bool,
 }
 
@@ -97,7 +106,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
     if !o.seconds.is_finite() || o.seconds <= 0.0 {
         return Err("--seconds must be more than 0".into());
     }
-    if !o.wind_h.is_finite() || o.wind_h < 0.0 {
+    if o.wind_h.is_some_and(|w| !w.is_finite() || w < 0.0) {
         return Err("--wind-h must be 0 or more".into());
     }
     fs::create_dir_all(&o.folder).map_err(|e| format!("{}: {e}", o.folder.display()))?;
@@ -176,6 +185,7 @@ fn settings(o: &Options) -> Result<Settings, String> {
             calibre,
             bph,
             lift: lift.unwrap_or(52.0),
+            settle_s: SETTLE_S,
             existing: false,
         });
     };
@@ -202,6 +212,7 @@ fn settings(o: &Options) -> Result<Settings, String> {
         calibre: m.calibre.or(calibre),
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(52.0),
+        settle_s: m.settle_s.unwrap_or(SETTLE_S),
         existing: true,
     })
 }
@@ -457,23 +468,39 @@ fn live(
 
 fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
     let wav = dir.join("audio-001.wav");
+    // Whether a watch was heard, and clipping, over the whole take, as
+    // `analyze` reports them: the keep-or-redo call, which a short take
+    // still gets.
     let a = audio::load(&wav).map_err(|e| format!("{}: {e}", wav.display()))?;
     let mut cfg = AnalysisConfig {
         bph: set.bph,
         ..Default::default()
     };
     cfg.amplitude.lift_deg = set.lift;
-    let s = analyze(&a, &cfg).summary;
-    let heard = s.watch_heard;
+    let whole = analyze(&a, &cfg).summary;
+    // The readings as `session` will take them: the same analysis, after
+    // the same settling time, on the sound card's clock.
+    let mut scfg = StreamConfig::default();
+    scfg.analysis.bph = set.bph;
+    scfg.analysis.amplitude.lift_deg = set.lift;
+    let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {})
+        .map_err(|e| format!("{}: {e}", wav.display()))?;
+    let from = set.settle_s.min(log.duration_s / 2.0);
+    let m = session::measure(&log, None, from, log.duration_s);
+    // Readings only when that stretch alone hears the watch too; a take
+    // shorter than about twice the settling time may leave too little.
+    let heard = whole.watch_heard && m.watch_heard;
     Ok(Check {
-        watch_heard: heard,
-        bph: s.bph,
-        beats_found: s.beats_found,
-        beats_expected: (s.duration_s * s.bph as f64 / 3600.0).round() as usize,
-        rate_s_per_day: s.overall.filter(|_| heard).map(|f| f.rate_s_per_day),
-        amplitude_deg: s.amplitude_deg.filter(|_| heard),
-        beat_error_ms: s.beat_error_unlock_ms.filter(|_| heard),
-        clipping: s.clipping,
+        from_s: m.start_s,
+        to_s: m.end_s,
+        watch_heard: whole.watch_heard,
+        bph: log.bph,
+        beats_found: m.beats,
+        beats_expected: ((m.end_s - m.start_s) * log.bph as f64 / 3600.0).round() as usize,
+        rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
+        amplitude_deg: m.amplitude_deg.filter(|_| heard),
+        beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),
+        clipping: whole.clipping,
     })
 }
 
@@ -539,10 +566,13 @@ fn add_to_session(
         text.push('\n');
     }
     text += &format!(
-        "\n[[recording]]\nfile = {}\nposition = {}\nwind_h = {}\ndate = {}\n",
+        "\n[[recording]]\nfile = {}\nposition = {}\n{}date = {}\n",
         q(&name),
         q(pos.common()),
-        toml::Value::Float(o.wind_h),
+        o.wind_h.map_or(String::new(), |w| format!(
+            "wind_h = {}\n",
+            toml::Value::Float(w)
+        )),
         q(started),
     );
     toml::from_str::<Manifest>(&text)
@@ -554,10 +584,12 @@ fn add_to_session(
 fn print_report(r: &Report) {
     let c = &r.check;
     println!("Take         {}", r.take);
-    println!(
-        "Position     {} for {:.0} s, {} h after full wind",
-        r.position, r.seconds, r.wind_h
-    );
+    let wind = r
+        .wind_h
+        .map_or("time since full wind not given".to_string(), |w| {
+            format!("{w} h after full wind")
+        });
+    println!("Position     {} for {:.0} s, {wind}", r.position, r.seconds);
     if !c.watch_heard {
         println!("No watch heard: is it running and clamped against the microphone?");
     } else {
@@ -565,7 +597,9 @@ fn print_report(r: &Report) {
             v.map_or("-".to_string(), |x| format!("{x:+.d$} {u}"))
         };
         println!(
-            "Quick look   {} beats of {} expected at {} bph; rate {}, amplitude {}, beat error {}",
+            "Quick look   {:.0} to {:.0} s: {} beats of {} expected at {} bph; rate {}, amplitude {}, beat error {}",
+            c.from_s,
+            c.to_s,
             c.beats_found,
             c.beats_expected,
             c.bph,
@@ -574,6 +608,9 @@ fn print_report(r: &Report) {
             c.beat_error_ms
                 .map_or("-".into(), |b| format!("{:.2} ms", b.abs())),
         );
+        if c.rate_s_per_day.is_none() {
+            println!("             Too little left after settling for readings; record longer for figures to quote.");
+        }
     }
     match &r.session_file {
         Some(f) => println!("Added to     {f}"),

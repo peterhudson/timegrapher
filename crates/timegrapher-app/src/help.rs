@@ -14,9 +14,14 @@ pub const WATCH: &[&str] = &[
     "Position is how the watch lies: dial up or down, or upright with the crown up, \
      down, left or right. Rate and amplitude change between positions, so each is a \
      separate measurement. Changing it while listening keeps the strip and marks each \
-     position's stretch on it and on the charts; the readings, the Tick Tock \
-     Profile, the distributions and Steadiness then take only the beats in the new \
-     position, every stretch of it in the session together.",
+     position's stretch on it and on the charts, with a ticker above the Paper Strip \
+     naming the position all along its stretch; the readings, the Tick Tock Profile, \
+     the distributions and Steadiness then take only the beats in the new position, \
+     every stretch of it in the session together.",
+    "For the first 10 seconds in a new position (from Resume, when it was changed \
+     while stopped) the watch settles: the ticker says Settling, its beats are drawn \
+     faintly, and nothing of it is read. The sound is still kept, and a saved take's \
+     positions start after it.",
 ];
 
 pub const MICROPHONE: &[&str] = &[

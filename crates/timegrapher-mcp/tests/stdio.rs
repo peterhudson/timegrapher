@@ -4,13 +4,22 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 use serde_json::{json, Value};
 
 /// The `timegrapher` program: TIMEGRAPHER_CLI when set, else built for this
 /// test into its own target folder (a nested cargo on the outer test run's
 /// folder could wait on its lock), without sound input so no ALSA is needed.
+/// Built once for all the tests here: a second cargo run, even with nothing
+/// to build, replaces the program, and a test starting it in that instant
+/// would not find it.
 fn cli() -> PathBuf {
+    static CLI: OnceLock<PathBuf> = OnceLock::new();
+    CLI.get_or_init(build_cli).clone()
+}
+
+fn build_cli() -> PathBuf {
     if let Some(p) = std::env::var_os("TIMEGRAPHER_CLI") {
         return PathBuf::from(p);
     }
