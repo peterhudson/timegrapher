@@ -41,6 +41,36 @@ When the first argument is a checkout of it (a folder with `corpus.json`),
 A folder of takes without `corpus.json`, such as a private set of
 recordings, is read as it is.
 
+## Holdout takes
+
+The corpus's *holdout* tier (`"tier": "holdout"` in `corpus.json`; see "The
+holdout seal" in the corpus README) holds recordings the engine is never
+tuned on. Plain `regress`, `--fetch` and `--smoke` leave them out.
+`regress corpus --holdout` reads only them, and no baseline: each reading is
+judged against tg alone, and against the fault its session file names.
+
+- Rate, amplitude and beat error (from the unlock, by size) pass within
+  0.5 s/d, 4° and 0.2 ms of tg on the same file at the same lift angle
+  (research's margins, `HOLDOUT_MARGINS`). A reading with no tg number for
+  a value is counted as not judged.
+- A `[[recording]]` entry may name a fault confirmed at the bench:
+  `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
+  `id` is one of `analyze`'s `faults[]` ids and `side` (Tick, Tock or both)
+  is optional. The fault is found when `analyze`'s findings on the reading's
+  measured stretch (after settling, at most 30 minutes of it) include that
+  id on that side. An entry with no `fault` is a healthy watch, and any
+  finding on it counts against the engine.
+- It prints counts only: pass, fail and not judged for each value, and how
+  many named faults were found or missed and how many findings were not the
+  named fault. No take names, file names or numbers, and `--fetch` does not
+  name what it downloads.
+- The run exits 0 whatever the counts say: a holdout result never blocks a
+  change. Only a reading that cannot be measured fails it.
+- `--reveal` also prints every reading's numbers, for the announced
+  milestone run whose results go in each take's README. Run it locally,
+  never in CI. `--json` prints the same as a `timegrapher.regress-holdout/1`
+  document.
+
 ## What fails
 
 Each reading's rate (the fit over every beat), amplitude and beat error
@@ -93,3 +123,7 @@ secret, so pull requests from forks get the check too. The audio is cached
 between runs and keyed on `corpus.json`, so a run downloads only what
 changed. A take in the baseline that the corpus has no `session.toml` for
 yet is listed as not run, which does not fail the check.
+
+The holdout takes are read only by `.github/workflows/holdout.yml`, a job
+started by hand from the Actions tab (`workflow_dispatch`) at a milestone.
+It never runs on pull requests or pushes, and it prints counts only.

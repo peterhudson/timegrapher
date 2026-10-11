@@ -456,6 +456,14 @@ enum Command {
         /// engine; they fail only if it panics.
         #[arg(long)]
         smoke: bool,
+        /// Read only the corpus's holdout takes: judged against tg and
+        /// their known faults, printed as counts only, never failing.
+        #[arg(long)]
+        holdout: bool,
+        /// With --holdout, print every reading's numbers too (milestone
+        /// runs only, never in CI).
+        #[arg(long)]
+        reveal: bool,
     },
     /// Make a zip to attach to an issue: an excerpt of the recording, what
     /// was measured, the system, clock corrections and logs, with the home
@@ -875,10 +883,14 @@ fn main() -> ExitCode {
             quiet,
             fetch,
             smoke,
+            holdout,
+            reveal,
         } => {
             let o = regress_cmd::Options {
                 fetch,
                 smoke,
+                holdout,
+                reveal,
                 root,
                 baseline,
                 write_baseline,

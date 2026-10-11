@@ -1470,4 +1470,20 @@ pub struct RecordingEntry {
     pub measure_s: Option<f64>,
     pub notes: Option<String>,
     pub reference: Option<Reference>,
+    /// A fault confirmed at the bench, on a corpus holdout take:
+    /// `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
+    /// Left out, the recording is of a healthy watch.
+    pub fault: Option<KnownFault>,
+}
+
+/// A fault a recording is known to show, and how it was confirmed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnownFault {
+    /// One of the fault ids `analyze` reports in `faults[]`.
+    pub id: String,
+    /// Tick, Tock or both; left out, either side counts.
+    pub side: Option<String>,
+    /// How the fault was confirmed, e.g. "bench: ...".
+    pub source: Option<String>,
 }
