@@ -21,6 +21,15 @@ read a multi-position test (`session`). A
 desktop app (egui) shows a watch live from a microphone, with the classic
 paper-strip trace; see [docs/app.md](docs/app.md).
 
+## Install
+
+Download the desktop app and the command line tool for Linux, macOS or
+Windows from the
+[Releases page](https://github.com/peterhudson/timegrapher/releases/latest).
+The builds are not signed, so macOS and Windows ask once per version before
+opening them: [docs/install.md](docs/install.md) has the steps. To build
+from source instead, see below.
+
 ## Desktop app
 
 ```sh

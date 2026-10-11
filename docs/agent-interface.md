@@ -12,7 +12,10 @@ The [watchmaker skill](../skills/watchmaker/SKILL.md) builds on it.
   exactly one JSON document on stdout. Progress and warnings go to stderr.
 - Exit codes: `0` success, `1` error (message on stderr), `3` from `doctor`
   when the input is not fit to measure with, and from `regress` when the
-  engine moved away from tg ([regress](regress.md)).
+  engine moved away from tg ([regress](regress.md)), and from `record` when
+  the take was not fit to keep.
+- Nothing listens unless asked: `doctor` and `record` open the microphone
+  only while they run, for the time they say.
 - Nothing changes the computer's settings unless the person asked for it:
   `doctor` proposes mixer changes and only makes them with `--apply`.
   An agent must ask the person before passing `--apply`.
@@ -58,6 +61,7 @@ readings: anything that compares two documents should leave `software` out.
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | `source`, `check`, `mixer`, `fixes[]`, `applied`, `after`, `verdict` (below) |
+| `record` | `record FOLDER --position P --json` | `take` (the take's folder), `session_file` (the session file the take was added to, or null), `position`, `wind_h`, `seconds`, `source`, `sample_rate`, `check` (`watch_heard`, `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`, `clipping`; the readings are null when no watch is heard), `verdict` (`ok`, `no_watch_heard`, `clipping`); see [`record`](#record) |
 | `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values, `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) |
 | `report` | `report [RECORDING] --json` | the bundle's manifest: `created_utc`, `kind`, `note`, `os_version`, `recording`, `commands[]` (`args`, `cwd`, `output`, `replayable`), `files[]` (`path`, `bytes`, `sha256`), `consent`, `redacted`, `left_out`; the zip's path goes to stdout without `--json`; see [reports.md](reports.md) |
 | `replay` | `report --replay BUNDLE --json` | `bundle` (when and by which build it was made), `damaged[]`, `commands[]` (`args`, `output`, `ran`, `error`, `moved[]` of `path`, `then`, `now`) |
@@ -116,6 +120,40 @@ document gains `clock` (`ppm`, `from`, `rate_error_s_per_day`,
 stays on the card's clock, as tg reads it, so comparisons with tg and the
 regression baseline are unchanged. `long` applies the correction to its
 whole report (see [long-runs.md](long-runs.md)).
+
+## `record`
+
+```sh
+timegrapher record FOLDER --position DU [--seconds 120] [--device NAME]
+                   [--watch TEXT] [--calibre NAME] [--bph N] [--lift DEG]
+                   [--wind-h H] [--file AUDIO] [--json]
+```
+
+Records one position of a test, for `--seconds` (default 120), and stops.
+It listens only while it runs, says on stderr what it is recording and
+for how long, and prints `done: the watch can be moved` when the watch may
+be turned. An agent runs it once per position, after telling the person
+which way to turn the watch, and never on its own initiative.
+
+Each run makes one take folder in FOLDER, the same as the desktop app
+saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
+the app opens it with), named after the start time, the watch and the
+position. The take is analysed at once. When a watch is heard and under
+1% of beats clip, the take is added to `FOLDER/session.toml` (written on
+the first take with the watch, calibre, bph, lift and `settle_s = 30`,
+then appended to, comments and all) with its position, `wind_h` and start
+time, and the exit code is 0. Otherwise the take folder is kept, the
+session file is left alone, `verdict` says why, and the exit code is 3:
+record that position again. `timegrapher session FOLDER` then reads every
+take in the session.
+
+`--calibre` fills bph and lift from the calibre table when they are not
+given. A session file already in FOLDER sets them for every take; a
+`--bph` or `--lift` that disagrees with it is an error, so one session is
+measured one way. `--wind-h` is the hours since full wind (0 for the
+fully wound half of a test, 24 for the run-down half). `--file` reads a
+recording instead of the microphone, at once rather than in real time,
+to try the command.
 
 ## `doctor`
 
@@ -184,7 +222,6 @@ the ALSA development package, `libasound2-dev`). `cargo build
 
 ## Later
 
-- `record`: capture to FLAC with the provenance sidecar and a clock log.
 - `schema KIND`: print a JSON Schema for each document.
 - An MCP server, if live streaming to an agent or use from chat-only apps
   turns out to need it; it would wrap the same core.

@@ -1,0 +1,168 @@
+name: Release
+
+# Builds every platform's files and creates a draft release holding them; a
+# maintainer reads the draft and publishes it. Two ways to start a release:
+# run this workflow on main from the Actions tab with "Draft a release"
+# ticked (the tag vX.Y.Z, from Cargo.toml, is made when the draft is
+# published), or push a tag vX.Y.Z. Run by hand without the tick, or on a
+# pull request touching the packaging, it builds the same files as workflow
+# artifacts and releases nothing.
+# Steps for cutting a release: docs/install.md, "Making a release".
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Draft a release of main's version (Cargo.toml) from this run
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # Smaller programs: no debug information in the downloads (crash records
+  # still name the functions).
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_PROFILE_RELEASE_STRIP: debuginfo
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 so the Linux build runs on distributions from 2022 on.
+          - { platform: linux, os: ubuntu-22.04 }
+          - { platform: macos, os: macos-latest }
+          - { platform: windows, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            packaging/version.sh "${GITHUB_REF_NAME}"
+          else
+            packaging/version.sh
+          fi
+          # The build date in --version is the commit's, not the runner's.
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          # The programs released; the MCP server once the workspace has it.
+          pkgs="-p timegrapher-cli -p timegrapher-app"
+          [ -d crates/timegrapher-mcp ] && pkgs="$pkgs -p timegrapher-mcp"
+          echo "PKGS=$pkgs" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - name: Build (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          cargo build --release --locked $PKGS
+          curl -sSfL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          APPIMAGE_EXTRACT_AND_RUN=1 APPIMAGETOOL="$RUNNER_TEMP/appimagetool" packaging/linux.sh dist
+      - name: Build (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked $PKGS --target "$t"
+          done
+          packaging/macos.sh dist
+      - name: Build (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          cargo build --release --locked $PKGS
+          packaging/windows.sh dist
+
+      # Each file must open and its programs start.
+      - name: Check the files (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir check && tar -C check -xzf dist/*.tar.gz
+          check/*/timegrapher --version
+          check/*/timegrapher-app --help
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage cli --version
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage --help
+      - name: Check the files (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          hdiutil attach dist/*.dmg -mountpoint "$RUNNER_TEMP/dmg" -nobrowse
+          app="$RUNNER_TEMP/dmg/Timegrapher.app"
+          lipo -archs "$app/Contents/MacOS/timegrapher-app"
+          codesign --verify --verbose "$app"
+          "$app/Contents/MacOS/timegrapher" --version
+          "$app/Contents/MacOS/timegrapher-app" --help
+          hdiutil detach "$RUNNER_TEMP/dmg"
+          mkdir check && tar -C check -xzf dist/*-cli.tar.gz
+          check/*/timegrapher --version
+      - name: Check the files (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          7z x -bso0 -ocheck dist/*.zip
+          check/*/timegrapher.exe --version
+          check/*/timegrapher-app.exe --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: >-
+      github.ref_type == 'tag' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the release and uploading its files.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(packaging/version.sh)"
+          if [ "${GITHUB_REF_TYPE}" != tag ] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "a release $tag already exists: raise the version in Cargo.toml first" >&2
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # From the Actions tab the tag does not exist yet: --target names
+          # the commit built, and GitHub makes the tag when the draft is
+          # published.
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft --target "$GITHUB_SHA" \
+            --title "Timegrapher ${TAG#v}" \
+            --notes "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." \
+            --generate-notes

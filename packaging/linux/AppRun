@@ -1,0 +1,9 @@
+#!/bin/sh
+# Starts the desktop app; `timegrapher.AppImage cli ARGS` runs the command
+# line tool instead.
+here="$(dirname "$(readlink -f "$0")")"
+if [ "$1" = "cli" ]; then
+  shift
+  exec "$here/usr/bin/timegrapher" "$@"
+fi
+exec "$here/usr/bin/timegrapher-app" "$@"
