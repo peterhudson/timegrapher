@@ -534,6 +534,9 @@ pub struct TimegrapherApp {
     custom_calibres: Vec<CustomCalibre>,
     /// Where the last Save put the session, if it has been saved.
     saved_to: Option<PathBuf>,
+    /// Seconds of the session's sound in that copy, so sound recorded
+    /// after a save still counts as unsaved.
+    saved_through_s: f64,
     /// The folder Save offers first.
     save_dir: String,
     /// The session came from the microphone, and when it was paused.
@@ -777,6 +780,7 @@ impl TimegrapherApp {
             calibre: String::new(),
             custom_calibres: Vec::new(),
             saved_to: None,
+            saved_through_s: 0.0,
             mic_session: false,
             paused_at: None,
             confirm: None,
@@ -1059,9 +1063,9 @@ impl TimegrapherApp {
 
     /// Unsaved sound that a new session would throw away, seconds.
     fn unsaved_s(&self) -> f64 {
-        match (&self.recorder, &self.saved_to) {
-            (Some(r), None) => r.duration_s(),
-            _ => 0.0,
+        match &self.recorder {
+            Some(r) => (r.duration_s() - self.saved_through_s).max(0.0),
+            None => 0.0,
         }
     }
 
@@ -1073,6 +1077,7 @@ impl TimegrapherApp {
             }
         }
         self.saved_to = None;
+        self.saved_through_s = 0.0;
     }
 
     /// Save a copy of the session's sound so far, with its clock log and
@@ -1116,6 +1121,7 @@ impl TimegrapherApp {
                 ));
                 self.save_dir = parent.display().to_string();
                 self.saved_to = Some(dir);
+                self.saved_through_s = secs;
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
@@ -1223,7 +1229,7 @@ impl TimegrapherApp {
         // The positions in the saved sound's own time, as noted when they
         // changed (the sound leaves out the pauses the session's clock
         // counts).
-        let mut stretches = vec![(0.0, r.info().position.clone())];
+        let mut stretches = vec![(0.0, r.first_position().to_string())];
         for n in r.notes() {
             if let Some(code) = n.text.strip_prefix("position ") {
                 if stretches.last().is_some_and(|s| s.0 >= n.audio_s) {
@@ -1982,9 +1988,16 @@ impl TimegrapherApp {
         });
         match choice {
             Some(0) => {
-                self.save_recording();
-                if self.saved_to.is_none() {
-                    return; // the folder dialog was cancelled
+                // Saved before: the rest goes to the same copy.
+                match self.saved_to.as_ref().and_then(|p| p.parent()) {
+                    Some(parent) => {
+                        let parent = parent.to_path_buf();
+                        self.save_into(&parent);
+                    }
+                    None => self.save_recording(),
+                }
+                if self.unsaved_s() > 5.0 {
+                    return; // the folder dialog was cancelled, or saving failed
                 }
             }
             Some(1) => {}
@@ -2444,12 +2457,17 @@ impl TimegrapherApp {
             },
         );
         if pos != self.position {
-            self.set_position(pos);
-            if let Some(r) = self.recorder.as_mut() {
-                let _ = r.note(&format!("position {}", pos.code()));
-            }
-            self.note_settings();
+            self.change_position(pos);
         }
+    }
+
+    /// The position picked: a new stretch, noted in the recording.
+    fn change_position(&mut self, pos: Position) {
+        self.set_position(pos);
+        if let Some(r) = self.recorder.as_mut() {
+            let _ = r.note(&format!("position {}", pos.code()));
+        }
+        self.note_settings();
     }
 
     /// Put the watch in a new position. Listening (or paused), the session
@@ -3633,12 +3651,22 @@ impl TimegrapherApp {
                 }
             }
             if let Some(r) = &self.recorder {
+                let since = self.unsaved_s();
                 let (text, color, hint) = match &self.saved_to {
                     Some(p) => (
-                        format!("{} of sound, saved", strip::fmt_time(r.duration_s())),
+                        if since >= 1.0 {
+                            format!(
+                                "{} of sound, the last {} not saved",
+                                strip::fmt_time(r.duration_s()),
+                                strip::fmt_time(since)
+                            )
+                        } else {
+                            format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
+                        },
                         pal.text_secondary,
                         format!(
-                            "Saved in {}. Sound since then is kept too; Save Again… adds it.",
+                            "Saved in {}. Sound since then is kept too; Save Again… adds it, \
+                             and New Session or quitting asks first.",
                             p.display()
                         ),
                     ),
@@ -5983,6 +6011,83 @@ mod tests {
         assert!(
             saved.join("audio-001.wav").is_file(),
             "the saved copy stays"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Record, save, carry on, pause, change position, resume, save again
+    /// and reopen: sound after a save still counts as unsaved, Save Again
+    /// keeps it, and the saved take keeps the position it started in.
+    #[test]
+    fn a_take_saved_twice_across_a_move_keeps_everything() {
+        let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = synthetic(5.0, 0.0);
+        app.mic_session = true;
+        app.bph = Some(28800);
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 90.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let third = audio.samples.len() / 3;
+        let block = |i: usize| timegrapher_core::capture::Block {
+            samples: audio.samples[i * third..(i + 1) * third].to_vec(),
+            at: std::time::SystemTime::now(),
+        };
+        let info = app.info("test", 48000, 16);
+        app.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        app.recorder.as_mut().unwrap().write(&block(0)).unwrap();
+        app.save_into(&base.join("saved"));
+        assert_eq!(app.unsaved_s(), 0.0);
+        // Carrying on after the save: that sound isn't saved yet.
+        app.recorder.as_mut().unwrap().write(&block(1)).unwrap();
+        assert!((app.unsaved_s() - 30.0).abs() < 0.1, "{}", app.unsaved_s());
+        // Paused, moved to dial down, resumed.
+        app.paused_at = Some(Instant::now());
+        app.recorder.as_mut().unwrap().pause().unwrap();
+        app.change_position(Position::DialDown);
+        app.paused_at = None;
+        app.recorder.as_mut().unwrap().write(&block(2)).unwrap();
+        assert!((app.unsaved_s() - 60.0).abs() < 0.1, "{}", app.unsaved_s());
+        app.save_into(&base.join("saved"));
+        assert_eq!(app.unsaved_s(), 0.0);
+        let saved = app.saved_to.clone().expect("saved");
+        let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
+        let m: Manifest = toml::from_str(&text).unwrap();
+        let got: Vec<_> = m
+            .recordings
+            .iter()
+            .map(|e| (e.position.clone().unwrap(), e.start_s, e.end_s))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("DU".to_string(), Some(0.0), Some(60.0)),
+                ("DD".to_string(), Some(60.0), None)
+            ],
+            "{text}"
+        );
+        // Reopened, all 90 s are there in both positions.
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.start_batch(&saved);
+        let t = Instant::now();
+        while again.batch.is_some() && t.elapsed().as_secs() < 120 {
+            again.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let live = again.live.as_ref().expect("analysed");
+        assert!(
+            (live.duration_s() - 90.0).abs() < 0.5,
+            "{}",
+            live.duration_s()
+        );
+        assert_eq!(
+            again.stretches,
+            [(0.0, Position::DialUp), (60.0, Position::DialDown)]
         );
         let _ = std::fs::remove_dir_all(&base);
     }

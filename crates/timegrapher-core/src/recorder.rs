@@ -57,6 +57,9 @@ const CLOCK_EVERY_S: f64 = 10.0;
 pub struct Recorder {
     dir: PathBuf,
     info: SessionInfo,
+    /// The position at the start, which `set_info` never changes: later
+    /// positions are the "position" notes.
+    first_position: String,
     started_utc: String,
     writer: Option<hound::WavWriter<BufWriter<File>>>,
     segments: Vec<String>,
@@ -100,6 +103,7 @@ impl Recorder {
         writeln!(clock, "unix_s,frames")?;
         let r = Recorder {
             dir,
+            first_position: info.position.clone(),
             info,
             started_utc,
             writer: None,
@@ -121,6 +125,12 @@ impl Recorder {
     /// What was known when the recording started.
     pub fn info(&self) -> &SessionInfo {
         &self.info
+    }
+
+    /// The position the recording started in. [`Recorder::info`] has the
+    /// latest one.
+    pub fn first_position(&self) -> &str {
+        &self.first_position
     }
 
     /// What happened during it, oldest first.
