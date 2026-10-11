@@ -302,6 +302,20 @@ impl LiveAnalyzer {
         }
     }
 
+    /// The sound as it came in, from `from_s` for `len_s` seconds, while it
+    /// is still held (the last few seconds).
+    pub fn sound(&self, from_s: f64, len_s: f64) -> Option<&[f32]> {
+        if from_s < 0.0 || len_s <= 0.0 {
+            return None;
+        }
+        let i0 = (from_s * self.fs).round() as u64;
+        let i1 = ((from_s + len_s) * self.fs).round() as u64;
+        if i0 < self.buf0 || i1 > self.buf0 + self.buf.len() as u64 {
+            return None;
+        }
+        Some(&self.buf[(i0 - self.buf0) as usize..(i1 - self.buf0) as usize])
+    }
+
     /// Add audio. Returns true when a pass ran (the readings may have changed).
     pub fn push(&mut self, samples: &[f32]) -> bool {
         self.buf.extend_from_slice(samples);

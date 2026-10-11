@@ -5,6 +5,7 @@
 
 use crate::app::Pane;
 use crate::profiles;
+use crate::scope;
 use crate::steady;
 use crate::strip::StripView;
 use eframe::egui::ThemePreference;
@@ -32,6 +33,7 @@ pub struct Settings {
     pub sidebar: bool,
     pub theme: ThemePreference,
     pub steady_view: steady::View,
+    pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// Calibres the watchmaker entered by hand, for movements the built-in
     /// table doesn't have.
@@ -98,6 +100,7 @@ impl Default for Settings {
             sidebar: true,
             theme: ThemePreference::System,
             steady_view: steady::View::default(),
+            scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),
             check_updates: true,

@@ -107,6 +107,27 @@ Hovering on the grade says which applied. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
 
+**Possible Faults.** Under the readings, an amber banner names any
+escapement fault the shape of the Tick and Tock points to (unlocking too
+strong, no unlock sound, friction during the impulse, an uneven unlock,
+a rub after the drop) and the beat it is on. The shape needs more sound
+than the live engine keeps, so the app reads the last minute up to the
+moment shown back from the recording (the session's own scratch
+recording while listening) and analyses it as `analyze` does, in the
+background: every 30 s while listening, and when the moment shown moves.
+Hovering on a fault shows the measures behind it. Nothing shows when
+nothing is seen, or when the sound can't be judged (no watch heard,
+clipping, or readings too unsteady to grade Fair). A finding is worth
+checking on the bench, not a diagnosis; see
+[fault-signatures.md](fault-signatures.md).
+
+**Isochronism.** A tab beside Steadiness, from the same run of tests: the
+rate by amplitude in 2° steps (the median rate as a dot, with bars over the
+middle half), the curve through them and where it turns, and under it the
+first half hour against the half hour 24 hours later (or the take's last),
+as the commercial 0 h / 24 h test gives it. It needs the amplitude to fall
+through at least three 2° steps, which a run-down over some hours gives.
+
 **True Clock.** When the microphone's own clock error has been measured
 and stored (`timegrapher clock measure --save`, or `clock from-log --save`
 after a take with a clock log; see `clock` in
@@ -179,6 +200,19 @@ kept nearest before that moment (one every 2 s); for a recording analysed
 all at once it is worked out from the file when you stop on a moment.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
+
+**Scope.** The sound itself, beat by beat, like the scope view on a
+Witschi: what the engine heard, high-passed at 1 kHz, not an average. A
+tab beside the Tick Tock Profile. **20 ms** shows the Tick and the Tock
+in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
+after, with the profile's Unlock and Drop marks. **200 ms** shows one
+row each from 20 ms before the beat to 180 ms after, so the next beat
+shows too. **400 ms** shows every beat in one grey row, three or four
+beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
+the older ones fainter, so a beat that differs from the rest stands out.
+While listening it shows the latest beats; looking back, or on a
+recording, it shows the beats up to the moment shown, read from the
+recording. No crosshair, as on the other sound plots.
 
 **Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating

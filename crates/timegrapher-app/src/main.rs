@@ -17,13 +17,13 @@
 
 mod app;
 mod applog;
+mod faults;
 mod fields;
 mod help;
-// The Isochronism pane; wired into the layout by the app thread.
-#[allow(dead_code)]
 mod isochronism;
 mod profiles;
 mod report;
+mod scope;
 mod settings;
 mod steady;
 mod strip;
