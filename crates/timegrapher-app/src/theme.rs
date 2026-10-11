@@ -11,8 +11,9 @@ use eframe::egui::{
     Layout, Margin, Response, RichText, Sense, Shadow, Stroke, TextStyle, Theme, Ui, Vec2,
 };
 use std::sync::Arc;
+use timegrapher_core::palette as core_palette;
 
-/// The colours of one theme.
+/// The colours of one theme, from [`timegrapher_core::palette`].
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     /// Behind everything: the window, the sidebar, the gaps between cards.
@@ -53,63 +54,42 @@ pub struct Palette {
     pub trace_beat_error: Color32,
 }
 
-const fn rgb(hex: u32) -> Color32 {
-    Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+const fn c(x: core_palette::Rgb) -> Color32 {
+    Color32::from_rgb(x.r, x.g, x.b)
 }
 
-pub const DARK: Palette = Palette {
-    window: rgb(0x161618),
-    card: rgb(0x232326),
-    control: rgb(0x343438),
-    control_hover: rgb(0x3e3e43),
-    control_active: rgb(0x4a4a50),
-    raised: rgb(0x5a5a60),
-    separator: rgb(0x303034),
-    text: rgb(0xf5f5f7),
-    text_secondary: rgb(0xa1a1a6),
-    text_tertiary: rgb(0x6e6e73),
-    accent: rgb(0x0a84ff),
-    on_accent: Color32::WHITE,
-    tick: rgb(0x64d2ff),
-    tock: rgb(0xff9f0a),
-    good: rgb(0x30d158),
-    warn: rgb(0xffb340),
-    bad: rgb(0xff453a),
-    unlock: rgb(0x30d158),
-    drop: rgb(0x7d7aff),
-    peak: rgb(0x7d7aff),
-    sound: rgb(0xac8e68),
-    trace_amplitude: rgb(0xbf5af2),
-    trace_rate: rgb(0xff453a),
-    trace_beat_error: rgb(0xffd60a),
-};
+/// The core palette (shared with the MCP server's charts) in egui's colours.
+const fn from_core(p: &core_palette::Palette) -> Palette {
+    Palette {
+        window: c(p.window),
+        card: c(p.card),
+        control: c(p.control),
+        control_hover: c(p.control_hover),
+        control_active: c(p.control_active),
+        raised: c(p.raised),
+        separator: c(p.separator),
+        text: c(p.text),
+        text_secondary: c(p.text_secondary),
+        text_tertiary: c(p.text_tertiary),
+        accent: c(p.accent),
+        on_accent: c(p.on_accent),
+        tick: c(p.tick),
+        tock: c(p.tock),
+        good: c(p.good),
+        warn: c(p.warn),
+        bad: c(p.bad),
+        unlock: c(p.unlock),
+        drop: c(p.drop),
+        peak: c(p.peak),
+        sound: c(p.sound),
+        trace_amplitude: c(p.trace_amplitude),
+        trace_rate: c(p.trace_rate),
+        trace_beat_error: c(p.trace_beat_error),
+    }
+}
 
-pub const LIGHT: Palette = Palette {
-    window: rgb(0xf2f2f5),
-    card: rgb(0xffffff),
-    control: rgb(0xe9e9ee),
-    control_hover: rgb(0xdedee4),
-    control_active: rgb(0xd1d1d8),
-    raised: rgb(0xffffff),
-    separator: rgb(0xdcdce1),
-    text: rgb(0x1d1d1f),
-    text_secondary: rgb(0x6e6e73),
-    text_tertiary: rgb(0x9a9aa0),
-    accent: rgb(0x007aff),
-    on_accent: Color32::WHITE,
-    tick: rgb(0x0068c9),
-    tock: rgb(0xc45100),
-    good: rgb(0x248a3d),
-    warn: rgb(0xb25000),
-    bad: rgb(0xd70015),
-    unlock: rgb(0x248a3d),
-    drop: rgb(0x5856d6),
-    peak: rgb(0x5856d6),
-    sound: rgb(0x7f6545),
-    trace_amplitude: rgb(0x8944ab),
-    trace_rate: rgb(0xd70015),
-    trace_beat_error: rgb(0x8a6d00),
-};
+pub const DARK: Palette = from_core(&core_palette::DARK);
+pub const LIGHT: Palette = from_core(&core_palette::LIGHT);
 
 pub fn palette(dark: bool) -> &'static Palette {
     if dark {

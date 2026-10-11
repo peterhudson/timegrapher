@@ -24,6 +24,7 @@ pub mod live;
 pub mod longrun;
 pub mod longterm;
 pub mod mixer;
+pub mod palette;
 pub mod periodicity;
 pub mod profile;
 pub mod recorder;

@@ -21,6 +21,7 @@ use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::calibres;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
+use timegrapher_core::confidence::{self, Confidence, Doubts, Grade};
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::mixer::{GainState, InputGain};
@@ -490,6 +491,12 @@ pub struct TimegrapherApp {
     crash_shown: bool,
     /// Report a Problem.
     report: ReportDialog,
+    updates: crate::update::Updates,
+    /// Look for a newer release each time the app starts.
+    check_at_start: bool,
+    /// The check at start is still to be made (on the first frame, which
+    /// has the context it repaints).
+    check_pending: bool,
     /// Where the watch was put in a new position during the session: the
     /// time and the position from then on, oldest first. Empty while it has
     /// stayed in `position` all along.
@@ -600,6 +607,7 @@ impl TimegrapherApp {
             app.apply_settings(s);
         }
         app.crash = applog::dir().and_then(|d| applog::unseen_crashes(&d).pop());
+        app.check_pending = app.check_at_start;
         app
     }
 
@@ -623,6 +631,7 @@ impl TimegrapherApp {
             steady_view: self.steady_view,
             panes: Some(self.panes.clone()),
             custom_calibres: self.custom_calibres.clone(),
+            check_updates: self.check_at_start,
         }
     }
 
@@ -648,7 +657,9 @@ impl TimegrapherApp {
             steady_view,
             panes,
             custom_calibres,
+            check_updates,
         } = s;
+        self.check_at_start = check_updates;
         self.custom_calibres = custom_calibres;
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
@@ -706,13 +717,16 @@ impl TimegrapherApp {
                 .map(|p| p.display().to_string())
                 .unwrap_or_default(),
             bph: None,
-            lift_deg: 52.0,
+            lift_deg: DEFAULT_LIFT_DEG,
             position: Position::DialUp,
             stretches: Vec::new(),
             locked_bph: None,
             crash: None,
             crash_shown: false,
             report: ReportDialog::default(),
+            updates: Default::default(),
+            check_at_start: true,
+            check_pending: false,
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
@@ -2612,6 +2626,14 @@ impl TimegrapherApp {
             ui.ctx().set_theme(t);
             self.theme = t;
         }
+        theme::switch_row(
+            ui,
+            "Check for Updates at Start",
+            &mut self.check_at_start,
+            "Ask GitHub whether a newer Timegrapher is published each time the app \
+             starts, and say so if there is. It sends no account or identifier, and nothing \
+             installs itself. Check for Updates… in the status bar asks at any time.",
+        );
         ui.horizontal(|ui| {
             if ui
                 .button("Reset Panes")
@@ -3069,8 +3091,32 @@ impl TimegrapherApp {
         }
     }
 
-    /// The three readings, each in a card: a caption, the figure large with
-    /// its unit beside it, and a line of detail.
+    /// The beat error's ± from the 2-second stretches in the reading's
+    /// averaging time, and what lowers the readings' grades beyond their ±.
+    fn doubts(&self, r: &LiveReading, bph: Option<u32>) -> (Option<f64>, Doubts) {
+        let windows = self
+            .live
+            .as_ref()
+            .map_or(&[][..], |l| l.amplitude_windows());
+        let from = r.time_s - self.average_s - 1e-6;
+        let recent: Vec<_> = windows
+            .iter()
+            .filter(|w| w.end_s > from && w.end_s <= r.time_s + 1e-6)
+            .cloned()
+            .collect();
+        let expected = bph.map_or(0.0, |b| b as f64 / 3600.0 * r.span_s);
+        let doubts = Doubts {
+            clipped: r.clipped_fraction.is_some_and(|f| f > 0.01),
+            beats_missing: expected >= 6.0
+                && (r.beats_used as f64) < confidence::MIN_BEAT_FRACTION * expected,
+            lift_unknown: self.calibre.is_empty() && self.lift_deg == DEFAULT_LIFT_DEG,
+            clock_unknown: self.clock.is_none(),
+        };
+        (confidence::beat_error_se(&recent), doubts)
+    }
+
+    /// The three readings, each in a card: a caption with the reading's
+    /// grade, the figure large with its ± beside it, and a line of detail.
     fn readouts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let r = self.reading();
@@ -3091,6 +3137,39 @@ impl TimegrapherApp {
             }
             ui.label(job);
         };
+        // A reading whose beats scatter like noise is no watch: no figures
+        // then, only a note saying so.
+        let bph = r.as_ref().and_then(|r| r.bph).or(self.bph);
+        let heard = match (&r, bph) {
+            (Some(r), Some(b)) => timegrapher_core::beats::watch_heard(r.jitter_us, b),
+            _ => true,
+        };
+        let r = r.filter(|_| heard);
+        // Roughly how far the rate could be off from the beats' scatter
+        // alone: the standard error of the fitted slope.
+        let pm = r.as_ref().and_then(|r| {
+            let j = r.jitter_us? * 1e-6;
+            let n = r.beats_used as f64;
+            (n >= 6.0 && r.span_s > 1.0).then(|| j * 12f64.sqrt() / (n.sqrt() * r.span_s) * 86400.0)
+        });
+        let (be_pm, doubts) = r
+            .as_ref()
+            .map_or((None, Doubts::default()), |r| self.doubts(r, bph));
+        let conf = r
+            .as_ref()
+            .map(|r| Confidence::new(pm, r.amplitude_error_deg, be_pm, doubts));
+        let unheard = |ui: &mut egui::Ui| {
+            ui.label(
+                RichText::new("No watch heard")
+                    .small()
+                    .color(pal.text_secondary),
+            )
+            .on_hover_text(
+                "The beats found are scattered like noise, not spaced like a watch's ticks. \
+                 Check that the watch is on the stand and running and that the right \
+                 microphone is chosen.",
+            );
+        };
         // The cards share one height, the tallest's on the last frame, so a
         // card with an extra line doesn't leave the row ragged.
         let height_id = ui.id().with("readout height");
@@ -3099,7 +3178,11 @@ impl TimegrapherApp {
             .data(|d| d.get_temp::<f32>(height_id))
             .unwrap_or(0.0);
         let tallest = std::cell::Cell::new(0f32);
-        let card = |ui: &mut egui::Ui, title: &str, help: &[&str], body: &dyn Fn(&mut egui::Ui)| {
+        let card = |ui: &mut egui::Ui,
+                    title: &str,
+                    help: &[&str],
+                    grade: Option<confidence::Reading>,
+                    body: &dyn Fn(&mut egui::Ui)| {
             theme::card()
                 .fill(pal.card)
                 .inner_margin(egui::Margin::symmetric(14, 10))
@@ -3113,6 +3196,20 @@ impl TimegrapherApp {
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
+                        if let Some(g) = grade {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    let (word, color) = grade_look(g.grade, pal);
+                                    let resp = ui.label(
+                                        RichText::new(word).small().color(pal.text_secondary),
+                                    );
+                                    theme::dot(ui, color);
+                                    resp.on_hover_text(grade_hint(title, g, doubts));
+                                },
+                            );
+                        }
                     });
                     body(ui);
                     let bottom = ui.cursor().top() - ui.spacing().item_spacing.y;
@@ -3122,139 +3219,161 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = theme::GAP;
         ui.columns(3, |cols| {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            card(&mut cols[0], "Rate", help::RATE, &|ui| {
-                // Roughly how far the rate could be off from the beats'
-                // scatter alone: the standard error of the fitted slope.
-                let pm = r.and_then(|r| {
-                    let j = r.jitter_us? * 1e-6;
-                    let n = r.beats_used as f64;
-                    (n >= 6.0 && r.span_s > 1.0)
-                        .then(|| j * 12f64.sqrt() / (n.sqrt() * r.span_s) * 86400.0)
-                });
-                let unit = match pm {
-                    Some(e) if e < 0.05 => "seconds per day".to_string(),
-                    Some(e) => format!("± {e:.1} seconds per day"),
-                    None => "seconds per day".to_string(),
-                };
-                figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                    let Some(r) = r else {
-                        ui.label(small("waiting for beats".into()));
-                        return;
+            card(
+                &mut cols[0],
+                "Rate",
+                help::RATE,
+                conf.map(|c| c.rate),
+                &|ui| {
+                    let unit = match pm {
+                        Some(e) if e < 0.05 => "seconds per day".to_string(),
+                        Some(e) => format!("± {e:.1} seconds per day"),
+                        None => "seconds per day".to_string(),
                     };
-                    let short = r.span_s + 1.0 < self.average_s;
-                    ui.label(small(if short {
-                        format!(
-                            "{} beats in {} of {}",
-                            r.beats_used,
-                            fields::duration(r.span_s.round()),
-                            fields::duration(self.average_s)
-                        )
-                    } else {
-                        format!(
-                            "{} beats in {}",
-                            r.beats_used,
-                            fields::duration(self.average_s)
-                        )
-                    }))
-                    .on_hover_text(if short {
-                        "The beats the readings are fitted to. There are fewer seconds of \
+                    figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
+                        let Some(r) = r else {
+                            if heard {
+                                ui.label(small("waiting for beats".into()));
+                            } else {
+                                unheard(ui);
+                            }
+                            return;
+                        };
+                        let short = r.span_s + 1.0 < self.average_s;
+                        ui.label(small(if short {
+                            format!(
+                                "{} beats in {} of {}",
+                                r.beats_used,
+                                fields::duration(r.span_s.round()),
+                                fields::duration(self.average_s)
+                            )
+                        } else {
+                            format!(
+                                "{} beats in {}",
+                                r.beats_used,
+                                fields::duration(self.average_s)
+                            )
+                        }))
+                        .on_hover_text(if short {
+                            "The beats the readings are fitted to. There are fewer seconds of \
                              beats than Average over asks for, early in a session or after a \
                              pause, so the readings use what there is."
-                    } else {
-                        "The beats the readings are fitted to. Set the time with Average \
+                        } else {
+                            "The beats the readings are fitted to. Set the time with Average \
                              over in the sidebar."
-                    });
-                    if let Some(j) = r.jitter_us {
-                        ui.label(small("·".into()));
-                        ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
-                            "How far single beats land from the rate's straight line: the \
+                        });
+                        if let Some(j) = r.jitter_us {
+                            ui.label(small("·".into()));
+                            ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
+                                "How far single beats land from the rate's straight line: the \
                                  spread of the dots across the strip. The ? beside Rate says more.",
-                        );
-                    }
-                });
-                if let (Some(rate), Some(c)) = (rate, &self.clock) {
-                    let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
-                    let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
-                    ui.label(
-                        RichText::new(format!("True Clock {v} seconds per day"))
-                            .small()
-                            .color(pal.text_secondary),
-                    )
-                    .on_hover_text(format!(
-                        "The rate corrected for this input's own clock, which runs {:.1} ppm \
+                            );
+                        }
+                    });
+                    if let (Some(rate), Some(c)) = (rate, &self.clock) {
+                        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+                        let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
+                        ui.label(
+                            RichText::new(format!("True Clock {v} seconds per day"))
+                                .small()
+                                .color(pal.text_secondary),
+                        )
+                        .on_hover_text(format!(
+                            "The rate corrected for this input's own clock, which runs {:.1} ppm \
                          {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
                          figure stays on the card's clock, the one tg and an analysis of \
                          the recording read, so the two compare directly.",
-                        c.ppm.abs(),
-                        c.rate_error_s_per_day(),
-                        c.measured_utc,
-                        match c.source.as_str() {
-                            "log" => "a recording's clock log",
-                            "measure" => "listening against the system clock",
-                            _ => "a value typed in",
-                        }
-                    ));
-                }
-            });
+                            c.ppm.abs(),
+                            c.rate_error_s_per_day(),
+                            c.measured_utc,
+                            match c.source.as_str() {
+                                "log" => "a recording's clock log",
+                                "measure" => "listening against the system clock",
+                                _ => "a value typed in",
+                            }
+                        ));
+                    }
+                },
+            );
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
-            card(&mut cols[1], "Amplitude", help::AMPLITUDE, &|ui| {
-                // Whole degrees: a live reading's ± is about a degree, so a
-                // decimal would claim more than the beats can say.
-                let unit = match r.and_then(|r| r.amplitude_error_deg) {
-                    Some(e) if e < 0.95 => format!("± {e:.1}°"),
-                    Some(e) => format!("± {e:.0}°"),
-                    None => String::new(),
-                };
-                figure(ui, amp.map(|v| format!("{v:.0}°")), &unit);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    if let Some(LiveReading {
-                        amplitude_even_deg: Some(a),
-                        amplitude_odd_deg: Some(b),
-                        ..
-                    }) = r
-                    {
-                        for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
-                            theme::dot(ui, c);
-                            ui.label(
-                                RichText::new(format!("{name} {v:.0}°"))
-                                    .small()
-                                    .color(pal.text_secondary),
-                            );
-                            ui.add_space(6.0);
-                        }
+            card(
+                &mut cols[1],
+                "Amplitude",
+                help::AMPLITUDE,
+                conf.map(|c| c.amplitude),
+                &|ui| {
+                    // Whole degrees: a live reading's ± is about a degree, so a
+                    // decimal would claim more than the beats can say.
+                    let unit = match r.and_then(|r| r.amplitude_error_deg) {
+                        Some(e) if e < 0.95 => format!("± {e:.1}°"),
+                        Some(e) => format!("± {e:.0}°"),
+                        None => String::new(),
+                    };
+                    figure(ui, amp.map(|v| format!("{v:.0}°")), &unit);
+                    if !heard {
+                        unheard(ui);
+                        return;
                     }
-                    ui.label(
-                        RichText::new(format!("lift angle {lift}°"))
-                            .small()
-                            .color(pal.text_secondary),
-                    );
-                });
-            });
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        if let Some(LiveReading {
+                            amplitude_even_deg: Some(a),
+                            amplitude_odd_deg: Some(b),
+                            ..
+                        }) = r
+                        {
+                            for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
+                                theme::dot(ui, c);
+                                ui.label(
+                                    RichText::new(format!("{name} {v:.0}°"))
+                                        .small()
+                                        .color(pal.text_secondary),
+                                );
+                                ui.add_space(6.0);
+                            }
+                        }
+                        ui.label(
+                            RichText::new(format!("lift angle {lift}°"))
+                                .small()
+                                .color(pal.text_secondary),
+                        );
+                    });
+                },
+            );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
-            card(&mut cols[2], "Beat Error", help::BEAT_ERROR, &|ui| {
-                figure(
-                    ui,
-                    unlock.or(drop).map(|v| format!("{v:+.2}")),
-                    "milliseconds",
-                );
-                ui.label(
-                    RichText::new(match (unlock, drop) {
-                        (Some(_), Some(d)) => {
-                            format!("from the unlock · from the drop {d:+.2} ms")
-                        }
-                        (None, Some(_)) => "from the drop".into(),
-                        _ => "from the unlock".into(),
-                    })
-                    .small()
-                    .color(pal.text_secondary),
-                );
-            });
+            card(
+                &mut cols[2],
+                "Beat Error",
+                help::BEAT_ERROR,
+                conf.map(|c| c.beat_error),
+                &|ui| {
+                    let unit = match be_pm.filter(|_| unlock.is_some()) {
+                        Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
+                        _ => "milliseconds".to_string(),
+                    };
+                    figure(ui, unlock.or(drop).map(|v| format!("{v:+.2}")), &unit);
+                    if !heard {
+                        unheard(ui);
+                        return;
+                    }
+                    ui.label(
+                        RichText::new(match (unlock, drop) {
+                            (Some(_), Some(d)) => {
+                                format!("from the unlock · from the drop {d:+.2} ms")
+                            }
+                            (None, Some(_)) => "from the drop".into(),
+                            _ => "from the unlock".into(),
+                        })
+                        .small()
+                        .color(pal.text_secondary),
+                    );
+                },
+            );
         });
         if tallest.get() != height {
             ui.ctx()
@@ -3371,6 +3490,29 @@ impl TimegrapherApp {
                     .clicked()
                 {
                     self.open_report();
+                }
+                let checking = self.updates.checking();
+                if ui
+                    .add_enabled(
+                        !checking,
+                        egui::Button::new(
+                            RichText::new(if checking {
+                                "Checking for Updates…"
+                            } else {
+                                "Check for Updates…"
+                            })
+                            .small()
+                            .color(pal.accent),
+                        )
+                        .frame_when_inactive(false),
+                    )
+                    .on_hover_text(
+                        "Ask GitHub whether a newer Timegrapher is published. Nothing \
+                         downloads or installs itself.",
+                    )
+                    .clicked()
+                {
+                    self.updates.start(ui.ctx(), true);
                 }
                 ui.label(
                     RichText::new(format!(
@@ -3539,6 +3681,47 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
+    /// A newer release is published: its version and a button to its page.
+    fn update_banner(&mut self, ui: &mut egui::Ui) {
+        let Some(r) = self.updates.notice.clone() else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let (mut download, mut dismiss) = (false, false);
+        banner(ui, pal.accent, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismiss = ui
+                    .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                    .on_hover_text("Hide this until the app starts again")
+                    .clicked();
+                download = ui
+                    .add(theme::primary(ui, "Download"))
+                    .on_hover_text(
+                        "Open the release's page in your browser, to download it from. \
+                         Nothing installs itself.",
+                    )
+                    .clicked();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!("Timegrapher {} is available", r.version))
+                                .color(pal.text),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+        });
+        if download {
+            ui.ctx()
+                .open_url(egui::OpenUrl::new_tab(crate::update::page(&r)));
+        }
+        if download || dismiss {
+            self.updates.notice = None;
+        }
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
     /// After the app closed unexpectedly: an offer to report it. The report
     /// is a GitHub issue the user opens with the crash record pasted in;
     /// nothing is sent from the app.
@@ -3666,6 +3849,7 @@ impl TimegrapherApp {
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
         self.crash_banner(ui);
+        self.update_banner(ui);
         self.error_banner(ui);
         if self.show_readings {
             self.clipping_banner(ui);
@@ -4761,6 +4945,12 @@ impl TimegrapherApp {
 
 impl eframe::App for TimegrapherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if std::mem::take(&mut self.check_pending) {
+            self.updates.start(ctx, false);
+        }
+        if let Some(m) = self.updates.poll() {
+            self.info_msg(m);
+        }
         // A file dropped on the window is replayed, where the desktop passes
         // drops on (not yet on Wayland).
         let dropped: Vec<PathBuf> = ctx.input(|i| {
@@ -4801,6 +4991,10 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
+        } else if self.sound_job.is_some() {
+            // Show the profile when it's worked out, without waiting for
+            // the pointer to move.
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
     }
 
@@ -4856,9 +5050,82 @@ fn banner(
     resp.response
 }
 
+/// The lift angle used until a calibre is picked or one is typed in.
+const DEFAULT_LIFT_DEG: f64 = 52.0;
+
+/// A grade's word and the colour of its dot.
+fn grade_look(g: Grade, pal: &theme::Palette) -> (&'static str, egui::Color32) {
+    match g {
+        Grade::Good => ("Good", pal.good),
+        Grade::Fair => ("Fair", pal.warn),
+        Grade::Poor => ("Poor", pal.bad),
+    }
+}
+
+/// What a reading's grade means, and what lowered it.
+fn grade_hint(title: &str, g: confidence::Reading, d: Doubts) -> String {
+    let (good, fair, unit) = match title {
+        "Rate" => (
+            confidence::RATE_SE.0,
+            confidence::RATE_SE.1,
+            " seconds per day",
+        ),
+        "Amplitude" => (confidence::AMPLITUDE_SE.0, confidence::AMPLITUDE_SE.1, "°"),
+        _ => (
+            confidence::BEAT_ERROR_SE.0,
+            confidence::BEAT_ERROR_SE.1,
+            " ms",
+        ),
+    };
+    let mut t = format!(
+        "How far this reading can be trusted. Good when its ± is within {good}{unit}, Fair \
+         within {fair}{unit}, Poor beyond that or when there is no ± yet. The ± says how much \
+         the reading would move on another stretch of the same sound."
+    );
+    let mut lowered = Vec::new();
+    if d.beats_missing {
+        lowered.push("fewer beats were found than the beat rate expects");
+    }
+    match title {
+        "Rate" if d.clock_unknown => {
+            lowered.push("this input's clock hasn't been measured (Settings, Measure Clock)")
+        }
+        "Amplitude" | "Beat Error" if d.clipped => lowered.push("some beats are clipped"),
+        _ => {}
+    }
+    if title == "Amplitude" && d.lift_unknown {
+        lowered.push("the lift angle is the default 52°: pick the calibre for its own");
+    }
+    if !lowered.is_empty() {
+        t += &format!(" Lowered a step each because {}.", lowered.join(", and "));
+    }
+    if g.se.is_none() {
+        t += " Not enough readings yet for a ±.";
+    }
+    t
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grade_says_what_lowered_it() {
+        let d = Doubts {
+            lift_unknown: true,
+            clock_unknown: true,
+            ..Doubts::default()
+        };
+        let g = confidence::amplitude(Some(1.0), d);
+        assert_eq!(g.grade, Grade::Fair);
+        let amp = grade_hint("Amplitude", g, d);
+        assert!(
+            amp.contains("lift angle") && !amp.contains("clock"),
+            "{amp}"
+        );
+        let rate = grade_hint("Rate", confidence::rate(Some(0.2), d), d);
+        assert!(rate.contains("clock") && !rate.contains("lift"), "{rate}");
+    }
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
