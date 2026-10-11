@@ -28,6 +28,7 @@
 
 use crate::beats::Beat;
 use crate::clock::ClockFit;
+use crate::distribution::{self, Distributions};
 use crate::dsp::median;
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig};
@@ -70,6 +71,9 @@ pub struct Config {
     /// Hours since the watch was last fully wound when the take started,
     /// for the wind-down comparison.
     pub wind_h: f64,
+    /// Length of the stretches the distributions are also counted over,
+    /// seconds; 0 counts the whole take only.
+    pub stretch_s: f64,
 }
 
 impl Default for Config {
@@ -87,6 +91,7 @@ impl Default for Config {
             outlier_sigma: 6.0,
             max_points: 600,
             wind_h: 0.0,
+            stretch_s: 3600.0,
         }
     }
 }
@@ -458,6 +463,9 @@ pub struct Report {
     pub isochronism: Option<IsochronismCurve>,
     /// The start of the take against 24 h later, or its end.
     pub wind_down: Option<WindDown>,
+    /// How often each value came up, over the take and each stretch: the
+    /// app's Distributions pane as data.
+    pub distributions: Distributions,
     pub findings: Vec<Finding>,
 }
 
@@ -1633,6 +1641,33 @@ pub fn check(
     let rate_amplitude = cross_correlation(&rate_grid, &amp_readings, cfg);
     let isochronism = isochronism_curve(&rate_grid, &amp_readings, cfg);
     let wind_down = wind_down(&rate_grid, &amp_readings, &be_readings, cfg);
+    let distributions = {
+        use distribution::{Input, AMPLITUDE, BEAT_ERROR, RATE};
+        let grids = [&rate_grid, &amp_grid];
+        let start = grids
+            .iter()
+            .filter(|g| !g.y.is_empty())
+            .map(|g| g.t0)
+            .fold(f64::INFINITY, f64::min);
+        let end = grids
+            .iter()
+            .filter(|g| !g.y.is_empty())
+            .map(|g| g.t0 + g.span())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let input = |kind, label, grid| Input { kind, label, grid };
+        let inputs = [
+            input(RATE, "readings", &rate_grid),
+            input(AMPLITUDE, "readings", &amp_readings),
+            input(AMPLITUDE, "2 s", &amp_grid),
+            input(BEAT_ERROR, "readings", &be_readings),
+            input(BEAT_ERROR, "2 s", &be_grid),
+        ];
+        if start.is_finite() {
+            distribution::distributions(&inputs, start, end, cfg.stretch_s)
+        } else {
+            distribution::distributions(&[], 0.0, 0.0, 0.0)
+        }
+    };
     let amp_samples: Vec<twostate::Sample> = aw
         .iter()
         .filter_map(|w| {
@@ -1761,6 +1796,7 @@ pub fn check(
         rate_amplitude,
         isochronism,
         wind_down,
+        distributions,
         findings,
     }
 }

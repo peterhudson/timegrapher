@@ -13,6 +13,7 @@ pub mod capture;
 pub mod clock;
 pub mod clockstore;
 pub mod diagnose;
+pub mod distribution;
 pub mod dsp;
 pub mod excerpt;
 pub mod filter;

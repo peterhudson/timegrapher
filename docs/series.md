@@ -156,6 +156,24 @@ wind the take started (default 0: it started at full wind). For several
 positions, record two sessions, at full wind and about 24 h later, with
 `wind_h` set in each (see [sessions.md](sessions.md)).
 
+## Distributions
+
+How often each value came up, as the app's Distributions pane draws it:
+a histogram with the summary line the app shows beside it, and the values
+at the shares marked on probability paper. They are counted over the
+whole take and, for a take at least two stretches long, over each stretch
+of `--stretch-min` minutes from its start (default 60; 0 for the whole
+take only; a last stretch shorter than half joins the one before). Each
+stretch and the whole take have five: the rate, amplitude and beat error
+on the rate's readings (one per 10 s, as the verdicts judge them), and
+the amplitude and beat error on each 2 seconds of beats (quicker changes,
+more scatter). The bins follow `timegrapher_core::histogram` with the
+app's settings: Freedman–Diaconis widths rounded to 1, 2 or 5 times a
+power of ten, never finer than 0.1 s/d, 0.5° or 0.01 ms, and the outer
+0.5% each side left off the scale. Two peaks in one histogram suggest
+two states; a histogram that moves from stretch to stretch is a drift.
+The text output prints the whole take's summary lines.
+
 ## JSON (`timegrapher.series/1`)
 
 The usual envelope (see [agent-interface.md](agent-interface.md)), then:
@@ -167,6 +185,7 @@ The usual envelope (see [agent-interface.md](agent-interface.md)), then:
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
 | `isochronism` | the rate by amplitude: `step_s`, `bin_deg`, `bins[]` (`amplitude_deg`, `readings`, `rate_s_per_day`, `rate_q25`, `rate_q75`, `from_wind_h`, `to_wind_h`), `amplitude_from_deg`, `amplitude_to_deg`, `s_per_day_per_deg`, `rate_change_s_per_day`, `curve_centre_deg`, `curve` (`[c0, c1, c2]` in A − centre), `curve_explained`, `turn_deg`, `headline`; null with fewer than three bins |
 | `wind_down` | `start` and `end` (`from_wind_h`, `to_wind_h`, `readings`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`), `hours_apart`, `at_24h`, `rate_change_s_per_day`, `amplitude_change_deg`, `beat_error_change_ms`, `headline`; null under two hours |
+| `distributions` | `overall[]`, `stretch_s` (0 when the take is not split) and `stretches[]` (`start_s`, `end_s`, `distributions[]`); each distribution has `series` (`rate`, `amplitude`, `beat_error`), `unit`, `values` (`readings` or `2 s`), `step_s`, `n`, `median`, `p10`, `p90`, `bin_width`, `edges` (one more than `counts`; bin i is from `edges[i]` up to `edges[i+1]`), `counts`, `below` and `above` (off the scale, counted in `n`), `peaks` (bin centres of separate peaks), `normal_line` (`centre`, `spread`: the straight line on probability paper; null with no spread), `quantiles` (`[share, value]` at 0.1%, 1, 5, 10, 25, 50, 75, 90, 95, 99 and 99.9% where the count resolves them), `summary` (the app's line). A series with fewer than three values has no entry. |
 | `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `moves_with`, `headline` |
 | `findings[]` | `code`, `series`, `severity` (`fault`, `warning`, `note`), `title`, `evidence`, `advice`. Codes: `periodic`, `two_states`, `measurement_split`, `shifting_mean`, `drifting`, `wandering`, and `rate_moves_with_amplitude`. A steady series has none. |
 

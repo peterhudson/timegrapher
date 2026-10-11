@@ -236,6 +236,10 @@ enum Command {
         /// started (for the 0 h / 24 h comparison).
         #[arg(long, default_value_t = 0.0)]
         wind_h: f64,
+        /// Count the distributions over stretches of this many minutes as
+        /// well as over the whole take (0: the whole take only).
+        #[arg(long, default_value_t = 60.0)]
+        stretch_min: f64,
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -641,6 +645,7 @@ fn main() -> ExitCode {
             wheel,
             reading,
             wind_h,
+            stretch_min,
             json,
         } => {
             let mut cfg = StreamConfig::default();
@@ -650,6 +655,8 @@ fn main() -> ExitCode {
             cfg.analysis.envelope.highpass_hz = highpass;
             if reading.is_nan() || reading <= 0.0 {
                 Err("--reading must be a positive number of seconds".to_string())
+            } else if stretch_min.is_nan() || stretch_min < 0.0 {
+                Err("--stretch-min must be 0 or a positive number of minutes".to_string())
             } else {
                 series_cmd::run(series_cmd::Options {
                     files: &files,
@@ -663,6 +670,7 @@ fn main() -> ExitCode {
                     check: timegrapher_core::steadiness::Config {
                         rate_reading_s: reading,
                         wind_h,
+                        stretch_s: stretch_min * 60.0,
                         ..Default::default()
                     },
                     json,
