@@ -120,6 +120,10 @@ rate set that differs from the one heard, and pauses in the stretch. No
 reading is graded. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
+When nothing in the take has sounded like a watch after its first few
+seconds, the cards and charts give way to one card, **No watch heard. Is
+it on the microphone?**, with what to check; they appear as soon as a
+watch is heard.
 
 **Possible Faults.** Under the readings, an amber banner names any
 escapement fault the shape of the Tick and Tock points to (unlocking too
@@ -550,9 +554,14 @@ stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it, and **Save again…** later brings
-that copy up to date. Sound that hasn't been saved is never thrown away
+that copy up to date. Once the take has had a position change, the copy's
+folder name ends in `_positions` rather than the first position. Sound that hasn't been saved is never thrown away
 without asking: New session, opening or replaying a recording, and
-closing the window ask whether to save it first.
+closing the window ask whether to save it first. The microphone's own
+settings are kept aside while recordings are open and come back with
+**Microphone**. Once stopped, the time slider shows for a microphone
+session too; stopped during a move's settling time, the rate card gives
+the reading from before the move and says so.
 
 Each saved recording is a folder named after the start time, the watch
 and the position, so it can be analysed again later with a newer engine,
@@ -569,8 +578,9 @@ Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins
 Your Calibres), the lift angle, the beat rate and the position stretches,
 so the strip and charts mark them and Steadiness tests each position on
-its own. Without one, a recording opens with the settings as they are,
-except that a position named as a word of its own in the file's or
+its own. Without one, a recording opens with the settings back at their
+defaults (no watch name or calibre, 52°, the beat rate found, Dial Up), so
+nothing carries over from the last recording, except that a position named as a word of its own in the file's or
 folder's name (`reverso_DU_01.flac`) is taken, and the message says so
 with the lift angle in use.
 

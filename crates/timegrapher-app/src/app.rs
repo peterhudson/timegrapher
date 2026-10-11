@@ -482,11 +482,7 @@ impl TrendPoint {
             amplitude_b: r.amplitude_odd_deg,
             beat_error_unlock: r.beat_error_unlock_ms,
             beat_error_drop: r.beat_error_ms,
-            heard: r.beats_used > 0
-                && match (r.jitter_us, r.bph) {
-                    (Some(j), Some(b)) => timegrapher_core::beats::watch_heard(Some(j), b),
-                    _ => true,
-                },
+            heard: r.beats_used > 0 && r.watch_heard,
         }
     }
 }
@@ -569,6 +565,9 @@ pub struct TimegrapherApp {
     /// The recording last opened, which the path box goes back to when
     /// another can't be opened.
     opened_path: String,
+    /// The watch set up for the microphone, kept while a recording with
+    /// its own (or no) settings is open, and put back on listening again.
+    mic_setup: Option<WatchSetup>,
     /// What is typed in the Calibre menu's search box.
     calibre_search: String,
     /// The newest beat looked at for a break in the sound, session s.
@@ -814,6 +813,7 @@ impl TimegrapherApp {
             custom_calibres: Vec::new(),
             confirm: None,
             opened_path: String::new(),
+            mic_setup: None,
             calibre_search: String::new(),
             last_beat_seen: 0.0,
             move_prompt: None,
@@ -984,6 +984,9 @@ impl TimegrapherApp {
             return self.resume_microphone();
         }
         self.stop();
+        if let Some(s) = self.mic_setup.take() {
+            self.set_watch_setup(s);
+        }
         match capture::open_input(self.device.as_deref(), None) {
             Ok(c) => {
                 let label = self.device_label(&c);
@@ -1345,10 +1348,14 @@ impl TimegrapherApp {
         self.stop();
         match capture::replay_file(path) {
             Ok(c) => {
+                self.fresh_setup(path, std::slice::from_ref(&path.to_path_buf()));
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
                 self.opened_path = path.display().to_string();
                 self.capture = Some(c);
+                if let Some(n) = self.open_note.take() {
+                    self.info_msg(n);
+                }
             }
             Err(e) => self.open_failed(format!("Can't read {}: {e}", path.display())),
         }
@@ -1361,6 +1368,56 @@ impl TimegrapherApp {
         if !self.opened_path.is_empty() {
             self.file_path = self.opened_path.clone();
         }
+    }
+
+    /// The microphone's watch set aside, the first time a recording is
+    /// opened over it.
+    fn keep_mic_setup(&mut self) {
+        if self.mic_setup.is_none() {
+            self.mic_setup = Some(self.watch_setup());
+        }
+    }
+
+    /// A recording with no session file starts from the defaults, never
+    /// the last take's watch, with its position from the file's name when
+    /// it carries one (reverso_DU_…), and a note saying so.
+    fn fresh_setup(&mut self, path: &Path, files: &[PathBuf]) {
+        self.keep_mic_setup();
+        self.set_watch_setup(WatchSetup::default());
+        let from_name =
+            position_in_name(path).or_else(|| files.first().and_then(|f| position_in_name(f)));
+        if let Some(p) = from_name {
+            self.position = p;
+        }
+        self.open_note = Some(match from_name {
+            Some(p) => format!(
+                "Position {} from the file name. The file has no watch settings, so the \
+                 calibre is Not Set and the lift angle {DEFAULT_LIFT_DEG}°: set them under Watch.",
+                p.label()
+            ),
+            None => format!(
+                "The file has no watch settings, so the calibre is Not Set, the lift angle \
+                 {DEFAULT_LIFT_DEG}° and the position Dial Up: set them under Watch."
+            ),
+        });
+    }
+
+    fn watch_setup(&self) -> WatchSetup {
+        WatchSetup {
+            watch: self.watch.clone(),
+            calibre: self.calibre.clone(),
+            lift_deg: self.lift_deg,
+            bph: self.bph,
+            position: self.position,
+        }
+    }
+
+    fn set_watch_setup(&mut self, s: WatchSetup) {
+        self.watch = s.watch;
+        self.set_calibre(s.calibre);
+        self.lift_deg = s.lift_deg;
+        self.bph = s.bph;
+        self.position = s.position;
     }
 
     fn start_batch(&mut self, path: &Path) {
@@ -1397,25 +1454,18 @@ impl TimegrapherApp {
         }
         // What the take's session file says: the watch, calibre, lift
         // angle, beat rate and positions, before the analysis uses them.
-        let (stretches, settles) = match read_manifest(path) {
+        // Nothing carries over from the take before.
+        let manifest = read_manifest(path);
+        if !matches!(manifest, Ok(Some(_))) {
+            self.fresh_setup(path, &files);
+        } else {
+            self.keep_mic_setup();
+            self.set_watch_setup(WatchSetup::default());
+            self.open_note = None;
+        }
+        let (stretches, settles) = match manifest {
             Ok(Some((m, entries))) => self.apply_manifest(&m, &entries),
-            Ok(None) => {
-                // No session file: the position from the file's name, when
-                // it carries one (reverso_DU_…).
-                self.open_note = None;
-                if let Some(p) = position_in_name(path).or_else(|| position_in_name(&files[0])) {
-                    if p != self.position {
-                        self.set_position(p);
-                    }
-                    self.open_note = Some(format!(
-                        "Position {} from the file name; the lift angle is {}°, as set under \
-                         Watch.",
-                        p.label(),
-                        (self.lift_deg * 10.0).round() / 10.0
-                    ));
-                }
-                Default::default()
-            }
+            Ok(None) => Default::default(),
             Err(e) => {
                 self.error(e);
                 Default::default()
@@ -1741,6 +1791,11 @@ impl TimegrapherApp {
 
     fn reading(&self) -> Option<LiveReading> {
         let live = self.live.as_ref()?;
+        // Stopped inside a settle: the last readings of the position before
+        // the move, rather than nothing.
+        if let Some(at) = self.stopped_in_settle() {
+            return Some(live.reading_at(at, self.average_s));
+        }
         // Nothing is read while the watch settles after a move.
         if self.settling_left().is_some() {
             return None;
@@ -2678,6 +2733,20 @@ impl TimegrapherApp {
     /// Seconds of settling still to come at the time on show.
     fn settling_left(&self) -> Option<f64> {
         self.session.settling_left(self.end_s())
+    }
+
+    /// When stopped (and not looking back) inside the settle after a
+    /// move: when that move was, the end of the position before it.
+    fn stopped_in_settle(&self) -> Option<f64> {
+        if self.running() || self.view_end.is_some() {
+            return None;
+        }
+        let t = self.end_s();
+        self.session
+            .settles()
+            .into_iter()
+            .find(|s| t >= s.0 && t < s.1)
+            .map(|s| s.0)
     }
 
     /// The stretches in the position the watch is in now, which the
@@ -3647,6 +3716,14 @@ impl TimegrapherApp {
                             }
                             return;
                         };
+                        if let Some(at) = self.stopped_in_settle() {
+                            ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
+                                .on_hover_text(
+                                    "Stopped while the watch settled in its new position, so \
+                                     these are the last readings of the position before it.",
+                                );
+                            ui.label(small("·".into()));
+                        }
                         let short = r.span_s + 1.0 < self.average_s;
                         ui.label(small(if short {
                             format!(
@@ -4027,6 +4104,53 @@ impl TimegrapherApp {
                         } else {
                             self.ways_in(ui);
                         }
+                    });
+                });
+            });
+        });
+    }
+
+    /// Nothing that sounds like a watch has been heard in the take, after a
+    /// few seconds of listening: one sentence then, not empty charts and
+    /// cards of figures that would describe noise.
+    fn no_watch_yet(&self) -> bool {
+        let Some(live) = &self.live else {
+            return false;
+        };
+        self.batch.is_none()
+            && live.duration_s() > 6.0
+            && !self.trend.iter().any(|p| p.heard)
+            && self.reading().is_none_or(|r| !r.watch_heard)
+    }
+
+    fn no_watch(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
+        ui.vertical_centered(|ui| {
+            let w = 520.0_f32.min(ui.available_width());
+            ui.allocate_ui(Vec2::new(w, 0.0), |ui| {
+                theme::card().fill(pal.card).show(ui, |ui| {
+                    ui.set_width(w - 28.0);
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.spacing_mut().item_spacing.y = 8.0;
+                        ui.label(
+                            RichText::new("No watch heard. Is it on the microphone?")
+                                .font(theme::semibold(17.0)),
+                        );
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(
+                                    "The sound so far has no beats spaced like a watch's \
+                                     ticks. Check that the watch is running and resting on \
+                                     the microphone, that the right input is chosen at the \
+                                     top, and that the level meter moves with each tick. The \
+                                     readings and charts appear as soon as a watch is heard.",
+                                )
+                                .small()
+                                .color(pal.text_secondary),
+                            )
+                            .wrap(),
+                        );
                     });
                 });
             });
@@ -4505,15 +4629,20 @@ impl TimegrapherApp {
         }
         self.guided_banner(ui);
         self.move_banner(ui);
+        if self.no_watch_yet() {
+            self.no_watch(ui);
+            return;
+        }
         if self.show_readings {
             self.readouts(ui);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
             self.faults_banner(ui);
         }
 
-        // Looking back through a finished or analysed recording.
+        // Looking back through a finished or analysed recording, however
+        // short: a replay stopped early can still be looked back over.
         let total = self.live.as_ref().map_or(0.0, |l| l.duration_s());
-        if !self.running() && total > self.strip.span_s.min(self.average_s) {
+        if !self.running() && total > 1.0 {
             let mut end = self.end_s();
             let pal = theme::pal(ui);
             ui.horizontal(|ui| {
@@ -5573,6 +5702,28 @@ fn calibre_matches(typed: &str, c: &calibres::Calibre) -> bool {
 
 /// The position a recording's file or folder name carries, as a word of
 /// its own: `reverso_DU_01.flac` is dial up.
+/// The Watch settings a take is read with.
+#[derive(Clone, Debug, PartialEq)]
+struct WatchSetup {
+    watch: String,
+    calibre: String,
+    lift_deg: f64,
+    bph: Option<u32>,
+    position: Position,
+}
+
+impl Default for WatchSetup {
+    fn default() -> Self {
+        WatchSetup {
+            watch: String::new(),
+            calibre: String::new(),
+            lift_deg: DEFAULT_LIFT_DEG,
+            bph: None,
+            position: Position::DialUp,
+        }
+    }
+}
+
 fn position_in_name(path: &Path) -> Option<Position> {
     let name = path.file_stem()?.to_str()?;
     let words: Vec<&str> = name

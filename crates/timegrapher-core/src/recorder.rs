@@ -117,6 +117,9 @@ pub struct Recorder {
     resumed_on: Option<String>,
     breaks: Vec<Break>,
     notes: Vec<Note>,
+    /// The folder name the first copy was saved under, so Save Again lands
+    /// in the same place.
+    saved_name: Option<std::ffi::OsString>,
 }
 
 fn io_err(e: hound::Error) -> io::Error {
@@ -166,6 +169,7 @@ impl Recorder {
             resumed_on: None,
             breaks: Vec::new(),
             notes: Vec::new(),
+            saved_name: None,
         };
         r.write_session(None, None)?;
         Ok(r)
@@ -394,6 +398,21 @@ impl Recorder {
     /// audio file closed by a pause that is already there at its full
     /// length is left alone, so Save Again copies the new sound, the open
     /// file, clock.csv and session.json.
+    /// The name for a copy: the take's own, but a take that has moved
+    /// through positions ends in `_positions`, not the one it began in.
+    fn copy_name(&self) -> io::Result<std::ffi::OsString> {
+        let name = self
+            .dir
+            .file_name()
+            .ok_or_else(|| io::Error::other("no folder name"))?;
+        let moved = self.notes.iter().any(|n| n.text.starts_with("position "));
+        let suffix = format!("_{}", safe_name(&self.first_position));
+        Ok(match name.to_str().and_then(|n| n.strip_suffix(&suffix)) {
+            Some(stem) if moved => format!("{stem}_positions").into(),
+            _ => name.to_os_string(),
+        })
+    }
+
     pub fn save_copy(
         &mut self,
         parent: &Path,
@@ -404,11 +423,12 @@ impl Recorder {
         }
         self.clock.flush()?;
         self.write_session(Some(utc(SystemTime::now())), result)?;
-        let name = self
-            .dir
-            .file_name()
-            .ok_or_else(|| io::Error::other("no folder name"))?;
-        let dest = parent.join(name);
+        let name = match &self.saved_name {
+            Some(n) => n.clone(),
+            None => self.copy_name()?,
+        };
+        self.saved_name = Some(name.clone());
+        let dest = parent.join(&name);
         if dest == self.dir {
             return Ok(dest);
         }
@@ -550,6 +570,36 @@ mod tests {
             .to_string_lossy()
             .ends_with("_Test_3235_DU"));
         fs::remove_dir_all(&parent).unwrap();
+    }
+
+    /// A take that moved through positions is saved under `_positions`,
+    /// not the position it began in, and saved again in the same place.
+    #[test]
+    fn a_moved_take_is_saved_as_positions() {
+        let base = std::env::temp_dir().join(format!("tg-moved-{}", std::process::id()));
+        let info = SessionInfo {
+            watch: "Test Watch".into(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: Some(28800),
+            device: "test".into(),
+            sample_rate: 8000,
+            bits: 16,
+            software: "test".into(),
+        };
+        let mut r = Recorder::start(&base.join("tmp"), info).unwrap();
+        let block = Block {
+            samples: vec![0.1; 8000],
+            at: SystemTime::now(),
+        };
+        r.write(&block).unwrap();
+        r.note("position DD").unwrap();
+        let first = r.save_copy(&base.join("saved"), None).unwrap();
+        let name = first.file_name().unwrap().to_str().unwrap().to_string();
+        assert!(name.ends_with("_Test_Watch_positions"), "{name}");
+        r.note("position CL").unwrap();
+        assert_eq!(r.save_copy(&base.join("saved"), None).unwrap(), first);
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
