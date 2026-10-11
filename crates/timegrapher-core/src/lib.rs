@@ -25,6 +25,7 @@ pub mod histogram;
 pub mod live;
 pub mod longrun;
 pub mod longterm;
+pub mod measure;
 pub mod mixer;
 pub mod palette;
 pub mod periodicity;
