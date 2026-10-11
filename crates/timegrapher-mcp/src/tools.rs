@@ -207,7 +207,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Length of each rate reading in seconds (10 if left out).",
             ),
         ],
-        charts: false,
+        charts: true,
         read_only: true,
         defaults: &[],
     },
