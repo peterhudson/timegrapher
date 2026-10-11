@@ -78,8 +78,9 @@ Three jobs, in order:
    an amplitude: the table's `confidence` and `notes` say whether it is
    the maker's published figure or an assumption (many makers publish
    none). When it is not
-   published, say so, and that amplitude moves by about amplitude ÷ lift
-   angle per degree (about 5° at 250° and 52°). Name the lift angle in
+   published, say so, and how much it matters: amplitude is computed in
+   proportion to the lift angle given, so each degree of lift moves it
+   by about amplitude ÷ lift angle (about 5° at 250° and 52°). Name the lift angle in
    any figure they will repeat to someone else.
 
 ### 2. Test (see [guided-test.md](references/guided-test.md))
@@ -126,8 +127,8 @@ Work through them in this order. The reasons are in
    actually runs at. If not, back to set-up. If the signal is clean but
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.
-   **Too few beats** (`beats_found` well under duration × bph ÷ 3600, say
-   under 90%) is first a question of the beat rate, before clipping, gain
+   **Too few beats** (`beats_found` well under duration × bph ÷ 3600; this
+   skill's working threshold is under 90%) is first a question of the beat rate, before clipping, gain
    or the watch: run `analyze` again without `--bph` and see which rate
    the program finds and whether the beats then add up. A forced wrong
    beat rate finds a fraction of the beats and gives a meaningless
@@ -144,8 +145,8 @@ Work through them in this order. The reasons are in
    ±11° at 280°. Look up the calibre in the table; if unknown, use 52 and say
    the amplitude could be ±10–15° out.
 4. **Beat error.** Quote the unlock figure, `beat_error_unlock_ms`
-   (as a positive number): it is what tg and commercial timegraphers
-   show. `overall.beat_error_ms` is measured from the drop; the two
+   (as a positive number): this project's headline beat error is the
+   unlock figure. `overall.beat_error_ms` is measured from the drop; the two
    differ when Tick and Tock take different times from unlock to drop.
    Under about 0.5 ms is good, under 0.7 ms fine for a
    modern watch, up to about 1 ms acceptable on an older one. It is an
@@ -185,8 +186,10 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   the microphone (a missed unlock or a doubled sound reads as very high
   amplitude). Real amplitude that high risks **knocking** (overbanking): the
   trace jumps or doubles and you can sometimes hear a double tick. That
-  wants a watchmaker; it can damage the escapement. Below about 320°,
-  don't raise knocking at all.
+  wants a watchmaker; it can damage the escapement. The program flags
+  `overbanking` only above 330°, Witschi's figure
+  (docs/fault-signatures.md, docs/sessions.md); below that, don't raise
+  knocking at all.
 - **Low amplitude everywhere**, judged against what *that calibre* normally
   does (a Seiko NH35 at 235° is fine; an ETA 2824 at 235° is tired): dirty
   or dried oil, a tired mainspring, or wear. Weigh it with the time since
@@ -213,8 +216,7 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   the 2824-2 at a mean of ±12 s/d (Standard, two positions), ±7
   (Elaboré, three) and ±4 (Top, five)
   ([uhrinstinkt](https://www.uhrinstinkt.de/en/blogs/magazine/eta-movements-quality-levels-in-comparison),
-  [Caliber Corner](https://calibercorner.com/eta-caliber-2824-2/), which
-  adds up to ±30, ±20 and ±15 in any one position); Seiko's Time Module
+  [Caliber Corner](https://calibercorner.com/eta-caliber-2824-2/)); Seiko's Time Module
   gives the NH35A −20 to +40 s/d
   ([Caliber Corner](https://calibercorner.com/seiko-caliber-nh35a)). With
   no published figure for the calibre, say so rather than guess.

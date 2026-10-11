@@ -130,8 +130,9 @@ it gets worse.
 - A mean rate over the positions, or a spread between them, several
   times the maker's figure for the calibre, after demagnetising. Say it
   plainly: it needs a watchmaker whatever the cause. Example: a Rolex
-  3235 at +46 s/d dial up and −18 crown right, a spread of 84 s/d and a
-  mean of +23, against Rolex's −2/+2 for the cased watch.
+  3235 at +66 s/d crown left and −18 crown right, a spread of 84 s/d,
+  and a mean of +23 over six positions (+46 DU, +37 DD, +17 CD, −11 CU,
+  +66 CL, −18 CR), against Rolex's −2/+2 for the cased watch.
 - Beat error over about 1.5 ms.
 - A clear periodic fault confirmed on a long run.
 - Still gaining hundreds of seconds a day after demagnetising properly
