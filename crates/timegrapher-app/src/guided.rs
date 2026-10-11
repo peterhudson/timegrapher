@@ -313,6 +313,39 @@ pub struct Table {
     pub dvh_rate: Option<f64>,
     /// The same for amplitude, degrees.
     pub dvh_amplitude: Option<f64>,
+    /// Conditions found in a position's sound, one line each: no regular
+    /// beat, clipping, a short stretch of beats.
+    pub notes: Vec<String>,
+}
+
+/// The conditions found in one position's measurement, as plain facts.
+fn conditions(label: &str, bph: u32, m: &Measurement) -> Vec<String> {
+    use timegrapher_core::measure::Caveat;
+    let mut out = Vec::new();
+    if !m.watch_heard {
+        out.push(match m.jitter_us {
+            Some(j) => format!(
+                "{label}: no regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
+                j / 1000.0,
+                j / (3.6e9 / bph.max(1) as f64) * 100.0
+            ),
+            None => format!("{label}: no regular beat found"),
+        });
+    }
+    if m.clipped_beats > 0 {
+        let pct = m.clipped_fraction * 100.0;
+        out.push(if pct < 0.5 {
+            format!("{label}: clipping on under 1% of beats")
+        } else {
+            format!("{label}: clipping on {pct:.0}% of beats")
+        });
+    }
+    for c in &m.caveats {
+        if let Caveat::ShortSpan { span_s } = c {
+            out.push(format!("{label}: {span_s:.0} s of beats"));
+        }
+    }
+    out
 }
 
 fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
@@ -365,6 +398,10 @@ pub fn table(readings: &[Reading]) -> Table {
         largest_difference,
         dvh_rate,
         dvh_amplitude,
+        notes: readings
+            .iter()
+            .flat_map(|r| conditions(&r.position.label(), r.bph, &r.measurement))
+            .collect(),
     }
 }
 
@@ -453,6 +490,9 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                 "DVH: the vertical positions' mean less the horizontal ones', \
                  for rate and for amplitude",
             );
+            for n in &t.notes {
+                ui.label(RichText::new(n).color(pal.text));
+            }
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(

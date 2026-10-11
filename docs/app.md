@@ -86,9 +86,7 @@ scatter alone. It is precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
 (orange dot). The sound can't tell which beat is
-which pallet, so the first beat heard is called the tick. A big gap
-between tick and tock usually means one side's sounds were misread rather than a fault in the
-watch;
+which pallet, so the first beat heard is called the tick;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
@@ -100,46 +98,33 @@ from the scatter of the beats alone; it shrinks with a longer averaging
 time. Under the rate: how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
-which is the spread of the dots across the strip. Lower is steadier; it
-rises with noise or a muffled sound as well as with a watch that runs
-unevenly, so compare it on the same stand and microphone. The **?** on
+which is the spread of the dots across the strip; smaller means less
+scatter. Noise, a muffled sound and the stand add to it as well as the
+watch. The **?** on
 each reading explains it at length.
 
 **What limits a reading.** Each figure carries its ±, worked out as
 `analyze` and `session` work out theirs (`timegrapher_core::measure`),
-over the averaging time: it says how far the figure could be off, not
-how steady the watch is. The amplitude's and beat error's ± are the
+over the averaging time: how far the figure could be off, a property of
+the measurement rather than of the watch. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 pause or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, at the right of the reading's caption, with a sentence on
-hover: the beats spanning under 10 s, the share of expected beats found
-when under 95%, the share of beats clipped when over 1% (amplitude and
-beat error), the lift angle assumed when no calibre or lift angle is set
-(amplitude), an input whose clock hasn't been measured (rate), a beat
-rate set that differs from the one heard, and pauses in the stretch. No
-reading is graded. When the beats found scatter
-like noise rather than a watch's ticks (`beats::watch_heard`, as
-`analyze` uses), the cards show no figures, only **No watch heard**.
-When nothing in the take has sounded like a watch after its first few
-seconds, the cards and charts give way to one card, **No watch heard. Is
-it on the microphone?**, with what to check; they appear as soon as a
-watch is heard.
-
-**Possible Faults.** Under the readings, an amber banner names any
-escapement fault the shape of the Tick and Tock points to (unlocking too
-strong, no unlock sound, friction during the impulse, an uneven unlock,
-a rub after the drop) and the beat it is on. The shape needs more sound
-than the live engine keeps, so the app reads the last minute up to the
-moment shown back from the recording (the session's own scratch
-recording while listening) and analyses it as `analyze` does, in the
-background: every 30 s while listening, and when the moment shown moves.
-Hovering on a fault shows the measures behind it. Nothing shows when
-nothing is seen, or when the sound can't be judged (no watch heard,
-clipping, or readings too scattered to read the shape). A finding is worth
-checking on the bench, not a diagnosis; see
-[fault-signatures.md](fault-signatures.md).
+hover: "12 s of beats" when the beats span under 10 s, "540 of 600
+expected beats found" when under 95% were found, "3% of beats clipped"
+when over 1% clip (amplitude and beat error), "lift angle 52°, the
+default (calibre not set)" when no calibre or lift angle is set
+(amplitude), "input clock not measured" (rate), a beat rate set that
+differs from the one heard, and pauses in the stretch. No reading is
+graded. When the beats found don't come at regular intervals (their
+timing scatter is 2% of a beat or more, `beats::watch_heard`, as
+`analyze` uses), the cards show no figures, only **No regular beat found
+(timing scatter 8.6 ms, 5.2% of a beat)**. When nothing in the take has
+had a regular beat after its first few seconds, the cards and charts give
+way to one card saying the same; they appear once a regular beat is
+found.
 
 **Positions Test.** Positions Test… beside the microphone buttons leads
 through the six positions in Witschi's order: Dial Up, Dial Down, Crown
@@ -157,9 +142,11 @@ with core `session::measure`, as `session` does (rate on the input's
 measured clock when there is one), and a window shows them as a table:
 each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
 less the mean of the six, its amplitude and its beat error (a size), a
-Mean row, the largest difference between the rates (D), and vertical
-less horizontal for rate and amplitude (DVH). The
-figures are `session`'s for the same stretches. It gives no verdict and no
+Mean row, the largest difference between the rates (D), and
+vertical less horizontal for rate and amplitude (DVH). Under
+them, a plain line for each condition found in a position's sound: no
+regular beat (with its timing scatter), clipping, or under 10 s of
+beats. The figures are `session`'s for the same stretches. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
@@ -187,17 +174,16 @@ compares directly with them; the True Clock line is beside it, never
 instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording.
 
-**Clipping.** When more than 1% of the beats in the readings have a
-clipped sample in their sound, counted as `timegrapher analyze` counts
-them, an amber banner above the readings says so and what to do: lower
-Input Level in the Microphone card (or, for a recording, record with the
-level lower). Clipping flattens the loudest part of each tick, which moves
+**Clipping.** Whenever a beat in the readings has a clipped sample in
+its sound, counted as `timegrapher analyze` counts them, a red banner
+above the readings says **Clipping on 3% of beats** (or "under 1%").
+Clipping flattens the loudest part of each tick, which moves
 the drop and so the amplitude and the beat error; the rate is unaffected.
 The banner follows the readings: it shows while the beats being averaged
 clip and goes when they no longer do, and looking back through a
 recording shows it for the stretches that clipped. The level meter in the
-toolbar turns red on any clipped sample at once; the banner is the
-judgement on the readings. Even a watch driven several times past full scale is
+toolbar turns red on any clipped sample at once; the banner counts the
+beats in the readings. Even a watch driven several times past full scale is
 still read, with the banner, rather than taken for silence: when most of
 the beats found clip, the flattened peaks no longer count against the
 signal.
@@ -226,10 +212,10 @@ indigo line), the three sounds where the engine tells them apart (dashed brown: 
 The solid edges and the dashed sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
 readings come from, and the sounds are where each of the three sounds
-rises halfway up its own climb, used to recognise escapement faults, so
-they sit near but not exactly on the edges. A sound line is missing when
+rises halfway up its own climb, from a separate measurement of the
+beat's shape, so they sit near but not exactly on the edges. A sound line is missing when
 that sound can't be told apart from its neighbour (a soft unlock merged
-into the impulse, say), which is a finding in itself. The Tick tock
+into the impulse, say). The Tick tock
 profile card switches the edges and the sounds on and off, sets the scale
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
@@ -444,15 +430,13 @@ last time, or System Default. Replaying or analysing a recording never
 touches an input.
 
 **Level meter.** In the toolbar, while listening to a microphone: a bar to
-the loudest sample of the last half second, green when it is right, amber
-when it is very quiet or too hot, red when the input clips, with marks at
-the −10 dBFS target and the −6 dBFS limit, and the peak in dBFS beside it.
+the loudest sample of the last half second, grey, or red while the input
+clips, with plain reference marks at −10 and −6 dBFS, and the peak in
+dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
 
-**Status bar.** The input; the signal, how far the typical beat's peak
-stands above the typical level between beats, with a coloured dot and
-what it means: 10× and above good; 5 to 10× fair, the rate reliable; 3 to
-5× poor, only the rate to be trusted; below 3× no watch heard (noise alone
-reads about 2×); its hint says what to do about a low figure. It measures
+**Status bar.** The input; the signal, "signal 12×", how far the typical
+beat's peak stands above the typical level between beats (noise alone
+reads about 2×, and below 4× no beats are logged). It measures
 loudness, not the shape of the tick, so hum, knocks or a holder that
 smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and on the right the beat rate and the
@@ -496,17 +480,16 @@ been published yet"). The request carries no account or identifier.
   control (`amixer`). The change is made when you let go of the slider.
   On other systems, set the level in the system's sound settings. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
-  proposals. A microphone's automatic gain chases every tick, so it
-  clips and changes the shape of the sound; if it is on, the card shows
-  an amber warning with **Turn it off**, and otherwise says nothing about
-  it.
+  proposals. When the microphone's automatic gain is on, the card says
+  **Automatic gain: on** with a **Turn It Off** button, and otherwise
+  says nothing about it.
 - **Calibre.** Not Set, a calibre from the built-in table
   (`timegrapher_core::calibres`, grouped by maker; each entry's hint gives
   its beat rate, lift angle and wheel periods), or one of your own. The
   search box at the top of the menu narrows it as you type, by maker or
   calibre, any case, spaces ignored ("rolex", "3235", "eta 28"). With
-  none picked and the lift angle left at 52°, an amber line under it says
-  the amplitude rests on that guess.
+  none picked and the lift angle left at 52°, a line under it says the
+  amplitude is worked out from that default.
   Picking one fills in its lift angle and names the cycles Steadiness
   finds after its own wheels; if the watch beats at another rate than the
   calibre, the card says so. **New Custom Calibre** adds one with a name
