@@ -15,6 +15,7 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "packaging/**"
+      - "crates/timegrapher-mcp/packaging/**"
   workflow_dispatch:
     inputs:
       release:
@@ -96,6 +97,7 @@ jobs:
           mkdir check && tar -C check -xzf dist/*.tar.gz
           check/*/timegrapher --version
           check/*/timegrapher-app --help
+          check/*/timegrapher-mcp --version
           APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage cli --version
           APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage --help
       - name: Check the files (macOS)
@@ -110,12 +112,30 @@ jobs:
           hdiutil detach "$RUNNER_TEMP/dmg"
           mkdir check && tar -C check -xzf dist/*-cli.tar.gz
           check/*/timegrapher --version
+          check/*/timegrapher-mcp --version
+          # The Claude Desktop bundle, once the MCP crate packs one.
+          for b in dist/*.mcpb; do
+            [ -e "$b" ] || continue
+            mkdir mcpb && unzip -q "$b" -d mcpb
+            python3 -c "import json,sys; json.load(open('mcpb/manifest.json'))"
+            lipo -archs mcpb/server/timegrapher-mcp
+            mcpb/server/timegrapher-mcp --version
+            mcpb/server/timegrapher --version
+          done
       - name: Check the files (Windows)
         if: matrix.platform == 'windows'
         run: |
           7z x -bso0 -ocheck dist/*.zip
           check/*/timegrapher.exe --version
           check/*/timegrapher-app.exe --help
+          check/*/timegrapher-mcp.exe --version
+          for b in dist/*.mcpb; do
+            [ -e "$b" ] || continue
+            7z x -bso0 -omcpb "$b"
+            python -c "import json; json.load(open('mcpb/manifest.json'))"
+            mcpb/server/timegrapher-mcp.exe --version
+            mcpb/server/timegrapher.exe --version
+          done
 
       - uses: actions/upload-artifact@v4
         with:
