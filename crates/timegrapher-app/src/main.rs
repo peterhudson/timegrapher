@@ -19,6 +19,7 @@ mod app;
 mod applog;
 mod faults;
 mod fields;
+mod guided;
 mod help;
 mod isochronism;
 mod profiles;
