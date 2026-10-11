@@ -552,7 +552,7 @@ pub struct TimegrapherApp {
     /// Sound read from the recording for the Scope when looking back: from
     /// and to (seconds), the sample rate and the samples.
     scope_audio: Option<(f64, f64, f64, Vec<f32>)>,
-    scope_job: Option<std::sync::mpsc::Receiver<(f64, f64, f64, Vec<f32>)>>,
+    scope_job: Option<std::sync::mpsc::Receiver<ScopeCut>>,
     /// The steadiness tests' latest answer over the session, and the run
     /// in the background that will replace it.
     steady: Option<Steadiness>,
@@ -5210,6 +5210,10 @@ fn banner(
     );
     resp.response
 }
+
+/// A stretch of a recording cut for the scope: its start and end, s, its
+/// sample rate, and its samples.
+type ScopeCut = (f64, f64, f64, Vec<f32>);
 
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
