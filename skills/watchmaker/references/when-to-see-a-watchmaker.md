@@ -70,9 +70,11 @@ values with the movement wound up
 
 After 24 hours, "approx −10% to −15% is ok". The same course's worked
 example on p. 14 gives vertical as 220–270°, so treat the vertical floor
-as soft. Other figures in circulation for Witschi (260–320° horizontal,
-240–280° vertical, and Caliber Corner's "about 260° – 310°") come from
-documents not verified here; quote the course.
+as soft. Witschi's later *Testing methods for mechanical watches*
+(2025, doc. D40e, about p. 34; the page is approximate) gives 260–320°
+horizontal and 240–280° vertical: when you quote those, name that
+document, not the course. Caliber Corner's "about 260° – 310°" was not
+verified here.
 
 ### Makers' figures by movement
 
