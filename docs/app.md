@@ -180,6 +180,19 @@ all at once it is worked out from the file when you stop on a moment.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
+**Scope.** The sound itself, beat by beat, like the scope view on a
+Witschi: what the engine heard, high-passed at 1 kHz, not an average. A
+tab beside the Tick Tock Profile. **20 ms** shows the Tick and the Tock
+in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
+after, with the profile's Unlock and Drop marks. **200 ms** shows one
+row each from 20 ms before the beat to 180 ms after, so the next beat
+shows too. **400 ms** shows every beat in one grey row, three or four
+beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
+the older ones fainter, so a beat that differs from the rest stands out.
+While listening it shows the latest beats; looking back, or on a
+recording, it shows the beats up to the moment shown, read from the
+recording. No crosshair, as on the other sound plots.
+
 **Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating
 exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat

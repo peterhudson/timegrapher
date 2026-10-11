@@ -7,8 +7,8 @@ use crate::fields::{self, Format};
 use crate::help;
 use crate::profiles;
 use crate::report::{self, ReportDialog};
-use crate::settings::{CustomCalibre, CustomWheel, Settings};
 use crate::scope;
+use crate::settings::{CustomCalibre, CustomWheel, Settings};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -4068,8 +4068,36 @@ impl TimegrapherApp {
         profiles::draw(ui, &shown, self.sound_opts, drop_be, note.as_deref());
     }
 
-    /// Start working out the sound at `end` from the file, unless one is
-    /// already under way. False when there is no file to read.
+    /// The Tick Tock profiles nearest `end`, as the profile pane shows them:
+    /// the latest while listening, else what the session kept, else worked
+    /// out from the recording (none until that is done).
+    fn profiles_at(&mut self, end: f64) -> Profiles {
+        let latest = self.view_end.is_none() && self.running();
+        let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
+        let kept = i
+            .checked_sub(1)
+            .map(|i| &self.sound_history[i])
+            .filter(|(t, _)| end - t <= SOUND_EVERY_S + 0.5)
+            .map(|(_, p)| p.clone());
+        match kept {
+            _ if latest => self
+                .live
+                .as_ref()
+                .map_or([None, None], |l| l.tick_profiles().clone()),
+            Some(p) => p,
+            None => {
+                self.poll_sound_job();
+                match &self.sound_at {
+                    Some((t, p)) if (t - end).abs() < 0.5 => p.clone(),
+                    _ => {
+                        self.start_sound_job(end);
+                        [None, None]
+                    }
+                }
+            }
+        }
+    }
+
     /// The Scope pane: the latest beats' sound up to the time on show, from
     /// what the live engine still holds, else read from the recording.
     fn scope_pane(&mut self, ui: &mut egui::Ui) {
@@ -4077,6 +4105,7 @@ impl TimegrapherApp {
         scope::controls(ui, &mut self.scope_view);
         ui.add_space(4.0);
         let view = self.scope_view;
+        let profiles = self.profiles_at(self.end_s());
         let Some(live) = &self.live else {
             ui.label(
                 RichText::new("Listen to a watch or open a recording to see its sound here.")
@@ -4095,7 +4124,8 @@ impl TimegrapherApp {
             .iter()
             .map(|&(_, even, _)| scope::pick(live.beats(), view.zoom, view.ring, end, Some(even)))
             .collect();
-        let profiles = live.tick_profiles().clone();
+        // The marks from the profile nearest the moment shown, as the
+        // Tick Tock Profile shows them.
         let fs = live.sample_rate() as f64;
         let (before, after) = view.zoom.window();
         let times = picks.iter().flatten().map(|b| b.time);
@@ -4207,6 +4237,8 @@ impl TimegrapherApp {
         true
     }
 
+    /// Start working out the sound at `end` from the file, unless one is
+    /// already under way. False when there is no file to read.
     fn start_sound_job(&mut self, end: f64) -> bool {
         // One at a time: while the strip is dragged, the next starts when
         // this one is done.

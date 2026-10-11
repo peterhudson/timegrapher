@@ -127,20 +127,23 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, fs: f64) {
     let x_of = |ms: f64| plot.left() + ((ms + before * 1000.0) / span) as f32 * plot.width();
     // Grid and the time axis, in ms from the drop.
     let step = zoom.step_ms();
-    let mut ms = -(before * 1000.0 / step).floor() * step;
+    let mut ms = -(before * 1000.0 / step).floor() * step + 0.0;
     while ms <= span - before * 1000.0 + 1e-9 {
         let x = x_of(ms);
         painter.line_segment(
             [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
             egui::Stroke::new(1.0_f32, pal.separator),
         );
-        painter.text(
-            egui::pos2(x, plot.bottom() + 3.0),
-            egui::Align2::CENTER_TOP,
-            format!("{ms:.0}"),
-            egui::FontId::proportional(11.0),
-            pal.text_tertiary,
-        );
+        // Room left at the right for the unit; no "-0".
+        if x < plot.right() - 22.0 {
+            painter.text(
+                egui::pos2(x, plot.bottom() + 3.0),
+                egui::Align2::CENTER_TOP,
+                format!("{:.0}", ms + 0.0),
+                egui::FontId::proportional(11.0),
+                pal.text_tertiary,
+            );
+        }
         ms += step;
     }
     painter.text(
