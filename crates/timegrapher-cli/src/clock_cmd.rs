@@ -274,6 +274,43 @@ pub fn correction(
     }
 }
 
+/// [`correction`], else the sound card's error read from the USB lines in
+/// the first of `files` (as `analyze` does), so every command corrects a
+/// take the same way.
+pub fn correction_or_usb(
+    files: &[std::path::PathBuf],
+    device: Option<&str>,
+    card_ppm: Option<f64>,
+) -> Result<Option<(f64, String)>, String> {
+    let Some(first) = files.first() else {
+        return Ok(None);
+    };
+    if let Some(c) = correction(first, device, card_ppm)? {
+        return Ok(Some(c));
+    }
+    let info =
+        timegrapher_core::audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
+    let keep = (timegrapher_core::usbclock::MAX_DURATION_S * info.sample_rate as f64) as usize;
+    let mut x: Vec<f32> = Vec::new();
+    timegrapher_core::audio::stream(first, 1 << 16, |b| {
+        if x.len() < keep {
+            x.extend_from_slice(&b[..b.len().min(keep - x.len())]);
+        }
+    })
+    .map_err(|e| format!("{}: {e}", first.display()))?;
+    Ok(
+        timegrapher_core::usbclock::measure(&x, info.sample_rate).map(|c| {
+            (
+                c.ppm,
+                format!(
+                    "from {} USB lines in the recording, {:.1} ppm apart",
+                    c.lines, c.spread_ppm
+                ),
+            )
+        }),
+    )
+}
+
 fn stored_text(e: &DeviceClock) -> String {
     format!("stored for '{}', {}", e.device, e.measured_utc)
 }

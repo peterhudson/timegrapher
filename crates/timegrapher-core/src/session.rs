@@ -319,8 +319,8 @@ pub struct Measurement {
     /// Signed beat error from the drop (the fitted beat times), ms (even
     /// beats late is positive).
     pub beat_error_ms: Option<f64>,
-    /// Signed beat error from the unlock, as tg and commercial
-    /// timegraphers measure it (median of the amplitude windows), ms.
+    /// Signed beat error from the unlock, the figure checked against tg's
+    /// beat error in regress (median of the amplitude windows), ms.
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
