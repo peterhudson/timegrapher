@@ -11,6 +11,11 @@ uses lift 52° and notes the lift angle for this movement is not settled.
 | -03 | 246° | 260° | −4.78 | 0.43 |
 | Whole | 242° | 256° | −4.98 | 0.41 |
 
+Rates are on the sound-card clock. The program's clock-corrected rate on
+these files is about −8.0, −7.8 and −6.9 s/d: the card ran about 19 ppm
+slow, so correcting it lowers the rate. That is right, not a disagreement.
+Compare the card-clock rate with tg.
+
 Also in the corpus README: a once-a-minute amplitude cycle of about 18° and a
 rate cycle of 6.7 s/d peak to peak (escape wheel period). A correct helper
 gives honest DU-only numbers, states the lift angle and that it is uncertain,
