@@ -175,7 +175,7 @@ instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording.
 
 **Clipping.** Whenever a beat in the readings has a clipped sample in
-its sound, counted as `timegrapher analyze` counts them, a red banner
+its sound, counted as `timegrapher analyze` counts them, an amber banner
 above the readings says **Clipping on 3% of beats** (or "under 1%").
 Clipping flattens the loudest part of each tick, which moves
 the drop and so the amplitude and the beat error; the rate is unaffected.

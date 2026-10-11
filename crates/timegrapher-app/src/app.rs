@@ -4572,7 +4572,7 @@ impl TimegrapherApp {
         } else {
             format!("{pct:.0}")
         };
-        let resp = banner(ui, pal.bad, |ui| {
+        let resp = banner(ui, pal.warn, |ui| {
             ui.add(
                 egui::Label::new(
                     RichText::new(format!("Clipping on {share}% of beats.")).color(pal.text),
