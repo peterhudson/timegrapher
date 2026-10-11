@@ -9,7 +9,7 @@ use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{default_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, session, timing};
+use timegrapher_core::{audio, breaks, session, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -195,7 +195,10 @@ pub fn run(
         ..Default::default()
     };
     lc.wheels.extend(extra);
-    let rep = longrun::analyse(&log, clock.as_ref(), &lc);
+    let mut log = log;
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));

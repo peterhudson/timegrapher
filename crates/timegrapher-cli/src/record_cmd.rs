@@ -19,6 +19,7 @@ use timegrapher_core::analysis::Clipping;
 use timegrapher_core::audio;
 use timegrapher_core::calibres;
 use timegrapher_core::capture::Block;
+use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
 use timegrapher_core::session::{Manifest, Position};
 use timegrapher_core::{analyze, AnalysisConfig};
@@ -41,6 +42,8 @@ pub struct Options {
     pub lift: Option<f64>,
     pub wind_h: f64,
     pub json: bool,
+    /// Keep the latest readings here while recording (`timegrapher.live/1`).
+    pub live: Option<PathBuf>,
 }
 
 /// A quick look at the take, enough to say whether to keep it.
@@ -228,6 +231,10 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
         let want = ((o.seconds * fs_hz as f64).round() as usize).min(a.samples.len());
         let t0 = SystemTime::now();
         let block = (fs_hz / 50).max(1) as usize;
+        let mut feed = o
+            .live
+            .as_ref()
+            .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
         let mut n = 0;
         while n < want {
             let m = (want - n).min(block);
@@ -238,16 +245,152 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
             rec.write(&b)
                 .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
             n += m;
+            // With a live view, played back as it would have been heard.
+            if let Some(f) = feed.as_mut() {
+                f.push(&b.samples);
+                let ahead =
+                    n as f64 / fs_hz as f64 - t0.elapsed().unwrap_or_default().as_secs_f64();
+                if ahead > 0.0 {
+                    std::thread::sleep(Duration::from_secs_f64(ahead));
+                }
+            }
+        }
+        if let Some(f) = feed.as_mut() {
+            f.finish();
         }
         return Ok((rec, label, fs_hz));
     }
-    live(o, pos, info, start)
+    live(o, pos, set, info, start)
+}
+
+/// Seconds of beats on the live strip, and the strip's half width, ms: the
+/// app's defaults.
+const STRIP_S: f64 = 30.0;
+/// Averaging time of the live readings, seconds: the app's default.
+const AVERAGE_S: f64 = 10.0;
+/// Most points kept in the live trend; older ones are thinned.
+const MAX_TREND: usize = 300;
+
+/// The latest readings while recording, kept in a file for a live view
+/// (`timegrapher.live/1`): heard as the app hears it, written about once
+/// a second of audio, each time whole, so a reader never sees half a file.
+struct Feed {
+    path: PathBuf,
+    position: &'static str,
+    seconds: f64,
+    live: LiveAnalyzer,
+    /// The strip's anchor, set once from the first beats as the app does.
+    anchor: Option<(i64, f64)>,
+    /// Time, rate, amplitude and beat error from the unlock, once a second.
+    trend: Vec<[Option<f64>; 4]>,
+    next_s: f64,
+}
+
+impl Feed {
+    fn new(path: &Path, pos: Position, seconds: f64, fs_hz: u32, set: &Settings) -> Feed {
+        let mut cfg = LiveConfig::default();
+        cfg.analysis.bph = set.bph;
+        cfg.analysis.amplitude.lift_deg = set.lift;
+        let mut f = Feed {
+            path: path.to_path_buf(),
+            position: pos.common(),
+            seconds,
+            live: LiveAnalyzer::new(fs_hz, cfg),
+            anchor: None,
+            trend: Vec::new(),
+            next_s: 1.0,
+        };
+        f.write(false);
+        f
+    }
+
+    fn push(&mut self, samples: &[f32]) {
+        self.live.push(samples);
+        if self.live.duration_s() >= self.next_s {
+            self.next_s = self.live.duration_s().floor() + 1.0;
+            self.write(false);
+        }
+    }
+
+    fn finish(&mut self) {
+        self.write(true);
+    }
+
+    fn write(&mut self, done: bool) {
+        let r = self.live.reading(AVERAGE_S);
+        let t = self.live.duration_s();
+        let period = self.live.bph().map(|b| 3600.0 / b as f64);
+        let beats = self.live.beats();
+        if self.anchor.is_none() && beats.len() >= 16 {
+            if let Some(p) = period {
+                let last = &beats[15];
+                let mid = beats[..16]
+                    .iter()
+                    .map(|b| b.time - (b.index - last.index) as f64 * p)
+                    .sum::<f64>()
+                    / 16.0;
+                self.anchor = Some((last.index, mid));
+            }
+        }
+        if r.beats_used > 0 {
+            self.trend.push([
+                Some(t),
+                r.rate_s_per_day,
+                r.amplitude_deg,
+                r.beat_error_unlock_ms,
+            ]);
+            if self.trend.len() > MAX_TREND {
+                // Every other point of the older half goes.
+                let half = self.trend.len() / 2;
+                let mut k = 0;
+                self.trend.retain(|_| {
+                    k += 1;
+                    k > half || k % 2 == 1
+                });
+            }
+        }
+        // Each beat's lead on the anchor, ms (positive: early), as the
+        // app's strip draws it; Tick is side 0.
+        let strip: Vec<[f64; 3]> = match (self.anchor, period) {
+            (Some((index, time)), Some(p)) => beats
+                .iter()
+                .filter(|b| b.time >= t - STRIP_S)
+                .map(|b| {
+                    let expected = time + (b.index - index) as f64 * p;
+                    [
+                        b.time,
+                        (expected - b.time) * 1000.0,
+                        b.index.rem_euclid(2) as f64,
+                    ]
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let col = |i: usize| -> Vec<Option<f64>> { self.trend.iter().map(|p| p[i]).collect() };
+        let doc = json!({
+            "schema": "timegrapher.live/1",
+            "position": self.position,
+            "seconds": self.seconds,
+            "recorded_s": t,
+            "done": done,
+            "average_s": AVERAGE_S,
+            "beats_heard": beats.len(),
+            "reading": r,
+            "strip": { "span_s": STRIP_S, "period_s": period, "beats": strip },
+            "trend": { "t_s": col(0), "rate": col(1), "amplitude": col(2), "beat_error": col(3) },
+        });
+        let tmp = self.path.with_extension("tmp");
+        if fs::write(&tmp, doc.to_string()).is_ok() {
+            let _ = fs::rename(&tmp, &self.path);
+        }
+    }
 }
 
 #[cfg(feature = "live")]
 fn live(
     o: &Options,
     pos: Position,
+    set: &Settings,
     info: impl Fn(String, u32, u16) -> SessionInfo,
     start: impl Fn(SessionInfo) -> Result<Recorder, String>,
 ) -> Result<(Recorder, String, u32), String> {
@@ -264,6 +407,10 @@ fn live(
         rec.dir().display()
     );
     let want = (o.seconds * fs_hz as f64).round() as usize;
+    let mut feed = o
+        .live
+        .as_ref()
+        .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
     let mut got = 0usize;
     let mut next_note = 10.0;
     while got < want {
@@ -280,6 +427,9 @@ fn live(
         };
         rec.write(&b)
             .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
+        if let Some(f) = feed.as_mut() {
+            f.push(&b.samples);
+        }
         got += take;
         let s = got as f64 / fs_hz as f64;
         if s >= next_note && got < want {
@@ -288,6 +438,9 @@ fn live(
         }
     }
     eprintln!("done: the watch can be moved");
+    if let Some(f) = feed.as_mut() {
+        f.finish();
+    }
     Ok((rec, cap.label.clone(), fs_hz))
 }
 
@@ -295,6 +448,7 @@ fn live(
 fn live(
     _: &Options,
     _: Position,
+    _: &Settings,
     _: impl Fn(String, u32, u16) -> SessionInfo,
     _: impl Fn(SessionInfo) -> Result<Recorder, String>,
 ) -> Result<(Recorder, String, u32), String> {
