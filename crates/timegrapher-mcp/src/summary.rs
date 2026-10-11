@@ -82,7 +82,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     }
     if schema.starts_with("timegrapher.analyze/") {
         if doc["watch_heard"] == false {
-            lines.push("No regular beat was found, so there are no readings.".to_string());
+            lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
             let rate = doc["rate_corrected_s_per_day"]
                 .as_f64()
@@ -337,7 +337,7 @@ mod tests {
             "caveats": [{ "code": "no_watch" }] });
         assert!(lead(&doc, &Map::new())
             .unwrap()
-            .starts_with("No regular beat was found"));
+            .starts_with("No regular beat found"));
         assert!(lead(&json!({ "schema": "timegrapher.doctor/1" }), &Map::new()).is_none());
     }
 }

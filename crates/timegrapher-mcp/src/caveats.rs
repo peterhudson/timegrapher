@@ -15,7 +15,7 @@ pub const META_KEY: &str = "timegrapher/limits";
 pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
     Some(match c["code"].as_str()? {
-        "no_watch" => "No regular beat was found, so there are no readings.".into(),
+        "no_watch" => no_regular_beat(&Value::Null, None),
         "set_rate_disagrees" => match c["heard"].as_u64() {
             Some(h) => format!(
                 "The beat rate set for this watch differs from the one heard ({h} beats \
@@ -56,6 +56,21 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     })
 }
 
+/// The canonical sentence for a measurement with no regular beat: the
+/// timing scatter of the beats, in ms and as a share of the beat period,
+/// when the measurement gives it (`jitter_us`, with the beat rate).
+pub fn no_regular_beat(m: &Value, bph: Option<f64>) -> String {
+    let scatter = match (m["jitter_us"].as_f64(), bph.filter(|b| *b > 0.0)) {
+        (Some(j), Some(b)) => format!(
+            " (timing scatter {:.1} ms, {:.1}% of a beat)",
+            j / 1000.0,
+            j / (3.6e9 / b) * 100.0
+        ),
+        _ => String::new(),
+    };
+    format!("No regular beat found{scatter}. There are no rate, amplitude or beat error readings.")
+}
+
 /// A session reading's name: its position, and its state of wind when the
 /// session has more than one.
 fn reading_name(r: &Value) -> String {
@@ -84,12 +99,18 @@ pub fn limits(doc: &Value) -> Vec<Value> {
     let lift = doc["input"]["settings"]["lift_deg"]
         .as_f64()
         .or(doc["lift_deg"].as_f64());
+    let bph = doc["bph"].as_f64();
+    // No regular beat is said with the measurement's own timing scatter.
+    let say = |c: &Value, m: &Value| match c["code"].as_str() {
+        Some("no_watch") => Some(no_regular_beat(m, m["bph"].as_f64().or(bph))),
+        _ => fact(c, lift),
+    };
     if schema.starts_with("timegrapher.analyze/") {
         return doc["caveats"]
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|c| fact(c, lift))
+            .filter_map(|c| say(c, doc))
             .map(|text| json!({ "where": null, "text": text }))
             .collect();
     }
@@ -102,7 +123,7 @@ pub fn limits(doc: &Value) -> Vec<Value> {
     let mut out: Vec<(String, Vec<String>)> = Vec::new();
     for r in &readings {
         for c in r["measurement"]["caveats"].as_array().into_iter().flatten() {
-            let Some(text) = fact(c, lift) else {
+            let Some(text) = say(c, &r["measurement"]) else {
                 continue;
             };
             let name = reading_name(r);
@@ -213,8 +234,7 @@ mod tests {
         let said = notes(&doc);
         assert_eq!(said.len(), 1, "{said:?}");
         assert!(
-            said[0].starts_with("Dial Down: No regular beat was found")
-                && said[0].contains("span 3 s"),
+            said[0].starts_with("Dial Down: No regular beat found") && said[0].contains("span 3 s"),
             "{said:?}"
         );
     }
@@ -245,6 +265,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn no_regular_beat_gives_the_timing_scatter() {
+        let doc = json!({ "schema": "timegrapher.analyze/1", "bph": 28800, "jitter_us": 8600.0,
+            "watch_heard": false, "caveats": [{ "code": "no_watch" }] });
+        assert_eq!(
+            notes(&doc),
+            [
+                "No regular beat found (timing scatter 8.6 ms, 6.9% of a beat). There are no \
+              rate, amplitude or beat error readings."
+            ]
+        );
+        assert_eq!(
+            no_regular_beat(&Value::Null, Some(28800.0)),
+            "No regular beat found. There are no rate, amplitude or beat error readings."
+        );
     }
 
     #[test]

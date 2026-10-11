@@ -499,7 +499,7 @@ function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Regular Beat Found</b>The beat timing scatters as much as noise does, so there are no rate, amplitude or beat error readings.</div>`;
+    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc, doc.bph)}</div>`;
   }
   const o = doc.overall || {};
   // The headline beat error is the unlock's, with the drop's beside it, as
@@ -530,6 +530,15 @@ function recordingView(doc, extra, limits) {
   html += stripCards(extra && extra.strip);
   html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
   return html;
+}
+
+// The canonical sentence for no regular beat, with the timing scatter of
+// the beats when the document gives it (as the server's caveats.rs says it).
+function noRegularBeat(m, bph) {
+  const j = m && m.jitter_us;
+  const scatter = Number.isFinite(j) && bph > 0
+    ? ` (timing scatter ${num(j / 1000, 1)} ms, ${num(j / (3.6e9 / bph) * 100, 1)}% of a beat)` : "";
+  return `No regular beat found${scatter}. There are no rate, amplitude or beat error readings.`;
 }
 
 function sessionView(doc, limits) {
