@@ -143,6 +143,14 @@ then the findings in order of severity, then the numbers behind them.
 Write the answer as SKILL.md's "How to write the answer" says, with the
 service history and wear from step 0 in the verdict.
 
+Then look for possible faults in the shape of the Tick and the Tock:
+`session` doesn't carry them, so run `timegrapher analyze
+TAKE/audio-001.wav --calibre NAME --json` on each take (`take` in
+`record`'s output) and read `faults[]` as
+[findings.md](findings.md#faults-the-program-names) says. One that shows
+on the same side in several positions is worth passing on to a
+watchmaker; one in a single position is more likely the set-up.
+
 If the fully-wound half already shows a fault (`severity` `fault`), say
 so now: the 24-hour half will not change that answer.
 
