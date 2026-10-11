@@ -31,7 +31,7 @@ Then use the positions to split one cause from another.
 | Comparison | What differs mechanically | A big difference points at |
 | --- | --- | --- |
 | Dial up vs dial down | Which balance pivot carries the weight on its end stone | One pivot or end stone (dirty, dry, damaged), end shake, a hairspring out of flat touching in one position, the balance touching something in one position |
-| Horizontal vs vertical (amplitude) | Pivots run on tips (horizontal) or on their sides in the hole jewels (vertical) | Normal drop is 20–50°. Much more: worn, bent or dirty pivots, dirty hole jewels, thick oil |
+| Horizontal vs vertical (amplitude) | Pivots run on tips (horizontal) or on their sides in the hole jewels (vertical) | Witschi's tolerances put vertical at 240–280° against 260–320° horizontal (docs/sessions.md); the `session` report warns when vertical is more than 50° below horizontal (the project's threshold). Much more: worn, bent or dirty pivots, dirty hole jewels, thick oil |
 | Horizontal vs vertical (rate) | Regulator pin clearance, amplitude | Regulator pins too open or closed (index watches), or simply low vertical amplitude |
 | Vertical vs vertical (rate) | Gravity pulls the balance's heavy side round | Poise error, hairspring off centre |
 | Opposite verticals (crown up vs crown down; crown left vs right) | The same axis, heavy side up vs down | Poise along that axis: opposite rate errors in opposite positions |
@@ -46,9 +46,8 @@ Then use the positions to split one cause from another.
   positions but moves the rate, in opposite directions in opposite
   positions. Its effect depends on amplitude: it vanishes near 220°
   amplitude and reverses sign above it (a property of the balance's motion,
-  the zero of the Bessel function J1). A heavy point at the bottom makes
-  the watch gain below 220° and lose above (check the sign convention
-  before telling anyone). So **a vertical rate spread that changes markedly
+  the zero of the Bessel function J1). Don't tell anyone which way a given
+  heavy point moves the rate; the sign convention is easy to get wrong. So **a vertical rate spread that changes markedly
   between full wind and 24 hours, while the amplitude falls through the
   low 200s, is the signature of poise.** That's an adjustment for a
   watchmaker with poising tools.
@@ -68,16 +67,15 @@ gains heavily and unevenly.
 **Try first:** demagnetise at home with a cheap demagnetiser and re-test;
 the steps are in
 [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#demagnetise-first-at-home). A compass near the watch that
-deflects is a rough check that it's magnetised (check: a weak residual
-field may not move a compass).
+deflects is a rough check that it's magnetised; a still compass doesn't
+rule it out, since a weak field may not move one.
 
 **Conclude:** fixed after demagnetising: tell them, no harm done. Still
 hundreds fast: the coils may be physically caught or the hairspring
 distorted. Watchmaker.
 
 Silicon, Parachrom (Rolex), Spron (Seiko) and similar hairsprings are much
-less affected; on those, a large gain is less likely to be magnetism
-(check per make).
+less affected; on those, a large gain is less likely to be magnetism.
 
 ## Balance and hairspring
 
@@ -100,7 +98,7 @@ tick shape see [tick-shape.md](tick-shape.md).
 
 | Pattern | Likely cause |
 | --- | --- |
-| Tick and Tock amplitude differ by more than about 10° on a clean signal | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error (check: how much beat error alone splits the two measured amplitudes) |
+| Tick and Tock amplitude differ by more than about 10° on a clean signal | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error; judge it only when the beat error is small |
 | Late dots on one side, scatter below the line; amplitude low | Dry or gummed pallet stones or escape wheel (Witschi: clean the escapement or replace the escape wheel) |
 | A smooth wave with the escape wheel's period (3.75 s at 28,800 vph with 15 teeth; 5 s at 21,600; 6 s at 18,000) | Escape wheel out of round, bent arbor or a pivot problem; a damaged escape tooth gives a sharp blip instead of a wave |
 | Long gap unlock-to-impulse (deep lock); low amplitude | Lock too deep: energy lost in unlocking (Witschi "escapement fitting strong") |
@@ -111,7 +109,7 @@ tick shape see [tick-shape.md](tick-shape.md).
 Draw (the angle on the pallet locking face that pulls the fork against
 its banking) can't be measured directly on a timegrapher; insufficient
 draw shows as a fork that doesn't stay put, giving erratic behaviour after
-shocks (check whether anything on the timegrapher reliably shows it).
+shocks. This skill knows no timegrapher reading that shows it reliably.
 
 ## Lubrication and dirt
 
@@ -124,8 +122,8 @@ this to poor lubrication in the balance or train bearings).
 particles build up. The train and escapement lose more of the
 mainspring's energy before it reaches the balance.
 
-**Typical history:** a watch last serviced 5–10 years ago, amplitude 30–60°
-lower than it was. That's what a service is for, and it's the commonest
+**Typical history:** a watch some years past its service, amplitude
+clearly lower than it was at its last test or below Witschi's tolerance. That's what a service is for, and it's the commonest
 finding by far.
 
 **A freshly serviced watch:** re-test after a week before judging it,
@@ -136,8 +134,8 @@ so the first days after the service don't decide the verdict.
 | Pattern | Likely cause |
 | --- | --- |
 | Amplitude low even fully wound, steady, everything else fine | Tired ("set") mainspring, or the train taking too much; a service with a new mainspring usually restores it |
-| Large drop from full wind to 24 h (over about 60°), or a short power reserve | Weak mainspring, barrel friction, dry barrel |
-| Automatic: amplitude drops briefly when wound past full | Normal slipping of the bridle; a ragged sawtooth or slipping too early is a worn bridle or barrel wall (check how this shows on a timegrapher) |
+| Large drop from full wind to 24 h (more than the watch's own earlier tests showed, or below a maker's 24 h floor such as Sellita's 200° crown left for the SW200), or a short power reserve | Weak mainspring, barrel friction, dry barrel |
+| Automatic: amplitude drops briefly when wound past full | Normal slipping of the bridle; a ragged sawtooth or slipping too early is a worn bridle or barrel wall |
 | Periodic change over hours | Barrel turn: its period is in the calibre's entry (`timegrapher calibres NAME`) where a source gives it, with the table's notes on how sure it is |
 | Periodic change over minutes (e.g. every 5 min) | A barrel tooth meshing with the centre pinion: worn barrel arbor hole letting the barrel tilt (a documented Orient 48748 case, 5 min) |
 | Amplitude too high, knocking | A mainspring too strong for the calibre (a wrong replacement spring) |
@@ -188,7 +186,8 @@ A hand touching something is a very common "gear-train fault" that isn't.
 - **Minute or hour hand** touching: once an hour or at a particular time.
 - **Date change**: many calibres load the date wheel over the hours before
   midnight. A slow amplitude dip around then, every day, is the date
-  mechanism and usually normal (check how big a dip is acceptable).
+  mechanism and usually normal. No source here says how big a dip is
+  acceptable, so compare it with the watch's own earlier runs.
 - **Chronograph running**: amplitude drops with the chronograph engaged.
   A small drop is expected; a large one wants adjusting (no published
   tolerance found).
