@@ -344,7 +344,7 @@ separate work.
 
 `analyze` reports the amplitude from each side's beats (`amplitude_even_deg`,
 `amplitude_odd_deg`) as well as the overall figure (`amplitude_deg`, the
-median of the 2 s windows' means, so it can sit up to about 0.5° off the
+median of the 2 s windows' means, so it can sit up to about 0.7° off the
 midpoint of the two sides). On clean recordings of healthy watches the two
 sides can sit far apart. The table covers all 15 public corpus takes with a
 tg reference: the first file of each, read at the take's lift angle
@@ -377,9 +377,9 @@ amplitude does not.
 The ETA 2824 in its holder is not a clean recording. Its README calls the
 plastic holder reverberant and the unlock timing unreliable, and it has the
 largest gap to tg as well as the largest split. Leaving it out, the split
-on the other 14 takes runs from 0.4° to 19.2°, and a larger split goes with
-a mean closer to tg, not further (correlation −0.48 between the split and
-the gap to tg; +0.20 with the holder in). The Dandong 3235 clone splits by
+on the other 14 takes runs from 0.4° to 19.2°, and it does not predict how
+far the mean is from tg (correlation −0.48 between the split and the gap to
+tg over those 14, too few to call a trend; +0.20 with the holder in). The Dandong 3235 clone splits by
 19° and its mean is 2° from tg, while the bare ETA splits by 0.7° and its
 mean is 10° from tg.
 
