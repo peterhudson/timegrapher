@@ -29,7 +29,7 @@ or worth a second look; `note` is information.
 
 ## Before anything: `watch_heard`
 
-`analyze` (and soon `session`) carries `watch_heard`. When it is false,
+`analyze`, `record` and each `session` reading carry `watch_heard`. When it is false,
 the beats are no steadier than noise: an empty stand, a stopped watch,
 or the watch not touching the microphone. Every other number in the
 result describes noise. Don't show them; tell the person no watch was
@@ -60,6 +60,7 @@ Findings are in `report.findings[]`; `recording` is an index into
 
 | Code | Severity | Means | Do | Tell them |
 | --- | --- | --- | --- | --- |
+| `no_watch_heard` | warning | The beats in that recording are no steadier than noise; it shows no readings. | Is the watch running, and pressed against the microphone? Run `doctor`, then record that position again. | "I couldn't hear the watch in that position; let's check it's still running and clamped." |
 | `measurement_short` | note | Under 40 s measured in a position. | Record that position again for 2 minutes. | "That position was too short to judge." |
 | `unlock_unreliable` | warning | Under 60% of the windows found the first sound of the beat on both sides; amplitude and beat error for that reading are shown with `?` and not judged. | Check the level and the clamp; record again. If it persists on a clean signal, `profile` shows what the engine marked. | "The quiet first part of the tick didn't come through clearly, so I can trust the rate but not the amplitude in that position." |
 | `rate_unsteady` | warning | The 10 s rates in one reading spread over 20 s/d. | First rule out a loose clamp, knocks and the room; record again. If it repeats on a clean recording, it is the watch: a long run with `series` says what kind of unsteadiness. | "The rate jumped around in that position; let's check it isn't the set-up." |
@@ -91,11 +92,25 @@ against dial down is the balance's end shake, pivots or a hairspring out
 of flat; vertical against horizontal is the pivots and their oil; the
 verticals against each other is poise or the hairspring's centring.
 
-With the 24-hour half, `session` also gives the isochronism per position
-and Im (largest rate change between full wind and 24 h). A large fall in
-amplitude over the day (more than 40–50°) points at the mainspring, the
-barrel or friction in the train: worth mentioning, and usually dealt with
-at the next service.
+With the 24-hour half, `session` also gives the isochronism per
+position (`rate_change`, `amplitude_change` and `beat_error_change` from
+the fullest to the least wound reading) and Im (the largest rate change,
+leaving out 12H). There are no finding codes for these; read them
+yourself:
+
+- **`amplitude_change`**: a fall of more than about 40–50° over the day
+  points at the mainspring, the barrel or friction in the train. Worth
+  mentioning; it is usually dealt with at the next service.
+- **`rate_change`**: a well-adjusted watch changes a few s/d over the
+  day. Tens of s/d, or a change that differs a lot from position to
+  position, is an isochronism question for a watchmaker (the hairspring
+  and its regulation).
+- **`beat_error_change`**: beat error is a time, and the balance moves
+  more slowly at lower amplitude, so the same offset reads larger in ms
+  as amplitude falls. A small rise at 24 h is expected. A rise well out
+  of proportion to the fall in amplitude, or one that takes it past
+  about 1 ms on a watch that runs down low, matters: the watch may be
+  slow to restart. Either way it's an adjustment, not a fault in itself.
 
 ## `series` (long runs)
 
@@ -115,6 +130,12 @@ carry the same codes.
 | `rate_moves_with_amplitude` | The rate follows the amplitude (s/d per degree given). | Isochronism: how the rate changes as the spring runs down. A strong link is a regulation and hairspring question for a watchmaker. |
 
 More in [long-runs.md](long-runs.md) and the repository's docs/series.md.
+
+## Faults the program names
+
+Space for the faults the program will name from the shape of the Tick
+and the Tock, each said as likely or possible, never certain. No entries
+yet.
 
 ## When the tool looks wrong
 

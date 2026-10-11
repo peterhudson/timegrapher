@@ -169,6 +169,72 @@ offer a long run: an hour or more in that one position, read with
 `timegrapher series` (is it steady, and if not, which wheel) and
 `timegrapher long` (the report). See [long-runs.md](long-runs.md).
 
+## A worked example: a Rolex 3235, dial up for two hours
+
+The take `ym42_DU_2h` in the project's public test corpus is a Rolex
+3235 (28,800 bph, lift angle 55° from the calibre table) recorded dial up
+for two hours in twelve ten-minute files, one `session` reading each.
+What `session` says, and how to reason from it:
+
+| Readings | Rate s/d | Amplitude | Beat error | Findings |
+| --- | --- | --- | --- | --- |
+| 1–2 (first 20 min) | +49, +48 | 252° | 0.27 ms | `rate_unsteady` (10 s rates +20 to +75), `amplitude_tolerance` |
+| 3–8 (20–80 min) | +35 falling to +14 | 247–252° | 0.30–0.33 ms | `rate_unsteady` in all six, `amplitude_tolerance`, `cycle_wheel` (fourth wheel) in four |
+| 9–12 (last 40 min) | +8 to +10 | 247–251° | 0.33–0.35 ms | `amplitude_tolerance`, `cycle_wheel` in two |
+
+1. **Is the measurement sound?** Yes: a watch is heard in every reading,
+   there is no clipping, the beat rate is the calibre's, and a second
+   program (tg, on three of the files) agrees to within a few s/d and a
+   few degrees. The session file gives no time since winding (`full?` in
+   the report), so the state of wind is not known; say so.
+2. **The rate falls from +49 to about +9 s/d over the first 80 minutes,
+   then holds.** Amplitude barely moves in that time, so it is unlikely to be the
+   mainspring. It looks like the watch settling after being handled. That
+   is why step 2 lets the watch run before measuring: a six-position test
+   started in the first half hour would have mixed the settling into the
+   differences between positions. Judge the rate on the last 40 minutes:
+   about +9 s/d dial up, which says little on its own (rate comes last).
+3. **Amplitude is 247–252° dial up** at the table's lift angle, below the
+   270–310° a recently serviced modern calibre usually shows fully wound,
+   and steady over two hours. On its own that is a reason to look further,
+   not a verdict.
+4. **Beat error 0.27–0.35 ms**: good.
+5. **A once-a-minute change**: amplitude repeats every 60 s, 5–10° peak to
+   peak, in six of the twelve readings (and at a third of a minute in
+   three more), and the rate does too in two of them. The fourth wheel turns once a minute. This is already a two-hour
+   run, so it's repeatable, not chance. It points at the fourth wheel or
+   something meshing with it, typically wear or dirt, and it is a
+   watchmaker's job to find.
+6. **Verdict.** It weighs the numbers with what the owner says. A modern
+   calibre at about 250° dial up, with a repeatable once-a-minute
+   amplitude change and several years since its last service, is
+   **service soon**. Serviced recently, the same numbers say **take it
+   back**: the low amplitude and the once-a-minute change shouldn't be
+   there. Either way, say the verdict needs the other five positions to
+   be firm. One line first: *"It's running well enough to wear, but it's
+   showing signs of wear in the gear train, so I'd book a service."*
+
+## Testing a collection
+
+Someone with several watches usually wants to know which ones need
+attention. Keep each watch separate and the set-up fixed:
+
+- **One session folder per watch**, named in their words
+  (`record "Seamaster 2008/" ...`). Never put two watches in one session.
+- **Check the microphone once** at the start with `doctor`, then leave the
+  stand and the input level alone for the rest of the sitting, so the
+  watches are measured the same way.
+- **Triage first**: a fully wound 60 s first look (step 3) on each watch.
+  The ones that are clearly fine dial up may need nothing more today. Do
+  the six positions on the ones that look off, the ones not serviced for
+  years, and the ones the owner is worried about.
+- **Finish with a table** they can keep, one row per watch: the watch and
+  calibre, the last service as they remember it, amplitude dial up, the
+  rate spread over positions, beat error, the verdict and the next step
+  (nothing, re-test in six months, demagnetise and re-test, service).
+  The program keeps no history of its own; the folders and this table
+  are the record, and next year's test is compared against them.
+
 ## Recording
 
 `timegrapher record` records one position for `--seconds`, then stops; it
