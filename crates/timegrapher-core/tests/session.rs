@@ -2,10 +2,22 @@
 //! as a session, with Witschi's values and the findings checked.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use timegrapher_core::audio::write_wav;
 use timegrapher_core::session::{self, evaluate, Limits, Position, Reading, Severity, Tolerance};
 use timegrapher_core::stream::{analyze_file, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
+
+/// A temporary WAV path of its own for every call: the tests run in
+/// parallel, and two readings with the same values must not share a file.
+fn temp_wav(tag: &str) -> PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    std::env::temp_dir().join(format!(
+        "tg-session-{tag}-{}-{}.wav",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
 
 fn reading(position: Position, wind_h: f64, rate: f64, amp: f64, beat_error: f64) -> Reading {
     let cfg = SynthConfig {
@@ -15,11 +27,7 @@ fn reading(position: Position, wind_h: f64, rate: f64, amp: f64, beat_error: f64
         snr_db: 26.0,
         ..Default::default()
     };
-    let path: PathBuf = std::env::temp_dir().join(format!(
-        "tg-session-{}-{wind_h}-{rate}-{amp}-{beat_error}-{}.wav",
-        position.code(),
-        std::process::id()
-    ));
+    let path = temp_wav(position.code());
     write_wav(&path, &generate(&cfg, |_| amp, |_| 0.0)).unwrap();
     let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
     std::fs::remove_file(&path).ok();
@@ -256,7 +264,7 @@ fn clipped_recording_is_flagged() {
     for v in &mut audio.samples {
         *v = (*v * 3.0 / peak).clamp(-1.0, 1.0);
     }
-    let path = std::env::temp_dir().join(format!("tg-session-clipped-{}.wav", std::process::id()));
+    let path = temp_wav("clipped");
     write_wav(&path, &audio).unwrap();
     let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
     std::fs::remove_file(&path).ok();
@@ -292,7 +300,7 @@ fn short_rate_cycle_is_sized_in_ms() {
         |_| 280.0,
         |t| 60.0 * (2.0 * std::f64::consts::PI * t / 10.0).sin(),
     );
-    let path = std::env::temp_dir().join(format!("tg-session-cycle-{}.wav", std::process::id()));
+    let path = temp_wav("cycle");
     write_wav(&path, &audio).unwrap();
     let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
     std::fs::remove_file(&path).ok();
@@ -325,7 +333,7 @@ fn an_empty_stand_gives_no_readings() {
         samples,
         sample_rate: fs,
     };
-    let path = std::env::temp_dir().join(format!("tg-session-empty-{}.wav", std::process::id()));
+    let path = temp_wav("empty");
     write_wav(&path, &audio).unwrap();
     let cfg = StreamConfig {
         analysis: timegrapher_core::analysis::AnalysisConfig {
