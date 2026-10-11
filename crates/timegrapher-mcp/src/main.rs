@@ -6,6 +6,7 @@
 mod cli;
 mod guidance;
 mod progress;
+mod takes;
 mod tools;
 mod views;
 
@@ -72,6 +73,22 @@ async fn call(
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
     };
+    // A recording the chat app retries with the same take_id is answered
+    // from the take already made; two calls never share the microphone.
+    let take = (tool.name == "record_position")
+        .then(|| takes::key(args))
+        .flatten();
+    if let Some(r) = take.as_ref().and_then(takes::recorded) {
+        return complete(r);
+    }
+    let _mic = if tools::listens(tool) {
+        match takes::claim_mic() {
+            Some(mic) => Some(mic),
+            None => return Ok(tool_error(takes::BUSY.into())),
+        }
+    } else {
+        None
+    };
     // The Recording view's readings over time come from the same run.
     let recording_view = tool.name == "analyze_recording";
     let (extras, _windows) = views::analyze_extras();
@@ -125,6 +142,10 @@ async fn call(
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
+    for note in tools::notes(tool, args, &doc) {
+        text.push_str("\n\nNote: ");
+        text.push_str(&note);
+    }
     let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
@@ -136,6 +157,9 @@ async fn call(
     }
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
+    }
+    if let Some(k) = take {
+        takes::remember(k, &result);
     }
     complete(result)
 }
@@ -150,7 +174,11 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let list: Vec<Value> = tools::TOOLS.iter().map(tools::definition).collect();
+        let list: Vec<Value> = tools::TOOLS
+            .iter()
+            .map(tools::definition)
+            .chain(std::iter::once(guidance::guide_definition()))
+            .collect();
         complete(json!({ "tools": list }))
     }
 
@@ -160,6 +188,10 @@ impl ServerHandler for Server {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let args = request.arguments.unwrap_or_default();
+        if request.name == guidance::GUIDE_TOOL {
+            let page = args.get("page").and_then(Value::as_str);
+            return Ok(complete::<CallToolResult>(guidance::guide(page))?.into());
+        }
         Ok(call(&request.name, &args, &context).await?.into())
     }
 

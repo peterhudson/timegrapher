@@ -30,6 +30,7 @@
     }
   },
   "tools": [
+    { "name": "read_guide", "description": "The watchmaker skill and its pages, for the chat app to read before guiding you" },
     { "name": "analyze_recording", "description": "Rate, amplitude and beat error of one recording, with charts" },
     { "name": "run_session", "description": "A multi-position test read as one, with findings and charts" },
     { "name": "check_steadiness", "description": "Steadiness verdicts over a long recording" },
