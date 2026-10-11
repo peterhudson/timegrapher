@@ -14,7 +14,10 @@ realfft = "3.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cpal = { version = "0.17", optional = true }
+ureq = { version = "3", optional = true, features = ["platform-verifier"] }
 
 [features]
 # Sound input devices (links ALSA on Linux, CoreAudio, WASAPI).
 capture = ["dep:cpal"]
+# The update check (`update::check`): one HTTPS request to GitHub.
+update-check = ["dep:ureq"]

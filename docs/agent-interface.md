@@ -214,11 +214,29 @@ Suggested changes:
 Nothing was changed. Run again with --apply to make these changes.
 ```
 
+## `update`
+
+```sh
+timegrapher update [--json]
+```
+
+Asks GitHub once whether a newer release is published (schema
+`timegrapher.update/1`; `input.source` is the API address). The body is
+`current` (this program's version), `latest` (`version` without the "v",
+`url` of the release page, `published_at`, `notes` in Markdown) and
+`update_available`. It sends no account or identifier, downloads and
+installs nothing, and never offers drafts or pre-releases. When GitHub
+cannot be reached, is limiting requests, or has no release yet, it exits 1
+with the reason on stderr. A person updates by downloading the new release
+from `latest.url` ([install.md](install.md)). Builds without the default
+`update-check` feature have no network code and say so.
+
 ## Building without sound input
 
 Sound input uses `cpal` behind the default `live` feature (on Linux it needs
 the ALSA development package, `libasound2-dev`). `cargo build
---no-default-features` builds without it; `doctor --file` still works.
+--no-default-features` builds without it, and without `update`; `doctor
+--file` still works.
 
 ## Later
 

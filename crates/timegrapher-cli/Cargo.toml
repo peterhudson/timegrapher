@@ -19,7 +19,9 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 toml = "0.8"
 
 [features]
-default = ["live"]
+default = ["live", "update-check"]
 # Sound input (the `devices` command and live `doctor`). Needs the ALSA
 # development package on Linux (libasound2-dev).
 live = ["timegrapher-core/capture"]
+# `timegrapher update`: one HTTPS request to GitHub for the latest release.
+update-check = ["timegrapher-core/update-check"]
