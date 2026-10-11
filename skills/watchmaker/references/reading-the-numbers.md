@@ -119,8 +119,9 @@ such as the ETA 2824-2 grades.
 
 For the lift angle and beat rate, use the program's calibre table:
 `timegrapher calibres NAME --json` (or the MCP server's calibre lookup)
-gives them with how sure the table is (`confidence`, `notes`). Quote
-that standing with any amplitude. For a calibre the table doesn't have,
+gives them with how sure the table is (`confidence`, `notes`). Give
+that standing with any amplitude, in your own words; the table's source
+names and links are for checking, not for reading out. For a calibre the table doesn't have,
 the most complete list is **WatchGuy's**
 (watchguy.co.uk/cgi-bin/lift_angles), with well over a thousand calibres
 by maker; look it up there when you can fetch web pages, and say where
