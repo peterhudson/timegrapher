@@ -10,8 +10,8 @@
 //! each side (tick and toc), because single beats are too noisy for a
 //! stable onset.
 //!
-//! The same templates give the beat error measured from the unlock, as tg
-//! and commercial timegraphers measure it. Beat times sit near the drop, so
+//! The same templates give the beat error measured from the unlock, the
+//! figure checked against tg's beat error in regress. Beat times sit near the drop, so
 //! the fitted beat error is the drop's. If the even side's unlock comes
 //! `u_e` after its beat time and the odd side's `u_o` after its own, the
 //! unlocks fall at `t0 + k*P + s*e/2 + u_s`, which is the same model with
@@ -162,6 +162,17 @@ pub struct AmplitudeWindow {
 }
 
 impl AmplitudeWindow {
+    /// The same window with Tick and Tock the other way round, for a
+    /// stretch whose beats were numbered from the other side (see
+    /// [`crate::breaks::renumber`]).
+    pub fn swap_sides(&mut self) {
+        std::mem::swap(&mut self.even_deg, &mut self.odd_deg);
+        std::mem::swap(&mut self.even_unlock_ms, &mut self.odd_unlock_ms);
+        std::mem::swap(&mut self.even_drop_ms, &mut self.odd_drop_ms);
+        self.beat_error_ms = self.beat_error_ms.map(|v| -v);
+        self.beat_error_unlock_ms = self.beat_error_unlock_ms.map(|v| -v);
+    }
+
     pub fn mean(&self) -> Option<f64> {
         match (self.even_deg, self.odd_deg) {
             (Some(a), Some(b)) => Some((a + b) / 2.0),

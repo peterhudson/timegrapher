@@ -47,6 +47,7 @@ def clean_env(**extra):
     env.update(extra)
     return env
 MAX_MESSAGES = 15
+MIN_ACTIONS = 40  # app personas are sent back until they have done this much
 print_lock = threading.Lock()
 
 
@@ -197,6 +198,7 @@ class Persona:
         self.home = os.path.join(self.dir, "home")
         self.stand_dir = os.path.join(self.dir, "stand")
         self.shots = os.path.join(out, self.id)
+        shutil.rmtree(self.shots, ignore_errors=True)  # a rerun replaces the persona's screenshots
         self.display = display
         self.build = os.path.join(work, "build")
         self.cost = 0.0
@@ -326,14 +328,25 @@ class Persona:
                   .replace("{report_format}", prompt("report-format"))
                   + self.p["dossier"])
         # The tester's commands see the persona's screen and stand.
-        notes, _, _ = self.claude(
-            "Begin. Open the app and do what you came to do.", system, "tester",
-            tools=["Bash", "Read"],
-            allowed=[f"Bash({os.path.join(HERE, 'app.sh')}:*)", f"Bash({os.path.join(HERE, 'stand.sh')}:*)",
-                     "Read"],
-            extra_env={k: v for k, v in self.app_env().items() if k in
-                       ("DISPLAY", "APP_BIN", "APP_HOME", "SHOTS")},
-            timeout=3 * 3600)
+        kw = dict(tools=["Bash", "Read"],
+                  allowed=[f"Bash({os.path.join(HERE, 'app.sh')}:*)", f"Bash({os.path.join(HERE, 'stand.sh')}:*)",
+                           "Read"],
+                  extra_env={k: v for k, v in self.app_env().items() if k in
+                             ("DISPLAY", "APP_BIN", "APP_HOME", "SHOTS")},
+                  timeout=3 * 3600)
+        notes, events, sess = self.claude("Begin. Open the app and do what you came to do.", system, "tester", **kw)
+        actions = count_actions(events)
+        # Agents tend to stop long before a person would; send them back in.
+        for _ in range(3):
+            if actions >= MIN_ACTIONS:
+                break
+            log(self.id, f"stopped after {actions} actions; sending back")
+            notes, events, sess = self.claude(
+                f"You stopped after {actions} actions; a person spends far longer with a new app. "
+                "Open the app again if it is closed and keep going: everything in your dossier you did not do "
+                "yet, and anything your notes say you skipped. Then write your complete notes again, "
+                "including the earlier ones that still stand.", system, "tester", resume=sess, **kw)
+            actions += count_actions(events)
         return notes
 
     def run_pair(self):
@@ -420,11 +433,26 @@ class Persona:
             f.write("\n".join(head + body))
 
 
+def count_actions(events):
+    """Commands run through app.sh and stand.sh, however they were batched."""
+    n = 0
+    for e in events:
+        message = e.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if e.get("type") == "assistant" and isinstance(content, list):
+            for c in content:
+                if c.get("type") == "tool_use" and c.get("name") == "Bash":
+                    cmd = c.get("input", {}).get("command", "")
+                    n += len(re.findall(r"(?:app|stand)\.sh\s+\w+", cmd))
+    return n
+
+
 def tool_lines(events):
     """The helper's tool calls and what came back, shortened, for the transcript."""
     calls, out = {}, []
     for e in events:
-        content = (e.get("message") or {}).get("content")
+        message = e.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, list):
             continue
         for c in content:

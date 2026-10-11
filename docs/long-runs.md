@@ -96,6 +96,20 @@ error is one steady number, so it cannot follow drift; the report says
 which correction was used, and `summary.json`'s `input.settings.clock_correction`
 records it.
 
+## Takes with pauses
+
+A take that was paused, or saved and then continued, has audio that runs
+straight on across each break while the clock jumps. `long`, `series` and
+`session` find the breaks in the take's `session.json` (`breaks`), or for
+older takes from the step in `clock.csv`, and read each stretch on its own:
+the clock fit takes the gap out before fitting, so a pause no longer reads
+as a huge sound-card error; rate and beat error are fitted per stretch and
+combined weighted by beats; no 10 s window or slice reaches across a
+break; and the period search and Steadiness run on true time, so a gap is
+a missing stretch. The JSON lists the breaks as `breaks`. `analyze` on a
+single file does not look for breaks, so read a paused take with `long`,
+`series` or `session`.
+
 ## How the search works
 
 1. **Watch time.** Each series is placed on the watch's own clock: beat

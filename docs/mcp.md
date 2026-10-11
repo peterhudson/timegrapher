@@ -141,7 +141,7 @@ or keep them in a folder with a `session.toml` ([sessions.md](sessions.md)).
 ## Charts
 
 In chat apps that support [MCP Apps](https://apps.extensions.modelcontextprotocol.io/api/)
-(Claude on the web and desktop, ChatGPT, VS Code, Goose and others), four
+(Claude on the web and desktop, ChatGPT, VS Code, Goose and others), five
 tools show their results as charts right in the conversation, drawn the way
 the timegrapher app draws them:
 
@@ -152,6 +152,16 @@ the timegrapher app draws them:
   characteristic values, rate and amplitude by position with each
   position's tolerance behind its bar, and the findings.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
+- `record_position`: a **Live** view while it records, like the app's
+  live screen. It shows the rate, amplitude, beat error and beats heard,
+  the paper strip of the last 30 seconds (Tick blue, Tock orange), and the
+  three readings over time, about once a second. Once the take has been
+  checked, the same view shows what the check found. The view gets the
+  readings with `recording_status`, a tool for the view alone that the
+  model never sees. It reads a file the recording keeps and never opens
+  the microphone. Chat apps without views, and any that ask for progress,
+  get the latest reading in the progress messages instead, for example
+  "Recording CD: 72 of 120 s · +4.1 s/day · 268° · 0.3 ms".
 - `check_steadiness`: the app's Steadiness pane (each series' verdict
   over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
   CUSUM view, picked with the buttons above it), the readings on
@@ -164,7 +174,9 @@ The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
 app, a chart over time is scaled to all but the highest and lowest 2% of
 its readings, so one glitch doesn't flatten it, and says how many are off
-the scale. Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
+the scale. Beat error is shown as a size, without a sign, because which
+beat counts as the Tick can change between runs of the same recording.
+Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
 as text.

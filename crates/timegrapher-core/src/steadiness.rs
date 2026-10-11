@@ -455,6 +455,9 @@ pub struct CrossCorrelation {
 pub struct Report {
     pub duration_s: f64,
     pub bph: u32,
+    /// Pauses and resumes in the take; times run on with each gap in.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub breaks: Vec<crate::breaks::Break>,
     pub config: Config,
     pub series: Vec<SeriesCheck>,
     /// The rate against the amplitude, at the rate's reading length.
@@ -1560,7 +1563,8 @@ pub fn check(
     long_cfg: &LongConfig,
     cfg: &Config,
 ) -> Report {
-    let map = |t: f64| clock.map_or(t, |c| c.map(t));
+    let map = crate::longrun::true_time(clock, &long.breaks);
+    let cuts = crate::longrun::cuts(clock, &long.breaks);
     let beats: Vec<Beat> = log
         .beats
         .iter()
@@ -1570,9 +1574,10 @@ pub fn check(
         })
         .collect();
 
-    // Rate readings.
+    // Rate readings; none reaches across a break.
     let r = cfg.rate_reading_s;
-    let wins = timing::windows(&beats, log.bph, r, r);
+    let mut wins = timing::windows(&beats, log.bph, r, r);
+    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
     let rate_grid = match wins.first() {
         Some(w0) => {
             let t0 = w0.start_s;
@@ -1611,10 +1616,12 @@ pub fn check(
                 y: Vec::new(),
             };
         };
-        let n = ((aw.last().unwrap().start_s - w0.start_s) / astep).round() as usize + 1;
+        // With breaks, on true time, so each gap is left empty.
+        let pos = |t: f64| if long.breaks.is_empty() { t } else { map(t) };
+        let n = ((pos(aw.last().unwrap().start_s) - pos(w0.start_s)) / astep).round() as usize + 1;
         let mut y = vec![f64::NAN; n];
         for w in aw {
-            let i = ((w.start_s - w0.start_s) / astep).round() as usize;
+            let i = ((pos(w.start_s) - pos(w0.start_s)) / astep).round() as usize;
             if i < n {
                 y[i] = f(w).unwrap_or(f64::NAN);
             }
@@ -1791,6 +1798,7 @@ pub fn check(
     Report {
         duration_s: long.duration_s,
         bph: log.bph,
+        breaks: long.breaks.clone(),
         config: cfg.clone(),
         series,
         rate_amplitude,

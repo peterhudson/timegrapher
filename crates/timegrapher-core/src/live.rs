@@ -70,8 +70,9 @@ pub struct LiveReading {
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the fit to the beat times (near the drop), ms.
     pub beat_error_ms: Option<f64>,
-    /// Signed beat error measured from the unlock, as tg and commercial
-    /// timegraphers measure it: median over the amplitude windows, ms.
+    /// Signed beat error measured from the unlock, the figure checked
+    /// against tg's beat error in regress: median over the amplitude
+    /// windows, ms. Positive means Tick (the run's first beat) comes late.
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
@@ -170,6 +171,7 @@ impl LiveAnalyzer {
         a.bph = Some(log.bph);
         a.beats = log.beats;
         a.amp = log.amplitude_windows;
+        a.clipped = log.clipped_beats;
         a
     }
 
@@ -667,6 +669,25 @@ mod tests {
         assert!(r.clipped_fraction.unwrap() > 0.5, "{r:?}");
         // A reading back in the clean stretch carries no warning.
         assert!(!a.reading_at(15.0, 10.0).clipping_warns());
+
+        // Made again from its beat log (a recording analysed at once), it
+        // warns the same.
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: a.duration_s(),
+            bph: a.bph().unwrap(),
+            lift_deg: a.config().analysis.amplitude.lift_deg,
+            beats: a.beats().to_vec(),
+            amplitude_windows: a.amp.clone(),
+            clipped_beats: a.clipped_beats().to_vec(),
+            clipped_samples: 0,
+        };
+        let b = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let end = b.duration_s();
+        let again = b.reading_at(end, 10.0);
+        assert!(again.clipping_warns(), "{again:?}");
+        assert_eq!(again.clipped_beats, a.reading_at(end, 10.0).clipped_beats);
+        assert!(!b.reading_at(15.0, 10.0).clipping_warns());
     }
 
     #[test]

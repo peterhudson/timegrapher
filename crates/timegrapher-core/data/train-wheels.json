@@ -42,7 +42,7 @@
       "https://en.wikipedia.org/wiki/List_of_ETA_Movements"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "No true centre wheel: the great wheel sits off centre at 5 o'clock and its period is not known, so it is left out; the minute hand's cannon pinion turns once an hour. 38 h power reserve. Tooth counts of the third and fourth wheels and the barrel were not found. The 2836-2 and 2834-2 are the day-date versions of the same base (widely known; not separately sourced here). The clone on Peter's bench is recorded as '2824-2'."
+    "notes": "No true centre wheel: the great wheel sits off centre at 5 o'clock and its period is not known, so it is left out; the minute hand's cannon pinion turns once an hour. 38 h power reserve. Tooth counts of the third and fourth wheels and the barrel were not found. The 2836-2 and 2834-2 are the day-date versions of the same base (widely known; not separately sourced here). The project's reference clone is recorded as '2824-2'."
   },
   {
     "calibre": "Sellita SW200-1",
@@ -462,7 +462,7 @@
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on Peter's Yacht-Master is the fourth wheel."
+    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on the project's reference 3235 is the fourth wheel."
   },
   {
     "calibre": "Dandong 3235",
@@ -1430,7 +1430,7 @@
     ],
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
-      "Peter's bench: 28,800 vph, does not hack",
+      "Project bench measurement: 28,800 vph, does not hack",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "measured",
@@ -1470,7 +1470,7 @@
     ],
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
-      "Peter's bench notes: like the Dandong 324, with a monolithic bridge"
+      "Project bench notes: like the Dandong 324, with a monolithic bridge"
     ],
     "confidence": "measured",
     "notes": "No published data found under this name. Taken from this project's recordings only. Bench takes use lift 52°, a setting rather than a documented figure."

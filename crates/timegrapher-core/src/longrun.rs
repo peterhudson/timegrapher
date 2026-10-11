@@ -2,6 +2,7 @@
 //! time, and the periodic changes in each.
 
 use crate::beats::Beat;
+use crate::breaks::Break;
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longterm::{self, grid_median, Component, LongConfig, SeriesReport};
@@ -64,6 +65,9 @@ pub struct LongReport {
     /// Share of the expected beats found with a clean match, 0..1.
     pub clean_fraction: f64,
     pub clock: Option<ClockFit>,
+    /// Pauses and resumes in the take; times here run on with each gap in.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub breaks: Vec<Break>,
     /// The whole run fitted at once (calibrated when `clock` is set); its
     /// jitter is the median over the slices.
     pub overall: Option<TimingFit>,
@@ -104,8 +108,49 @@ pub fn timing_step(span_s: f64) -> f64 {
     }
 }
 
+/// Audio seconds to true seconds for a take: through the clock fit, and
+/// with the gaps of `breaks` in. A clock fit from a log with the pauses in
+/// already puts the gaps back; any other clock (none, or one steady
+/// correction) gets them from the breaks.
+pub fn true_time<'a>(clock: Option<&'a ClockFit>, breaks: &'a [Break]) -> impl Fn(f64) -> f64 + 'a {
+    let clock_has_gaps = clock.is_some_and(|c| !c.breaks.is_empty());
+    move |t| {
+        let base = clock.map_or(t, |c| c.map(t));
+        if clock_has_gaps {
+            base
+        } else {
+            base + crate::breaks::wall(breaks, t) - t
+        }
+    }
+}
+
+/// Each break's place on [`true_time`]: halfway through its gap. A fit
+/// or a window must not reach across one.
+pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
+    let map = true_time(clock, breaks);
+    breaks
+        .iter()
+        .map(|b| map(b.audio_s) - 0.5 * b.gap_s - 1e-6)
+        .collect()
+}
+
 pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> LongReport {
-    let map = |t: f64| clock.map_or(t, |c| c.map(t));
+    analyse_with_breaks(log, clock, &[], cfg)
+}
+
+/// [`analyse`] for a take with breaks, whose beats have been renumbered
+/// with [`crate::breaks::renumber`]. Times run on true time with the gaps in (from
+/// the clock fit, else from the breaks), so a cycle search sees each gap as
+/// a missing stretch; rate and beat error are fitted per stretch, and no
+/// slice spans a break.
+pub fn analyse_with_breaks(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    cfg: &LongConfig,
+) -> LongReport {
+    let map = true_time(clock, breaks);
+    let cuts = cuts(clock, breaks);
     let beats: Vec<Beat> = log
         .beats
         .iter()
@@ -115,8 +160,9 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         })
         .collect();
     let duration = map(log.duration_s);
-    let mut overall = timing::fit(&beats, log.bph);
-    let residuals = timing::residuals(&beats).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
+    let mut overall = timing::fit_pieces(&beats, log.bph, &cuts);
+    let residuals =
+        timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
 
     // Uniform series for the period search, on the watch's own clock: a
     // beat's watch time is its beat number times the nominal beat period.
@@ -195,7 +241,11 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         while bi < beats.len() && beats[bi].time < e {
             bi += 1;
         }
-        let w = timing::fit(&beats[b0..bi], log.bph);
+        let w = if cuts.iter().any(|&c| s < c && c < e) {
+            None
+        } else {
+            timing::fit(&beats[b0..bi], log.bph)
+        };
         if let Some(f) = w {
             jitters.push(f.jitter_us);
         }
@@ -232,7 +282,8 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
     }
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
-    let expected = duration * log.bph as f64 / 3600.0;
+    let listened = duration - breaks.iter().map(|b| b.gap_s).sum::<f64>();
+    let expected = listened * log.bph as f64 / 3600.0;
     LongReport {
         duration_s: duration,
         sample_rate: log.sample_rate,
@@ -241,6 +292,7 @@ pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> Lon
         beats_found: beats.len(),
         clean_fraction: (bw.len() as f64 / expected.max(1.0)).min(1.0),
         clock: clock.cloned(),
+        breaks: breaks.to_vec(),
         overall,
         beat_error_unlock_ms: {
             let mut u = uv;
