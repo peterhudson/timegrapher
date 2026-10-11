@@ -62,7 +62,7 @@ the `session` report uses, is 260–320° horizontal and 240–280° vertical
 than 50° below horizontal a warning, and over 330° overbanking (the
 first two are the project's thresholds, the last Witschi's). Sellita
 allows its SW200 at most 315–320° dial up at full wind and at least 200°
-crown down after 24 hours. Sources and the limits of these figures are in
+crown left (6H, 6 o'clock up) after 24 hours. Sources and the limits of these figures are in
 [when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
 
 Vertical positions read lower than horizontal: there the balance pivots
@@ -216,7 +216,7 @@ not out of spec.
 | --- | --- | --- |
 | COSC / ISO 3159, category 1 (fitting diameter over 20 mm) | −4 to +6 s/d | Uncased movement, five positions (3, 6 and 9 o'clock, dial up, dial down) and several temperatures, 15 days. Also: mean variation 2 s/d, greatest variation 5, horizontal to vertical −6 to +8, largest variation 10, thermal ±0.6, rate resumption ±5 ([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)) |
 | COSC, category 2 (20 mm or under) | −5 to +8 s/d | Same tests; the other limits are a little wider (same source) |
-| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after COSC; also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
+| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
 | Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)) |
 
 ## Positions and the positional delta
@@ -251,7 +251,7 @@ positions.
 
 The `session` report gives the change per position between states of
 wind (`isochronism`); no maker publishes a normal drop. Sellita's SW200
-limit, at least 200° crown down after 24 hours
+limit, at least 200° crown left (6H, 6 o'clock up) after 24 hours
 ([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf)),
 is one published floor. Compare the drop with the same watch's earlier
 tests: a drop that grows between tests is the useful sign.

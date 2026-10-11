@@ -46,7 +46,7 @@ conditions, not a range. What there is:
   ([Caliber Corner](https://calibercorner.com/school/amplitude/); the
   Witschi original wasn't found).
 - **Sellita's limits for the SW200** (an ETA 2824-2 equivalent): at most
-  315° dial up at full wind and at least 200° crown down (6H up) after
+  315° dial up at full wind and at least 200° crown left (6H, 6 o'clock up) after
   24 hours, for 95% of a production lot
   ([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf));
   the SW200-2 sheet gives 320° and 200°
@@ -73,8 +73,8 @@ no figure is published for watch oils, and the makers of watch
 lubricants publish no service lifetimes. So a watch kept warm, or worn
 daily in a hot climate, is due sooner than its maker's interval.
 
-The makers' own intervals, where they publish one: Seiko about every
-2–3 years for its 4R and 6R mechanical calibres
+The makers' own intervals, where they publish one: Seiko every 2 or 3
+years in its 6R35 manual
 ([Seiko 6R35](https://www.seikowatches.com/instructions/html/SEIKO_6R35_D_EN/BONDSYrgdkveiw)),
 Grand Seiko 3–4 years for its 9S
 ([Grand Seiko](https://www.grand-seiko.com/instructions/html/GS_9S_en/AGFISYcisgnzsq)),
@@ -135,7 +135,7 @@ Book it in within the next few months; it's fine to wear meanwhile unless
 it gets worse.
 
 - Amplitude clearly below Witschi's tolerance fully wound, or under
-  Sellita's 200° minimum crown down at 24 hours.
+  Sellita's 200° minimum crown left (6H, 6 o'clock up) at 24 hours.
 - Amplitude falling between tests months apart.
 - Dial up and dial down clearly apart in amplitude, or vertical more than
   50° below horizontal (`vh_amplitude_drop`).
