@@ -107,14 +107,29 @@ pub struct Steadiness {
     grids: [Grid; 3],
     /// The period search behind each series.
     searches: [Option<Search>; 3],
-    /// Each series folded at the cycle it was found to have, if any.
+    /// Each series folded at the cycle it was found to have, else at
+    /// another series' cycle or a wheel's turn, so its Cycle view still
+    /// shows whether that repeats in it.
     folds: [Option<Fold>; 3],
+    /// Where each fold's period came from.
+    fold_from: [FoldFrom; 3],
     wheels: Vec<Wheel>,
     /// The periods every series' search covers between them, log10 seconds,
     /// so the three Periods plots share one time axis.
     period_span: Option<(f64, f64)>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
+}
+
+/// Where a series' fold period came from.
+#[derive(Debug, Clone, PartialEq)]
+enum FoldFrom {
+    /// Its own cycle.
+    Own,
+    /// The cycle another series has (rate, amplitude, beat error).
+    Series(usize),
+    /// A wheel's turn, when no series has a cycle.
+    Wheel(String),
 }
 
 /// The session's beats and amplitude windows so far, as a recording's
@@ -242,18 +257,37 @@ pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
         Some(long.amplitude.search.clone()),
         be_search,
     ];
-    let folds = std::array::from_fn(|i| {
+    let own = |i: usize| {
         let s = report.series.get(i)?;
-        let g = &grids[i];
-        let period = s
-            .cycle
+        s.cycle
             .as_ref()
             .map(|c| c.period_s)
-            .or(s.period.as_ref().map(|p| p.period_s))?;
-        (period >= 3.0 * g.step && g.span() >= 2.0 * period).then(|| {
-            let bins = ((period / g.step).round() as usize).clamp(6, 40);
-            longterm::fold(g, period, bins)
-        })
+            .or(s.period.as_ref().map(|p| p.period_s))
+    };
+    let fits = |g: &Grid, period: f64| period >= 3.0 * g.step && g.span() >= 2.0 * period;
+    let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
+    let folds = std::array::from_fn(|i| {
+        let g = &grids[i];
+        let (period, from) = own(i)
+            .filter(|&p| fits(g, p))
+            .map(|p| (p, FoldFrom::Own))
+            .or_else(|| {
+                (0..3).filter(|&j| j != i).find_map(|j| {
+                    own(j)
+                        .filter(|&p| fits(g, p))
+                        .map(|p| (p, FoldFrom::Series(j)))
+                })
+            })
+            .or_else(|| {
+                lc.wheels
+                    .iter()
+                    .filter(|w| fits(g, w.period_s))
+                    .max_by(|a, b| a.period_s.total_cmp(&b.period_s))
+                    .map(|w| (w.period_s, FoldFrom::Wheel(w.name.clone())))
+            })?;
+        fold_from[i] = from;
+        let bins = ((period / g.step).round() as usize).clamp(6, 40);
+        Some(longterm::fold(g, period, bins))
     });
     let logs = searches
         .iter()
@@ -271,6 +305,7 @@ pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
         grids,
         searches,
         folds,
+        fold_from,
         period_span,
         wheels: lc.wheels,
         upto_s: log.duration_s,
@@ -773,17 +808,35 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             if let Some((lo, hi)) = range {
                 plot = plot.default_y_bounds(lo, hi);
             }
-            let label = {
-                let mut t = format!("{} cycle", secs(f.period_s));
-                if let Some(w) = c
-                    .cycle
-                    .as_ref()
-                    .and_then(|c| c.wheel.as_ref())
-                    .or(c.period.as_ref().and_then(|p| p.wheel.as_ref()))
-                {
-                    t += &format!(", {}", wheel_title(w));
+            let label = match &s.fold_from[i] {
+                FoldFrom::Own => {
+                    let mut t = format!("{} cycle", secs(f.period_s));
+                    if let Some(w) = c
+                        .cycle
+                        .as_ref()
+                        .and_then(|c| c.wheel.as_ref())
+                        .or(c.period.as_ref().and_then(|p| p.wheel.as_ref()))
+                    {
+                        t += &format!(", {}", wheel_title(w));
+                    }
+                    t + &format!(", {} cycles folded", f.raster.len())
                 }
-                t + &format!(", {} cycles folded", f.raster.len())
+                FoldFrom::Series(j) => format!(
+                    "Folded at the {}'s {} cycle, {} cycles",
+                    s.report
+                        .series
+                        .get(*j)
+                        .map_or("other", |o| title(o.series))
+                        .to_lowercase(),
+                    secs(f.period_s),
+                    f.raster.len()
+                ),
+                FoldFrom::Wheel(w) => format!(
+                    "Folded at the {}'s {} turn, {} cycles",
+                    wheel_title(w).to_lowercase(),
+                    secs(f.period_s),
+                    f.raster.len()
+                ),
             };
             plot.show(ui, |p| {
                 p.points(Points::new("cycles", dots).color(weak).radius(1.2_f32));
@@ -1077,6 +1130,11 @@ mod tests {
         let rate = &s.report.series[0];
         assert_eq!(rate.verdict, Verdict::Periodic, "{}", rate.headline);
         assert!(s.folds[0].is_some());
+        assert_eq!(s.fold_from[0], FoldFrom::Own);
+        // The steady amplitude still has a Cycle chart, folded at the
+        // rate's cycle (or a wheel's turn if the rate's didn't fit).
+        assert!(s.folds[1].is_some());
+        assert_ne!(s.fold_from[1], FoldFrom::Own);
 
         // A picked calibre's train names the cycle instead.
         let named = compute(

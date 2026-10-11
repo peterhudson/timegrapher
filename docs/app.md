@@ -470,7 +470,9 @@ prints a JSON line of readings every `--every` seconds of audio (also
 (`timegrapher_core::capture` for devices, capture and levels,
 `timegrapher_core::live` for the live readings,
 `timegrapher_core::recorder` for saving), so the command-line tool can
-offer them too.
+offer them too. On Windows the app opens without a console window, so
+these two print only when their output is redirected to a file or piped
+to another program (`timegrapher-app --devices > devices.json`).
 
 ## How the live readings are made
 
