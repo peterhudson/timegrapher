@@ -135,6 +135,10 @@ pub fn draw(
             .on_hover_text(s);
         });
         // Whatever the title row left, so the time axis is never cut off.
+        let (w, h) = (
+            (ui.available_width() - 52.0).max(40.0) as f64,
+            (ui.available_height() - 20.0).max(20.0) as f64,
+        );
         let plot = Plot::new(("profile", k))
             .height(ui.available_height().max(40.0))
             .link_axis("profile", [true, false])
@@ -145,15 +149,30 @@ pub fn draw(
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
+            .allow_axis_zoom_drag(false)
+            .allow_boxed_zoom(false)
             .allow_double_click_reset(false)
             .default_y_bounds(y_lo, y_hi)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
             .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
-            .x_axis_formatter(|m, _| format!("{} ms", m.value))
+            // No label hanging past the right edge, nor one at the foot of
+            // the scale running into the time labels at the corner.
+            .x_axis_formatter(move |m, r| {
+                if (r.end() - m.value) / (r.end() - r.start()) * w < 24.0 {
+                    String::new()
+                } else {
+                    format!("{} ms", m.value + 0.0)
+                }
+            })
             .y_axis_min_width(52.0)
-            .y_axis_formatter(move |m, _| match scale {
-                Scale::Decibels => format!("{:.0} dB", m.value),
-                Scale::Linear => format!("{:.2}", m.value),
+            .y_axis_formatter(move |m, r| {
+                if (m.value - r.start()) / (r.end() - r.start()) * h < 9.0 {
+                    return String::new();
+                }
+                match scale {
+                    Scale::Decibels => format!("{:.0} dB", m.value + 0.0),
+                    Scale::Linear => format!("{:.2}", m.value + 0.0),
+                }
             });
         // Before there are beats, a typical stretch of time rather than none.
         let plot = if p.is_none() {

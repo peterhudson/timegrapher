@@ -526,23 +526,23 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
     marks
 }
 
-/// Draw the pane: the view picker and a note on what was tested, then a
-/// row for each series with its verdict, its one-line reason and the
-/// chosen view behind it.
-pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: &mut View) -> bool {
+/// The picker for what the pane draws under each verdict, for the
+/// Steadiness section of the sidebar. True when the view changed.
+pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
+    let choices: Vec<(View, &str, &str)> = View::ALL
+        .iter()
+        .map(|v| (*v, v.label(), v.hint()))
+        .collect();
+    theme::choice_list(ui, view, &choices)
+}
+
+/// Draw the pane: a note on what was tested, then a row for each series
+/// with its verdict, its one-line reason and the chosen view behind it.
+pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View) {
     let pal = theme::pal(ui);
-    let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        let choices: Vec<(View, &str, &str)> = View::ALL
-            .iter()
-            .map(|v| (*v, v.label(), v.hint()))
-            .collect();
-        changed = theme::segmented(ui, view, &choices);
-        ui.add_space(8.0);
-        ui.label(RichText::new(status).small().color(pal.text_secondary));
-    });
+    ui.label(RichText::new(status).small().color(pal.text_secondary));
     let Some(s) = s else {
-        return changed;
+        return;
     };
     let n = s.report.series.len().max(1);
     let gap = 10.0;
@@ -561,7 +561,7 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: &mut 
                 for (i, c) in s.report.series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
-                        row(ui, s, i, c, *view);
+                        row(ui, s, i, c, view);
                     });
                     if i + 1 < n {
                         ui.add_space(gap);
@@ -577,12 +577,11 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: &mut 
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
-                    ui.vertical(|ui| row(ui, s, i, c, *view));
+                    ui.vertical(|ui| row(ui, s, i, c, view));
                 });
             }
         });
     }
-    changed
 }
 
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View) {
@@ -635,6 +634,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
         .allow_scroll(false)
         .allow_zoom(false)
         .allow_drag(false)
+        .allow_axis_zoom_drag(false)
         .allow_boxed_zoom(false)
         .allow_double_click_reset(false)
         .show_x(false)
@@ -1169,7 +1169,8 @@ mod tests {
             };
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    draw(ui, Some(&s), "test", &mut v);
+                    view_list(ui, &mut v);
+                    draw(ui, Some(&s), "test", v);
                 });
             });
             assert!(!out.shapes.is_empty());

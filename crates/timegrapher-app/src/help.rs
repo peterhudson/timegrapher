@@ -14,8 +14,8 @@ pub const WATCH: &[&str] = &[
     "Position is how the watch lies: dial up or down, or upright with the crown up, \
      down, left or right. Rate and amplitude change between positions, so each is a \
      separate measurement. Changing it while listening keeps the strip and marks each \
-     position's stretch on it and on the charts; the readings, the tick and tock \
-     profile, the distributions and Steadiness then take only the beats in the new \
+     position's stretch on it and on the charts; the readings, the Tick Tock \
+     Profile, the distributions and Steadiness then take only the beats in the new \
      position, every stretch of it in the session together.",
 ];
 
@@ -24,14 +24,14 @@ pub const MICROPHONE: &[&str] = &[
      pressed or Start is clicked, never at launch: asking an input what it supports \
      briefly opens it, which could disturb another program recording from it. \
      Replaying a recording never touches the microphone.",
-    "Input level is the microphone's gain. Aim for the ticks to peak around -10 dBFS: \
+    "Input Level is the microphone's gain. Aim for the ticks to peak around -10 dBFS: \
      the light mark on the meter. The red mark is -6 dBFS, the most that leaves room \
      for a louder watch; past it the sound clips, the meter turns red, and amplitude \
      and beat error become unreliable.",
     "For the system default input this is the sound server's input volume, which it \
      puts back on the microphone every time it opens it; for a direct device it is the \
      card's own capture level.",
-    "The meter shows the loudest sample in the last half second: green when it is \
+    "The Peak meter shows the loudest sample in the last half second: green when it is \
      right, amber when very quiet or too hot, red when clipping.",
 ];
 
@@ -45,7 +45,7 @@ pub const READINGS: &[&str] = &[
      zero when the balance rests exactly midway. The big figure is timed from the \
      unlock, as tg and commercial timegraphers measure it; the smaller one is timed \
      from the beat as a whole, nearer the drop.",
-    "Each reading is fitted to the beats of the last \"Average over\" seconds. A longer \
+    "Each reading is fitted to the beats of the last Average Over seconds (under Readings). A longer \
      time gives steadier figures that follow changes more slowly. Early in a session, \
      or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
      of beats than asked for: the readings use what there is, and say how much under \
@@ -95,7 +95,7 @@ pub const AMPLITUDE: &[&str] = &[
     "How far the balance swings each way from rest, in degrees, averaged over the \
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
-     solid green and indigo lines on the tick tock profile) and the lift angle, so it is \
+     solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
      only as right as the lift angle under Watch.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: 1° of lift angle moves \
@@ -136,7 +136,7 @@ pub const STRIP: &[&str] = &[
      above the strip (or beside it when the strip lies across). Seeing amplitude beside \
      the dots shows at once whether a wobble in the rate comes with a change in \
      amplitude.",
-    "Lying across with the charts set to the strip's length (Time Span: Strip), the \
+    "With Direction: Across and the charts set to the strip's length (Time Span: Strip), the \
      strip and the charts below it share one time axis, and the pointer's time is \
      marked on all of them at once.",
     "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
@@ -183,7 +183,7 @@ pub const CHARTS: &[&str] = &[
     "Rate, amplitude and beat error over time, each point a reading over the averaging \
      time. The charts' time axes move together.",
     "Time Span: Session shows everything since the session started, growing as it \
-     goes. Strip Length shows the same stretch of time as the paper strip and moves with \
+     goes. Strip shows the same stretch of time as the paper strip and moves with \
      it, so with the charts under a strip lying across, every time axis lines up.",
     "Mouse: the wheel zooms time around the pointer, Ctrl and the wheel the vertical \
      scale, dragging pans, and a double-click fits the whole session again (and \
@@ -217,7 +217,8 @@ pub const STEADINESS: &[&str] = &[
      measurement rather than the watch. Shifting Mean: the level steps and stays. \
      Drifting: the level slides slowly. Wandering: each reading remembers the last \
      ones with no cycle, step or trend to explain it. Too Short: not enough readings.",
-    "The view at the top picks what is drawn under each verdict. Readings: every \
+    "Under Each Verdict, in the Steadiness section of the sidebar, picks what is \
+     drawn under each verdict. Readings: every \
      reading in time order (10 s rate readings, 2 s amplitude and beat error \
      readings), with the stretches of constant level and the two state levels. \
      Periods: how strongly the readings repeat at each period, with the 1% \
@@ -233,6 +234,34 @@ pub const STEADINESS: &[&str] = &[
      in the background, again every minute while it grows; for a recording, they \
      cover what has been replayed, or all of it once it is opened. Rates are on the \
      sound card's clock.",
+];
+
+pub const SCOPE: &[&str] = &[
+    "The sound of the latest beats as it came in, high-passed so hum and rumble don't \
+     hide it: what an oscilloscope on the microphone would show. While listening it \
+     shows the last few seconds; for a recording, the moment on the time slider or the \
+     strip.",
+    "Span: 20 ms shows one sound in detail, from before the unlock to after the drop, \
+     with the Tick above the Tock and the unlock and drop marks from the Tick Tock \
+     Profile. 200 ms shows the whole beat and the quiet after it, the Tick above the \
+     Tock. 400 ms shows a Tick, the Tock after it and the next Tick in one row.",
+    "Beats: how many of the latest beats are drawn over each other, the older ones \
+     fainter. One beat shows exactly what was heard; several show how much the beats \
+     vary, which the Tick Tock Profile averages away.",
+];
+
+pub const ISOCHRONISM: &[&str] = &[
+    "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
+     rate holds as the amplitude falls is isochronous. Each dot is the median rate in a \
+     band of amplitude, with a bar over its middle half; the line is the curve through \
+     them, and the upright line marks where it turns, if it does.",
+    "The curve needs the amplitude to fall through at least three 2° bands with 10 \
+     readings in each, which a session of some hours from full wind gives. It comes \
+     from the same tests as Steadiness, the same as `timegrapher series`.",
+    "0 h / 24 h compares the first half hour of the session with the half hour 24 hours \
+     later, as the commercial test does for one position: rate, amplitude and beat \
+     error, and how much each changed. It needs at least 2 hours; under 24 hours, the \
+     last half hour stands in for the 24 h one.",
 ];
 
 pub const HISTOGRAMS: &[&str] = &[
@@ -270,7 +299,8 @@ pub const WINDOW: &[&str] = &[
      name folds the card away.",
     "Panes can be dragged by their tabs beside, above or below each other, or onto \
      another's tab to stack them, and resized by dragging the gaps. The × on a tab \
-     hides a pane; its switch here brings it back where it was. Reset panes puts \
+     hides a pane; its switch in the sidebar brings it back where it was: in its \
+     section's caption, or under Charts or Distributions. Reset Panes puts \
      everything back as it started.",
 ];
 

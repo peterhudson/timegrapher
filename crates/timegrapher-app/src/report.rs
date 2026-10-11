@@ -332,7 +332,7 @@ impl ReportDialog {
                 .on_disabled_hover_text(if busy {
                     "Saving…"
                 } else {
-                    "Play the sound back and tick the box above first"
+                    "Listen to the sound, then tick the box above first"
                 });
             if save.clicked() {
                 self.save();
