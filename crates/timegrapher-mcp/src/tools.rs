@@ -17,6 +17,8 @@ pub enum Arg {
 
 #[derive(Clone, Copy)]
 pub enum Kind {
+    /// One of a fixed list of words.
+    Choice(&'static [&'static str]),
     Path,
     Paths,
     Integer,
@@ -104,6 +106,24 @@ const CALIBRE: Param = p(
      its wheels. An unknown name gives an error listing the known ones.",
 );
 
+/// For tools that read a watch: the calibre fills in what is not given.
+const CALIBRE_READING: Param = p(
+    "calibre",
+    Kind::Text,
+    Arg::Flag("--calibre"),
+    false,
+    "The movement, e.g. \"ETA 2824-2\" or \"Rolex 3235\": its beat rate and lift angle \
+     are used where bph and lift_deg are not given. list_calibres has the known ones.",
+);
+const DEVICE: Param = p(
+    "device",
+    Kind::Text,
+    Arg::Flag("--device"),
+    false,
+    "Sound input: part of its name or id from list_sound_inputs (the computer's default \
+     input if left out).",
+);
+
 pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "analyze_recording",
@@ -113,7 +133,7 @@ pub const TOOLS: &[ToolSpec] = &[
             beats are, and whether a watch was heard at all. When `watch_heard` is false \
             the readings describe noise: do not show them; check the microphone instead.",
         command: &["analyze"],
-        params: &[RECORDING, BPH, LIFT],
+        params: &[RECORDING, CALIBRE_READING, BPH, LIFT],
         charts: true,
         read_only: true,
         defaults: &[],
@@ -137,6 +157,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Full paths: a folder with session.toml, the session.toml, or the \
                  recordings themselves.",
             ),
+            CALIBRE_READING,
             BPH,
             p(
                 "lift_deg",
@@ -268,6 +289,113 @@ pub const TOOLS: &[ToolSpec] = &[
         defaults: &[],
     },
     ToolSpec {
+        name: "list_calibres",
+        title: "Look Up a Calibre",
+        description: "The calibre table: each movement's beat rate, lift angle, escape \
+            wheel and train, how sure the figures are and their sources. Give a name for \
+            one calibre (an unknown name lists the known ones). Find the calibre before \
+            quoting amplitude, which depends on the lift angle.",
+        command: &["calibres"],
+        params: &[p(
+            "name",
+            Kind::Text,
+            Arg::Positional,
+            false,
+            "A calibre, e.g. \"ETA 2824-2\" (all of them if left out).",
+        )],
+        charts: false,
+        read_only: true,
+        defaults: &[],
+    },
+    ToolSpec {
+        name: "record_position",
+        title: "Record a Position",
+        description: "Record the watch on the microphone in one position into a test \
+            folder, then check that a watch was heard. A clean take is added to the \
+            folder's session.toml, ready for run_session; when no watch is heard or the \
+            sound is bad, `verdict` says so and nothing is added. This uses the \
+            microphone: before every call, tell the person which position to put the \
+            watch in (DU dial up, DD dial down, CU crown up, CD crown down, CL crown left, \
+            CR crown right), that it should be wound and settled, and to keep the room \
+            quiet; call only when they say it is ready. It takes as long as `seconds`.",
+        command: &["record"],
+        params: &[
+            p(
+                "folder",
+                Kind::Path,
+                Arg::Positional,
+                true,
+                "Full path of the test folder, one per watch and test (created if missing), \
+                 e.g. ~/Timegrapher/my-watch-2026-10-11.",
+            ),
+            p(
+                "position",
+                Kind::Choice(&["DU", "DD", "CU", "CD", "CL", "CR"]),
+                Arg::Flag("--position"),
+                true,
+                "The position the watch is in.",
+            ),
+            p(
+                "seconds",
+                Kind::Number,
+                Arg::Flag("--seconds"),
+                false,
+                "Seconds to record (120 if left out; 60 to 120 is usual).",
+            ),
+            p(
+                "wind_h",
+                Kind::Number,
+                Arg::Flag("--wind-h"),
+                false,
+                "Hours since the watch was fully wound: 0 for the fully wound half of a \
+                 test, 24 for the run-down half (0 if left out).",
+            ),
+            p(
+                "watch",
+                Kind::Text,
+                Arg::Flag("--watch"),
+                false,
+                "The watch, in the owner's words (written to a new session file).",
+            ),
+            CALIBRE_READING,
+            BPH,
+            p(
+                "lift_deg",
+                Kind::Number,
+                Arg::Flag("--lift"),
+                false,
+                "Lift angle in degrees (the calibre's if left out, else 52).",
+            ),
+            DEVICE,
+        ],
+        charts: false,
+        read_only: false,
+        defaults: &[],
+    },
+    ToolSpec {
+        name: "check_microphone",
+        title: "Check the Microphone",
+        description: "Listen for a few seconds and report level, clipping, automatic gain, \
+            noise and whether ticks are heard, with the exact settings to change. It \
+            changes nothing: tell the person the settings to change and let them do it. \
+            This uses the microphone: put the watch on it first.",
+        command: &["doctor"],
+        params: &[
+            DEVICE,
+            p(
+                "seconds",
+                Kind::Number,
+                Arg::Flag("--seconds"),
+                false,
+                "Seconds to listen (5 if left out).",
+            ),
+            BPH,
+        ],
+        charts: false,
+        read_only: true,
+        defaults: &[],
+    },
+    ToolSpec {
         name: "list_sound_inputs",
         title: "List Sound Inputs",
         description: "The computer's sound inputs, which is the default, and the sample \
@@ -359,6 +487,7 @@ pub fn definition(t: &ToolSpec) -> Value {
     for p in t.params {
         let schema = match p.kind {
             Kind::Path | Kind::Text => json!({"type": "string"}),
+            Kind::Choice(words) => json!({"type": "string", "enum": words}),
             Kind::Paths => json!({"type": "array", "items": {"type": "string"}, "minItems": 1}),
             Kind::Integer => json!({"type": "integer", "minimum": 1}),
             Kind::Number => json!({"type": "number"}),
@@ -422,6 +551,9 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                 .collect::<Result<_, _>>()?,
             (Kind::Paths, Value::String(s)) => vec![expand_home(s)?],
             (Kind::Text, Value::String(s)) => vec![s.clone()],
+            (Kind::Choice(words), Value::String(s)) if words.contains(&s.as_str()) => {
+                vec![s.clone()]
+            }
             (Kind::Integer, Value::Number(n)) if n.as_u64().is_some_and(|n| n > 0) => {
                 vec![n.to_string()]
             }
@@ -540,21 +672,61 @@ mod tests {
     }
 
     #[test]
-    fn no_tool_sets_consent_or_touches_the_mic() {
+    fn no_tool_sets_consent_or_changes_settings() {
         for t in TOOLS {
-            assert_ne!(t.command[0], "record");
             let names: Vec<_> = t.params.iter().map(|p| p.name).collect();
-            for forbidden in ["cc0", "listened_back", "apply", "save", "device", "seconds"] {
+            for forbidden in ["cc0", "listened_back", "apply", "save"] {
                 assert!(!names.contains(&forbidden), "{} has {forbidden}", t.name);
             }
-            // `doctor` listens live unless it is given a file.
-            if t.command[0] == "doctor" {
-                assert!(t
-                    .params
-                    .iter()
-                    .any(|p| p.required && matches!(p.arg, Arg::Flag("--file"))));
-            }
         }
+    }
+
+    /// The microphone is used by exactly the tools that say so, as Peter
+    /// decided (docs/mcp.md): recording a position and the live check.
+    #[test]
+    fn only_the_listening_tools_use_the_mic() {
+        let listens = |t: &ToolSpec| {
+            t.command[0] == "record"
+                || (t.command[0] == "doctor"
+                    && !t
+                        .params
+                        .iter()
+                        .any(|p| matches!(p.arg, Arg::Flag("--file"))))
+        };
+        let mut listening: Vec<&str> = TOOLS
+            .iter()
+            .filter(|t| listens(t))
+            .map(|t| t.name)
+            .collect();
+        listening.sort();
+        assert_eq!(listening, ["check_microphone", "record_position"]);
+        for t in TOOLS {
+            assert_eq!(
+                listens(t),
+                t.description.contains("uses the microphone"),
+                "{}",
+                t.name
+            );
+        }
+        // The file check never listens: its recording is required.
+        let file_check = find("check_recording").unwrap();
+        assert!(file_check
+            .params
+            .iter()
+            .any(|p| p.required && matches!(p.arg, Arg::Flag("--file"))));
+    }
+
+    #[test]
+    fn positions_are_checked() {
+        let t = find("record_position").unwrap();
+        let ok = args(json!({"folder": full("test"), "position": "DU"}));
+        let line = command_line(t, &ok).unwrap();
+        assert_eq!(
+            line[..2],
+            ["record".to_string(), "--position=DU".to_string()]
+        );
+        let bad = args(json!({"folder": full("test"), "position": "up"}));
+        assert!(command_line(t, &bad).is_err());
     }
 
     #[test]

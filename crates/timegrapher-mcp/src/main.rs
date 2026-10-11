@@ -5,6 +5,7 @@
 
 mod cli;
 mod guidance;
+mod progress;
 mod tools;
 mod views;
 
@@ -47,7 +48,11 @@ fn tool_error(text: String) -> CallToolResult {
         .expect("a text result")
 }
 
-async fn call(name: &str, args: &Map<String, Value>) -> Result<CallToolResult, ErrorData> {
+async fn call(
+    name: &str,
+    args: &Map<String, Value>,
+    context: &RequestContext<RoleServer>,
+) -> Result<CallToolResult, ErrorData> {
     let Some(tool) = tools::find(name) else {
         return Err(ErrorData::invalid_params(
             format!("no tool named {name}"),
@@ -64,7 +69,25 @@ async fn call(name: &str, args: &Map<String, Value>) -> Result<CallToolResult, E
     if recording_view {
         line.splice(1..1, extras.iter().cloned());
     }
-    let out = match cli::run(&line).await {
+    // Tests read a file in place of the microphone, which CI does not have.
+    if tool.name == "record_position" {
+        if let Some(f) = std::env::var_os("TIMEGRAPHER_MCP_TEST_INPUT") {
+            line.insert(1, format!("--file={}", f.to_string_lossy()));
+        }
+    }
+    // A recording takes as long as it records: say how far it has got, and
+    // stop it (the child goes with the future) when the chat app cancels.
+    let progress = (tool.name == "record_position")
+        .then(|| progress::report(context, args))
+        .flatten();
+    let out = tokio::select! {
+        out = cli::run(&line) => out,
+        () = context.ct.cancelled() => Err("cancelled".to_string()),
+    };
+    if let Some(p) = progress {
+        p.abort();
+    }
+    let out = match out {
         Ok(out) => out,
         Err(e) => return Ok(tool_error(e)),
     };
@@ -118,10 +141,10 @@ impl ServerHandler for Server {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let args = request.arguments.unwrap_or_default();
-        Ok(call(&request.name, &args).await?.into())
+        Ok(call(&request.name, &args, &context).await?.into())
     }
 
     async fn list_resources(

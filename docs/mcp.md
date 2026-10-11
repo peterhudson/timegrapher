@@ -80,15 +80,23 @@ That route has not been tried with this server yet.
 | `long_run` | `long` | Rate and amplitude over hours and the wheel behind a periodic change; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
+| `record_position` | `record` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |
+| `check_microphone` | `doctor` | Listens a few seconds and says what to change in the sound settings; **uses the microphone**, changes nothing |
 | `check_recording` | `doctor --file` | Whether a recording is fit to measure with |
+| `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
 
-Recordings are given by their full path on your computer (`~` for your home
-folder works). Record them with the timegrapher app, or any recorder, first.
-For a multi-position test, put the position in each file name
-(`watch_DU.flac`, `watch_DD.flac`, ...) or keep them in a folder with a
-`session.toml` ([sessions.md](sessions.md)).
+For a multi-position test, the chat app records each position into one
+folder with `record_position` and then reads the folder with `run_session`.
+Before each take it tells you how to place the watch and waits for you; your
+chat app also asks you to allow each tool call. A take in which no watch is
+heard is not added to the test.
+
+Recordings made elsewhere work too. They are given by their full path on
+your computer (`~` for your home folder works). For a multi-position test,
+put the position in each file name (`watch_DU.flac`, `watch_DD.flac`, ...)
+or keep them in a folder with a `session.toml` ([sessions.md](sessions.md)).
 
 ## Charts
 
@@ -124,10 +132,10 @@ guiding anyone.
 - It never uploads anything. A report bundle is a file on your computer
   that you attach to an issue yourself, and only you can say that you
   listened to the excerpt or offer it to the public test corpus.
-- It never changes your computer's sound settings.
-- It does not record yet. Recording through the chat app, and a live check
-  of the microphone, will come in a later version, and the chat app will
-  ask you before each take.
+- It never changes your computer's sound settings: `check_microphone` says
+  what to change, and you change it.
+- It uses the microphone only for `record_position` and `check_microphone`,
+  and only for the seconds asked.
 
 ## When it does not work
 

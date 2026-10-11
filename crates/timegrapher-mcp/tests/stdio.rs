@@ -42,9 +42,10 @@ struct Client {
 }
 
 impl Client {
-    fn start(cli: &Path) -> Client {
+    fn start(cli: &Path, input: &Path) -> Client {
         let mut child = Command::new(env!("CARGO_BIN_EXE_timegrapher-mcp"))
             .env("TIMEGRAPHER_CLI", cli)
+            .env("TIMEGRAPHER_MCP_TEST_INPUT", input)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -133,7 +134,7 @@ fn a_chat_app_reads_a_watch() {
         synth(&cli, &dir.join(format!("session/watch_{pos}.wav")), rate);
     }
     let path = |p: &Path| p.to_string_lossy().into_owned();
-    let mut c = Client::start(&cli);
+    let mut c = Client::start(&cli, &take);
 
     let tools = c.request("tools/list", json!({}));
     let names: Vec<&str> = tools["tools"]
@@ -206,6 +207,33 @@ fn a_chat_app_reads_a_watch() {
     let r = c.call(
         "analyze_recording",
         json!({ "recording": path(&dir.join("missing.wav")) }),
+    );
+    assert_eq!(r["isError"], true);
+
+    // A test recorded position by position, then read as a session (the
+    // server reads the take in place of the microphone here).
+    let folder = dir.join("recorded");
+    for pos in ["DU", "CU"] {
+        let r = c.call(
+            "record_position",
+            json!({ "folder": path(&folder), "position": pos, "seconds": 30,
+                    "calibre": "ETA 2824-2", "watch": "Test watch" }),
+        );
+        assert!(r.get("isError").is_none(), "{r}");
+        assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/1");
+        assert_eq!(r["structuredContent"]["verdict"], "ok");
+    }
+    let r = c.call("run_session", json!({ "paths": [path(&folder)] }));
+    assert_eq!(
+        r["structuredContent"]["readings"].as_array().unwrap().len(),
+        2,
+        "{r}"
+    );
+    let r = c.call("list_calibres", json!({ "name": "ETA 2824-2" }));
+    assert_eq!(r["structuredContent"]["calibres"][0]["bph"], 28800);
+    let r = c.call(
+        "record_position",
+        json!({ "folder": path(&folder), "position": "upside down" }),
     );
     assert_eq!(r["isError"], true);
 
