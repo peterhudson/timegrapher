@@ -729,6 +729,23 @@ mod tests {
         assert!(command_line(t, &bad).is_err());
     }
 
+    /// The Claude Desktop bundle lists the tools the server has.
+    #[test]
+    fn the_bundle_lists_every_tool() {
+        let manifest: Value =
+            serde_json::from_str(include_str!("../packaging/manifest.json")).unwrap();
+        let mut listed: Vec<&str> = manifest["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        let mut tools: Vec<&str> = TOOLS.iter().map(|t| t.name).collect();
+        listed.sort();
+        tools.sort();
+        assert_eq!(listed, tools);
+    }
+
     #[test]
     fn definitions_are_well_formed() {
         for t in TOOLS {

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "timegrapher",
+  "display_name": "Timegrapher",
+  "version": "@VERSION@",
+  "description": "Test a mechanical watch at home from the sound of its ticking: rate, amplitude and beat error, with charts.",
+  "long_description": "The open-source timegrapher in your chat app. It reads recordings of a watch, records each position from the microphone when you allow it, and shows the readings as charts in the conversation. It brings the watchmaker skill, so the chat app can guide a multi-position test and say plainly whether the watch needs a service. Nothing is uploaded, and your sound settings are never changed.",
+  "author": {
+    "name": "Timegrapher contributors",
+    "url": "https://github.com/peterhudson/timegrapher"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peterhudson/timegrapher"
+  },
+  "homepage": "https://github.com/peterhudson/timegrapher",
+  "documentation": "https://github.com/peterhudson/timegrapher/blob/main/docs/mcp.md",
+  "support": "https://github.com/peterhudson/timegrapher/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/@SERVER@",
+    "mcp_config": {
+      "command": "${__dirname}/server/@SERVER@",
+      "args": [],
+      "env": {
+        "TIMEGRAPHER_CLI": "${__dirname}/server/@CLI@"
+      }
+    }
+  },
+  "tools": [
+    { "name": "analyze_recording", "description": "Rate, amplitude and beat error of one recording, with charts" },
+    { "name": "run_session", "description": "A multi-position test read as one, with findings and charts" },
+    { "name": "check_steadiness", "description": "Steadiness verdicts over a long recording" },
+    { "name": "long_run", "description": "Rate and amplitude over hours, and the wheel behind a periodic change" },
+    { "name": "tick_tock_profile", "description": "The Tick and Tock sounds with the marks the engine measured" },
+    { "name": "beat_shape", "description": "Unlock, impulse and drop of each side's beat" },
+    { "name": "record_position", "description": "Record the watch in one position into a test folder (uses the microphone)" },
+    { "name": "check_microphone", "description": "Listen a few seconds and say what to change in the sound settings (uses the microphone)" },
+    { "name": "check_recording", "description": "Whether a recording is fit to measure with" },
+    { "name": "list_calibres", "description": "A calibre's beat rate, lift angle and train" },
+    { "name": "list_sound_inputs", "description": "The computer's sound inputs" },
+    { "name": "make_report_bundle", "description": "A zip for a GitHub issue, saved on your computer" }
+  ],
+  "keywords": ["watch", "timegrapher", "horology", "watchmaking", "audio"],
+  "license": "GPL-3.0-or-later",
+  "compatibility": {
+    "platforms": ["@PLATFORM@"]
+  }
+}

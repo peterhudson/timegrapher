@@ -15,8 +15,30 @@ prints. The two programs must be installed side by side.
 
 ## Install
 
-Until release bundles exist, build both programs from source (Rust 1.88 or
-later):
+### Claude Desktop (Mac and Windows)
+
+Each [release](https://github.com/peterhudson/timegrapher/releases) has a
+Claude Desktop extension for each system:
+`timegrapher-VERSION-macos.mcpb` (Apple silicon and Intel) and
+`timegrapher-VERSION-windows-x64.mcpb`. It holds both programs, so nothing
+else needs installing.
+
+1. Download the `.mcpb` for your computer.
+2. Double-click it or drag it into Claude Desktop's window. Or open Claude
+   Desktop's settings, choose **Extensions**, then **Advanced settings**,
+   then **Install Extension...**, and pick the file.
+3. Choose **Install**. The timegrapher's tools appear in the chat's tools
+   menu.
+4. Start a chat with the **Test My Watch** prompt from the same menu, or
+   just ask, e.g. "Here is a recording of my watch, dial up:
+   /Users/you/Recordings/watch_DU.flac. How is it?"
+
+Claude Desktop asks before running a tool. The extension is not signed, so
+Claude Desktop says so when installing it; that is expected.
+
+### From source
+
+To build both programs yourself (Rust 1.88 or later):
 
 ```sh
 git clone https://github.com/peterhudson/timegrapher
@@ -30,7 +52,9 @@ together into a folder of your choice. The server looks for `timegrapher`
 beside itself first, then on your PATH. To point it elsewhere, set
 `TIMEGRAPHER_CLI` to the program's full path.
 
-### Claude Desktop (Mac and Windows)
+To make a Claude Desktop extension from your own build, run
+`crates/timegrapher-mcp/packaging/mcpb.sh target/release timegrapher.mcpb`.
+Or add the server to Claude Desktop by hand:
 
 1. Open Claude Desktop's settings, choose **Developer**, then **Edit Config**.
    This opens `claude_desktop_config.json`, which is
@@ -50,14 +74,7 @@ beside itself first, then on your PATH. To point it elsewhere, set
 
    On Windows, write the path with doubled backslashes, e.g.
    `"C:\\Users\\you\\timegrapher\\timegrapher-mcp.exe"`.
-3. Quit Claude Desktop completely and open it again. The timegrapher's tools
-   appear in the chat's tools menu.
-4. Start a chat with the **Test My Watch** prompt from the same menu, or
-   just ask, e.g. "Here is a recording of my watch, dial up:
-   /Users/you/Recordings/watch_DU.flac. How is it?"
-
-Claude Desktop asks before running a tool. A one-click install bundle
-(`.mcpb`) will come with the release builds.
+3. Quit Claude Desktop completely and open it again.
 
 ### Other chat apps and editors
 
