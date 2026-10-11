@@ -95,12 +95,9 @@ use the time since service as one input among the measurements, not a
 verdict on its own. Factor that in even when the numbers look fine: a watch that
 measures well but hasn't been serviced in 12 years is still due.
 
-**New watches with cheap or clone movements** are a special case. Factory
-assembly and cleanliness vary a lot, and debris has been found in new
-clone movements, so if the owner plans to keep it, an early service (within
-the first 18 months or so) is sensible. This applies to budget and
-replica movements, not to a new watch from an established maker, which
-comes with a warranty: send that back to the maker if it misbehaves.
+**A new watch** that measures badly goes back to whoever sold it, under
+its warranty, with what was measured; don't advise a service on a new
+watch.
 
 ## Fine
 

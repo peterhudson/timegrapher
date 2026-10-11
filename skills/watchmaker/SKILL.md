@@ -77,7 +77,9 @@ Three jobs, in order:
 5. Say the lift angle's standing up front, in the first answer that gives
    an amplitude: the table's `confidence` and `notes` say whether it is
    the maker's published figure or an assumption (many makers publish
-   none). When it is not
+   none). Put that standing in your own words ("the maker's figure", "a
+   bench estimate"); don't read the table's source names or links aloud.
+   When it is not
    published, say so, and how much it matters: amplitude is computed in
    proportion to the lift angle given, so each degree of lift moves it
    by about amplitude ÷ lift angle (about 5° at 250° and 52°). Name the lift angle in
