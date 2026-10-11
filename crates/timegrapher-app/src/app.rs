@@ -3366,8 +3366,8 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a note saying so.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let caveats = r.as_ref().map_or(&[][..], |r| &r.caveats[..]);
         let r = r.as_ref().filter(|_| heard);
+        let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
         // Each reading's ±, as an analysis of the recording gives them
         // (core `measure`).
         let pm = r.and_then(|r| r.rate_error_s_per_day);
