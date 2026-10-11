@@ -130,12 +130,26 @@ pub fn histogram_with(values: &[f64], opt: &Options) -> Option<Histogram> {
     v.sort_by(f64::total_cmp);
     let n = v.len();
     let trim = opt.trim.clamp(0.0, 0.2);
-    let (lo, hi) = if trim > 0.0 {
+    let (mut lo, mut hi) = if trim > 0.0 {
         (quantile(&v, trim), quantile(&v, 1.0 - trim))
     } else {
         (v[0], v[n - 1])
     };
-    let iqr = quantile(&v, 0.75) - quantile(&v, 0.25);
+    let (q1, q3) = (quantile(&v, 0.25), quantile(&v, 0.75));
+    let iqr = q3 - q1;
+    // Trimming, with few values the trim takes nothing out, and one far-out value
+    // would stretch the scale over empty bins: keep the scale to the values
+    // within three interquartile ranges of the middle half (Tukey's far
+    // fences), and count the rest off the scale.
+    if trim > 0.0 && iqr > 0.0 {
+        let (f_lo, f_hi) = (q1 - 3.0 * iqr, q3 + 3.0 * iqr);
+        if let Some(&x) = v.iter().find(|&&x| x >= f_lo) {
+            lo = lo.max(x);
+        }
+        if let Some(&x) = v.iter().rev().find(|&&x| x <= f_hi) {
+            hi = hi.min(x);
+        }
+    }
     let fd = 2.0 * iqr / (n as f64).cbrt() * opt.width_factor.clamp(0.05, 20.0);
     let mut width = round_up(fd.max(opt.resolution).max(1e-12));
     while (hi - lo) / width > 200.0 {
@@ -369,6 +383,26 @@ mod tests {
         )
         .unwrap();
         assert!(fine.bin_width < h.bin_width);
+    }
+
+    #[test]
+    fn one_far_value_among_few_is_counted_off_the_scale() {
+        // Thirty rate readings near 6 s/d and one at 34, as a short take
+        // with one bad reading gives.
+        let mut v = spread(6.0, 0.3, 29, 6);
+        v.push(34.0);
+        let h = histogram_with(
+            &v,
+            &Options {
+                resolution: 0.1,
+                width_factor: 1.0,
+                trim: 0.005,
+            },
+        )
+        .unwrap();
+        let end = h.start + h.counts.len() as f64 * h.bin_width;
+        assert!(end < 8.0, "the scale reaches {end}");
+        assert_eq!(h.above, 1);
     }
 
     #[test]

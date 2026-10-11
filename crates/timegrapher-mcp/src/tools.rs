@@ -41,6 +41,8 @@ pub struct ToolSpec {
     pub params: &'static [Param],
     /// Changes nothing on the computer.
     pub read_only: bool,
+    /// The chat app shows the charts view beside the result.
+    pub charts: bool,
     /// Flags added when the call leaves them out, as (flag, value); a value
     /// of `~` is the home folder.
     pub defaults: &'static [(&'static str, &'static str)],
@@ -112,6 +114,7 @@ pub const TOOLS: &[ToolSpec] = &[
             the readings describe noise: do not show them; check the microphone instead.",
         command: &["analyze"],
         params: &[RECORDING, BPH, LIFT],
+        charts: true,
         read_only: true,
         defaults: &[],
     },
@@ -158,6 +161,7 @@ pub const TOOLS: &[ToolSpec] = &[
                  (20 if left out).",
             ),
         ],
+        charts: true,
         read_only: false,
         defaults: &[],
     },
@@ -182,6 +186,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Length of each rate reading in seconds (10 if left out).",
             ),
         ],
+        charts: false,
         read_only: true,
         defaults: &[],
     },
@@ -194,6 +199,7 @@ pub const TOOLS: &[ToolSpec] = &[
             recording.",
         command: &["long"],
         params: &[RECORDINGS, BPH, LIFT, CALIBRE],
+        charts: false,
         read_only: false,
         defaults: &[],
     },
@@ -224,6 +230,7 @@ pub const TOOLS: &[ToolSpec] = &[
             BPH,
             LIFT,
         ],
+        charts: true,
         read_only: true,
         defaults: &[],
     },
@@ -235,6 +242,7 @@ pub const TOOLS: &[ToolSpec] = &[
             evidence for escapement faults.",
         command: &["shape"],
         params: &[RECORDING, BPH, LIFT],
+        charts: false,
         read_only: true,
         defaults: &[],
     },
@@ -255,6 +263,7 @@ pub const TOOLS: &[ToolSpec] = &[
             ),
             BPH,
         ],
+        charts: false,
         read_only: true,
         defaults: &[],
     },
@@ -265,6 +274,7 @@ pub const TOOLS: &[ToolSpec] = &[
             rates and formats each supports. Lists them only: nothing is recorded.",
         command: &["devices"],
         params: &[],
+        charts: false,
         read_only: true,
         defaults: &[],
     },
@@ -330,6 +340,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Folder for the zip (the home folder if left out).",
             ),
         ],
+        charts: false,
         read_only: false,
         // The CLI's default is the current folder, which for a server the
         // chat app started is nowhere the person would look.
@@ -359,7 +370,7 @@ pub fn definition(t: &ToolSpec) -> Value {
             required.push(p.name);
         }
     }
-    json!({
+    let mut d = json!({
         "name": t.name,
         "title": t.title,
         "description": t.description,
@@ -376,7 +387,11 @@ pub fn definition(t: &ToolSpec) -> Value {
             "idempotentHint": true,
             "openWorldHint": false,
         },
-    })
+    });
+    if t.charts {
+        d["_meta"] = crate::views::tool_meta();
+    }
+    d
 }
 
 /// The command line for a call, after the `timegrapher` program name.

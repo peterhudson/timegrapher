@@ -173,6 +173,14 @@ fn a_chat_app_reads_a_watch() {
     )
     .unwrap();
     assert_eq!(&text, doc);
+    // The charts view gets the readings over time and the profiles beside it.
+    let charts = &r["_meta"]["timegrapher/charts"];
+    assert!(
+        charts["strip"]["rate"].as_array().unwrap().len() >= 3,
+        "{charts}"
+    );
+    assert!(!charts["strip"]["amplitude"].as_array().unwrap().is_empty());
+    assert_eq!(charts["profile"]["schema"], "timegrapher.profile/1");
 
     let r = c.call(
         "run_session",
@@ -202,6 +210,28 @@ fn a_chat_app_reads_a_watch() {
     assert_eq!(r["isError"], true);
 
     // The skill is there to read, and the prompt points at it.
+    // The tools that draw charts name the view, and the view is there to read.
+    let linked: Vec<&str> = tools["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|t| t["_meta"]["ui"]["resourceUri"] == "ui://timegrapher/charts")
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        linked,
+        ["analyze_recording", "run_session", "tick_tock_profile"]
+    );
+    let view = c.request(
+        "resources/read",
+        json!({ "uri": "ui://timegrapher/charts" }),
+    );
+    assert_eq!(view["contents"][0]["mimeType"], "text/html;profile=mcp-app");
+    assert!(view["contents"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("ui/initialize"));
+
     let skill = c.request(
         "resources/read",
         json!({ "uri": "timegrapher://skill/watchmaker" }),

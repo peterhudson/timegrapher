@@ -34,6 +34,7 @@ pub mod stream;
 pub mod synth;
 pub mod timing;
 pub mod twostate;
+pub mod update;
 pub mod usbclock;
 
 pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};

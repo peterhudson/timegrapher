@@ -1,3 +1,6 @@
+// No console window behind the app on Windows; messages go to the app log.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 //! Desktop timegrapher: the live trace with rate, amplitude and beat error
 //! from a microphone or a recording.
 //!
@@ -7,6 +10,10 @@
 //! - `timegrapher-app --devices` lists the sound input devices as JSON.
 //! - `timegrapher-app --headless FILE` runs a recording through the live
 //!   engine as fast as it can and prints the readings as JSON lines.
+//!
+//! On Windows the app opens without a console window, so these print only
+//! when their output is redirected or piped; the `timegrapher` CLI is the
+//! command-line tool there.
 
 mod app;
 mod applog;
@@ -160,7 +167,8 @@ fn main() -> ExitCode {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Timegrapher")
             .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([800.0, 560.0]),
+            .with_min_inner_size([800.0, 560.0])
+            .with_icon(icon()),
         ..Default::default()
     };
     let file = args.file.clone();
@@ -183,4 +191,10 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The window's icon, the same artwork the release packages use.
+fn icon() -> eframe::egui::IconData {
+    eframe::icon_data::from_png_bytes(include_bytes!("../../../packaging/icon.png"))
+        .unwrap_or_default()
 }
