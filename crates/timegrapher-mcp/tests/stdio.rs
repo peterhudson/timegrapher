@@ -23,6 +23,7 @@ fn cli() -> PathBuf {
             "-p",
             "timegrapher-cli",
             "--no-default-features",
+            "--release",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .current_dir(&root)
@@ -30,7 +31,7 @@ fn cli() -> PathBuf {
         .expect("cargo");
     assert!(status.success(), "building timegrapher-cli failed");
     target
-        .join("debug")
+        .join("release")
         .join(format!("timegrapher{}", std::env::consts::EXE_SUFFIX))
 }
 
@@ -105,16 +106,19 @@ impl Drop for Client {
 }
 
 fn synth(cli: &Path, out: &Path, rate: &str) {
-    let status = Command::new(cli)
+    let done = Command::new(cli)
         .arg("synth")
         .arg(out)
         .args(["--duration", "40", "--amplitude", "280"])
         .arg(format!("--rate={rate}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .output()
         .unwrap();
-    assert!(status.success());
+    assert!(
+        done.status.success(),
+        "synth failed ({}): {}",
+        done.status,
+        String::from_utf8_lossy(&done.stderr)
+    );
 }
 
 #[test]
