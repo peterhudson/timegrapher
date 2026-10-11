@@ -58,7 +58,10 @@ archive (`--build COMMIT` builds from source instead), the watchmaker skill
 at that commit and the corpus index. `run` downloads only the recordings the
 personas use (about 1 GB), runs all the personas in parallel, then writes
 `triage.md`. `--only ID ...` runs some of them; `--model` picks the model for
-every agent.
+every agent. `--notes FILE` gives every persona the build's release notes
+(what changed since the last round), and the triage then lists who tried each
+item. `--no-mcp-shim` talks to the MCP server directly; use it for builds
+that carry the `resultType` fix (main from 2026-10-11).
 
 ## Adding or changing a persona
 
