@@ -25,7 +25,9 @@ while one is being analysed, **Cancel** for a recording). Opening a
 recording, by **Open…**, **Open Folder…**, a path typed into the box and
 Enter, or the command line, analyses it all at once, which is how a
 watchmaker looks back through a take; **Replay** plays a file through as if
-live. Dropping a file or folder on the window opens it too where the
+live, and **Analyse All**, shown during a replay and after it, goes back
+to the whole recording analysed at once without opening it again,
+keeping the settings chosen under Watch. Dropping a file or folder on the window opens it too where the
 desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
 **Watch**, **Microphone** (only for the microphone), then one card for each
 part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
@@ -44,8 +46,13 @@ close it). Every setting gives a short hint when the pointer rests on it. Before
 open, the main area offers the three ways in: **Listen to a Watch**,
 **Open a Recording…** and **Open a Folder…**. While a recording is being
 analysed it shows how far the analysis has got, in hours of sound and time
-left, with **Cancel**; a problem shows in a red banner above the readings until
-it is dismissed or the next start clears it. The app follows the
+left, with **Cancel**; a problem shows in a red banner floating over the
+top of the main area, so nothing below it moves, until it is dismissed or
+the next start clears it. A recording that can't be opened leaves the one
+shown in place, and the path box goes back to it. Choosing **Recording**
+while a stopped microphone session is in hand shows the ways in again
+rather than that session's figures, and says the session is kept;
+**Microphone** brings it back. The app follows the
 desktop's light or dark setting (Appearance, under Window, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
@@ -115,6 +122,10 @@ rate set that differs from the one heard, and pauses in the stretch. No
 reading is graded. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
+When nothing in the take has sounded like a watch after its first few
+seconds, the cards and charts give way to one card, **No watch heard. Is
+it on the microphone?**, with what to check; they appear as soon as a
+watch is heard.
 
 **Possible Faults.** Under the readings, an amber banner names any
 escapement fault the shape of the Tick and Tock points to (unlocking too
@@ -487,7 +498,11 @@ been published yet"). The request carries no account or identifier.
   it.
 - **Calibre.** Not Set, a calibre from the built-in table
   (`timegrapher_core::calibres`, grouped by maker; each entry's hint gives
-  its beat rate, lift angle and wheel periods), or one of your own.
+  its beat rate, lift angle and wheel periods), or one of your own. The
+  search box at the top of the menu narrows it as you type, by maker or
+  calibre, any case, spaces ignored ("rolex", "3235", "eta 28"). With
+  none picked and the lift angle left at 52°, an amber line under it says
+  the amplitude rests on that guess.
   Picking one fills in its lift angle and names the cycles Steadiness
   finds after its own wheels; if the watch beats at another rate than the
   calibre, the card says so. **New Custom Calibre** adds one with a name
@@ -502,7 +517,10 @@ been published yet"). The request carries no account or identifier.
   included.
 - **Position.** DU, DD, CU, CD, CL, CR. A new position is a new
   measurement, so changing it while listening (or paused) starts a new
-  stretch, noted in the saved recording. The strip keeps its beats and
+  stretch, noted in the saved recording. While listening, when the beats
+  stop for more than 3 seconds and come back with no change of position
+  marked, a banner asks whether the watch was moved, with a button for
+  each position and **Not Moved**; it goes by itself a minute later. The strip keeps its beats and
   marks each stretch, shading every other one, with a ticker above the
   plot (beside it, when the strip runs down) that names the position over
   and over along its stretch, so it shows even with both ends of the
@@ -538,9 +556,14 @@ stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it, and **Save again…** later brings
-that copy up to date. Sound that hasn't been saved is never thrown away
-without asking: New session and closing the window ask whether to save it
-first.
+that copy up to date. Once the take has had a position change, the copy's
+folder name ends in `_positions` rather than the first position. Sound that hasn't been saved is never thrown away
+without asking: New session, opening or replaying a recording, and
+closing the window ask whether to save it first. The microphone's own
+settings are kept aside while recordings are open and come back with
+**Microphone**. Once stopped, the time slider shows for a microphone
+session too; stopped during a move's settling time, the rate card gives
+the reading from before the move and says so.
 
 Each saved recording is a folder named after the start time, the watch
 and the position, so it can be analysed again later with a newer engine,
@@ -557,7 +580,11 @@ Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins
 Your Calibres), the lift angle, the beat rate and the position stretches,
 so the strip and charts mark them and Steadiness tests each position on
-its own. Without one, a recording opens with the settings as they are.
+its own. Without one, a recording opens with the settings back at their
+defaults (no watch name or calibre, 52°, the beat rate found, Dial Up), so
+nothing carries over from the last recording, except that a position named as a word of its own in the file's or
+folder's name (`reverso_DU_01.flac`) is taken, and the message says so
+with the lift angle in use.
 
 The folder reads straight into the long-run analysis, calibrated against
 the system clock:

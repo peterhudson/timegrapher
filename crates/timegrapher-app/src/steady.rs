@@ -1009,7 +1009,7 @@ fn unit_sig(k: SeriesKind, v: f64) -> String {
 }
 
 /// The label for a grid line on a log10 axis: decades always, the 2 and 5
-/// lines only when less than two decades show.
+/// lines only when less than three decades show.
 fn log_label(
     m: GridMark,
     range: &std::ops::RangeInclusive<f64>,
