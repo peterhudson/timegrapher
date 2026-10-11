@@ -3614,12 +3614,12 @@ impl TimegrapherApp {
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     ui.spacing_mut().item_spacing.x = 4.0;
-                                    let (word, color) = grade_look(g.grade, pal);
+                                    let (word, filled) = grade_look(g.grade);
                                     let resp = ui.label(
                                         RichText::new(word).small().color(pal.text_secondary),
                                     );
-                                    // The dot as much as the word.
-                                    resp.union(theme::dot(ui, color))
+                                    // The meter as much as the words.
+                                    resp.union(theme::meter(ui, filled, pal.text_secondary))
                                         .on_hover_text(grade_hint(title, g, doubts));
                                 },
                             );
@@ -5886,7 +5886,7 @@ type ScopeKey = (i64, u64, scope::Zoom);
 
 /// Everything Average Over sets, and what it leaves alone.
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
-     the three readings, their ± and their Good, Fair or Poor; every point on the Rate, \
+     the three readings, their ± and their confidence; every point on the Rate, \
      Amplitude and Beat Error charts; the Amplitude, Rate and Beat Error lines drawn over \
      the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
      the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
@@ -5905,12 +5905,14 @@ type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
 
-/// A grade's word and the colour of its dot.
-fn grade_look(g: Grade, pal: &theme::Palette) -> (&'static str, egui::Color32) {
+/// A grade shown as the measurement's confidence: its words and how many
+/// of the meter's three dots are filled. Grey, not green to red: it says
+/// how sure the reading is, not how good the watch is.
+fn grade_look(g: Grade) -> (&'static str, usize) {
     match g {
-        Grade::Good => ("Good", pal.good),
-        Grade::Fair => ("Fair", pal.warn),
-        Grade::Poor => ("Poor", pal.bad),
+        Grade::Good => ("High Confidence", 3),
+        Grade::Fair => ("Medium Confidence", 2),
+        Grade::Poor => ("Low Confidence", 1),
     }
 }
 
@@ -5930,10 +5932,11 @@ fn grade_hint(title: &str, g: confidence::Reading, d: Doubts) -> String {
         ),
     };
     let mut t = format!(
-        "How far this reading can be trusted: it grades the measurement, not the watch. \
-         Good when its ± is within {good}{unit}, Fair within {fair}{unit}, Poor beyond that \
-         or when there is no ± yet. The ± says how much the reading would move on another \
-         stretch of the same sound; a watch far off time can still be measured Good."
+        "Confidence: how far this reading can be trusted. It grades the measurement, not \
+         the watch: High when its ± is within {good}{unit}, Medium within {fair}{unit}, Low \
+         beyond that or when there is no ± yet. The ± says how much the reading would move \
+         on another stretch of the same sound; a watch far off time can still be measured \
+         with High confidence."
     );
     let mut lowered = Vec::new();
     if d.beats_missing {
