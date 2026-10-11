@@ -548,6 +548,16 @@ impl LiveAnalyzer {
     /// Readings over the `average_s` seconds before `end_s`.
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
         let mut from = end_s - average_s;
+        // The sound heard over the averaging time, since the start or the
+        // latest break.
+        let since = self
+            .breaks
+            .iter()
+            .rev()
+            .find(|&&b| b <= end_s)
+            .copied()
+            .unwrap_or(0.0);
+        let listened_s = (end_s - from.max(since).max(0.0)).max(0.0);
         let mut lo = self.beats.partition_point(|b| b.time < from);
         let hi = self.beats.partition_point(|b| b.time <= end_s);
         // Only the latest unbroken run of beats.
@@ -627,6 +637,7 @@ impl LiveAnalyzer {
                 // 10 s average is 10 s of beats, though its first and last
                 // beats are one beat less apart.
                 span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
+                listened_s,
                 breaks: 0,
                 average_s: Some(average_s),
             },

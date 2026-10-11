@@ -580,6 +580,7 @@ pub fn measure_with_breaks(
                 (Some(a), Some(b)) => b.time - a.time - gaps,
                 _ => 0.0,
             },
+            listened_s: to_s - from_s,
             breaks: m.breaks.len(),
             average_s: None,
         },
