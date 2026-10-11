@@ -5532,7 +5532,6 @@ impl TimegrapherApp {
                 let frac = if t.len() > 5 { 0.03 } else { 0.0 };
                 theme::clear_of_right_edge(t, m.value, r, frac)
             })])
-            // Short charts still get a label at the top and the bottom.
             // Short charts still get a label at the top and the bottom:
             // the labels are painted below, in small text, so they fit
             // closer than the plot's own.
@@ -5715,7 +5714,6 @@ fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
     ((points[near][0] - x).abs() <= 3.0 * spacing).then_some(points[near][1])
 }
 
-/// The 2nd to 98th percentile of the values, padded a little.
 /// The break before the beats newer than `seen`, from and to, when it is
 /// longer than [`MOVE_GAP_S`] and no position change falls in it.
 fn sound_break(
@@ -5848,6 +5846,7 @@ fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
     }
 }
 
+/// The 2nd to 98th percentile of the values, padded a little.
 fn percentile_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
     if points.len() < 2 {
         return None;
