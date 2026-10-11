@@ -10,6 +10,7 @@ use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
+use timegrapher_core::steady_views;
 use timegrapher_core::stream::{self, StreamConfig};
 
 pub struct Options<'a> {
@@ -20,6 +21,8 @@ pub struct Options<'a> {
     pub wheels: &'a [String],
     pub check: Config,
     pub json: bool,
+    /// Add the Steadiness pane's views to each series in the JSON.
+    pub views: bool,
 }
 
 pub fn run(o: Options) -> Result<(), String> {
@@ -92,10 +95,45 @@ pub fn run(o: Options) -> Result<(), String> {
             "wind_h": o.check.wind_h,
             "stretch_s": o.check.stretch_s,
         });
-        crate::output::print("series", crate::output::input(&files, settings), &rep)
+        let mut doc = serde_json::to_value(&rep).map_err(|e| e.to_string())?;
+        // What only a chart draws, a few hundred kB on a long take, comes
+        // with --views: the probability plots of the whole take's
+        // distributions and the Steadiness pane's views.
+        strip_points(&mut doc, o.views);
+        if o.views {
+            let views = steady_views::views(&log, &rep, &long, &lc, o.check.rate_reading_s);
+            if let Some(series) = doc["series"].as_array_mut() {
+                for (s, v) in series.iter_mut().zip(&views.series) {
+                    s["views"] = serde_json::to_value(v).map_err(|e| e.to_string())?;
+                }
+            }
+            doc["period_span"] =
+                serde_json::to_value(views.period_span).map_err(|e| e.to_string())?;
+        }
+        crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
         print_text(&rep, clock.is_some());
         Ok(())
+    }
+}
+
+/// Drops the distributions' probability-plot points: every one, or with
+/// `keep_overall` all but the whole take's.
+fn strip_points(doc: &mut serde_json::Value, keep_overall: bool) {
+    let d = &mut doc["distributions"];
+    let mut lists: Vec<&mut serde_json::Value> = Vec::new();
+    if let Some(stretches) = d["stretches"].as_array_mut() {
+        lists.extend(stretches.iter_mut().map(|s| &mut s["distributions"]));
+    }
+    for list in lists {
+        for e in list.as_array_mut().into_iter().flatten() {
+            e.as_object_mut().map(|o| o.remove("points"));
+        }
+    }
+    if !keep_overall {
+        for e in d["overall"].as_array_mut().into_iter().flatten() {
+            e.as_object_mut().map(|o| o.remove("points"));
+        }
     }
 }
 

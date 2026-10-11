@@ -105,6 +105,10 @@ async fn call(
             line[0]
         )));
     };
+    // What only the charts draw stays out of what the model reads.
+    let mut doc = doc;
+    let series_charts =
+        (tool.name == "check_steadiness").then(|| views::take_series_charts(&mut doc));
     // The text block carries the same document for chat apps that show the
     // model only text; warnings from stderr ride along after it.
     let mut text = serde_json::to_string(&doc).unwrap_or_default();
@@ -119,6 +123,9 @@ async fn call(
     if recording_view {
         let recording = line.last().cloned().unwrap_or_default();
         let charts = views::analyze_charts(&doc, args, &extras, &recording).await;
+        result["_meta"] = json!({ views::META_KEY: charts });
+    }
+    if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
     }
     wire(result)

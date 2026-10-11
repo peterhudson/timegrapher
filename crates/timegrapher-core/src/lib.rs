@@ -32,6 +32,7 @@ pub mod recorder;
 pub mod session;
 pub mod shape;
 pub mod steadiness;
+pub mod steady_views;
 pub mod stream;
 pub mod synth;
 pub mod timing;

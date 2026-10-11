@@ -77,6 +77,13 @@ svg text.out { font-weight: 600; }
 .sev-warning, .sev-warn { color: var(--warn); }
 .sev-note, .sev-info { color: var(--text2); }
 .findings .evidence, .findings .advice { color: var(--text2); font-size: 12px; margin-top: 2px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.seg button { font: inherit; font-size: 12px; color: var(--text); background: var(--control); border: 0; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--card); }
+.verdict { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin: 10px 0 2px; }
+.verdict .name { color: var(--text2); }
+.verdict b { font-weight: 600; }
+.headline { color: var(--text2); font-size: 12px; margin: 0 0 4px; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .empty { color: var(--text2); padding: 24px 0; text-align: center; }
 </style>
 </head>
@@ -646,6 +653,325 @@ function profileView(doc) {
   return `<h1>Tick and Tock</h1><p class="sub">${esc(name)}</p>${profileCard(doc, "Tick and Tock Profiles")}`;
 }
 
+// ---- Steadiness (the app's Steadiness pane, steady.rs) --------------------
+
+const STEADY_VIEWS = [
+  ["readings", "Readings", "Every reading in time order, with the stretches of constant level the change finder split them into, and the two levels when there are two states"],
+  ["periods", "Periods", "How strongly the readings repeat at each period, from the period search: a peak above the dashed line is a real cycle, labelled with the wheel whose turn it matches"],
+  ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, and their median shape as the line"],
+  ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
+  ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
+  ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
+];
+const VERDICTS = {
+  steady: ["Steady", "Independent readings about one level: what a healthy watch on a quiet bench gives", "--good"],
+  periodic: ["Periodic", "The readings repeat on a cycle, named after the wheel whose turn it matches: something in the train changes once a turn", "--warn"],
+  two_states: ["Two States", "The readings switch between two levels, as when a part rubs some of the time", "--warn"],
+  measurement: ["Measurement", "Two levels that come from the unlock mark hopping between two edges of the sound, not from the watch: a problem with the measurement, so don't read it as a fault", "--text2"],
+  shifting_mean: ["Shifting Mean", "The level steps once or more and stays at the new level, as after a knock or when the watch was moved", "--warn"],
+  drifting: ["Drifting", "The level slides or curves slowly, as the amplitude does when the mainspring runs down", "--warn"],
+  wandering: ["Wandering", "Each reading remembers the last ones, with no cycle, steps or trend to explain it: slow, irregular wander", "--warn"],
+  too_short: ["Too Short", "Too few readings to say; the tests need about 5 minutes of beats", "--text3"],
+};
+const SERIES = {
+  rate: ["Rate", "--rate", " s/d"],
+  amplitude: ["Amplitude", "--amplitude", "°"],
+  beat_error: ["Beat Error", "--beat-error", " ms"],
+};
+let steadyView = null;
+
+// steady::secs: "45 s", "12 min", "2.5 h".
+function secs(t) {
+  return t < 120 ? `${t.toFixed(0)} s` : t < 7200 ? `${(t / 60).toFixed(0)} min` : `${(t / 3600).toFixed(1)} h`;
+}
+// steady::lag_text: "30 s" under a minute, then m:ss.
+function lagText(t) { return Math.abs(t) < 59.5 ? `${t.toFixed(0)} s` : fmtTime(t); }
+// steady::sig: about three significant figures.
+function sig(v) {
+  if (v === 0 || !Number.isFinite(v)) return "0";
+  const d = Math.max(0, 2 - Math.floor(Math.log10(Math.abs(v))));
+  const t = v.toFixed(d);
+  return t.includes(".") ? t.replace(/0+$/, "").replace(/\.$/, "") : t;
+}
+function pText(p) { return p < 1e-300 ? "<1e-300" : p < 0.001 ? p.toExponential(0).replace("e-", "e-") : p.toFixed(3); }
+function wheelTitle(name) { return String(name).split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "); }
+// steady::value_text and plain: decimals from the step, no "-0".
+function stepText(v, step, unit) {
+  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
+  if (Math.abs(v) < step * 1e-6) v = 0;
+  return v.toFixed(d) + (unit || "");
+}
+// steady::log_grid and log_label: every decade, with 2 and 5 inside each
+// (labelled only when less than two decades show) when fewer than three show.
+function logTicks(lo, hi, fmt) {
+  const fine = hi - lo < 3, ticks = [];
+  for (let k = Math.floor(lo) - 1; k <= Math.ceil(hi); k++) {
+    for (const m of [1, 2, 5]) {
+      if (!fine && m !== 1) continue;
+      const v = k + Math.log10(m);
+      if (v >= lo - 1e-9 && v <= hi + 1e-9) ticks.push([v, m === 1 || hi - lo < 2 ? fmt(Math.pow(10, v)) : ""]);
+    }
+  }
+  return ticks;
+}
+function linTicks(lo, hi, px, minPx, fmt, ladder) {
+  const g = gridFor(lo, hi, px, minPx, ladder);
+  return g.ticks.map((v) => [v, fmt(v, g.step)]);
+}
+
+// A plot as the steadiness views draw theirs: an x and a y scale with their
+// own tick labels, and lines, dots, rules and notes, all inside the plot.
+//   x, y: [lo, hi]; xTicks(lo, hi, plotW), yTicks(lo, hi, plotH): [[v, label]]
+//   hlines: [{y, color, dash}]; vlines: [{x, color, label, left}]
+//   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
+//   notes: [{x, y, text, above}] beside a point; corner: {text, top}
+function xyChart(o) {
+  const W = chartWidth(), H = o.height || 150, T = 4, B = 20, R = 6;
+  const plotH = H - T - B;
+  const [x0, x1] = o.x, [y0, y1] = o.y;
+  const yt = o.yTicks(y0, y1, plotH);
+  const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
+  const plotW = W - L - R;
+  const xt = o.xTicks(x0, x1, plotW);
+  const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
+  const sy = (y) => T + (y1 - y) / (y1 - y0) * plotH;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, inside = "";
+  for (const [v, t] of yt) {
+    inside += `<line class="grid" x1="${L}" x2="${L + plotW}" y1="${sy(v)}" y2="${sy(v)}"/>`;
+    if (t) g += `<text x="${L - 5}" y="${sy(v) + 4}" text-anchor="end">${esc(t)}</text>`;
+  }
+  for (const [v, t] of xt) {
+    inside += `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${T + plotH}"/>`;
+    if (!t) continue;
+    const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
+  }
+  const dash = (d) => d ? ` stroke-dasharray="${DASH[d]}"` : "";
+  for (const h of o.hlines || []) {
+    inside += `<line x1="${L}" x2="${L + plotW}" y1="${sy(h.y)}" y2="${sy(h.y)}" stroke="var(${h.color})" stroke-width="1"${dash(h.dash)}/>`;
+  }
+  // Each rule's name beside it, on its left when asked, else its right;
+  // a name with no room inside the plot, or over another, is left off.
+  const taken = [];
+  for (const v of o.vlines || []) {
+    inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})" stroke-width="1"/>`;
+    if (!v.label) continue;
+    const w = v.label.length * CHAR_W;
+    let a = v.left ? sx(v.x) - 3 - w : sx(v.x) + 3;
+    if (a < L + 2 || a + w > L + plotW - 2) a = v.left ? sx(v.x) + 3 : sx(v.x) - 3 - w;
+    if (a < L + 2 || a + w > L + plotW - 2 || taken.some(([p, q]) => a < q + 4 && a + w > p - 4)) continue;
+    taken.push([a, a + w]);
+    inside += `<text x="${a}" y="${T + 12}">${esc(v.label)}</text>`;
+  }
+  for (const d of o.dots || []) {
+    inside += `<g fill="var(${d.color})">${d.pts.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+      .map(([x, y]) => `<circle cx="${sx(x).toFixed(1)}" cy="${sy(y).toFixed(1)}" r="${d.r}"/>`).join("")}</g>`;
+  }
+  for (const l of o.lines || []) {
+    let d = "", pen = false;
+    for (const [x, y] of l.pts) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { pen = false; continue; }
+      d += `${pen ? "L" : "M"}${sx(x).toFixed(1)},${sy(y).toFixed(1)}`;
+      pen = true;
+    }
+    inside += `<path d="${d}" fill="none" stroke="var(${l.color})" stroke-width="${l.width || 1.5}"${dash(l.dash)} stroke-linejoin="round"/>`;
+  }
+  for (const m of o.marks || []) {
+    inside += `<circle cx="${sx(m.x)}" cy="${sy(m.y)}" r="3.5" fill="var(${m.color})"/>`;
+  }
+  // steady::mark_label: beside the point, on the side that keeps it inside.
+  for (const n of o.notes || []) {
+    const right = n.x > (x0 + x1) / 2;
+    inside += `<text x="${sx(n.x) + (right ? -8 : 8)}" y="${sy(n.y) + (n.above ? -6 : 14)}" text-anchor="${right ? "end" : "start"}" style="fill:var(--text)">${esc(n.text)}</text>`;
+  }
+  if (o.corner) {
+    inside += `<text x="${L + plotW - 6}" y="${o.corner.top ? T + 13 : T + plotH - 6}" text-anchor="end">${esc(o.corner.text)}</text>`;
+  }
+  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
+}
+
+function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
+
+// One series' plot under the chosen view.
+function steadyPlot(s, view, doc) {
+  const [, color, unit] = SERIES[s.series] || ["", "--text", ""];
+  const time = (px) => (lo, hi, w) => linTicks(lo, hi, w, Math.max(Math.min(80, w / 4), px), (v) => v);
+  const v = s.views || {};
+  switch (view) {
+    case "readings": {
+      const r = v.readings;
+      if (!r || !r.t_s || r.t_s.length < 2) return steadyNote("No readings to draw.");
+      const pts = r.t_s.map((t, i) => [t, r.values[i]]).filter(([, y]) => Number.isFinite(y));
+      const [lo, hi] = spreadRange(pts.map((p) => p[1]));
+      const segs = s.changes && s.changes.segments && s.changes.segments.length > 1 ? s.changes.segments : [];
+      const ts = (s.verdict === "two_states" || s.verdict === "measurement") && s.two_state ? s.two_state : null;
+      return xyChart({
+        title: "Readings", x: [Math.min(...r.t_s), Math.max(...r.t_s)], y: [lo, hi],
+        xTicks: (a, b, w) => linTicks(a, b, w, Math.min(80, w / 4), (t) => fmtTime(t), TIME_STEPS),
+        yTicks: (a, b, h) => linTicks(a, b, h, 24, (y, st) => stepText(y, st, unit)),
+        dots: [{ pts, color, r: 1.4 }],
+        lines: segs.map((g) => ({ pts: [[g.start_s, g.mean], [g.end_s, g.mean]], color: "--text", width: 1.8 })),
+        hlines: ts ? [ts.low, ts.high].map((y) => ({ y, color: "--text", dash: "loose" })) : [],
+      });
+    }
+    case "periods": {
+      const p = v.search;
+      if (!p || !p.period_s || !p.period_s.length) return steadyNote("The period search needs a longer session.");
+      const pts = p.period_s.map((t, i) => [t > 0 ? Math.log10(t) : NaN, p.score[i]]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+      const span = doc.period_span || [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
+      if (!(span[1] > span[0])) return steadyNote("The period search needs a longer session.");
+      const top = Math.max(p.threshold, ...pts.map((q) => q[1])) * 1.15;
+      const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+      const vlines = wheels.filter((w) => w.period_s > 0).map((w) => {
+        const x = Math.log10(w.period_s);
+        const twin = wheels.some((o) => o !== w && o.name === w.name && o.period_s > w.period_s);
+        return { x, color: "--text3", label: wheelTitle(w.name), left: twin };
+      }).filter((l) => l.x > span[0] && l.x < span[1]);
+      const marks = [], notes = [];
+      if (s.period && s.period.period_s > 0) {
+        const x = Math.log10(s.period.period_s);
+        const near = pts.reduce((a, q) => Math.abs(q[0] - x) < Math.abs(a[0] - x) ? q : a, pts[0]);
+        marks.push({ x, y: near[1], color });
+        notes.push({ x, y: near[1], text: secs(s.period.period_s) + (s.period.wheel ? `, ${wheelTitle(s.period.wheel)}` : "") });
+      }
+      return xyChart({
+        title: "Periods", x: span, y: [0, top],
+        xTicks: (a, b) => logTicks(a, b, secs),
+        yTicks: (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
+        vlines, hlines: [{ y: p.threshold, color: "--text2", dash: "loose" }],
+        lines: [{ pts, color, width: 1.5 }], marks, notes,
+      });
+    }
+    case "cycle": {
+      const f = v.fold;
+      if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found: nothing repeats in these readings.");
+      const bins = f.profile.length, at = (b) => (b + 0.5) / bins * f.period_s;
+      const dots = [];
+      for (const row of f.raster || []) row.forEach((y, b) => { if (Number.isFinite(y)) dots.push([at(b), y]); });
+      const shape = f.profile.map((y, b) => [at(b), y]);
+      const [lo, hi] = spreadRange(dots.length ? dots.map((q) => q[1]) : shape.map((q) => q[1]));
+      const n = f.cycles || (f.raster || []).length;
+      let label;
+      if (f.from === "own") {
+        const w = (s.cycle && s.cycle.wheel) || (s.period && s.period.wheel);
+        label = `${secs(f.period_s)} cycle${w ? `, ${wheelTitle(w)}` : ""}, ${n} cycles folded`;
+      } else if (SERIES[f.from]) {
+        label = `Folded at the ${SERIES[f.from][0].toLowerCase()}'s ${secs(f.period_s)} cycle, ${n} cycles`;
+      } else {
+        label = `Folded at the ${String(f.wheel || "wheel").toLowerCase()}'s ${secs(f.period_s)} turn, ${n} cycles`;
+      }
+      return xyChart({
+        title: "Cycle", x: [0, f.period_s], y: [lo, hi],
+        xTicks: (a, b, w) => linTicks(a, b, w, Math.min(80, w / 4), (t) => lagText(t), TIME_STEPS),
+        yTicks: (a, b, h) => linTicks(a, b, h, 24, (y, st) => stepText(y, st, unit)),
+        dots: [{ pts: dots, color: "--text3", r: 1.2 }],
+        lines: [{ pts: shape, color, width: 2 }],
+        corner: { text: label },
+      });
+    }
+    case "autocorrelation": {
+      const a = s.autocorrelation;
+      if (!a || !a.lag_s) return steadyNote("Too few readings for the autocorrelation.");
+      const pts = a.lag_s.map((l, i) => [l, a.r[i]]).filter(([, r]) => Number.isFinite(r));
+      const xHi = pts.length ? pts[pts.length - 1][0] : 1;
+      const lo = Math.min(-0.2, -a.band, ...pts.map((q) => q[1]));
+      const marks = [], notes = [];
+      if (Number.isFinite(a.repeat_lag_s) && Number.isFinite(a.repeat_r)) {
+        marks.push({ x: a.repeat_lag_s, y: a.repeat_r, color });
+        notes.push({ x: a.repeat_lag_s, y: a.repeat_r, text: `repeats at ${secs(a.repeat_lag_s)}` });
+      }
+      return xyChart({
+        title: "Autocorrelation", x: [0, xHi], y: [lo - 0.05, 1.35],
+        xTicks: (p, q, w) => linTicks(p, q, w, Math.min(80, w / 4), (t) => lagText(t), TIME_STEPS),
+        yTicks: (p, q, h) => linTicks(p, q, h, 24, (y, st) => stepText(y, st)),
+        hlines: [{ y: 0, color: "--text3" }, { y: a.band, color: "--text2", dash: "loose" }, { y: -a.band, color: "--text2", dash: "loose" }],
+        lines: [{ pts, color, width: 1.5 }], marks, notes,
+        corner: Number.isFinite(a.p_value) ? { text: `Ljung–Box p = ${pText(a.p_value)}`, top: true } : null,
+      });
+    }
+    case "allan": {
+      const a = s.allan;
+      if (!a || !a.tau_s) return steadyNote("Too few readings for the Allan deviation.");
+      const both = (vals) => a.tau_s.map((t, i) => [t, vals[i]]).filter(([t, d]) => t > 0 && d > 0 && Number.isFinite(d)).map(([t, d]) => [Math.log10(t), Math.log10(d)]);
+      const dev = both(a.deviation), white = both(a.white || []);
+      const all = dev.concat(white);
+      if (!dev.length) return steadyNote("Too few readings for the Allan deviation.");
+      const pad = (lo, hi) => { const p = Math.max((hi - lo) * 0.05, 0.05); return [lo - p, hi + p]; };
+      const x = pad(Math.min(...all.map((q) => q[0])), Math.max(...all.map((q) => q[0])));
+      const y = pad(Math.min(...all.map((q) => q[1])), Math.max(...all.map((q) => q[1])));
+      const notes = [];
+      if (a.best_tau_s > 0 && a.best_deviation > 0) {
+        notes.push({ x: Math.log10(a.best_tau_s), y: Math.log10(a.best_deviation), text: `least scatter at ${secs(a.best_tau_s)}: ${sig(a.best_deviation)}${unit}` });
+      }
+      return xyChart({
+        title: "Allan Deviation", x, y,
+        xTicks: (p, q) => logTicks(p, q, secs),
+        yTicks: (p, q) => logTicks(p, q, (d) => sig(d) + unit),
+        lines: [{ pts: white, color: "--text2", width: 1, dash: "loose" }, { pts: dev, color, width: 1.5 }],
+        dots: [{ pts: dev, color, r: 2 }], notes,
+      });
+    }
+    case "cusum": {
+      const c = s.cusum;
+      if (!c || !c.t_s) return steadyNote("Too few readings for the CUSUM.");
+      const pts = c.t_s.map((t, i) => [t, c.s[i]]).filter(([, y]) => Number.isFinite(y));
+      const m = Math.max(1.6, ...pts.map((q) => Math.abs(q[1]))) * 1.1;
+      const marks = [], notes = [];
+      if (c.max > 1.36 && pts.length) {
+        const near = pts.reduce((a, q) => Math.abs(q[0] - c.at_s) < Math.abs(a[0] - c.at_s) ? q : a, pts[0]);
+        marks.push({ x: c.at_s, y: near[1], color });
+        notes.push({ x: c.at_s, y: near[1], text: `level changes near ${fmtTime(c.at_s)}`, above: near[1] >= 0 });
+      }
+      return xyChart({
+        title: "CUSUM", x: [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))], y: [-m, m],
+        xTicks: (p, q, w) => linTicks(p, q, w, Math.min(80, w / 4), (t) => fmtTime(t), TIME_STEPS),
+        yTicks: (p, q, h) => linTicks(p, q, h, 24, (y, st) => stepText(y, st)),
+        hlines: [{ y: 0, color: "--text3" }, { y: 1.36, color: "--text2", dash: "loose" }, { y: -1.36, color: "--text2", dash: "loose" }],
+        lines: [{ pts, color, width: 1.5 }], marks, notes,
+      });
+    }
+  }
+  return "";
+}
+
+// steady::spread: the 1st to 99th percentile, padded 12%.
+function spreadRange(values) {
+  const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (v.length < 2) return v.length ? [v[0] - 1, v[0] + 1] : [0, 1];
+  const q = (f) => v[Math.round((v.length - 1) * f)];
+  const lo = q(0.01), hi = q(0.99), pad = Math.max((hi - lo) * 0.12, 1e-3);
+  return [lo - pad, hi + pad];
+}
+
+function steadinessCard(doc) {
+  const series = doc.series || [];
+  if (!series.length) return "";
+  const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold };
+  const offered = STEADY_VIEWS.filter(([key]) => !has[key] || series.some(has[key]));
+  if (!offered.some(([k]) => k === steadyView)) steadyView = offered[0][0];
+  const drawn = series.some((s) => s.verdict !== "too_short");
+  const [, , hint] = STEADY_VIEWS.find(([k]) => k === steadyView);
+  const status = Number.isFinite(doc.duration_s) ? `Tested over ${fmtTime(doc.duration_s)} of beats` : "";
+  const rows = series.map((s) => {
+    const [title] = SERIES[s.series] || [s.series];
+    const [word, meaning, colour] = VERDICTS[s.verdict] || [s.verdict, "", "--text3"];
+    return `<div class="verdict"><span class="name">${esc(title)}</span><span class="swatch dot" style="background:var(${colour})"></span><b title="${esc(meaning)}">${esc(word)}</b></div>
+      <p class="headline" title="${esc(s.headline || "")}">${esc(s.headline || "")}</p>
+      ${s.verdict === "too_short" ? "" : steadyPlot(s, steadyView, doc)}`;
+  }).join("");
+  return `<div class="card"><h2>Steadiness</h2><p class="hint">Whether the rate, amplitude and beat error each hold steady over the session, or carry a cycle, two states, a step, a drift or wander</p>
+    ${drawn ? `<div class="seg" role="group" aria-label="View">${offered.map(([key, label]) => `<button data-steady="${key}" aria-pressed="${key === steadyView}">${esc(label)}</button>`).join("")}</div>
+    <p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
+}
+
+function wireSteadiness(root) {
+  for (const b of root.querySelectorAll("button[data-steady]")) {
+    b.addEventListener("click", () => { steadyView = b.dataset.steady; redraw(); });
+  }
+}
+
 // ---- Distributions on probability paper (the app's Distribution panes) ----
 
 // histogram::normal_quantile (Acklam), the normal score of a share.
@@ -742,10 +1068,18 @@ function distributionCards(d) {
   }).join("");
 }
 
-function seriesView(doc) {
+function seriesView(doc, extra) {
+  // The server sends what only the charts draw beside the document.
+  if (extra) {
+    doc = JSON.parse(JSON.stringify(doc));
+    (doc.series || []).forEach((s, i) => { if (extra.views && extra.views[i]) s.views = extra.views[i]; });
+    if (extra.period_span) doc.period_span = extra.period_span;
+    const all = (doc.distributions && doc.distributions.overall) || [];
+    all.forEach((e, i) => { if (extra.points && extra.points[i]) e.points = extra.points[i]; });
+  }
   const name = fileName(doc);
   const len = Number.isFinite(doc.duration_s) ? ` · ${timeLabel(doc.duration_s)}` : "";
-  return `<h1>Steadiness</h1><p class="sub">${esc(name)}${len}</p>${distributionCards(doc.distributions)}${findingsCard(doc.findings || [])}`;
+  return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${distributionCards(doc.distributions)}${findingsCard(doc.findings || [])}`;
 }
 
 // ---- Dispatch -------------------------------------------------------------
@@ -774,13 +1108,14 @@ function redraw() {
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
     html = profileView(doc);
   } else if (doc.schema.startsWith("timegrapher.series/")) {
-    html = seriesView(doc);
+    html = seriesView(doc, extra);
   } else {
     html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
   }
   lastWidth = root.clientWidth;
   root.innerHTML = html;
   wireCharts(root);
+  wireSteadiness(root);
 }
 </script>
 </body>

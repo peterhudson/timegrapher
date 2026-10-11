@@ -198,6 +198,55 @@ fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     points.into_iter().step_by(k).collect()
 }
 
+/// Takes out of a `series --views` document what only the Steadiness and
+/// Distribution charts draw (each series' `views`, the shared
+/// `period_span` and each distribution's probability-plot `points`, a few
+/// hundred kB on a long take), so the model reads the verdicts and not
+/// thousands of numbers; the view puts them back.
+pub fn take_series_charts(doc: &mut Value) -> Value {
+    let mut views = Vec::new();
+    if let Some(series) = doc.get_mut("series").and_then(Value::as_array_mut) {
+        for s in series {
+            views.push(
+                s.as_object_mut()
+                    .and_then(|o| o.remove("views"))
+                    .unwrap_or(Value::Null),
+            );
+        }
+    }
+    let period_span = doc
+        .as_object_mut()
+        .and_then(|o| o.remove("period_span"))
+        .unwrap_or(Value::Null);
+    let mut points = Vec::new();
+    if let Some(d) = doc.get_mut("distributions") {
+        if let Some(all) = d.get_mut("overall").and_then(Value::as_array_mut) {
+            for e in all {
+                points.push(
+                    e.as_object_mut()
+                        .and_then(|o| o.remove("points"))
+                        .unwrap_or(Value::Null),
+                );
+            }
+        }
+        if let Some(stretches) = d.get_mut("stretches").and_then(Value::as_array_mut) {
+            for st in stretches {
+                for e in st
+                    .get_mut("distributions")
+                    .and_then(Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(o) = e.as_object_mut() {
+                        o.remove("points");
+                    }
+                }
+            }
+        }
+    }
+    json!({ "views": views, "period_span": period_span, "points": points })
+}
+
 /// What the Recording view needs beyond `analyze`'s document: the strip
 /// from the windows file, and the Tick and Tock profiles over ten seconds
 /// in the middle of the recording.
@@ -246,6 +295,27 @@ pub async fn analyze_charts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chart_data_stays_out_of_what_the_model_reads() {
+        let mut doc = json!({
+            "series": [{ "series": "rate", "verdict": "steady", "views": { "readings": {} } }],
+            "period_span": [0.5, 2.0],
+            "distributions": {
+                "overall": [{ "series": "rate", "points": [[1.0, 0.0]] }],
+                "stretches": [{ "distributions": [{ "points": [[1.0, 0.0]] }] }],
+            },
+        });
+        let charts = take_series_charts(&mut doc);
+        let text = doc.to_string();
+        assert!(
+            !text.contains("views") && !text.contains("points") && !text.contains("period_span")
+        );
+        assert_eq!(doc["series"][0]["verdict"], "steady");
+        assert_eq!(charts["views"][0]["readings"], json!({}));
+        assert_eq!(charts["period_span"], json!([0.5, 2.0]));
+        assert_eq!(charts["points"][0], json!([[1.0, 0.0]]));
+    }
 
     #[test]
     fn strip_from_windows() {

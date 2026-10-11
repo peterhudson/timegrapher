@@ -193,7 +193,7 @@ pub const TOOLS: &[ToolSpec] = &[
             verdict per series (rate, amplitude, beat error): steady, periodic, two \
             states, measurement, shifting mean, drifting, wandering or too short, with \
             the evidence, the wheel a periodic change points at, and findings with advice.",
-        command: &["series"],
+        command: &["series", "--views"],
         params: &[
             RECORDINGS,
             BPH,
