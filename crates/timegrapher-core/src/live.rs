@@ -718,7 +718,7 @@ mod tests {
     }
 
     /// An empty stand, heard live or read back from its beat log, gives no
-    /// readings, and says why.
+    /// readings, and says no watch was heard.
     #[test]
     fn an_empty_stand_reads_nothing() {
         let x = empty_stand(60);
@@ -734,18 +734,7 @@ mod tests {
             r.amplitude_deg.is_none() && r.beat_error_unlock_ms.is_none(),
             "{r:?}"
         );
-        // Noise breaks the runs of beats, so the stretch is often too short
-        // to judge: `short_span` alone then says why (`measure`), else
-        // `no_watch`.
-        assert!(r.rate_error_s_per_day.is_none(), "{r:?}");
-        assert!(
-            matches!(
-                r.caveats.first(),
-                Some(Caveat::NoWatch | Caveat::ShortSpan { .. })
-            ),
-            "{:?}",
-            r.caveats
-        );
+        assert!(r.rate_error_s_per_day.is_none() && r.caveats.first() == Some(&Caveat::NoWatch));
     }
 
     /// The readings carry what `analyze` gives a recording: a short
