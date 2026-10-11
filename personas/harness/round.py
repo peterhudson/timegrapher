@@ -481,6 +481,16 @@ def run(args):
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
     chosen = [p for p in personas() if not args.only or p["id"] in args.only]
+    if args.notes:
+        # What changed since the last round: every persona has read it, and the triage checks it was covered.
+        with open(args.notes) as f:
+            notes = f.read().strip()
+        with open(os.path.join(out, "notes.md"), "w") as f:
+            f.write(notes + "\n")
+        for p in chosen:
+            p["dossier"] += ("\n\n## What is new in this version\n\nThe person read these release notes "
+                             "before starting and will try what is new where it fits what they came to do:\n\n"
+                             + notes)
     with concurrent.futures.ThreadPoolExecutor(len(chosen)) as pool:
         jobs = {pool.submit(Persona(p, work, out, args.model, 90 + i, args.mcp_shim).run): p["id"]
                 for i, p in enumerate(chosen)}
@@ -495,7 +505,10 @@ def triage(out, work, model):
     log("triage", "writing triage.md")
     env = clean_env(HOME=os.path.join(work, "triage-home"))
     os.makedirs(env["HOME"], exist_ok=True)
-    cmd = ["claude", "-p", prompt("triage").replace("{round_dir}", out), "--output-format", "json",
+    message = prompt("triage").replace("{round_dir}", out)
+    if os.path.exists(os.path.join(out, "notes.md")):
+        message += prompt("triage-notes").replace("{round_dir}", out)
+    cmd = ["claude", "-p", message, "--output-format", "json",
            "--setting-sources", "", "--strict-mcp-config", "--tools", "Read,Glob,Write",
            "--allowedTools", "Read", "Glob", f"Write({out}/**)", "--add-dir", out]
     if model:
@@ -518,6 +531,7 @@ def main():
     r.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r.add_argument("--model", help="model for every agent (default: claude's default)")
     r.add_argument("--no-triage", action="store_true")
+    r.add_argument("--notes", help="a markdown file of what changed since the last round (release notes)")
     r.add_argument("--no-mcp-shim", dest="mcp_shim", action="store_false",
                    help="talk to timegrapher-mcp directly (see mcp-shim.py for why the shim exists)")
     t = sub.add_parser("triage")
