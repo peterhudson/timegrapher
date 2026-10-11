@@ -129,10 +129,11 @@ Work through them in this order. The reasons are in
    what limits the readings, each code with what to do in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
-   bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
-   within about 10° of each other (this skill's rule of thumb; quote
-   `amplitude_deg`, mention a wider split, and look at it with `profile`
-   before judging the amplitude), the beat rate one the calibre
+   bph ÷ 3600), a jitter that isn't enormous, a Tick and Tock
+   amplitude split of up to about 30°, which is normal on a clean
+   recording and never a fault on its own (docs/validation.md, "Tick
+   and Tock amplitudes apart"; quote `amplitude_deg`, the
+   mean of the two; `profile` shows each side's sound), the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.
