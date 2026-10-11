@@ -239,9 +239,9 @@ Level        peak 0.0 dBFS, RMS -10.7 dBFS, 10731 clipped samples
 Detected     Clipping: 10731 samples (10731 samples clipped, peak 0.0 dBFS)
 Mixer        card 2: 'Mic' 16/16 (+23.8 dB), 'Auto Gain Control' on
 Changes --apply makes:
-  - Turn off 'Auto Gain Control' on card 2 so the gain stays fixed, then run doctor again.
+  - Turns off 'Auto Gain Control' on card 2, so the gain stays fixed.
       amixer -c 2 sset 'Auto Gain Control' off
-Nothing was changed. Run again with --apply to make these changes.
+Nothing was changed; --apply makes these changes.
 ```
 
 ## `update`

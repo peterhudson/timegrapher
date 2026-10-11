@@ -110,10 +110,7 @@ fn acquire(o: &Options) -> Result<(Audio, Value), String> {
 #[cfg(feature = "live")]
 fn live(o: &Options) -> Result<(Audio, Value), String> {
     let (dev, info) = timegrapher_core::capture::find(o.device.as_deref())?;
-    eprintln!(
-        "listening to '{}' for {:.0} s; keep the watch clamped against the microphone",
-        info.name, o.seconds
-    );
+    eprintln!("listening to '{}' for {:.0} s", info.name, o.seconds);
     let (a, rec) = timegrapher_core::capture::record(&dev, info, o.seconds)?;
     let v = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
     Ok((a, v))
@@ -226,7 +223,7 @@ fn print_report(r: &Report, apply: bool) {
             }
         }
         if !apply && r.fixes.iter().any(|f| f.command.is_some()) {
-            println!("Nothing was changed. Run again with --apply to make these changes.");
+            println!("Nothing was changed; --apply makes these changes.");
         }
     }
     if let Some(a) = &r.after {
