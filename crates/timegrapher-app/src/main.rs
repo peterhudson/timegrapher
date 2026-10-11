@@ -26,6 +26,7 @@ mod profiles;
 mod report;
 mod scope;
 mod settings;
+mod span;
 mod steady;
 mod strip;
 mod theme;

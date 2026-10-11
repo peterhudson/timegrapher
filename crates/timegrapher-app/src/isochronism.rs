@@ -102,6 +102,7 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
         .allow_scroll(false)
         .allow_zoom(false)
         .allow_drag(false)
+        .allow_axis_zoom_drag(false)
         .allow_boxed_zoom(false)
         .allow_double_click_reset(false)
         .show_x(false)
@@ -155,7 +156,7 @@ fn table(ui: &mut egui::Ui, wind: Option<&WindDown>) {
     let Some(w) = wind else {
         ui.label(
             RichText::new(
-                "The take is too short: the comparison needs at least 2 hours, and 24 hours \
+                "The session is too short: the comparison needs at least 2 hours, and 24 hours \
                  for the full test.",
             )
             .small()

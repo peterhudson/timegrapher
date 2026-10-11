@@ -143,9 +143,11 @@ with core `session::measure` and `session::evaluate`, as `session` does
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the
-first half hour against the half hour 24 hours later (or the take's last),
+first half hour against the half hour 24 hours later (or the session's last),
 as the commercial 0 h / 24 h test gives it. It needs the amplitude to fall
 through at least three 2° steps, which a run-down over some hours gives.
+Its switch and a note on what it needs are in the Isochronism section of
+the sidebar.
 
 **True Clock.** When the microphone's own clock error has been measured
 and stored (`timegrapher clock measure --save`, or `clock from-log --save`
@@ -222,7 +224,8 @@ built on them are suspect.
 
 **Scope.** The sound itself, beat by beat, like the scope view on a
 Witschi: what the engine heard, high-passed at 1 kHz, not an average. A
-tab beside the Tick Tock Profile. **20 ms** shows the Tick and the Tock
+tab beside the Tick Tock Profile, set in the Scope section of the sidebar.
+**Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
 after, with the profile's Unlock and Drop marks. **200 ms** shows one
 row each from 20 ms before the beat to 180 ms after, so the next beat
@@ -231,7 +234,9 @@ beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
 the older ones fainter, so a beat that differs from the rest stands out.
 While listening it shows the latest beats; looking back, or on a
 recording, it shows the beats up to the moment shown, read from the
-recording. No crosshair, as on the other sound plots.
+recording. Only the few seconds around the beats are read, however long
+the recording: a WAV seeks there and a FLAC is searched by its frame
+headers (`span.rs`). No crosshair, as on the other sound plots.
 
 **Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating
@@ -329,7 +334,8 @@ at, grey for Measurement and Too Short), and the sentence `series` writes to
 say why; the verdict's meaning shows when the pointer rests on it.
 Measurement means the two levels come from the unlock mark hopping between
 two edges of the sound, a problem with the measurement and not the watch.
-The picker at the top chooses what is drawn under every verdict:
+Under Each Verdict, in the Steadiness section of the sidebar, chooses what
+is drawn under every verdict:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
 **Periods** (the period search's score at each period on a logarithmic

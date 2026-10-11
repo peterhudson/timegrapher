@@ -413,8 +413,9 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                     None => f.title.clone(),
                 };
                 ui.horizontal(|ui| {
-                    theme::dot(ui, color);
+                    let dot = theme::dot(ui, color);
                     ui.add(egui::Label::new(RichText::new(title).color(pal.text)).wrap())
+                        .union(dot)
                         .on_hover_text(format!("{}\n\n{}", f.evidence, f.advice));
                 });
             }

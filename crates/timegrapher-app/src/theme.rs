@@ -280,8 +280,8 @@ pub fn caption(text: &str) -> RichText {
     RichText::new(text).font(semibold(12.5))
 }
 
-/// A small round "?" that opens an explanation beside it, closed by
-/// clicking anywhere else. The one way the app explains itself at length;
+/// A small round "?" whose explanation shows while the pointer is on it,
+/// and stays open once it's clicked, until a click anywhere else. The one way the app explains itself at length;
 /// short hints stay as tooltips on the controls.
 pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
     let p = pal(ui);
@@ -303,18 +303,32 @@ pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
         semibold(11.0),
         if open { p.on_accent } else { p.text_secondary },
     );
-    let resp = resp.on_hover_text(format!("About {title}"));
+    let body = |ui: &mut Ui, pinned: bool| {
+        ui.set_max_width(360.0);
+        ui.spacing_mut().item_spacing.y = 8.0;
+        ui.label(RichText::new(title).font(semibold(14.0)));
+        for para in paragraphs {
+            ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
+        }
+        if !pinned {
+            ui.label(
+                RichText::new("Click the ? to keep this open.")
+                    .small()
+                    .color(pal(ui).text_tertiary),
+            );
+        }
+    };
+    // Hovering shows it all and moving away hides it; a click keeps it
+    // open until a click anywhere else.
+    let resp = if open {
+        resp
+    } else {
+        resp.on_hover_ui(|ui| body(ui, false))
+    };
     egui::Popup::from_toggle_button_response(&resp)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .width(360.0)
-        .show(|ui| {
-            ui.set_max_width(360.0);
-            ui.spacing_mut().item_spacing.y = 8.0;
-            ui.label(RichText::new(title).font(semibold(14.0)));
-            for para in paragraphs {
-                ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
-            }
-        });
+        .show(|ui| body(ui, true));
     resp
 }
 
@@ -534,6 +548,65 @@ pub fn segmented<T: PartialEq + Copy>(
     changed
 }
 
+/// A list of choices one above another, the picked one highlighted, like a
+/// source list: for more choices than a segmented control holds. True when
+/// the choice changed.
+pub fn choice_list<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    choices: &[(T, &str, &str)],
+) -> bool {
+    let p = pal(ui);
+    let mut changed = false;
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        for &(v, label, hint) in choices {
+            let selected = *value == v;
+            let (rect, resp) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::click());
+            let fill = if selected {
+                p.raised
+            } else if resp.hovered() {
+                p.control_hover
+            } else {
+                Color32::TRANSPARENT
+            };
+            ui.painter()
+                .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), fill);
+            let text = if selected {
+                (semibold(12.5), p.text)
+            } else {
+                (FontId::proportional(12.5), p.text_secondary)
+            };
+            ui.painter().text(
+                rect.left_center() + Vec2::new(10.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                label,
+                text.0,
+                text.1,
+            );
+            resp.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::SelectableLabel,
+                    ui.is_enabled(),
+                    selected,
+                    label,
+                )
+            });
+            let resp = if hint.is_empty() {
+                resp
+            } else {
+                resp.on_hover_text(hint)
+            };
+            if resp.clicked() && !selected {
+                *value = v;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
 /// The button for the one thing to do next: filled with the accent colour.
 pub fn primary(ui: &Ui, text: &str) -> egui::Button<'static> {
     let p = pal(ui);
@@ -629,10 +702,12 @@ pub fn sidebar_button(ui: &mut Ui, shown: bool) -> Response {
     resp
 }
 
-/// A coloured dot, the key to a line or side.
-pub fn dot(ui: &mut Ui, color: Color32) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 14.0), Sense::hover());
+/// A coloured dot, the key to a line or side. Its response joins the
+/// label beside it (`Response::union`), so its hover text shows over both.
+pub fn dot(ui: &mut Ui, color: Color32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(8.0, 14.0), Sense::hover());
     ui.painter().circle_filled(rect.center(), 3.5, color);
+    resp
 }
 
 #[cfg(test)]

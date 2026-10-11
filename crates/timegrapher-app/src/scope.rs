@@ -251,43 +251,48 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, fs: f64) {
 }
 
 /// The span and ring controls, in a row above the plot.
-pub fn controls(ui: &mut egui::Ui, view: &mut View) {
-    ui.horizontal_wrapped(|ui| {
+pub fn settings(ui: &mut egui::Ui, view: &mut View) {
+    theme::row(ui, "Span", Some("How much time each trace covers"), |ui| {
         theme::segmented(
             ui,
             &mut view.zoom,
             &[
                 (
                     Zoom::Ms20,
-                    "20 ms",
+                    "20",
                     "One sound in detail, from the unlock to the drop, ticks above tocks",
                 ),
                 (
                     Zoom::Ms200,
-                    "200 ms",
+                    "200",
                     "The whole beat and the quiet after it, ticks above tocks",
                 ),
                 (
                     Zoom::Ms400,
-                    "400 ms",
+                    "400",
                     "A tick, the tock after it and the next tick, in one row",
                 ),
             ],
         );
-        ui.add_space(8.0);
-        ui.label(RichText::new("Beats").size(12.5))
-            .on_hover_text("How many of the latest beats are drawn over each other");
-        theme::segmented(
-            ui,
-            &mut view.ring,
-            &[
-                (1, "1", "Only the latest beat"),
-                (4, "4", "The latest four, older ones fainter"),
-                (8, "8", "The latest eight, older ones fainter"),
-                (16, "16", "The latest sixteen, older ones fainter"),
-            ],
-        );
+        ui.label(RichText::new("ms").size(12.5));
     });
+    theme::row(
+        ui,
+        "Beats",
+        Some("How many of the latest beats are drawn over each other"),
+        |ui| {
+            theme::segmented(
+                ui,
+                &mut view.ring,
+                &[
+                    (1, "1", "Only the latest beat"),
+                    (4, "4", "The latest four, older ones fainter"),
+                    (8, "8", "The latest eight, older ones fainter"),
+                    (16, "16", "The latest sixteen, older ones fainter"),
+                ],
+            );
+        },
+    );
 }
 
 #[cfg(test)]

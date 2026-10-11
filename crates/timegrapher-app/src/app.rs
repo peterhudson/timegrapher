@@ -563,9 +563,9 @@ pub struct TimegrapherApp {
     /// What the Steadiness pane draws under each verdict.
     steady_view: steady::View,
     scope_view: scope::View,
-    /// Sound read from the recording for the Scope when looking back: from
-    /// and to (seconds), the sample rate and the samples.
-    scope_audio: Option<(f64, f64, f64, Vec<f32>)>,
+    /// Sound read from the recording for the Scope when looking back: the
+    /// stretch asked for (seconds) and what was read of it.
+    scope_audio: Option<ScopeCut>,
     scope_job: Option<std::sync::mpsc::Receiver<ScopeCut>>,
     /// The steadiness tests' latest answer over the session, and the run
     /// in the background that will replace it.
@@ -1020,7 +1020,7 @@ impl TimegrapherApp {
             }
             Ok(c) => self.error(format!(
                 "The microphone opened at {} Hz this time, not the {} Hz this session \
-                 was listening at, so it can't carry on. Press New session to start again.",
+                 was listening at, so it can't carry on. Press New Session to start again.",
                 c.sample_rate,
                 rate.unwrap_or_default()
             )),
@@ -1710,8 +1710,8 @@ impl TimegrapherApp {
                         })
                         .response
                         .on_hover_text(
-                            "The microphone to listen to. \"Show every input\" in the \
-                             sidebar lists every device the system offers.",
+                            "The microphone to listen to. Show Every Input, under Microphone \
+                             in the sidebar, lists every device the system offers.",
                         );
                     if ui
                         .button("Rescan")
@@ -1806,9 +1806,9 @@ impl TimegrapherApp {
                 if self.input == Input::Microphone {
                     ui.add_space(8.0);
                     self.meter(ui, 120.0, 6.0).on_hover_text(
-                        "Input level: the loudest sample in the last half second. Aim for \
-                         the ticks to reach the light mark (-10 dBFS) and stay short of the \
-                         red one (-6 dBFS). Set it with Input level in the sidebar.",
+                        "The loudest sample in the last half second. Aim for the ticks \
+                         to reach the light mark (-10 dBFS) and stay short of the red one \
+                         (-6 dBFS). Set the gain with Input Level under Microphone.",
                     );
                     let (txt, color) = self.level_text(ui);
                     if self.running() {
@@ -1901,7 +1901,7 @@ impl TimegrapherApp {
                 .on_hover_text(
                     "Save the sound of this session so far, with its clock log and \
                      settings, to analyse again later. Listening carries on. Unsaved \
-                     sound is thrown away by New session or quitting.",
+                     sound is thrown away by New Session or quitting.",
                 )
                 .clicked()
             {
@@ -2001,11 +2001,20 @@ impl TimegrapherApp {
         self.show_readings = on;
         self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
         self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
+        self.pane_section(ui, Pane::Scope, help::SCOPE, |app, ui| {
+            scope::settings(ui, &mut app.scope_view);
+        });
         self.pane_section(
             ui,
             Pane::Steadiness,
             help::STEADINESS,
             Self::steady_settings,
+        );
+        self.pane_section(
+            ui,
+            Pane::Isochronism,
+            help::ISOCHRONISM,
+            Self::isochronism_settings,
         );
         self.section(ui, "Charts", None, help::CHARTS, |app, ui| {
             app.pane_switches(ui, &Pane::CHARTS);
@@ -2068,15 +2077,36 @@ impl TimegrapherApp {
 
     fn steady_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        ui.label(
+            RichText::new("Under Each Verdict")
+                .small()
+                .color(pal.text_secondary),
+        );
+        steady::view_list(ui, &mut self.steady_view);
         ui.add(
             egui::Label::new(
                 RichText::new(
                     "Tested over the session's beats in the watch's position once there \
-                     are 5 minutes of them, and again every minute while they grow. Pick \
-                     the view at the top of the pane.",
+                     are 5 minutes of them, and again every minute while they grow.",
                 )
                 .small()
-                .color(pal.text_secondary),
+                .color(pal.text_tertiary),
+            )
+            .wrap(),
+        );
+    }
+
+    fn isochronism_settings(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.add(
+            egui::Label::new(
+                RichText::new(
+                    "From the same tests as Steadiness. The curve needs the amplitude to \
+                     fall as the mainspring lets down, which takes hours; the 0 h / 24 h \
+                     table needs 2 hours, and 24 for the full test.",
+                )
+                .small()
+                .color(pal.text_tertiary),
             )
             .wrap(),
         );
@@ -2174,7 +2204,7 @@ impl TimegrapherApp {
                 strip::fmt_time(dur)
             ),
         };
-        steady::draw(ui, self.steady.as_ref(), &status, &mut self.steady_view);
+        steady::draw(ui, self.steady.as_ref(), &status, self.steady_view);
     }
 
     fn histogram_settings(&mut self, ui: &mut egui::Ui) {
@@ -2439,7 +2469,7 @@ impl TimegrapherApp {
             "Average Over",
             Some(
                 "Each reading is fitted over this much of the latest beats, and the \
-                 tick and tock profile is the typical beat over the same time (up to 60 s)",
+                 Tick Tock Profile is the typical beat over the same time (up to 60 s)",
             ),
             |ui| {
                 let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
@@ -3298,8 +3328,9 @@ impl TimegrapherApp {
                                     let resp = ui.label(
                                         RichText::new(word).small().color(pal.text_secondary),
                                     );
-                                    theme::dot(ui, color);
-                                    resp.on_hover_text(grade_hint(title, g, doubts));
+                                    // The dot as much as the word.
+                                    resp.union(theme::dot(ui, color))
+                                        .on_hover_text(grade_hint(title, g, doubts));
                                 },
                             );
                         }
@@ -3352,11 +3383,11 @@ impl TimegrapherApp {
                         }))
                         .on_hover_text(if short {
                             "The beats the readings are fitted to. There are fewer seconds of \
-                             beats than Average over asks for, early in a session or after a \
+                             beats than Average Over asks for, early in a session or after a \
                              pause, so the readings use what there is."
                         } else {
                             "The beats the readings are fitted to. Set the time with Average \
-                             over in the sidebar."
+                             Over under Readings."
                         });
                         if let Some(j) = r.jitter_us {
                             ui.label(small("·".into()));
@@ -3537,7 +3568,7 @@ impl TimegrapherApp {
                         format!("{} of sound, saved", strip::fmt_time(r.duration_s())),
                         pal.text_secondary,
                         format!(
-                            "Saved in {}. Sound since then is kept too; Save again to add it.",
+                            "Saved in {}. Sound since then is kept too; Save Again… adds it.",
                             p.display()
                         ),
                     ),
@@ -3545,7 +3576,7 @@ impl TimegrapherApp {
                         format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
                         pal.text_secondary,
                         "The session's sound is kept as it goes, so Save can keep it at any \
-                         point. New session or quitting throws it away unless saved."
+                         point. New Session or quitting throws it away unless saved."
                             .to_string(),
                     ),
                 };
@@ -3707,7 +3738,7 @@ impl TimegrapherApp {
             ui,
             theme::secondary(ui, "Open a Folder…"),
             "Choose a folder saved by this app, or a folder of WAV or FLAC segments of \
-             one long take",
+             one long recording",
             FOLDER_RULE,
         ) {
             self.input = Input::File;
@@ -4091,7 +4122,8 @@ impl TimegrapherApp {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new(
-                        "Every pane is hidden. Turn one on with its switch in the sidebar.",
+                        "Every pane is hidden. Turn one on with its switch in the sidebar, or press \
+                         Reset Panes under Window.",
                     )
                     .size(15.0)
                     .weak(),
@@ -4273,8 +4305,6 @@ impl TimegrapherApp {
     /// what the live engine still holds, else read from the recording.
     fn scope_pane(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        scope::controls(ui, &mut self.scope_view);
-        ui.add_space(4.0);
         let view = self.scope_view;
         let profiles = self.profiles_at(self.end_s());
         let Some(live) = &self.live else {
@@ -4300,8 +4330,9 @@ impl TimegrapherApp {
         let fs = live.sample_rate() as f64;
         let (before, after) = view.zoom.window();
         let times = picks.iter().flatten().map(|b| b.time);
-        let lo = times.clone().fold(f64::INFINITY, f64::min) - before - 0.011;
-        let hi = times.fold(f64::NEG_INFINITY, f64::max) + after;
+        // A little either side, so rounding never cuts a trace short.
+        let lo = (times.clone().fold(f64::INFINITY, f64::min) - before - 0.015).max(0.0);
+        let hi = times.fold(f64::NEG_INFINITY, f64::max) + after + 0.005;
         let mut note = None;
         let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi {
             None
@@ -4310,18 +4341,36 @@ impl TimegrapherApp {
         } else {
             self.poll_scope_job();
             match &self.scope_audio {
-                Some((a, b, rate, x)) if *a <= lo && *b >= hi => {
-                    let i0 = ((lo - a) * rate) as usize;
-                    let i1 = (((hi - a) * rate) as usize).min(x.len());
-                    Some((x[i0.min(i1)..i1].to_vec(), a + i0 as f64 / rate, *rate))
-                }
+                // What was asked for covers these beats: use what was read,
+                // even when the recording ended before it, and never ask
+                // again for a stretch that couldn't be read.
+                Some((a, b, got)) if *a <= lo && *b >= hi => match got {
+                    Ok(sp) => {
+                        let i0 =
+                            (((lo - sp.t0) * sp.rate).floor().max(0.0) as usize).min(sp.mono.len());
+                        let i1 = (((hi - sp.t0) * sp.rate).ceil().max(0.0) as usize)
+                            .clamp(i0, sp.mono.len());
+                        Some((
+                            sp.mono[i0..i1].to_vec(),
+                            sp.t0 + i0 as f64 / sp.rate,
+                            sp.rate,
+                        ))
+                    }
+                    Err(e) => {
+                        note = Some(format!("Couldn't read the sound here: {e}."));
+                        None
+                    }
+                },
                 _ => {
-                    note = Some(if self.start_scope_job(lo, hi) {
-                        "Reading the sound from the recording…"
-                    } else {
-                        "The sound of these beats isn't kept: the scope shows the last few \
-                         seconds while listening, and any moment of a recording."
-                    });
+                    note = Some(
+                        if self.start_scope_job(lo, hi) {
+                            "Reading the sound from the recording…"
+                        } else {
+                            "The sound of these beats isn't kept: the Scope shows the last \
+                             few seconds while listening, and any moment of a recording."
+                        }
+                        .to_string(),
+                    );
                     None
                 }
             }
@@ -4365,19 +4414,22 @@ impl TimegrapherApp {
     fn poll_scope_job(&mut self) {
         if let Some(rx) = &self.scope_job {
             match rx.try_recv() {
-                Ok(a) => {
-                    self.scope_audio = Some(a);
+                Ok(cut) => {
+                    self.scope_audio = Some(cut);
                     self.scope_job = None;
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.scope_job = None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.scope_job = None;
+                    self.scope_audio = None;
+                }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
     }
 
-    /// Read the sound from `lo` to `hi` seconds (and a second either side,
-    /// for small moves of the time slider) from the recording open. False
-    /// when there is no recording to read it from.
+    /// Read the sound from `lo` to `hi` seconds (and two seconds either
+    /// side, for small moves of the time slider) from the recording open.
+    /// False when there is no recording to read it from.
     fn start_scope_job(&mut self, lo: f64, hi: f64) -> bool {
         if self.scope_job.is_some() {
             return true;
@@ -4388,21 +4440,10 @@ impl TimegrapherApp {
         let Ok(files) = recordings_in(&PathBuf::from(self.file_path.trim())) else {
             return false;
         };
-        let (a, b) = ((lo - 1.0).max(0.0), hi + 1.0);
+        let (a, b) = ((lo - 2.0).max(0.0), hi + 2.0);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let Ok(pcm) = timegrapher_core::excerpt::cut(&files, a, b - a) else {
-                return;
-            };
-            let full = (1u64 << (pcm.bits_per_sample.max(1) - 1)) as f32;
-            let ch = pcm.channels.max(1) as usize;
-            let mono: Vec<f32> = pcm
-                .samples
-                .chunks(ch)
-                .map(|f| f.iter().map(|&s| s as f32).sum::<f32>() / (ch as f32 * full))
-                .collect();
-            let rate = pcm.sample_rate as f64;
-            let _ = tx.send((a, a + mono.len() as f64 / rate, rate, mono));
+            let _ = tx.send((a, b, crate::span::read(&files, a, b - a)));
         });
         self.scope_job = Some(rx);
         true
@@ -4419,9 +4460,12 @@ impl TimegrapherApp {
         let path = PathBuf::from(self.file_path.trim());
         let Some(live) = &self.live else { return false };
         let Some(bph) = live.bph() else { return false };
-        if self.input != Input::File || !path.is_file() {
+        if self.input != Input::File || self.mic_session {
             return false;
         }
+        let Ok(files) = recordings_in(&path) else {
+            return false;
+        };
         let span = live.config().profile_s.max(0.5);
         let from = (end - span).max(0.0);
         // A little audio either side of the beats for the template windows.
@@ -4439,21 +4483,24 @@ impl TimegrapherApp {
         let period = 7200.0 / bph as f64;
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let Ok(info) = timegrapher_core::audio::info(&path) else {
-                return;
-            };
-            let fs = info.sample_rate as f64;
-            let (i0, i1) = ((a0.max(0.0) * fs) as usize, (a1 * fs) as usize);
-            let mut x = Vec::with_capacity(i1.saturating_sub(i0));
-            let mut pos = 0usize;
-            let _ = timegrapher_core::audio::stream(&path, 48000, |b| {
-                let (s, e) = (pos, pos + b.len());
-                if e > i0 && s < i1 {
-                    x.extend_from_slice(&b[i0.saturating_sub(s)..(i1 - s).min(b.len())]);
+            // Only this stretch is read, however long the recording; when
+            // it can't be, the answer is no profile, not another try.
+            let a0 = a0.max(0.0);
+            let p = match crate::span::read(&files, a0, a1 - a0) {
+                Ok(sp) => {
+                    let beats: Vec<_> = beats
+                        .iter()
+                        .map(|b| timegrapher_core::beats::Beat {
+                            time: b.time + a0 - sp.t0,
+                            ..*b
+                        })
+                        .collect();
+                    timegrapher_core::profile::profiles_from_audio(
+                        &sp.mono, sp.rate, &beats, period, &cfg,
+                    )
                 }
-                pos = e;
-            });
-            let p = timegrapher_core::profile::profiles_from_audio(&x, fs, &beats, period, &cfg);
+                Err(_) => [None, None],
+            };
             let _ = tx.send(p);
         });
         self.sound_job = Some((end, rx));
@@ -4467,7 +4514,10 @@ impl TimegrapherApp {
                     self.sound_at = Some((*t, p));
                     self.sound_job = None;
                 }
-                Err(TryRecvError::Disconnected) => self.sound_job = None,
+                Err(TryRecvError::Disconnected) => {
+                    self.sound_at = Some((*t, [None, None]));
+                    self.sound_job = None;
+                }
                 Err(TryRecvError::Empty) => {}
             }
         }
@@ -4646,6 +4696,8 @@ impl TimegrapherApp {
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
+            .allow_axis_zoom_drag(false)
+            .allow_boxed_zoom(false)
             .allow_double_click_reset(false)
             .show_x(false)
             .show_y(false)
@@ -4840,6 +4892,9 @@ impl TimegrapherApp {
             .link_cursor("trend", [true, false])
             .allow_scroll(false)
             .allow_zoom([false, true])
+            // The wheel zooms and a drag pans; the axes stay put.
+            .allow_axis_zoom_drag(false)
+            .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
             .custom_x_axes(vec![
                 egui_plot::AxisHints::new_x().formatter(|m, _| strip::fmt_time(m.value))
@@ -5218,11 +5273,11 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
 
 /// How the files in a folder are put together, said where a folder is
 /// opened. The command line's `long` and `series` read folders the same way.
-const FOLDER_RULE: &str = "A take this app saved, or a folder of WAV or FLAC segments of one \
+const FOLDER_RULE: &str = "A recording this app saved, or a folder of WAV or FLAC segments of one \
      long run, joined end to end in file-name order (audio-001.wav, audio-002.wav, …).";
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
-/// WAV and FLAC files in name order (the segments of one long take).
+/// WAV and FLAC files in name order (the segments of one long recording).
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Ok(vec![path.to_path_buf()]);
@@ -5359,7 +5414,7 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
-        } else if self.sound_job.is_some() {
+        } else if self.sound_job.is_some() || self.scope_job.is_some() {
             // Show the profile when it's worked out, without waiting for
             // the pointer to move.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -5418,9 +5473,10 @@ fn banner(
     resp.response
 }
 
-/// A stretch of a recording cut for the scope: its start and end, s, its
-/// sample rate, and its samples.
-type ScopeCut = (f64, f64, f64, Vec<f32>);
+/// A stretch of a recording read for the scope: the start and end asked
+/// for, s, and the sound read (shorter at the end of the recording), or why
+/// it couldn't be.
+type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
@@ -5459,14 +5515,14 @@ fn grade_hint(title: &str, g: confidence::Reading, d: Doubts) -> String {
         lowered.push("fewer beats were found than the beat rate expects");
     }
     match title {
-        "Rate" if d.clock_unknown => {
-            lowered.push("this input's clock hasn't been measured (Settings, Measure Clock)")
-        }
+        "Rate" if d.clock_unknown => lowered
+            .push("this input's clock hasn't been measured (`timegrapher clock measure --save`)"),
         "Amplitude" | "Beat Error" if d.clipped => lowered.push("some beats are clipped"),
         _ => {}
     }
     if title == "Amplitude" && d.lift_unknown {
-        lowered.push("the lift angle is the default 52°: pick the calibre for its own");
+        lowered
+            .push("the lift angle is the default 52°: pick the Calibre under Watch to use its own");
     }
     if !lowered.is_empty() {
         t += &format!(" Lowered a step each because {}.", lowered.join(", and "));

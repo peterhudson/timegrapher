@@ -3760,9 +3760,11 @@ dependencies = [
 name = "timegrapher-app"
 version = "0.1.0"
 dependencies = [
+ "claxon",
  "eframe",
  "egui_plot",
  "egui_tiles",
+ "hound",
  "rfd",
  "serde",
  "serde_json",
