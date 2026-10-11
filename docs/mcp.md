@@ -129,10 +129,13 @@ the timegrapher app draws them:
   characteristic values, rate and amplitude by position with each
   position's tolerance behind its bar, and the findings.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
-- `check_steadiness`: the rate, amplitude and beat error readings on
-  probability paper, as the app's Distribution panes draw them (one steady
+- `check_steadiness`: the app's Steadiness pane (each series' verdict
+  over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
+  CUSUM view, picked with the buttons above it), the readings on
+  probability paper as the app's Distribution panes draw them (one steady
   state falls on the dashed straight line, two states bend it), and the
-  findings.
+  findings. The chart data rides beside the result, so the model reads the
+  verdicts and not the thousands of numbers behind the plots.
 
 The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the

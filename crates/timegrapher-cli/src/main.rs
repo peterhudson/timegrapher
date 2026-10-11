@@ -246,6 +246,11 @@ enum Command {
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// With --json, add what the app's Steadiness pane draws behind
+        /// each verdict (the readings, the period search and the fold):
+        /// a few hundred kB on a long take.
+        #[arg(long, requires = "json")]
+        views: bool,
     },
     /// Check GitHub for a newer published release (one request; nothing
     /// is downloaded or installed).
@@ -701,6 +706,7 @@ fn main() -> ExitCode {
             wind_h,
             stretch_min,
             json,
+            views,
         } => {
             let mut cfg = StreamConfig::default();
             cfg.analysis.bph = bph;
@@ -728,6 +734,7 @@ fn main() -> ExitCode {
                         ..Default::default()
                     },
                     json,
+                    views,
                 })
             }
         }
