@@ -98,7 +98,7 @@ tick shape see [tick-shape.md](tick-shape.md).
 
 | Pattern | Likely cause |
 | --- | --- |
-| Tick and Tock amplitude differ by more than about 10° (this skill's rule of thumb) on a clean signal | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error; judge it only when the beat error is small |
+| Tick and Tock amplitude differ by well over 20° on a clean signal (splits up to about 20° were common on the project's clean recordings; docs/validation.md, "Tick and Tock amplitudes apart") | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error; judge it only when the beat error is small |
 | Late dots on one side, scatter below the line; amplitude low | Dry or gummed pallet stones or escape wheel (Witschi: clean the escapement or replace the escape wheel) |
 | A smooth wave with the escape wheel's period (3.75 s at 28,800 vph with 15 teeth; 5 s at 21,600; 6 s at 18,000) | Escape wheel out of round, bent arbor or a pivot problem; a damaged escape tooth gives a sharp blip instead of a wave |
 | Long gap unlock-to-impulse (deep lock); low amplitude | Lock too deep: energy lost in unlocking (Witschi "escapement fitting strong") |
