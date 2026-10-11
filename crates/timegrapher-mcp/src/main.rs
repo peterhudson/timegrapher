@@ -28,6 +28,15 @@ fn wire<T: DeserializeOwned>(v: Value) -> Result<T, ErrorData> {
     serde_json::from_value(v).map_err(|e| ErrorData::internal_error(e.to_string(), None))
 }
 
+/// A result, built from its wire form, marked complete. The 2026-07-28
+/// revision of MCP requires `resultType` on every result and rmcp leaves it
+/// out of a result built from JSON without it; rmcp takes it off again for
+/// chat apps on older revisions.
+fn complete<T: DeserializeOwned>(mut v: Value) -> Result<T, ErrorData> {
+    v["resultType"] = json!("complete");
+    wire(v)
+}
+
 fn info() -> Value {
     json!({
         "protocolVersion": rmcp::model::ProtocolVersion::default(),
@@ -44,7 +53,7 @@ fn info() -> Value {
 /// A failed call the agent can read and act on (MCP's `isError` result,
 /// rather than a protocol error the chat app would hide).
 fn tool_error(text: String) -> CallToolResult {
-    wire(json!({ "content": [{ "type": "text", "text": text }], "isError": true }))
+    complete(json!({ "content": [{ "type": "text", "text": text }], "isError": true }))
         .expect("a text result")
 }
 
@@ -128,7 +137,7 @@ async fn call(
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
     }
-    wire(result)
+    complete(result)
 }
 
 impl ServerHandler for Server {
@@ -142,7 +151,7 @@ impl ServerHandler for Server {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let list: Vec<Value> = tools::TOOLS.iter().map(tools::definition).collect();
-        wire(json!({ "tools": list }))
+        complete(json!({ "tools": list }))
     }
 
     async fn call_tool(
@@ -173,7 +182,7 @@ impl ServerHandler for Server {
             })
             .chain(std::iter::once(views::resource()))
             .collect();
-        wire(json!({ "resources": list }))
+        complete(json!({ "resources": list }))
     }
 
     async fn read_resource(
@@ -182,7 +191,7 @@ impl ServerHandler for Server {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
         if request.uri == views::URI {
-            let result: ReadResourceResult = wire(json!({ "contents": [views::contents()] }))?;
+            let result: ReadResourceResult = complete(json!({ "contents": [views::contents()] }))?;
             return Ok(result.into());
         }
         let Some(d) = guidance::find(&request.uri) else {
@@ -191,7 +200,7 @@ impl ServerHandler for Server {
                 None,
             ));
         };
-        let result: ReadResourceResult = wire(json!({
+        let result: ReadResourceResult = complete(json!({
             "contents": [{ "uri": d.uri, "mimeType": "text/markdown", "text": d.text }],
         }))?;
         Ok(result.into())
@@ -202,7 +211,7 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        wire(json!({ "prompts": [{
+        complete(json!({ "prompts": [{
             "name": guidance::PROMPT_NAME,
             "title": guidance::PROMPT_TITLE,
             "description": guidance::PROMPT_DESCRIPTION,
@@ -230,7 +239,7 @@ impl ServerHandler for Server {
             .as_ref()
             .and_then(|a| a.get("watch"))
             .and_then(|w| w.as_str());
-        let result: GetPromptResult = wire(json!({
+        let result: GetPromptResult = complete(json!({
             "description": guidance::PROMPT_DESCRIPTION,
             "messages": [{
                 "role": "user",
