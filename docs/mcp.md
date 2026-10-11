@@ -90,6 +90,25 @@ For a multi-position test, put the position in each file name
 (`watch_DU.flac`, `watch_DD.flac`, ...) or keep them in a folder with a
 `session.toml` ([sessions.md](sessions.md)).
 
+## Charts
+
+In chat apps that support [MCP Apps](https://apps.extensions.modelcontextprotocol.io/api/)
+(Claude on the web and desktop, ChatGPT, VS Code, Goose and others), three
+tools show their results as charts right in the conversation, drawn the way
+the timegrapher app draws them:
+
+- `analyze_recording`: the rate, amplitude and beat error, those three over
+  time, and the Tick and Tock profiles from ten seconds in the middle of the
+  recording.
+- `run_session`: each position's readings against the tolerance, the
+  characteristic values, rate and amplitude by position, and the findings.
+- `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
+
+Hover over a chart to read its values. The charts follow the chat app's
+light or dark look. They are one page served by this program, so they load
+nothing from the internet. Chat apps without MCP Apps show the same results
+as text.
+
 The server also gives the chat app the watchmaker skill and the reference
 pages behind it as resources (`timegrapher://skill/...` and
 `timegrapher://docs/...`), and instructions to read the skill before

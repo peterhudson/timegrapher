@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timegrapher</title>
+<!--
+  The MCP App view: the chat app shows this page next to a tool's result and
+  hands it the result (docs/mcp.md). It draws the readings the way the
+  desktop app does, from the tool's JSON alone: no scripts or fonts from
+  elsewhere, no network.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --window: #f2f2f5; --card: #ffffff; --separator: #dcdce1;
+  --text: #1d1d1f; --text2: #6e6e73; --text3: #9a9aa0;
+  --tick: #0068c9; --tock: #c45100;
+  --rate: #d70015; --amplitude: #8944ab; --beat-error: #8a6d00;
+  --good: #248a3d; --warn: #b25000; --bad: #d70015;
+  --unlock: #248a3d; --drop: #5856d6; --band: rgba(0, 0, 0, 0.05);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --window: #161618; --card: #232326; --separator: #303034;
+  --text: #f5f5f7; --text2: #a1a1a6; --text3: #6e6e73;
+  --tick: #64d2ff; --tock: #ff9f0a;
+  --rate: #ff453a; --amplitude: #bf5af2; --beat-error: #ffd60a;
+  --good: #30d158; --warn: #ffb340; --bad: #ff453a;
+  --unlock: #30d158; --drop: #7d7aff; --band: rgba(255, 255, 255, 0.06);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--window); color: var(--text);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  padding: 12px;
+}
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--text2); }
+.sub { color: var(--text2); font-size: 12px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.card { background: var(--card); border-radius: 10px; padding: 12px; margin: 0 0 10px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0 0 10px; }
+.tile { background: var(--card); border-radius: 10px; padding: 10px 12px; }
+.tile .label { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+.tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .unit { font-size: 13px; color: var(--text2); font-weight: 400; }
+.tile .note { font-size: 12px; color: var(--text2); }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.notice { border-left: 4px solid var(--warn); }
+.notice b { display: block; margin-bottom: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text2); margin: 0 0 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--text2); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--separator); stroke-width: 1; }
+svg .axis { stroke: var(--text3); stroke-width: 1; }
+.chart { position: relative; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--card); color: var(--text);
+  border: 1px solid var(--separator); border-radius: 6px; padding: 4px 8px; font-size: 12px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); display: none;
+  font-variant-numeric: tabular-nums;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--separator); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text2); font-weight: 500; }
+.out { color: var(--bad); font-weight: 600; }
+.findings { list-style: none; margin: 0; padding: 0; }
+.findings li { padding: 8px 0; border-bottom: 1px solid var(--separator); }
+.findings li:last-child { border-bottom: none; }
+.sev { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 6px; }
+.sev-fault, .sev-serious { color: var(--bad); }
+.sev-warning, .sev-warn { color: var(--warn); }
+.sev-note, .sev-info { color: var(--text2); }
+.findings .evidence, .findings .advice { color: var(--text2); font-size: 12px; margin-top: 2px; }
+.empty { color: var(--text2); padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div id="root"><p class="empty">Waiting for the reading…</p></div>
+<script>
+"use strict";
+
+// ---- The host bridge (MCP Apps, JSON-RPC over postMessage) -------------
+
+let nextId = 1;
+const pending = new Map();
+
+function send(msg) { window.parent.postMessage(msg, "*"); }
+
+function request(method, params) {
+  const id = nextId++;
+  send({ jsonrpc: "2.0", id, method, params });
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+function notify(method, params) { send({ jsonrpc: "2.0", method, params: params || {} }); }
+
+function applyContext(ctx) {
+  if (!ctx) return;
+  if (ctx.theme === "dark" || ctx.theme === "light") {
+    document.documentElement.dataset.theme = ctx.theme;
+  }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const msg = event.data;
+  if (!msg || msg.jsonrpc !== "2.0") return;
+  if (msg.id != null && pending.has(msg.id) && !msg.method) {
+    const { resolve, reject } = pending.get(msg.id);
+    pending.delete(msg.id);
+    msg.error ? reject(msg.error) : resolve(msg.result);
+    return;
+  }
+  if (msg.method === "ui/notifications/tool-result") render(msg.params || {});
+  else if (msg.method === "ui/notifications/host-context-changed") { applyContext(msg.params); redraw(); }
+});
+
+if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+  document.documentElement.dataset.theme = "dark";
+}
+
+request("ui/initialize", {
+  protocolVersion: "2026-01-26",
+  clientInfo: { name: "timegrapher-charts", version: "1" },
+  appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
+}).then((result) => {
+  applyContext(result && result.hostContext);
+  notify("ui/notifications/initialized");
+}).catch(() => notify("ui/notifications/initialized"));
+
+let lastWidth = 0;
+window.addEventListener("resize", () => {
+  const w = document.getElementById("root").clientWidth;
+  if (Math.abs(w - lastWidth) > 4) { lastWidth = w; redraw(); }
+});
+
+let lastHeight = 0;
+new ResizeObserver(() => {
+  const height = Math.ceil(document.documentElement.scrollHeight);
+  if (height !== lastHeight) {
+    lastHeight = height;
+    notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height });
+  }
+}).observe(document.body);
+
+// ---- Formatting ---------------------------------------------------------
+
+// Witschi's order, which the CLI's reports follow.
+const ORDER = ["CH", "CB", "9H", "6H", "3H", "12H"];
+const POSITIONS = {
+  CH: ["DU", "Dial Up"], CB: ["DD", "Dial Down"], "3H": ["CU", "Crown Up"],
+  "6H": ["CL", "Crown Left"], "9H": ["CD", "Crown Down"], "12H": ["CR", "Crown Right"],
+};
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function num(v, digits) { return Number.isFinite(v) ? v.toFixed(digits) : "–"; }
+function signed(v, digits) { return Number.isFinite(v) ? (v > 0 ? "+" : "") + v.toFixed(digits) : "–"; }
+function abs(v) { return Number.isFinite(v) ? Math.abs(v) : v; }
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function tile(label, color, value, unit, note) {
+  return `<div class="tile"><div class="label">${color ? `<span class="swatch" style="background:var(${color})"></span>` : ""}${esc(label)}</div>
+    <div class="value">${value}<span class="unit"> ${esc(unit)}</span></div>${note ? `<div class="note">${esc(note)}</div>` : ""}</div>`;
+}
+
+// ---- Charts (inline SVG) -------------------------------------------------
+
+function niceTicks(lo, hi, count) {
+  if (!(hi > lo)) { hi = lo + 1; lo -= 1; }
+  const raw = (hi - lo) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+
+function digitsFor(ticks) {
+  const step = ticks.length > 1 ? Math.abs(ticks[1] - ticks[0]) : 1;
+  return Math.max(0, Math.min(3, -Math.floor(Math.log10(step) + 1e-9)));
+}
+
+// A line chart with one y-axis: series [{name, color, points: [[x, y]], band: [[x, lo, hi]]}],
+// optional marks [{x, color, label}], and a hover readout of every series at the cursor.
+// Charts are drawn at the width they are shown, so their text stays at its size.
+function chartWidth() {
+  return Math.max(300, (document.getElementById("root").clientWidth || 640) - 24);
+}
+
+function lineChart(opts) {
+  const W = chartWidth(), H = opts.height || 150, L = 52, R = 12, T = 8, B = 26;
+  const xs = [], ys = [];
+  for (const s of opts.series) {
+    for (const [x, y] of s.points) if (Number.isFinite(y)) { xs.push(x); ys.push(y); }
+    for (const [x, lo, hi] of s.band || []) { ys.push(lo, hi); xs.push(x); }
+  }
+  if (!xs.length) return `<p class="empty">No ${esc(opts.title || "data")} to draw.</p>`;
+  let x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (opts.yInclude) for (const v of opts.yInclude) { y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+  if (y1 - y0 < (opts.minSpan || 0)) { const m = (y0 + y1) / 2; y0 = m - opts.minSpan / 2; y1 = m + opts.minSpan / 2; }
+  const pad = (y1 - y0) * 0.08 || 1; y0 -= pad; y1 += pad;
+  if (x1 === x0) x1 = x0 + 1;
+  const sx = (x) => L + (x - x0) / (x1 - x0) * (W - L - R);
+  const sy = (y) => T + (y1 - y) / (y1 - y0) * (H - T - B);
+  const yt = niceTicks(y0, y1, 4), xt = niceTicks(x0, x1, Math.max(4, Math.round(W / 110)));
+  const yd = digitsFor(yt), xd = digitsFor(xt);
+  let g = "";
+  for (const v of yt) if (v >= y0 && v <= y1) {
+    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${sy(v)}" y2="${sy(v)}"/>`;
+    g += `<text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${v.toFixed(yd)}</text>`;
+  }
+  for (const v of xt) if (v >= x0 && v <= x1) {
+    g += `<text x="${sx(v)}" y="${H - 8}" text-anchor="middle">${v.toFixed(xd)}</text>`;
+  }
+  g += `<line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`;
+  for (const r of opts.ranges || []) {
+    const a = Math.max(y0, r.lo), b = Math.min(y1, r.hi);
+    if (b > a) g += `<rect x="${L}" width="${W - L - R}" y="${sy(b)}" height="${sy(a) - sy(b)}" fill="var(--band)"/>`;
+  }
+  for (const m of opts.marks || []) {
+    if (m.x < x0 || m.x > x1) continue;
+    g += `<line x1="${sx(m.x)}" x2="${sx(m.x)}" y1="${T}" y2="${H - B}" stroke="var(${m.color})" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+  }
+  for (const s of opts.series) {
+    if (s.band && s.band.length) {
+      const top = s.band.map(([x, , hi]) => `${sx(x).toFixed(1)},${sy(hi).toFixed(1)}`);
+      const bottom = s.band.slice().reverse().map(([x, lo]) => `${sx(x).toFixed(1)},${sy(lo).toFixed(1)}`);
+      g += `<polygon points="${top.concat(bottom).join(" ")}" fill="var(${s.color})" opacity="0.15"/>`;
+    }
+    let d = "", pen = false;
+    for (const [x, y] of s.points) {
+      if (!Number.isFinite(y)) { pen = false; continue; }
+      d += `${pen ? "L" : "M"}${sx(x).toFixed(1)},${sy(y).toFixed(1)}`;
+      pen = true;
+    }
+    g += `<path d="${d}" fill="none" stroke="var(${s.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  const id = "c" + Math.random().toString(36).slice(2);
+  charts.set(id, { opts, sx, sy, x0, x1, L, R, W, H, T, B });
+  const legend = opts.series.length > 1
+    ? `<div class="legend">${opts.series.map((s) => `<span><span class="swatch" style="background:var(${s.color})"></span>${esc(s.name)}</span>`).join("")}${(opts.marks || []).filter((m) => m.label).map((m) => `<span><span class="swatch" style="background:var(${m.color})"></span>${esc(m.label)}</span>`).join("")}</div>` : "";
+  return `${legend}<div class="chart" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.title || "")}">${g}
+    <line class="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--text3)" stroke-width="1" style="display:none"/>
+    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" class="hit"/></svg><div class="tip"></div></div>`;
+}
+
+const charts = new Map();
+
+function nearest(points, x) {
+  let best = null, bd = Infinity;
+  for (const p of points) { const d = Math.abs(p[0] - x); if (d < bd && Number.isFinite(p[1])) { bd = d; best = p; } }
+  return best;
+}
+
+function wireCharts(root) {
+  for (const el of root.querySelectorAll(".chart")) {
+    const c = charts.get(el.dataset.chart);
+    if (!c) continue;
+    const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), cursor = el.querySelector(".cursor");
+    svg.addEventListener("pointermove", (ev) => {
+      const box = svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * c.W;
+      if (px < c.L || px > c.W - c.R) { tip.style.display = "none"; cursor.style.display = "none"; return; }
+      const x = c.x0 + (px - c.L) / (c.W - c.L - c.R) * (c.x1 - c.x0);
+      const rows = [];
+      let at = x;
+      for (const s of c.opts.series) {
+        const p = nearest(s.points, x);
+        if (p) { at = p[0]; rows.push(`<span class="swatch" style="display:inline-block;background:var(${s.color})"></span> ${esc(s.name)} ${c.opts.format(p[1])}`); }
+      }
+      if (!rows.length) return;
+      cursor.setAttribute("x1", c.sx(at)); cursor.setAttribute("x2", c.sx(at)); cursor.style.display = "";
+      tip.innerHTML = `<div style="color:var(--text2)">${esc(c.opts.xFormat(at))}</div>${rows.join("<br>")}`;
+      tip.style.display = "block";
+      const left = (c.sx(at) / c.W) * box.width;
+      tip.style.left = Math.min(Math.max(0, left + 10), box.width - tip.offsetWidth) + "px";
+      tip.style.top = "4px";
+    });
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cursor.style.display = "none"; });
+  }
+}
+
+function timeLabel(s) {
+  if (!Number.isFinite(s)) return "";
+  if (s < 120) return `${s.toFixed(0)} s`;
+  if (s < 7200) return `${(s / 60).toFixed(1)} min`;
+  return `${(s / 3600).toFixed(2)} h`;
+}
+
+// ---- Views ----------------------------------------------------------------
+
+function stripCards(strip) {
+  if (!strip) return "";
+  const scale = strip.duration_s > 7200 ? 3600 : strip.duration_s > 300 ? 60 : 1;
+  const unit = scale === 3600 ? "Hours" : scale === 60 ? "Minutes" : "Seconds";
+  const conv = (pts) => pts.map(([t, v]) => [t / scale, v]);
+  const xf = (x) => timeLabel(x * scale);
+  const rows = [
+    ["Rate", "--rate", "Seconds per Day", strip.rate, (v) => `${signed(v, 1)} s/d`, 2],
+    ["Amplitude", "--amplitude", "Degrees", strip.amplitude, (v) => `${num(v, 0)}°`, 10],
+    ["Beat Error", "--beat-error", "Milliseconds", strip.beat_error, (v) => `${num(v, 2)} ms`, 0.2],
+  ];
+  return `<div class="card"><h2>Over Time (${unit})</h2>${rows.map(([name, color, axis, pts, format, minSpan]) =>
+    pts && pts.length ? `<div style="margin-top:6px"><div class="legend"><span><span class="swatch" style="background:var(${color})"></span>${name}, ${axis}</span></div>${lineChart({
+      title: name, height: 110, minSpan, format, xFormat: xf,
+      series: [{ name, color, points: conv(pts) }],
+    })}</div>` : "").join("")}</div>`;
+}
+
+function profileCard(p, title) {
+  if (!p || !p.a || !p.b) return "";
+  const side = (s) => {
+    const pts = [], band = [];
+    (s.median || []).forEach((v, i) => {
+      const x = s.t0_ms + i * s.step_ms;
+      pts.push([x, v]);
+      if (s.p10 && s.p90) band.push([x, s.p10[i], s.p90[i]]);
+    });
+    return { pts, band };
+  };
+  const a = side(p.a), b = side(p.b);
+  const marks = [];
+  if (Number.isFinite(p.a.unlock_ms)) marks.push({ x: p.a.unlock_ms, color: "--unlock", label: "Unlock" });
+  if (Number.isFinite(p.b.unlock_ms)) marks.push({ x: p.b.unlock_ms, color: "--unlock" });
+  if (Number.isFinite(p.a.drop_ms)) marks.push({ x: p.a.drop_ms, color: "--drop", label: "Drop" });
+  if (Number.isFinite(p.b.drop_ms)) marks.push({ x: p.b.drop_ms, color: "--drop" });
+  const note = [p.a, p.b].map((s, i) => `${i ? "Tock" : "Tick"}: ${s.beats} beats` +
+    (Number.isFinite(s.amplitude_deg) ? `, ${num(s.amplitude_deg, 0)}°` : "")).join(" · ");
+  return `<div class="card"><h2>${esc(title || "Tick and Tock")}</h2><p class="sub" style="margin-bottom:4px">${esc(note)}. Milliseconds from the beat; the shaded band holds 80% of beats.</p>${lineChart({
+    title: "Tick and Tock profiles", height: 180, format: (v) => num(v, 3), xFormat: (x) => `${x.toFixed(2)} ms`,
+    series: [{ name: "Tick", color: "--tick", points: a.pts, band: a.band }, { name: "Tock", color: "--tock", points: b.pts, band: b.band }],
+    marks,
+  })}</div>`;
+}
+
+function fileName(doc) {
+  const f = doc.input && doc.input.files && doc.input.files[0];
+  return f && f.path ? String(f.path).split(/[\\/]/).pop() : "";
+}
+
+function recordingView(doc, extra) {
+  const name = fileName(doc);
+  const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
+  if (doc.watch_heard === false) {
+    return head + `<div class="card notice"><b>No Watch Heard</b>The beats are no steadier than noise, so there are no readings to show. Check that the watch is on the microphone and running, then record again.</div>`;
+  }
+  const o = doc.overall || {};
+  const be = abs(Number.isFinite(doc.beat_error_unlock_ms) ? doc.beat_error_unlock_ms : o.beat_error_ms);
+  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
+  let html = head + `<div class="tiles">
+    ${tile("Rate", "--rate", signed(o.rate_s_per_day, 1), "s/d", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), "°", Number.isFinite(doc.amplitude_se_deg) ? `± ${num(doc.amplitude_se_deg, 1)}°` : "")}
+    ${tile("Beat Error", "--beat-error", num(be, 2), "ms", "")}
+    ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(o.jitter_us) ? `jitter ${num(o.jitter_us, 0)} µs` : "")}
+  </div>`;
+  if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
+  html += stripCards(extra && extra.strip);
+  html += profileCard(extra && extra.profile, "Tick and Tock");
+  return html;
+}
+
+function sessionView(doc) {
+  const rep = doc.report || {};
+  const tol = rep.tolerance || {};
+  // Keep each reading's index: the verdicts are listed in the same order.
+  const readings = (doc.readings || []).map((r, i) => Object.assign({ index: i }, r));
+  const rank = (r) => { const k = ORDER.indexOf(r.position); return k < 0 ? ORDER.length : k; };
+  readings.sort((a, b) => rank(a) - rank(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
+  const title = [doc.watch, doc.calibre].filter(Boolean).join(" · ");
+  let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°${tol.name ? ` · tolerance ${esc(tol.name)}` : ""}</p>`;
+  const state = (rep.states || [])[0];
+  if (state) {
+    html += `<div class="tiles">
+      ${tile("Mean Rate", "--rate", signed(state.x, 1), "s/d", "")}
+      ${tile("Largest Difference", "--rate", num(state.d_rate, 1), "s/d", "between positions")}
+      ${tile("Mean Amplitude", "--amplitude", num(state.amplitude_mean, 0), "°", Number.isFinite(state.dvh_amplitude) ? `vertical minus horizontal ${signed(state.dvh_amplitude, 0)}°` : "")}
+    </div>`;
+  }
+  const verdicts = rep.verdicts || [];
+  const cell = (v, verdict, digits, sign) => {
+    const text = sign ? signed(v, digits) : num(v, digits);
+    return verdict && verdict !== "within" ? `<td class="out" title="Outside tolerance">${text}</td>` : `<td>${text}</td>`;
+  };
+  html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
+  readings.forEach((r) => {
+    const m = r.measurement || {};
+    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const v = verdicts[r.index] || {};
+    const heard = m.watch_heard !== false;
+    html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
+      (heard ? cell(m.rate_s_per_day, v.rate, 1, true) + cell(m.amplitude_deg, v.amplitude, 0) +
+        cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), v.beat_error, 2)
+        : `<td colspan="3" style="text-align:center;color:var(--text2)">No watch heard</td>`) +
+      `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
+  if (heard.length) {
+    html += `<div class="card"><h2>Rate by Position</h2>${bars(heard, (m) => m.rate_s_per_day, "--rate", (v) => `${signed(v, 1)} s/d`, Number.isFinite(tol.rate_min) ? { lo: tol.rate_min, hi: tol.rate_max } : null)}</div>`;
+    html += `<div class="card"><h2>Amplitude by Position</h2>${bars(heard, (m) => m.amplitude_deg, "--amplitude", (v) => `${num(v, 0)}°`, null)}</div>`;
+  }
+  html += findingsCard(rep.findings);
+  return html;
+}
+
+// Horizontal bars from zero, one per position, with the tolerance band shaded.
+function bars(readings, value, color, format, band) {
+  const W = chartWidth(), rowH = 26, L = 110, R = 64, T = 4;
+  const vals = readings.map((r) => value(r.measurement));
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  if (band) { lo = Math.min(lo, band.lo); hi = Math.max(hi, band.hi); }
+  if (hi === lo) hi = lo + 1;
+  const H = T + rowH * readings.length + 18;
+  const sx = (v) => L + (v - lo) / (hi - lo) * (W - L - R);
+  let g = "";
+  if (band) g += `<rect x="${sx(band.lo)}" width="${sx(band.hi) - sx(band.lo)}" y="${T}" height="${rowH * readings.length}" fill="var(--band)"/>`;
+  g += `<line class="axis" x1="${sx(0)}" x2="${sx(0)}" y1="${T}" y2="${T + rowH * readings.length}"/>`;
+  readings.forEach((r, i) => {
+    const v = vals[i];
+    const y = T + i * rowH;
+    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const x0 = Math.min(sx(0), sx(v)), w = Math.max(2, Math.abs(sx(v) - sx(0)));
+    g += `<text x="${L - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" style="fill:var(--text)">${esc(pos[1])}</text>`;
+    g += `<rect x="${x0}" y="${y + 5}" width="${w}" height="${rowH - 10}" rx="4" fill="var(${color})"><title>${esc(pos[1])}: ${esc(format(v))}</title></rect>`;
+    g += `<text x="${Math.max(sx(0), sx(v)) + 6}" y="${y + rowH / 2 + 4}" style="fill:var(--text)">${esc(format(v))}</text>`;
+  });
+  for (const t of niceTicks(lo, hi, 5)) if (t >= lo && t <= hi) g += `<text x="${sx(t)}" y="${H - 4}" text-anchor="middle">${t}</text>`;
+  const note = band ? `<p class="sub" style="margin:4px 0 0">The shaded band is the tolerance.</p>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>${note}`;
+}
+
+function findingsCard(findings) {
+  if (!findings || !findings.length) return "";
+  return `<div class="card"><h2>Findings</h2><ul class="findings">${findings.map((f) => `<li>
+    <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><b>${esc(f.title)}</b>
+    ${f.evidence ? `<div class="evidence">${esc(f.evidence)}</div>` : ""}
+    ${f.advice ? `<div class="advice">${esc(f.advice)}</div>` : ""}</li>`).join("")}</ul></div>`;
+}
+
+function profileView(doc) {
+  const name = fileName(doc);
+  return `<h1>Tick and Tock</h1><p class="sub">${esc(name)}</p>${profileCard(doc, "Tick and Tock Profiles")}`;
+}
+
+// ---- Dispatch -------------------------------------------------------------
+
+let last = null;
+
+function render(result) {
+  last = result;
+  redraw();
+}
+
+function redraw() {
+  const root = document.getElementById("root");
+  if (!last) return;
+  charts.clear();
+  const doc = last.structuredContent;
+  const extra = last._meta && last._meta["timegrapher/charts"];
+  let html;
+  if (last.isError || !doc || !doc.schema) {
+    const text = (last.content || []).map((c) => c.text || "").join("\n");
+    html = `<div class="card notice"><b>No Reading</b>${esc(text || "The tool returned nothing to draw.")}</div>`;
+  } else if (doc.schema.startsWith("timegrapher.analyze/")) {
+    html = recordingView(doc, extra);
+  } else if (doc.schema.startsWith("timegrapher.session/")) {
+    html = sessionView(doc);
+  } else if (doc.schema.startsWith("timegrapher.profile/")) {
+    html = profileView(doc);
+  } else {
+    html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
+  }
+  lastWidth = root.clientWidth;
+  root.innerHTML = html;
+  wireCharts(root);
+}
+</script>
+</body>
+</html>

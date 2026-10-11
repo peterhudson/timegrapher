@@ -6,6 +6,7 @@
 mod cli;
 mod guidance;
 mod tools;
+mod views;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, GetPromptRequestParams,
@@ -53,10 +54,16 @@ async fn call(name: &str, args: &Map<String, Value>) -> Result<CallToolResult, E
             None,
         ));
     };
-    let line = match tools::command_line(tool, args) {
+    let mut line = match tools::command_line(tool, args) {
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
     };
+    // The Recording view's readings over time come from the same run.
+    let recording_view = tool.name == "analyze_recording";
+    let (extras, _windows) = views::analyze_extras();
+    if recording_view {
+        line.splice(1..1, extras.iter().cloned());
+    }
     let out = match cli::run(&line).await {
         Ok(out) => out,
         Err(e) => return Ok(tool_error(e)),
@@ -82,10 +89,16 @@ async fn call(name: &str, args: &Map<String, Value>) -> Result<CallToolResult, E
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
-    wire(json!({
+    let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
-    }))
+    });
+    if recording_view {
+        let recording = line.last().cloned().unwrap_or_default();
+        let charts = views::analyze_charts(&doc, args, &extras, &recording).await;
+        result["_meta"] = json!({ views::META_KEY: charts });
+    }
+    wire(result)
 }
 
 impl ServerHandler for Server {
@@ -128,6 +141,7 @@ impl ServerHandler for Server {
                     "size": d.text.len(),
                 })
             })
+            .chain(std::iter::once(views::resource()))
             .collect();
         wire(json!({ "resources": list }))
     }
@@ -137,6 +151,10 @@ impl ServerHandler for Server {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
+        if request.uri == views::URI {
+            let result: ReadResourceResult = wire(json!({ "contents": [views::contents()] }))?;
+            return Ok(result.into());
+        }
         let Some(d) = guidance::find(&request.uri) else {
             return Err(ErrorData::resource_not_found(
                 format!("no resource {}", request.uri),
