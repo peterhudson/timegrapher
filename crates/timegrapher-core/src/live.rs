@@ -95,6 +95,10 @@ pub struct LiveReading {
     pub clipped_beats: usize,
     /// `clipped_beats` as a fraction of the beats in the reading.
     pub clipped_fraction: Option<f64>,
+    /// Whether the beats look like a watch's (`beats::watch_heard` on the
+    /// fit's jitter). When not, every reading is `None`, as `analyze`
+    /// nulls them; the jitter and the beats used stay, to say why.
+    pub watch_heard: bool,
 }
 
 impl LiveReading {
@@ -362,7 +366,8 @@ impl LiveAnalyzer {
             _ => {
                 let bph = a.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
                 let (b, t) = beats::detect(&env, fs, bph);
-                if snr(&env, fs, &b) >= self.cfg.min_snr && b.len() >= 8 {
+                let heard = snr(&env, fs, &b) >= self.cfg.min_snr || clipped_out(x, fs, &b);
+                if heard && b.len() >= 8 {
                     self.template = Some(t);
                     self.bph = Some(bph);
                     self.logged_bph = Some(bph);
@@ -382,7 +387,8 @@ impl LiveAnalyzer {
         }
         let s = snr(&env, fs, &local);
         self.snr = Some(s);
-        if s < self.cfg.min_snr || self.template.is_none() {
+        let heard = s >= self.cfg.min_snr || clipped_out(x, fs, &local);
+        if !heard || self.template.is_none() {
             self.quiet_passes += 1;
             // A long silence with a guessed rate: start over on the next
             // watch, which may beat at another rate.
@@ -555,24 +561,37 @@ impl LiveAnalyzer {
         let amplitude_error_deg = crate::amplitude::standard_error(
             &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
         );
+        // Beats scattered like noise are no watch: no readings, as
+        // `analyze` gives none.
+        let watch_heard =
+            bph.is_some_and(|b| crate::beats::watch_heard(fit.map(|f| f.jitter_us), b));
+        let heard = |v: Option<f64>| v.filter(|_| watch_heard);
         LiveReading {
             time_s: end_s,
             bph,
-            rate_s_per_day: fit.map(|f| f.rate_s_per_day),
-            beat_error_ms: fit.map(|f| f.beat_error_ms),
-            beat_error_unlock_ms: med(&|w| w.beat_error_unlock_ms),
-            amplitude_deg: med(&|w| w.mean()),
-            amplitude_error_deg,
-            amplitude_even_deg: med(&|w| w.even_deg),
-            amplitude_odd_deg: med(&|w| w.odd_deg),
+            rate_s_per_day: heard(fit.map(|f| f.rate_s_per_day)),
+            beat_error_ms: heard(fit.map(|f| f.beat_error_ms)),
+            beat_error_unlock_ms: heard(med(&|w| w.beat_error_unlock_ms)),
+            amplitude_deg: heard(med(&|w| w.mean())),
+            amplitude_error_deg: heard(amplitude_error_deg),
+            amplitude_even_deg: heard(med(&|w| w.even_deg)),
+            amplitude_odd_deg: heard(med(&|w| w.odd_deg)),
             jitter_us: fit.map(|f| f.jitter_us),
             beats_used: fit.map_or(0, |f| f.beats_used),
             span_s,
             snr: self.snr,
             clipped_beats,
             clipped_fraction: (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64),
+            watch_heard,
         }
     }
+}
+
+/// Whether most of the beats found clipped: a watch far too loud, whose
+/// flattened peaks make the signal look weaker than it is. Its beats are
+/// read (and the clipping said) rather than taken for silence.
+fn clipped_out(x: &[f32], fs: f64, beats: &[Beat]) -> bool {
+    beats.len() >= 8 && Clipping::measure(x, fs, beats).beat_fraction > 0.5
 }
 
 /// Median beat peak over the median of the envelope.
@@ -604,6 +623,64 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    /// Room noise with no watch, seeded so the test repeats.
+    fn empty_stand(secs: usize) -> Vec<f32> {
+        let mut x = 0x2545_f491_4f6c_dd1du64;
+        (0..48_000 * secs)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                ((x >> 40) as f32 / (1u64 << 24) as f32 - 0.5) * 0.02
+            })
+            .collect()
+    }
+
+    /// An empty stand, heard live or read back from its beat log, gives no
+    /// readings, and says no watch was heard.
+    #[test]
+    fn an_empty_stand_reads_nothing() {
+        let x = empty_stand(60);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &x);
+        let r = a.reading(10.0);
+        assert!(!r.watch_heard);
+        assert!(
+            r.rate_s_per_day.is_none() && r.beat_error_ms.is_none(),
+            "{r:?}"
+        );
+        assert!(
+            r.amplitude_deg.is_none() && r.beat_error_unlock_ms.is_none(),
+            "{r:?}"
+        );
+    }
+
+    /// Driven five times past full scale, the beats are still read, and
+    /// the clipping is said.
+    #[test]
+    fn heavy_clipping_still_reads() {
+        let cfg = SynthConfig {
+            duration_s: 60.0,
+            rate_s_per_day: 10.0,
+            beat_error_ms: 0.6,
+            snr_db: 24.0,
+            seed: 13,
+            ..Default::default()
+        };
+        let mut audio = generate(&cfg, |t| 270.0 + 10.0 * (t / 60.0).sin(), |_| 0.0);
+        let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        for v in &mut audio.samples {
+            *v = (*v * 5.0 / peak).clamp(-1.0, 1.0);
+        }
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let r = a.reading(10.0);
+        assert!(
+            r.beats_used > 0 && r.watch_heard && r.clipping_warns(),
+            "{r:?}"
+        );
     }
 
     #[test]

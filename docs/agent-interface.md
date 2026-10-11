@@ -181,7 +181,7 @@ The file holds one `timegrapher.live/1` document:
 | `done` | The recording has ended (the take is still being checked) |
 | `average_s` | The averaging time of `reading`, 10 s as in the app |
 | `beats_heard` | Beats heard so far |
-| `reading` | The live reading as the app shows it: `rate_s_per_day`, `amplitude_deg` (`amplitude_error_deg`), `beat_error_unlock_ms` (the headline) and `beat_error_ms` (from the drop), `bph`, `beats_used`, `span_s`, `jitter_us`, `snr`, `clipped_beats`, `clipped_fraction`; readings are null until enough beats are heard |
+| `reading` | The live reading as the app shows it: `rate_s_per_day`, `amplitude_deg` (`amplitude_error_deg`), `beat_error_unlock_ms` (the headline) and `beat_error_ms` (from the drop), `bph`, `beats_used`, `span_s`, `jitter_us`, `snr`, `clipped_beats`, `clipped_fraction`, `watch_heard`; readings are null until enough beats are heard, and whenever `watch_heard` is false (beats scattered like noise, as `analyze` nulls them) |
 | `strip` | The paper strip: `span_s` (30), `period_s`, and `beats` as `[time_s, lead_ms, side]` for the last 30 s. `lead_ms` is how early the beat came against a clock at the nominal rate, anchored on the first 16 beats as the app anchors its strip. `side` is 0 for the Tick and 1 for the Tock |
 | `trend` | The readings about once a second as columns `t_s`, `rate`, `amplitude`, `beat_error` (from the unlock). It keeps the whole take, up to 300 points: past that, every other point of the older half is dropped |
 
