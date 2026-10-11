@@ -18,7 +18,8 @@ All tg, lift 55°, card clock. The takes wander within themselves, so a
 live reading anywhere in the ranges on [tinkerer.md](tinkerer.md) is
 consistent with the file. Positional spread is about 86 s/d and the rate is
 far fast in several positions: the app should make plain that this watch
-needs a watchmaker.
+needs a watchmaker. Its amplitude is below Witschi's ranges in every
+position (horizontal 260–320°, vertical 240–280°; see [README.md](README.md)).
 
 `~/Recordings/eta_movement_DU.flac` = corpus `eta2824_holder_DU_30min` file
 -01: ETA 2824-2 clone ("bench watch 5"), uncased in a plastic holder, 28,800
