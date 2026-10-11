@@ -149,7 +149,10 @@ as text.
 The server also gives the chat app the watchmaker skill and the reference
 pages behind it as resources (`timegrapher://skill/...` and
 `timegrapher://docs/...`), and instructions to read the skill before
-guiding anyone.
+guiding anyone. The **Test My Watch** prompt is the skill's own
+(`prompt-test-my-watch.md`): the step-by-step test an experienced
+watchmaker would run, from the calibre and the microphone through the six
+positions to a plain answer, with the watch you name added at the end.
 
 ## What it never does
 
