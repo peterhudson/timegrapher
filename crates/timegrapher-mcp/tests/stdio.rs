@@ -367,7 +367,7 @@ fn a_chat_app_reads_a_watch() {
         json!({ "paths": [path(&dir.join("session"))] }),
     );
     assert!(r.get("isError").is_none(), "{r}");
-    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/1");
+    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/2");
     assert_eq!(
         r["structuredContent"]["readings"].as_array().unwrap().len(),
         3

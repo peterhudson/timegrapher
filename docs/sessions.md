@@ -28,7 +28,6 @@ watch = "Submariner case, Dandong 3235 clone"
 calibre = "3235"
 bph = 28800
 lift = 55             # 32xx: probably 55° (maybe 58°), project value
-tolerance = "mens"     # ladies, mens, cosc-small, cosc, metas
 settle_s = 20          # skipped at the start of each recording
 # measure_s = 60       # measure only this long after settling
 card_ppm = 19.3        # sound card's known error, for takes without a clock log
@@ -72,8 +71,9 @@ them, the lift angle is the default 52°, and each reading carries the
 
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
-at the top skips those parts. A `[limits]` table changes the project's
-thresholds (below).
+at the top skips those parts. A `tolerance` line or a `[limits]` table,
+which session files written before `timegrapher.session/2` carry, is read
+and ignored: the report judges nothing against a tolerance.
 
 One continuous take that moved through several positions is listed once
 per position, each entry naming the same file or folder with `start_s`
@@ -127,8 +127,8 @@ of the recording or for `measure_s`:
   corrected for the sound card's clock when the recording has a clock log
   or the session gives `card_ppm`;
 - beat error measured from the unlock, as tg and bench timegraphers do
-  (median of the 2 s windows); this is the value judged against the
-  tolerance. The beat error from the drop (the same fit as the rate) is
+  (median of the 2 s windows); this is the value the report shows first.
+  The beat error from the drop (the same fit as the rate) is
   shown beside it, and used when no unlock is found. Both are shown as a
   size. Which beat is longer is not shown: Tick is the first beat the
   analysis locks on, so the sign can change from one run to the next.
@@ -156,10 +156,12 @@ from the quick check `record` prints while recording.
 Repeat readings in the same position and state of wind are averaged.
 
 A recording whose beats are no steadier than noise, as on an empty stand
-(the median jitter is 2% of the beat period or more, the same rule as
-`analyze`), shows no rate, amplitude, beat error, cycles or shape: the
-values would describe noise. Its measurement has `watch_heard` false, and
-the report lists a *No watch heard* finding instead.
+(the median timing scatter is 2% of the beat period or more, the same
+rule as `analyze`), shows no rate, amplitude, beat error, cycles or
+shape: those numbers would describe noise. Its measurement has
+`watch_heard` false, its row reads "No regular beat found: timing scatter
+8.6 ms", and the findings carry the same fact with the scatter as a share
+of a beat.
 
 ## Two states
 
@@ -167,44 +169,43 @@ Some watches swing at two amplitudes and flip between them every few
 tens of seconds, which a histogram of the readings shows as two humps.
 `twostate.rs` looks for that in each reading, on amplitude (the 2 s
 windows) and on rate (10 s readings), and the report gives one line per
-reading, e.g. "two amplitude states, 239° and 250°, switching about
-every 30 s (medium confidence)".
+reading, e.g. "two amplitude levels, 239° and 250°, switching about every
+30 s (ΔBIC 42, separation 3.1)".
 
 The windows are reduced to 10 s medians (outliers beyond 5 MAD dropped
-first, so a stray window reading 130° is not a state) and a running
+first, so a stray window reading 130° is not a level) and a running
 median over ±5 minutes is taken off, so the slow fall of amplitude as the
 mainspring runs down is not read as two levels. One Gaussian and a
-mixture of two of equal width are fitted to the blocks. Two states are
-called only when:
+mixture of two of equal width are fitted to the blocks. Two levels are
+reported only when all of these hold (`two_levels` in the JSON):
 
-| Test | Bar | Why |
+| Test | Bar | Source |
 |---|---|---|
-| BIC, one level minus two | ≥ 10 | "very strong" evidence (Kass and Raftery) |
-| Separation of the levels in widths (Ashman's D) | ≥ 2 | two humps, not one wide one |
-| Share of the smaller state | ≥ 10% | |
-| Switches | ≥ 4 | back and forth, not one step |
-| Both states in each third of the reading | ≥ 5% of its blocks | not a drift |
+| BIC, one level minus two (ΔBIC) | ≥ 10 | "very strong" evidence (Kass and Raftery) |
+| Separation of the levels in widths (Ashman's D) | ≥ 2 | two humps, not one wide one (Ashman) |
+| Share of the smaller level | ≥ 10% | project |
+| Switches | ≥ 4 | project: back and forth, not one step |
+| Both levels in each third of the reading | ≥ 5% of its blocks | project: not a drift |
 
-Three outcomes other than two states:
+Otherwise the line reads "one amplitude level". With fewer than 30
+blocks it says how many there were and that they are too few.
 
-- **regular**: the state sequence repeats at one lag with an
-  autocorrelation of 0.5 or more, like the once-a-minute dip of the
-  fourth wheel. That is a cycle (see the periodic changes), not a state.
-- **measurement**: a change of the balance's swing moves Tick and Tock
-  together. A split one side carries alone (the other side moves less
-  than 40% as much, or the other way), or one where the beat error from
-  the unlock jumps by 0.1 ms or more and over three times the change from
-  the drop, is likely the unlock mark, not the watch.
-- **one level**, with a note when the Tick (or Tock) 2 s windows on their
-  own fall in two clusters that the other side's windows do not follow:
-  the unlock mark hopping between the onset and the shoulder after sound
-  1, as on the Daytona 4130, where 0.3 ms of edge is about 15°.
+Beside the levels, the line states what else the finder measured:
 
-The edge check reads each 2 s window's unlock edge on each side (ms from
-the beat time): when one side's edges fall in two clusters that the
-other side's edges do not follow, the edge finder is hopping. A real
-change of swing moves both sides' edges together (on the Yacht-Master
-dial up, both by about 0.3 ms between its states).
+- "the low level comes back about every 60 s" when the level sequence
+  repeats at one lag with an autocorrelation of 0.5 or more, as a cycle
+  does (see the periodic changes);
+- "Tick carries the change alone" (or Tock) when one side moves less than
+  40% as much as the other, or only one side's 2 s windows or unlock
+  edges fall in two clusters;
+- "the beat error from the unlock jumps with it, the one from the drop
+  does not" when the unlock beat error moves by 0.1 ms or more, and over
+  three times as much as the drop's;
+- with one level, "the Tick windows fall in two clusters" when one side's
+  2 s windows split on their own.
+
+What the levels mean for the watch, or for the measurement, is left to
+the reader; the watchmaker skill discusses it.
 
 ## Characteristic values
 
@@ -221,54 +222,30 @@ Across states of wind: isochronism per position (the change in rate,
 amplitude and beat error from the fullest to the least wound reading;
 `rate_change`, `amplitude_change` and `beat_error_change` in the JSON), Im (the largest, excluding 12H, as in
 NIHS 93-10), Im\* (over all positions), Ie (change in X over the
-positions measured in both) and N = 0.15·|Im| + 0.1·D + 0.6 (Witschi's
-quality factor with its default thermal term).
+positions measured in both).
 
 ## Findings
 
-Witschi's tolerances, fully wound (readings within `full_wind_h`, default
-2 h, of a full wind):
+The findings are conditions found in the sound of one recording, each
+with the figures that show it. None judges the watch: the report has no
+tolerances, limits or advice. Published tolerances (Witschi's, COSC's,
+the movement maker's) and what a figure means for the movement are in
+the watchmaker skill, each with its source.
 
-| Class | Rate s/d | Amplitude H | Amplitude V | Beat error |
-| --- | --- | --- | --- | --- |
-| Ladies' | −5…+25 | 260–320° | 240–280° | < 0.5 ms |
-| Men's (default) | −5…+15 | same | same | same |
-| COSC < 20 mm | −5…+8 | same | same | same |
-| COSC > 20 mm | −4…+6 | same | same | same |
-| METAS | 0…+5 | same | same | same |
-
-Rules, each reported with the measurement that triggered it. Thresholds
-marked *project* are this project's defaults where Witschi names the fault
-without a number; change them under `[limits]`.
-
-| Finding | Rule | Severity |
+| Code | Title, e.g. | Listed when |
 | --- | --- | --- |
-| Very low amplitude | < 200° (*project*, `amplitude_fault`) | fault |
-| Large beat error | ≥ 2 ms (*project*, `beat_error_fault`) | fault |
-| Very high amplitude | the position's median amplitude > 330° (Witschi's knocking limit; `amplitude_high`, which also reads the old key `overbanking`) | check |
-| Amplitude outside tolerance | outside the class's H or V range, fully wound | check |
-| Beat error outside tolerance | ≥ 0.5 ms | check |
-| Mean rate outside tolerance | X outside the class's range, fully wound | check |
-| Large differences between positions | D > 10 s/d (*project*, `delta_rate`) | check |
-| Large vertical amplitude loss | DVH amplitude below −50° (*project*, `vh_amplitude_drop`) | check |
-| Unlock not timed reliably | under 60% of the 2 s amplitude windows find the unlock on both sides (*project*, `min_unlock_coverage`); amplitude and beat error from the unlock are then shown with `?` and not judged | check |
-| Recording clipped | over 1% of the measured beats have a clipped sample in their template window, as `analyze` warns; amplitude and beat error may be off, rate is not | check |
-| Rate unsteady within a reading | 10 s rates spread > 20 s/d (*project*, `rate_spread`) | check |
-| Regular change once per wheel turn | a periodic change above the 1% false-alarm level matching a wheel | check |
-| Vertical and horizontal rates differ | \|DVH\| ≥ 5 s/d, with Witschi's pin advice | note |
-| Periodic change at a whole fraction of a wheel's turn | as above, the turn is a whole number (2 or more) of the period | note |
-| Periodic change tied to no listed wheel | as above, no wheel | note |
-| Unlocking as loud as the drop; extra sounds around the beat | from the beat shape; not yet checked on watches with confirmed faults | note |
-| No watch heard | the beats are no steadier than noise (median jitter ≥ 2% of the beat period); the recording shows no readings | check |
-| Short measurement | < 40 s measured (Witschi's minimum; `min_measure_s`) | note |
+| `no_regular_beat` | No regular beat found | the median timing scatter is 2% of the beat period or more; the evidence gives it in ms and as a share of a beat |
+| `unlock_unreliable` | Unlock found in 45% of windows | fewer than 60% of the 2 s amplitude windows find the unlock on both sides; amplitude and the beat error from the unlock rest on those windows |
+| `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
+| `measurement_short` | 25 s measured | under 40 s measured after settling |
+| `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change above the 1% false-alarm level matches a wheel's turn |
+| `cycle_wheel_fraction` | Regular rate change at 1/3 of the fourth wheel's turn | as above, the turn is a whole number (2 or more) of the period |
+| `cycle_other` | Regular amplitude change not tied to a listed wheel | as above, no wheel; the nearest is named |
+| `shape_unlock_loud` | Unlocking as loud as the drop on Tick | the level of sound 1 to sound 3 is 1 or more |
+| `shape_extra_sounds` | Extra sounds around the beat on Tock | sounds before the unlock or after the drop |
 
-Amplitude over 330° is a check, not a fault. It is judged on the
-position's median amplitude at the take's lift angle, never on one 2 s
-window, and its advice reads "Check the lift angle and the microphone;
-knocking is confirmed only by jumps in the trace": a lift angle set too
-high, or a pickup that misses the first sound of the beat, reads amplitude
-high, and a balance that knocks shows as steps in the trace, not as a
-number. A knocking (overbanking) fault waits for a detector of those steps.
+Every reading's table row also carries its unlock share and clipped
+share, whether or not they are listed here.
 
 Changes at whole fractions of a wheel's turn (20 s and 10 s beside a 60 s
 cycle) come from a short, sharp change once per turn; they are listed with
@@ -281,36 +258,37 @@ state it; longer ones are in s/d. Each cycle in `summary.json` carries its
 ## For programs and agents
 
 `summary.json` (and `--json`, which prints the same) carries every value
-in the report, with `"schema": "timegrapher.session/1"`; the name changes
-when a field changes meaning. Each finding has a stable `code`, its
-`severity` (`fault`, `warning`, `note`), the `recording` it is about (an
-index into `readings`, or null for findings across positions), and its
-`evidence` and `advice` as text. Codes: `amplitude_high`,
-`amplitude_very_low`, `amplitude_tolerance`, `beat_error_large`,
-`beat_error_tolerance`, `rate_tolerance`, `positional_delta`,
-`vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_wheel_fraction`, `cycle_other`,
-`dvh_rate`, `shape_unlock_loud`, `shape_extra_sounds`,
-`measurement_short`, `unlock_unreliable`, `no_watch_heard`. Each reading's `verdicts` entry marks rate,
-amplitude and beat error `within`, `outside`, `not_judged` or
-`unreliable`; `watch_heard` in its measurement is false when no watch was
-heard, and its readings are then null; `unlock_coverage` in its measurement is the share of
-amplitude windows that found the unlock. `amplitude_states` and
-`rate_states` in each measurement hold the two-state finder's result:
-`verdict` (`one_level`, `two_states`, `regular`, `measurement`,
-`too_short`), `confidence` (`low`, `medium`, `high`), the `low` and
-`high` levels, `low_share`, `separation`, `delta_bic`, `switches`,
+in the report, with `"schema": "timegrapher.session/2"`; the name changes
+when a field changes meaning. Each finding has a stable `code` (the table
+above), the `recording` it is about (an index into `readings`), a `title`
+and its `evidence` as text. `watch_heard` in a measurement is false when
+no regular beat was found, and its readings are then null;
+`unlock_coverage` is the share of amplitude windows that found the unlock,
+`clipped_fraction` the share of clipped beats and `jitter_us` the median
+timing scatter. `amplitude_states` and `rate_states` in each measurement
+hold the two-state finder's figures: `two_levels`, the `low` and `high`
+levels, `low_share`, `separation`, `delta_bic`, `switches`,
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`
 and `regularity`, and for amplitude `tick_change`, `tock_change`,
-`beat_error_unlock_ms` and `beat_error_drop_ms` (low and high state),
-`tick_unlock_ms` and `tock_unlock_ms` (low and high state),
+`beat_error_unlock_ms` and `beat_error_drop_ms` (low and high level),
+`tick_unlock_ms` and `tock_unlock_ms` (low and high level),
 `tick_split_alone`, `tock_split_alone`, `tick_edge_split_alone`,
 `tock_edge_split_alone`, `one_sided` and `unlock_jump`.
+
+Removed in `/2`: `report.tolerance`, `report.limits`, `report.verdicts`,
+`report.n` (Witschi's quality factor), each finding's `severity` and
+`advice`, the codes that judged against a tolerance or limit
+(`amplitude_high`, `amplitude_very_low`, `amplitude_tolerance`,
+`beat_error_large`, `beat_error_tolerance`, `rate_unsteady`,
+`rate_tolerance`, `positional_delta`, `vh_amplitude_drop`, `dvh_rate`),
+the two-state `verdict` and `confidence`, `input.settings.tolerance` and
+the `--tolerance` flag. `no_watch_heard` is now `no_regular_beat`.
 
 ## Validation
 
 `crates/timegrapher-core/tests/session.rs` measures synthetic recordings
 in six positions and two states of wind with known rates, amplitudes and
 beat errors, and checks the readings, X, XH, XV, D, DV, DVH, Di, Im, Ie
-and the findings that should and should not appear. Comparison with
+and that every finding is one of the codes above. Comparison with
 The bench timegrapher on the bench watches goes in
 [validation.md](validation.md) as the recordings land.

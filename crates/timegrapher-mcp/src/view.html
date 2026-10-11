@@ -664,7 +664,7 @@ function graded(note, c) {
 function findingsCard(findings) {
   if (!findings || !findings.length) return "";
   return `<div class="card"><h2>Findings</h2><ul class="findings">${findings.map((f) => `<li>
-    <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><b>${esc(f.title)}</b>
+    ${f.severity ? `<span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span>` : ""}<b>${esc(f.title)}</b>
     ${f.evidence ? `<div class="evidence">${esc(f.evidence)}</div>` : ""}
     ${f.advice ? `<div class="advice">${esc(f.advice)}</div>` : ""}</li>`).join("")}</ul></div>`;
 }

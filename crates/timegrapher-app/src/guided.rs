@@ -12,9 +12,7 @@ use crate::app::Position;
 use crate::theme;
 use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
-use timegrapher_core::session::{
-    self, evaluate, Limits, Mark, Measurement, Reading, Severity, Tolerance,
-};
+use timegrapher_core::session::{self, evaluate, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
 /// Seconds the watch is left to settle after it is turned, and then
@@ -54,24 +52,6 @@ pub enum Action {
     Results,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Standard {
-    Mens,
-    Ladies,
-    Cosc,
-}
-
-impl Standard {
-    fn tolerance(self) -> Tolerance {
-        Tolerance::named(match self {
-            Standard::Mens => "mens",
-            Standard::Ladies => "ladies",
-            Standard::Cosc => "cosc",
-        })
-        .unwrap_or_default()
-    }
-}
-
 pub struct Test {
     pub step: usize,
     /// When the watch was put in this step's position, seconds of the
@@ -82,7 +62,6 @@ pub struct Test {
     /// The six readings, once the last position is measured.
     pub readings: Option<Vec<Reading>>,
     pub show_results: bool,
-    pub standard: Standard,
 }
 
 impl Test {
@@ -93,7 +72,6 @@ impl Test {
             spans: Vec::new(),
             readings: None,
             show_results: false,
-            standard: Standard::Mens,
         }
     }
 
@@ -295,15 +273,13 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     action
 }
 
-/// The results: each position's rate, amplitude and beat error, marked
-/// against the chosen standard, Witschi's characteristic values, and the
-/// findings.
+/// The results: each position's rate, amplitude and beat error,
+/// Witschi's characteristic values, and the findings.
 pub fn results(ctx: &egui::Context, test: &mut Test) {
     let Some(readings) = &test.readings else {
         return;
     };
     let mut open = test.show_results;
-    let mut standard = test.standard;
     egui::Window::new("Positions Test")
         .open(&mut open)
         .collapsible(false)
@@ -311,30 +287,8 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
         .default_width(560.0)
         .show(ctx, |ui| {
             let pal = theme::pal(ui);
-            theme::row(
-                ui,
-                "Judged Against",
-                Some("The tolerances for rate, amplitude and beat error"),
-                |ui| {
-                    theme::segmented(
-                        ui,
-                        &mut standard,
-                        &[
-                            (Standard::Mens, "Men's", "−5 to +15 s/d"),
-                            (Standard::Ladies, "Ladies'", "−5 to +25 s/d"),
-                            (Standard::Cosc, "COSC", "−4 to +6 s/d"),
-                        ],
-                    );
-                },
-            );
-            let tol = standard.tolerance();
-            let report = evaluate(readings, &tol, &Limits::default());
+            let report = evaluate(readings);
             ui.add_space(6.0);
-            let mark_color = |m: Mark| match m {
-                Mark::Within => pal.text,
-                Mark::Outside => pal.bad,
-                Mark::NotJudged | Mark::Unreliable => pal.text_secondary,
-            };
             egui::Grid::new("positions")
                 .num_columns(4)
                 .spacing(Vec2::new(24.0, 6.0))
@@ -343,7 +297,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                         ui.label(theme::caption(h).color(pal.text_secondary));
                     }
                     ui.end_row();
-                    for (r, v) in readings.iter().zip(&report.verdicts) {
+                    for r in readings {
                         let m = &r.measurement;
                         ui.label(&r.label);
                         let dash = || "—".to_string();
@@ -353,13 +307,13 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                                     .map_or_else(dash, |x| format!("{x:+.1} s/d"))
                                     .replace('-', "−"),
                             )
-                            .color(mark_color(v.rate)),
+                            .color(pal.text),
                         );
                         ui.label(
                             RichText::new(
                                 m.amplitude_deg.map_or_else(dash, |x| format!("{x:.0}°")),
                             )
-                            .color(mark_color(v.amplitude)),
+                            .color(pal.text),
                         );
                         ui.label(
                             RichText::new(
@@ -367,7 +321,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                                     .or(m.beat_error_ms)
                                     .map_or_else(dash, |x| format!("{:.2} ms", x.abs())),
                             )
-                            .color(mark_color(v.beat_error)),
+                            .color(pal.text),
                         );
                         ui.end_row();
                     }
@@ -396,28 +350,13 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                     );
             }
             ui.add_space(8.0);
-            if report.findings.is_empty() {
-                ui.label(
-                    RichText::new(format!("Nothing outside {} tolerances.", tol.name))
-                        .color(pal.text_secondary),
-                );
-            }
             for f in &report.findings {
-                let color = match f.severity {
-                    Severity::Fault => pal.bad,
-                    Severity::Warning => pal.warn,
-                    Severity::Note => pal.text_secondary,
-                };
                 let title = match f.recording.and_then(|i| readings.get(i)) {
                     Some(r) => format!("{}: {}", r.label, f.title),
                     None => f.title.clone(),
                 };
-                ui.horizontal(|ui| {
-                    let dot = theme::dot(ui, color);
-                    ui.add(egui::Label::new(RichText::new(title).color(pal.text)).wrap())
-                        .union(dot)
-                        .on_hover_text(format!("{}\n\n{}", f.evidence, f.advice));
-                });
+                ui.add(egui::Label::new(RichText::new(title).color(pal.text)).wrap())
+                    .on_hover_text(&f.evidence);
             }
             ui.add_space(8.0);
             ui.label(
@@ -431,7 +370,6 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
             );
         });
     test.show_results = open;
-    test.standard = standard;
 }
 
 #[cfg(test)]
@@ -471,7 +409,7 @@ mod tests {
             let got = r.measurement.rate_s_per_day.unwrap();
             assert!((got - want).abs() < 1.0, "{}: {got} for {want}", r.label);
         }
-        let report = evaluate(readings, &Tolerance::default(), &Limits::default());
+        let report = evaluate(readings);
         let d = report.states[0].d_rate.unwrap();
         assert!((d - 9.0).abs() < 1.5, "D {d}");
     }

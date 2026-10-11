@@ -154,11 +154,12 @@ and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
 with core `session::measure` and `session::evaluate`, as `session` does
 (rate on the input's measured clock when there is one). A window shows:
-- each position's rate, amplitude and beat error, red when outside the
-  chosen tolerances (Men's, Ladies' or COSC);
+- each position's rate, amplitude and beat error;
 - the mean rate X, the largest difference D, and vertical minus
   horizontal for rate and amplitude;
-- the findings, each with its evidence and Witschi's advice in its hint.
+- the findings (conditions found in the sound, such as clipping or a
+  regular change once per turn of a wheel), each with its figures in its
+  hint.
 
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the

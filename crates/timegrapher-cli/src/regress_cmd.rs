@@ -23,6 +23,10 @@ use timegrapher_core::session::{Manifest, Reading, Reference};
 pub const BASELINE_SCHEMA: &str = "timegrapher.regress-baseline/1";
 /// Baseline file name, in the root folder unless `--baseline` says otherwise.
 pub const BASELINE: &str = "regress-baseline.json";
+/// A developer check, not shown to watch owners: no corpus take reads a
+/// median amplitude above Witschi's knocking limit, so one that does
+/// points at the amplitude measurement.
+const AMPLITUDE_HIGH_DEG: f64 = 330.0;
 
 /// How far a value may move away from tg before the check fails.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -184,8 +188,9 @@ pub struct Outcome {
     /// The corpus's smoke takes, with --smoke.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub smoke: Vec<crate::corpus::Smoke>,
-    /// Readings whose median amplitude raises session's amplitude check
-    /// (over 330°), as "take #reading". No corpus take should: fails.
+    /// Readings whose median amplitude is over [`AMPLITUDE_HIGH_DEG`],
+    /// with the unlock found in at least 60% of their windows, as
+    /// "take #reading". No corpus take should: fails.
     pub amplitude_high: Vec<String>,
 }
 
@@ -252,7 +257,6 @@ fn session_opts() -> session_cmd::Options {
         bph: None,
         lift: None,
         calibre: None,
-        tolerance: None,
         settle: None,
         out: None,
         json: false,
@@ -558,7 +562,6 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let mut amplitude_high = Vec::new();
     for (s, (m, rs)) in sessions.iter().zip(&measured) {
         let take = take_name(s);
-        let limits = m.limits.clone().unwrap_or_default();
         let before = old.as_ref().and_then(|b| b.takes.get(s));
         let mut values = Vec::new();
         let mut offs = (Vec::new(), Vec::new(), Vec::new());
@@ -566,7 +569,9 @@ pub fn run(o: &Options) -> Result<bool, String> {
             readings += 1;
             let now = match r {
                 Ok(r) => {
-                    if r.measurement.amplitude_over_high(&limits).is_some() {
+                    let m = &r.measurement;
+                    let unlock_found = !m.unlock_coverage.is_some_and(|c| c < 0.6);
+                    if unlock_found && m.amplitude_deg.is_some_and(|a| a > AMPLITUDE_HIGH_DEG) {
                         amplitude_high.push(format!("{take} #{}", i + 1));
                     }
                     Some(Values::of(r))
@@ -1079,7 +1084,7 @@ fn print_text(o: &Outcome, names: bool) {
     }
     if !o.amplitude_high.is_empty() {
         println!(
-            "Median amplitude over 330°, which raises session's amplitude check: {}: FAIL",
+            "Median amplitude over 330°: {}: FAIL",
             o.amplitude_high.join(", ")
         );
     }

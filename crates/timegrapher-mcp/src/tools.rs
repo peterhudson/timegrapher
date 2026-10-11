@@ -175,13 +175,6 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Lift angle in degrees (overrides session.toml; 52 if neither gives one).",
             ),
             p(
-                "tolerance",
-                Kind::Text,
-                Arg::Flag("--tolerance"),
-                false,
-                "Tolerance class: ladies, mens, cosc-small, cosc or metas (mens if left out).",
-            ),
-            p(
                 "settle_s",
                 Kind::Number,
                 Arg::Flag("--settle"),
