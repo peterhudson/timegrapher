@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Timegrapher
+Comment=Measure a mechanical watch's rate, amplitude and beat error from a microphone
+Exec=timegrapher-app %f
+Icon=timegrapher
+Categories=Utility;Science;
+Terminal=false
