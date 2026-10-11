@@ -481,14 +481,22 @@ been published yet"). The request carries no account or identifier.
 - **Position.** DU, DD, CU, CD, CL, CR. A new position is a new
   measurement, so changing it while listening (or paused) starts a new
   stretch, noted in the saved recording. The strip keeps its beats and
-  marks each stretch with its position's name, shading every other one,
-  and the Rate, Amplitude and Beat Error charts mark them the same way
+  marks each stretch, shading every other one, with a ticker above the
+  plot (beside it, when the strip runs down) that names the position over
+  and over along its stretch, so it shows even with both ends of the
+  stretch scrolled out of sight; the Rate, Amplitude and Beat Error charts mark them the same way
   over the session or the strip's length. The readings don't reach back
   past the change, the tick and tock profile starts again, and the
   distributions and Steadiness take only the stretches in the position the
   watch is in now: dial up for 5 minutes, dial down for 10, then dial up
   again tests the two dial-up stretches together and leaves the dial-down
-  one out. Guided runs through the positions (as `timegrapher
+  one out. The first 10 seconds in a new position are settling (from
+  Resume, when the position was changed while stopped): the ticker says
+  Settling, the beats are drawn faintly, and they are left out of the
+  readings, the charts' points, the distributions and Steadiness, but kept
+  in the audio. A saved take's `session.toml` starts each later position
+  after its settling, so `timegrapher session` reads the same seconds as
+  the app. Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions
