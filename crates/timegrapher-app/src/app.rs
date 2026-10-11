@@ -4,6 +4,7 @@
 
 use crate::applog;
 use crate::fields::{self, Format};
+use crate::guided;
 use crate::help;
 use crate::isochronism;
 use crate::profiles;
@@ -514,6 +515,8 @@ pub struct TimegrapherApp {
     report: ReportDialog,
     updates: crate::update::Updates,
     faults: crate::faults::FaultCheck,
+    /// The Positions Test, while it runs and until its results are closed.
+    guided: Option<guided::Test>,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -758,6 +761,7 @@ impl TimegrapherApp {
             report: ReportDialog::default(),
             updates: Default::default(),
             faults: Default::default(),
+            guided: None,
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -894,6 +898,7 @@ impl TimegrapherApp {
         self.message = None;
         self.sound_history.clear();
         self.faults.clear();
+        self.guided = None;
         self.sound_at = None;
         self.sound_job = None;
         self.steady = None;
@@ -1037,6 +1042,7 @@ impl TimegrapherApp {
         self.trend.clear();
         self.sound_history.clear();
         self.faults.clear();
+        self.guided = None;
         self.source_label.clear();
         self.message = None;
     }
@@ -1870,6 +1876,20 @@ impl TimegrapherApp {
             } else {
                 self.new_session();
             }
+        }
+        if self.guided.is_none()
+            && ui
+                .add(egui::Button::new("Positions Test…").min_size(Vec2::new(0.0, 26.0)))
+                .on_hover_text(format!(
+                    "Measure the watch in all six positions, one after another: the app says \
+                     which position to turn it to, lets it settle {:.0} s, measures it for \
+                     {:.0} s, and reads the six together at the end.",
+                    guided::SETTLE_S,
+                    guided::MEASURE_S
+                ))
+                .clicked()
+        {
+            self.start_guided();
         }
         if self.recorder.is_some() {
             let saved = self.saved_to.is_some();
@@ -3754,6 +3774,64 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
+    /// Begin the Positions Test, listening first if need be, with the
+    /// watch dial up.
+    fn start_guided(&mut self) {
+        if !self.running() {
+            if self.can_resume() {
+                self.resume_microphone();
+            } else {
+                self.start_microphone();
+            }
+        }
+        if !self.running() {
+            return;
+        }
+        if self.position != guided::ORDER[0] {
+            self.set_position(guided::ORDER[0]);
+        }
+        self.guided = Some(guided::Test::new());
+    }
+
+    /// The Positions Test's banner, and what its buttons ask for.
+    fn guided_banner(&mut self, ui: &mut egui::Ui) {
+        let Some(mut test) = self.guided.take() else {
+            return;
+        };
+        let Some(now) = self.live.as_ref().map(|l| l.duration_s()) else {
+            self.guided = Some(test);
+            return;
+        };
+        let phase = test.tick(now);
+        let action = guided::banner(ui, &test, phase);
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+        match action {
+            Some(guided::Action::Next) => match test.advance(now) {
+                Some(p) => self.set_position(p),
+                None => {
+                    if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+                        let clock = self.clock.as_ref().and_then(|c| {
+                            timegrapher_core::session::fixed_clock(c.ppm, log.duration_s)
+                        });
+                        test.finish(&log, clock.as_ref());
+                    }
+                }
+            },
+            Some(guided::Action::Redo) => test.redo(now),
+            Some(guided::Action::Results) => test.show_results = true,
+            Some(guided::Action::Stop) => return,
+            None => {}
+        }
+        if matches!(
+            phase,
+            guided::Phase::Settling(_) | guided::Phase::Measuring(_)
+        ) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(250));
+        }
+        self.guided = Some(test);
+    }
+
     /// Possible faults from the shape of the last minute's Tick and Tock,
     /// when any are seen. Checks the recording in the background as the
     /// session goes on or the moment shown moves.
@@ -3972,6 +4050,7 @@ impl TimegrapherApp {
             self.empty_state(ui);
             return;
         }
+        self.guided_banner(ui);
         if self.show_readings {
             self.readouts(ui);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
@@ -5264,6 +5343,9 @@ impl eframe::App for TimegrapherApp {
         }
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        if let Some(t) = self.guided.as_mut() {
+            guided::results(ctx, t);
+        }
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
         }

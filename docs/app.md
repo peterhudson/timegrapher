@@ -121,6 +121,25 @@ clipping, or readings too unsteady to grade Fair). A finding is worth
 checking on the bench, not a diagnosis; see
 [fault-signatures.md](fault-signatures.md).
 
+**Positions Test.** Positions Test… beside the microphone buttons leads
+through the six positions in Witschi's order: Dial Up, Dial Down, Crown
+Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
+A banner over the readings names the position and shows a progress bar
+while the watch settles (20 s) and is measured (60 s; Witschi asks for at
+least 40). It then says which position to turn the watch to; press
+**Next** once it is there. **Measure Again** repeats a position, after a
+knock for instance, and **Stop** ends the test. Each position is a
+stretch of the one session, as any change of position is, so the strip
+and charts mark them and a saved session keeps them for `timegrapher
+session`. After the sixth, **Finish** reads the six measured stretches
+with core `session::measure` and `session::evaluate`, as `session` does
+(rate on the input's measured clock when there is one). A window shows:
+- each position's rate, amplitude and beat error, red when outside the
+  chosen tolerances (Men's, Ladies' or COSC);
+- the mean rate X, the largest difference D, and vertical minus
+  horizontal for rate and amplitude;
+- the findings, each with its evidence and Witschi's advice in its hint.
+
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the
