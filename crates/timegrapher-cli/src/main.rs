@@ -355,9 +355,10 @@ enum Command {
         #[arg(long)]
         lift: Option<f64>,
         /// Hours since the watch was fully wound (0 for the fully wound
-        /// half of a test, 24 for the run-down half).
-        #[arg(long, default_value_t = 0.0)]
-        wind_h: f64,
+        /// half of a test, 24 for the run-down half); left out of the
+        /// session file when not given.
+        #[arg(long)]
+        wind_h: Option<f64>,
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
