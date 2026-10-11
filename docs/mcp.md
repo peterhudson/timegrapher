@@ -118,7 +118,7 @@ or keep them in a folder with a `session.toml` ([sessions.md](sessions.md)).
 ## Charts
 
 In chat apps that support [MCP Apps](https://apps.extensions.modelcontextprotocol.io/api/)
-(Claude on the web and desktop, ChatGPT, VS Code, Goose and others), three
+(Claude on the web and desktop, ChatGPT, VS Code, Goose and others), four
 tools show their results as charts right in the conversation, drawn the way
 the timegrapher app draws them:
 
@@ -129,6 +129,10 @@ the timegrapher app draws them:
   characteristic values, rate and amplitude by position with each
   position's tolerance behind its bar, and the findings.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
+- `check_steadiness`: the rate, amplitude and beat error readings on
+  probability paper, as the app's Distribution panes draw them (one steady
+  state falls on the dashed straight line, two states bend it), and the
+  findings.
 
 The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the

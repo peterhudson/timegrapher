@@ -248,7 +248,12 @@ fn a_chat_app_reads_a_watch() {
         .collect();
     assert_eq!(
         linked,
-        ["analyze_recording", "run_session", "tick_tock_profile"]
+        [
+            "analyze_recording",
+            "run_session",
+            "check_steadiness",
+            "tick_tock_profile"
+        ]
     );
     let view = c.request(
         "resources/read",
