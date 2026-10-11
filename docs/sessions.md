@@ -25,7 +25,7 @@ full wind.
 watch = "Submariner case, Dandong 3235 clone"
 calibre = "3235"
 bph = 28800
-lift = 55             # 32xx: probably 55° (maybe 58°), per Peter
+lift = 55             # 32xx: probably 55° (maybe 58°), project value
 tolerance = "mens"     # ladies, mens, cosc-small, cosc, metas
 settle_s = 20          # skipped at the start of each recording
 # measure_s = 60       # measure only this long after settling
@@ -287,5 +287,5 @@ and `regularity`, and for amplitude `tick_change`, `tock_change`,
 in six positions and two states of wind with known rates, amplitudes and
 beat errors, and checks the readings, X, XH, XV, D, DV, DVH, Di, Im, Ie
 and the findings that should and should not appear. Comparison with
-Peter's bench timegrapher on the bench watches goes in
+The bench timegrapher on the bench watches goes in
 [validation.md](validation.md) as the recordings land.

@@ -25,8 +25,11 @@ autocompletion, then `Return`.
 Your recordings, if any, are in {home}/Recordings: {files}.
 
 Do what your character came to do (the dossier says), the way they would:
-read the labels, hover the help, try the obvious things first. Spend about
-{budget} actions, then quit the app and write your notes. Live readings need
+read the labels, hover the help, try the obvious things first. Cover every item
+under "What ... does" or "What ... wants" in your dossier before you stop;
+spend at least half of {budget} actions and at most {budget} (the program
+counts them and sends you back if you stop early), then quit the app and
+write your notes. Live readings need
 time: wait 20 to 40 seconds after placing the watch before judging numbers.
 Moving the watch to another position makes a short glitch in the readings,
 as it does on a real stand; that is not a fault of the program.

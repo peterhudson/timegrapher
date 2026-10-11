@@ -64,3 +64,17 @@ because its input stays with the person. `--json` prints a
 
 A bad-reading report whose replay still shows the problem, and whose
 recording has been run through tg, is a candidate take for the corpus.
+
+## How the zip is made
+
+The zip is written and read with the [`zip`](https://crates.io/crates/zip)
+crate, and the manifest's checksums come from the
+[`sha2`](https://crates.io/crates/sha2) crate (both in core `archive.rs`).
+Entries are stored, not compressed, because the excerpt is FLAC already and
+the rest is small; the same entries always make the same bytes. `--replay`
+also reads deflated entries, so a bundle someone unpacked and zipped again
+still replays. A damaged entry (a bad CRC or a cut-off file) is an error, and
+a zip that would unpack to more than 1 GB is refused. Which paths a bundle
+may hold and which commands it may run are checked by `report` itself, not
+by the zip crate: no absolute paths, no `..`, and only the recorded
+`analyze` command shape.

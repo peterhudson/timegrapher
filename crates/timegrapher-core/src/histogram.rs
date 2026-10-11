@@ -181,31 +181,6 @@ pub fn histogram_with(values: &[f64], opt: &Options) -> Option<Histogram> {
     })
 }
 
-/// A smooth estimate of how the values are spread (a Gaussian kernel
-/// density), at each of `xs`, scaled to counts per `per` (a bin width) so
-/// it can be drawn over a histogram. `bandwidth` is the kernel's standard
-/// deviation; narrower shows finer detail and more noise.
-pub fn density(values: &[f64], bandwidth: f64, xs: &[f64], per: f64) -> Vec<f64> {
-    let v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
-    let h = bandwidth.max(1e-12);
-    let k = per / (h * (std::f64::consts::TAU).sqrt());
-    xs.iter()
-        .map(|&x| {
-            v.iter()
-                .map(|&y| {
-                    let z = (x - y) / h;
-                    if z.abs() > 6.0 {
-                        0.0
-                    } else {
-                        (-0.5 * z * z).exp()
-                    }
-                })
-                .sum::<f64>()
-                * k
-        })
-        .collect()
-}
-
 /// The empirical cumulative distribution: each value, sorted, with the
 /// share of values at or below it. A single state rises in one steep
 /// stretch; two states rise twice with a flatter stretch between.
@@ -406,17 +381,8 @@ mod tests {
     }
 
     #[test]
-    fn density_and_ecdf() {
+    fn ecdf_rises_to_one() {
         let v = spread(10.0, 1.0, 4000, 5);
-        let xs = [7.0, 10.0, 13.0];
-        let d = density(&v, 0.3, &xs, 1.0);
-        assert!(d[1] > d[0] * 5.0 && d[1] > d[2] * 5.0);
-        // About 4000 / sqrt(2 pi) values per unit at the centre.
-        assert!(
-            (d[1] - 4000.0 / (std::f64::consts::TAU).sqrt()).abs() < 150.0,
-            "{}",
-            d[1]
-        );
         let e = ecdf(&v);
         assert_eq!(e.len(), 4000);
         assert!((e[3999][1] - 1.0).abs() < 1e-12);

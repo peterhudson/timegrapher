@@ -9,6 +9,7 @@ pub mod analysis;
 pub mod archive;
 pub mod audio;
 pub mod beats;
+pub mod breaks;
 pub mod calibres;
 pub mod capture;
 pub mod clock;
