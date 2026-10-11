@@ -513,6 +513,7 @@ pub struct TimegrapherApp {
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
+    faults: crate::faults::FaultCheck,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -756,6 +757,7 @@ impl TimegrapherApp {
             crash_shown: false,
             report: ReportDialog::default(),
             updates: Default::default(),
+            faults: Default::default(),
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -891,6 +893,7 @@ impl TimegrapherApp {
         self.clipped_at = None;
         self.message = None;
         self.sound_history.clear();
+        self.faults.clear();
         self.sound_at = None;
         self.sound_job = None;
         self.steady = None;
@@ -1033,6 +1036,7 @@ impl TimegrapherApp {
         self.paused_at = None;
         self.trend.clear();
         self.sound_history.clear();
+        self.faults.clear();
         self.source_label.clear();
         self.message = None;
     }
@@ -3750,6 +3754,47 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 
+    /// Possible faults from the shape of the last minute's Tick and Tock,
+    /// when any are seen. Checks the recording in the background as the
+    /// session goes on or the moment shown moves.
+    fn faults_banner(&mut self, ui: &mut egui::Ui) {
+        self.faults.poll();
+        let end = self.end_s();
+        if self.faults.due(end, self.running()) {
+            let files = if self.mic_session {
+                self.recorder.as_mut().map(|r| {
+                    let _ = r.flush();
+                    r.segment_paths()
+                })
+            } else {
+                recordings_in(&PathBuf::from(self.file_path.trim())).ok()
+            };
+            if let Some(files) = files.filter(|f| !f.is_empty()) {
+                let bph = self.reading().and_then(|r| r.bph).or(self.bph);
+                self.faults.start(ui.ctx(), files, end, bph, self.lift_deg);
+            }
+        }
+        let found = self.faults.at(end).to_vec();
+        if found.is_empty() {
+            return;
+        }
+        let pal = theme::pal(ui);
+        banner(ui, pal.warn, |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.label(theme::caption("Possible Faults").color(pal.text));
+            theme::help(ui, "Possible Faults", help::FAULTS);
+            ui.add_space(8.0);
+            for (i, f) in found.iter().enumerate() {
+                if i > 0 {
+                    ui.label(RichText::new("·").color(pal.text_secondary));
+                }
+                ui.label(RichText::new(crate::faults::line(f)).color(pal.text))
+                    .on_hover_text(crate::faults::hint(f));
+            }
+        });
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
     /// A newer release is published: its version and a button to its page.
     fn update_banner(&mut self, ui: &mut egui::Ui) {
         let Some(r) = self.updates.notice.clone() else {
@@ -3930,6 +3975,7 @@ impl TimegrapherApp {
         if self.show_readings {
             self.readouts(ui);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+            self.faults_banner(ui);
         }
 
         // Looking back through a finished or analysed recording.

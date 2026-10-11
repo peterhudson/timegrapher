@@ -107,6 +107,27 @@ Hovering on the grade says which applied. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
 
+**Possible Faults.** Under the readings, an amber banner names any
+escapement fault the shape of the Tick and Tock points to (unlocking too
+strong, no unlock sound, friction during the impulse, an uneven unlock,
+a rub after the drop) and the beat it is on. The shape needs more sound
+than the live engine keeps, so the app reads the last minute up to the
+moment shown back from the recording (the session's own scratch
+recording while listening) and analyses it as `analyze` does, in the
+background: every 30 s while listening, and when the moment shown moves.
+Hovering on a fault shows the measures behind it. Nothing shows when
+nothing is seen, or when the sound can't be judged (no watch heard,
+clipping, or readings too unsteady to grade Fair). A finding is worth
+checking on the bench, not a diagnosis; see
+[fault-signatures.md](fault-signatures.md).
+
+**Isochronism.** A tab beside Steadiness, from the same run of tests: the
+rate by amplitude in 2° steps (the median rate as a dot, with bars over the
+middle half), the curve through them and where it turns, and under it the
+first half hour against the half hour 24 hours later (or the take's last),
+as the commercial 0 h / 24 h test gives it. It needs the amplitude to fall
+through at least three 2° steps, which a run-down over some hours gives.
+
 **True Clock.** When the microphone's own clock error has been measured
 and stored (`timegrapher clock measure --save`, or `clock from-log --save`
 after a take with a clock log; see `clock` in

@@ -17,6 +17,7 @@
 
 mod app;
 mod applog;
+mod faults;
 mod fields;
 mod help;
 mod isochronism;

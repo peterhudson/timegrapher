@@ -191,6 +191,18 @@ pub const CHARTS: &[&str] = &[
      in the readings.",
 ];
 
+pub const FAULTS: &[&str] = &[
+    "Escapement faults the shape of the Tick and Tock can point to, read from the last \
+     minute of sound the same way `timegrapher analyze` reads it: an unlock sound much \
+     louder than the drop (unlocking too strong, a deep lock), no unlock sound at all, \
+     friction during the impulse, an unlock that differs between Tick and Tock, or a \
+     rub after the drop. Each names the beat it is on.",
+    "Each is a measure well outside what healthy watches give: worth checking on the \
+     bench, not a diagnosis. Nothing shows when the sound can't be judged: no watch \
+     heard, clipping, or amplitude or beat error too unsteady to grade Fair. Hovering \
+     on a fault shows the measures behind it; docs/fault-signatures.md describes each.",
+];
+
 pub const STEADINESS: &[&str] = &[
     "Whether the rate, the amplitude and the beat error (from the unlock) each hold \
      steady over the session. A healthy watch on a quiet bench gives readings that \
