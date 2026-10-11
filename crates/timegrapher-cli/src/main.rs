@@ -1141,10 +1141,16 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     if !s.watch_heard {
-        let short = s.caveats.iter().find_map(|c| match c {
-            timegrapher_core::measure::Caveat::ShortSpan { span_s } => Some(*span_s),
-            _ => None,
-        });
+        use timegrapher_core::measure::Caveat;
+        // Too short to tell only when the caveats do not say no watch.
+        let short = s
+            .caveats
+            .iter()
+            .find_map(|c| match c {
+                Caveat::ShortSpan { span_s } => Some(*span_s),
+                _ => None,
+            })
+            .filter(|_| !s.caveats.contains(&Caveat::NoWatch));
         match short {
             Some(span_s) => println!(
                 "Too short to tell: the beats span {span_s:.1} s, and whether a watch is heard is judged over 10 s, so no readings are shown. Record for longer."
