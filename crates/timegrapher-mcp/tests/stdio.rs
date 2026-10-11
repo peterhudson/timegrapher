@@ -405,6 +405,11 @@ fn a_chat_app_reads_a_watch() {
         assert!(r.get("isError").is_none(), "{r}");
         assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/1");
         assert_eq!(r["structuredContent"]["verdict"], "ok");
+        // The facts in words first: the lift angle is the calibre's.
+        let said = r["content"][0]["text"].as_str().unwrap();
+        assert!(said.starts_with("Recorded "), "{said}");
+        assert!(said.contains("the ETA 2824-2's"), "{said}");
+        assert!(said.ends_with("The take was added to the test."), "{said}");
     }
     // A retried take comes back as it was, and is not recorded again.
     let first = c.call(
