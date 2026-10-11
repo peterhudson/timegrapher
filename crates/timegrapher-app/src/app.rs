@@ -24,7 +24,6 @@ use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::calibres;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
-use timegrapher_core::confidence::{self, Grade};
 use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
@@ -3342,8 +3341,8 @@ impl TimegrapherApp {
         }
     }
 
-    /// The three readings, each in a card: a caption with the reading's
-    /// grade, the figure large with its ± beside it, and a line of detail.
+    /// The three readings, each in a card: a caption with what limits the
+    /// reading, the figure large with its ± beside it, and a line of detail.
     fn readouts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let r = self.reading();
@@ -3367,13 +3366,13 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a note saying so.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let caveats = r.as_ref().map_or(&[][..], |r| &r.caveats[..]);
         let r = r.as_ref().filter(|_| heard);
-        // Each reading's ± and grade, judged as an analysis of the
-        // recording judges them (core `measure`).
-        let conf = r.and_then(|r| r.confidence);
-        let pm = conf.and_then(|c| c.rate.se);
-        let be_pm = conf.and_then(|c| c.beat_error.se);
+        let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
+        // Each reading's ±, as an analysis of the recording gives them
+        // (core `measure`).
+        let pm = r.and_then(|r| r.rate_error_s_per_day);
+        let be_pm = r.and_then(|r| r.beat_error_unlock_error_ms);
+        let lift_now = self.lift_deg;
         // Over the whole take, once it is stopped: the mean and spread of
         // the readings beside the last window's figure.
         let whole_line = |ui: &mut egui::Ui, mean: String, sd: String, span: f64| {
@@ -3415,7 +3414,7 @@ impl TimegrapherApp {
         let card = |ui: &mut egui::Ui,
                     title: &str,
                     help: &[&str],
-                    grade: Option<confidence::Reading>,
+                    facts: Vec<(String, String)>,
                     body: &dyn Fn(&mut egui::Ui)| {
             theme::card()
                 .fill(pal.card)
@@ -3430,18 +3429,23 @@ impl TimegrapherApp {
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
-                        if let Some(g) = grade {
+                        if !facts.is_empty() {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.spacing_mut().item_spacing.x = 4.0;
-                                    let (word, filled) = grade_look(g.grade);
-                                    let resp = ui.label(
-                                        RichText::new(word).small().color(pal.text_secondary),
-                                    );
-                                    // The meter as much as the words.
-                                    resp.union(theme::meter(ui, filled, pal.text_secondary))
-                                        .on_hover_text(grade_hint(title, g, caveats));
+                                    let short: Vec<&str> =
+                                        facts.iter().map(|f| f.0.as_str()).collect();
+                                    let long: Vec<&str> =
+                                        facts.iter().map(|f| f.1.as_str()).collect();
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(short.join(" · "))
+                                                .small()
+                                                .color(pal.text_secondary),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(long.join("\n\n"));
                                 },
                             );
                         }
@@ -3458,7 +3462,7 @@ impl TimegrapherApp {
                 &mut cols[0],
                 "Rate",
                 help::RATE,
-                conf.map(|c| c.rate),
+                reading_limits("Rate", caveats, lift_now),
                 &|ui| {
                     let unit = match pm {
                         Some(e) if e < 0.05 => "seconds per day".to_string(),
@@ -3553,7 +3557,7 @@ impl TimegrapherApp {
                 &mut cols[1],
                 "Amplitude",
                 help::AMPLITUDE,
-                conf.map(|c| c.amplitude),
+                reading_limits("Amplitude", caveats, lift_now),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a
                     // decimal would claim more than the beats can say.
@@ -3602,7 +3606,7 @@ impl TimegrapherApp {
                 &mut cols[2],
                 "Beat Error",
                 help::BEAT_ERROR,
-                conf.map(|c| c.beat_error),
+                reading_limits("Beat Error", caveats, lift_now),
                 &|ui| {
                     let unit = match be_pm.filter(|_| unlock.is_some()) {
                         Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
@@ -5599,8 +5603,8 @@ impl eframe::App for TimegrapherApp {
         if let Some(m) = self.updates.poll() {
             self.info_msg(m);
         }
-        // What the readings' grades rest on: a calibre's lift angle and a
-        // measured clock.
+        // What the readings rest on: a calibre's lift angle and a measured
+        // clock.
         let lift_known = !(self.calibre.is_empty() && self.lift_deg == DEFAULT_LIFT_DEG);
         let clock_known = self.clock.is_some();
         if let Some(l) = &mut self.live {
@@ -5715,7 +5719,7 @@ type ScopeKey = (i64, u64, scope::Zoom);
 
 /// Everything Average Over sets, and what it leaves alone.
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
-     the three readings, their ± and their confidence; every point on the Rate, \
+     the three readings and their ±; every point on the Rate, \
      Amplitude and Beat Error charts; the Amplitude, Rate and Beat Error lines drawn over \
      the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
      the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
@@ -5734,107 +5738,89 @@ type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
 
-/// A grade shown as the measurement's confidence: its words and how many
-/// of the meter's three dots are filled. Grey, not green to red: it says
-/// how sure the reading is, not how good the watch is.
-fn grade_look(g: Grade) -> (&'static str, usize) {
-    match g {
-        Grade::Good => ("High Confidence", 3),
-        Grade::Fair => ("Medium Confidence", 2),
-        Grade::Poor => ("Low Confidence", 1),
-    }
-}
-
-/// What a reading's grade means, and what lowered it.
-fn grade_hint(title: &str, g: confidence::Reading, caveats: &[Caveat]) -> String {
-    let (good, fair, unit) = match title {
-        "Rate" => (
-            confidence::RATE_SE.0,
-            confidence::RATE_SE.1,
-            " seconds per day",
-        ),
-        "Amplitude" => (confidence::AMPLITUDE_SE.0, confidence::AMPLITUDE_SE.1, "°"),
-        _ => (
-            confidence::BEAT_ERROR_SE.0,
-            confidence::BEAT_ERROR_SE.1,
-            " ms",
-        ),
-    };
-    let mut t = format!(
-        "Confidence: how far this reading can be trusted. It grades the measurement, not \
-         the watch: High when its ± is within {good}{unit}, Medium within {fair}{unit}, Low \
-         beyond that or when there is no ± yet. The ± says how much the reading would move \
-         on another stretch of the same sound; a watch far off time can still be measured \
-         with High confidence."
-    );
-    let mut lowered = Vec::new();
+/// What limits a reading, as facts: a short form for the card's caption
+/// and a sentence for its hover. Nothing graded: the ± beside the figure
+/// says how far it could be off; these say what the ± can't show.
+fn reading_limits(title: &str, caveats: &[Caveat], lift_deg: f64) -> Vec<(String, String)> {
+    let mut out = Vec::new();
     for c in caveats {
-        match (c, title) {
-            (Caveat::BeatsMissing { .. }, _) => {
-                lowered.push("fewer beats were found than the beat rate expects")
-            }
-            (Caveat::ClockUnknown, "Rate") => lowered.push(
-                "this input's clock hasn't been measured (`timegrapher clock measure --save`)",
-            ),
-            (Caveat::Clipped { .. }, "Amplitude" | "Beat Error") => {
-                lowered.push("some beats are clipped")
-            }
-            (Caveat::LiftUnknown, "Amplitude") => lowered.push(
-                "the lift angle is the default 52°: pick the Calibre under Watch to use its own",
-            ),
-            _ => {}
-        }
-    }
-    if !lowered.is_empty() {
-        t += &format!(" Lowered a step each because {}.", lowered.join(", and "));
-    }
-    if caveats
-        .iter()
-        .any(|c| matches!(c, Caveat::ShortSpan { .. }))
-    {
-        t += &format!(
-            " Low for now: the beats span under {:.0} s, too short to trust.",
-            timegrapher_core::measure::SHORT_SPAN_S
-        );
-    } else if g.se.is_none() {
-        t += if title == "Rate" {
-            " The rate's ± needs about 30 s of unbroken beats."
-        } else {
-            " Not enough readings yet for a ±."
+        let fact = match (c, title) {
+            (Caveat::ShortSpan { span_s }, _) => Some((
+                format!("{span_s:.0} s of beats"),
+                format!(
+                    "The beats span {span_s:.0} s, under the {:.0} s an analysis of a \
+                     recording asks for.",
+                    timegrapher_core::measure::SHORT_SPAN_S
+                ),
+            )),
+            (Caveat::BeatsMissing { fraction }, _) => Some((
+                format!("{:.0}% of beats found", fraction * 100.0),
+                format!(
+                    "{:.0}% of the beats the beat rate expects were found.",
+                    fraction * 100.0
+                ),
+            )),
+            (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
+                format!("{:.0}% clipped", fraction * 100.0),
+                format!(
+                    "{:.0}% of the beats have a clipped sample, which moves the timing of \
+                     the sounds inside a beat. Turn Input Level down under Microphone.",
+                    fraction * 100.0
+                ),
+            )),
+            (Caveat::LiftUnknown, "Amplitude") => Some((
+                format!("lift {lift_deg:.0}° assumed"),
+                format!(
+                    "The lift angle is the default {lift_deg:.0}°, not the calibre's. Every \
+                     amplitude moves with it: pick the Calibre under Watch, or type its lift \
+                     angle."
+                ),
+            )),
+            (Caveat::ClockUnknown, "Rate") => Some((
+                "clock not measured".to_string(),
+                "This input's clock hasn't been measured, so the rate includes the sound \
+                 card's own error, often a second or two a day \
+                 (`timegrapher clock measure --save`)."
+                    .to_string(),
+            )),
+            (Caveat::SetRateDisagrees { heard }, _) => Some((
+                format!("{heard} bph heard"),
+                format!("The beat rate set differs from the {heard} bph heard."),
+            )),
+            (Caveat::Breaks { count }, _) => Some((
+                format!("{count} pause{}", if *count == 1 { "" } else { "s" }),
+                format!("The take was paused {count} times in this stretch."),
+            )),
+            _ => None,
         };
+        out.extend(fact);
     }
-    t
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use timegrapher_core::confidence::Doubts;
     use timegrapher_core::recorder::SETTLE_S;
 
     #[test]
-    fn a_grade_says_what_lowered_it() {
-        let d = Doubts {
-            lift_unknown: true,
-            clock_unknown: true,
-            ..Doubts::default()
-        };
-        let caveats = [Caveat::LiftUnknown, Caveat::ClockUnknown];
-        let g = confidence::amplitude(Some(1.0), d);
-        assert_eq!(g.grade, Grade::Fair);
-        let amp = grade_hint("Amplitude", g, &caveats);
-        assert!(
-            amp.contains("lift angle") && !amp.contains("clock"),
-            "{amp}"
-        );
-        let rate = grade_hint("Rate", confidence::rate(Some(0.2), d), &caveats);
-        assert!(rate.contains("clock") && !rate.contains("lift"), "{rate}");
-        let short = grade_hint(
-            "Rate",
-            confidence::rate(None, d),
-            &[Caveat::ShortSpan { span_s: 4.0 }],
-        );
-        assert!(short.contains("too short"), "{short}");
+    fn a_reading_says_what_limits_it_as_facts() {
+        let caveats = [
+            Caveat::ShortSpan { span_s: 4.0 },
+            Caveat::LiftUnknown,
+            Caveat::ClockUnknown,
+        ];
+        let amp = reading_limits("Amplitude", &caveats, 52.0);
+        let short: Vec<&str> = amp.iter().map(|f| f.0.as_str()).collect();
+        assert_eq!(short, ["4 s of beats", "lift 52° assumed"]);
+        let rate = reading_limits("Rate", &caveats, 52.0);
+        let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
+        assert_eq!(short, ["4 s of beats", "clock not measured"]);
+        for (_, long) in amp.iter().chain(&rate) {
+            for word in ["Confidence", "Low", "High", "Medium", "trust"] {
+                assert!(!long.contains(word), "{long}");
+            }
+        }
     }
     use timegrapher_core::synth::{generate, SynthConfig};
 
