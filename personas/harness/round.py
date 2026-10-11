@@ -395,8 +395,10 @@ class Persona:
         surface = {"mcp-pair": "the MCP server in a chat app",
                    "cli-pair": "the command line and the watchmaker skill"}[self.p["surface"]]
         system = prompt("reviewer").replace("{surface}", surface).replace("{report_format}", prompt("report-format"))
+        log_path = os.path.join(self.stand_dir, "log.txt")
+        stand_log = open(log_path).read() if os.path.exists(log_path) else "(no stand used)\n"
         message = (f"# The person's dossier\n\n{self.p['dossier']}\n\n# Truth sheet\n\n{self.p['truth']}\n\n"
-                   f"{transcript}")
+                   f"# Stand log (UTC)\n\n```\n{stand_log}```\n\n{transcript}")
         check, _, _ = self.claude(message, system, "reviewer", timeout=900)
         return check
 
