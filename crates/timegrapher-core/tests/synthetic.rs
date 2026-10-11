@@ -244,5 +244,21 @@ fn an_empty_stand_is_no_watch() {
         duration_s: 30.0,
         ..Default::default()
     };
+    assert!(s.confidence.is_none(), "graded readings with no watch");
     assert!(run(&cfg, |_| 270.0, |_| 0.0).summary.watch_heard);
+    let clean = SynthConfig {
+        duration_s: 60.0,
+        ..Default::default()
+    };
+    let watch = run(&clean, |_| 270.0, |_| 0.0).summary;
+    // A clean synthetic watch: graded, with no USB lines to correct the
+    // clock and no lift angle given, so rate and amplitude are lowered.
+    let c = watch.confidence.expect("graded");
+    assert!(watch.doubts.clock_unknown && watch.doubts.lift_unknown);
+    assert!(watch.usb_clock.is_none());
+    assert_eq!(
+        c.beat_error.grade,
+        timegrapher_core::confidence::Grade::Good,
+        "{c:?}"
+    );
 }

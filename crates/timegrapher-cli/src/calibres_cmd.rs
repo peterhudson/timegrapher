@@ -20,6 +20,8 @@ pub const DEFAULT_ESCAPE_TEETH: u32 = 15;
 pub struct Resolved {
     pub bph: Option<u32>,
     pub lift_deg: f64,
+    /// The lift angle came from the flag or the calibre, not the default.
+    pub lift_known: bool,
     pub escape_teeth: u32,
 }
 
@@ -34,11 +36,11 @@ pub fn resolve(
         escape_teeth,
     }
     .calibre()?;
+    let lift = lift_deg.or(c.and_then(|c| c.lift_angle_deg));
     Ok(Resolved {
         bph: bph.or(c.map(|c| c.bph)),
-        lift_deg: lift_deg
-            .or(c.and_then(|c| c.lift_angle_deg))
-            .unwrap_or(DEFAULT_LIFT_DEG),
+        lift_deg: lift.unwrap_or(DEFAULT_LIFT_DEG),
+        lift_known: lift.is_some(),
         escape_teeth: escape_teeth
             .or(c.and_then(|c| c.escape_teeth))
             .unwrap_or(DEFAULT_ESCAPE_TEETH),

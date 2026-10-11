@@ -90,6 +90,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,
             "wind_h": o.check.wind_h,
+            "stretch_s": o.check.stretch_s,
         });
         crate::output::print("series", crate::output::input(&files, settings), &rep)
     } else {
@@ -140,6 +141,20 @@ fn print_text(r: &Report, calibrated: bool) {
             x.s_per_day_per_deg,
             p_text(x.p_value)
         );
+    }
+    let d = &r.distributions;
+    if !d.overall.is_empty() {
+        println!();
+        println!("Distributions");
+        for x in d.overall.iter().filter(|x| x.values == "readings") {
+            println!("  {:<12} {}", x.series.replace('_', " "), x.summary);
+        }
+        if !d.stretches.is_empty() {
+            println!(
+                "  and over each {} (in the JSON)",
+                crate::long::duration(d.stretch_s)
+            );
+        }
     }
     if r.findings.is_empty() {
         println!("\nEvery series is steady: the readings look independent about one level.");
