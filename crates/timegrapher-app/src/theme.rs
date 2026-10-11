@@ -303,23 +303,30 @@ pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
         semibold(11.0),
         if open { p.on_accent } else { p.text_secondary },
     );
+    // Hovering shows the first paragraph, the plain answer, so it covers
+    // little; a click shows it all.
     let body = |ui: &mut Ui, pinned: bool| {
         ui.set_max_width(360.0);
         ui.spacing_mut().item_spacing.y = 8.0;
         ui.label(RichText::new(title).font(semibold(14.0)));
-        for para in paragraphs {
+        let shown = if pinned { paragraphs.len() } else { 1 };
+        for para in &paragraphs[..shown.min(paragraphs.len())] {
             ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
         }
         if !pinned {
             ui.label(
-                RichText::new("Click the ? to keep this open.")
-                    .small()
-                    .color(pal(ui).text_tertiary),
+                RichText::new(if paragraphs.len() > 1 {
+                    "Click the ? for more."
+                } else {
+                    "Click the ? to keep this open."
+                })
+                .small()
+                .color(pal(ui).text_tertiary),
             );
         }
     };
-    // Hovering shows it all and moving away hides it; a click keeps it
-    // open until a click anywhere else.
+    // Hovering shows the start and moving away hides it; a click keeps
+    // all of it open until a click anywhere else.
     let resp = if open {
         resp
     } else {
@@ -669,6 +676,40 @@ pub fn even_grid(
         k += 1.0;
     }
     marks
+}
+
+/// The vertical grid of a short chart: [`even_grid`], closer together on a
+/// chart too short for two labels 30 points apart, down to 14 (a small
+/// label's height).
+pub fn short_y_grid(input: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
+    let at = |px: f64| {
+        let again = egui_plot::GridInput {
+            bounds: input.bounds,
+            base_step_size: input.base_step_size,
+        };
+        even_grid(again, px, &[])
+    };
+    [24.0, 19.0, 14.0]
+        .into_iter()
+        .map(at)
+        .find(|m| m.len() >= 2)
+        .unwrap_or_else(|| at(30.0))
+}
+
+/// An axis label, or none when its mark is within `frac` of the plot's
+/// right end, where half of it would be cut off.
+pub fn clear_of_right_edge(
+    text: String,
+    value: f64,
+    range: &std::ops::RangeInclusive<f64>,
+    frac: f64,
+) -> String {
+    let (a, b) = (*range.start(), *range.end());
+    if b > a && (b - value) < frac * (b - a) {
+        String::new()
+    } else {
+        text
+    }
 }
 
 /// Steps for a time axis in seconds: whole seconds, minutes and hours.

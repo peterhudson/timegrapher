@@ -123,7 +123,9 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
         .y_axis_min_width(GUTTER)
         .height(h)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
-        .x_axis_formatter(|m, _| format!("{:.0}°", m.value))
+        .x_axis_formatter(|m, r| {
+            theme::clear_of_right_edge(format!("{:.0}°", m.value), m.value, r, 0.03)
+        })
         .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
         .y_axis_formatter(|m, _| rate_label(m.value, m.step_size))
         .default_x_bounds(a_lo - a_pad, a_hi + a_pad)
