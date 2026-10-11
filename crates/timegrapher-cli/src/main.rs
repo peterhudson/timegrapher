@@ -7,6 +7,7 @@ mod doctor;
 mod long;
 mod output;
 mod profile_cmd;
+mod record_cmd;
 mod regress_cmd;
 mod report;
 mod series_cmd;
@@ -31,7 +32,7 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
     after_help = "Every command with --json prints one JSON document with a `schema` field \
 (e.g. timegrapher.analyze/1), the software version and the input it read. \
 Start with `timegrapher doctor` to check the microphone. Exit codes: 0 success, \
-1 error, 3 doctor found problems."
+1 error, 3 doctor found problems or a take was not fit to keep."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -302,6 +303,49 @@ enum Command {
         action: ClockAction,
         /// Print the result as JSON instead of text.
         #[arg(long, global = true)]
+        json: bool,
+    },
+    /// Record one position of a test into a session folder: a take folder
+    /// as the desktop app saves it, checked at once and, when a watch is
+    /// heard cleanly, added to the folder's session.toml for `session`.
+    /// Listens only while it runs, for --seconds. Exits 3 when the take is
+    /// not fit to keep (no watch heard, or clipped).
+    Record {
+        /// The session folder (created if missing); one per watch and test.
+        folder: PathBuf,
+        /// Position: DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H).
+        #[arg(long)]
+        position: String,
+        /// Seconds to record.
+        #[arg(long, default_value_t = 120.0)]
+        seconds: f64,
+        /// Sound input: part of its name or id from `devices` (default:
+        /// the system's default input).
+        #[arg(long)]
+        device: Option<String>,
+        /// Read this WAV or FLAC instead of the microphone (to try the
+        /// command, and for tests).
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// The watch, in the owner's words (for a new session file).
+        #[arg(long)]
+        watch: Option<String>,
+        /// The movement, from the calibre table: gives bph and lift when
+        /// they are not given (an unknown name lists the known ones).
+        #[arg(long)]
+        calibre: Option<String>,
+        /// Beat rate in beats per hour (guessed if omitted).
+        #[arg(long)]
+        bph: Option<u32>,
+        /// Lift angle in degrees (default: the calibre's, else 52).
+        #[arg(long)]
+        lift: Option<f64>,
+        /// Hours since the watch was fully wound (0 for the fully wound
+        /// half of a test, 24 for the run-down half).
+        #[arg(long, default_value_t = 0.0)]
+        wind_h: f64,
+        /// Print the result as JSON instead of text.
+        #[arg(long)]
         json: bool,
     },
     /// Read a watch measured in several positions (and states of wind)
@@ -728,6 +772,38 @@ fn main() -> ExitCode {
                 bph,
             };
             match doctor::run(&o) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(3),
+                Err(e) => Err(e),
+            }
+        }
+        Command::Record {
+            folder,
+            position,
+            seconds,
+            device,
+            file,
+            watch,
+            calibre,
+            bph,
+            lift,
+            wind_h,
+            json,
+        } => {
+            let o = record_cmd::Options {
+                folder,
+                position,
+                seconds,
+                device,
+                file,
+                watch,
+                calibre,
+                bph,
+                lift,
+                wind_h,
+                json,
+            };
+            match record_cmd::run(&o) {
                 Ok(true) => Ok(()),
                 Ok(false) => return ExitCode::from(3),
                 Err(e) => Err(e),

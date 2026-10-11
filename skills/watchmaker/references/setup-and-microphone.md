@@ -273,8 +273,11 @@ dial down.
 
 ### Recording
 
-Until a `record` command exists, record with the system's tools and analyse
-the file. 48 kHz, 16-bit, mono, WAV or FLAC.
+`timegrapher record FOLDER --position DU --seconds 120` records one
+position into a session folder and checks it (see
+[guided-test.md](guided-test.md) and
+[cli-reference.md](cli-reference.md#record)). For a plain file, or in a
+build without `record`, use the system's tools and analyse the file. 48 kHz, 16-bit, mono, WAV or FLAC.
 
 ```sh
 # Linux (ALSA): card 2, 2 minutes

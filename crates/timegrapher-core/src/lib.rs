@@ -6,6 +6,7 @@
 
 pub mod amplitude;
 pub mod analysis;
+pub mod archive;
 pub mod audio;
 pub mod beats;
 pub mod calibres;
