@@ -6,7 +6,25 @@ pub fn run(json: bool) -> Result<(), String> {
     use timegrapher_core::update;
     let current = env!("CARGO_PKG_VERSION");
     let agent = format!("timegrapher/{current}");
-    let check = update::check(current, &agent, std::time::Duration::from_secs(15))?;
+    let Some(check) = update::check_published(current, &agent, std::time::Duration::from_secs(15))?
+    else {
+        // Nothing published yet: there is nothing newer, so this is an
+        // answer, not an error.
+        if json {
+            return crate::output::print(
+                "update",
+                serde_json::json!({ "source": update::LATEST_RELEASE_API }),
+                &serde_json::json!({
+                    "current": current,
+                    "latest": null,
+                    "update_available": false,
+                }),
+            );
+        }
+        println!("Timegrapher {current} is up to date: no release has been published yet.");
+        println!("Releases will appear at {}", update::RELEASES_PAGE);
+        return Ok(());
+    };
     if json {
         return crate::output::print(
             "update",

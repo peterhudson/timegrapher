@@ -102,9 +102,15 @@ Medium or Low, and a meter of three grey dots. It is the grade
 `analyze` reports (`timegrapher_core::confidence`: Good, Fair, Poor),
 shown as confidence and kept grey because it grades the measurement,
 not the watch. The ± sets it: High within 0.5 s/d, 2° or 0.05 ms,
-Medium within 2 s/d, 5° or 0.1 ms. The beat error's ± is
-the standard error of its 2 s windows in the averaging time. Things
-the ± can't show lower a grade one step each: fewer than 95% of the beats
+Medium within 2 s/d, 5° or 0.1 ms. The judgement is the one `analyze`
+and `session` make (`timegrapher_core::measure`), applied to the
+averaging time. The amplitude's and beat error's ± are the standard
+errors of their 2 s windows in the averaging time. The rate's ± comes
+from the scatter of 10 s windows over the run so far (back to a pause or
+a move, up to five minutes), scaled to the averaging time, so a 10 s
+figure is graded as a 10 s figure; it needs about 30 s of unbroken beats,
+and until then the rate is Low. Under 10 s of beats every reading is Low.
+Things the ± can't show lower a grade one step each: fewer than 95% of the beats
 the beat rate expects (all three), more than 1% of beats clipped
 (amplitude and beat error), the default 52° lift angle with no calibre
 picked (amplitude) and an input whose clock hasn't been measured (rate).

@@ -340,6 +340,56 @@ first file and the Yacht-Master dial down 4 to 7 in the file with its knock; the
 window can find them, and a gate that knows where the beats are is
 separate work.
 
+## Tick and Tock amplitudes apart
+
+`analyze` reports the amplitude from each side's beats (`amplitude_even_deg`,
+`amplitude_odd_deg`) as well as the overall figure (`amplitude_deg`, the
+median of the 2 s windows' means, so it can sit up to about 0.5° off the
+midpoint of the two sides). On clean recordings of healthy watches the two
+sides can sit far apart. The table covers all 15 public corpus takes with a
+tg reference: the first file of each, read at the take's lift angle
+(2026-10-11, after #140), beside tg's amplitude for that file at the same
+lift angle. The split is taken from the sides as shown.
+
+| Take | Lift | Tick | Tock | Split | `amplitude_deg` | tg |
+|---|---|---|---|---|---|---|
+| ETA 2824 in its holder | 50° | 296.1° | 323.6° | 27.5° | 309.6° | 294° |
+| Dandong 3235 clone | 55° | 272.3° | 291.5° | 19.2° | 282.1° | 280° |
+| Reverso, level, overnight | 52° | 248.2° | 264.5° | 16.3° | 256.3° | 259° |
+| Daytona 4130 clone | 55°\* | 327.5° | 313.7° | 13.8° | 320.1° | 321° |
+| Reverso, 2 h | 52° | 244.3° | 233.4° | 10.9° | 239.0° | 238° |
+| Peacock SL1258 | 52°\* | 311.9° | 303.9° | 8.0° | 307.5° | 306° |
+| Yacht-Master, dial up | 55° | 254.6° | 248.9° | 5.7° | 251.7° | 254° |
+| Yacht-Master, crown down | 55° | 229.9° | 235.1° | 5.2° | 232.5° | 225° |
+| Patek 324 clone | 52°\* | 239.0° | 240.3° | 1.3° | 239.5° | 238° |
+| Yacht-Master, crown right | 55° | 231.7° | 230.6° | 1.1° | 230.9° | 228° |
+| Yacht-Master, crown left | 55° | 235.3° | 236.3° | 1.0° | 235.9° | 233° |
+| Yacht-Master, crown up | 55° | 224.7° | 223.7° | 1.0° | 224.3° | 221° |
+| ETA 2824, bare, gain 4 | 50° | 286.6° | 285.8° | 0.8° | 286.9° | 276° |
+| ETA 2824, bare | 50° | 289.2° | 288.5° | 0.7° | 288.7° | 279° |
+| Yacht-Master, dial down | 55° | 240.7° | 241.1° | 0.4° | 240.5° | 235° |
+
+\* The lift angle is not settled for these movements: the Daytona and Patek
+takes' READMEs say so, and 52° for the Peacock is what its owner's bench
+timegrapher uses. The comparison with tg holds at that angle; the absolute
+amplitude does not.
+
+The ETA 2824 in its holder is not a clean recording. Its README calls the
+plastic holder reverberant and the unlock timing unreliable, and it has the
+largest gap to tg as well as the largest split. Leaving it out, the split
+on the other 14 takes runs from 0.4° to 19.2°, and a larger split goes with
+a mean closer to tg, not further (correlation −0.48 between the split and
+the gap to tg; +0.20 with the holder in). The Dandong 3235 clone splits by
+19° and its mean is 2° from tg, while the bare ETA splits by 0.7° and its
+mean is 10° from tg.
+
+So a split is not a doubt about `amplitude_deg`, and no caveat lowers a
+grade for it. Quote `amplitude_deg`. On these clean recordings a split of
+up to about 20° was common and is not a fault on its own; `profile` shows
+each side's sound for a closer look. Whether a larger split means something
+on the bench needs a watch with a confirmed fault recorded before and after
+repair.
+
 ## Sound 2 after a shoulder on the unlock: the Daytona's Tick
 
 On the Daytona 4130 the Tick's unlock climbs to a shoulder about 1 ms
