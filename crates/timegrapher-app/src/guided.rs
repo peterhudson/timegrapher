@@ -80,6 +80,12 @@ impl Test {
         ORDER[self.step.min(ORDER.len() - 1)]
     }
 
+    /// The measured stretch of each position done so far: position,
+    /// start and end in seconds of the session.
+    pub fn stretches(&self) -> &[(Position, f64, f64)] {
+        &self.spans
+    }
+
     pub fn next_position(&self) -> Option<Position> {
         ORDER.get(self.step + 1).copied()
     }

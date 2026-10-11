@@ -1261,6 +1261,28 @@ impl TimegrapherApp {
                 ..Default::default()
             })
             .collect();
+        // A Positions Test's own stretches (after its 20 s settling, for
+        // its 60 s), so `timegrapher session` reads the seconds its table
+        // showed.
+        let test: Vec<RecordingEntry> = self
+            .guided
+            .as_ref()
+            .map_or(&[][..], |t| t.stretches())
+            .iter()
+            .filter_map(|&(pos, from, to)| {
+                Some(RecordingEntry {
+                    file: ".".into(),
+                    position: Some(pos.code().to_string()),
+                    clock: Some("clock.csv".into()),
+                    start_s: Some(self.session.audio_of(from)?),
+                    end_s: Some(self.session.audio_of(to)?),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        if !test.is_empty() {
+            m.recordings = test;
+        }
         m
     }
 
@@ -7071,6 +7093,54 @@ mod tests {
         frames(&mut app, &ctx, 2);
         app.relayout(false);
         frames(&mut app, &ctx, 2);
+    }
+
+    /// A take saved during a Positions Test lists the test's own measured
+    /// stretches, so `timegrapher session` reads the seconds the table did.
+    #[test]
+    fn a_positions_test_take_lists_its_measured_stretches() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = synthetic(5.0, 0.0);
+        app.session.listen();
+        let info = app.info("test", 48000, 16);
+        app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 80.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let r = app.session.recorder.as_mut().unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: audio.samples,
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        let mut test = guided::Test::new();
+        test.tick(0.0);
+        test.tick(guided::SETTLE_S + guided::MEASURE_S);
+        let next = test.advance(80.0).expect("a second position");
+        app.session.move_to(80.0, Position::DialUp, next).unwrap();
+        test.tick(80.0);
+        test.tick(80.0 + guided::SETTLE_S + guided::MEASURE_S);
+        app.guided = Some(test);
+        let m = app.take_manifest();
+        let got: Vec<_> = m
+            .recordings
+            .iter()
+            .map(|e| (e.position.clone().unwrap(), e.start_s, e.end_s))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("DU".to_string(), Some(20.0), Some(80.0)),
+                ("DD".to_string(), Some(100.0), Some(160.0)),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A saved take carries a session file with the watch, its calibre,
