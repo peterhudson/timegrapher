@@ -152,7 +152,9 @@ pub fn run(
     // steady error over the run, which cannot follow drift.
     let fixed = match clock_log {
         Some(_) => None,
-        None => crate::clock_cmd::correction(file, clock_args.device, clock_args.card_ppm)?,
+        None => {
+            crate::clock_cmd::correction_or_usb(&files, clock_args.device, clock_args.card_ppm)?
+        }
     };
     let total_s = info
         .frames
@@ -419,6 +421,9 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             if c.tracks_drift { ", drift followed" } else { "" }
         ),
         (None, _) => println!("Clock        not calibrated: absolute rate is only as good as the sound card (use --clock, or store the card's error with `timegrapher clock`)"),
+    }
+    if r.clock.is_some() {
+        println!("             tg, and a session's reference rates, read on the sound card's clock: add the error above to compare");
     }
     match &r.overall {
         Some(f) => println!(

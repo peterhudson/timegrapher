@@ -45,6 +45,11 @@ pub struct Summary {
     pub duration_s: f64,
     pub sample_rate: u32,
     pub bph: u32,
+    /// The beat rate the recording sounds like, when a set `bph` differs
+    /// from it. Every reading is then measured against the wrong beat, so
+    /// all three are graded poor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bph_heard: Option<u32>,
     pub beats_found: usize,
     /// False when the beats are no steadier than noise, as on an empty
     /// stand: the readings below then describe noise and must not be shown
@@ -94,6 +99,27 @@ pub struct Summary {
 }
 
 impl Summary {
+    /// Clear every reading, as when no watch is heard: they would describe
+    /// noise. What says so (`watch_heard`, `jitter_us`, `beats_found`) and
+    /// what describes the recording and the sound card stay.
+    pub fn withhold_readings(&mut self) {
+        self.overall = None;
+        self.beat_error_unlock_ms = None;
+        self.rate_p05 = None;
+        self.rate_p95 = None;
+        self.amplitude_deg = None;
+        self.amplitude_even_deg = None;
+        self.amplitude_odd_deg = None;
+        self.amplitude_se_deg = None;
+        self.amplitude_even_se_deg = None;
+        self.amplitude_odd_se_deg = None;
+        self.timing_periods.clear();
+        self.amplitude_periods.clear();
+        self.rate_corrected_s_per_day = None;
+        self.confidence = None;
+        self.faults.clear();
+    }
+
     /// Grade again once the sound card's clock is known from elsewhere (a
     /// stored correction), which lifts the rate's clock doubt.
     pub fn clock_known(&mut self) {
@@ -183,7 +209,8 @@ fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
 pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let fs = audio.sample_rate as f64;
     let env = envelope(&audio.samples, fs, &cfg.envelope);
-    let bph = cfg.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
+    let guessed = beats::guess_bph(&env, fs);
+    let bph = cfg.bph.unwrap_or(guessed);
     let (beats, _template) = beats::detect(&env, fs, bph);
     let overall = timing::fit(&beats, bph);
     let residuals = timing::residuals(&beats).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
@@ -270,10 +297,11 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     } else {
         Vec::new()
     };
-    let summary = Summary {
+    let mut summary = Summary {
         duration_s: duration,
         sample_rate: audio.sample_rate,
         bph,
+        bph_heard: (bph != guessed).then_some(guessed),
         beats_found: beats.len(),
         watch_heard,
         overall,
@@ -303,6 +331,16 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         confidence,
         faults,
     };
+    if summary.bph_heard.is_some() {
+        if let Some(c) = summary.confidence.as_mut() {
+            for r in [&mut c.rate, &mut c.amplitude, &mut c.beat_error] {
+                r.grade = confidence::Grade::Poor;
+            }
+        }
+    }
+    if !summary.watch_heard {
+        summary.withhold_readings();
+    }
     Analysis {
         summary,
         beats,

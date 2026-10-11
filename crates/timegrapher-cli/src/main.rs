@@ -1121,6 +1121,12 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
+    if let Some(heard) = s.bph_heard {
+        println!(
+            "Warning      the beat rate was set to {} bph, but the recording sounds like {heard} bph: every reading below is measured against the wrong beat and graded poor. Check the calibre or --bph.",
+            s.bph
+        );
+    }
     if !s.watch_heard {
         println!(
             "No watch heard: the beats found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
