@@ -8,6 +8,7 @@ use crate::help;
 use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::settings::{CustomCalibre, CustomWheel, Settings};
+use crate::scope;
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -118,13 +119,15 @@ pub enum Pane {
     AmplitudeHistogram,
     BeatErrorHistogram,
     Steadiness,
+    Scope,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 9] = [
+    const ALL: [Pane; 10] = [
         Pane::Strip,
         Pane::Sound,
+        Pane::Scope,
         Pane::Steadiness,
         Pane::Rate,
         Pane::Amplitude,
@@ -151,6 +154,7 @@ impl Pane {
             Pane::AmplitudeHistogram => "Amplitude Distribution",
             Pane::BeatErrorHistogram => "Beat Error Distribution",
             Pane::Steadiness => "Steadiness",
+            Pane::Scope => "Scope",
         }
     }
 
@@ -188,6 +192,10 @@ impl Pane {
                 "Whether the rate, amplitude and beat error each hold steady over the \
                  session, or carry a cycle, two states, a step, a drift or wander"
             }
+            Pane::Scope => {
+                "The sound of the latest beats as it came in, at 20, 200 or 400 ms, the \
+                 latest few drawn over each other"
+            }
         }
     }
 }
@@ -210,7 +218,9 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
     // The steadiness tests share the profile's place, as a second tab.
     let steadiness = tiles.insert_pane(Pane::Steadiness);
+    let scope = tiles.insert_pane(Pane::Scope);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
+        c.add_child(scope);
         c.add_child(steadiness);
     }
     let dir = if horizontal {
@@ -247,8 +257,6 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     tree
 }
 
-/// A layout saved before the Steadiness pane existed, with it added as a
-/// tab beside the profile (or at the top, if the profile is not in tabs).
 /// After a drag moves a tab out of a tab group, egui_tiles can leave the
 /// group's active tab pointing at the tile that left, so the group shows
 /// nothing. Point every group back at one of its own tabs.
@@ -262,11 +270,14 @@ fn repair_tabs(tree: &mut Tree<Pane>) {
     }
 }
 
-fn add_missing_steadiness(tree: &mut Tree<Pane>) {
-    if tree.tiles.find_pane(&Pane::Steadiness).is_some() {
+/// A layout saved before a pane existed (Steadiness, Scope), with it added
+/// as a tab beside the profile (or at the top, if the profile is not in
+/// tabs).
+fn add_missing(tree: &mut Tree<Pane>, pane: Pane) {
+    if tree.tiles.find_pane(&pane).is_some() {
         return;
     }
-    let pane = tree.tiles.insert_pane(Pane::Steadiness);
+    let pane = tree.tiles.insert_pane(pane);
     let host = tree
         .tiles
         .find_pane(&Pane::Sound)
@@ -537,6 +548,11 @@ pub struct TimegrapherApp {
     hist_readings: bool,
     /// What the Steadiness pane draws under each verdict.
     steady_view: steady::View,
+    scope_view: scope::View,
+    /// Sound read from the recording for the Scope when looking back: from
+    /// and to (seconds), the sample rate and the samples.
+    scope_audio: Option<(f64, f64, f64, Vec<f32>)>,
+    scope_job: Option<std::sync::mpsc::Receiver<(f64, f64, f64, Vec<f32>)>>,
     /// The steadiness tests' latest answer over the session, and the run
     /// in the background that will replace it.
     steady: Option<Steadiness>,
@@ -629,6 +645,7 @@ impl TimegrapherApp {
             sidebar: self.sidebar,
             theme: self.theme,
             steady_view: self.steady_view,
+            scope: self.scope_view,
             panes: Some(self.panes.clone()),
             custom_calibres: self.custom_calibres.clone(),
             check_updates: self.check_at_start,
@@ -655,6 +672,7 @@ impl TimegrapherApp {
             sidebar,
             theme,
             steady_view,
+            scope,
             panes,
             custom_calibres,
             check_updates,
@@ -686,8 +704,10 @@ impl TimegrapherApp {
         self.sidebar = sidebar;
         self.theme = theme;
         self.steady_view = steady_view;
+        self.scope_view = scope;
         self.panes = match panes.map(|mut p| {
-            add_missing_steadiness(&mut p);
+            add_missing(&mut p, Pane::Steadiness);
+            add_missing(&mut p, Pane::Scope);
             p
         }) {
             Some(p) if layout_is_whole(&p) => p,
@@ -749,6 +769,9 @@ impl TimegrapherApp {
             span_of_strip: false,
             hist_cumulative: false,
             steady_view: steady::View::default(),
+            scope_view: scope::View::default(),
+            scope_audio: None,
+            scope_job: None,
             steady: None,
             steady_job: None,
             hist_readings: true,
@@ -4047,6 +4070,143 @@ impl TimegrapherApp {
 
     /// Start working out the sound at `end` from the file, unless one is
     /// already under way. False when there is no file to read.
+    /// The Scope pane: the latest beats' sound up to the time on show, from
+    /// what the live engine still holds, else read from the recording.
+    fn scope_pane(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        scope::controls(ui, &mut self.scope_view);
+        ui.add_space(4.0);
+        let view = self.scope_view;
+        let Some(live) = &self.live else {
+            ui.label(
+                RichText::new("Listen to a watch or open a recording to see its sound here.")
+                    .color(pal.text_tertiary),
+            );
+            return;
+        };
+        let end = self.end_s();
+        let split = view.zoom.split();
+        let specs: Vec<(&'static str, bool, Color32)> = if split {
+            vec![("Tick", true, pal.tick), ("Tock", false, pal.tock)]
+        } else {
+            vec![("Tick", true, pal.text_secondary)]
+        };
+        let picks: Vec<Vec<timegrapher_core::beats::Beat>> = specs
+            .iter()
+            .map(|&(_, even, _)| scope::pick(live.beats(), view.zoom, view.ring, end, Some(even)))
+            .collect();
+        let profiles = live.tick_profiles().clone();
+        let fs = live.sample_rate() as f64;
+        let (before, after) = view.zoom.window();
+        let times = picks.iter().flatten().map(|b| b.time);
+        let lo = times.clone().fold(f64::INFINITY, f64::min) - before - 0.011;
+        let hi = times.fold(f64::NEG_INFINITY, f64::max) + after;
+        let mut note = None;
+        let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi {
+            None
+        } else if let Some(x) = live.sound(lo, hi - lo) {
+            Some((x.to_vec(), lo, fs))
+        } else {
+            self.poll_scope_job();
+            match &self.scope_audio {
+                Some((a, b, rate, x)) if *a <= lo && *b >= hi => {
+                    let i0 = ((lo - a) * rate) as usize;
+                    let i1 = (((hi - a) * rate) as usize).min(x.len());
+                    Some((x[i0.min(i1)..i1].to_vec(), a + i0 as f64 / rate, *rate))
+                }
+                _ => {
+                    note = Some(if self.start_scope_job(lo, hi) {
+                        "Reading the sound from the recording…"
+                    } else {
+                        "The sound of these beats isn't kept: the scope shows the last few \
+                         seconds while listening, and any moment of a recording."
+                    });
+                    None
+                }
+            }
+        };
+        let rows: Vec<scope::Row> = specs
+            .iter()
+            .zip(&picks)
+            .map(|(&(label, even, color), beats)| {
+                let traces = audio.as_ref().map_or(Vec::new(), |(x, t0, rate)| {
+                    beats
+                        .iter()
+                        .filter_map(|b| scope::trace(x, *rate, *t0, b, view.zoom))
+                        .collect()
+                });
+                let mut marks = Vec::new();
+                if view.zoom == scope::Zoom::Ms20 {
+                    if let Some(p) = &profiles[usize::from(!even)] {
+                        if let Some(u) = p.unlock_ms {
+                            marks.push((u, pal.unlock, "Unlock"));
+                        }
+                        if let Some(d) = p.drop_ms {
+                            marks.push((d, pal.drop, "Drop"));
+                        }
+                    }
+                }
+                scope::Row {
+                    label: if split { label } else { "" },
+                    traces,
+                    color,
+                    marks,
+                }
+            })
+            .collect();
+        if let Some(n) = note {
+            ui.label(RichText::new(n).small().color(pal.text_tertiary));
+        }
+        let rate = audio.as_ref().map_or(fs, |a| a.2);
+        scope::draw(ui, &rows, view.zoom, rate);
+    }
+
+    fn poll_scope_job(&mut self) {
+        if let Some(rx) = &self.scope_job {
+            match rx.try_recv() {
+                Ok(a) => {
+                    self.scope_audio = Some(a);
+                    self.scope_job = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.scope_job = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
+    }
+
+    /// Read the sound from `lo` to `hi` seconds (and a second either side,
+    /// for small moves of the time slider) from the recording open. False
+    /// when there is no recording to read it from.
+    fn start_scope_job(&mut self, lo: f64, hi: f64) -> bool {
+        if self.scope_job.is_some() {
+            return true;
+        }
+        if self.input != Input::File || self.mic_session {
+            return false;
+        }
+        let Ok(files) = recordings_in(&PathBuf::from(self.file_path.trim())) else {
+            return false;
+        };
+        let (a, b) = ((lo - 1.0).max(0.0), hi + 1.0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let Ok(pcm) = timegrapher_core::excerpt::cut(&files, a, b - a) else {
+                return;
+            };
+            let full = (1u64 << (pcm.bits_per_sample.max(1) - 1)) as f32;
+            let ch = pcm.channels.max(1) as usize;
+            let mono: Vec<f32> = pcm
+                .samples
+                .chunks(ch)
+                .map(|f| f.iter().map(|&s| s as f32).sum::<f32>() / (ch as f32 * full))
+                .collect();
+            let rate = pcm.sample_rate as f64;
+            let _ = tx.send((a, a + mono.len() as f64 / rate, rate, mono));
+        });
+        self.scope_job = Some(rx);
+        true
+    }
+
     fn start_sound_job(&mut self, end: f64) -> bool {
         // One at a time: while the strip is dragged, the next starts when
         // this one is done.
@@ -4709,6 +4869,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
             Pane::Steadiness => self.app.steady_pane(ui),
+            Pane::Scope => self.app.scope_pane(ui),
             p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
             p => self.app.chart(ui, *p),
         });

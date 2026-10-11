@@ -21,6 +21,7 @@ mod fields;
 mod help;
 mod profiles;
 mod report;
+mod scope;
 mod settings;
 mod steady;
 mod strip;
