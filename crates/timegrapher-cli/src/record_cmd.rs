@@ -302,6 +302,8 @@ impl Feed {
         let mut cfg = LiveConfig::default();
         cfg.analysis.bph = set.bph;
         cfg.analysis.amplitude.lift_deg = set.lift;
+        // As the app judges it: a calibre's or a typed lift angle is known.
+        cfg.analysis.lift_known = set.calibre.is_some() || set.lift != 52.0;
         let mut f = Feed {
             path: path.to_path_buf(),
             position: pos.common(),
