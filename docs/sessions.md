@@ -25,7 +25,7 @@ full wind.
 watch = "Submariner case, Dandong 3235 clone"
 calibre = "3235"
 bph = 28800
-lift = 55             # 32xx: probably 55° (maybe 58°), per Peter
+lift = 55             # 32xx: probably 55° (maybe 58°), project value
 tolerance = "mens"     # ladies, mens, cosc-small, cosc, metas
 settle_s = 20          # skipped at the start of each recording
 # measure_s = 60       # measure only this long after settling
@@ -34,7 +34,7 @@ card_ppm = 19.3        # sound card's known error, for takes without a clock log
 [[recording]]
 file = "dandong_DU.flac"        # a file, or a folder of segments
 position = "DU"                 # see below
-wind_h = 0                      # hours since full wind
+wind_h = 0                      # hours since the watch was fully wound
 date = "2026-10-08T20:41Z"
 reference = { rate = 1.0, amplitude = 290, beat_error = 0.3, source = "tg on the same file, lift 55" }   # example values
 
@@ -97,6 +97,16 @@ start_s = 600
 Names match in any case and also as words ("crown left"). In file names
 the letter forms match in any case; 3H, 6H, 9H and 12H only in capitals,
 so that `_2h` or `_12h` (a duration) is not taken for a position.
+
+Witschi's codes count round the dial with the crown at 3 o'clock, so crown
+up is 3H and crown right 12H. The report names each position in words with
+the code beside it, as the app does: "Crown Up (3H)", "Dial Down (CB)".
+
+`wind_h` is the hours since the watch was fully wound: 0 just after
+winding, 24 a day later. The report says it in words ("full wind", "24 h
+after winding"). A reading without it shows "not given" and is taken as
+fully wound; `session --init` leaves it commented out, so a take whose
+winding is unknown is not logged as freshly wound.
 
 ## What each reading is
 
@@ -277,5 +287,5 @@ and `regularity`, and for amplitude `tick_change`, `tock_change`,
 in six positions and two states of wind with known rates, amplitudes and
 beat errors, and checks the readings, X, XH, XV, D, DV, DVH, Di, Im, Ie
 and the findings that should and should not appear. Comparison with
-Peter's bench timegrapher on the bench watches goes in
+The bench timegrapher on the bench watches goes in
 [validation.md](validation.md) as the recordings land.

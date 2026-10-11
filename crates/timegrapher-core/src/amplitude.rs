@@ -168,6 +168,17 @@ pub struct AmplitudeWindow {
 }
 
 impl AmplitudeWindow {
+    /// The same window with Tick and Tock the other way round, for a
+    /// stretch whose beats were numbered from the other side (see
+    /// [`crate::breaks::renumber`]).
+    pub fn swap_sides(&mut self) {
+        std::mem::swap(&mut self.even_deg, &mut self.odd_deg);
+        std::mem::swap(&mut self.even_unlock_ms, &mut self.odd_unlock_ms);
+        std::mem::swap(&mut self.even_drop_ms, &mut self.odd_drop_ms);
+        self.beat_error_ms = self.beat_error_ms.map(|v| -v);
+        self.beat_error_unlock_ms = self.beat_error_unlock_ms.map(|v| -v);
+    }
+
     pub fn mean(&self) -> Option<f64> {
         match (self.even_deg, self.odd_deg) {
             (Some(a), Some(b)) => Some((a + b) / 2.0),

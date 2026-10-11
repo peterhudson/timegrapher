@@ -85,6 +85,8 @@ svg text.out { font-weight: 600; }
 .verdict b { font-weight: 600; }
 .headline { color: var(--text2); font-size: 12px; margin: 0 0 4px; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .empty { color: var(--text2); padding: 24px 0; text-align: center; }
+.bar { height: 4px; border-radius: 2px; background: var(--control); margin: -6px 0 12px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--text2); }
 </style>
 </head>
 <body>
@@ -125,6 +127,7 @@ window.addEventListener("message", (event) => {
     return;
   }
   if (msg.method === "ui/notifications/tool-result") render(msg.params || {});
+  else if (msg.method === "ui/notifications/tool-input") toolInput((msg.params || {}).arguments || {});
   else if (msg.method === "ui/notifications/host-context-changed") { applyContext(msg.params); redraw(); }
 });
 
@@ -433,7 +436,7 @@ function stripCards(strip) {
   }
   if (has("amplitude")) {
     cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
-      title: "Amplitude", time: true, legend: true, robust: true, unit: "°", decimals: 0, minSpan: 4,
+      title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), robust: true, unit: "°", decimals: 0, minSpan: 4,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
         { name: "Amplitude from Tick", color: "--amplitude", key: "--tick", dash: "dashed", main: false, points: strip.amplitude_tick || [] },
@@ -443,7 +446,7 @@ function stripCards(strip) {
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
     cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
-      title: "Beat Error", time: true, legend: true, robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
+      title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
         { name: "From the Drop", color: "--beat-error", opacity: 0.6, dash: "dashed", main: false, points: strip.beat_error_drop || [] },
@@ -1082,19 +1085,179 @@ function seriesView(doc, extra) {
   return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${distributionCards(doc.distributions)}${findingsCard(doc.findings || [])}`;
 }
 
+// ---- Live: a take as it is heard ------------------------------------------
+//
+// While record_position records, the view asks the server for the latest
+// readings (recording_status, a tool for the view alone) about once a
+// second, from when the chat app says the call has started (tool-input)
+// until its result arrives. A chat app that does not pass the view's calls
+// on leaves the progress messages in the chat to say how far it has got.
+
+const COMMON = { DU: "Dial Up", DD: "Dial Down", CU: "Crown Up", CD: "Crown Down", CL: "Crown Left", CR: "Crown Right" };
+function positionName(p) { return COMMON[p] || p || ""; }
+
+let live = null;
+
+function toolInput(args) {
+  // Only a recording has a live view; the other tools draw their result.
+  if (typeof args.position !== "string" || typeof args.folder !== "string") return;
+  if (live && live.timer) clearTimeout(live.timer);
+  live = { position: args.position, seconds: Number.isFinite(args.seconds) ? args.seconds : 120, doc: null, failures: 0, seen: false };
+  last = null;
+  redraw();
+  pollLive();
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+}
+
+function pollLive() {
+  const mine = live;
+  if (!mine) return;
+  mine.timer = null;
+  withTimeout(request("tools/call", { name: "recording_status", arguments: {} }), 5000).then((r) => {
+    if (live !== mine || last) return;
+    const d = r && r.structuredContent;
+    mine.failures = 0;
+    if (d && d.recording) { mine.doc = d.schema && d.recorded_s != null ? d : mine.doc; mine.seen = true; }
+    redraw();
+    // Until the take has ended; before it starts, the call may still be on its way.
+    if (!(d && d.recording === false && mine.seen)) mine.timer = setTimeout(pollLive, 1000);
+  }).catch(() => {
+    if (live !== mine || last) return;
+    if (++mine.failures < 3) mine.timer = setTimeout(pollLive, 2000);
+    else { mine.unavailable = true; redraw(); }
+  });
+}
+
+// The trend a live file carries, as the charts over time take it.
+function trendStrip(t) {
+  if (!t || !t.t_s) return null;
+  const pts = (ys) => (ys || []).map((y, i) => [t.t_s[i], y == null ? NaN : y]).filter(([, y]) => Number.isFinite(y));
+  // The beat error as a size, as the take's check gives it: the live and
+  // the whole-take measures do not agree on its sign.
+  const size = (ys) => pts(ys).map(([x, y]) => [x, Math.abs(y)]);
+  return { rate: pts(t.rate), amplitude: pts(t.amplitude), beat_error_unlock: size(t.beat_error) };
+}
+
+// strip::wrap: fold into [-half, half).
+function wrapMs(x, half) { return ((x + half) % (2 * half) + 2 * half) % (2 * half) - half; }
+
+// The app's paper strip lying on its side (strip.rs, horizontal): time left
+// to right with the newest beats on the right, early beats towards the top,
+// one dot per beat, Tick blue and Tock orange, ±10 ms wide and wrapping as
+// on a Witschi diagram. A watch on time draws a level line; one that gains
+// rises to the right.
+function liveStrip(d) {
+  const s = (d && d.strip) || {};
+  const beats = s.beats || [];
+  const span = s.span_s || 30, half = 10;
+  const end = Math.max((d && d.recorded_s) || 0, span), start = end - span;
+  const W = chartWidth(), H = 170, T = 4, B = 20, R = 6, L = 50;
+  const plotW = W - L - R, plotH = H - T - B;
+  const sx = (t) => L + (t - start) / span * plotW;
+  const sy = (ms) => T + (half - ms) / (2 * half) * plotH;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, inside = "";
+  const yg = gridFor(-half, half, plotH, 26);
+  for (const v of yg.ticks) {
+    if (v > -half && v < half) inside += `<line class="grid" x1="${L}" x2="${L + plotW}" y1="${sy(v)}" y2="${sy(v)}"/>`;
+    // The ends are left for "Early" and "Late".
+    if (Math.min(sy(v) - T, T + plotH - sy(v)) > 14) g += `<text x="${L - 5}" y="${sy(v) + 4}" text-anchor="end">${esc(axisLabel(v, yg.step, " ms"))}</text>`;
+  }
+  g += `<text x="${L - 5}" y="${T + 10}" text-anchor="end">Early</text><text x="${L - 5}" y="${T + plotH}" text-anchor="end">Late</text>`;
+  const xg = gridFor(start, end, plotW, Math.min(90, plotW / 4), TIME_STEPS);
+  for (const t of xg.ticks) {
+    if (t < -1e-9) continue;
+    inside += `<line class="grid" x1="${sx(t)}" x2="${sx(t)}" y1="${T}" y2="${T + plotH}"/>`;
+    const label = fmtTime(t);
+    const anchor = sx(t) - label.length * CHAR_W / 2 < L - 8 ? "start" : sx(t) + label.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(t)}" y="${H - 5}" text-anchor="${anchor}">${label}</text>`;
+  }
+  const shown = beats.filter(([t]) => t >= start);
+  const perPx = shown.length / Math.max(1, plotW);
+  const radius = Math.min(2.2, Math.max(0.8, 2.2 / Math.sqrt(Math.max(perPx, 1))));
+  for (const [t, lead, side] of shown) {
+    inside += `<circle cx="${sx(t).toFixed(1)}" cy="${sy(wrapMs(lead, half)).toFixed(1)}" r="${radius}" fill="var(${side ? "--tock" : "--tick"})"/>`;
+  }
+  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
+  if (!shown.length) g += `<text x="${L + plotW / 2}" y="${T + plotH / 2 + 4}" text-anchor="middle">Listening…</text>`;
+  const key = `<div class="legend above"><span><span class="swatch dot" style="background:var(--tick)"></span>Tick</span><span><span class="swatch dot" style="background:var(--tock)"></span>Tock</span></div>`;
+  return `<div class="card"><h2>Paper Strip</h2><p class="hint">The last ${num(span, 0)} s of beats: a watch on time draws a level line, one that gains rises to the right</p>${key}<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Paper strip">${g}</svg></div></div>`;
+}
+
+function liveView(l) {
+  const d = l.doc || {};
+  const r = d.reading || {};
+  const total = Number.isFinite(d.seconds) ? d.seconds : l.seconds;
+  const at = Number.isFinite(d.recorded_s) ? d.recorded_s : 0;
+  const line = d.done ? "Done: the watch can be moved" : `${fmtTime(at)} of ${fmtTime(total)} · keep the watch still`;
+  let html = `<h1>Live</h1><p class="sub">${esc(positionName(d.position || l.position))} · ${esc(line)}</p>`;
+  html += `<div class="bar"><div style="width:${Math.min(100, 100 * at / Math.max(1, total)).toFixed(1)}%"></div></div>`;
+  if (l.unavailable) {
+    html += `<div class="card notice"><b>No Live Readings Here</b>This chat app does not pass the view's requests on while it records. The chat says how far it has got, and the readings show here when the take is done.</div>`;
+  }
+  const heard = r.beats_used > 0;
+  const wait = "Listening…";
+  const be = Number.isFinite(r.beat_error_unlock_ms) ? r.beat_error_unlock_ms : r.beat_error_ms;
+  html += `<div class="tiles">
+    ${tile("Rate", "--rate", heard ? signed(r.rate_s_per_day, 1) : "–", "seconds per day", heard ? `${num(d.average_s, 0)} s average` : wait)}
+    ${tile("Amplitude", "--amplitude", heard ? num(r.amplitude_deg, 0) : "–", heard && Number.isFinite(r.amplitude_error_deg) ? `± ${Math.max(1, Math.round(r.amplitude_error_deg))}°` : "", heard ? "" : wait, "°")}
+    ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(r.beat_error_unlock_ms) ? "from the unlock" : "from the drop") : wait)}
+    ${tile("Beats Heard", "", esc(d.beats_heard || 0), "", heard ? `${esc(r.beats_used)} in the last ${num(r.span_s, 0)} s` : wait)}
+  </div>`;
+  if (r.clipped_fraction > 0.01) html += `<div class="card notice"><b>Clipping</b>${num(r.clipped_fraction * 100, 0)}% of beats are clipped: turn the microphone down before the next take.</div>`;
+  html += liveStrip(d);
+  html += stripCards(trendStrip(d.trend));
+  return html;
+}
+
+// record_position's result: the take's quick check, with the readings over
+// time as they were heard when there was a live view.
+function recordView(doc, heard) {
+  const c = doc.check || {};
+  const name = positionName(doc.position);
+  let html = `<h1>${esc(name)}</h1><p class="sub">${timeLabel(doc.seconds)} recorded · ${esc(c.bph)} beats per hour${Number.isFinite(doc.wind_h) ? ` · ${num(doc.wind_h, 0)} h after full wind` : ""}</p>`;
+  if (doc.verdict === "no_watch_heard") {
+    html += `<div class="card notice"><b>No Watch Heard</b>This take was not added to the test. Check that the watch is running and touching the microphone, then record it again.</div>`;
+    return html;
+  }
+  if (doc.verdict === "clipping") {
+    html += `<div class="card notice"><b>Clipping</b>${num(c.clipping.beat_fraction * 100, 0)}% of beats were clipped, so this take was not added to the test. Turn the microphone down and record it again.</div>`;
+  } else if (doc.session_file) {
+    html += `<p class="hint">Added to the test in ${esc(String(doc.session_file).split(/[\\/]/).slice(-2, -1)[0] || doc.session_file)}. The watch can be moved.</p>`;
+  }
+  html += `<div class="tiles">
+    ${tile("Rate", "--rate", signed(c.rate_s_per_day, 1), "seconds per day", "a quick look; the test's report has the reading")}
+    ${tile("Amplitude", "--amplitude", num(c.amplitude_deg, 0), "", "", "°")}
+    ${tile("Beat Error", "--beat-error", num(abs(c.beat_error_ms), 2), "milliseconds", "from the unlock")}
+    ${tile("Beats", "", esc(c.beats_found), "", `of ${esc(c.beats_expected)} expected`)}
+  </div>`;
+  html += stripCards(heard && trendStrip(heard.trend));
+  return html;
+}
+
 // ---- Dispatch -------------------------------------------------------------
 
 let last = null;
 
 function render(result) {
+  if (live && live.timer) { clearTimeout(live.timer); live.timer = null; }
   last = result;
   redraw();
 }
 
 function redraw() {
   const root = document.getElementById("root");
-  if (!last) return;
+  if (!last && !live) return;
   charts.clear();
+  if (!last) {
+    lastWidth = root.clientWidth;
+    root.innerHTML = liveView(live);
+    wireCharts(root);
+    return;
+  }
   const doc = last.structuredContent;
   const extra = last._meta && last._meta["timegrapher/charts"];
   let html;
@@ -1109,6 +1272,8 @@ function redraw() {
     html = profileView(doc);
   } else if (doc.schema.startsWith("timegrapher.series/")) {
     html = seriesView(doc, extra);
+  } else if (doc.schema.startsWith("timegrapher.record/")) {
+    html = recordView(doc, live && live.doc);
   } else {
     html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
   }

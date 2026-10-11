@@ -5,6 +5,7 @@
 
 mod cli;
 mod guidance;
+mod live;
 mod progress;
 mod takes;
 mod tools;
@@ -101,10 +102,17 @@ async fn call(
             line.insert(1, format!("--file={}", f.to_string_lossy()));
         }
     }
+    // While it records, the command keeps its latest readings in a file
+    // for the Live view and the progress messages, when the chat app can
+    // show either; the file goes when the call ends.
+    let feed = (tool.name == "record_position" && live::wanted(context)).then(live::Feed::start);
+    if let Some(f) = &feed {
+        line.insert(1, format!("--live={}", f.path().display()));
+    }
     // A recording takes as long as it records: say how far it has got, and
     // stop it (the child goes with the future) when the chat app cancels.
     let progress = (tool.name == "record_position")
-        .then(|| progress::report(context, args))
+        .then(|| progress::report(context, args, feed.as_ref().map(|f| f.path().to_path_buf())))
         .flatten();
     let out = tokio::select! {
         out = cli::run(&line) => out,
@@ -177,7 +185,7 @@ impl ServerHandler for Server {
         let list: Vec<Value> = tools::TOOLS
             .iter()
             .map(tools::definition)
-            .chain(std::iter::once(guidance::guide_definition()))
+            .chain([guidance::guide_definition(), live::definition()])
             .collect();
         complete(json!({ "tools": list }))
     }
@@ -191,6 +199,9 @@ impl ServerHandler for Server {
         if request.name == guidance::GUIDE_TOOL {
             let page = args.get("page").and_then(Value::as_str);
             return Ok(complete::<CallToolResult>(guidance::guide(page))?.into());
+        }
+        if request.name == live::TOOL {
+            return Ok(complete::<CallToolResult>(live::status())?.into());
         }
         Ok(call(&request.name, &args, &context).await?.into())
     }
