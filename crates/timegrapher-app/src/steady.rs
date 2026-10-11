@@ -16,11 +16,11 @@ use egui_plot::{
 use serde::{Deserialize, Serialize};
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
-use timegrapher_core::longterm::{self, Fold, Grid, LongConfig, Search};
+use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
 use timegrapher_core::periodicity::{default_wheels, Wheel};
 use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind, Verdict};
+use timegrapher_core::steady_views::{self, FoldFrom};
 use timegrapher_core::stream::BeatLog;
-use timegrapher_core::timing;
 
 /// Seconds of beats the tests need before they can say anything: 30 rate
 /// readings of 10 s.
@@ -119,17 +119,6 @@ pub struct Steadiness {
     period_span: Option<(f64, f64)>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
-}
-
-/// Where a series' fold period came from.
-#[derive(Debug, Clone, PartialEq)]
-enum FoldFrom {
-    /// Its own cycle.
-    Own,
-    /// The cycle another series has (rate, amplitude, beat error).
-    Series(usize),
-    /// A wheel's turn, when no series has a cycle.
-    Wheel(String),
 }
 
 /// The session's beats and amplitude windows so far, as a recording's
@@ -269,61 +258,16 @@ pub fn compute_with(
     stage.store(2, Relaxed);
     let report = steadiness::check(log, None, &long, &lc, &cfg);
     stage.store(3, Relaxed);
-    let grids = grids(log, cfg.rate_reading_s);
-    let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
-    let be_search = (readings(&grids[2]) >= 30).then(|| {
-        let mut g = grids[2].clone();
-        g.t0 = 0.0;
-        longterm::analyse(&g, &lc).search
-    });
-    let searches = [
-        Some(long.timing.search.clone()),
-        Some(long.amplitude.search.clone()),
-        be_search,
-    ];
-    let own = |i: usize| {
-        let s = report.series.get(i)?;
-        s.cycle
-            .as_ref()
-            .map(|c| c.period_s)
-            .or(s.period.as_ref().map(|p| p.period_s))
-    };
-    let fits = |g: &Grid, period: f64| period >= 3.0 * g.step && g.span() >= 2.0 * period;
+    let grids = steady_views::grids(log, cfg.rate_reading_s);
+    let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
+    let folds = steady_views::folds(&grids, &report, &lc);
     let folds = std::array::from_fn(|i| {
-        let g = &grids[i];
-        let (period, from) = own(i)
-            .filter(|&p| fits(g, p))
-            .map(|p| (p, FoldFrom::Own))
-            .or_else(|| {
-                (0..3).filter(|&j| j != i).find_map(|j| {
-                    own(j)
-                        .filter(|&p| fits(g, p))
-                        .map(|p| (p, FoldFrom::Series(j)))
-                })
-            })
-            .or_else(|| {
-                lc.wheels
-                    .iter()
-                    .filter(|w| fits(g, w.period_s))
-                    .max_by(|a, b| a.period_s.total_cmp(&b.period_s))
-                    .map(|w| (w.period_s, FoldFrom::Wheel(w.name.clone())))
-            })?;
+        let (fold, from) = folds[i].clone()?;
         fold_from[i] = from;
-        let bins = ((period / g.step).round() as usize).clamp(6, 40);
-        Some(longterm::fold(g, period, bins))
+        Some(fold)
     });
-    let logs = searches
-        .iter()
-        .flatten()
-        .flat_map(|x| x.period_s.iter())
-        .filter(|p| **p > 0.0)
-        .map(|p| p.log10());
-    let period_span = logs
-        .fold(None, |r: Option<(f64, f64)>, x| {
-            Some(r.map_or((x, x), |(a, b)| (a.min(x), b.max(x))))
-        })
-        .filter(|(a, b)| a < b);
+    let period_span = steady_views::period_span(&searches);
     Steadiness {
         report,
         grids,
@@ -334,63 +278,6 @@ pub fn compute_with(
         wheels: lc.wheels,
         upto_s: log.duration_s,
     }
-}
-
-/// The readings the tests are made on: 10 s rate readings, and the 2 s
-/// amplitude windows for the amplitude and the beat error from the unlock.
-fn grids(log: &BeatLog, rate_s: f64) -> [Grid; 3] {
-    let wins = timing::windows(&log.beats, log.bph, rate_s, rate_s);
-    let rate = match (wins.first(), wins.last()) {
-        (Some(w0), Some(last)) => {
-            let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
-            let mut y = vec![f64::NAN; n];
-            for w in &wins {
-                let i = ((w.start_s - w0.start_s) / rate_s).round() as usize;
-                if i < n {
-                    y[i] = w.fit.rate_s_per_day;
-                }
-            }
-            Grid {
-                t0: w0.start_s,
-                step: rate_s,
-                y,
-            }
-        }
-        _ => Grid {
-            t0: 0.0,
-            step: rate_s,
-            y: Vec::new(),
-        },
-    };
-    let aw = &log.amplitude_windows;
-    let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
-    let grid_of = |f: &dyn Fn(&timegrapher_core::amplitude::AmplitudeWindow) -> Option<f64>| {
-        let (Some(w0), Some(last)) = (aw.first(), aw.last()) else {
-            return Grid {
-                t0: 0.0,
-                step,
-                y: Vec::new(),
-            };
-        };
-        let n = ((last.start_s - w0.start_s) / step).round() as usize + 1;
-        let mut y = vec![f64::NAN; n];
-        for w in aw {
-            let i = ((w.start_s - w0.start_s) / step).round() as usize;
-            if i < n {
-                y[i] = f(w).unwrap_or(f64::NAN);
-            }
-        }
-        Grid {
-            t0: w0.start_s,
-            step,
-            y,
-        }
-    };
-    [
-        rate,
-        grid_of(&|w| w.mean()),
-        grid_of(&|w| w.beat_error_unlock_ms),
-    ]
 }
 
 /// The verdict as a name in Title Case, what it means, and its colour.
