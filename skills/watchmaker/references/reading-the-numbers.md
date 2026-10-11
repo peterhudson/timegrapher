@@ -20,12 +20,12 @@ From `timegrapher analyze --json` (field names in
   A big shortfall means the microphone is missing ticks.
 - **Tick and Tock amplitudes** (`amplitude_even_deg`, `amplitude_odd_deg`:
   the even beats are the Tick, the odd the Tock) often differ.
-  On clean corpus recordings the split runs from under 1° to about 28°,
+  On clean corpus recordings the split runs from under 1° to about 19°,
   and it does not predict how far the mean is off (docs/validation.md,
   "Tick and Tock amplitudes apart"), so quote `amplitude_deg` (the mean
   of the two) and treat a split as normal, never a fault on its own.
   `profile` shows which sounds were marked on each side; a split well
-  beyond 30° on a clean signal is worth a look there (see
+  beyond 20° on a clean signal is worth a look there (see
   [tick-shape.md](tick-shape.md)).
 - **Jitter (`jitter_us`)**: scatter of single beats about the local rate.
   Compare it between recordings of the same watch; a sudden jump with

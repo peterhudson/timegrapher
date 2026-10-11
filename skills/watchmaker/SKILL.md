@@ -141,7 +141,7 @@ Work through them in this order. The reasons are in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, a Tick and Tock
-   amplitude split of up to about 30°, which is normal on a clean
+   amplitude split of up to about 20°, which is common on a clean
    recording and never a fault on its own (docs/validation.md, "Tick
    and Tock amplitudes apart"; quote `amplitude_deg`, the
    mean of the two; `profile` shows each side's sound), the beat rate one the calibre
@@ -173,6 +173,9 @@ Work through them in this order. The reasons are in
    (as a positive number): this project's headline beat error is the
    unlock figure. `overall.beat_error_ms` is measured from the drop; the two
    differ when Tick and Tock take different times from unlock to drop.
+   Where they disagree, treat the drop figure as unreliable: it can
+   swing between stretches of one file (docs/validation.md has the
+   case).
    The `session` report holds it to Witschi's tolerance, under 0.5 ms,
    and calls 2 ms or more a fault (the project's threshold;
    docs/sessions.md). It is an adjustment, not a fault in itself.

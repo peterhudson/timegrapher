@@ -73,7 +73,11 @@ every minute.)
     run can tell periods apart (a longer run resolves better);
   - **swing**: peak to peak size of the average cycle, s/d or degrees.
     It reads high on a sharp step (the cycle is smoothed to a few
-    harmonics, which overshoot);
+    harmonics, which overshoot). Quote this as "the swing a
+    timegrapher shows". `series`' two-state finder gives a smaller
+    figure for the same watch, the step between its two fitted levels:
+    quote that only as "the step between its two states", never as the
+    swing;
   - **explains**: how much of the wandering (after slow drift is removed)
     this cycle accounts for. 5% is a ripple; 40% or more dominates;
   - **false alarm**: the chance noise alone would have produced a
