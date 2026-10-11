@@ -3,6 +3,7 @@
 //! `timegrapher` program with `--json` and returns its document unchanged,
 //! so this server and the command line give the same answers.
 
+mod caveats;
 mod cli;
 mod guidance;
 mod live;
@@ -150,7 +151,7 @@ async fn call(
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
-    for note in tools::notes(tool, args, &doc) {
+    for note in tools::notes(tool, &doc) {
         text.push_str("\n\nNote: ");
         text.push_str(&note);
     }
@@ -165,6 +166,14 @@ async fn call(
     }
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
+    }
+    // What limits the readings, in the same words as the notes, for the view.
+    let limits = caveats::limits(&doc);
+    if !limits.is_empty() {
+        if !result["_meta"].is_object() {
+            result["_meta"] = json!({});
+        }
+        result["_meta"][caveats::META_KEY] = json!(limits);
     }
     if let Some(k) = take {
         takes::remember(k, &result);
