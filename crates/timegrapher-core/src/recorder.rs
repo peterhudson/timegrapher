@@ -390,14 +390,6 @@ impl Recorder {
         }
     }
 
-    /// Copy the recording so far into a new folder of the same name under
-    /// `parent`, keeping on recording here. `result` is saved with the
-    /// settings as the readings at the time of the copy. Returns the copy.
-    ///
-    /// Saved again into the same place, only what changed is written: an
-    /// audio file closed by a pause that is already there at its full
-    /// length is left alone, so Save Again copies the new sound, the open
-    /// file, clock.csv and session.json.
     /// The name for a copy: the take's own, but a take that has moved
     /// through positions ends in `_positions`, not the one it began in.
     fn copy_name(&self) -> io::Result<std::ffi::OsString> {
@@ -413,6 +405,14 @@ impl Recorder {
         })
     }
 
+    /// Copy the recording so far into a new folder of the same name under
+    /// `parent`, keeping on recording here. `result` is saved with the
+    /// settings as the readings at the time of the copy. Returns the copy.
+    ///
+    /// Saved again into the same place, only what changed is written: an
+    /// audio file closed by a pause that is already there at its full
+    /// length is left alone, so Save Again copies the new sound, the open
+    /// file, clock.csv and session.json.
     pub fn save_copy(
         &mut self,
         parent: &Path,

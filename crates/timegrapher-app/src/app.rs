@@ -2748,7 +2748,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// The position picked: a new stretch, noted in the recording.
     /// While listening, a break of more than [`MOVE_GAP_S`] in the beats
     /// with no position change in it may be the watch being moved: ask.
     fn watch_for_moves(&mut self) {
@@ -2771,6 +2770,7 @@ impl TimegrapherApp {
         }
     }
 
+    /// The position picked: a new stretch, noted in the recording.
     fn change_position(&mut self, pos: Position) {
         self.move_prompt = None;
         self.set_position(pos);
@@ -4371,7 +4371,6 @@ impl TimegrapherApp {
         self.guided = Some(guided::Test::new());
     }
 
-    /// The Positions Test's banner, and what its buttons ask for.
     /// After a break in the sound while listening: was the watch moved?
     /// The position buttons mark it; it goes by itself a minute later.
     fn move_banner(&mut self, ui: &mut egui::Ui) {
@@ -4424,6 +4423,7 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
+    /// The Positions Test's banner, and what its buttons ask for.
     fn guided_banner(&mut self, ui: &mut egui::Ui) {
         let Some(mut test) = self.guided.take() else {
             return;
@@ -5766,8 +5766,6 @@ fn calibre_matches(typed: &str, c: &calibres::Calibre) -> bool {
     want.is_empty() || squash(&format!("{}{}", c.maker, c.calibre)).contains(&want)
 }
 
-/// The position a recording's file or folder name carries, as a word of
-/// its own: `reverso_DU_01.flac` is dial up.
 /// The Watch settings a take is read with.
 #[derive(Clone, Debug, PartialEq)]
 struct WatchSetup {
@@ -5790,6 +5788,8 @@ impl Default for WatchSetup {
     }
 }
 
+/// The position a recording's file or folder name carries, as a word of
+/// its own: `reverso_DU_01.flac` is dial up.
 fn position_in_name(path: &Path) -> Option<Position> {
     let name = path.file_stem()?.to_str()?;
     let words: Vec<&str> = name
@@ -6833,9 +6833,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Record, save, carry on, pause, change position, resume, save again
-    /// and reopen: sound after a save still counts as unsaved, Save Again
-    /// keeps it, and the saved take keeps the position it started in.
     /// Opening a recording over a stopped microphone session with unsaved
     /// sound asks first and keeps the sound; Recording chosen sets the
     /// session aside instead of showing it as a recording.
@@ -6914,6 +6911,9 @@ mod tests {
         assert_eq!(p("du_then_dd.flac"), None);
     }
 
+    /// Record, save, carry on, pause, change position, resume, save again
+    /// and reopen: sound after a save still counts as unsaved, Save Again
+    /// keeps it, and the saved take keeps the position it started in.
     #[test]
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
