@@ -254,7 +254,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                         if ui
                             .button(format!("Measure {} Again", test.position().code()))
                             .on_hover_text(format!(
-                                "The {} measurement wasn't good (a knock, a noise): put the \
+                                "The {} measurement was disturbed (a knock, a noise): put the \
                                  watch back {} and settle and measure it again",
                                 test.position().name(),
                                 test.position().name().to_lowercase()
@@ -295,12 +295,12 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     action
 }
 
-/// The figures behind the results table: each position's label, rate,
-/// rate less the mean, amplitude and beat error (a size), then the means.
 /// A row of the table: position, rate, rate less the mean, amplitude and
 /// beat error.
 pub type Row = (String, Option<f64>, Option<f64>, Option<f64>, Option<f64>);
 
+/// The figures behind the results table: each position's label, rate,
+/// rate less the mean, amplitude and beat error (a size), then the means.
 pub struct Table {
     pub rows: Vec<Row>,
     pub mean_rate: Option<f64>,
@@ -308,6 +308,11 @@ pub struct Table {
     pub mean_beat_error: Option<f64>,
     /// The largest difference between the rates, s/d (Witschi's D).
     pub largest_difference: Option<f64>,
+    /// The vertical positions' mean rate less the horizontal ones', s/d
+    /// (Witschi's DVH).
+    pub dvh_rate: Option<f64>,
+    /// The same for amplitude, degrees.
+    pub dvh_amplitude: Option<f64>,
 }
 
 fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
@@ -327,6 +332,19 @@ pub fn table(readings: &[Reading]) -> Table {
         rates.iter().copied().fold(f64::MIN, f64::max)
             - rates.iter().copied().fold(f64::MAX, f64::min)
     });
+    // Vertical less horizontal, as `session` takes it.
+    let side = |vertical: bool, f: fn(&Measurement) -> Option<f64>| {
+        mean(
+            readings
+                .iter()
+                .filter(|r| r.position.is_vertical() == vertical)
+                .map(|r| f(&r.measurement)),
+        )
+    };
+    let dvh =
+        |f: fn(&Measurement) -> Option<f64>| side(true, f).zip(side(false, f)).map(|(v, h)| v - h);
+    let dvh_rate = dvh(|m| m.rate_s_per_day);
+    let dvh_amplitude = dvh(|m| m.amplitude_deg);
     Table {
         rows: readings
             .iter()
@@ -345,6 +363,8 @@ pub fn table(readings: &[Reading]) -> Table {
         mean_amplitude: mean(readings.iter().map(|r| r.measurement.amplitude_deg)),
         mean_beat_error: mean(readings.iter().map(|r| r.measurement.beat_error())),
         largest_difference,
+        dvh_rate,
+        dvh_amplitude,
     }
 }
 
@@ -419,9 +439,19 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                 ))
                 .color(pal.text),
             )
+            .on_hover_text("Witschi's D: the fastest position's rate less the slowest's");
+            ui.label(
+                RichText::new(format!(
+                    "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
+                    signed(t.dvh_rate),
+                    t.dvh_amplitude
+                        .map_or_else(dash, |x| format!("{x:+.0}").replace('-', "−"))
+                ))
+                .color(pal.text),
+            )
             .on_hover_text(
-                "Witschi's D: the fastest position's rate less the slowest's. A large one \
-                 points at poise or a hairspring out of true rather than the rate setting.",
+                "Witschi's DVH: the vertical positions' mean less the horizontal ones', \
+                 for rate and for amplitude",
             );
             ui.add_space(8.0);
             ui.add(
@@ -484,6 +514,10 @@ mod tests {
         let d = tbl.largest_difference.unwrap();
         assert!((d - report.states[0].d_rate.unwrap()).abs() < 1e-9);
         assert!((tbl.mean_rate.unwrap() - report.states[0].x.unwrap()).abs() < 1e-9);
+        let dvh = tbl.dvh_rate.unwrap();
+        assert!((dvh - report.states[0].dvh_rate.unwrap()).abs() < 1e-9);
+        let dvh_a = tbl.dvh_amplitude.unwrap();
+        assert!((dvh_a - report.states[0].dvh_amplitude.unwrap()).abs() < 1e-9);
         assert!((d - 9.0).abs() < 1.5, "D {d}");
         assert_eq!(tbl.rows[4].0, "Crown Up (3H)");
         let spread: f64 = tbl.rows.iter().filter_map(|r| r.2).sum();

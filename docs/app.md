@@ -157,7 +157,8 @@ with core `session::measure`, as `session` does (rate on the input's
 measured clock when there is one), and a window shows them as a table:
 each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
 less the mean of the six, its amplitude and its beat error (a size), a
-Mean row, and the largest difference between the rates (Witschi's D). The
+Mean row, the largest difference between the rates (Witschi's D), and
+vertical less horizontal for rate and amplitude (Witschi's DVH). The
 figures are `session`'s for the same stretches. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
