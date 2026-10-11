@@ -1,5 +1,5 @@
 //! The Positions Test: the app leads the watchmaker through the six
-//! positions in Witschi's order, waits for the watch to settle in each,
+//! positions in the app's order, waits for the watch to settle in each,
 //! measures it, and then shows the six in a table with the figures
 //! `timegrapher session` reads for the same stretches: each rate, its
 //! difference from the mean, amplitude and beat error, and the means. No
@@ -17,12 +17,12 @@ use timegrapher_core::session::{self, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
 /// Seconds the watch is left to settle after it is turned, and then
-/// measured. Witschi asks for at least 40 s of measurement; a minute
-/// brings the rate's ± near half a second a day.
+/// measured: the project's choice. A minute brings the rate's ± near half
+/// a second a day.
 pub const SETTLE_S: f64 = 20.0;
 pub const MEASURE_S: f64 = 60.0;
 
-/// Witschi's order: the two horizontals, then crown down, left, up, right.
+/// The app's order: the two horizontals, then crown down, left, up, right.
 pub const ORDER: [Position; 6] = [
     Position::DialUp,
     Position::DialDown,

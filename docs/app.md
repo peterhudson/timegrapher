@@ -127,11 +127,11 @@ way to one card saying the same; they appear once a regular beat is
 found.
 
 **Positions Test.** Positions Test… beside the microphone buttons leads
-through the six positions in Witschi's order: Dial Up, Dial Down, Crown
+through the six positions in the app's order: Dial Up, Dial Down, Crown
 Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
-while the watch settles (20 s) and is measured (60 s; Witschi asks for at
-least 40). It then says which position to turn the watch to; press the
+while the watch settles (20 s) and is measured (60 s), times the project
+chose. It then says which position to turn the watch to; press the
 button naming it (**Start CL Measurement**) once it is there. **Measure
 DD Again**, naming the position just measured (or the one under way),
 repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
