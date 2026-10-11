@@ -35,16 +35,6 @@ impl Biquad {
         )
     }
 
-    pub fn lowpass(fs: f64, f0: f64, q: f64) -> Self {
-        let w0 = 2.0 * PI * f0 / fs;
-        let (s, c) = w0.sin_cos();
-        let alpha = s / (2.0 * q);
-        Self::normalized(
-            [(1.0 - c) / 2.0, 1.0 - c, (1.0 - c) / 2.0],
-            [1.0 + alpha, -2.0 * c, 1.0 - alpha],
-        )
-    }
-
     pub fn notch(fs: f64, f0: f64, q: f64) -> Self {
         let w0 = 2.0 * PI * f0 / fs;
         let (s, c) = w0.sin_cos();
