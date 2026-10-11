@@ -361,6 +361,11 @@ enum Command {
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// Keep the latest readings in this file while recording, replaced
+        /// about once a second (`timegrapher.live/1`), for a live view.
+        /// With --file the file is played back in real time.
+        #[arg(long)]
+        live: Option<PathBuf>,
     },
     /// Read a watch measured in several positions (and states of wind)
     /// into one multi-position report, Witschi style.
@@ -807,6 +812,7 @@ fn main() -> ExitCode {
             lift,
             wind_h,
             json,
+            live,
         } => {
             let o = record_cmd::Options {
                 folder,
@@ -820,6 +826,7 @@ fn main() -> ExitCode {
                 lift,
                 wind_h,
                 json,
+                live,
             };
             match record_cmd::run(&o) {
                 Ok(true) => Ok(()),

@@ -4,7 +4,6 @@
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use timegrapher_core::audio;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
@@ -12,6 +11,7 @@ use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
 use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::{audio, breaks};
 
 pub struct Options<'a> {
     pub files: &'a [PathBuf],
@@ -89,7 +89,10 @@ pub fn run(o: Options) -> Result<(), String> {
         ..Default::default()
     };
     lc.wheels.extend(extra);
-    let long = longrun::analyse(&log, clock.as_ref(), &lc);
+    let mut log = log;
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    let long = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
     let rep = steadiness::check(&log, clock.as_ref(), &long, &lc, &o.check);
 
     if o.json {

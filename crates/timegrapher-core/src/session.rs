@@ -13,6 +13,7 @@
 //! [`Limits`], and say so in their findings.
 
 use crate::beats::{self, Beat};
+use crate::breaks::Break;
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longrun::LongReport;
@@ -305,6 +306,10 @@ pub struct Measurement {
     /// the sound card's clock.
     pub start_s: f64,
     pub end_s: f64,
+    /// Pauses and resumes within the stretch; rate and beat error are
+    /// fitted on each side of them apart.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub breaks: Vec<Break>,
     pub beats: usize,
     /// Share of the expected beats found with a clean match, 0..1.
     pub clean_fraction: f64,
@@ -394,9 +399,24 @@ fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
 /// sound card's clock; `to_s` past the end means to the end). With a
 /// clock fit, beat times are mapped onto true time first.
 pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) -> Measurement {
+    measure_with_breaks(log, clock, &[], from_s, to_s)
+}
+
+/// [`measure`] for a take with breaks, whose beats have been renumbered
+/// with [`crate::breaks::renumber`]: rate and beat error are fitted per
+/// stretch between breaks, and no 10 s window reaches across one.
+pub fn measure_with_breaks(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    from_s: f64,
+    to_s: f64,
+) -> Measurement {
     let to_s = to_s.min(log.duration_s);
     let from_s = from_s.clamp(0.0, to_s);
-    let map = |t: f64| clock.map_or(t, |c| c.map(t));
+    let map = crate::longrun::true_time(clock, breaks);
+    let cuts = crate::longrun::cuts(clock, breaks);
+    let apart = |w: &timing::WindowFit| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s);
     let beats: Vec<Beat> = log
         .beats
         .iter()
@@ -406,11 +426,13 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
             ..*b
         })
         .collect();
-    let fit = timing::fit(&beats, log.bph);
-    let windows = timing::windows(&beats, log.bph, 10.0, 5.0);
+    let fit = timing::fit_pieces(&beats, log.bph, &cuts);
+    let mut windows = timing::windows(&beats, log.bph, 10.0, 5.0);
+    windows.retain(apart);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
     let rate_samples: Vec<twostate::Sample> = timing::windows(&beats, log.bph, 10.0, 10.0)
         .iter()
+        .filter(|w| apart(w))
         .map(|w| twostate::Sample {
             start_s: w.start_s,
             end_s: w.end_s,
@@ -440,7 +462,12 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
             })
         })
         .collect();
-    let span = map(to_s) - map(from_s);
+    let gaps: f64 = breaks
+        .iter()
+        .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
+        .map(|b| b.gap_s)
+        .sum();
+    let span = map(to_s) - map(from_s) - gaps;
     let expected = span * log.bph as f64 / 3600.0;
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
     let clipped = log
@@ -452,6 +479,11 @@ pub fn measure(log: &BeatLog, clock: Option<&ClockFit>, from_s: f64, to_s: f64) 
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
+        breaks: breaks
+            .iter()
+            .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
+            .copied()
+            .collect(),
         beats: beats.len(),
         clean_fraction: (clean as f64 / expected.max(1.0)).min(1.0),
         calibrated: clock.is_some(),
