@@ -566,11 +566,19 @@ pub struct TimegrapherApp {
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
     scope_audio: Option<ScopeCut>,
+    /// Each beat's trace once drawn, so a beat stays on the Scope (fading
+    /// as newer ones come) after the live engine has let its sound go.
+    scope_traces: std::collections::VecDeque<(ScopeKey, Vec<f32>)>,
     scope_job: Option<std::sync::mpsc::Receiver<ScopeCut>>,
     /// The steadiness tests' latest answer over the session, and the run
     /// in the background that will replace it.
     steady: Option<Steadiness>,
     steady_job: Option<std::sync::mpsc::Receiver<Steadiness>>,
+    /// The step the steadiness run under way is on, and when it started.
+    steady_work: (
+        std::sync::Arc<std::sync::atomic::AtomicU8>,
+        std::time::Instant,
+    ),
     /// The time under the pointer on the strip or a chart, drawn as a
     /// cursor on all of them: last frame's, and this frame's so far.
     cursor_t: Option<f64>,
@@ -788,9 +796,11 @@ impl TimegrapherApp {
             steady_view: steady::View::default(),
             scope_view: scope::View::default(),
             scope_audio: None,
+            scope_traces: std::collections::VecDeque::new(),
             scope_job: None,
             steady: None,
             steady_job: None,
+            steady_work: (Default::default(), std::time::Instant::now()),
             hist_readings: true,
             cursor_t: None,
             cursor_next: None,
@@ -2148,8 +2158,10 @@ impl TimegrapherApp {
                 let wheels = self.calibre_wheels();
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
+                let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
+                self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute(&log, wheels));
+                    let _ = tx.send(steady::compute_with(&log, wheels, &stage));
                     ctx.request_repaint();
                 });
                 self.steady_job = Some(rx);
@@ -2158,25 +2170,61 @@ impl TimegrapherApp {
         dur
     }
 
+    /// While the steadiness tests run: a spinner, the step they're on and
+    /// how long they've taken, for the Steadiness and Isochronism panes.
+    /// Nothing when they aren't running.
+    fn steady_working(&self, ui: &mut egui::Ui) {
+        if self.steady_job.is_none() {
+            return;
+        }
+        let pal = theme::pal(ui);
+        let (stage, since) = &self.steady_work;
+        let stage = stage.load(std::sync::atomic::Ordering::Relaxed);
+        ui.horizontal(|ui| {
+            ui.add(egui::Spinner::new().size(12.0).color(pal.text_secondary));
+            ui.label(
+                RichText::new(format!(
+                    "{}… {}",
+                    steady::stage_text(stage),
+                    strip::fmt_time(since.elapsed().as_secs_f64())
+                ))
+                .small()
+                .color(pal.text_secondary),
+            );
+        })
+        .response
+        .on_hover_text(
+            "The tests run in the background over every reading of the session, so a \
+             session of many hours takes a while; what is shown meanwhile is the last \
+             answer, if there is one.",
+        );
+    }
+
     fn isochronism_pane(&mut self, ui: &mut egui::Ui) {
         let dur = self.update_steady(ui.ctx());
         let pal = theme::pal(ui);
+        self.steady_working(ui);
         match &self.steady {
-            Some(s) => isochronism::ui(
-                ui,
-                s.report.isochronism.as_ref(),
-                s.report.wind_down.as_ref(),
-            ),
+            // Scrolling when the pane is too short for the chart and the
+            // whole table.
+            Some(s) => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        isochronism::ui(
+                            ui,
+                            s.report.isochronism.as_ref(),
+                            s.report.wind_down.as_ref(),
+                        )
+                    });
+            }
+            None if self.steady_job.is_some() => {}
             None => {
                 ui.label(
-                    RichText::new(if self.steady_job.is_some() {
-                        "Testing the session…".to_string()
-                    } else {
-                        format!(
-                            "The tests need 5 minutes of beats in one position; {} so far",
-                            strip::fmt_time(dur)
-                        )
-                    })
+                    RichText::new(format!(
+                        "The tests need 5 minutes of beats in one position; {} so far",
+                        strip::fmt_time(dur)
+                    ))
                     .small()
                     .color(pal.text_secondary),
                 );
@@ -2193,12 +2241,10 @@ impl TimegrapherApp {
         } else {
             format!("{} ", self.position.name())
         };
+        self.steady_working(ui);
         let status = match upto {
-            Some(u) if working => {
-                format!("Tested over {} of {of}beats · updating", strip::fmt_time(u))
-            }
             Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
-            None if working => "Testing the session…".to_string(),
+            None if working => String::new(),
             None => format!(
                 "The tests need 5 minutes of beats in one position; {} so far",
                 strip::fmt_time(dur)
@@ -2464,23 +2510,28 @@ impl TimegrapherApp {
 
     fn readings_settings(&mut self, ui: &mut egui::Ui) {
         let mut avg = self.average_s;
-        let changed = theme::row(
-            ui,
-            "Average Over",
-            Some(
-                "Each reading is fitted over this much of the latest beats, and the \
-                 Tick Tock Profile is the typical beat over the same time (up to 60 s)",
-            ),
-            |ui| {
-                let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
-                let b =
-                    fields::presets(ui, "average-presets", &mut avg, &AVERAGES, fields::duration);
-                a || b
-            },
-        );
+        let changed = theme::row(ui, "Average Over", Some(AVERAGE_REACH), |ui| {
+            let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
+            let b = fields::presets(ui, "average-presets", &mut avg, &AVERAGES, fields::duration);
+            a || b
+        });
         if changed {
             self.set_average(avg);
         }
+        let pal = theme::pal(ui);
+        ui.add(
+            egui::Label::new(
+                RichText::new(
+                    "Also sets every point on the Rate, Amplitude and Beat Error charts and \
+                     the lines drawn over the Paper Strip, the Readings values of the \
+                     Distributions, and the Tick Tock Profile (up to 60 s).",
+                )
+                .small()
+                .color(pal.text_tertiary),
+            )
+            .wrap(),
+        )
+        .on_hover_text(AVERAGE_REACH);
     }
 
     fn microphone_settings(&mut self, ui: &mut egui::Ui) {
@@ -4329,15 +4380,43 @@ impl TimegrapherApp {
         // Tick Tock Profile shows them.
         let fs = live.sample_rate() as f64;
         let (before, after) = view.zoom.window();
-        let times = picks.iter().flatten().map(|b| b.time);
+        // Each beat from the traces already drawn, else from the sound the
+        // engine still holds; only the rest need reading from the recording.
+        let key = |b: &timegrapher_core::beats::Beat| (b.index, b.time.to_bits(), view.zoom);
+        let mut known: std::collections::HashMap<ScopeKey, Vec<f32>> = Default::default();
+        for b in picks.iter().flatten() {
+            let k = key(b);
+            if let Some((_, t)) = self.scope_traces.iter().find(|(c, _)| *c == k) {
+                known.insert(k, t.clone());
+                continue;
+            }
+            let (a, z) = (b.time - before - 0.015, b.time + after + 0.005);
+            if let Some(t) = live
+                .sound(a, z - a)
+                .and_then(|x| scope::trace(x, fs, a, b, view.zoom))
+            {
+                self.scope_traces.push_back((k, t.clone()));
+                known.insert(k, t);
+            }
+        }
+        while self.scope_traces.len() > SCOPE_KEPT {
+            self.scope_traces.pop_front();
+        }
+        let missing: Vec<&timegrapher_core::beats::Beat> = picks
+            .iter()
+            .flatten()
+            .filter(|b| !known.contains_key(&key(b)))
+            .collect();
+        let times = missing.iter().map(|b| b.time);
         // A little either side, so rounding never cuts a trace short.
         let lo = (times.clone().fold(f64::INFINITY, f64::min) - before - 0.015).max(0.0);
         let hi = times.fold(f64::NEG_INFINITY, f64::max) + after + 0.005;
         let mut note = None;
-        let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi {
+        let listening = self.view_end.is_none() && self.running();
+        let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi || (listening && !known.is_empty()) {
+            // Nothing more to read, or while listening a beat whose sound
+            // went before it was drawn: the others carry on without it.
             None
-        } else if let Some(x) = live.sound(lo, hi - lo) {
-            Some((x.to_vec(), lo, fs))
         } else {
             self.poll_scope_job();
             match &self.scope_audio {
@@ -4379,12 +4458,15 @@ impl TimegrapherApp {
             .iter()
             .zip(&picks)
             .map(|(&(label, even, color), beats)| {
-                let traces = audio.as_ref().map_or(Vec::new(), |(x, t0, rate)| {
-                    beats
-                        .iter()
-                        .filter_map(|b| scope::trace(x, *rate, *t0, b, view.zoom))
-                        .collect()
-                });
+                let traces = beats
+                    .iter()
+                    .filter_map(|b| {
+                        known.get(&key(b)).cloned().or_else(|| {
+                            let (x, t0, rate) = audio.as_ref()?;
+                            scope::trace(x, *rate, *t0, b, view.zoom)
+                        })
+                    })
+                    .collect();
                 let mut marks = Vec::new();
                 if view.zoom == scope::Zoom::Ms20 {
                     if let Some(p) = &profiles[usize::from(!even)] {
@@ -5414,7 +5496,8 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
-        } else if self.sound_job.is_some() || self.scope_job.is_some() {
+        } else if self.sound_job.is_some() || self.scope_job.is_some() || self.steady_job.is_some()
+        {
             // Show the profile when it's worked out, without waiting for
             // the pointer to move.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -5472,6 +5555,23 @@ fn banner(
     );
     resp.response
 }
+
+/// A beat on the Scope: its index, its time's bits (so a new session's
+/// beat of the same index is another) and the span drawn.
+type ScopeKey = (i64, u64, scope::Zoom);
+
+/// Everything Average Over sets, and what it leaves alone.
+const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
+     the three readings, their ± and their Good, Fair or Poor; every point on the Rate, \
+     Amplitude and Beat Error charts; the Amplitude, Rate and Beat Error lines drawn over \
+     the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
+     the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
+     Scope. It doesn't change Steadiness and Isochronism (always 10 s rate and 2 s \
+     amplitude readings), Possible Faults (the last minute) or the Positions Test (a minute \
+     a position).";
+
+/// How many beats' traces the Scope keeps: the most it draws, both sides.
+const SCOPE_KEPT: usize = 40;
 
 /// A stretch of a recording read for the scope: the start and end asked
 /// for, s, and the sound read (shorter at the end of the recording), or why

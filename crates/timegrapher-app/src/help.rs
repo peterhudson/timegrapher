@@ -51,6 +51,13 @@ pub const READINGS: &[&str] = &[
      of beats than asked for: the readings use what there is, and say how much under \
      the rate. They never reach back across a pause, since the watch may have been \
      moved or handled.",
+    "Average Over reaches further than the readings. It also sets every point on the \
+     Rate, Amplitude and Beat Error charts and the lines drawn over the Paper Strip, \
+     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
+     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
+     Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, \
+     Possible Faults the last minute and the Positions Test a minute a position, \
+     whatever it is set to.",
     "The tick is simply the first beat heard: the sound can't tell which pallet stone \
      made which beat.",
 ];

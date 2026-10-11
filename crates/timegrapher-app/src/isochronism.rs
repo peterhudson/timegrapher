@@ -9,7 +9,8 @@ use eframe::egui::{self, RichText};
 use egui_plot::{Line, Plot, Points, VLine};
 use timegrapher_core::steadiness::{IsochronismCurve, WindDown};
 
-/// Room for the 0 h / 24 h table under the chart, points.
+/// Room for the 0 h / 24 h table under the chart before it has been
+/// measured, points.
 const TABLE_H: f32 = 118.0;
 /// Room for the vertical axis labels, as on the Steadiness pane.
 const GUTTER: f32 = 64.0;
@@ -17,15 +18,21 @@ const GUTTER: f32 = 64.0;
 /// Draw the pane: the rate by amplitude, and the 0 h / 24 h table.
 pub fn ui(ui: &mut egui::Ui, curve: Option<&IsochronismCurve>, wind: Option<&WindDown>) {
     let pal = theme::pal(ui);
+    // The table's height as it was last drawn (it depends on the fonts, the
+    // width and the wrapped line under it), so the chart leaves room for
+    // all of it.
+    let id = ui.id().with("isochronism_table_h");
+    let table_h = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(TABLE_H);
+    let room = |ui: &egui::Ui| ui.available_height() - table_h - 8.0 - ui.spacing().item_spacing.y;
     match curve {
         Some(c) => {
             ui.label(RichText::new(&c.headline).small().color(pal.text_secondary));
             ui.label(RichText::new(caption(c)).small().color(pal.text_tertiary));
-            let h = (ui.available_height() - TABLE_H).max(120.0);
+            let h = room(ui).max(120.0);
             chart(ui, c, h);
         }
         None => {
-            let h = (ui.available_height() - TABLE_H).max(60.0);
+            let h = room(ui).max(60.0);
             ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
                 note(
                     ui,
@@ -37,7 +44,13 @@ pub fn ui(ui: &mut egui::Ui, curve: Option<&IsochronismCurve>, wind: Option<&Win
         }
     }
     ui.add_space(8.0);
+    let top = ui.cursor().top();
     table(ui, wind);
+    let drawn = ui.min_rect().bottom() - top;
+    if (drawn - table_h).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(id, drawn));
+        ui.ctx().request_repaint();
+    }
 }
 
 /// The line under the headline naming what the chart draws.
