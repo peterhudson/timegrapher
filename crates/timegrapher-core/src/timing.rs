@@ -125,6 +125,65 @@ pub fn residuals(beats: &[Beat]) -> Option<Vec<f64>> {
     Some(beats.iter().map(|b| residual(b, &coef)).collect())
 }
 
+/// The stretches of `beats` (sorted by time) between `cuts`, times on the
+/// beats' own axis.
+fn pieces<'a>(beats: &'a [Beat], cuts: &[f64]) -> Vec<&'a [Beat]> {
+    let mut out = Vec::new();
+    let mut lo = 0;
+    for &c in cuts {
+        let hi = lo + beats[lo..].partition_point(|b| b.time < c);
+        out.push(&beats[lo..hi]);
+        lo = hi;
+    }
+    out.push(&beats[lo..]);
+    out
+}
+
+/// [`fit`] for a take with breaks: each stretch between `cuts` is fitted on
+/// its own, since the phase (and after a long gap the rate) does not carry
+/// across a break, and the fits are combined weighted by the beats each
+/// used. With no cuts this is [`fit`].
+pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
+    if cuts.is_empty() {
+        return fit(beats, bph);
+    }
+    let fits: Vec<TimingFit> = pieces(beats, cuts)
+        .into_iter()
+        .filter_map(|p| fit(p, bph))
+        .collect();
+    let n: usize = fits.iter().map(|f| f.beats_used).sum();
+    if n == 0 {
+        return None;
+    }
+    let mean = |g: &dyn Fn(&TimingFit) -> f64| {
+        fits.iter().map(|f| g(f) * f.beats_used as f64).sum::<f64>() / n as f64
+    };
+    let rate = mean(&|f| f.rate_s_per_day);
+    Some(TimingFit {
+        rate_s_per_day: rate,
+        beat_error_ms: mean(&|f| f.beat_error_ms),
+        period_s: 3600.0 / bph as f64 / (1.0 + rate / 86400.0),
+        jitter_us: mean(&|f| f.jitter_us),
+        beats_used: n,
+    })
+}
+
+/// [`residuals`] for a take with breaks: each stretch against its own fit.
+/// With no cuts this is [`residuals`].
+pub fn residuals_pieces(beats: &[Beat], cuts: &[f64]) -> Option<Vec<f64>> {
+    if cuts.is_empty() {
+        return residuals(beats);
+    }
+    let mut out = Vec::with_capacity(beats.len());
+    for p in pieces(beats, cuts) {
+        match residuals(p) {
+            Some(r) => out.extend(r),
+            None => out.extend(vec![f64::NAN; p.len()]),
+        }
+    }
+    out.iter().any(|r| r.is_finite()).then_some(out)
+}
+
 /// Rate, beat error and jitter in consecutive windows of `window_s`.
 #[derive(Debug, Clone, Serialize)]
 pub struct WindowFit {
