@@ -896,6 +896,20 @@ const UNLOCK_COVERAGE_LISTED: f64 = 0.6;
 /// among the findings (Witschi measures each position for at least 40 s).
 const SHORT_MEASURE_S: f64 = 40.0;
 
+/// The sentence for a recording with no regular beat, e.g. "No regular
+/// beat found (timing scatter 8.6 ms, 2.4% of a beat)", as every surface
+/// states it.
+pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
+    match jitter_us.filter(|j| j.is_finite()) {
+        Some(j) => format!(
+            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
+            j / 1000.0,
+            100.0 * j * 1e-6 * bph as f64 / 3600.0
+        ),
+        None => "No regular beat found".into(),
+    }
+}
+
 fn findings(readings: &[Reading]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut push = |code: &'static str, recording: usize, title: String, evidence: String| {
@@ -922,23 +936,11 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
     for (ri, r) in readings.iter().enumerate() {
         let m = &r.measurement;
         if !m.watch_heard {
-            let scatter = m
-                .jitter_us
-                .map_or("timing scatter not measured".into(), |j| {
-                    format!(
-                        "timing scatter {:.1} ms, {:.1}% of a beat",
-                        j / 1000.0,
-                        100.0 * j * 1e-6 * r.bph as f64 / 3600.0
-                    )
-                });
             push(
                 "no_regular_beat",
                 ri,
-                "No regular beat found".into(),
-                format!(
-                    "{scatter} in {}; rate, amplitude and beat error are not shown",
-                    at(r)
-                ),
+                no_regular_beat(m.jitter_us, r.bph),
+                format!("in {}; rate, amplitude and beat error are not shown", at(r)),
             );
             continue;
         }

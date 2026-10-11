@@ -762,10 +762,7 @@ fn print_summary(s: &Session) {
                 "{:<17} {:<18} {:<62} {:>17}  {}{clock}",
                 rd.position.label(),
                 wind(rd.wind_h),
-                format!(
-                    "No regular beat found: timing scatter {} ms",
-                    opt(m.jitter_us.map(|j| j / 1000.0), 1)
-                ),
+                session::no_regular_beat(m.jitter_us, rd.bph),
                 rf,
                 rd.label,
             );

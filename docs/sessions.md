@@ -159,9 +159,8 @@ A recording whose beats are no steadier than noise, as on an empty stand
 (the median timing scatter is 2% of the beat period or more, the same
 rule as `analyze`), shows no rate, amplitude, beat error, cycles or
 shape: those numbers would describe noise. Its measurement has
-`watch_heard` false, its row reads "No regular beat found: timing scatter
-8.6 ms", and the findings carry the same fact with the scatter as a share
-of a beat.
+`watch_heard` false, and its row and its finding read "No regular beat
+found (timing scatter 8.6 ms, 2.4% of a beat)".
 
 ## Two states
 
@@ -234,7 +233,7 @@ the watchmaker skill, each with its source.
 
 | Code | Title, e.g. | Listed when |
 | --- | --- | --- |
-| `no_regular_beat` | No regular beat found | the median timing scatter is 2% of the beat period or more; the evidence gives it in ms and as a share of a beat |
+| `no_regular_beat` | No regular beat found (timing scatter 8.6 ms, 2.4% of a beat) | the median timing scatter is 2% of the beat period or more |
 | `unlock_unreliable` | Unlock found in 45% of windows | fewer than 60% of the 2 s amplitude windows find the unlock on both sides; amplitude and the beat error from the unlock rest on those windows |
 | `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
 | `measurement_short` | 25 s measured | under 40 s measured after settling |

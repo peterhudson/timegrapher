@@ -337,12 +337,14 @@ fn an_empty_stand_gives_no_readings() {
     assert_eq!(rep.findings.len(), 1, "{:?}", rep.findings);
     let f = &rep.findings[0];
     assert_eq!(f.code, "no_regular_beat");
-    assert_eq!(f.title, "No regular beat found");
     assert!(
-        f.evidence.starts_with("timing scatter ") && f.evidence.contains("% of a beat in "),
+        f.title
+            .starts_with("No regular beat found (timing scatter ")
+            && f.title.ends_with("% of a beat)"),
         "{}",
-        f.evidence
+        f.title
     );
+    assert!(f.evidence.starts_with("in Dial Up (CH)"), "{}", f.evidence);
 
     // A watch is still heard.
     assert!(

@@ -309,10 +309,13 @@ fn readings_table(sn: &Session) -> String {
         if !m.watch_heard {
             let _ = write!(
                 s,
-                r#"<tr><th>{}</th><td>{}</td><td colspan="10">No regular beat found: timing scatter {} ms</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
+                r#"<tr><th>{}</th><td>{}</td><td colspan="10">{}</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
                 r.position.label(),
                 wind(r.wind_h),
-                opt(m.jitter_us.map(|j| j / 1000.0), 1),
+                esc(&timegrapher_core::session::no_regular_beat(
+                    m.jitter_us,
+                    r.bph
+                )),
                 duration(m.end_s - m.start_s),
                 esc(&r.label),
             );
