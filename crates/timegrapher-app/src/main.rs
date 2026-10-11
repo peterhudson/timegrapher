@@ -25,6 +25,7 @@ mod isochronism;
 mod profiles;
 mod report;
 mod scope;
+mod session;
 mod settings;
 mod span;
 mod steady;
