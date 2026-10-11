@@ -128,7 +128,9 @@ Work through them in this order. The reasons are in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
-   within a few degrees of each other, the beat rate one the calibre
+   within about 10° of each other (this skill's rule of thumb; quote
+   `amplitude_deg`, mention a wider split, and look at it with `profile`
+   before judging the amplitude), the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
    amplitude or beat error still look wrong, `profile` shows which sounds
    the engine marked as the unlock and the drop.
