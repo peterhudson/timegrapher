@@ -70,8 +70,9 @@ pub struct LiveReading {
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the fit to the beat times (near the drop), ms.
     pub beat_error_ms: Option<f64>,
-    /// Signed beat error measured from the unlock, as tg and commercial
-    /// timegraphers measure it: median over the amplitude windows, ms.
+    /// Signed beat error measured from the unlock, the figure checked
+    /// against tg's beat error in regress: median over the amplitude
+    /// windows, ms. Positive means Tick (the run's first beat) comes late.
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
