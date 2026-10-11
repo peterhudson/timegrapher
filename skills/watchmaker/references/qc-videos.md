@@ -1,8 +1,6 @@
 # Reading a seller's timegrapher QC in 60 seconds
 
-This is the beginner's layer, from the guide "How to Understand Your
-Timegrapher QC in 60 Seconds" (r/RepTime and the RWI forum) by this
-project's watchmaker. Use it when
+This is the beginner's layer. Use it when
 someone shows you a photo or video of a cheap timegrapher's screen,
 usually a "Multifunction Timegrapher No. 1000/1900" or a Weishi, taken
 before a watch is shipped. The one number that is easy to understand,
