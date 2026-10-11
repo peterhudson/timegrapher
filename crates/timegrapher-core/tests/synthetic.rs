@@ -268,7 +268,7 @@ fn an_empty_stand_is_no_watch() {
 /// else is. Which side the detector calls the Tick depends on which beat it
 /// hears first, so one-sided faults are checked as one-sided only.
 #[test]
-fn shape_faults_are_found() {
+fn faults_are_found() {
     let base = || SynthConfig {
         duration_s: 40.0,
         ..Default::default()
@@ -345,6 +345,24 @@ fn shape_faults_are_found() {
                 ..base()
             },
             vec![("rubbing_after_drop", false)],
+        ),
+        (
+            "beat error drifting by 2 ms over two minutes",
+            SynthConfig {
+                duration_s: 120.0,
+                beat_error_drift_ms_per_s: 0.017,
+                ..base()
+            },
+            vec![("beat_error_drift", true)],
+        ),
+        (
+            "beat error drifting by 0.4 ms, as the corpus does at most",
+            SynthConfig {
+                duration_s: 120.0,
+                beat_error_drift_ms_per_s: 0.0035,
+                ..base()
+            },
+            vec![],
         ),
     ];
     let wrong: Vec<String> = cases
