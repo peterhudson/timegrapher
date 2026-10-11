@@ -10,8 +10,8 @@
 //! each side (tick and toc), because single beats are too noisy for a
 //! stable onset.
 //!
-//! The same templates give the beat error measured from the unlock, as tg
-//! and commercial timegraphers measure it. Beat times sit near the drop, so
+//! The same templates give the beat error measured from the unlock, the
+//! figure checked against tg's beat error in regress. Beat times sit near the drop, so
 //! the fitted beat error is the drop's. If the even side's unlock comes
 //! `u_e` after its beat time and the odd side's `u_o` after its own, the
 //! unlocks fall at `t0 + k*P + s*e/2 + u_s`, which is the same model with

@@ -69,7 +69,9 @@ larger of 2% of the drop or 4 noise SDs, timed at half its own height.
 
 ## Beat error from the unlock
 
-tg and commercial timegraphers measure beat error from the unlock (sound 1).
+tg's beat error agrees with the beat error measured from the unlock (sound 1)
+on the reference files; this document does not rely on how other
+timegraphers measure it.
 timegrapher's beat times sit near the drop (sound 3), so the fit gives the
 drop's beat error; the two differ by the difference between the two sides'
 unlock-to-drop times. timegrapher now reports both, with the unlock value
