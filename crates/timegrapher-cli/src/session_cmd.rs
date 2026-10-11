@@ -602,7 +602,14 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         println!("{json}");
     } else {
         print_summary(&s);
-        println!("Report       {}", out.join("report.html").display());
+        let report = out.join("report.html");
+        println!(
+            "Report       {}",
+            std::path::absolute(&report).unwrap_or(report).display()
+        );
+        println!(
+            "             One page in English: open it in any web browser, or attach it to an email to send it."
+        );
     }
     Ok(())
 }
@@ -759,6 +766,17 @@ fn print_summary(s: &Session) {
         );
     }
     println!("* outside tolerance, ? not measured reliably");
+    println!(
+        "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
+    );
+    println!(
+        "Readings leave out the settling time at the start of each position{}, so they can differ by a few s/d from the quick check shown while recording.",
+        if s.readings.iter().any(|r| r.measurement.calibrated) {
+            " and correct the sound card's clock where it was logged"
+        } else {
+            ""
+        }
+    );
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
             "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
