@@ -42,10 +42,15 @@ use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
 /// What a question before throwing away unsaved sound is about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Confirm {
     NewSession,
     Quit,
+    /// Open a recording (analysed whole, or replayed when `replay`).
+    Open {
+        path: PathBuf,
+        replay: bool,
+    },
 }
 
 /// Where a session's sound is kept until it is saved or thrown away.
@@ -561,6 +566,18 @@ pub struct TimegrapherApp {
     save_dir: String,
     /// Asking before something throws away unsaved sound.
     confirm: Option<Confirm>,
+    /// The recording last opened, which the path box goes back to when
+    /// another can't be opened.
+    opened_path: String,
+    /// What is typed in the Calibre menu's search box.
+    calibre_search: String,
+    /// The newest beat looked at for a break in the sound, session s.
+    last_beat_seen: f64,
+    /// A break in the sound while listening, from and to (session s), that
+    /// may have been the watch being moved: the banner asks.
+    move_prompt: Option<(f64, f64)>,
+    /// Said with the result once the recording opening is analysed.
+    open_note: Option<String>,
     /// The window may close: the user has said what to do with the sound.
     may_close: bool,
     strip: StripView,
@@ -796,6 +813,11 @@ impl TimegrapherApp {
             calibre: String::new(),
             custom_calibres: Vec::new(),
             confirm: None,
+            opened_path: String::new(),
+            calibre_search: String::new(),
+            last_beat_seen: 0.0,
+            move_prompt: None,
+            open_note: None,
             may_close: false,
             save_dir: home.join("Timegrapher recordings").display().to_string(),
             strip: StripView {
@@ -927,6 +949,8 @@ impl TimegrapherApp {
         self.sound_job = None;
         self.steady = None;
         self.steady_job = None;
+        self.last_beat_seen = 0.0;
+        self.move_prompt = None;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -1038,6 +1062,9 @@ impl TimegrapherApp {
                 self.audio_at = None;
                 self.view_end = None;
                 self.message = None;
+                // A pause is no break in the sound to ask about.
+                self.last_beat_seen = 0.0;
+                self.move_prompt = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
                 self.capture = Some(c);
             }
@@ -1298,15 +1325,41 @@ impl TimegrapherApp {
         (out, settles)
     }
 
+    /// Open a recording, analysed whole or replayed. With `ask`, unsaved
+    /// sound from a microphone session is not thrown away without asking
+    /// first.
+    fn open_recording(&mut self, path: &Path, replay: bool, ask: bool) {
+        if ask && self.session.mic() && self.unsaved_s() > 5.0 {
+            self.confirm = Some(Confirm::Open {
+                path: path.to_path_buf(),
+                replay,
+            });
+        } else if replay {
+            self.start_replay(path);
+        } else {
+            self.start_batch(path);
+        }
+    }
+
     fn start_replay(&mut self, path: &Path) {
         self.stop();
         match capture::replay_file(path) {
             Ok(c) => {
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
+                self.opened_path = path.display().to_string();
                 self.capture = Some(c);
             }
-            Err(e) => self.error(format!("Can't read {}: {e}", path.display())),
+            Err(e) => self.open_failed(format!("Can't read {}: {e}", path.display())),
+        }
+    }
+
+    /// A recording couldn't be opened: say why, and put the path box back
+    /// to the one still shown.
+    fn open_failed(&mut self, e: String) {
+        self.error(e);
+        if !self.opened_path.is_empty() {
+            self.file_path = self.opened_path.clone();
         }
     }
 
@@ -1315,7 +1368,7 @@ impl TimegrapherApp {
         // A folder a take was saved into holds the take's own folder.
         let inner = match take_folder(path) {
             Ok(p) => p,
-            Err(e) => return self.error(e),
+            Err(e) => return self.open_failed(e),
         };
         if inner != path {
             self.info_msg(format!(
@@ -1330,23 +1383,39 @@ impl TimegrapherApp {
         }
         let files = match recordings_in(path) {
             Ok(f) => f,
-            Err(e) => return self.error(e),
+            Err(e) => return self.open_failed(e),
         };
         let mut info = match timegrapher_core::audio::info(&files[0]) {
             Ok(i) => i,
-            Err(e) => return self.error(format!("Can't read {}: {e}", files[0].display())),
+            Err(e) => return self.open_failed(format!("Can't read {}: {e}", files[0].display())),
         };
         for f in &files[1..] {
             match timegrapher_core::audio::info(f) {
                 Ok(i) => info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b),
-                Err(e) => return self.error(format!("Can't read {}: {e}", f.display())),
+                Err(e) => return self.open_failed(format!("Can't read {}: {e}", f.display())),
             }
         }
         // What the take's session file says: the watch, calibre, lift
         // angle, beat rate and positions, before the analysis uses them.
         let (stretches, settles) = match read_manifest(path) {
             Ok(Some((m, entries))) => self.apply_manifest(&m, &entries),
-            Ok(None) => Default::default(),
+            Ok(None) => {
+                // No session file: the position from the file's name, when
+                // it carries one (reverso_DU_…).
+                self.open_note = None;
+                if let Some(p) = position_in_name(path).or_else(|| position_in_name(&files[0])) {
+                    if p != self.position {
+                        self.set_position(p);
+                    }
+                    self.open_note = Some(format!(
+                        "Position {} from the file name; the lift angle is {}°, as set under \
+                         Watch.",
+                        p.label(),
+                        (self.lift_deg * 10.0).round() / 10.0
+                    ));
+                }
+                Default::default()
+            }
             Err(e) => {
                 self.error(e);
                 Default::default()
@@ -1389,6 +1458,7 @@ impl TimegrapherApp {
                 Err(e) => std::panic::resume_unwind(e),
             }
         });
+        self.opened_path = path.display().to_string();
         self.reset_session(info.sample_rate, label.clone());
         self.session.analyse();
         self.live = None;
@@ -1498,6 +1568,7 @@ impl TimegrapherApp {
                 }
             }
         }
+        self.watch_for_moves();
         // A microphone that opened but sends nothing.
         if let Some(cap) = &self.capture {
             let quiet = self.audio_at.unwrap_or(self.opened_at).elapsed();
@@ -1600,9 +1671,12 @@ impl TimegrapherApp {
         self.source_label = label;
         self.anchor = None;
         self.view_end = None;
-        self.info_msg(
-            "Analysed the whole recording. Drag the strip or the time slider to look back.".into(),
-        );
+        let done = "Analysed the whole recording. Drag the strip or the time slider to look back.";
+        let m = match self.open_note.take() {
+            Some(n) => format!("{done} {n}"),
+            None => done.to_string(),
+        };
+        self.info_msg(m);
     }
 
     /// Work the charts out again over the whole session, for a new
@@ -1838,7 +1912,7 @@ impl TimegrapherApp {
                         .clicked()
                     {
                         if let Some(p) = self.open_file_dialog() {
-                            self.start_batch(&p);
+                            self.open_recording(&p, false, true);
                         }
                     }
                     if ui
@@ -1847,7 +1921,7 @@ impl TimegrapherApp {
                         .clicked()
                     {
                         if let Some(p) = self.open_folder_dialog() {
-                            self.start_batch(&p);
+                            self.open_recording(&p, false, true);
                         }
                     }
                     let w = (ui.available_width() - 200.0).clamp(120.0, 480.0);
@@ -1863,7 +1937,7 @@ impl TimegrapherApp {
                         && ui.input(|i| i.key_pressed(egui::Key::Enter))
                         && !self.file_path.trim().is_empty()
                     {
-                        self.start_batch(&path);
+                        self.open_recording(&path, false, true);
                     }
                 }
             }
@@ -1904,7 +1978,7 @@ impl TimegrapherApp {
                                 )
                                 .clicked()
                             {
-                                self.start_replay(&path);
+                                self.open_recording(&path, true, true);
                             }
                         }
                     }
@@ -2020,7 +2094,9 @@ impl TimegrapherApp {
 
     /// The question before throwing away unsaved sound.
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
-        let Some(what) = self.confirm else { return };
+        let Some(what) = self.confirm.clone() else {
+            return;
+        };
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
@@ -2029,6 +2105,7 @@ impl TimegrapherApp {
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::Quit => "Quit without saving?",
+                    Confirm::Open { .. } => "Open the recording without saving?",
                 })
                 .font(theme::semibold(15.0)),
             );
@@ -2042,7 +2119,7 @@ impl TimegrapherApp {
                     choice = Some(0);
                 }
                 let go = match what {
-                    Confirm::NewSession => "Don't Save",
+                    Confirm::NewSession | Confirm::Open { .. } => "Don't Save",
                     Confirm::Quit => "Quit Without Saving",
                 };
                 if ui
@@ -2083,6 +2160,7 @@ impl TimegrapherApp {
         self.confirm = None;
         match what {
             Confirm::NewSession => self.new_session(),
+            Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
             Confirm::Quit => {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -2548,7 +2626,30 @@ impl TimegrapherApp {
     }
 
     /// The position picked: a new stretch, noted in the recording.
+    /// While listening, a break of more than [`MOVE_GAP_S`] in the beats
+    /// with no position change in it may be the watch being moved: ask.
+    fn watch_for_moves(&mut self) {
+        if !(self.session.mic() && self.running()) {
+            self.last_beat_seen = 0.0;
+            return;
+        }
+        let Some(live) = &self.live else { return };
+        let beats = live.beats();
+        let Some(last) = beats.last().map(|b| b.time) else {
+            return;
+        };
+        let seen = self.last_beat_seen;
+        if last <= seen {
+            return;
+        }
+        self.last_beat_seen = last;
+        if let Some(gap) = sound_break(beats, seen, &self.session.stretches()) {
+            self.move_prompt = Some(gap);
+        }
+    }
+
     fn change_position(&mut self, pos: Position) {
+        self.move_prompt = None;
         self.set_position(pos);
         if let Some(r) = self.session.recorder.as_mut() {
             let _ = r.note(&format!("position {}", pos.code()));
@@ -3135,6 +3236,7 @@ impl TimegrapherApp {
     /// The Calibre row under Watch, and the editor for a typed-in one.
     fn calibre_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        let mut typed = std::mem::take(&mut self.calibre_search);
         let choice = self.calibre_choice();
         let shown = match choice {
             Calibre::None => "Not Set".to_string(),
@@ -3155,8 +3257,22 @@ impl TimegrapherApp {
                 egui::ComboBox::from_id_salt("calibre")
                     .width(ui.available_width())
                     .height(420.0)
+                    // Clicking the search box mustn't close the menu; a pick
+                    // closes it below.
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .selected_text(shown)
                     .show_ui(ui, |ui| {
+                        // Type to narrow the list: maker or calibre, any case,
+                        // spaces ignored ("rolex", "3235", "eta 28").
+                        let search = ui.add(
+                            egui::TextEdit::singleline(&mut typed)
+                                .hint_text("Search makers and calibres")
+                                .desired_width(f32::INFINITY),
+                        );
+                        if !search.has_focus() && typed.is_empty() {
+                            search.request_focus();
+                        }
+                        let matches = |c: &calibres::Calibre| calibre_matches(&typed, c);
                         if ui
                             .selectable_label(matches!(choice, Calibre::None), "Not Set")
                             .on_hover_text(
@@ -3166,8 +3282,19 @@ impl TimegrapherApp {
                             .clicked()
                         {
                             picked = Some(String::new());
+                            ui.close();
                         }
-                        let mut table: Vec<&calibres::Calibre> = calibres::all().iter().collect();
+                        let mut table: Vec<&calibres::Calibre> =
+                            calibres::all().iter().filter(|c| matches(c)).collect();
+                        if table.is_empty() {
+                            ui.label(
+                                RichText::new(
+                                    "No listed calibre matches. New Custom Calibre… adds one.",
+                                )
+                                .small()
+                                .color(pal.text_tertiary),
+                            );
+                        }
                         table.sort_by(|a, b| (&a.maker, &a.calibre).cmp(&(&b.maker, &b.calibre)));
                         let mut maker = "";
                         for c in table {
@@ -3183,6 +3310,7 @@ impl TimegrapherApp {
                                 .clicked()
                             {
                                 picked = Some(c.calibre.clone());
+                                ui.close();
                             }
                         }
                         ui.separator();
@@ -3195,6 +3323,7 @@ impl TimegrapherApp {
                             let on = matches!(choice, Calibre::Custom(x) if x == i);
                             if ui.selectable_label(on, &c.name).clicked() {
                                 picked = Some(c.name.clone());
+                                ui.close();
                             }
                         }
                         if ui
@@ -3206,10 +3335,12 @@ impl TimegrapherApp {
                             .clicked()
                         {
                             new_custom = true;
+                            ui.close();
                         }
                     });
             },
         );
+        self.calibre_search = typed;
         if new_custom {
             let mut n = self.custom_calibres.len() + 1;
             let mut name = format!("My Calibre {n}");
@@ -3222,6 +3353,7 @@ impl TimegrapherApp {
         }
         if let Some(p) = picked {
             self.set_calibre(p);
+            self.calibre_search.clear();
         }
         match self.calibre_choice() {
             Calibre::Table(c) => {
@@ -3238,7 +3370,22 @@ impl TimegrapherApp {
                 }
             }
             Calibre::Custom(i) => self.custom_calibre_editor(ui, i),
-            Calibre::None => {}
+            Calibre::None => {
+                if self.lift_deg == DEFAULT_LIFT_DEG {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!(
+                                "No calibre: the lift angle is the common {DEFAULT_LIFT_DEG}°, \
+                                 and amplitude depends on it. Pick the calibre, or type its \
+                                 lift angle below."
+                            ))
+                            .small()
+                            .color(pal.warn),
+                        )
+                        .wrap(),
+                    );
+                }
+            }
         }
     }
 
@@ -3886,9 +4033,29 @@ impl TimegrapherApp {
         });
     }
 
+    /// Recording chosen while a stopped microphone session is in hand: the
+    /// screen offers a recording instead of showing the session's figures
+    /// as if they were one. The session is kept.
+    fn mic_session_set_aside(&self) -> bool {
+        self.input == Input::File && self.session.mic() && !self.running()
+    }
+
     fn ways_in(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.label(RichText::new("Timegrapher").font(theme::semibold(20.0)));
+        if self.mic_session_set_aside() {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(
+                        "Your microphone session is kept, with its sound. Choose Microphone \
+                         at the top to see it again, or open a recording.",
+                    )
+                    .small()
+                    .color(pal.text_secondary),
+                )
+                .wrap(),
+            );
+        }
         let row = |ui: &mut egui::Ui, button: egui::Button<'static>, hint: &str, text: &str| {
             ui.horizontal(|ui| {
                 let b = ui
@@ -3919,7 +4086,7 @@ impl TimegrapherApp {
         ) {
             self.input = Input::File;
             if let Some(p) = self.open_file_dialog() {
-                self.start_batch(&p);
+                self.open_recording(&p, false, true);
             }
         }
         if row(
@@ -3931,7 +4098,7 @@ impl TimegrapherApp {
         ) {
             self.input = Input::File;
             if let Some(p) = self.open_folder_dialog() {
-                self.start_batch(&p);
+                self.open_recording(&p, false, true);
             }
         }
     }
@@ -4013,6 +4180,58 @@ impl TimegrapherApp {
     }
 
     /// The Positions Test's banner, and what its buttons ask for.
+    /// After a break in the sound while listening: was the watch moved?
+    /// The position buttons mark it; it goes by itself a minute later.
+    fn move_banner(&mut self, ui: &mut egui::Ui) {
+        let Some((from, to)) = self.move_prompt else {
+            return;
+        };
+        let now = self.live.as_ref().map_or(to, |l| l.duration_s());
+        if self.guided.is_some() || now - to > 60.0 || !self.running() {
+            self.move_prompt = None;
+            return;
+        }
+        let pal = theme::pal(ui);
+        let mut pick = None;
+        let mut dismiss = false;
+        banner(ui, pal.accent, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismiss = ui
+                    .add(egui::Button::new("Not Moved").frame_when_inactive(false))
+                    .on_hover_text("Keep the position as it is")
+                    .clicked();
+                for p in Position::ALL.into_iter().rev() {
+                    if ui
+                        .add_enabled(p != self.position, egui::Button::new(p.code()))
+                        .on_hover_text(format!("The watch is now {}", p.label()))
+                        .clicked()
+                    {
+                        pick = Some(p);
+                    }
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!(
+                                "The sound stopped for {:.0} s and came back. If the watch \
+                                 was moved, mark its new position:",
+                                to - from
+                            ))
+                            .color(pal.text),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+        });
+        if let Some(p) = pick {
+            self.change_position(p);
+        } else if dismiss {
+            self.move_prompt = None;
+        }
+        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+    }
+
     fn guided_banner(&mut self, ui: &mut egui::Ui) {
         let Some(mut test) = self.guided.take() else {
             return;
@@ -4227,7 +4446,6 @@ impl TimegrapherApp {
         if dismiss {
             self.message = None;
         }
-        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
     /// A warning over the readings while the sound they come from clips.
@@ -4261,15 +4479,32 @@ impl TimegrapherApp {
     fn main_view(&mut self, ui: &mut egui::Ui) {
         self.crash_banner(ui);
         self.update_banner(ui);
-        self.error_banner(ui);
+        // Errors float over the top of the main area rather than pushing
+        // everything down.
+        if matches!(self.message, Some((_, true))) {
+            let top = ui.max_rect();
+            let pal = theme::pal(ui);
+            egui::Area::new(egui::Id::new("error banner"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(top.left_top())
+                .show(ui.ctx(), |ui| {
+                    ui.set_width(top.width());
+                    egui::Frame::new()
+                        .fill(pal.window)
+                        .corner_radius(theme::CARD_RADIUS)
+                        .shadow(ui.style().visuals.popup_shadow)
+                        .show(ui, |ui| self.error_banner(ui));
+                });
+        }
         if self.show_readings {
             self.clipping_banner(ui);
         }
-        if self.live.is_none() {
+        if self.live.is_none() || self.mic_session_set_aside() {
             self.empty_state(ui);
             return;
         }
         self.guided_banner(ui);
+        self.move_banner(ui);
         if self.show_readings {
             self.readouts(ui);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
@@ -5306,6 +5541,59 @@ fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
 }
 
 /// The 2nd to 98th percentile of the values, padded a little.
+/// The break before the beats newer than `seen`, from and to, when it is
+/// longer than [`MOVE_GAP_S`] and no position change falls in it.
+fn sound_break(
+    beats: &[timegrapher_core::beats::Beat],
+    seen: f64,
+    moves: &[(f64, Position)],
+) -> Option<(f64, f64)> {
+    if seen <= 0.0 {
+        return None;
+    }
+    let back = beats.get(beats.partition_point(|b| b.time <= seen))?.time;
+    let moved = moves
+        .iter()
+        .any(|&(at, _)| at >= seen - 1.0 && at <= back + 1.0);
+    (back - seen > MOVE_GAP_S && !moved).then_some((seen, back))
+}
+
+/// Whether a calibre answers what is typed in the Calibre menu's search:
+/// the maker or the calibre, any case, spaces ignored.
+fn calibre_matches(typed: &str, c: &calibres::Calibre) -> bool {
+    let squash = |t: &str| {
+        t.chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_lowercase()
+    };
+    let want = squash(typed);
+    want.is_empty() || squash(&format!("{}{}", c.maker, c.calibre)).contains(&want)
+}
+
+/// The position a recording's file or folder name carries, as a word of
+/// its own: `reverso_DU_01.flac` is dial up.
+fn position_in_name(path: &Path) -> Option<Position> {
+    let name = path.file_stem()?.to_str()?;
+    let words: Vec<&str> = name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let found: Vec<Position> = words
+        .iter()
+        .filter(|w| w.len() == 2)
+        .filter_map(|w| {
+            let up = w.to_ascii_uppercase();
+            Position::ALL.into_iter().find(|p| p.code() == up)
+        })
+        .collect();
+    // Exactly one, or it is no guess at all.
+    match found.as_slice() {
+        [p] => Some(*p),
+        _ => None,
+    }
+}
+
 /// The names in a chart's key and their colours, when it has more than one
 /// line.
 fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32)> {
@@ -5551,6 +5839,10 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         }
     }
 }
+
+/// A break in the beats while listening longer than this, seconds, may be
+/// the watch being moved, and the app asks.
+const MOVE_GAP_S: f64 = 3.0;
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
@@ -6326,6 +6618,84 @@ mod tests {
     /// Record, save, carry on, pause, change position, resume, save again
     /// and reopen: sound after a save still counts as unsaved, Save Again
     /// keeps it, and the saved take keeps the position it started in.
+    /// Opening a recording over a stopped microphone session with unsaved
+    /// sound asks first and keeps the sound; Recording chosen sets the
+    /// session aside instead of showing it as a recording.
+    #[test]
+    fn opening_a_recording_asks_before_unsaved_sound_goes() {
+        let base = std::env::temp_dir().join(format!("tg-app-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = synthetic(5.0, 0.0);
+        app.session.listen();
+        let info = app.info("test", 48000, 16);
+        let mut r = Recorder::start(&base, info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.input = Input::File;
+        assert!(app.mic_session_set_aside());
+        let elsewhere = base.join("other.wav");
+        app.open_recording(&elsewhere, false, true);
+        assert!(matches!(app.confirm, Some(Confirm::Open { .. })));
+        assert!(app.session.recorder.is_some() && app.unsaved_s() > 19.0);
+        app.input = Input::Microphone;
+        assert!(!app.mic_session_set_aside());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A break of more than a few seconds in the beats asks whether the
+    /// watch moved, unless a move was marked in it.
+    #[test]
+    fn a_break_in_the_beats_asks_about_a_move() {
+        let beat = |t: f64| timegrapher_core::beats::Beat {
+            index: 0,
+            time: t,
+            quality: 1.0,
+        };
+        let beats: Vec<_> = [10.0, 10.125, 10.25, 16.0, 16.125]
+            .into_iter()
+            .map(beat)
+            .collect();
+        assert_eq!(sound_break(&beats, 10.25, &[]), Some((10.25, 16.0)));
+        assert_eq!(sound_break(&beats, 10.125, &[]), None);
+        assert_eq!(sound_break(&beats, 0.0, &[]), None);
+        let marked = [(0.0, Position::DialUp), (12.0, Position::DialDown)];
+        assert_eq!(sound_break(&beats, 10.25, &marked), None);
+    }
+
+    /// The Calibre search finds the 3235 by number and by maker.
+    #[test]
+    fn the_calibre_search_finds_by_maker_and_number() {
+        let hits = |q: &str| -> Vec<String> {
+            calibres::all()
+                .iter()
+                .filter(|c| calibre_matches(q, c))
+                .map(|c| c.calibre.clone())
+                .collect()
+        };
+        assert!(hits("3235").iter().any(|c| c.contains("3235")));
+        assert!(hits("rolex 32").iter().all(|c| c.contains("32")));
+        assert!(!hits("ROLEX").is_empty());
+        assert_eq!(hits("").len(), calibres::all().len());
+        assert!(hits("no such thing").is_empty());
+    }
+
+    /// A position as a word of its own in a file's name, and only one.
+    #[test]
+    fn positions_are_read_from_file_names() {
+        let p = |n: &str| position_in_name(Path::new(n));
+        assert_eq!(p("reverso_DU_01.flac"), Some(Position::DialUp));
+        assert_eq!(p("/x/ym42_dd_30min/ym42-cl.wav"), Some(Position::CrownLeft));
+        assert_eq!(p("ducks.flac"), None);
+        assert_eq!(p("du_then_dd.flac"), None);
+    }
+
     #[test]
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
