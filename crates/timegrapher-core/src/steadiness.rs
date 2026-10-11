@@ -1346,7 +1346,9 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
     };
     let step = every(s.step_s);
     match s.verdict {
-        Verdict::TooShort => format!("{} {step} {name} readings: too few to search for structure.", s.readings),
+        // check_series states the too-short case, with its rule, before
+        // the tests run.
+        Verdict::TooShort => s.headline.clone(),
         Verdict::Steady => format!(
             "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
             s.readings,
