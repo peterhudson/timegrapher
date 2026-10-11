@@ -48,7 +48,7 @@ pub const READINGS: &[&str] = &[
      from the tocks.",
     "Beat error is how unevenly the tick and the tock are spaced, in milliseconds: \
      zero when the balance rests exactly midway. The big figure is timed from the \
-     unlock, as tg and commercial timegraphers measure it; the smaller one is timed \
+     unlock, as tg measures it; the smaller one is timed \
      from the beat as a whole, nearer the drop.",
     "Each reading is fitted to the beats of the last Average Over seconds (under Readings). A longer \
      time gives steadier figures that follow changes more slowly. Early in a session, \
@@ -81,7 +81,7 @@ pub const RATE: &[&str] = &[
      paper strip. Lower is steadier. It rises with background noise, a muffled sound \
      or a loose stand, as well as with a watch that runs unevenly (a rubbing part, a \
      worn tooth, low amplitude), so compare it on the same stand and microphone. \
-     Commercial timegraphers rarely show it; tg doesn't.",
+     tg doesn't show it.",
     "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
@@ -127,8 +127,8 @@ pub const BEAT_ERROR: &[&str] = &[
     "How unevenly the tick and the tock are spaced, in milliseconds: zero when the \
      balance's rest point sits exactly midway between the pallet stones' lifting. A \
      watchmaker corrects it by turning the hairspring stud or collet.",
-    "The big figure is timed from the unlock, the first sound of each beat, as tg and \
-     commercial timegraphers measure it. The smaller one is timed from the beat as a \
+    "The big figure is timed from the unlock, the first sound of each beat, as tg \
+     measures it (checked against tg in the regression tests). The smaller one is timed from the beat as a \
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
     "It is shown as a size: which of the tick and the tock is the longer isn't given yet. \
      The Good, Fair or Poor beside it grades the measurement, not the watch: Good when the \
@@ -194,7 +194,7 @@ pub const PROFILE: &[&str] = &[
      drops sit at 0 ms and only the unlock lines show a difference.",
     "The two beat errors differ when the tick and the tock take different times from \
      unlock to drop, the same imbalance that gives them different amplitudes. The \
-     unlock figure is the beat error tg and commercial timegraphers report; the drop \
+     unlock figure is the beat error tg reports; the drop \
      figure adds that imbalance on top.",
     "Linear shows the loudness as measured; dB shows it in decibels below the loudest \
      point, which makes the quiet unlock easier to see.",

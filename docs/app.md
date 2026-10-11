@@ -83,8 +83,8 @@ between tick and tock usually means one side's sounds were misread rather than a
 watch;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
-error is timed from the unlock, as tg and commercial timegraphers measure
-it; beside it, smaller, is the beat error timed from the beat as a whole,
+error is timed from the unlock, as tg measures it (checked against tg
+in the regression tests); beside it, smaller, is the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
 Beside the rate, when it is at least 0.05 s/d, is its ± figure: the
 standard error of the fitted slope, roughly how far the rate could be off
@@ -214,8 +214,7 @@ the beat error from the drop apart and the two unlock lines the beat error
 from the unlock. **Own Drop** measures each side from its own drop, so both
 drops sit at 0 ms. The two beat errors differ when tick and tock take
 different times from unlock to drop, the imbalance that also gives them
-different amplitudes; the unlock figure is the one tg and commercial
-timegraphers report. Above each plot are the beat count, the marks in ms
+different amplitudes; the unlock figure is the one tg reports. Above each plot are the beat count, the marks in ms
 from that side's own drop, the unlock-to-drop time and the amplitude they
 give. Linear (the
 default) shows the envelope as the engine measures it; dB shows the level
