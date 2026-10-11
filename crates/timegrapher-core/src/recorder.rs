@@ -12,7 +12,10 @@
 //! of the gap (frames running on, none made up across it), and
 //! `session.json` gains a `breaks` entry with the frame it starts at, its
 //! file, the host time of its first frame, the gap and the input. A take
-//! never paused has no `breaks` key at all.
+//! never paused has no `breaks` key at all. `frame` counts from the take's
+//! first frame (frame 0 of `audio-001.wav`) and runs on across files, so
+//! `audio_s` is `frame` over the sample rate; readers key on `frame`, and
+//! `segment`, `utc` and `device` are for people.
 
 use crate::capture::Block;
 use serde::Serialize;
