@@ -146,9 +146,10 @@ through the six positions in Witschi's order: Dial Up, Dial Down, Crown
 Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
 while the watch settles (20 s) and is measured (60 s; Witschi asks for at
-least 40). It then says which position to turn the watch to; press
-**Next** once it is there. **Measure Again** repeats a position, after a
-knock for instance, and **Stop** ends the test. Each position is a
+least 40). It then says which position to turn the watch to; press the
+button naming it (**Start CL Measurement**) once it is there. **Measure
+DD Again**, naming the position just measured (or the one under way),
+repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches

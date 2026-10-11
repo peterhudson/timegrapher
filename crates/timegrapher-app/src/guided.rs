@@ -193,7 +193,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 Phase::Turn => match test.next_position() {
                     Some(p) => (
                         format!("Turn the watch to {}", p.name()),
-                        "then press Next".to_string(),
+                        format!("then press Start {} Measurement", p.code()),
                         1.0,
                     ),
                     None => (
@@ -223,21 +223,36 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 }
                 match phase {
                     Phase::Turn => {
-                        let last = test.next_position().is_none();
+                        let (next, next_hint) = match test.next_position() {
+                            Some(p) => (
+                                format!("Start {} Measurement", p.code()),
+                                format!(
+                                    "Press once the watch is {}: it settles for {SETTLE_S:.0} s, \
+                                     then {} is measured for {MEASURE_S:.0} s",
+                                    p.name().to_lowercase(),
+                                    p.name()
+                                ),
+                            ),
+                            None => (
+                                "Finish".to_string(),
+                                "Read the six positions together".to_string(),
+                            ),
+                        };
                         if ui
-                            .add(theme::primary(ui, if last { "Finish" } else { "Next" }))
-                            .on_hover_text(if last {
-                                "Read the six positions together"
-                            } else {
-                                "The watch is in the new position: settle it and measure"
-                            })
+                            .add(theme::primary(ui, &next))
+                            .on_hover_text(next_hint)
                             .clicked()
                         {
                             action = Some(Action::Next);
                         }
                         if ui
-                            .button("Measure Again")
-                            .on_hover_text("Measure this position again, from now")
+                            .button(format!("Measure {} Again", test.position().code()))
+                            .on_hover_text(format!(
+                                "The {} measurement wasn't good (a knock, a noise): put the \
+                                 watch back {} and settle and measure it again",
+                                test.position().name(),
+                                test.position().name().to_lowercase()
+                            ))
                             .clicked()
                         {
                             action = Some(Action::Redo);
@@ -250,11 +265,11 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     }
                     _ => {
                         if ui
-                            .button("Start Again")
-                            .on_hover_text(
-                                "Settle and measure this position again from now, as after \
-                                 a knock",
-                            )
+                            .button(format!("Measure {} Again", test.position().code()))
+                            .on_hover_text(format!(
+                                "Settle and measure {} again from now, as after a knock",
+                                test.position().name()
+                            ))
                             .clicked()
                         {
                             action = Some(Action::Redo);
