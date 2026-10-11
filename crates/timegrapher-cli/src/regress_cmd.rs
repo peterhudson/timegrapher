@@ -23,10 +23,12 @@ use timegrapher_core::session::{Manifest, Reading, Reference};
 pub const BASELINE_SCHEMA: &str = "timegrapher.regress-baseline/1";
 /// Baseline file name, in the root folder unless `--baseline` says otherwise.
 pub const BASELINE: &str = "regress-baseline.json";
-/// A developer check, not shown to watch owners: no corpus take reads a
-/// median amplitude above Witschi's knocking limit, so one that does
-/// points at the amplitude measurement.
+/// The regression harness's own thresholds, chosen by the project for a
+/// developer check that watch owners never see: no corpus take reads a
+/// median amplitude above 330° where the unlock was found in at least 60%
+/// of its windows, so one that does points at the amplitude measurement.
 const AMPLITUDE_HIGH_DEG: f64 = 330.0;
+const UNLOCK_FOUND_SHARE: f64 = 0.6;
 
 /// How far a value may move away from tg before the check fails.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -189,7 +191,7 @@ pub struct Outcome {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub smoke: Vec<crate::corpus::Smoke>,
     /// Readings whose median amplitude is over [`AMPLITUDE_HIGH_DEG`],
-    /// with the unlock found in at least 60% of their windows, as
+    /// with the unlock found in at least [`UNLOCK_FOUND_SHARE`] of their windows, as
     /// "take #reading". No corpus take should: fails.
     pub amplitude_high: Vec<String>,
 }
@@ -570,7 +572,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
             let now = match r {
                 Ok(r) => {
                     let m = &r.measurement;
-                    let unlock_found = !m.unlock_coverage.is_some_and(|c| c < 0.6);
+                    let unlock_found = !m.unlock_coverage.is_some_and(|c| c < UNLOCK_FOUND_SHARE);
                     if unlock_found && m.amplitude_deg.is_some_and(|a| a > AMPLITUDE_HIGH_DEG) {
                         amplitude_high.push(format!("{take} #{}", i + 1));
                     }
@@ -1084,7 +1086,7 @@ fn print_text(o: &Outcome, names: bool) {
     }
     if !o.amplitude_high.is_empty() {
         println!(
-            "Median amplitude over 330°: {}: FAIL",
+            "Median amplitude over 330° (the harness's own check): {}: FAIL",
             o.amplitude_high.join(", ")
         );
     }

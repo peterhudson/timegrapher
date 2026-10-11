@@ -229,9 +229,10 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
-    /// Whether the beats look like a watch's (see [`beats::watch_heard`]).
+    /// Whether a regular beat was found (see [`beats::watch_heard`]).
     /// When false, as on an empty stand, rate, amplitude and beat error
-    /// would describe noise, and they are left out.
+    /// would describe noise, and they are left out; the findings state
+    /// [`no_regular_beat`].
     pub watch_heard: bool,
     /// Median of the rate in 10 s windows, s/d. For a watch whose rate
     /// wanders with dips, this sits above `rate_s_per_day` (the fit over
@@ -893,7 +894,8 @@ pub fn evaluate(readings: &[Reading]) -> SessionReport {
 const UNLOCK_COVERAGE_LISTED: f64 = 0.6;
 
 /// Below this many seconds measured after settling, the length is listed
-/// among the findings (Witschi measures each position for at least 40 s).
+/// among the findings: the "≥40 s measurement time" of Witschi's
+/// *Testing Methods for Mechanical Watches* (D40e, 2025, measurement tips).
 const SHORT_MEASURE_S: f64 = 40.0;
 
 /// The sentence for a recording with no regular beat, e.g. "No regular

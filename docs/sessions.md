@@ -66,8 +66,7 @@ and `escape_teeth`, win over the calibre's; where they disagree with it,
 file says 55°; using 55°`), and `summary.json` lists the same notes under
 `input.settings.calibre_notes`, beside the `calibre` used. With none of
 them, the lift angle is the default 52°, and each reading carries the
-`lift_unknown` caveat: its amplitude is graded one step lower, as
-`analyze` grades it.
+`lift_unknown` caveat.
 
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
