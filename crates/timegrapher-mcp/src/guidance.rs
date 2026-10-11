@@ -33,6 +33,22 @@ pub const DOCS: &[Doc] = &[
         "skills/watchmaker/SKILL.md"
     ),
     doc!(
+        "timegrapher://skill/guided-test",
+        "guided-test",
+        "Guided Test",
+        "Walking a first-timer through the whole test: what to ask, what to say, what to \
+         run, step by step.",
+        "skills/watchmaker/references/guided-test.md"
+    ),
+    doc!(
+        "timegrapher://skill/findings",
+        "findings",
+        "Findings",
+        "Every finding code and verdict, and the possible faults in the Tick and Tock: what \
+         it means, how sure, what to do, what to tell the person.",
+        "skills/watchmaker/references/findings.md"
+    ),
+    doc!(
         "timegrapher://skill/setup-and-microphone",
         "setup-and-microphone",
         "Setup and Microphone",
@@ -148,20 +164,25 @@ pub const PROMPT_TITLE: &str = "Test My Watch";
 pub const PROMPT_DESCRIPTION: &str =
     "Walk me through testing my watch at home and tell me whether it needs a service.";
 
+/// The skill's own prompt, unchanged, after a note on where its files and
+/// commands are here.
+const PROMPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../skills/watchmaker/references/prompt-test-my-watch.md"
+));
+
 pub fn prompt_text(watch: Option<&str>) -> String {
     let watch = watch
         .filter(|w| !w.trim().is_empty())
-        .map(|w| format!(" The watch is: {}.", w.trim()))
+        .map(|w| format!("\n\nThe watch: {}.", w.trim()))
         .unwrap_or_default();
     format!(
-        "I want to test my mechanical watch at home with the timegrapher and find out \
-         whether it needs a service.{watch} Read timegrapher://skill/watchmaker and \
-         timegrapher://skill/setup-and-microphone first. Then guide me one step at a time: \
-         identify the calibre (for its beat rate and lift angle), check my microphone \
-         set-up from a short test recording, have me record the positions the skill \
-         recommends with the watch wound and settled, read them with the tools, and tell \
-         me plainly what the numbers say, how sure you are, and whether the watch needs a \
-         watchmaker."
+        "Read timegrapher://skill/watchmaker first. The files named below are resources \
+         here: timegrapher://skill/ and the file's name without .md (guided-test, \
+         findings, when-to-see-a-watchmaker). The commands are this server's tools: \
+         calibres is list_calibres, doctor is check_microphone, record is \
+         record_position, session is run_session, analyze is analyze_recording and \
+         series is check_steadiness.\n\n{PROMPT}{watch}"
     )
 }
 
@@ -176,5 +197,34 @@ mod tests {
             assert!(DOCS[..i].iter().all(|e| e.uri != d.uri && e.name != d.name));
         }
         assert!(INSTRUCTIONS.contains(DOCS[0].uri));
+    }
+
+    /// Every reference the skill links to is served, so the prompt and the
+    /// skill never point an agent at a file it cannot read.
+    #[test]
+    fn every_skill_reference_is_served() {
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../skills/watchmaker/references"
+        );
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            let Some(stem) = name.strip_suffix(".md") else {
+                continue;
+            };
+            if stem == "prompt-test-my-watch" {
+                continue;
+            }
+            let uri = format!("timegrapher://skill/{stem}");
+            assert!(find(&uri).is_some(), "{name} is not served as {uri}");
+        }
+    }
+
+    #[test]
+    fn the_prompt_is_the_skills_own() {
+        let text = prompt_text(Some("ETA 2824-2"));
+        assert!(text.contains(PROMPT));
+        assert!(text.ends_with("The watch: ETA 2824-2."));
+        assert!(!prompt_text(Some("  ")).contains("The watch:"));
     }
 }
