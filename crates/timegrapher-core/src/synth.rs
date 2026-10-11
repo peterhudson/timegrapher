@@ -65,6 +65,9 @@ pub struct SynthConfig {
     pub lift_deg: f64,
     pub rate_s_per_day: f64,
     pub beat_error_ms: f64,
+    /// Change of the beat error per second of recording, ms, as when a
+    /// hairspring rubs more and more.
+    pub beat_error_drift_ms_per_s: f64,
     /// Peak signal over RMS noise, dB.
     pub snr_db: f64,
     pub seed: u64,
@@ -98,6 +101,7 @@ impl Default for SynthConfig {
             lift_deg: 52.0,
             rate_s_per_day: 5.0,
             beat_error_ms: 0.4,
+            beat_error_drift_ms_per_s: 0.0,
             snr_db: 30.0,
             seed: 1,
             sounds: [
@@ -152,7 +156,8 @@ pub fn generate(
             tud += cfg.even_unlock_lead_s;
         }
         // The drop is the reference point; the unlock comes tud earlier.
-        let drop = t + side * cfg.beat_error_ms / 1000.0;
+        let beat_error = cfg.beat_error_ms + cfg.beat_error_drift_ms_per_s * t;
+        let drop = t + side * beat_error / 1000.0;
         let [mut s1, mut s2, mut s3] = cfg.sounds;
         if let Some([g1, g2, g3]) = cfg.odd_gains.filter(|_| k % 2 == 1) {
             (s1.gain, s2.gain, s3.gain) = (g1, g2, g3);

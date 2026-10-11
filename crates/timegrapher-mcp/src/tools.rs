@@ -13,6 +13,8 @@ pub enum Arg {
     Positional,
     /// `--flag VALUE`.
     Flag(&'static str),
+    /// Read by the server itself; never on the command line.
+    Server,
 }
 
 #[derive(Clone, Copy)]
@@ -43,6 +45,9 @@ pub struct ToolSpec {
     pub params: &'static [Param],
     /// Changes nothing on the computer.
     pub read_only: bool,
+    /// Calling it again with the same arguments leaves things as one call
+    /// would: false for the tools that add a new take or a new file each time.
+    pub idempotent: bool,
     /// The chat app shows the charts view beside the result.
     pub charts: bool,
     /// Flags added when the call leaves them out, as (flag, value); a value
@@ -136,6 +141,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDING, CALIBRE_READING, BPH, LIFT],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -146,7 +152,9 @@ pub const TOOLS: &[ToolSpec] = &[
             (mean rate, largest difference, isochronism) and findings with advice. Give a \
             folder holding session.toml, the session.toml itself, or recordings with the \
             position in each file name (DU, DD, CU, CD, CL, CR). Also writes report.html \
-            next to the recordings.",
+            next to the recordings. The report may name the vertical positions by the \
+            hour at the top, with the crown at 3 o'clock: crown up is 3H, crown down 9H, \
+            crown left 6H and crown right 12H.",
         command: &["session"],
         params: &[
             p(
@@ -184,6 +192,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: false,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -209,6 +218,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -222,6 +232,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDINGS, BPH, LIFT, CALIBRE],
         charts: false,
         read_only: false,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -253,6 +264,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: true,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -265,6 +277,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[RECORDING, BPH, LIFT],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -286,6 +299,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -305,6 +319,7 @@ pub const TOOLS: &[ToolSpec] = &[
         )],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -367,9 +382,20 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Lift angle in degrees (the calibre's if left out, else 52).",
             ),
             DEVICE,
+            p(
+                TAKE_ID,
+                Kind::Text,
+                Arg::Server,
+                false,
+                "A name for this take, new for each take, e.g. \"DU-1\". If the call is \
+                 made again with the same take_id, folder and position (say the answer \
+                 was lost), the take already recorded comes back instead of a second \
+                 recording, for as long as the server runs.",
+            ),
         ],
         charts: false,
         read_only: false,
+        idempotent: false,
         defaults: &[],
     },
     ToolSpec {
@@ -378,6 +404,8 @@ pub const TOOLS: &[ToolSpec] = &[
         description: "Listen for a few seconds and report level, clipping, automatic gain, \
             noise and whether ticks are heard, with the exact settings to change. It \
             changes nothing: tell the person the settings to change and let them do it. \
+            Its rate and beat error come from a few seconds: they only show that ticks \
+            are heard, so never give them as the watch's readings. \
             This uses the microphone: put the watch on it first.",
         command: &["doctor"],
         params: &[
@@ -393,6 +421,7 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -404,6 +433,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[],
         charts: false,
         read_only: true,
+        idempotent: true,
         defaults: &[],
     },
     ToolSpec {
@@ -470,11 +500,52 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
         charts: false,
         read_only: false,
+        idempotent: false,
         // The CLI's default is the current folder, which for a server the
         // chat app started is nowhere the person would look.
         defaults: &[("--out", "~")],
     },
 ];
+
+/// Whether the tool opens the microphone: recording a position, and the
+/// microphone check, which has no recording to read instead.
+pub fn listens(t: &ToolSpec) -> bool {
+    t.command[0] == "record"
+        || (t.command[0] == "doctor"
+            && !t
+                .params
+                .iter()
+                .any(|p| matches!(p.arg, Arg::Flag("--file"))))
+}
+
+/// Plain notes after a result's document, for what the numbers alone do
+/// not say: a microphone check's readings are too short to trust, and an
+/// amplitude worked out with a lift angle nobody gave.
+pub fn notes(t: &ToolSpec, args: &Map<String, Value>, doc: &Value) -> Vec<String> {
+    let mut notes = Vec::new();
+    if t.name == "check_microphone" {
+        notes.push(
+            "The rate and beat error here come from a few seconds of sound and are \
+             too short to trust; they only show that ticks are heard. Do not give them \
+             as the watch's readings: record_position or analyze_recording measures it."
+                .to_string(),
+        );
+    }
+    let given = |k: &str| args.get(k).is_some_and(|v| !v.is_null());
+    if t.name == "analyze_recording" && !given("calibre") && !given("lift_deg") {
+        if let Some(lift) = doc["input"]["settings"]["lift_deg"].as_f64() {
+            notes.push(format!(
+                "No calibre or lift angle was given, so the amplitude assumes a lift \
+                 angle of {lift}°. Tell the person, and ask for the calibre: with \
+                 another lift angle the amplitude changes."
+            ));
+        }
+    }
+    notes
+}
+
+/// `record_position`'s retry identifier, read by the server.
+pub const TAKE_ID: &str = "take_id";
 
 pub fn find(name: &str) -> Option<&'static ToolSpec> {
     TOOLS.iter().find(|t| t.name == name)
@@ -513,7 +584,7 @@ pub fn definition(t: &ToolSpec) -> Value {
             "title": t.title,
             "readOnlyHint": t.read_only,
             "destructiveHint": false,
-            "idempotentHint": true,
+            "idempotentHint": t.idempotent,
             "openWorldHint": false,
         },
     });
@@ -570,6 +641,7 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                     options.push(format!("{flag}={v}"));
                 }
             }
+            Arg::Server => {}
         }
     }
     for (flag, value) in t.defaults {
@@ -685,14 +757,6 @@ mod tests {
     /// decided (docs/mcp.md): recording a position and the live check.
     #[test]
     fn only_the_listening_tools_use_the_mic() {
-        let listens = |t: &ToolSpec| {
-            t.command[0] == "record"
-                || (t.command[0] == "doctor"
-                    && !t
-                        .params
-                        .iter()
-                        .any(|p| matches!(p.arg, Arg::Flag("--file"))))
-        };
         let mut listening: Vec<&str> = TOOLS
             .iter()
             .filter(|t| listens(t))
@@ -714,6 +778,45 @@ mod tests {
             .params
             .iter()
             .any(|p| p.required && matches!(p.arg, Arg::Flag("--file"))));
+    }
+
+    /// A chat app may repeat a call it thinks is harmless to repeat: only
+    /// the tools that make something new each time say they are not.
+    #[test]
+    fn only_the_tools_that_add_files_are_not_idempotent() {
+        let mut not: Vec<&str> = TOOLS
+            .iter()
+            .filter(|t| definition(t)["annotations"]["idempotentHint"] == false)
+            .map(|t| t.name)
+            .collect();
+        not.sort();
+        assert_eq!(not, ["make_report_bundle", "record_position"]);
+        for t in TOOLS.iter().filter(|t| t.read_only) {
+            assert!(t.idempotent, "{}", t.name);
+        }
+    }
+
+    #[test]
+    fn an_assumed_lift_angle_and_a_quick_check_are_called_out() {
+        let doc = json!({"input": {"settings": {"lift_deg": 52.0}}});
+        let analyze = find("analyze_recording").unwrap();
+        let said = notes(analyze, &args(json!({"recording": full("w.wav")})), &doc);
+        assert!(said[0].contains("lift angle of 52°"), "{said:?}");
+        let with = args(json!({"recording": full("w.wav"), "calibre": "ETA 2824-2"}));
+        assert!(notes(analyze, &with, &doc).is_empty());
+        let mic = find("check_microphone").unwrap();
+        assert!(notes(mic, &Map::new(), &doc)[0].contains("too short to trust"));
+    }
+
+    #[test]
+    fn the_take_id_stays_off_the_command_line() {
+        let t = find("record_position").unwrap();
+        let line = command_line(
+            t,
+            &args(json!({"folder": full("test"), "position": "DU", "take_id": "DU-1"})),
+        )
+        .unwrap();
+        assert!(!line.iter().any(|a| a.contains("DU-1")), "{line:?}");
     }
 
     #[test]
@@ -741,6 +844,7 @@ mod tests {
             .map(|t| t["name"].as_str().unwrap())
             .collect();
         let mut tools: Vec<&str> = TOOLS.iter().map(|t| t.name).collect();
+        tools.push(crate::guidance::GUIDE_TOOL);
         listed.sort();
         tools.sort();
         assert_eq!(listed, tools);

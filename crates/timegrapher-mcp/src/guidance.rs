@@ -3,6 +3,8 @@
 //! files are compiled in unchanged, so a chat app gets the same guidance
 //! as a shell agent with the skill installed.
 
+use serde_json::{json, Value};
+
 pub struct Doc {
     pub uri: &'static str,
     pub name: &'static str,
@@ -138,13 +140,67 @@ pub fn find(uri: &str) -> Option<&'static Doc> {
     DOCS.iter().find(|d| d.uri == uri)
 }
 
+/// The tool that hands the model the skill and its pages: a model can call
+/// a tool, while many chat apps leave resources for the person to attach.
+pub const GUIDE_TOOL: &str = "read_guide";
+
+pub fn guide_definition() -> Value {
+    let pages: Vec<&str> = DOCS.iter().map(|d| d.name).collect();
+    let list: Vec<String> = DOCS
+        .iter()
+        .map(|d| format!("{}: {}", d.name, d.description))
+        .collect();
+    json!({
+        "name": GUIDE_TOOL,
+        "title": "Read the Guide",
+        "description": format!(
+            "Read the watchmaker skill or one of its pages, as Markdown. Read \"watchmaker\" \
+             before guiding anyone; it says when to read the others. Pages: {}",
+            list.join(" ")
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": { "page": {
+                "type": "string",
+                "enum": pages,
+                "description": "The page (watchmaker if left out).",
+            }},
+            "additionalProperties": false,
+        },
+        "annotations": {
+            "title": "Read the Guide",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false,
+        },
+    })
+}
+
+/// The page's text, or what pages there are.
+pub fn guide(page: Option<&str>) -> Value {
+    let name = page.unwrap_or("watchmaker");
+    match DOCS.iter().find(|d| d.name == name) {
+        Some(d) => json!({ "content": [{ "type": "text", "text": d.text }] }),
+        None => {
+            let pages: Vec<&str> = DOCS.iter().map(|d| d.name).collect();
+            json!({
+                "content": [{ "type": "text", "text": format!(
+                    "No page {name:?}; the pages are {}.", pages.join(", ")) }],
+                "isError": true,
+            })
+        }
+    }
+}
+
 /// Sent to the chat app when it connects.
 pub const INSTRUCTIONS: &str = "\
 The timegrapher measures a mechanical watch from the sound of its ticking: rate \
 (seconds per day), amplitude (degrees) and beat error (ms), in several positions and \
 over long runs. You are helping someone test their watch at home, as an experienced \
-watchmaker would. Before guiding anyone, read the resource timegrapher://skill/watchmaker \
-(the watchmaker skill) and follow its ground rules: ask before changing anything on their \
+watchmaker would. Before guiding anyone, call read_guide with page \"watchmaker\" to read \
+the watchmaker skill (also the resource timegrapher://skill/watchmaker), and follow its \
+ground rules: ask before changing anything on their \
 computer, never tell anyone to open a watch, rule out the set-up before blaming the watch, \
 and say how sure you are.
 
@@ -177,9 +233,10 @@ pub fn prompt_text(watch: Option<&str>) -> String {
         .map(|w| format!("\n\nThe watch: {}.", w.trim()))
         .unwrap_or_default();
     format!(
-        "Read timegrapher://skill/watchmaker first. The files named below are resources \
-         here: timegrapher://skill/ and the file's name without .md (guided-test, \
-         findings, when-to-see-a-watchmaker). The commands are this server's tools: \
+        "First call the read_guide tool with page \"watchmaker\" and read the skill. \
+         The files named below are pages of the same tool: the file's name without .md \
+         (guided-test, findings, when-to-see-a-watchmaker), also resources at \
+         timegrapher://skill/. The commands are this server's tools: \
          calibres is list_calibres, doctor is check_microphone, record is \
          record_position, session is run_session, analyze is analyze_recording and \
          series is check_steadiness.\n\n{PROMPT}{watch}"
@@ -191,12 +248,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_guide_hands_over_every_page() {
+        for d in DOCS {
+            assert_eq!(guide(Some(d.name))["content"][0]["text"], d.text);
+        }
+        assert_eq!(guide(None)["content"][0]["text"], DOCS[0].text);
+        assert_eq!(guide(Some("nope"))["isError"], true);
+        assert_eq!(guide_definition()["annotations"]["readOnlyHint"], true);
+    }
+
+    #[test]
     fn docs_are_present_and_unique() {
         for (i, d) in DOCS.iter().enumerate() {
             assert!(d.text.len() > 500, "{} is nearly empty", d.uri);
             assert!(DOCS[..i].iter().all(|e| e.uri != d.uri && e.name != d.name));
         }
         assert!(INSTRUCTIONS.contains(DOCS[0].uri));
+        assert!(INSTRUCTIONS.contains(GUIDE_TOOL));
     }
 
     /// Every reference the skill links to is served, so the prompt and the
