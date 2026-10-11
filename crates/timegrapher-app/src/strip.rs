@@ -372,8 +372,10 @@ pub fn paint_ticker(
         // Every other position a shade darker, as on the plot.
         let shade = if i % 2 == 1 { 0.16 } else { 0.07 };
         painter.rect_filled(seg.shrink(0.5), 2.0, text.gamma_multiply(shade));
+        // Settling a little fainter than the names, but not so faint that
+        // the thin "l"s drop out at this size ("Setting").
         let color = if settling {
-            text.gamma_multiply(0.7)
+            vis.text_color().gamma_multiply(0.6)
         } else {
             vis.text_color().gamma_multiply(0.85)
         };

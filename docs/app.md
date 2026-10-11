@@ -146,19 +146,21 @@ through the six positions in Witschi's order: Dial Up, Dial Down, Crown
 Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
 while the watch settles (20 s) and is measured (60 s; Witschi asks for at
-least 40). It then says which position to turn the watch to; press
-**Next** once it is there. **Measure Again** repeats a position, after a
-knock for instance, and **Stop** ends the test. Each position is a
+least 40). It then says which position to turn the watch to; press the
+button naming it (**Start CL Measurement**) once it is there. **Measure
+DD Again**, naming the position just measured (or the one under way),
+repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
-with core `session::measure` and `session::evaluate`, as `session` does
-(rate on the input's measured clock when there is one). A window shows:
-- each position's rate, amplitude and beat error, red when outside the
-  chosen tolerances (Men's, Ladies' or COSC);
-- the mean rate X, the largest difference D, and vertical minus
-  horizontal for rate and amplitude;
-- the findings, each with its evidence and Witschi's advice in its hint.
+with core `session::measure`, as `session` does (rate on the input's
+measured clock when there is one), and a window shows them as a table:
+each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
+less the mean of the six, its amplitude and its beat error (a size), a
+Mean row, the largest difference between the rates (Witschi's D), and
+vertical less horizontal for rate and amplitude (Witschi's DVH). The
+figures are `session`'s for the same stretches. It gives no verdict and no
+pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
@@ -574,7 +576,7 @@ holding:
 | `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a pause starts a new file |
 | `clock.csv` | System time against frames captured, every 10 s, and on both sides of each pause; frames run on across a pause, with no line made up for the gap |
 | `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has been paused) `breaks`: one entry per resume with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
-| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` |
+| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after its 20 s settling and for its 60 s, so `timegrapher session` reads the seconds its table did) |
 
 Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins
