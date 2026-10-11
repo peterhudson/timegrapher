@@ -249,18 +249,22 @@ pub struct Extras<'a> {
     /// Stretches of the session in one position to mark: start, end and
     /// the position's name. Empty while the watch stayed put.
     pub bands: &'a [(f64, f64, &'a str)],
+    /// The settling after each move: start and end. Its beats are drawn
+    /// faintly and the ticker says "Settling" over it.
+    pub settles: &'a [(f64, f64)],
 }
 
 /// Mark each stretch of the session in one position across the plotting
 /// area `r`: every other stretch faintly shaded, a line where each new one
-/// begins, and the position's name at its start. `at` places a time on the
-/// time axis; `horizontal` when time runs across.
+/// begins, and (with `names`) the position's name at its start. `at`
+/// places a time on the time axis; `horizontal` when time runs across.
 pub fn paint_bands(
     painter: &egui::Painter,
     r: Rect,
     bands: &[(f64, f64, &str)],
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
+    names: bool,
     vis: &egui::Visuals,
 ) {
     let text = vis.weak_text_color();
@@ -295,6 +299,9 @@ pub fn paint_bands(
                 painter.hline(r.x_range(), pa, edge);
             }
         }
+        if !names {
+            continue;
+        }
         // The name at the stretch's start, or at the edge it runs in from.
         let (pos, align) = if horizontal {
             (Pos2::new(s0 + 4.0, r.top() + 2.0), Align2::LEFT_TOP)
@@ -308,6 +315,115 @@ pub fn paint_bands(
             let rect = align.anchor_size(pos, galley.size()).expand(2.0);
             painter.rect_filled(rect, 2.0, vis.extreme_bg_color.gamma_multiply(0.85));
             painter.galley(rect.min + Vec2::splat(2.0), galley, text);
+        }
+    }
+}
+
+/// The position ticker in `lane`, beside the plotting area: each stretch's
+/// position named over and over along it, a short rule between repeats,
+/// so the position shows wherever the strip is scrolled, even with both
+/// its ends out of sight; "Settling" over the settling after each move.
+/// The names start from the stretch's own start, so they move with it.
+pub fn paint_ticker(
+    painter: &egui::Painter,
+    lane: Rect,
+    bands: &[(f64, f64, &str)],
+    settles: &[(f64, f64)],
+    at: impl Fn(f64) -> Pos2,
+    horizontal: bool,
+    vis: &egui::Visuals,
+) {
+    let text = vis.weak_text_color();
+    let font = FontId::proportional(11.0);
+    let along = |p: Pos2| if horizontal { p.x } else { p.y };
+    let (lo, hi) = if horizontal {
+        (lane.left(), lane.right())
+    } else {
+        (lane.top(), lane.bottom())
+    };
+    // The stretches cut at each settling, so it gets a label of its own.
+    let mut parts: Vec<(f64, f64, &str, usize, bool)> = Vec::new();
+    for (i, &(a, b, name)) in bands.iter().enumerate() {
+        let mut from = a;
+        for &(s0, s1) in settles.iter().filter(|s| s.0 >= a && s.0 < b) {
+            if s0 > from {
+                parts.push((from, s0, name, i, false));
+            }
+            parts.push((s0, s1.min(b), "Settling", i, true));
+            from = s1.min(b);
+        }
+        if from < b {
+            parts.push((from, b, name, i, false));
+        }
+    }
+    let painter = painter.with_clip_rect(lane);
+    for (a, b, name, i, settling) in parts {
+        let (pa, pb) = (along(at(a)), along(at(b.min(1e12))));
+        let dir = if pb >= pa { 1.0 } else { -1.0 };
+        let (s0, s1) = (pa.min(pb).max(lo), pa.max(pb).min(hi));
+        if s1 <= s0 {
+            continue;
+        }
+        let seg = if horizontal {
+            Rect::from_x_y_ranges(s0..=s1, lane.y_range())
+        } else {
+            Rect::from_x_y_ranges(lane.x_range(), s0..=s1)
+        };
+        // Every other position a shade darker, as on the plot.
+        let shade = if i % 2 == 1 { 0.16 } else { 0.07 };
+        painter.rect_filled(seg.shrink(0.5), 2.0, text.gamma_multiply(shade));
+        let color = if settling {
+            text.gamma_multiply(0.7)
+        } else {
+            vis.text_color().gamma_multiply(0.85)
+        };
+        let galley = painter.layout_no_wrap(name.to_string(), font.clone(), color);
+        let w = galley.size().x;
+        let gap = 28.0;
+        let pitch = w + gap;
+        // Labels at the stretch's start plus whole pitches, in its own
+        // direction, so they slide with the strip.
+        let first = pa + dir * 6.0;
+        let (k0, k1) = {
+            let (u0, u1) = ((s0 - first) * dir, (s1 - first) * dir);
+            let (u0, u1) = (u0.min(u1), u0.max(u1));
+            (
+                (u0 / pitch).floor().max(0.0) as i64,
+                (u1 / pitch).ceil() as i64,
+            )
+        };
+        for k in k0..=k1 {
+            let start = first + dir * k as f32 * pitch;
+            let (l0, l1) = (start.min(start + dir * w), start.max(start + dir * w));
+            if l0 >= s0 && l1 <= s1 {
+                if horizontal {
+                    painter.galley(
+                        Pos2::new(l0, lane.center().y - galley.size().y / 2.0),
+                        galley.clone(),
+                        color,
+                    );
+                } else {
+                    // Read from below, turned a quarter.
+                    let shape = egui::epaint::TextShape::new(
+                        Pos2::new(lane.center().x + galley.size().y / 2.0, l0),
+                        galley.clone(),
+                        color,
+                    )
+                    .with_angle(std::f32::consts::FRAC_PI_2);
+                    painter.add(shape);
+                }
+            }
+            // A short rule midway to the next.
+            let mid = start + dir * (w + gap / 2.0);
+            let next = start + dir * pitch;
+            if mid > s0 + 2.0 && mid < s1 - 2.0 && (next.min(next + dir * w) >= s0) {
+                let rule = Stroke::new(1.0_f32, text.gamma_multiply(0.5));
+                if horizontal {
+                    painter.vline(mid, lane.shrink(4.0).y_range(), rule);
+                } else {
+                    painter.hline(lane.shrink(4.0).x_range(), mid, rule);
+                }
+            }
         }
     }
 }
@@ -357,15 +473,33 @@ pub fn draw_strip(
     // along the bottom when lying across), ms labels along the bottom (or
     // down the left), the key along the top, and a scale for each overlay
     // on top (or down the right).
+    // With more than one position, a ticker lane naming them: a row under
+    // the key when the strip lies across, else a column on the right.
+    let lane_h = if extras.bands.is_empty() {
+        0.0
+    } else {
+        row_h + 4.0
+    };
     let r = if view.horizontal {
         Rect::from_min_max(
-            outer.min + Vec2::new(extras.gutter.max(46.0), row_h + 4.0),
+            outer.min + Vec2::new(extras.gutter.max(46.0), row_h + 4.0 + lane_h),
             outer.max - Vec2::new(4.0 + 58.0 * overlays.len() as f32, row_h + 2.0),
         )
     } else {
         Rect::from_min_max(
             outer.min + Vec2::new(36.0, row_h * (1.0 + overlays.len() as f32) + 4.0),
-            outer.max - Vec2::new(8.0, row_h + 2.0),
+            outer.max - Vec2::new(8.0 + lane_h, row_h + 2.0),
+        )
+    };
+    let lane = if view.horizontal {
+        Rect::from_min_max(
+            Pos2::new(r.left(), r.top() - lane_h),
+            Pos2::new(r.right(), r.top() - 2.0),
+        )
+    } else {
+        Rect::from_min_max(
+            Pos2::new(r.right() + 2.0, r.top()),
+            Pos2::new(r.right() + lane_h, r.bottom()),
         )
     };
     let g = Geom {
@@ -484,8 +618,20 @@ pub fn draw_strip(
         extras.bands,
         |t| g.pos(0.0, t),
         view.horizontal,
+        false,
         &vis,
     );
+    if !extras.bands.is_empty() {
+        paint_ticker(
+            &painter,
+            lane,
+            extras.bands,
+            extras.settles,
+            |t| g.pos(0.0, t),
+            view.horizontal,
+            &vis,
+        );
+    }
 
     // The key along the top: Tick, Tock, the rate line and the overlays,
     // each in its colour.
@@ -577,7 +723,11 @@ pub fn draw_strip(
             continue;
         }
         let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
-        let c = colors[b.index.rem_euclid(2) as usize];
+        let mut c = colors[b.index.rem_euclid(2) as usize];
+        // Faint while the watch settles after a move.
+        if extras.settles.iter().any(|s| b.time > s.0 && b.time <= s.1) {
+            c = c.gamma_multiply(0.3);
+        }
         painter.circle_filled(p, radius, c);
     }
     let painter = painter.with_clip_rect(r);

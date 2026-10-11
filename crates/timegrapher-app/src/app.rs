@@ -36,7 +36,7 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
-use timegrapher_core::recorder::{Recorder, SessionInfo};
+use timegrapher_core::recorder::{Recorder, SessionInfo, SETTLE_S};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -87,6 +87,18 @@ impl Position {
             Position::CrownDown => "CD",
             Position::CrownLeft => "CL",
             Position::CrownRight => "CR",
+        }
+    }
+
+    /// The name with its code, as the strip's position ticker shows it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Position::DialUp => "Dial Up (DU)",
+            Position::DialDown => "Dial Down (DD)",
+            Position::CrownUp => "Crown Up (CU)",
+            Position::CrownDown => "Crown Down (CD)",
+            Position::CrownLeft => "Crown Left (CL)",
+            Position::CrownRight => "Crown Right (CR)",
         }
     }
 
@@ -466,6 +478,9 @@ impl TrendPoint {
     }
 }
 
+/// Where each position began, seconds, and the position, oldest first.
+type Stretches = Vec<(f64, Position)>;
+
 struct Batch {
     rx: std::sync::mpsc::Receiver<Result<Option<BeatLog>, String>>,
     progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
@@ -480,6 +495,8 @@ struct Batch {
     last: String,
     /// The positions the take's session file gives, to mark once it is in.
     stretches: Vec<(f64, Position)>,
+    /// The settling before each position's readings, from the same file.
+    settles: Vec<(f64, f64)>,
 }
 
 impl Drop for Batch {
@@ -526,6 +543,14 @@ pub struct TimegrapherApp {
     /// time and the position from then on, oldest first. Empty while it has
     /// stayed in `position` all along.
     stretches: Vec<(f64, Position)>,
+    /// The settling after each move to a new position: start and end,
+    /// seconds, oldest first. Its beats are drawn faintly and left out of
+    /// the readings, the distributions and the steadiness tests.
+    settles: Vec<(f64, f64)>,
+    /// The end of the settling under way, when the readings start afresh.
+    settle_to: Option<f64>,
+    /// The position changed while paused: the settling starts on Resume.
+    settle_pending: bool,
     average_s: f64,
     watch: String,
     /// The calibre picked under Watch: a name in the built-in table or one
@@ -763,6 +788,9 @@ impl TimegrapherApp {
             lift_deg: DEFAULT_LIFT_DEG,
             position: Position::DialUp,
             stretches: Vec::new(),
+            settles: Vec::new(),
+            settle_to: None,
+            settle_pending: false,
             locked_bph: None,
             crash: None,
             crash_shown: false,
@@ -914,6 +942,9 @@ impl TimegrapherApp {
         self.steady = None;
         self.steady_job = None;
         self.stretches.clear();
+        self.settles.clear();
+        self.settle_to = None;
+        self.settle_pending = false;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -1020,6 +1051,11 @@ impl TimegrapherApp {
                     .map_or(0.0, |t| t.elapsed().as_secs_f64());
                 if let Some(l) = self.live.as_mut() {
                     l.skip(paused);
+                }
+                if self.settle_pending {
+                    if let Some(t) = self.live.as_ref().map(|l| l.duration_s()) {
+                        self.start_settle(t);
+                    }
                 }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
@@ -1236,13 +1272,19 @@ impl TimegrapherApp {
         }
         let one = stretches.len() == 1;
         m.recordings = (0..stretches.len())
-            .map(|i| RecordingEntry {
-                file: ".".into(),
-                position: Some(stretches[i].1.clone()),
-                clock: Some("clock.csv".into()),
-                start_s: (!one).then_some(stretches[i].0),
-                end_s: stretches.get(i + 1).map(|s| s.0),
-                ..Default::default()
+            .map(|i| {
+                let end_s = stretches.get(i + 1).map(|s| s.0);
+                // Each later position's readings start once it has settled.
+                let settle = if i == 0 { 0.0 } else { SETTLE_S };
+                let start = (stretches[i].0 + settle).min(end_s.unwrap_or(f64::INFINITY));
+                RecordingEntry {
+                    file: ".".into(),
+                    position: Some(stretches[i].1.clone()),
+                    clock: Some("clock.csv".into()),
+                    start_s: (!one).then_some(start),
+                    end_s,
+                    ..Default::default()
+                }
             })
             .collect();
         m
@@ -1251,8 +1293,13 @@ impl TimegrapherApp {
     /// Take what a session file says about a recording: the watch, its
     /// calibre (a custom one is added to Your Calibres from its wheels),
     /// the lift angle and beat rate. Returns the positions it lists through
-    /// the recording, oldest first.
-    fn apply_manifest(&mut self, m: &Manifest, entries: &[RecordingEntry]) -> Vec<(f64, Position)> {
+    /// the recording, oldest first, and the settling before each: a gap
+    /// between one position's end and the next one's start.
+    fn apply_manifest(
+        &mut self,
+        m: &Manifest,
+        entries: &[RecordingEntry],
+    ) -> (Stretches, Vec<(f64, f64)>) {
         if let Some(w) = &m.watch {
             self.watch = w.clone();
         }
@@ -1280,18 +1327,31 @@ impl TimegrapherApp {
         if m.bph.is_some() {
             self.bph = m.bph;
         }
-        let mut out: Vec<(f64, Position)> = entries
+        let mut listed: Vec<(f64, Option<f64>, Position)> = entries
             .iter()
             .filter_map(|e| {
                 let p = Position::from_name(e.position.as_deref()?)?;
-                Some((e.start_s.unwrap_or(0.0), p))
+                Some((e.start_s.unwrap_or(0.0), e.end_s, p))
             })
             .collect();
-        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        listed.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out = Vec::new();
+        let mut settles = Vec::new();
+        for (i, &(start, _, p)) in listed.iter().enumerate() {
+            // The position began where the one before it ended.
+            let began = match i.checked_sub(1).and_then(|j| listed[j].1) {
+                Some(end) if end < start => {
+                    settles.push((end, start));
+                    end
+                }
+                _ => start,
+            };
+            out.push((began, p));
+        }
         if let Some(&(_, p)) = out.first() {
             self.position = p;
         }
-        out
+        (out, settles)
     }
 
     fn start_replay(&mut self, path: &Path) {
@@ -1339,12 +1399,12 @@ impl TimegrapherApp {
         }
         // What the take's session file says: the watch, calibre, lift
         // angle, beat rate and positions, before the analysis uses them.
-        let stretches = match read_manifest(path) {
+        let (stretches, settles) = match read_manifest(path) {
             Ok(Some((m, entries))) => self.apply_manifest(&m, &entries),
-            Ok(None) => Vec::new(),
+            Ok(None) => Default::default(),
             Err(e) => {
                 self.error(e);
-                Vec::new()
+                Default::default()
             }
         };
         let label = if path.is_dir() {
@@ -1397,6 +1457,7 @@ impl TimegrapherApp {
             first,
             last,
             stretches,
+            settles,
         });
     }
 
@@ -1445,6 +1506,16 @@ impl TimegrapherApp {
                             }
                         }
                         if live.push(&b.samples) {
+                            // While the watch settles after a move nothing is
+                            // read; then the readings start afresh.
+                            if let Some(end) = self.settle_to {
+                                if live.duration_s() < end {
+                                    continue;
+                                }
+                                live.new_stretch();
+                                self.settle_to = None;
+                                continue;
+                            }
                             let r = live.reading(self.average_s);
                             self.trend.push(TrendPoint::of(r.time_s, &r));
                             let p = live.tick_profiles();
@@ -1521,13 +1592,13 @@ impl TimegrapherApp {
             }
         }
         if let Some(r) = done {
-            let (label, stretches) = self
+            let (label, stretches, settles) = self
                 .batch
                 .take()
-                .map(|b| (b.label.clone(), b.stretches.clone()))
+                .map(|b| (b.label.clone(), b.stretches.clone(), b.settles.clone()))
                 .unwrap_or_default();
             match r {
-                Ok(Some(log)) => self.show_log(log, label, stretches),
+                Ok(Some(log)) => self.show_log(log, label, stretches, settles),
                 Ok(None) => {}
                 Err(e) => self.error(format!("Analysis failed: {e}")),
             }
@@ -1546,12 +1617,30 @@ impl TimegrapherApp {
         }
     }
 
-    fn show_log(&mut self, log: BeatLog, label: String, stretches: Vec<(f64, Position)>) {
+    fn show_log(
+        &mut self,
+        log: BeatLog,
+        label: String,
+        stretches: Vec<(f64, Position)>,
+        settles: Vec<(f64, f64)>,
+    ) {
         let mut live = LiveAnalyzer::from_log(log, self.live_config());
         self.stretches.clear();
+        self.settles.clear();
+        self.settle_to = None;
+        self.settle_pending = false;
         if stretches.len() > 1 {
-            live.set_breaks(stretches[1..].iter().map(|s| s.0).collect());
+            // No reading fits across a move, nor across a settling's end.
+            let mut breaks: Vec<f64> = stretches[1..]
+                .iter()
+                .map(|s| s.0)
+                .chain(settles.iter().map(|s| s.1))
+                .collect();
+            breaks.sort_by(f64::total_cmp);
+            breaks.dedup();
+            live.set_breaks(breaks);
             self.stretches = stretches;
+            self.settles = settles;
         }
         if let Some(&(_, p)) = self.stretches.last() {
             self.position = p;
@@ -1596,6 +1685,10 @@ impl TimegrapherApp {
 
     fn reading(&self) -> Option<LiveReading> {
         let live = self.live.as_ref()?;
+        // Nothing is read while the watch settles after a move.
+        if self.settling_left().is_some() {
+            return None;
+        }
         Some(if self.view_end.is_some() || !self.running() {
             live.reading_at(self.end_s(), self.average_s)
         } else {
@@ -2474,9 +2567,42 @@ impl TimegrapherApp {
             if self.stretches.last().is_none_or(|s| s.1 != pos) {
                 self.stretches.push((at, pos));
             }
+            // The watch settles in its new position, from now while
+            // listening, else from Resume.
+            if self.capture.is_some() {
+                self.start_settle(at);
+            } else {
+                self.settle_pending = true;
+            }
             self.steady = None;
             self.steady_job = None;
         }
+    }
+
+    /// Start the settling at `t`, seconds into the session.
+    fn start_settle(&mut self, t: f64) {
+        self.settle_pending = false;
+        // A move during a settling starts it again.
+        if let Some(s) = self.settles.last_mut().filter(|s| s.1 > t) {
+            s.1 = t;
+        }
+        self.settles.retain(|s| s.1 > s.0);
+        self.settles.push((t, t + SETTLE_S));
+        self.settle_to = Some(t + SETTLE_S);
+    }
+
+    /// Whether `t` falls in a settling after a move.
+    fn settling_at(&self, t: f64) -> bool {
+        self.settles.iter().any(|s| t > s.0 && t <= s.1)
+    }
+
+    /// Seconds of settling still to come at the time on show.
+    fn settling_left(&self) -> Option<f64> {
+        let t = self.end_s();
+        self.settles
+            .iter()
+            .find(|s| t >= s.0 && t < s.1)
+            .map(|s| s.1 - t)
     }
 
     /// Each stretch of the session in one position: start, end and
@@ -2501,7 +2627,15 @@ impl TimegrapherApp {
         self.position_spans()
             .into_iter()
             .filter(|s| s.2 == self.position)
-            .map(|s| (s.0, s.1))
+            .filter_map(|(a, b, _)| {
+                // Without the settling it began with.
+                let a = self
+                    .settles
+                    .iter()
+                    .filter(|s| s.0 >= a && s.0 < b)
+                    .fold(a, |a, s| a.max(s.1));
+                (a < b).then_some((a, b))
+            })
             .collect()
     }
 
@@ -2509,10 +2643,11 @@ impl TimegrapherApp {
     /// in now.
     fn in_position(&self, t: f64) -> bool {
         self.stretches.is_empty()
-            || self
-                .position_spans()
-                .iter()
-                .any(|s| s.2 == self.position && t > s.0 && t <= s.1)
+            || !self.settling_at(t)
+                && self
+                    .position_spans()
+                    .iter()
+                    .any(|s| s.2 == self.position && t > s.0 && t <= s.1)
     }
 
     /// The stretches to mark on the strip and the charts, once there is
@@ -2523,7 +2658,7 @@ impl TimegrapherApp {
         }
         self.position_spans()
             .into_iter()
-            .map(|(a, b, p)| (a.max(0.0), b, p.name()))
+            .map(|(a, b, p)| (a.max(0.0), b, p.label()))
             .collect()
     }
 
@@ -3429,7 +3564,13 @@ impl TimegrapherApp {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
                         let Some(r) = r else {
-                            if heard {
+                            if let Some(left) = self.settling_left() {
+                                ui.label(small(format!(
+                                    "settling in the new position, {:.0} s",
+                                    left.ceil()
+                                )))
+                                .on_hover_text(SETTLE_HINT);
+                            } else if heard {
                                 ui.label(small("waiting for beats".into()));
                             } else {
                                 unheard(ui);
@@ -4282,6 +4423,7 @@ impl TimegrapherApp {
             cursor_t: self.cursor_t,
             gutter: GUTTER,
             bands: &bands,
+            settles: &self.settles,
         };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
@@ -5106,6 +5248,7 @@ impl TimegrapherApp {
             &self.position_bands(),
             |x| egui::pos2(t.position_from_point_x(x), frame.top()),
             true,
+            true,
             ui.visuals(),
         );
         if hover.is_some() {
@@ -5331,6 +5474,13 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         }
     }
 }
+
+/// What the settling after a move is, wherever it is shown.
+const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
+     (from Resume, when it was moved while stopped) it settles: the hand leaves the stand and the \
+     balance steadies. Those beats are drawn faintly on the Paper Strip and left out of the \
+     readings, the charts' points, the Distributions and the Steadiness tests. The sound is \
+     still kept, and a saved take's positions start after it.";
 
 /// Where a bug report starts: the repository's bug form.
 const BUG_REPORT_URL: &str =
@@ -5855,6 +6005,28 @@ mod tests {
         frames(&mut app, &ctx, 1);
     }
 
+    /// After a move the watch settles for SETTLE_S: nothing is read then,
+    /// its beats are left out of the position's spans, and a move during a
+    /// settling starts it again.
+    #[test]
+    fn a_move_settles_before_it_is_read() {
+        let mut app = synthetic(60.0, 0.0);
+        app.stretches = vec![(0.0, Position::DialUp), (30.0, Position::DialDown)];
+        app.position = Position::DialDown;
+        app.start_settle(30.0);
+        assert_eq!(app.settles, [(30.0, 30.0 + SETTLE_S)]);
+        assert!(!app.in_position(35.0) && app.in_position(45.0));
+        assert_eq!(app.current_spans(), [(30.0 + SETTLE_S, f64::INFINITY)]);
+        app.view_end = Some(35.0);
+        assert!(app.settling_left().is_some() && app.reading().is_none());
+        app.view_end = Some(50.0);
+        assert!(app.settling_left().is_none() && app.reading().is_some());
+        // Moved again 4 s in: the first settling ends there.
+        app.start_settle(34.0);
+        assert_eq!(app.settles, [(30.0, 34.0), (34.0, 34.0 + SETTLE_S)]);
+        assert_eq!(app.settle_to, Some(34.0 + SETTLE_S));
+    }
+
     /// The folder a take was saved into opens the take inside it; with two
     /// takes inside, the message names them.
     #[test]
@@ -6023,7 +6195,7 @@ mod tests {
         let bands = app.position_bands();
         assert_eq!(
             bands.iter().map(|b| b.2).collect::<Vec<_>>(),
-            ["Dial Up", "Dial Down", "Dial Up"]
+            ["Dial Up (DU)", "Dial Down (DD)", "Dial Up (DU)"]
         );
         assert!(app.in_position(10.0) && !app.in_position(30.0) && app.in_position(50.0));
         // The readings since the move are Dial Up's alone.
@@ -6108,7 +6280,10 @@ mod tests {
         assert_eq!(m.calibre.as_deref(), Some("Bench Calibre"));
         assert_eq!(m.wheels.len(), 3, "{text}");
         let starts: Vec<_> = m.recordings.iter().map(|e| e.start_s).collect();
-        assert_eq!(starts, [Some(0.0), Some(30.0), Some(60.0)], "{text}");
+        // Each later position starts once it has settled.
+        assert_eq!(starts, [Some(0.0), Some(40.0), Some(70.0)], "{text}");
+        let ends: Vec<_> = m.recordings.iter().map(|e| e.end_s).collect();
+        assert_eq!(ends, [Some(30.0), Some(60.0), None], "{text}");
         assert_eq!(m.recordings[2].end_s, None);
 
         // Opened on a fresh app, the take brings it all back.
@@ -6132,7 +6307,11 @@ mod tests {
                 (60.0, Position::DialUp)
             ]
         );
-        assert_eq!(again.live.as_ref().unwrap().breaks(), &[30.0, 60.0]);
+        assert_eq!(again.settles, [(30.0, 40.0), (60.0, 70.0)]);
+        assert_eq!(
+            again.live.as_ref().unwrap().breaks(),
+            &[30.0, 40.0, 60.0, 70.0]
+        );
         assert_eq!(again.position, Position::DialUp);
         // A recording with no session file opens as before.
         assert!(read_manifest(&base).unwrap().is_none());
