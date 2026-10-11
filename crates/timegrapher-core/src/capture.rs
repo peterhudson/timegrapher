@@ -322,7 +322,7 @@ pub fn explain_error(e: &str) -> String {
 }
 
 #[cfg(feature = "capture")]
-pub use device::{find, host, list, open, open_input, record};
+pub use device::{find, host, list, open, open_input, play, record, Playback};
 
 #[cfg(feature = "capture")]
 mod device {
@@ -550,6 +550,122 @@ mod device {
             },
             rec,
         ))
+    }
+
+    /// Sound playing on the default output. Dropping it stops the sound.
+    pub struct Playback {
+        /// Samples of the source played so far.
+        played: Arc<std::sync::atomic::AtomicUsize>,
+        len: usize,
+        rate: u32,
+        _stream: cpal::Stream,
+    }
+
+    impl Playback {
+        /// How far through the sound it has played, seconds.
+        pub fn position_s(&self) -> f64 {
+            self.played.load(Ordering::Relaxed).min(self.len) as f64 / self.rate as f64
+        }
+
+        pub fn finished(&self) -> bool {
+            self.played.load(Ordering::Relaxed) >= self.len
+        }
+    }
+
+    /// Play mono `samples` at `rate` on the default output, on every channel,
+    /// resampled if the output can't run at `rate`.
+    pub fn play(samples: Arc<Vec<f32>>, rate: u32) -> Result<Playback, String> {
+        let dev = cpal::default_host()
+            .default_output_device()
+            .ok_or("no sound output found")?;
+        let supported = dev
+            .supported_output_configs()
+            .map_err(|e| e.to_string())?
+            .filter(|c| c.min_sample_rate() <= rate && rate <= c.max_sample_rate())
+            .max_by_key(|c| (c.sample_format() == SampleFormat::F32, c.channels() <= 2))
+            .map(|c| c.with_sample_rate(rate));
+        let supported = match supported {
+            Some(c) => c,
+            None => dev.default_output_config().map_err(|e| e.to_string())?,
+        };
+        let config: cpal::StreamConfig = supported.config();
+        let played = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let feed = Feed {
+            samples: samples.clone(),
+            pos: 0.0,
+            step: rate as f64 / config.sample_rate as f64,
+            channels: config.channels.max(1) as usize,
+            played: played.clone(),
+        };
+        let stream = match supported.sample_format() {
+            SampleFormat::F32 => build_output::<f32>(&dev, &config, feed),
+            SampleFormat::I16 => build_output::<i16>(&dev, &config, feed),
+            SampleFormat::U16 => build_output::<u16>(&dev, &config, feed),
+            SampleFormat::I32 => build_output::<i32>(&dev, &config, feed),
+            SampleFormat::F64 => build_output::<f64>(&dev, &config, feed),
+            other => return Err(format!("unsupported output format {other}")),
+        }
+        .map_err(|e| e.to_string())?;
+        stream.play().map_err(|e| e.to_string())?;
+        Ok(Playback {
+            played,
+            len: samples.len(),
+            rate,
+            _stream: stream,
+        })
+    }
+
+    /// The source as the output callback reads it.
+    struct Feed {
+        samples: Arc<Vec<f32>>,
+        /// Position in source samples.
+        pos: f64,
+        /// Source samples per output frame.
+        step: f64,
+        channels: usize,
+        played: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl Feed {
+        fn next(&mut self) -> f32 {
+            let i = self.pos as usize;
+            let s = match (self.samples.get(i), self.samples.get(i + 1)) {
+                (Some(&a), Some(&b)) => {
+                    let f = (self.pos - i as f64) as f32;
+                    a + (b - a) * f
+                }
+                (Some(&a), None) => a,
+                _ => 0.0,
+            };
+            self.pos += self.step;
+            s
+        }
+    }
+
+    fn build_output<T>(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        mut feed: Feed,
+    ) -> Result<cpal::Stream, cpal::BuildStreamError>
+    where
+        T: SizedSample + FromSample<f32>,
+    {
+        device.build_output_stream(
+            config,
+            move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                let ch = feed.channels;
+                for frame in data.chunks_mut(ch) {
+                    let s = T::from_sample(feed.next());
+                    frame.iter_mut().for_each(|o| *o = s);
+                }
+                feed.played.store(
+                    (feed.pos as usize).min(feed.samples.len()),
+                    Ordering::Relaxed,
+                );
+            },
+            |_| {},
+            None,
+        )
     }
 
     fn build<T>(

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/timegrapher-core", "crates/timegrapher-cli", "crates/timegrapher-app"]
+members = ["crates/timegrapher-core", "crates/timegrapher-cli", "crates/timegrapher-app", "crates/timegrapher-mcp"]
 
 [workspace.package]
 version = "0.1.0"
