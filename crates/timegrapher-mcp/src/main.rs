@@ -8,6 +8,7 @@ mod cli;
 mod guidance;
 mod live;
 mod progress;
+mod summary;
 mod takes;
 mod tools;
 mod views;
@@ -144,19 +145,25 @@ async fn call(
     let mut doc = doc;
     let series_charts =
         (tool.name == "check_steadiness").then(|| views::take_series_charts(&mut doc));
-    // The text block carries the same document for chat apps that show the
-    // model only text; warnings from stderr ride along after it.
+    // The text blocks carry, first, a lead in plain words (the readings
+    // with how sure each is, what limits them, notes), so a model reads
+    // that before the numbers; then the same document as the structured
+    // content, for chat apps that show the model only text, with any
+    // warnings from stderr after it.
+    let mut lead: Vec<String> = summary::lead(&doc).into_iter().collect();
+    lead.extend(tools::notes(tool).into_iter().map(|n| format!("Note: {n}")));
     let mut text = serde_json::to_string(&doc).unwrap_or_default();
     if !out.stderr.is_empty() {
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
-    for note in tools::notes(tool, &doc) {
-        text.push_str("\n\nNote: ");
-        text.push_str(&note);
+    let mut content = Vec::new();
+    if !lead.is_empty() {
+        content.push(json!({ "type": "text", "text": lead.join("\n\n") }));
     }
+    content.push(json!({ "type": "text", "text": text }));
     let mut result = json!({
-        "content": [{ "type": "text", "text": text }],
+        "content": content,
         "structuredContent": doc,
     });
     if recording_view {

@@ -327,8 +327,9 @@ fn a_chat_app_reads_a_watch() {
     assert_eq!(doc["watch_heard"], true);
     let rate = doc["overall"]["rate_s_per_day"].as_f64().unwrap();
     assert!((rate - 6.0).abs() < 1.0, "rate {rate}");
+    // The lead in plain words comes first, then the same document as text.
     let text: Value = serde_json::from_str(
-        r["content"][0]["text"]
+        r["content"][1]["text"]
             .as_str()
             .unwrap()
             .split("\n\n")
@@ -353,7 +354,9 @@ fn a_chat_app_reads_a_watch() {
         .find(|l| l["text"].as_str().unwrap().contains("lift angle of 52°"))
         .expect("the assumed lift angle");
     let said = r["content"][0]["text"].as_str().unwrap();
-    assert!(said.contains(&format!("Note: {}", lift["text"].as_str().unwrap())));
+    assert!(said.starts_with("Readings: rate +"), "{said}");
+    assert!(said.contains("confidence)"), "{said}");
+    assert!(said.contains(&format!("- {}", lift["text"].as_str().unwrap())));
 
     let r = c.call(
         "run_session",
@@ -365,6 +368,9 @@ fn a_chat_app_reads_a_watch() {
         r["structuredContent"]["readings"].as_array().unwrap().len(),
         3
     );
+    let said = r["content"][0]["text"].as_str().unwrap();
+    assert!(said.starts_with("Readings by position:"), "{said}");
+    assert!(said.contains("(dvh_amplitude)"), "{said}");
 
     let r = c.call("check_recording", json!({ "recording": path(&take) }));
     assert_eq!(r["structuredContent"]["schema"], "timegrapher.doctor/1");
