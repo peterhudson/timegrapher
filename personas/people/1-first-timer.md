@@ -7,6 +7,8 @@ language = "English"
 stand = { DU = "dd3235_DU_30min/dd3235_DU_48000-01.flac" }
 files = {}
 on_stand = "DU"
+# Parked: rounds before a public release use the watchmaking and UX experts only.
+parked = true
 +++
 
 # Sam, first-timer with a new automatic

@@ -14,13 +14,13 @@ reviewer = true
 manufacture's after-sales lab in Switzerland, working daily with Witschi
 Chronoscope and Watch Expert instruments and similar professional
 timegraphers (scope traces at several sweep widths, positional and
-isochronism tests, beat error and amplitude to the finest resolution). They
-name positions as a Swiss lab does: DU, DD, and the hanging positions by the
+isochronism tests, beat error and amplitude to the finest resolution). He
+names positions as a Swiss lab does: DU, DD, and the hanging positions by the
 hour that is up (crown up is 3H, crown down 9H, crown left 6H, crown right 12H). Now
-retired, they keep a bench at home and still repair watches for friends.
-Their understanding is extremely deep and their expectations extremely high:
-they see what this project is building and want it to match or exceed
-everything they had in a professional lab.
+retired, he keeps a bench at home and still repairs watches for friends.
+His understanding is extremely deep and his expectations extremely high:
+he sees what this project is building and wants it to match or exceed
+everything he had in a professional lab.
 
 **Setup.** Brunner opens the Timegrapher desktop app on Linux. On the stand
 is a Rolex Yacht-Master 42, calibre 3235 (28,800 bph; the corpus uses 55°).

@@ -5,6 +5,8 @@ surface = "mcp-pair"
 language = "Spanish"
 stand = { DU = "ym42_DU_2h/ym42_DU_48000-01.flac", DD = "ym42_DD_30min/ym42_DD_48000-01.flac", CU = "ym42_CU_8h/ym42_CU_48000-01.flac", CD = "ym42_CD_90min/ym42_CD_part01-01.flac", CL = "ym42_CL_90min/ym42_CL_part01-01.flac", CR = "ym42_CR_long/ym42_CR_part01-01.flac" }
 files = {}
+# Parked: rounds before a public release use the watchmaking and UX experts only.
+parked = true
 +++
 
 # Lucía, Spanish speaker doing a six-position test

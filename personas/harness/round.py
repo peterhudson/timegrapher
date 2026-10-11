@@ -88,18 +88,20 @@ def setup(args):
     commit = commit.group(1) if commit else args.build
     log("setup", f"build: {version}")
 
-    # The watchmaker skill as it was at the build's commit, for the CLI helpers.
+    # The watchmaker skill and the docs as they were at the build's commit, for the CLI helpers
+    # and the agent-interface tester.
     skill = os.path.join(work, "skill")
     shutil.rmtree(skill, ignore_errors=True)
     os.makedirs(skill)
     try:
         subprocess.run(["git", "-C", REPO, "fetch", "-q", "origin", commit], capture_output=True)
-        tar = subprocess.run(["git", "-C", REPO, "archive", commit, "skills/watchmaker"],
+        tar = subprocess.run(["git", "-C", REPO, "archive", commit, "skills/watchmaker", "docs"],
                              check=True, capture_output=True).stdout
         subprocess.run(["tar", "x", "-C", skill], input=tar, check=True)
     except subprocess.CalledProcessError:
         log("setup", f"could not read the skill at {commit}; using this checkout's")
         shutil.copytree(os.path.join(REPO, "skills"), os.path.join(skill, "skills"), dirs_exist_ok=True)
+        shutil.copytree(os.path.join(REPO, "docs"), os.path.join(skill, "docs"), dirs_exist_ok=True)
 
     corpus = os.path.join(work, "corpus")
     if os.path.isdir(corpus):
@@ -309,6 +311,8 @@ class Persona:
         try:
             if self.p["surface"] == "app":
                 notes, check, transcript = self.run_app(), None, None
+            elif self.p["surface"] == "agent-interfaces":
+                notes, check, transcript = self.run_interfaces(), None, None
             else:
                 transcript, notes = self.run_pair()
                 check = self.review(transcript)
@@ -354,25 +358,69 @@ class Persona:
             actions += count_actions(events)
         return notes
 
+    def mcp_config(self):
+        mcp = os.path.join(self.dir, "mcp.json")
+        with open(mcp, "w") as f:
+            server = [os.path.join(self.build, "timegrapher-mcp")]
+            if self.shim:
+                server.insert(0, os.path.join(HERE, "mcp-shim.py"))
+            json.dump({"mcpServers": {"timegrapher": {
+                "command": server[0], "args": server[1:],
+                "env": {"TIMEGRAPHER_CLI": os.path.join(self.build, "timegrapher"), **self.env}}}}, f)
+        return mcp
+
+    def install_skill(self):
+        skills = os.path.join(self.home, ".claude", "skills")
+        os.makedirs(skills, exist_ok=True)
+        shutil.copytree(os.path.join(self.work, "skill", "skills", "watchmaker"),
+                        os.path.join(skills, "watchmaker"), dirs_exist_ok=True)
+
+    def run_interfaces(self):
+        """An agent-tooling expert works the CLI and the MCP server directly, with the docs at hand."""
+        docs = os.path.join(self.home, "timegrapher-docs")
+        shutil.copytree(os.path.join(self.work, "skill", "docs"), docs, dirs_exist_ok=True)
+        self.install_skill()
+        files = ", ".join(self.p.get("files", {})) or "none"
+        positions = " ".join(self.p.get("stand", {})) or "none (no stand)"
+        budget = self.p.get("budget", 80)
+        min_actions = self.p.get("min_actions", MIN_ACTIONS)
+        report_format = prompt("report-format").replace(
+            "Ten notes at most", f"{self.p.get('notes', 10)} notes at most")
+        system = (prompt("interface-tester")
+                  .replace("{stand}", os.path.join(HERE, "stand.sh"))
+                  .replace("{positions}", positions).replace("{files}", files)
+                  .replace("{home}", self.home).replace("{docs}", docs)
+                  .replace("{skill}", os.path.join(self.home, ".claude", "skills", "watchmaker"))
+                  .replace("{budget}", str(budget)).replace("{report_format}", report_format)
+                  + self.p["dossier"])
+        tools = ["Bash", "Read", "Glob", "Grep"]
+        kw = dict(tools=tools, allowed=tools + ["mcp__timegrapher"], mcp=self.mcp_config(),
+                  extra_env={"PATH": self.build + os.pathsep + os.environ["PATH"]}, timeout=3 * 3600)
+        notes, events, sess = self.claude("Begin.", system, "tester", **kw)
+        actions = count_interface_actions(events)
+        for _ in range(3 + min_actions // 80):
+            if actions >= min_actions:
+                break
+            log(self.id, f"stopped after {actions} actions; sending back")
+            notes, events, sess = self.claude(
+                f"You stopped after {actions} calls to the program and its tools; your plan was a full pass. "
+                "Keep going: everything in your dossier you did not do yet, and anything your notes say you "
+                "skipped. Then write your complete notes again, including the earlier ones that still stand.",
+                system, "tester", resume=sess, **kw)
+            actions += count_interface_actions(events)
+        with open(os.path.join(self.out, f"{self.id}-session.md"), "w") as f:
+            f.write("\n".join([f"# {self.p['name']}'s calls to the CLI and the MCP server", ""]
+                              + tool_lines(read_events(os.path.join(self.dir, "tester.jsonl")))))
+        return notes
+
     def run_pair(self):
         surface = self.p["surface"]
         today = datetime.date.today().isoformat()
         if surface == "mcp-pair":
-            mcp = os.path.join(self.dir, "mcp.json")
-            with open(mcp, "w") as f:
-                server = [os.path.join(self.build, "timegrapher-mcp")]
-                if self.shim:
-                    server.insert(0, os.path.join(HERE, "mcp-shim.py"))
-                json.dump({"mcpServers": {"timegrapher": {
-                    "command": server[0], "args": server[1:],
-                    "env": {"TIMEGRAPHER_CLI": os.path.join(self.build, "timegrapher"), **self.env}}}}, f)
             helper = dict(system=prompt("helper-mcp").format(home=self.home, date=today),
-                          mcp=mcp, allowed=["mcp__timegrapher"])
+                          mcp=self.mcp_config(), allowed=["mcp__timegrapher"])
         else:
-            skills = os.path.join(self.home, ".claude", "skills")
-            os.makedirs(skills, exist_ok=True)
-            shutil.copytree(os.path.join(self.work, "skill", "skills", "watchmaker"),
-                            os.path.join(skills, "watchmaker"), dirs_exist_ok=True)
+            self.install_skill()
             tools = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill"]
             helper = dict(system=None, tools=tools, allowed=tools, settings="user",
                           extra_env={"PATH": self.build + os.pathsep + os.environ["PATH"]})
@@ -423,14 +471,17 @@ class Persona:
     def write_report(self, notes, check, transcript, seconds):
         b = json.load(open(os.path.join(self.work, "build.json")))
         surface = {"app": "the desktop app", "mcp-pair": "the MCP server, with an AI helper",
+                   "agent-interfaces": "the command line, the MCP server and the skill, used directly",
                    "cli-pair": "the command line and watchmaker skill, with an AI helper"}[self.p["surface"]]
         head = [f"# {self.p['name']}: {self.p['dossier'].splitlines()[0].lstrip('# ').split(', ', 1)[-1]}", "",
                 f"Build {b['version']} ({b['build']}). Surface: {surface}. "
                 f"{seconds / 60:.0f} min, ${self.cost:.2f}."
                 + (" The MCP server ran behind mcp-shim.py (protocol 2026-07-28 hidden)."
-                   if self.shim and self.p["surface"] == "mcp-pair" else ""), ""]
+                   if self.shim and self.p["surface"] in ("mcp-pair", "agent-interfaces") else ""), ""]
         if transcript:
             head += [f"The whole conversation: [{self.id}-conversation.md]({self.id}-conversation.md).", ""]
+        if self.p["surface"] == "agent-interfaces":
+            head += [f"Every call and what came back: [{self.id}-session.md]({self.id}-session.md).", ""]
         body = ["## Notes", "", notes.strip(), ""]
         if check:
             body += ["## Watchmaker's check", "", check.strip(), ""]
@@ -450,6 +501,29 @@ def count_actions(events):
                     cmd = c.get("input", {}).get("command", "")
                     n += len(re.findall(r"(?:app|stand)\.sh\s+\w+", cmd))
     return n
+
+
+def count_interface_actions(events):
+    """Calls to the MCP server's tools, and commands running the CLI or the stand."""
+    n = 0
+    for e in events:
+        message = e.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if e.get("type") == "assistant" and isinstance(content, list):
+            for c in content:
+                if c.get("type") != "tool_use":
+                    continue
+                if c.get("name", "").startswith("mcp__timegrapher"):
+                    n += 1
+                elif c.get("name") == "Bash":
+                    cmd = c.get("input", {}).get("command", "")
+                    n += len(re.findall(r"\btimegrapher\b(?!-docs)|stand\.sh\s+\w+", cmd))
+    return n
+
+
+def read_events(path):
+    with open(path) as f:
+        return [json.loads(l) for l in f if l.startswith("{")]
 
 
 def tool_lines(events):
@@ -480,7 +554,9 @@ def run(args):
     work = os.path.abspath(args.work)
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
-    chosen = [p for p in personas() if not args.only or p["id"] in args.only]
+    # Parked personas sit out unless named with --only.
+    chosen = [p for p in personas()
+              if (p["id"] in args.only if args.only else not p.get("parked"))]
     if args.notes:
         # What changed since the last round: every persona has read it, and the triage checks it was covered.
         with open(args.notes) as f:
@@ -527,7 +603,7 @@ def main():
     s.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r = sub.add_parser("run")
     r.add_argument("--out", required=True, help="where the reports go, e.g. /mnt/project-files/testing/2026-10-11")
-    r.add_argument("--only", nargs="*", help="persona ids (default: all)")
+    r.add_argument("--only", nargs="*", help="persona ids (default: every persona not parked)")
     r.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r.add_argument("--model", help="model for every agent (default: claude's default)")
     r.add_argument("--no-triage", action="store_true")
