@@ -1,16 +1,23 @@
-//! The plain-words lead of a result: the readings with how sure each one
-//! is, what limits them, and, for a multi-position test, the
+//! The plain-words lead of a result: the readings with their standard
+//! errors, what limits them, and, for a multi-position test, the
 //! characteristic values with what each one compares. It comes before the
-//! JSON, so a model reads it first and does not have to find the
-//! confidence and the caveats in the document, or guess which amplitude
-//! difference is which.
+//! JSON, so a model reads it first and does not have to find the caveats
+//! in the document, or guess which amplitude difference is which. Facts
+//! only: no grades or verdicts.
 
 use serde_json::Value;
 
-fn grade(c: &Value) -> String {
-    c["grade"]
-        .as_str()
-        .map_or(String::new(), |g| format!(" ({g} confidence)"))
+/// " ± se" from a confidence entry, to at least `digits` decimals and
+/// enough to show a figure that is not zero.
+fn pm(c: &Value, digits: usize) -> String {
+    let Some(se) = c["se"].as_f64().filter(|v| v.is_finite() && *v > 0.0) else {
+        return String::new();
+    };
+    let mut d = digits;
+    while d < 3 && (se * 10f64.powi(d as i32)).round() == 0.0 {
+        d += 1;
+    }
+    format!(" ± {se:.d$}")
 }
 
 fn signed(v: f64, digits: usize) -> String {
@@ -18,19 +25,19 @@ fn signed(v: f64, digits: usize) -> String {
 }
 
 /// One reading: rate, amplitude and beat error (as a size), each with its
-/// grade.
+/// standard error where the document gives one.
 fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
     let conf = &m["confidence"];
     let mut parts = Vec::new();
     if let Some(r) = rate {
         parts.push(format!(
-            "rate {} s/day{}",
+            "rate {}{} s/day",
             signed(r, 1),
-            grade(&conf["rate"])
+            pm(&conf["rate"], 1)
         ));
     }
     if let Some(a) = m["amplitude_deg"].as_f64() {
-        parts.push(format!("amplitude {a:.0}°{}", grade(&conf["amplitude"])));
+        parts.push(format!("amplitude {a:.0}{}°", pm(&conf["amplitude"], 0)));
     }
     let be = m["beat_error_unlock_ms"]
         .as_f64()
@@ -38,9 +45,9 @@ fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
         .or(m["overall"]["beat_error_ms"].as_f64());
     if let Some(b) = be {
         parts.push(format!(
-            "beat error {:.2} ms{}",
+            "beat error {:.2}{} ms",
             b.abs(),
-            grade(&conf["beat_error"])
+            pm(&conf["beat_error"], 2)
         ));
     }
     (!parts.is_empty()).then(|| parts.join(", "))
@@ -169,7 +176,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_recording_leads_with_its_readings_and_their_grades() {
+    fn a_recording_leads_with_its_readings_and_no_grades() {
         let doc = json!({
             "schema": "timegrapher.analyze/1",
             "watch_heard": true,
@@ -177,18 +184,21 @@ mod tests {
             "amplitude_deg": 269.6,
             "beat_error_unlock_ms": -0.4,
             "input": { "settings": { "lift_deg": 52.0 } },
-            "confidence": { "rate": { "grade": "poor" }, "amplitude": { "grade": "fair" },
-                            "beat_error": { "grade": "good" } },
+            "confidence": { "rate": { "grade": "poor", "se": null },
+                            "amplitude": { "grade": "fair", "se": 0.042 },
+                            "beat_error": { "grade": "good", "se": 0.004 } },
             "caveats": [{ "code": "lift_unknown" }],
         });
         let s = lead(&doc).unwrap();
         assert!(
             s.starts_with(
-                "Readings: rate +6.0 s/day (poor confidence), amplitude 270° (fair confidence), \
-             beat error 0.40 ms (good confidence)."
+                "Readings: rate +6.0 s/day, amplitude 270 ± 0.04°, beat error 0.40 ± 0.004 ms."
             ),
             "{s}"
         );
+        for word in ["confidence", "poor", "fair", "good", "sure"] {
+            assert!(!s.contains(word), "{word}: {s}");
+        }
         assert!(
             s.contains("What limits these readings:\n- No calibre or lift angle"),
             "{s}"

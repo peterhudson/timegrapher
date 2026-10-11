@@ -65,6 +65,47 @@ pub fn sentence(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     })
 }
 
+/// One caveat as a plain fact, with no judgement of the readings: what the
+/// result leads with for the model. `None` for a code this server does not
+/// know yet.
+pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
+    let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
+    Some(match c["code"].as_str()? {
+        "no_watch" => "No watch was heard, so there are no readings.".into(),
+        "set_rate_disagrees" => match c["heard"].as_u64() {
+            Some(h) => format!(
+                "The beat rate set for this watch differs from the one heard ({h} beats \
+                 per hour)."
+            ),
+            None => "The beat rate set for this watch differs from the one heard.".into(),
+        },
+        "short_span" => match c["span_s"].as_f64() {
+            Some(s) => format!("The beats heard span {s:.0} s."),
+            None => "The beats heard span only a few seconds.".into(),
+        },
+        "clipped" => match pct("fraction") {
+            Some(p) => format!("{p:.0}% of the beats were clipped."),
+            None => "Some of the beats were clipped.".into(),
+        },
+        "beats_missing" => match pct("fraction") {
+            Some(p) => format!("{p:.0}% of the beats expected were found."),
+            None => "Some of the beats expected were not found.".into(),
+        },
+        "lift_unknown" => match lift_deg {
+            Some(l) => format!(
+                "No calibre or lift angle was given, so the amplitude assumes a lift \
+                 angle of {l}°; the amplitude depends on the lift angle."
+            ),
+            None => "The lift angle is a default, not the calibre's; the amplitude \
+                     depends on the lift angle."
+                .into(),
+        },
+        "clock_unknown" => "The sound card's clock was not checked against a reference.".into(),
+        "breaks" => return sentence(c, lift_deg),
+        _ => return None,
+    })
+}
+
 /// A session reading's name: its position, and its state of wind when the
 /// session has more than one.
 fn reading_name(r: &Value) -> String {
@@ -89,6 +130,10 @@ fn reading_name(r: &Value) -> String {
 /// about, or is null for a single recording (or every position). Empty for
 /// any other document.
 pub fn limits(doc: &Value) -> Vec<Value> {
+    limits_in(doc, sentence)
+}
+
+fn limits_in(doc: &Value, sentence: fn(&Value, Option<f64>) -> Option<String>) -> Vec<Value> {
     let schema = doc["schema"].as_str().unwrap_or("");
     let lift = doc["input"]["settings"]["lift_deg"]
         .as_f64()
@@ -152,9 +197,10 @@ fn join(names: &[String]) -> String {
     }
 }
 
-/// The same, as notes for the model.
+/// The caveats as plain facts for the model, grouped as `limits` groups
+/// them.
 pub fn notes(doc: &Value) -> Vec<String> {
-    limits(doc)
+    limits_in(doc, fact)
         .into_iter()
         .map(|l| match l["where"].as_str() {
             Some(w) => format!("{w}: {}", l["text"].as_str().unwrap_or("")),
@@ -180,7 +226,7 @@ mod tests {
         });
         let said = notes(&doc);
         assert_eq!(said.len(), 2, "{said:?}");
-        assert!(said[0].starts_with("Only 6 s of beats"), "{said:?}");
+        assert_eq!(said[0], "The beats heard span 6 s.", "{said:?}");
         assert!(said[1].contains("lift angle of 52°"), "{said:?}");
     }
 
@@ -222,7 +268,7 @@ mod tests {
         let said = notes(&doc);
         assert_eq!(said.len(), 1, "{said:?}");
         assert!(
-            said[0].starts_with("Dial Down: No watch was heard") && said[0].contains("Only 3 s"),
+            said[0].starts_with("Dial Down: No watch was heard") && said[0].contains("span 3 s"),
             "{said:?}"
         );
     }
