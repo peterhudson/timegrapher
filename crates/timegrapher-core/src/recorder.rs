@@ -51,6 +51,11 @@ struct SessionFile<'a> {
     result: Option<&'a serde_json::Value>,
 }
 
+/// Seconds after the watch is put in a new position that are left out of
+/// its readings while it settles (the hand leaving the stand, the balance
+/// steadying). The sound is still kept.
+pub const SETTLE_S: f64 = 10.0;
+
 const SEGMENT_S: u64 = 3600;
 const CLOCK_EVERY_S: f64 = 10.0;
 

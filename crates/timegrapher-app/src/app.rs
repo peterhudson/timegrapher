@@ -4692,8 +4692,7 @@ impl TimegrapherApp {
     }
 
     /// How often each value of a reading came up, over the session or the
-    /// strip's length: bars with a smooth density curve over them, or the
-    /// cumulative share.
+    /// strip's length: bars, or the cumulative share.
     fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
