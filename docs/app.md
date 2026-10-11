@@ -97,24 +97,21 @@ rises with noise or a muffled sound as well as with a watch that runs
 unevenly, so compare it on the same stand and microphone. The **?** on
 each reading explains it at length.
 
-**Confidence.** Each reading's caption ends with its confidence, High,
-Medium or Low, and a meter of three grey dots. It is the grade
-`analyze` reports (`timegrapher_core::confidence`: Good, Fair, Poor),
-shown as confidence and kept grey because it grades the measurement,
-not the watch. The ± sets it: High within 0.5 s/d, 2° or 0.05 ms,
-Medium within 2 s/d, 5° or 0.1 ms. The judgement is the one `analyze`
-and `session` make (`timegrapher_core::measure`), applied to the
-averaging time. The amplitude's and beat error's ± are the standard
-errors of their 2 s windows in the averaging time. The rate's ± comes
-from the scatter of 10 s windows over the run so far (back to a pause or
-a move, up to five minutes), scaled to the averaging time, so a 10 s
-figure is graded as a 10 s figure; it needs about 30 s of unbroken beats,
-and until then the rate is Low. Under 10 s of beats every reading is Low.
-Things the ± can't show lower a grade one step each: fewer than 95% of the beats
-the beat rate expects (all three), more than 1% of beats clipped
-(amplitude and beat error), the default 52° lift angle with no calibre
-picked (amplitude) and an input whose clock hasn't been measured (rate).
-Hovering on the confidence says which applied. When the beats found scatter
+**What limits a reading.** Each figure carries its ±, worked out as
+`analyze` and `session` work out theirs (`timegrapher_core::measure`),
+over the averaging time: it says how far the figure could be off, not
+how steady the watch is. The amplitude's and beat error's ± are the
+standard errors of their 2 s windows in the averaging time. The rate's ±
+comes from the scatter of 10 s windows over the run so far (back to a
+pause or a move, up to five minutes), scaled to the averaging time; it
+needs about 30 s of unbroken beats. What the ± can't show is named, as a
+plain fact, at the right of the reading's caption, with a sentence on
+hover: the beats spanning under 10 s, the share of expected beats found
+when under 95%, the share of beats clipped when over 1% (amplitude and
+beat error), the lift angle assumed when no calibre or lift angle is set
+(amplitude), an input whose clock hasn't been measured (rate), a beat
+rate set that differs from the one heard, and pauses in the stretch. No
+reading is graded. When the beats found scatter
 like noise rather than a watch's ticks (`beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No watch heard**.
 
@@ -128,7 +125,7 @@ recording while listening) and analyses it as `analyze` does, in the
 background: every 30 s while listening, and when the moment shown moves.
 Hovering on a fault shows the measures behind it. Nothing shows when
 nothing is seen, or when the sound can't be judged (no watch heard,
-clipping, or readings too unsteady for Medium confidence). A finding is worth
+clipping, or readings too scattered to read the shape). A finding is worth
 checking on the bench, not a diagnosis; see
 [fault-signatures.md](fault-signatures.md).
 
