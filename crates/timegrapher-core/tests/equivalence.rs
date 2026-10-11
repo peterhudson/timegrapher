@@ -15,6 +15,7 @@ use timegrapher_core::audio::{load, write_wav, Audio};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
+use timegrapher_core::measure::Caveat;
 use timegrapher_core::periodicity::standard_wheels;
 use timegrapher_core::session::{self, Measurement};
 use timegrapher_core::stream::{analyze_file, BeatLog, StreamConfig};
@@ -151,13 +152,22 @@ fn analyze_and_session_agree_on_a_whole_file() {
     let a = watch(7);
     let path = on_disk(&a, "t1");
     let s = analyze(&a, &AnalysisConfig::default()).summary;
-    let m = whole(&stream(&path, 47.0));
+    let mut m = whole(&stream(&path, 47.0));
     std::fs::remove_file(&path).ok();
     assert_none("analyze against session", analyze_vs_session(&s, &m));
+    // The same judgement too: the clock is unknown to both, and session
+    // takes the lift angle as known unless told.
+    if !AnalysisConfig::default().lift_known {
+        m.lift_unknown();
+    }
+    assert_eq!(s.caveats, m.caveats);
+    let grades = |c: &Option<timegrapher_core::confidence::Confidence>| {
+        c.map(|c| (c.rate.grade, c.amplitude.grade, c.beat_error.grade))
+    };
+    assert_eq!(grades(&s.confidence), grades(&m.confidence));
 }
 
 #[test]
-#[ignore = "gap 1: on real takes analyze and session disagree (ETA holder amplitude 332° against 321°; YM42 dial down beat error from the drop 0.89 against -0.19 ms, analyze finding 47 fewer beats)"]
 fn analyze_and_session_agree_on_real_takes() {
     for path in corpus_files() {
         let a = load(&path).unwrap();
@@ -352,6 +362,8 @@ fn an_empty_stand_gives_no_readings() {
     assert!(!s.watch_heard && s.overall.is_none() && s.amplitude_deg.is_none());
     let m = whole(&log);
     assert!(!m.watch_heard && m.rate_s_per_day.is_none() && m.amplitude_deg.is_none());
+    assert!(s.caveats.contains(&Caveat::NoWatch) && m.caveats.contains(&Caveat::NoWatch));
+    assert!(s.confidence.is_none() && m.confidence.is_none());
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(r.rate_s_per_day.is_none() && r.amplitude_deg.is_none());
 }
@@ -390,7 +402,10 @@ fn clipping_warns_in_every_pipeline() {
     std::fs::remove_file(&path).ok();
     let s = analyze(&a, &AnalysisConfig::default()).summary;
     assert!(s.doubts.clipped, "analyze: {:?}", s.clipping);
-    assert!(whole(&log).clipping_warns(), "session");
+    let m = whole(&log);
+    assert!(m.clipping_warns(), "session");
+    let named = |c: &[Caveat]| c.iter().any(|c| matches!(c, Caveat::Clipped { .. }));
+    assert!(named(&s.caveats) && named(&m.caveats));
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(r.clipping_warns(), "live: {:?}", r.clipped_fraction);
 }

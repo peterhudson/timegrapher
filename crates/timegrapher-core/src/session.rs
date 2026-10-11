@@ -356,9 +356,46 @@ pub struct Measurement {
     /// the loudest part of a tick, which can move amplitude and beat error.
     pub clipped_beats: usize,
     pub clipped_fraction: f64,
+    /// A ± and a grade for rate, amplitude and beat error, judged as
+    /// `analyze` judges them (see [`crate::measure`]); `None` when no
+    /// watch is heard.
+    pub confidence: Option<crate::confidence::Confidence>,
+    /// What limits how far the readings can be trusted.
+    pub caveats: Vec<crate::measure::Caveat>,
 }
 
 impl Measurement {
+    /// The lift angle was a default, not the calibre's: amplitude is
+    /// graded one step lower and the caveat named, as `analyze` does.
+    /// [`measure`] takes the lift angle as known.
+    pub fn lift_unknown(&mut self) {
+        use crate::measure::Caveat;
+        if self.caveats.contains(&Caveat::LiftUnknown) {
+            return;
+        }
+        crate::measure::add(&mut self.caveats, Caveat::LiftUnknown);
+        let poor = self.caveats.iter().any(|c| {
+            matches!(
+                c,
+                Caveat::SetRateDisagrees { .. } | Caveat::ShortSpan { .. }
+            )
+        });
+        let d = crate::confidence::Doubts {
+            clipped: self.clipping_warns(),
+            beats_missing: self
+                .caveats
+                .iter()
+                .any(|c| matches!(c, Caveat::BeatsMissing { .. })),
+            lift_unknown: true,
+            clock_unknown: !self.calibrated,
+        };
+        if let Some(c) = &mut self.confidence {
+            if !poor {
+                c.amplitude = crate::confidence::amplitude(c.amplitude.se, d);
+            }
+        }
+    }
+
     /// The beat error the report judges: from the unlock where it was
     /// found, else from the drop. Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
@@ -515,7 +552,29 @@ pub fn measure_with_breaks(
         } else {
             clipped as f64 / beats.len() as f64
         },
+        confidence: None,
+        caveats: Vec::new(),
     };
+    let a = crate::measure::assess(
+        &windows,
+        &amp,
+        &crate::measure::Context {
+            watch_heard: m.watch_heard,
+            bph_heard: None,
+            lift_known: true,
+            clock_known: m.calibrated,
+            beats: beats.len(),
+            expected,
+            clipped_fraction: m.clipped_fraction,
+            span_s: match (beats.first(), beats.last()) {
+                (Some(a), Some(b)) => b.time - a.time - gaps,
+                _ => 0.0,
+            },
+            breaks: m.breaks.len(),
+        },
+    );
+    m.confidence = a.confidence;
+    m.caveats = a.caveats;
     if !m.watch_heard {
         m.rate_s_per_day = None;
         m.beat_error_ms = None;

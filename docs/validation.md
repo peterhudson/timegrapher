@@ -25,6 +25,25 @@ tests show the arithmetic is right, not that real recordings will be easy.
 engine change moves a reading away from tg on the same file; CI runs it
 on every pull request. See [regress](regress.md).
 
+## One beat pipeline
+
+Every reading of a recording rests on the same beats: the chunked stream
+(47 s chunks, 1 s margins) that `session`, `long`, `series` and `regress`
+read files through, and since 2026-10-11 `analyze` too, which before then
+found its beats with one template over the whole file. The two had drifted
+apart on real takes: on the Yacht-Master dial down `analyze` lost 47 beats
+of the first file and read the beat error from the drop as +0.89 ms against
+`session`'s −0.19 ms, and on the ETA 2824 in its holder it read 332° against
+321°. regress checks the stream's readings against tg, so those are the ones
+kept. `crates/timegrapher-core/tests/equivalence.rs` holds the pipelines to
+one another (and records where the live screen still differs).
+
+Each chunk times its beats against the template it has at hand, so a beat's
+time depends a little on where the chunk boundaries fall: reading the same
+take in 47, 10 or 3.7 s chunks moves single beats by up to 34 µs (0.03% of
+a 28,800 beat), while the readings agree within the regress margins. The
+chunk length is fixed, so every reading of one file sees the same beats.
+
 ## Against tg on a real recording
 
 Recording: Rolex calibre 3235, dial up, 300 s, 48 kHz 16-bit mono, C-Media
