@@ -27,7 +27,14 @@ the file it heard, so compare it with the file's range, not its median, and
 before calling a difference the program's fault, check it against that
 stretch of the file. The triage marks such notes "check against the file".
 
-Grade amplitude only against Witschi's tolerances, the table the program and
+The software presents facts and grades nothing (project decision, 2026-10-11): the
+app, the command line and the MCP server show measurements with their ±,
+spreads and what was heard. Verdicts, tolerance pass or fail and words like
+Good, Poor or Low Confidence in the program's own output are findings
+against it. Interpretation belongs to the helper and the watchmaker skill,
+and must be sourced.
+
+When interpreting, grade amplitude only against Witschi's tolerances, the table the program and
 the watchmaker skill use (`docs/sessions.md`, "Findings"): fully wound, 260–320°
 dial up or down (horizontal) and 240–280° crown up, down, left or right
 (vertical), with over 330° overbanking. Make no per-calibre amplitude claim

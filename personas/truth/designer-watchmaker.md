@@ -17,8 +17,9 @@ take (recorded on different days).
 All tg, lift 55°, card clock. The takes wander within themselves, so a
 live reading anywhere in the ranges on [tinkerer.md](tinkerer.md) is
 consistent with the file. Positional spread is about 86 s/d and the rate is
-far fast in several positions: the app should make plain that this watch
-needs a watchmaker. Its amplitude is below Witschi's ranges in every
+far fast in several positions. The app should show those facts plainly and
+grade nothing: no verdicts, no pass or fail colours, no confidence words
+(project decision, 2026-10-11). Its amplitude is below Witschi's ranges in every
 position (horizontal 260–320°, vertical 240–280°; see [README.md](README.md)).
 
 `~/Recordings/eta_movement_DU.flac` = corpus `eta2824_holder_DU_30min` file
