@@ -193,12 +193,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Is each series of readings steady? Tests the rate, amplitude and
-    /// beat error of a take in time order for independence
-    /// (autocorrelation, Allan deviation, CUSUM, change points), alongside
-    /// the period search and the two-state finder, and gives one verdict
-    /// per series: steady, periodic, two states, measurement, shifting
-    /// mean, drifting or wandering.
+    /// The structure of each series of readings in time order. Tests the
+    /// rate, amplitude and beat error of a take for correlation between
+    /// readings (autocorrelation, Ljung–Box, Allan deviation, CUSUM),
+    /// level changes, a trend, a cycle (period search) and two levels
+    /// (two-state finder), and states what each finds with its statistics.
     Series {
         /// The recording; several files are read as one continuous
         /// recording, in the order given. A folder stands for its WAV and

@@ -110,7 +110,7 @@ fn hash_noise(x: f64) -> f64 {
 }
 
 #[test]
-fn rate_that_moves_with_amplitude_is_named() {
+fn rate_against_amplitude_gives_slope_r_and_p() {
     // Amplitude swings ±10° every 75 s as it falls 20° over 20 minutes,
     // and the rate follows it at 0.5 s/d per degree.
     let amp =
@@ -120,10 +120,12 @@ fn rate_that_moves_with_amplitude_is_named() {
         assert_eq!(s.step_s, 10.0, "{:?}", s.series);
     }
     let x = r.rate_amplitude.as_ref().unwrap();
-    assert!(x.moves_with, "{}", x.headline);
+    assert!(x.r > 0.9 && x.p_value < 0.01, "{}", x.headline);
     assert!((x.s_per_day_per_deg - 0.5).abs() < 0.1, "{}", x.headline);
+    // Always stated as numbers, never as a finding.
+    assert!(x.headline.contains("per degree") && x.headline.contains(" p "));
     assert!(r
         .findings
         .iter()
-        .any(|f| f.code == "rate_moves_with_amplitude"));
+        .all(|f| f.code != "rate_moves_with_amplitude"));
 }
