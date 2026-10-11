@@ -57,8 +57,9 @@ pub struct Summary {
     pub watch_heard: bool,
     /// Fit over the whole recording; its beat error is the drop's.
     pub overall: Option<TimingFit>,
-    /// Signed beat error measured from the unlock, as tg and commercial
-    /// timegraphers measure it: median over the amplitude windows, ms.
+    /// Signed beat error measured from the unlock, the figure checked
+    /// against tg's beat error in regress: median over the amplitude
+    /// windows, ms. Positive means Tick (the run's first beat) comes late.
     pub beat_error_unlock_ms: Option<f64>,
     /// Spread of the windowed rate (5th and 95th percentiles), s/d.
     pub rate_p05: Option<f64>,
