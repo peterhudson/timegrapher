@@ -1213,6 +1213,23 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
             );
         }
     }
+    if !s.faults.is_empty() {
+        println!("Possible faults, from the shape of the Tick and Tock (worth checking, not a diagnosis):");
+        for f in &s.faults {
+            let evidence: Vec<String> = f
+                .evidence
+                .iter()
+                .map(|(k, v)| format!("{} {v:.2}", k.replace('_', " ")))
+                .collect();
+            println!(
+                "  {:<13} {} ({}; {})",
+                f.side.word(),
+                f.label,
+                evidence.join(", "),
+                f.see
+            );
+        }
+    }
 }
 
 fn write_beats(p: &Path, a: &Analysis) -> std::io::Result<()> {

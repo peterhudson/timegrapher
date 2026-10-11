@@ -46,6 +46,18 @@ pub struct ExtraSound {
     pub sound: Sound,
 }
 
+/// Rubbing noise after the drop on one side, as a grazing balance or
+/// hairspring makes.
+#[derive(Debug, Clone, Copy)]
+pub struct Rub {
+    /// On beats with an even (`true`) or odd (`false`) generator count.
+    pub even: bool,
+    /// RMS level relative to the drop's nominal level of 1.
+    pub gain: f64,
+    /// From 1 ms after the drop, seconds.
+    pub length_s: f64,
+}
+
 pub struct SynthConfig {
     pub sample_rate: u32,
     pub duration_s: f64,
@@ -68,9 +80,13 @@ pub struct SynthConfig {
     /// when the two sides' sounds differ in level; `sounds` sets the even
     /// beats' gains, and the odd beats' when this is `None`.
     pub odd_gains: Option<[f64; 3]>,
+    /// Where the impulse sits on beats with an odd generator count, when
+    /// the two sides lock to different depths; `impulse_at` otherwise.
+    pub odd_impulse_at: Option<f64>,
     /// Spread of each sound's level from beat to beat (SD, relative).
     pub gain_jitter: f64,
     pub extra: Option<ExtraSound>,
+    pub rub: Option<Rub>,
 }
 
 impl Default for SynthConfig {
@@ -104,8 +120,10 @@ impl Default for SynthConfig {
             impulse_at: 0.45,
             even_unlock_lead_s: 0.0,
             odd_gains: None,
+            odd_impulse_at: None,
             gain_jitter: 0.08,
             extra: None,
+            rub: None,
         }
     }
 }
@@ -139,9 +157,13 @@ pub fn generate(
         if let Some([g1, g2, g3]) = cfg.odd_gains.filter(|_| k % 2 == 1) {
             (s1.gain, s2.gain, s3.gain) = (g1, g2, g3);
         }
+        let impulse_at = match cfg.odd_impulse_at {
+            Some(a) if k % 2 == 1 => a,
+            _ => cfg.impulse_at,
+        };
         let mut events = vec![
             (drop - tud, s1),
-            (drop - (1.0 - cfg.impulse_at) * tud, s2),
+            (drop - (1.0 - impulse_at) * tud, s2),
             (drop, s3),
         ];
         if let Some(e) = cfg.extra.filter(|e| e.even == (k % 2 == 0)) {
@@ -162,6 +184,14 @@ pub fn generate(
                     * (-tt / tau).exp()
                     * (1.0 - (-tt / 0.00005).exp())
                     * (2.0 * std::f64::consts::PI * fc * tt + ph).sin();
+            }
+        }
+        if let Some(r) = cfg.rub.filter(|r| r.even == (k % 2 == 0)) {
+            let i0 = ((drop + 0.001) * fs).round() as isize;
+            for j in 0..(r.length_s * fs) as isize {
+                if let Some(v) = usize::try_from(i0 + j).ok().and_then(|i| x.get_mut(i)) {
+                    *v += r.gain * rng.normal();
+                }
             }
         }
         let rate = cfg.rate_s_per_day + rate_fn(t);
