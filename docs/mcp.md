@@ -107,8 +107,9 @@ the timegrapher app draws them:
 
 The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
-app, a chart over time leaves out a glitch far from the rest and says how
-many readings are off the scale. Hover over a chart over time to read its
+app, a chart over time is scaled to all but the highest and lowest 2% of
+its readings, so one glitch doesn't flatten it, and says how many are off
+the scale. Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
 as text.

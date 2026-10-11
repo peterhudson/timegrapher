@@ -19,7 +19,7 @@
   --rate: #d70015; --amplitude: #8944ab; --beat-error: #8a6d00;
   --good: #248a3d; --warn: #b25000; --bad: #d70015;
   --unlock: #248a3d; --drop: #5856d6; --peak: #5856d6; --sound: #7f6545;
-  --grid: rgba(0, 0, 0, 0.07); --tolerance: rgba(36, 138, 61, 0.16);
+  --grid: rgba(29, 29, 31, 0.12); --tolerance: rgba(36, 138, 61, 0.16);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -29,7 +29,7 @@
   --rate: #ff453a; --amplitude: #bf5af2; --beat-error: #ffd60a;
   --good: #30d158; --warn: #ffb340; --bad: #ff453a;
   --unlock: #30d158; --drop: #7d7aff; --peak: #7d7aff; --sound: #ac8e68;
-  --grid: rgba(255, 255, 255, 0.07); --tolerance: rgba(48, 209, 88, 0.18);
+  --grid: rgba(245, 245, 247, 0.12); --tolerance: rgba(48, 209, 88, 0.18);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -65,7 +65,7 @@ svg.key { display: inline-block; }
 .side .sum { color: var(--text2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 svg { display: block; max-width: 100%; height: auto; }
 svg text { fill: var(--text2); font-size: 11px; font-variant-numeric: tabular-nums; }
-svg .plot { fill: var(--control); }
+svg .plot { fill: var(--card); stroke: var(--separator); stroke-width: 1; }
 svg .grid { stroke: var(--grid); stroke-width: 1; }
 svg .zero { stroke: var(--text3); stroke-width: 1; }
 svg .tol { fill: var(--tolerance); }
@@ -84,6 +84,7 @@ th:first-child, td:first-child { text-align: left; }
 th { color: var(--text2); font-weight: 500; }
 .out { color: var(--bad); font-weight: 600; }
 .sub.off { margin: 4px 0 0; }
+.hint { color: var(--text2); font-size: 12px; margin: -2px 0 8px; }
 svg text.out { font-weight: 600; }
 .findings { list-style: none; margin: 0; padding: 0; }
 .findings li { padding: 8px 0; border-bottom: 1px solid var(--separator); }
@@ -167,8 +168,8 @@ new ResizeObserver(() => {
 
 // ---- Formatting ---------------------------------------------------------
 
-// Witschi's order, which the CLI's reports follow.
-const ORDER = ["CH", "CB", "9H", "6H", "3H", "12H"];
+// The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
+const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 const POSITIONS = {
   CH: ["DU", "Dial Up"], CB: ["DD", "Dial Down"], "3H": ["CU", "Crown Up"],
   "6H": ["CL", "Crown Left"], "9H": ["CD", "Crown Down"], "12H": ["CR", "Crown Right"],
@@ -185,16 +186,17 @@ function abs(v) { return Number.isFinite(v) ? Math.abs(v) : v; }
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 // `note` is HTML: callers build it from numbers or escape it.
-function tile(label, color, value, unit, note) {
+function tile(label, color, value, unit, note, suffix) {
   return `<div class="tile"><div class="label">${color ? `<span class="swatch" style="background:var(${color})"></span>` : ""}${esc(label)}</div>
-    <div class="value">${value}<span class="unit"> ${esc(unit)}</span></div>${note ? `<div class="note">${note}</div>` : ""}</div>`;
+    <div class="value">${value}${suffix ? esc(suffix) : ""}${unit && unit.length <= 4 ? `<span class="unit">${unit.startsWith("°") ? "" : " "}${esc(unit)}</span>` : ""}</div>${unit && unit.length > 4 ? `<div class="unit">${esc(unit)}</div>` : ""}${note ? `<div class="note">${note}</div>` : ""}</div>`;
 }
 
 // ---- Charts (inline SVG), drawn as the app's plots ------------------------
 //
-// As in the app: each plot sits on the darker control colour inside its card
-// with a grid, the units are on the value axis, time reads m:ss, and nothing
-// is drawn outside the plot (lines are clipped to it).
+// As in the app (/mnt/project-files/app/chart-style.md on the project, and
+// theme.rs): the plot is the card's colour with a faint grid, the units are on
+// the value axis, time reads m:ss, and nothing is drawn outside the plot:
+// marks are clipped to it and values off the scale are counted below it.
 
 // Room for one character of the 11px axis text.
 const CHAR_W = 6.6;
@@ -283,10 +285,8 @@ function lineChart(o) {
   const lo = Math.min(...ys), hi = Math.max(...ys);
   let [y0, y1] = o.yRange || [lo - (hi - lo) * 0.08, hi + (hi - lo) * 0.08];
   if (o.robust && !o.yRange) {
-    // The app's percentile scale, kept only where it leaves out a glitch far
-    // from the rest: a chart in the chat can't be dragged to see more.
     const r = percentileRange(ys);
-    if (r && (lo < r[0] - (r[1] - r[0]) * 0.5 || hi > r[1] + (r[1] - r[0]) * 0.5)) [y0, y1] = r;
+    if (r) [y0, y1] = r;
   }
   if (y1 - y0 < (o.minSpan || 1e-9)) { const m = (y0 + y1) / 2, h = (o.minSpan || 1) / 2; y0 = m - h; y1 = m + h; }
   let [x0, x1] = o.xRange || [Math.min(...xs), Math.max(...xs)];
@@ -341,11 +341,10 @@ function lineChart(o) {
   g += markLabels(o.marks || [], sx, L, L + plotW, T);
   const id = "c" + (++clipCount);
   charts.set(id, { o, sx, x0, x1, L, plotW, W, T, plotH });
-  // Readings off the scale are counted under the chart, as the app's
-  // distributions count theirs.
+  // Values off the scale are counted under the chart.
   let off = 0;
   for (const s of o.series) for (const [, y] of s.points) if (y < y0 || y > y1) off++;
-  const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "reading" : "readings"} off the scale</p>` : "";
+  const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "outlier" : "outliers"} off the scale</p>` : "";
   const legend = o.series.length > 1 || o.legend
     // Inside the plot, as in the app, where there is room; above it on a phone.
     ? `<div class="legend${W < 520 ? " above" : ""}" style="top:${T + 4}px;right:${R + 4}px">${o.series.map((s) =>
@@ -437,13 +436,13 @@ function stripCards(strip) {
   const has = (k) => strip[k] && strip[k].length;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", lineChart({
+    cards.push(["Rate", "The rate over the whole recording", lineChart({
       title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
       series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
     })]);
   }
   if (has("amplitude")) {
-    cards.push(["Amplitude", lineChart({
+    cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
       title: "Amplitude", time: true, legend: true, robust: true, unit: "°", decimals: 0, minSpan: 4,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
@@ -453,7 +452,7 @@ function stripCards(strip) {
     })]);
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
-    cards.push(["Beat Error", lineChart({
+    cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
       title: "Beat Error", time: true, legend: true, robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
@@ -461,7 +460,7 @@ function stripCards(strip) {
       ].filter((s) => s.points.length),
     })]);
   }
-  return cards.map(([title, chart]) => `<div class="card"><h2>${title}</h2>${chart}</div>`).join("");
+  return cards.map(([title, hint, chart]) => `<div class="card"><h2>${title}</h2><p class="hint">${hint}</p>${chart}</div>`).join("");
 }
 
 // profiles::summary
@@ -503,7 +502,7 @@ function profileCard(p, title, dropBeatError) {
       marks,
     })}`;
   };
-  return `<div class="card"><h2>${esc(title || "Tick and Tock")}</h2>${plot(p.a, 0)}<div style="height:6px"></div>${plot(p.b, 1)}</div>`;
+  return `<div class="card"><h2>${esc(title || "Tick and Tock")}</h2><p class="hint">The typical tick and tock sound, with the edges the readings come from</p>${plot(p.a, 0)}<div style="height:6px"></div>${plot(p.b, 1)}</div>`;
 }
 
 function fileName(doc) {
@@ -526,12 +525,16 @@ function recordingView(doc, extra) {
     ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${signed(drop, 2)} ms` : ""}` : "from the drop";
   const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
     ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
+  // The headline rate is corrected for the sound card's clock where the
+  // recording tells it (rate_corrected_s_per_day), as in the CLI's text.
+  const conf = doc.confidence || {};
+  const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
   const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
   const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(o.rate_s_per_day, 1), "s/day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `° ± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "°", sides)}
-    ${tile("Beat Error", "--beat-error", signed(be, 2), "ms", beNote)}
+    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+    ${tile("Beat Error", "--beat-error", signed(be, 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
   </div>`;
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
@@ -583,8 +586,8 @@ function sessionView(doc) {
     const ampTol = (r) => (horizontal(r) ? tol.amplitude_h : tol.amplitude_v) || null;
     const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day, tol: rateTol, out: (verdicts[r.index] || {}).rate && verdicts[r.index].rate !== "within" }));
     const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg, tol: ampTol(r), out: (verdicts[r.index] || {}).amplitude && verdicts[r.index].amplitude !== "within" }));
-    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2>${bars(rate, "--rate", " s/day", 1)}</div>`;
-    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2>${bars(amp, "--amplitude", "°", 0)}</div>`;
+    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate, against the tolerance</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
+    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2><p class="hint">Each position's amplitude, against the tolerance for that position</p>${bars(amp, "--amplitude", "°", 0)}</div>`;
   }
   html += findingsCard(rep.findings);
   return html;
@@ -609,8 +612,16 @@ function bars(rows, color, unit, decimals) {
   const labelW = 10 + CHAR_W * Math.max(...rows.map((r) => fmt(r.value).length));
   const padL = rows.some((r) => r.value < 0) ? labelW : 8;
   const padR = rows.some((r) => r.value >= 0) ? labelW : 8;
-  const k = (plotW - padL - padR) / (hi - lo);
-  const d0 = lo - padL / k, d1 = hi + padR / k;
+  // The data plus 15% of its span on each side a bar ends, and room for
+  // the values beside the bars' ends.
+  const span = hi - lo, neg = lo < 0, pos = hi > 0;
+  const fl = neg ? 0.15 : 0, fr = pos ? 0.15 : 0;
+  const k = Math.min(
+    (plotW - padL - padR) / span,
+    (plotW - padR) / (span * (1 + fl)),
+    (plotW - padL) / (span * (1 + fr)),
+    plotW / (span * (1 + fl + fr)));
+  const d0 = lo - Math.max(padL / k, fl * span), d1 = d0 + plotW / k;
   const sx = (v) => L + (v - d0) * k;
   const area = plotArea(L, T, plotW, plotH);
   let g = area.svg, inside = "";
