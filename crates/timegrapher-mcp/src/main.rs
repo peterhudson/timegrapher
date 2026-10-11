@@ -142,6 +142,10 @@ async fn call(
         text.push_str("\n\nThe command also said:\n");
         text.push_str(&out.stderr);
     }
+    for note in tools::notes(tool, args, &doc) {
+        text.push_str("\n\nNote: ");
+        text.push_str(&note);
+    }
     let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
@@ -170,7 +174,11 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let list: Vec<Value> = tools::TOOLS.iter().map(tools::definition).collect();
+        let list: Vec<Value> = tools::TOOLS
+            .iter()
+            .map(tools::definition)
+            .chain(std::iter::once(guidance::guide_definition()))
+            .collect();
         complete(json!({ "tools": list }))
     }
 
@@ -180,6 +188,10 @@ impl ServerHandler for Server {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let args = request.arguments.unwrap_or_default();
+        if request.name == guidance::GUIDE_TOOL {
+            let page = args.get("page").and_then(Value::as_str);
+            return Ok(complete::<CallToolResult>(guidance::guide(page))?.into());
+        }
         Ok(call(&request.name, &args, &context).await?.into())
     }
 

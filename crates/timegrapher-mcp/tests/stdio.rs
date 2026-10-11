@@ -349,12 +349,17 @@ fn a_chat_app_reads_a_watch() {
         .as_str()
         .unwrap()
         .contains("Ground rules"));
+    let guide = c.call("read_guide", json!({ "page": "watchmaker" }));
+    assert!(guide["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Ground rules"));
     let prompt = c.request(
         "prompts/get",
         json!({ "name": "test_my_watch", "arguments": { "watch": "ETA 2824-2" } }),
     );
     let said = prompt["messages"][0]["content"]["text"].as_str().unwrap();
-    assert!(said.contains("ETA 2824-2") && said.contains("timegrapher://skill/watchmaker"));
+    assert!(said.contains("ETA 2824-2") && said.contains("read_guide"));
 
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);

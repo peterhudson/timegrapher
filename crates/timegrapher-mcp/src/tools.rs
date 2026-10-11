@@ -152,7 +152,9 @@ pub const TOOLS: &[ToolSpec] = &[
             (mean rate, largest difference, isochronism) and findings with advice. Give a \
             folder holding session.toml, the session.toml itself, or recordings with the \
             position in each file name (DU, DD, CU, CD, CL, CR). Also writes report.html \
-            next to the recordings.",
+            next to the recordings. The report may name the vertical positions by the \
+            hour at the top, with the crown at 3 o'clock: crown up is 3H, crown down 9H, \
+            crown left 6H and crown right 12H.",
         command: &["session"],
         params: &[
             p(
@@ -402,6 +404,8 @@ pub const TOOLS: &[ToolSpec] = &[
         description: "Listen for a few seconds and report level, clipping, automatic gain, \
             noise and whether ticks are heard, with the exact settings to change. It \
             changes nothing: tell the person the settings to change and let them do it. \
+            Its rate and beat error come from a few seconds: they only show that ticks \
+            are heard, so never give them as the watch's readings. \
             This uses the microphone: put the watch on it first.",
         command: &["doctor"],
         params: &[
@@ -512,6 +516,32 @@ pub fn listens(t: &ToolSpec) -> bool {
                 .params
                 .iter()
                 .any(|p| matches!(p.arg, Arg::Flag("--file"))))
+}
+
+/// Plain notes after a result's document, for what the numbers alone do
+/// not say: a microphone check's readings are too short to trust, and an
+/// amplitude worked out with a lift angle nobody gave.
+pub fn notes(t: &ToolSpec, args: &Map<String, Value>, doc: &Value) -> Vec<String> {
+    let mut notes = Vec::new();
+    if t.name == "check_microphone" {
+        notes.push(
+            "The rate and beat error here come from a few seconds of sound and are \
+             too short to trust; they only show that ticks are heard. Do not give them \
+             as the watch's readings: record_position or analyze_recording measures it."
+                .to_string(),
+        );
+    }
+    let given = |k: &str| args.get(k).is_some_and(|v| !v.is_null());
+    if t.name == "analyze_recording" && !given("calibre") && !given("lift_deg") {
+        if let Some(lift) = doc["input"]["settings"]["lift_deg"].as_f64() {
+            notes.push(format!(
+                "No calibre or lift angle was given, so the amplitude assumes a lift \
+                 angle of {lift}°. Tell the person, and ask for the calibre: with \
+                 another lift angle the amplitude changes."
+            ));
+        }
+    }
+    notes
 }
 
 /// `record_position`'s retry identifier, read by the server.
@@ -767,6 +797,18 @@ mod tests {
     }
 
     #[test]
+    fn an_assumed_lift_angle_and_a_quick_check_are_called_out() {
+        let doc = json!({"input": {"settings": {"lift_deg": 52.0}}});
+        let analyze = find("analyze_recording").unwrap();
+        let said = notes(analyze, &args(json!({"recording": full("w.wav")})), &doc);
+        assert!(said[0].contains("lift angle of 52°"), "{said:?}");
+        let with = args(json!({"recording": full("w.wav"), "calibre": "ETA 2824-2"}));
+        assert!(notes(analyze, &with, &doc).is_empty());
+        let mic = find("check_microphone").unwrap();
+        assert!(notes(mic, &Map::new(), &doc)[0].contains("too short to trust"));
+    }
+
+    #[test]
     fn the_take_id_stays_off_the_command_line() {
         let t = find("record_position").unwrap();
         let line = command_line(
@@ -802,6 +844,7 @@ mod tests {
             .map(|t| t["name"].as_str().unwrap())
             .collect();
         let mut tools: Vec<&str> = TOOLS.iter().map(|t| t.name).collect();
+        tools.push(crate::guidance::GUIDE_TOOL);
         listed.sort();
         tools.sort();
         assert_eq!(listed, tools);
