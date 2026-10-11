@@ -5,6 +5,7 @@
 use crate::applog;
 use crate::fields::{self, Format};
 use crate::help;
+use crate::isochronism;
 use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::scope;
@@ -120,15 +121,17 @@ pub enum Pane {
     BeatErrorHistogram,
     Steadiness,
     Scope,
+    Isochronism,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 10] = [
+    const ALL: [Pane; 11] = [
         Pane::Strip,
         Pane::Sound,
         Pane::Scope,
         Pane::Steadiness,
+        Pane::Isochronism,
         Pane::Rate,
         Pane::Amplitude,
         Pane::BeatError,
@@ -155,6 +158,7 @@ impl Pane {
             Pane::BeatErrorHistogram => "Beat Error Distribution",
             Pane::Steadiness => "Steadiness",
             Pane::Scope => "Scope",
+            Pane::Isochronism => "Isochronism",
         }
     }
 
@@ -196,6 +200,10 @@ impl Pane {
                 "The sound of the latest beats as it came in, at 20, 200 or 400 ms, the \
                  latest few drawn over each other"
             }
+            Pane::Isochronism => {
+                "How the rate moves with the amplitude as the mainspring lets down, and the \
+                 first half hour against 24 hours later"
+            }
         }
     }
 }
@@ -219,9 +227,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     // The steadiness tests share the profile's place, as a second tab.
     let steadiness = tiles.insert_pane(Pane::Steadiness);
     let scope = tiles.insert_pane(Pane::Scope);
+    let isochronism = tiles.insert_pane(Pane::Isochronism);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
         c.add_child(steadiness);
+        c.add_child(isochronism);
     }
     let dir = if horizontal {
         LinearDir::Horizontal
@@ -708,6 +718,7 @@ impl TimegrapherApp {
         self.panes = match panes.map(|mut p| {
             add_missing(&mut p, Pane::Steadiness);
             add_missing(&mut p, Pane::Scope);
+            add_missing(&mut p, Pane::Isochronism);
             p
         }) {
             Some(p) if layout_is_whole(&p) => p,
@@ -2049,7 +2060,10 @@ impl TimegrapherApp {
 
     /// The Steadiness pane: start the tests when there is enough new, show
     /// the latest answer.
-    fn steady_pane(&mut self, ui: &mut egui::Ui) {
+    /// Take in a finished steadiness run, and start another when enough
+    /// new beats have come. The Steadiness and Isochronism panes share it.
+    /// Returns the seconds of beats in the position shown.
+    fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
         if let Some(rx) = &self.steady_job {
             match rx.try_recv() {
                 Ok(s) => {
@@ -2079,7 +2093,7 @@ impl TimegrapherApp {
             if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
                 let wheels = self.calibre_wheels();
                 let (tx, rx) = std::sync::mpsc::channel();
-                let ctx = ui.ctx().clone();
+                let ctx = ctx.clone();
                 std::thread::spawn(move || {
                     let _ = tx.send(steady::compute(&log, wheels));
                     ctx.request_repaint();
@@ -2087,6 +2101,38 @@ impl TimegrapherApp {
                 self.steady_job = Some(rx);
             }
         }
+        dur
+    }
+
+    fn isochronism_pane(&mut self, ui: &mut egui::Ui) {
+        let dur = self.update_steady(ui.ctx());
+        let pal = theme::pal(ui);
+        match &self.steady {
+            Some(s) => isochronism::ui(
+                ui,
+                s.report.isochronism.as_ref(),
+                s.report.wind_down.as_ref(),
+            ),
+            None => {
+                ui.label(
+                    RichText::new(if self.steady_job.is_some() {
+                        "Testing the session…".to_string()
+                    } else {
+                        format!(
+                            "The tests need 5 minutes of beats in one position; {} so far",
+                            strip::fmt_time(dur)
+                        )
+                    })
+                    .small()
+                    .color(pal.text_secondary),
+                );
+            }
+        }
+    }
+
+    fn steady_pane(&mut self, ui: &mut egui::Ui) {
+        let dur = self.update_steady(ui.ctx());
+        let upto = self.steady.as_ref().map(|s| s.upto_s);
         let working = self.steady_job.is_some();
         let of = if self.stretches.is_empty() {
             String::new()
@@ -4901,6 +4947,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             Pane::Strip => self.app.strip_pane(ui),
             Pane::Sound => self.app.sound_pane(ui),
             Pane::Steadiness => self.app.steady_pane(ui),
+            Pane::Isochronism => self.app.isochronism_pane(ui),
             Pane::Scope => self.app.scope_pane(ui),
             p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
             p => self.app.chart(ui, *p),
