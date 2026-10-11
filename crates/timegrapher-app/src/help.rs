@@ -210,16 +210,16 @@ pub const STEADINESS: &[&str] = &[
      distribution can't show \
      a cycle, a step or a slow wander because it throws the time order away; these \
      tests keep it. They are the same as `timegrapher series`.",
-    "Each series gets one verdict and a sentence saying why. Steady: independent \
-     readings about one level. Periodic: the readings repeat on a cycle, named after \
-     the wheel whose turn it matches (the fourth wheel turns once a minute). Two \
-     States: the readings switch between two levels. Measurement: two levels that come \
-     from the unlock mark hopping between two edges of the sound, a problem with the \
-     measurement rather than the watch. Shifting Mean: the level steps and stays. \
-     Drifting: the level slides slowly. Wandering: each reading remembers the last \
-     ones with no cycle, step or trend to explain it. Too Short: not enough readings.",
-    "Under Each Verdict, in the Steadiness section of the sidebar, picks what is \
-     drawn under each verdict. Readings: every \
+    "Each series gets a sentence saying what the tests found: a cycle (named after \
+     the wheel whose turn it matches; the fourth wheel turns once a minute), two \
+     levels the readings switch between, a level that steps and stays, a slow trend, \
+     correlation between readings, or none of these. When two levels come from the \
+     unlock mark hopping between two edges of the sound, the sentence says so. Under \
+     it are the statistics: readings, median, standard deviation, the scatter from one \
+     reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
+     trend and period when found.",
+    "Under Each Series, in the Steadiness section of the sidebar, picks what is \
+     drawn under each series. Readings: every \
      reading in time order (10 s rate readings, 2 s amplitude and beat error \
      readings), with the stretches of constant level and the two state levels. \
      Periods: how strongly the readings repeat at each period, with the 1% \

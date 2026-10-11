@@ -350,17 +350,17 @@ the outliers left off and the peaks when there is more than one. The
 statistics are in `timegrapher_core::histogram`, so the CLI and reports can
 share them.
 
-**Steadiness.** Whether the rate, the amplitude and the beat error (from
-the unlock) each hold steady over the session, from the same tests as
+**Steadiness.** How the rate, the amplitude and the beat error (from the
+unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)): a tab beside the Tick
-Tock Profile, with its switch in the Steadiness card. Each series gets one
-verdict, with a coloured dot (green for Steady, amber for something to look
-at, grey for Measurement and Too Short), and the sentence `series` writes to
-say why; the verdict's meaning shows when the pointer rests on it.
-Measurement means the two levels come from the unlock mark hopping between
-two edges of the sound, a problem with the measurement and not the watch.
-Under Each Verdict, in the Steadiness section of the sidebar, chooses what
-is drawn under every verdict:
+Tock Profile, with its switch in the Steadiness card. Each series shows
+the sentence `series` writes, saying what was detected (a cycle, two
+levels, a step, a trend, correlation between readings, or none of these),
+with no verdict word or colour, and under it the statistics: readings,
+median, standard deviation, the scatter from one reading to the next, the
+lag-1 correlation and Ljung–Box p-value, and the trend and period when
+found. Under Each Series, in the Steadiness section of the sidebar,
+chooses what is drawn under every series:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
 **Periods** (the period search's score at each period on a logarithmic
@@ -370,8 +370,7 @@ wheels' periods marked, and the strongest component labelled), **Cycle**
 the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
 (log-log, against the dashed line independent readings follow, labelled
-where it ends, with the averaging time of least scatter labelled; lower
-is steadier) and **CUSUM** (with the ±1.36
+where it ends, with the averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
 lines dashed and the largest excursion labelled). The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,

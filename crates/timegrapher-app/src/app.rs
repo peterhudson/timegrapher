@@ -596,7 +596,7 @@ pub struct TimegrapherApp {
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
     hist_readings: bool,
-    /// What the Steadiness pane draws under each verdict.
+    /// What the Steadiness pane draws under each series.
     steady_view: steady::View,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
@@ -2387,7 +2387,7 @@ impl TimegrapherApp {
     fn steady_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.label(
-            RichText::new("Under Each Verdict")
+            RichText::new("Under Each Series")
                 .small()
                 .color(pal.text_secondary),
         );
