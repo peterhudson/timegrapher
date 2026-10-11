@@ -11,7 +11,8 @@ skill](../skills/watchmaker/SKILL.md) directly instead; see
 
 Every tool runs the `timegrapher` program with `--json` and returns its
 document unchanged, so the chat app sees exactly what the command line
-prints. The two programs must be installed side by side.
+prints; some tools put a few plain lines before it (see
+[below](#charts)). The two programs must be installed side by side.
 
 ## Install
 
@@ -187,18 +188,25 @@ The model reads them with the `read_guide` tool, because many chat apps
 leave resources for you to attach yourself. The same pages are also
 resources (`timegrapher://skill/...` and `timegrapher://docs/...`).
 
-Some results end with a plain note for the model about what the numbers
-alone do not say:
+Some results begin with a few plain lines for the model, before the
+document, about what the numbers alone do not say:
 
-- `check_microphone`: its rate and beat error come from a few seconds, so
-  they are too short to give as the watch's readings.
-- `analyze_recording` and `run_session`: what limits the readings, one
+- `analyze_recording`: the rate, amplitude and beat error, each with its
+  confidence grade (good, fair or poor), then what limits them, one
   sentence for each of the result's `caveats` (for example an assumed lift
   angle of 52°, too short a take, clipping, or a sound card clock nobody
-  checked). In `run_session` a sentence names the positions it is about,
-  unless it is about every one. The charts show the same sentences under
-  **What Limits These Readings**, and the `analyze_recording` charts give
-  each reading's confidence grade (good, fair or poor).
+  checked).
+- `run_session`: each position's readings with their grades, the
+  characteristic values each named by what it compares (so the largest
+  amplitude difference between any two positions, `d_amplitude`, is not
+  mistaken for vertical minus horizontal, `dvh_amplitude`), and what limits
+  the readings. A sentence names the positions it is about, unless it is
+  about every one.
+- `check_microphone`: its rate and beat error come from a few seconds, so
+  they are too short to give as the watch's readings.
+
+The charts show the same sentences under **What Limits These Readings**,
+and the `analyze_recording` charts give each reading's confidence grade.
 
 The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced
