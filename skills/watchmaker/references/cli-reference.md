@@ -3,7 +3,7 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `devices`, `doctor`, `calibres`, `analyze`, `shape`, `profile`,
+Commands: `devices`, `doctor`, `calibres`, `record`, `analyze`, `shape`, `profile`,
 `long`, `series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
 `docs/sessions.md`, `series` in `docs/series.md`. What each finding code
@@ -32,7 +32,8 @@ the even beats. Machine fields keep their own names: `even`/`odd` in
 the Tock.
 
 Exit codes: **0** success, **1** error (message on stderr), **3** `doctor`
-found a problem, or `regress` found the engine moved away from tg.
+found a problem, `record` made a take not fit to keep, or `regress`
+found the engine moved away from tg.
 
 Input files: WAV or FLAC, any sample rate (44.1 or 48 kHz recommended),
 mono or the first channel.
@@ -122,6 +123,31 @@ and `signal_band` (the desktop app's "signal N×" and its band: `good`,
 `code` one of `silent`, `too_quiet`, `clipping`, `hot`, `agc_suspected`,
 `no_ticks`, `noisy`. What each means and how to fix it:
 [setup-and-microphone.md](setup-and-microphone.md#checking-the-signal-with-doctor).
+
+## record
+
+```
+timegrapher record FOLDER --position P [--seconds 120] [--device NAME]
+                   [--watch TEXT] [--calibre NAME] [--bph N] [--lift DEG]
+                   [--wind-h H] [--file AUDIO] [--json]
+```
+
+Records one position for `--seconds`, then stops; it listens only while
+it runs. Each run makes a take folder in FOLDER as the desktop app saves
+one (`audio-001.wav`, `clock.csv`, `session.json`, `session.toml`),
+checks it, and when a watch is heard and under 1% of beats clip, adds it
+to `FOLDER/session.toml` (written on the first take with the watch,
+calibre, bph, lift and `settle_s = 30`) with its position and `--wind-h`.
+`timegrapher session FOLDER` then reads them all.
+
+JSON body: `take`, `session_file` (null when not added), `position`,
+`wind_h`, `seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
+`bph`, `beats_found`, `beats_expected`, `rate_s_per_day`,
+`amplitude_deg`, `beat_error_ms`, `clipping`), `verdict` (`ok`,
+`no_watch_heard`, `clipping`). Exit 3 when the verdict is not `ok`:
+record that position again. `--bph` or `--lift` that disagree with the
+folder's session file are an error. `--file` reads a recording instead of
+the microphone.
 
 ## analyze
 
