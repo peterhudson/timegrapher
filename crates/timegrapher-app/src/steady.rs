@@ -87,9 +87,10 @@ impl View {
                  stay inside the dashed band; a rise back to a peak means they repeat"
             }
             View::Allan => {
-                "The scatter of averages over each averaging time, against the dashed line \
-                 independent readings would follow: wander and drift lift the curve at long \
-                 times, a cycle puts a bump near half its period. Both axes are logarithmic"
+                "How much the rate's average scatters when averaged over longer and longer \
+                 times; lower is steadier. On or below the dashed line, the rate only jitters \
+                 from moment to moment; above it towards the right, it wanders or drifts, and a \
+                 cycle puts a bump near half its period. Both axes are logarithmic"
             }
             View::Cusum => {
                 "The running sum of each reading's distance from the mean: independent \
@@ -457,6 +458,10 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
     let Some(s) = s else {
         return;
     };
+    // What the view shows, in a line; all of it on hover.
+    let hint = format!("{}: {}.", view.label(), view.hint());
+    ui.add(egui::Label::new(RichText::new(&hint).small().color(pal.text_tertiary)).truncate())
+        .on_hover_text(hint);
     let n = s.report.series.len().max(1);
     let gap = 10.0;
     let (w, h) = (ui.available_width(), ui.available_height());
@@ -468,8 +473,11 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
         // short for every row to be readable.
         // A little short of the room, so the last axis isn't clipped.
         let row_h = (fits(n, h) - 4.0).max(MIN_ROW);
+        // The bar always shows, so a row below the pane's edge is not
+        // missed.
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .show(ui, |ui| {
                 for (i, c) in s.report.series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
@@ -841,12 +849,23 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, |v| unit_sig(k, v)))
                 .show(ui, |p| {
+                    let last = white.last().copied();
                     p.line(
                         Line::new("independent", white)
                             .color(pal.text_secondary)
                             .style(dashed)
                             .width(1.0_f32),
                     );
+                    // Name the dashed line where it ends.
+                    if let Some(at) = last {
+                        mark_label(
+                            p,
+                            at,
+                            "if the readings were independent".into(),
+                            pal.text_secondary,
+                            false,
+                        );
+                    }
                     p.line(
                         Line::new("deviation", dev.clone())
                             .color(colour)
@@ -997,7 +1016,7 @@ fn log_label(
     f: impl Fn(f64) -> String,
 ) -> String {
     let span = range.end() - range.start();
-    if m.step_size >= 1.0 || span < 2.0 {
+    if m.step_size >= 1.0 || span < 3.0 {
         f(10f64.powf(m.value))
     } else {
         String::new()

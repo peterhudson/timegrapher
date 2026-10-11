@@ -37,9 +37,10 @@ switches to the other option wherever it is clicked, so it can be flipped
 back and forth without moving the pointer. Titles and labels are in Title
 Case. In the rest, the
 three readings in cards and below them the panes. Along the bottom, the
-status line. Every card and reading has a **?** beside its name that opens
-a longer explanation in place (click it again, or anywhere else, to close
-it), and every setting gives a short hint when the pointer rests on it. Before anything is
+status line. Every card and reading has a **?** beside its name: resting
+the pointer on it shows the plain answer in a line or two, and clicking it
+opens the whole explanation in place (click it again, or anywhere else, to
+close it). Every setting gives a short hint when the pointer rests on it. Before anything is
 open, the main area offers the three ways in: **Listen to a Watch**,
 **Open a Recording…** and **Open a Folder…**. While a recording is being
 analysed it shows how far the analysis has got, in hours of sound and time
@@ -152,10 +153,14 @@ with core `session::measure` and `session::evaluate`, as `session` does
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the
 first half hour against the half hour 24 hours later (or the session's last),
-as the commercial 0 h / 24 h test gives it. It needs the amplitude to fall
+the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
+Later. It needs the amplitude to fall
 through at least three 2° steps, which a run-down over some hours gives.
 Its switch and a note on what it needs are in the Isochronism section of
-the sidebar.
+the sidebar. Until there are 5 minutes of beats in one position, the
+Steadiness and Isochronism tabs say so; during a Positions Test they say
+that the test never stays that long in one position. Both scroll with a
+bar always showing when the pane is too short for every row.
 
 **True Clock.** When the microphone's own clock error has been measured
 and stored (`timegrapher clock measure --save`, or `clock from-log --save`
@@ -187,8 +192,9 @@ signal.
 **Panes.** Below the readings are five panes: the paper strip, the tick tock
 profile, and charts of rate, amplitude and beat error over the session. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
-them; drag the gaps between panes to resize them. The × on a tab hides
-that pane, and the switch on each card in the sidebar hides or shows its pane
+them; drag the gaps between panes to resize them. The selected tab takes
+the card's colour, joined to the card below it. The × on a tab hides
+that pane (the status line says which switch brings it back), and the switch on each card in the sidebar hides or shows its pane
 or the readings across the top; a hidden pane comes back where it was,
 and changing the strip's direction keeps the choice. **Reset Panes**
 (under Window) shows them all in their starting places. Periodicity views will join
@@ -291,7 +297,11 @@ unlock and from the drop) over time. Each reading keeps its colour across
 the app (rate red, amplitude purple, beat error yellow), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
 dashed and from the tocks dotted, beat error from the drop dashed, with a
-blue or orange swatch for Tick and Tock in the box at the pointer. **Time Span**, in the Charts and
+blue or orange swatch for Tick and Tock in the box at the pointer. A chart
+with more than one line has its key at the right of its tab bar, where it
+covers nothing. Each chart labels its vertical scale at two marks or more,
+in small text, however short the chart; a long time at the right end of
+the time axis is left out rather than cut in half. **Time Span**, in the Charts and
 Distributions cards, sets what they cover: **Session**, everything since the
 session started, or **Strip**, the same stretch of time as the paper strip,
 moving with it, so that with the charts under a strip lying across every
@@ -308,8 +318,10 @@ session again and, while listening, follows new beats as they come in.
 Once a chart has been panned or zoomed a **Follow Live** button
 (**Show Whole Session** for a recording) appears on it and does the same,
 and the box at the pointer lists these controls. Clicking a moment shows it on the strip and in the
-readings. The scale starts at the 2nd to 98th percentile of the values so
-one glitch doesn't flatten the lines. Changing the averaging time or the
+readings. The scale is the 2nd to 98th percentile of the values, kept
+within eight robust spreads of the median, so neither one glitch nor a
+few seconds of knocking flattens the lines. Beat error is charted as a
+size, as on its card. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
 **Distributions.** How the values of rate, amplitude and beat error spread
@@ -354,14 +366,16 @@ wheels' periods marked, and the strongest component labelled), **Cycle**
 (the readings folded at the cycle the tests found: every cycle as dots and
 the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
-(log-log, against the dashed line independent readings follow, with the
-averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
+(log-log, against the dashed line independent readings follow, labelled
+where it ends, with the averaging time of least scatter labelled; lower
+is steadier) and **CUSUM** (with the ±1.36
 lines dashed and the largest excursion labelled). The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
 or the whole file once it is opened. Rows stack and fill the pane when it is
 tall enough, sit side by side when it is wide and short, and scroll
-otherwise. The plots don't pan, zoom or show values under the pointer.
+otherwise. A line at the top says in plain words what the chosen view
+shows. The plots don't pan, zoom or show values under the pointer.
 
 **Remembered settings.** The app keeps its views between runs: the strip's
 direction, width and length and what is drawn over it, the profile's

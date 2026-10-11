@@ -15,7 +15,7 @@ use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
-use egui_plot::{GridMark, Legend, Line, LineStyle, Plot, Points};
+use egui_plot::{GridMark, Line, LineStyle, Plot, Points};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
@@ -1424,7 +1424,7 @@ impl TimegrapherApp {
 
     fn error(&mut self, m: String) {
         applog::error(&m);
-        self.message = Some((m, true));
+        self.message = Some((plain_error(&m), true));
     }
 
     fn info_msg(&mut self, m: String) {
@@ -2315,6 +2315,7 @@ impl TimegrapherApp {
             Some(s) => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .show(ui, |ui| {
                         isochronism::ui(
                             ui,
@@ -2326,14 +2327,29 @@ impl TimegrapherApp {
             None if self.steady_job.is_some() => {}
             None => {
                 ui.label(
-                    RichText::new(format!(
-                        "The tests need 5 minutes of beats in one position; {} so far",
-                        strip::fmt_time(dur)
-                    ))
+                    RichText::new(
+                        self.steady_wait(dur)
+                            + " The full-wind comparison needs 2 hours, and 24 for the full test.",
+                    )
                     .small()
                     .color(pal.text_secondary),
                 );
             }
+        }
+    }
+
+    /// What the steadiness tests wait for, in the terms of what is being
+    /// done: a Positions Test never stays long enough in one position.
+    fn steady_wait(&self, dur: f64) -> String {
+        if self.guided.is_some() {
+            "Needs 5 minutes of beats in one position, longer than a Positions Test \
+             stays in each. Record one position for 5 minutes or more to see it."
+                .to_string()
+        } else {
+            format!(
+                "Needs 5 minutes of beats in one position; {} so far.",
+                strip::fmt_time(dur)
+            )
         }
     }
 
@@ -2350,10 +2366,7 @@ impl TimegrapherApp {
         let status = match upto {
             Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
             None if working => String::new(),
-            None => format!(
-                "The tests need 5 minutes of beats in one position; {} so far",
-                strip::fmt_time(dur)
-            ),
+            None => self.steady_wait(dur),
         };
         steady::draw(ui, self.steady.as_ref(), &status, self.steady_view);
     }
@@ -3662,105 +3675,8 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            if let Some(b) = &self.batch {
-                let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
-                let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
-                ui.add(
-                    egui::ProgressBar::new(frac as f32)
-                        .desired_width(240.0)
-                        .desired_height(14.0)
-                        .fill(pal.accent)
-                        .text(RichText::new(format!("Analysing {}", b.label)).small()),
-                );
-            } else if !self.source_label.is_empty() {
-                let what = if self.running() {
-                    "Listening to"
-                } else {
-                    "Showing"
-                };
-                ui.label(
-                    RichText::new(format!("{what} {}", self.source_label))
-                        .small()
-                        .color(pal.text_secondary),
-                );
-            } else {
-                ui.label(
-                    RichText::new("Not listening")
-                        .small()
-                        .color(pal.text_tertiary),
-                );
-            }
-            if self.running() {
-                if let Some(s) = self.reading().and_then(|r| r.snr) {
-                    let (word, color) = if s >= 10.0 {
-                        ("good", pal.good)
-                    } else if s >= 5.0 {
-                        ("fair: rate reliable", pal.warn)
-                    } else if s >= 3.0 {
-                        ("poor: only the rate", pal.bad)
-                    } else {
-                        ("no watch heard", pal.bad)
-                    };
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        theme::dot(ui, color);
-                        ui.label(
-                            RichText::new(format!("signal {s:.0}×, {word}"))
-                                .small()
-                                .color(pal.text_secondary),
-                        );
-                    })
-                    .response
-                    .on_hover_text(help::SIGNAL);
-                }
-            }
-            if let Some(r) = &self.session.recorder {
-                let since = self.unsaved_s();
-                let (text, color, hint) = match self.session.saved_to() {
-                    Some(p) => (
-                        if since >= 1.0 {
-                            format!(
-                                "{} of sound, the last {} not saved",
-                                strip::fmt_time(r.duration_s()),
-                                strip::fmt_time(since)
-                            )
-                        } else {
-                            format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
-                        },
-                        pal.text_secondary,
-                        format!(
-                            "Saved in {}. Sound since then is kept too; Save Again… adds it, \
-                             and New Session or quitting asks first.",
-                            p.display()
-                        ),
-                    ),
-                    None => (
-                        format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
-                        pal.text_secondary,
-                        "The session's sound is kept as it goes, so Save can keep it at any \
-                         point. New Session or quitting throws it away unless saved."
-                            .to_string(),
-                    ),
-                };
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    theme::dot(
-                        ui,
-                        if self.running() {
-                            pal.bad
-                        } else {
-                            pal.text_tertiary
-                        },
-                    );
-                    ui.label(RichText::new(text).small().color(color));
-                })
-                .response
-                .on_hover_text(hint);
-            }
-            // Errors show above the readings instead.
-            if let Some((m, false)) = &self.message {
-                ui.label(RichText::new(m).small().color(pal.text_secondary));
-            }
+            // The links on the right first, so that what is on the left is
+            // cut short with an ellipsis rather than running under them.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
@@ -3818,8 +3734,118 @@ impl TimegrapherApp {
                     )
                     .on_hover_text("Found from the beats, or set under Watch in the sidebar");
                 }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    self.status_left(ui);
+                });
             });
         });
+    }
+
+    /// The status bar's left side: what is showing, the signal, the kept
+    /// sound and the latest message.
+    fn status_left(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        ui.spacing_mut().item_spacing.x = 12.0;
+        if let Some(b) = &self.batch {
+            let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
+            let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
+            ui.add(
+                egui::ProgressBar::new(frac as f32)
+                    .desired_width(240.0)
+                    .desired_height(14.0)
+                    .fill(pal.accent)
+                    .text(RichText::new(format!("Analysing {}", b.label)).small()),
+            );
+        } else if !self.source_label.is_empty() {
+            let what = if self.running() {
+                "Listening to"
+            } else {
+                "Showing"
+            };
+            let text = format!("{what} {}", self.source_label);
+            ui.add(
+                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
+            )
+            .on_hover_text(text);
+        } else {
+            ui.label(
+                RichText::new("Not listening")
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+        }
+        if self.running() {
+            if let Some(s) = self.reading().and_then(|r| r.snr) {
+                let (word, color) = if s >= 10.0 {
+                    ("good", pal.good)
+                } else if s >= 5.0 {
+                    ("fair: rate reliable", pal.warn)
+                } else if s >= 3.0 {
+                    ("poor: only the rate", pal.bad)
+                } else {
+                    ("no watch heard", pal.bad)
+                };
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    theme::dot(ui, color);
+                    ui.label(
+                        RichText::new(format!("signal {s:.0}×, {word}"))
+                            .small()
+                            .color(pal.text_secondary),
+                    );
+                })
+                .response
+                .on_hover_text(help::SIGNAL);
+            }
+        }
+        if let Some(r) = &self.session.recorder {
+            let since = self.unsaved_s();
+            let (text, color, hint) = match self.session.saved_to() {
+                Some(p) => (
+                    if since >= 1.0 {
+                        format!(
+                            "{} of sound, the last {} not saved",
+                            strip::fmt_time(r.duration_s()),
+                            strip::fmt_time(since)
+                        )
+                    } else {
+                        format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
+                    },
+                    pal.text_secondary,
+                    format!(
+                        "Saved in {}. Sound since then is kept too; Save Again… adds it, \
+                         and New Session or quitting asks first.",
+                        p.display()
+                    ),
+                ),
+                None => (
+                    format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
+                    pal.text_secondary,
+                    "The session's sound is kept as it goes, so Save can keep it at any \
+                     point. New Session or quitting throws it away unless saved."
+                        .to_string(),
+                ),
+            };
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                theme::dot(
+                    ui,
+                    if self.running() {
+                        pal.bad
+                    } else {
+                        pal.text_tertiary
+                    },
+                );
+                ui.label(RichText::new(text).small().color(color));
+            })
+            .response
+            .on_hover_text(hint);
+        }
+        // Errors show above the readings instead.
+        if let Some((m, false)) = &self.message {
+            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate())
+                .on_hover_text(m);
+        }
     }
 
     /// The starting arrangement for a strip direction, keeping which panes
@@ -5061,7 +5087,7 @@ impl TimegrapherApp {
                 vec![
                     ChartLine {
                         name: "From the Unlock".into(),
-                        pts: pick(|p| p.beat_error_unlock),
+                        pts: pick(|p| p.beat_error_unlock.map(f64::abs)),
                         color: pal.trace_beat_error,
                         style: solid,
                         key: pal.trace_beat_error,
@@ -5069,7 +5095,7 @@ impl TimegrapherApp {
                     },
                     ChartLine {
                         name: "From the Drop".into(),
-                        pts: pick(|p| p.beat_error_drop),
+                        pts: pick(|p| p.beat_error_drop.map(f64::abs)),
                         color: pal.trace_beat_error.gamma_multiply(0.6),
                         style: LineStyle::dashed_dense(),
                         key: pal.trace_beat_error.gamma_multiply(0.6),
@@ -5090,38 +5116,23 @@ impl TimegrapherApp {
             .allow_axis_zoom_drag(false)
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-            .custom_x_axes(vec![
-                egui_plot::AxisHints::new_x().formatter(|m, _| strip::fmt_time(m.value))
-            ])
-            .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
+            .custom_x_axes(vec![egui_plot::AxisHints::new_x().formatter(|m, r| {
+                // A long time ("1:30:00") at the right end would be cut.
+                let t = strip::fmt_time(m.value);
+                let frac = if t.len() > 5 { 0.03 } else { 0.0 };
+                theme::clear_of_right_edge(t, m.value, r, frac)
+            })])
+            // Short charts still get a label at the top and the bottom.
+            // Short charts still get a label at the top and the bottom:
+            // the labels are painted below, in small text, so they fit
+            // closer than the plot's own.
+            .y_grid_spacer(theme::short_y_grid)
             .y_axis_min_width(GUTTER)
-            .y_axis_formatter(move |m, _| {
-                let d = if m.step_size >= 1.0 {
-                    0
-                } else if m.step_size >= 0.1 {
-                    1
-                } else {
-                    2
-                };
-                // No "-0.0" from rounding.
-                let v = if m.value.abs() < m.step_size * 1e-6 {
-                    0.0
-                } else {
-                    m.value
-                };
-                format!("{:.*}{unit}", d, v)
-            })
+            .y_axis_formatter(|_, _| String::new())
             // The values at the pointer are shown for every line at once
             // (below), instead of only when the pointer is on a line.
             .show_x(false)
             .show_y(false);
-        if series.len() > 1 {
-            plot = plot.legend(
-                Legend::default()
-                    .text_style(egui::TextStyle::Small)
-                    .background_alpha(0.85),
-            );
-        }
         // Scale to the 2nd to 98th percentile of the lines, so that one
         // glitch doesn't flatten them.
         let window = self.chart_window();
@@ -5193,6 +5204,7 @@ impl TimegrapherApp {
         let frame = *resp.transform.frame();
         let painter = ui.painter_at(frame);
         let t = resp.transform;
+        paint_y_labels(ui, &t, unit);
         strip::paint_bands(
             &painter,
             frame,
@@ -5294,6 +5306,63 @@ fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
 }
 
 /// The 2nd to 98th percentile of the values, padded a little.
+/// The names in a chart's key and their colours, when it has more than one
+/// line.
+fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32)> {
+    match pane {
+        Pane::Amplitude => vec![
+            ("Average Amplitude", pal.trace_amplitude),
+            ("From Tick", pal.tick),
+            ("From Tock", pal.tock),
+        ],
+        Pane::BeatError => vec![
+            ("From the Unlock", pal.trace_beat_error),
+            ("From the Drop", pal.trace_beat_error.gamma_multiply(0.6)),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+/// A chart's value labels, small, beside its grid lines in the gutter.
+fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
+    let frame = *t.frame();
+    let b = t.bounds();
+    let (lo, hi) = (b.min()[1], b.max()[1]);
+    if hi.partial_cmp(&lo) != Some(std::cmp::Ordering::Greater) || frame.height() <= 0.0 {
+        return;
+    }
+    let marks = theme::short_y_grid(egui_plot::GridInput {
+        bounds: (lo, hi),
+        base_step_size: (hi - lo) / frame.height() as f64 * 8.0,
+    });
+    let painter = ui.painter();
+    let color = theme::pal(ui).text_secondary;
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    for m in marks {
+        let d = if m.step_size >= 1.0 {
+            0
+        } else if m.step_size >= 0.1 {
+            1
+        } else {
+            2
+        };
+        // No "-0.0" from rounding.
+        let v = if m.value.abs() < m.step_size * 1e-6 {
+            0.0
+        } else {
+            m.value
+        };
+        let y = t.position_from_point_y(m.value);
+        painter.text(
+            egui::pos2(frame.left() - 6.0, y),
+            egui::Align2::RIGHT_CENTER,
+            format!("{v:.d$}{unit}"),
+            font.clone(),
+            color,
+        );
+    }
+}
+
 fn percentile_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
     if points.len() < 2 {
         return None;
@@ -5301,7 +5370,18 @@ fn percentile_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
     let mut ys: Vec<f64> = points.iter().map(|p| p[1]).collect();
     ys.sort_by(f64::total_cmp);
     let q = |f: f64| ys[((ys.len() - 1) as f64 * f).round() as usize];
-    let (lo, hi) = (q(0.02), q(0.98));
+    let (mut lo, mut hi) = (q(0.02), q(0.98));
+    // A burst of glitches longer than 2% of the points (a few seconds of
+    // knocking on a short window) still mustn't set the scale: nothing
+    // further than 8 robust spreads from the middle counts.
+    let mid = q(0.5);
+    let mut dev: Vec<f64> = ys.iter().map(|y| (y - mid).abs()).collect();
+    dev.sort_by(f64::total_cmp);
+    let sigma = 1.4826 * dev[(dev.len() - 1) / 2];
+    if sigma > 0.0 {
+        lo = lo.max(mid - 8.0 * sigma);
+        hi = hi.min(mid + 8.0 * sigma);
+    }
     let pad = ((hi - lo) * 0.15).max(0.05);
     Some((lo - pad, hi + pad))
 }
@@ -5346,6 +5426,10 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         if let Some(egui_tiles::Tile::Pane(p)) = tiles.get(tile_id) {
             let p = *p;
             set_pane_visible(tiles, p, false);
+            self.app.info_msg(format!(
+                "Hid {}. Its switch in the sidebar brings it back.",
+                p.title()
+            ));
         }
         false
     }
@@ -5363,14 +5447,56 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         theme::palette(visuals.dark_mode).window
     }
 
+    /// The selected tab takes the card's colour, joined to the card below
+    /// it like a folder's tab.
     fn tab_bg_color(
         &self,
         visuals: &egui::Visuals,
         _tiles: &Tiles<Pane>,
         _tile_id: TileId,
-        _state: &egui_tiles::TabState,
+        state: &egui_tiles::TabState,
     ) -> Color32 {
-        theme::palette(visuals.dark_mode).window
+        let p = theme::palette(visuals.dark_mode);
+        if state.active {
+            p.card
+        } else {
+            p.window
+        }
+    }
+
+    fn on_tab_button(
+        &mut self,
+        _tiles: &Tiles<Pane>,
+        _tile_id: TileId,
+        button_response: egui::Response,
+    ) -> egui::Response {
+        button_response.on_hover_text(
+            "Drag a tab to move the pane, or beside another to show both. The × hides it; \
+             its switch in the sidebar brings it back.",
+        )
+    }
+
+    /// A chart's key at the right of its tab bar, so it never covers the
+    /// lines.
+    fn top_bar_right_ui(
+        &mut self,
+        tiles: &Tiles<Pane>,
+        ui: &mut egui::Ui,
+        _tile_id: TileId,
+        tabs: &egui_tiles::Tabs,
+        _scroll_offset: &mut f32,
+    ) {
+        let Some(egui_tiles::Tile::Pane(pane)) = tabs.active.and_then(|a| tiles.get(a)) else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        ui.spacing_mut().item_spacing.x = 4.0;
+        // Right to left.
+        for (name, color) in chart_key(*pane, pal).into_iter().rev() {
+            ui.add_space(6.0);
+            ui.label(RichText::new(name).small().color(pal.text_secondary));
+            theme::dot(ui, color);
+        }
     }
 
     fn tab_outline_stroke(
@@ -5567,7 +5693,7 @@ impl TimegrapherApp {
         }
         egui::SidePanel::left("controls")
             .resizable(false)
-            .exact_width(300.0)
+            .exact_width(320.0)
             .show_separator_line(false)
             .frame(bar.inner_margin(egui::Margin {
                 left: 12,
@@ -5738,6 +5864,22 @@ type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 /// The lift angle used until a calibre is picked or one is typed in.
 const DEFAULT_LIFT_DEG: f64 = 52.0;
 
+/// An error as a person reads it: the system's own words for the common
+/// file errors, and no "(os error 2)" codes. The log keeps the original.
+fn plain_error(m: &str) -> String {
+    let mut t = m
+        .replace("No such file or directory", "nothing is there")
+        .replace("Permission denied", "it isn't allowed to be read here")
+        .replace("Is a directory", "it is a folder, not a file");
+    while let Some(i) = t.find(" (os error ") {
+        match t[i..].find(')') {
+            Some(j) => t.replace_range(i..i + j + 1, ""),
+            None => break,
+        }
+    }
+    t
+}
+
 /// What limits a reading, as facts: a short form for the card's caption
 /// and a sentence for its hover. Nothing graded: the ± beside the figure
 /// says how far it could be off; these say what the ± can't show.
@@ -5802,6 +5944,15 @@ fn reading_limits(title: &str, caveats: &[Caveat], lift_deg: f64) -> Vec<(String
 mod tests {
     use super::*;
     use timegrapher_core::recorder::SETTLE_S;
+
+    #[test]
+    fn errors_read_without_codes() {
+        assert_eq!(
+            plain_error("Can't read /x/y.flac: No such file or directory (os error 2)"),
+            "Can't read /x/y.flac: nothing is there"
+        );
+        assert_eq!(plain_error("Saving failed"), "Saving failed");
+    }
 
     #[test]
     fn a_reading_says_what_limits_it_as_facts() {
@@ -6705,6 +6856,15 @@ mod tests {
             panic!("the profile's tab group is gone");
         };
         assert_eq!(t.active, Some(sound));
+    }
+
+    /// A burst of glitches doesn't set a chart's scale.
+    #[test]
+    fn a_glitch_burst_does_not_set_the_scale() {
+        let mut pts: Vec<[f64; 2]> = (0..60).map(|i| [i as f64, 5.0 + (i % 5) as f64]).collect();
+        pts.extend((60..66).map(|i| [i as f64, 800.0]));
+        let (lo, hi) = percentile_range(&pts).unwrap();
+        assert!(lo < 5.0 && hi > 9.0 && hi < 40.0, "{lo} {hi}");
     }
 
     #[test]
