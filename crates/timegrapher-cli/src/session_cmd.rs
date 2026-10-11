@@ -17,7 +17,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, beats, timing, twostate};
+use timegrapher_core::{audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 /// The layout of `summary.json` and `--json`.
@@ -404,13 +404,15 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         eprintln!("analysing {} ({})", e.file, position);
     }
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-    let log =
+    let mut log =
         stream::analyze_files(&paths, &cfg, |_| {}).map_err(|err| format!("{}: {err}", e.file))?;
     let clock = match (&e.clock, c.m.card_ppm) {
         (Some(p), _) => Some(read_clock(&c.base.join(p), &files[0])?),
         (None, Some(ppm)) => session::fixed_clock(ppm, log.duration_s),
         (None, None) => None,
     };
+    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     let (start, stop) = span_of(e, log.duration_s)?;
     let settle = start
         + e.settle_s
@@ -423,7 +425,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         .or(c.m.measure_s)
         .map_or(stop, |m| settle + m)
         .min(stop);
-    let measurement = session::measure(&log, clock.as_ref(), settle, end);
+    let measurement = session::measure_with_breaks(&log, clock.as_ref(), &breaks, settle, end);
 
     // Cycles and shape of noise would only mislead.
     let heard = measurement.watch_heard;
@@ -448,7 +450,22 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
             ..Default::default()
         };
         let part = trimmed(&log, settle, end);
-        session::cycles(&longrun::analyse(&part, clock.as_ref(), &lc), &lc.wheels)
+        // The part's times start at `settle`, so its breaks move with
+        // it; a clock fit that holds the gaps at their own places is left
+        // out (a ppm or so makes no odds to a cycle's period).
+        let inside: Vec<_> = breaks
+            .iter()
+            .filter(|b| b.audio_s > settle && b.audio_s < end)
+            .map(|b| breaks::Break {
+                audio_s: b.audio_s - settle,
+                gap_s: b.gap_s,
+            })
+            .collect();
+        let part_clock = clock.as_ref().filter(|c| c.breaks.is_empty());
+        session::cycles(
+            &longrun::analyse_with_breaks(&part, part_clock, &inside, &lc),
+            &lc.wheels,
+        )
     };
 
     let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
