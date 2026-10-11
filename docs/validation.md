@@ -340,6 +340,26 @@ first file and the Yacht-Master dial down 4 to 7 in the file with its knock; the
 window can find them, and a gate that knows where the beats are is
 separate work.
 
+## Beat error from the unlock against tg: two watches apart
+
+Over the corpus's 90 unlock beat-error readings that have a tg figure, the
+median gap to tg is 0.03 ms and the mean bias is −0.01 ms. Two watches sit
+well outside that. The Yacht-Master dial down reads 0.02 to 0.05 ms where tg
+reads 0.19 to 0.25 ms, about 0.2 ms under, and the Daytona 4130 clone reads
+about 0.57 ms under tg. The Yacht-Master's beat error from the drop on the dial-down
+file swings between stretches (0.3 to 0.7 ms on 90 s pieces of file 01,
+which has a knock near 3 min), so it does not settle which figure is right.
+
+On these two watches the two sides sound different, and tg puts sound 1
+somewhere other than where `analyze` finds the onset of the unlock. Reading
+the unlock on templates aligned on sound 1 instead of the drop was tried:
+it moved these two towards tg (−0.18 to −0.14 ms, −0.57 to −0.48 ms) but
+moved takes that already agreed away from it (the ETA in its holder −0.01 to
++0.06 ms, the Yacht-Master crown left +0.01 to +0.04 ms), with no overall
+gain, so it was not taken. Which landmark gives the watch's true beat error
+needs a watch whose beat error is known, such as one set on a beat-error
+adjuster.
+
 ## Tick and Tock amplitudes apart
 
 `analyze` reports the amplitude from each side's beats (`amplitude_even_deg`,
