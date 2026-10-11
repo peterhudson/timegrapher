@@ -70,8 +70,10 @@ Three jobs, in order:
    **calibre** if they know it), and which beat rate and lift angle, if
    any, they are sure of and where those came from. Look the calibre up
    with `timegrapher calibres NAME --json`. A beat rate or lift angle the
-   person gives that disagrees with the table is a question to settle
-   first, not a setting to run with. If they don't know the calibre, say
+   person gives that disagrees with the table, or with the beat rate the
+   program hears, is a question to settle first, not a setting to run
+   with; until it is settled give no amplitude at all ("the amplitude
+   isn't usable until we know the lift angle"). If they don't know the calibre, say
    so, leave the beat rate to the program (no `--bph`) and use the default
    lift angle knowingly (see below).
 5. Say the lift angle's standing up front, in the first answer that gives
@@ -80,9 +82,12 @@ Three jobs, in order:
    none). Put that standing in your own words ("the maker's figure", "a
    bench estimate"); don't read the table's source names or links aloud.
    When it is not
-   published, say so, and how much it matters: amplitude is computed in
-   proportion to the lift angle given, so each degree of lift moves it
-   by about amplitude ÷ lift angle (about 5° at 250° and 52°). Name the lift angle in
+   published, say so, and how much it matters: the program computes
+   amplitude in proportion to the lift angle it is given (amplitude =
+   lift ÷ (2 sin(π t ÷ T)), the formula Witschi and tg use), so each
+   degree of lift moves it by amplitude ÷ lift angle (about 5° at 250°
+   and 52°). Work that out for the reading in front of you; never quote
+   a per-degree figure from memory. Name the lift angle in
    any figure they will repeat to someone else.
 
 ### 2. Test (see [guided-test.md](references/guided-test.md))
@@ -98,8 +103,10 @@ from the microphone check to six positions fully wound and the same six
 - Let it run a few minutes before measuring, and give it 30 s to a minute
   to settle after every change of position.
 - Record at least 60 s per position; 2 minutes is better. Dial up first.
-- For a proper check: dial up, dial down, crown down, crown up, crown left,
-  crown right. Five or six positions tell you far more than one.
+- For a proper check, Witschi's order: dial up, dial down, crown down,
+  crown left, crown up, crown right (the desktop app's Positions Test
+  leads through the same six, settling 20 s and measuring 60 s each;
+  docs/app.md). Five or six positions tell you far more than one.
 - For the gear train: one position, an hour or more, then `timegrapher series`
   (is it steady, and if not, which wheel) and `timegrapher long` (the report).
 - Analyse each file: `timegrapher analyze FILE --lift L --json` (and `--bph`
@@ -114,7 +121,11 @@ values (X, D, DV, DH, DVH, Di, isochronism) and findings, each with a
 stable `code`, a `severity` (`fault`, `warning`, `note`), the evidence and
 advice. [findings.md](references/findings.md) says what each code means,
 how much weight it carries and what to tell the person. Read the
-findings, then reason about them as below.
+findings, then reason about them as below. Two of those values are easy
+to mix up: `d_amplitude` is the largest difference between any two
+positions, and `dvh_amplitude` is the vertical mean minus the horizontal
+mean (negative when the verticals read lower). For "vertical against
+horizontal", quote `dvh_amplitude`, never `d_amplitude`.
 
 ### 3. Read the results
 
@@ -154,9 +165,10 @@ Work through them in this order. The reasons are in
    normal looks like by calibre, with sources:
    [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
 3. **Lift angle.** Amplitude is only as good as the lift angle you gave it.
-   A wrong lift angle scales the amplitude: 2° out at 52° is about 4%, or
-   ±11° at 280°. Look up the calibre in the table; if unknown, use 52 and say
-   the amplitude could be ±10–15° out.
+   A wrong lift angle scales the amplitude in the same proportion (step
+   5 of set-up). Look up the calibre in the table; if unknown, use 52,
+   say so, and give the range the likely lift angles would give, worked
+   out the same way, rather than a stock ±.
 4. **Beat error.** Quote the unlock figure, `beat_error_unlock_ms`
    (as a positive number): this project's headline beat error is the
    unlock figure. `overall.beat_error_ms` is measured from the drop; the two
@@ -243,12 +255,22 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   the cause.** A mean over the positions, or a spread between them,
   several times the maker's tolerance (once magnetism is ruled out) is a
   plain "take it to a watchmaker": regulation at least, probably a
-  service. Don't soften it to "it may be nothing".
+  service. Don't soften it to "it may be nothing", and don't make it
+  wait on demagnetising: that is the cure for the magnetism pattern
+  above (hundreds of s/d, erratic), so suggest it from one reading only
+  when the reading shows that pattern.
 - **Say only what was measured or what a source here says.** No general
   rules of thumb about positions ("dial up is usually the fastest"), about
   movement types ("common on clones"), or about causes ("a tooth
   catching") that the program didn't find and this skill doesn't source.
   A wander or wave the program didn't name as a finding is not a finding.
+  Don't credit a figure to anyone a source here doesn't name: the
+  program's own thresholds (200° amplitude, 2 ms beat error) are "the
+  program's threshold", not a standard; don't say who else uses a
+  default, or give a range for "ordinary" watches. Quote readings exactly
+  as the output gives them, and never present a figure that isn't in it
+  as a reading (a lift-angle correction you work out is fine, said as
+  one).
 - **On a cheap, common movement, mention replacing it**: a new NH35 or
   Miyota can cost less than a service.
 
@@ -338,10 +360,16 @@ and if one decides your verdict, say so.
 
 ## How to write the answer
 
-Lead with the verdict in one line. Then the two or three numbers that
-decided it, what each means, and what you'd do next. Use the person's
+Lead with the verdict in one line, and how sure it is (the `confidence`
+grades, in words) without waiting to be asked. Then the two or three
+numbers that decided it, what each means, and what you'd do next. Use the person's
 words, not jargon; when you must use a term (amplitude, beat error, lift
-angle) say what it is the first time. Give a reason for every
+angle, calibre, clipping, auto gain) say what it is the first time, and
+tell a newcomer that not knowing is fine: the program finds the beat
+rate, and you'll say what an unknown lift angle costs. In another
+language, keep the readings apart: use the person's own word for beat
+error, and in Spanish don't call it "error de marcha", which is the
+rate. Give a reason for every
 recommendation. If the measurement isn't good enough to judge, say so and
 say how to get a better one, rather than guessing.
 

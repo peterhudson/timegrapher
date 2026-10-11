@@ -112,7 +112,9 @@ The watch is healthy. Wear it and enjoy it.
   the program names as a finding (`cycle_wheel` in `session`, or a
   wheel `long` confirms). A period listed in `analyze`'s
   `amplitude_periods` or `timing_periods` is a hint to confirm with
-  `long`, not a finding.
+  `long`, not a finding; if the person asks about one, a line is
+  enough: the program noted a repeat it can't tie to a fault, so ignore
+  it unless a long run confirms it.
 - Serviced within the interval above, or new.
 
 What to say: "It's in good order. The amplitude is healthy for this
@@ -150,8 +152,8 @@ it gets worse.
 - Rate spread or average the owner can't live with: regulation is usually
   done with a service.
 - A mean rate over the positions, or a spread between them, several
-  times the maker's figure for the calibre, after demagnetising. Say it
-  plainly: it needs a watchmaker whatever the cause. Example: a Rolex
+  times the maker's figure for the calibre. Say it plainly: it needs a
+  watchmaker whatever the cause, whatever demagnetising at home shows. Example: a Rolex
   3235 at +66 s/d crown left and −18 crown right, a spread of 84 s/d,
   and a mean of +23 over six positions (+46 DU, +37 DD, +17 CD, −11 CU,
   +66 CL, −18 CR), against Rolex's −2/+2 for the cased watch.

@@ -41,7 +41,14 @@ calibres NAME --json` (in a build without it, `timegrapher long --calibre
 X` lists the known names when X is not one of them), then in
 [reading-the-numbers.md](reading-the-numbers.md#lift-angle). Take the lift
 angle from the table, never from memory. Note bph and lift. If the calibre is not known, say so: you'll use 52° and let the
-beat rate be found, and the amplitude is then good to ±10–15°.
+beat rate be found, and the amplitude is then only as good as that
+guess: say so, and give the range the likely lift angles would give
+(SKILL.md, set-up step 5).
+
+Tell a newcomer up front that not knowing is fine: the program finds the
+beat rate itself, and you will say what an unknown lift angle costs.
+Explain any term (lift angle, calibre, clipping, auto gain) the first
+time you use it.
 
 ## 1. The microphone (5 minutes)
 
@@ -99,7 +106,12 @@ Stop here if:
 
 Otherwise tell them what you see in one line (*"It's running, and it
 sounds healthy; now let's do the positions"*) and go on. Say that this is
-a first look: the figures to keep come from the session in step 5. Any
+a first look: the figures to keep come from the session in step 5. Say
+what one dial-up take can show (the watch runs, its amplitude and beat
+error lying flat, its rate in that one position) and what it can't
+(anything about positions, such as vertical against horizontal). Before
+asking for more positions, ask what their stand holds: whether its clamp
+turns, or how they could hold the watch on its edge. Any
 figure from `doctor` covers a few seconds and is for the signal only;
 never quote it as the watch's rate.
 
@@ -204,7 +216,11 @@ To see how it keeps time in real wear, which no timegrapher test gives:
 2. Wear it as usual for a week, and note the difference from the phone
    at the same time each day.
 3. The gain or loss over the week, divided by the days, is its rate on
-   the wrist. Compare that with the maker's figure.
+   the wrist. Compare that with the maker's figure (SKILL.md, "Judge the
+   rate against the maker's own figure"): a week is seven times the
+   daily figure, so Rolex's −2/+2 s/d is −14/+14 s a week. With no
+   published figure for the calibre, say so rather than give a general
+   number for when to come back.
 
 ## 6. Twenty-four hours later (optional, 15 minutes)
 

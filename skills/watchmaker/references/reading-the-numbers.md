@@ -143,8 +143,8 @@ wrong lift angle is corrected by multiplying it by right ÷ used (250° at
 degree. A lift angle of 62–65° set on someone else's machine is a sign of
 amplitude hacking.
 
-If the calibre is unknown: use 52°, and say in the answer that the
-amplitude might be 10–15° out either way. The *changes* between positions
+If the calibre is unknown: use 52°, say so in the answer, and give the
+range the likely lift angles would give, worked out as above. The *changes* between positions
 and between full wind and 24 hours are still right, because the error is
 the same in every reading.
 
@@ -227,7 +227,7 @@ The full test is six positions (see
   of horizontal. Mostly governed by the regulator pin clearance (on an
   index-regulated watch) and by the amplitude.
 - **Dial up vs dial down**: normally within a few s/d and within about
-  10–15° of amplitude. These two differ only in which pivot carries the
+  10–15° of amplitude (this skill's rule of thumb). These two differ only in which pivot carries the
   balance's weight on its end stone, so a big difference points at one
   pivot, one end stone, the end shake, or a hairspring out of flat.
 - **Between vertical positions**: differences here come from the balance
