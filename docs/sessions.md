@@ -240,9 +240,9 @@ without a number; change them under `[limits]`.
 
 | Finding | Rule | Severity |
 | --- | --- | --- |
-| Overbanking | amplitude > 330° (Witschi; `overbanking`) | fault |
 | Very low amplitude | < 200° (*project*, `amplitude_fault`) | fault |
 | Large beat error | ≥ 2 ms (*project*, `beat_error_fault`) | fault |
+| Very high amplitude | the position's median amplitude > 330° (Witschi's knocking limit; `amplitude_high`, which also reads the old key `overbanking`) | check |
 | Amplitude outside tolerance | outside the class's H or V range, fully wound | check |
 | Beat error outside tolerance | ≥ 0.5 ms | check |
 | Mean rate outside tolerance | X outside the class's range, fully wound | check |
@@ -259,6 +259,14 @@ without a number; change them under `[limits]`.
 | No watch heard | the beats are no steadier than noise (median jitter ≥ 2% of the beat period); the recording shows no readings | check |
 | Short measurement | < 40 s measured (Witschi's minimum; `min_measure_s`) | note |
 
+Amplitude over 330° is a check, not a fault. It is judged on the
+position's median amplitude at the take's lift angle, never on one 2 s
+window, and its advice reads "Check the lift angle and the microphone;
+knocking is confirmed only by jumps in the trace": a lift angle set too
+high, or a pickup that misses the first sound of the beat, reads amplitude
+high, and a balance that knocks shows as steps in the trace, not as a
+number. A knocking (overbanking) fault waits for a detector of those steps.
+
 Changes at whole fractions of a wheel's turn (20 s and 10 s beside a 60 s
 cycle) come from a short, sharp change once per turn; they are listed with
 that wheel's finding rather than on their own. A rate change shorter than
@@ -274,7 +282,7 @@ in the report, with `"schema": "timegrapher.session/1"`; the name changes
 when a field changes meaning. Each finding has a stable `code`, its
 `severity` (`fault`, `warning`, `note`), the `recording` it is about (an
 index into `readings`, or null for findings across positions), and its
-`evidence` and `advice` as text. Codes: `overbanking`,
+`evidence` and `advice` as text. Codes: `amplitude_high`,
 `amplitude_very_low`, `amplitude_tolerance`, `beat_error_large`,
 `beat_error_tolerance`, `rate_tolerance`, `positional_delta`,
 `vh_amplitude_drop`, `rate_unsteady`, `cycle_wheel`, `cycle_wheel_fraction`, `cycle_other`,
