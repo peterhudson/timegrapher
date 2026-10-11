@@ -1025,6 +1025,10 @@ impl TimegrapherApp {
                 if let Some(l) = self.live.as_mut() {
                     l.skip(paused);
                 }
+                // The recorder starts a break, on this input.
+                if let Some(r) = self.recorder.as_mut() {
+                    r.resume(&c.label);
+                }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
                 self.view_end = None;
@@ -6070,6 +6074,12 @@ mod tests {
             ],
             "{text}"
         );
+        // The pause is a break, its sound in a file of its own.
+        let session: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(saved.join("session.json")).unwrap())
+                .unwrap();
+        assert_eq!(session["breaks"].as_array().map(Vec::len), Some(1));
+        assert_eq!(session["breaks"][0]["segment"], "audio-002.wav");
         // Reopened, all 90 s are there in both positions.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
         again.start_batch(&saved);

@@ -137,7 +137,8 @@ which way to turn the watch, and never on its own initiative.
 
 Each run makes one take folder in FOLDER, the same as the desktop app
 saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
-the app opens it with), named after the start time, the watch and the
+the app opens it with; a take paused and resumed in the app also has a
+`breaks` list in `session.json`, described in [app.md](app.md)), named after the start time, the watch and the
 position. The take is analysed at once. When a watch is heard and under
 1% of beats clip, the take is added to `FOLDER/session.toml` (written on
 the first take with the watch, calibre, bph, lift and `settle_s = 30`,
