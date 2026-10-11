@@ -246,6 +246,10 @@ fn an_empty_stand_is_no_watch() {
         ..Default::default()
     };
     assert!(s.confidence.is_none(), "graded readings with no watch");
+    assert!(
+        s.overall.is_none() && s.amplitude_deg.is_none() && s.beat_error_unlock_ms.is_none(),
+        "readings of noise kept"
+    );
     assert!(run(&cfg, |_| 270.0, |_| 0.0).summary.watch_heard);
     let clean = SynthConfig {
         duration_s: 60.0,
@@ -373,4 +377,27 @@ fn faults_are_found() {
         })
         .collect();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// A beat rate set wrong is flagged, and every grade is poor.
+#[test]
+fn a_wrong_set_beat_rate_is_flagged() {
+    let audio = generate(&SynthConfig::default(), |_| 270.0, |_| 0.0);
+    let wrong = AnalysisConfig {
+        bph: Some(18000),
+        ..Default::default()
+    };
+    let s = analyze(&audio, &wrong).summary;
+    assert_eq!(s.bph_heard, Some(28800));
+    if let Some(c) = s.confidence {
+        use timegrapher_core::confidence::Grade;
+        assert!([c.rate.grade, c.amplitude.grade, c.beat_error.grade]
+            .iter()
+            .all(|&g| g == Grade::Poor));
+    }
+    let right = AnalysisConfig {
+        bph: Some(28800),
+        ..Default::default()
+    };
+    assert_eq!(analyze(&audio, &right).summary.bph_heard, None);
 }

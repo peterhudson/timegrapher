@@ -384,19 +384,50 @@ fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
     Ok((start, stop))
 }
 
-pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
-    let position = position_of(e)?;
-    let path = c.base.join(&e.file);
-    let files = expand_dirs(std::slice::from_ref(&path))?;
+/// The analysis settings for a session's recordings, and its calibre.
+fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>), String> {
     let mut cfg = StreamConfig::default();
     let cal = c.o.calibre(c.m)?;
     cfg.analysis.bph = c.o.bph(c.m, cal);
     cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
-    let escape_teeth =
+    cfg.analysis.escape_teeth =
         c.m.escape_teeth
             .or(cal.and_then(|k| k.escape_teeth))
             .unwrap_or(15);
-    cfg.analysis.escape_teeth = escape_teeth;
+    Ok((cfg, cal))
+}
+
+/// Longest stretch of a reading that [`faults_of`] reads, seconds.
+pub(crate) const FAULTS_S: f64 = 1800.0;
+
+/// The escapement faults `analyze` finds in a reading's measured stretch
+/// (`from_s` to `to_s`, as in its measurement), at most [`FAULTS_S`] of it.
+pub(crate) fn faults_of(
+    e: &RecordingEntry,
+    c: &Ctx,
+    from_s: f64,
+    to_s: f64,
+) -> Result<Vec<timegrapher_core::faults::Finding>, String> {
+    let files = expand_dirs(&[c.base.join(&e.file)])?;
+    let (mut cfg, cal) = stream_config(c)?;
+    cfg.analysis.lift_known =
+        c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some());
+    let (samples, fs) = excerpt(&files, from_s, (to_s - from_s).min(FAULTS_S))?;
+    let a = audio::Audio {
+        samples,
+        sample_rate: fs as u32,
+    };
+    Ok(timegrapher_core::analysis::analyze(&a, &cfg.analysis)
+        .summary
+        .faults)
+}
+
+pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
+    let position = position_of(e)?;
+    let path = c.base.join(&e.file);
+    let files = expand_dirs(std::slice::from_ref(&path))?;
+    let (cfg, cal) = stream_config(c)?;
+    let escape_teeth = cfg.analysis.escape_teeth;
     if c.quiet {
     } else if c.tty {
         eprint!("\r{:<70}", format!("analysing {} ({})", e.file, position));
@@ -602,7 +633,14 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         println!("{json}");
     } else {
         print_summary(&s);
-        println!("Report       {}", out.join("report.html").display());
+        let report = out.join("report.html");
+        println!(
+            "Report       {}",
+            std::path::absolute(&report).unwrap_or(report).display()
+        );
+        println!(
+            "             One page in English: open it in any web browser, or attach it to an email to send it."
+        );
     }
     Ok(())
 }
@@ -759,6 +797,17 @@ fn print_summary(s: &Session) {
         );
     }
     println!("* outside tolerance, ? not measured reliably");
+    println!(
+        "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
+    );
+    println!(
+        "Readings leave out the settling time at the start of each position{}, so they can differ by a few s/d from the quick check shown while recording.",
+        if s.readings.iter().any(|r| r.measurement.calibrated) {
+            " and correct the sound card's clock where it was logged"
+        } else {
+            ""
+        }
+    );
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
             "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."

@@ -17,6 +17,8 @@ use timegrapher_core::stream::{self, StreamConfig};
 /// The repository the release assets live in.
 pub const REPO: &str = "peterhudson/timegrapher-corpus";
 pub const INDEX: &str = "corpus.json";
+/// The tier of takes the engine is never tuned on (see the corpus README).
+pub const HOLDOUT: &str = "holdout";
 
 /// Smoke takes recorded with no watch on the stand: `analyze` must say no
 /// watch is heard in each of their files. Their readings are not compared.
@@ -30,7 +32,7 @@ pub struct Corpus {
 #[derive(Debug, Deserialize)]
 pub struct Take {
     pub id: String,
-    /// "smoke", "referenced" or "paired".
+    /// "smoke", "referenced", "paired" or "holdout".
     pub tier: String,
     pub release: String,
     pub files: Vec<File>,
@@ -78,19 +80,34 @@ fn has_session(dir: &Path) -> bool {
     walk(dir, 2)
 }
 
+/// The takes of the holdout tier, read only by `regress --holdout`.
+pub fn holdout_ids(c: &Corpus) -> std::collections::BTreeSet<&str> {
+    c.takes
+        .iter()
+        .filter(|t| t.tier == HOLDOUT)
+        .map(|t| t.id.as_str())
+        .collect()
+}
+
 /// Download the audio of every take this run reads (those with a session
 /// file, and the smoke takes with `smoke`) that is missing or changed.
+/// With `holdout` only the holdout takes are read, and only then: their
+/// names and sizes are not printed.
 pub fn fetch(
     root: &Path,
     c: &Corpus,
     filter: &[String],
     smoke: bool,
+    holdout: bool,
     quiet: bool,
 ) -> Result<(), String> {
     let mut got = 0u64;
+    let quiet = quiet || holdout;
     for t in &c.takes {
         let dir = takes_dir(root).join(&t.id);
-        let wanted = picked(&t.id, filter) && (has_session(&dir) || (smoke && t.tier == "smoke"));
+        let wanted = picked(&t.id, filter)
+            && (t.tier == HOLDOUT) == holdout
+            && (has_session(&dir) || (smoke && t.tier == "smoke"));
         if !wanted {
             continue;
         }
