@@ -18,6 +18,10 @@ pub const SHARES: [f64; 11] = [
     0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999,
 ];
 
+/// Most points kept in [`Distribution::points`]: enough for probability
+/// paper at any width a chart is drawn, small enough for a day's take.
+pub const MAX_POINTS: usize = 400;
+
 /// Which reading a distribution counts, and how its values print.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Kind {
@@ -98,6 +102,12 @@ pub struct Distribution {
     /// resolve (a share below 1/n or above 1 − 1/n is left out): enough
     /// to draw probability paper or the cumulative share.
     pub quantiles: Vec<[f64; 2]>,
+    /// The probability plot the app draws, `[value, z]` lowest first:
+    /// each value against the normal score of its rank
+    /// ([`histogram::probability_plot`]), every value up to
+    /// [`MAX_POINTS`], evenly by rank beyond that, the lowest and highest
+    /// always kept.
+    pub points: Vec<[f64; 2]>,
     /// The summary line the app shows beside the histogram.
     pub summary: String,
 }
@@ -131,6 +141,15 @@ pub fn distribution(
         .filter(|&&p| p >= 1.0 / n - 1e-12 && p <= 1.0 - 1.0 / n + 1e-12)
         .map(|&p| [p, quantile(&v, p)])
         .collect();
+    let plot = histogram::probability_plot(&v);
+    let points = if plot.len() <= MAX_POINTS {
+        plot
+    } else {
+        let last = (plot.len() - 1) as f64;
+        (0..MAX_POINTS)
+            .map(|k| plot[(k as f64 * last / (MAX_POINTS - 1) as f64).round() as usize])
+            .collect()
+    };
     let peaks: Vec<f64> = h.peaks(0.05).into_iter().map(|i| h.centre(i)).collect();
     let d = kind.decimals;
     let f = |x: f64| format!("{x:.d$}{}", kind.suffix);
@@ -173,6 +192,7 @@ pub fn distribution(
         normal_line: histogram::normal_line(values)
             .map(|(centre, spread)| NormalLine { centre, spread }),
         quantiles,
+        points,
         summary,
     })
 }
@@ -304,7 +324,37 @@ mod tests {
         assert_eq!(few.quantiles.first().unwrap()[0], 0.05);
         assert_eq!(few.quantiles.last().unwrap()[0], 0.95);
         assert!(d.quantiles.windows(2).all(|w| w[0][1] <= w[1][1]));
+        // The probability plot, thinned by rank, keeps both ends.
+        assert_eq!(d.points.len(), MAX_POINTS);
+        assert_eq!(d.points[0][0], 100.0);
+        assert!(d
+            .points
+            .windows(2)
+            .all(|w| w[0][0] <= w[1][0] && w[0][1] < w[1][1]));
+        assert_eq!(few.points.len(), 20);
         assert!(distribution(&[1.0, f64::NAN, 2.0], RATE, "readings", 10.0).is_none());
+    }
+
+    #[test]
+    fn two_states_leave_a_gap_in_the_points() {
+        // A day of readings in two tight states, 230° and 250°: thinned to
+        // MAX_POINTS, the plot still has nothing between them and keeps the
+        // lowest and highest values.
+        let y: Vec<f64> = (0..8640)
+            .map(|i| {
+                let mid = if i % 3 == 0 { 250.0 } else { 230.0 };
+                mid + ((i * 7919) % 1000) as f64 / 1000.0 - 0.5
+            })
+            .collect();
+        let d = distribution(&y, AMPLITUDE, "readings", 10.0).unwrap();
+        assert_eq!(d.points.len(), MAX_POINTS);
+        assert!(d.points.iter().all(|p| p[0] < 231.0 || p[0] > 249.0));
+        assert!(d.points.iter().any(|p| p[0] < 231.0));
+        assert!(d.points.iter().any(|p| p[0] > 249.0));
+        let lo = y.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = y.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        assert_eq!(d.points.first().unwrap()[0], lo);
+        assert_eq!(d.points.last().unwrap()[0], hi);
     }
 
     #[test]

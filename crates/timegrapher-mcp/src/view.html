@@ -211,7 +211,7 @@ function gridFor(lo, hi, px, minPx, ladder) {
 
 // An axis value as the app writes it: decimals from the step, the unit, no "-0".
 function axisLabel(v, step, unit) {
-  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
   if (Math.abs(v) < step * 1e-6) v = 0;
   return v.toFixed(d) + (unit || "");
 }
@@ -646,6 +646,108 @@ function profileView(doc) {
   return `<h1>Tick and Tock</h1><p class="sub">${esc(name)}</p>${profileCard(doc, "Tick and Tock Profiles")}`;
 }
 
+// ---- Distributions on probability paper (the app's Distribution panes) ----
+
+// histogram::normal_quantile (Acklam), the normal score of a share.
+function normalQuantile(p) {
+  if (!(p > 0 && p < 1)) return p <= 0 ? -Infinity : Infinity;
+  const A = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239];
+  const B = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+  const C = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const D = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  const tail = (q) => (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+    / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1);
+  if (p < 0.02425) return tail(Math.sqrt(-2 * Math.log(p)));
+  if (p > 1 - 0.02425) return -tail(Math.sqrt(-2 * Math.log(1 - p)));
+  const q = p - 0.5, r = q * q;
+  return (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+    / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1);
+}
+
+// The app's PROBABILITY_MARKS, percent.
+const PROBABILITY_MARKS = [[0.1, "0.1%"], [1, "1%"], [5, "5%"], [10, "10%"], [25, "25%"],
+  [50, "50%"], [75, "75%"], [90, "90%"], [95, "95%"], [99, "99%"], [99.9, "99.9%"]];
+const DISTRIBUTIONS = {
+  rate: ["Rate Distribution", "--rate", " s/day",
+    "The rate readings on probability paper: one steady rate falls on a straight line, two states bend it"],
+  amplitude: ["Amplitude Distribution", "--amplitude", "°",
+    "The amplitude readings on probability paper: a balance swinging between a high and a low state bends the line"],
+  beat_error: ["Beat Error Distribution", "--beat-error", " ms",
+    "The beat error readings, from the unlock, on probability paper"],
+};
+
+// A distribution as the app draws it: each value against the normal score of
+// its rank, (rank + ½) / n (the document's points), with the dashed line one
+// steady state would follow.
+function probabilityChart(e, color, unit) {
+  const W = chartWidth(), H = 190, T = 4, B = 20, R = 6;
+  const n = e.n, x0 = e.edges[0], x1 = e.edges[e.edges.length - 1];
+  if (!(n >= 2) || !(x1 > x0)) return `<p class="empty">Not enough readings yet.</p>`;
+  const zTop = Math.min(normalQuantile(1 - 0.5 / Math.max(n, 2)), 3.3) + 0.25;
+  const plotH = H - T - B;
+  // From 50% outwards, leaving out a share whose label would crowd the one before it.
+  const pxPerZ = plotH / (2 * zTop);
+  const kept = [];
+  for (const [pc, label] of PROBABILITY_MARKS.slice(5)) {
+    const z = normalQuantile(pc / 100);
+    if (z <= zTop && (!kept.length || (z - kept[kept.length - 1][0]) * pxPerZ >= 16)) kept.push([z, label]);
+  }
+  const ylab = [];
+  for (const [z, label] of kept) {
+    ylab.push([z, label]);
+    if (z !== 0) ylab.push([-z, PROBABILITY_MARKS[10 - PROBABILITY_MARKS.findIndex(([, l]) => l === label)][1]]);
+  }
+  const L = Math.max(44, Math.ceil(10 + CHAR_W * Math.max(3, ...ylab.map(([, t]) => t.length))));
+  const plotW = W - L - R;
+  // Room between the value labels, which carry the unit.
+  const wide = Math.max(...[x0, x1].map((v) => axisLabel(v, (x1 - x0) / 20, unit).length));
+  const xg = gridFor(x0, x1, plotW, Math.max(Math.min(80, plotW / 4), wide * CHAR_W + 14));
+  const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
+  const sy = (z) => T + (zTop - z) / (2 * zTop) * plotH;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, inside = "";
+  for (const [z, t] of ylab) {
+    inside += `<line class="grid" x1="${L}" x2="${L + plotW}" y1="${sy(z)}" y2="${sy(z)}"/>`;
+    g += `<text x="${L - 5}" y="${sy(z) + 4}" text-anchor="end">${esc(t)}</text>`;
+  }
+  for (const v of xg.ticks) {
+    inside += `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${T + plotH}"/>`;
+    const t = axisLabel(v, xg.step, unit);
+    const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
+  }
+  const line = e.normal_line;
+  if (line && Number.isFinite(line.centre) && Number.isFinite(line.spread)) {
+    inside += `<line x1="${sx(line.centre - line.spread * zTop)}" y1="${sy(-zTop)}" x2="${sx(line.centre + line.spread * zTop)}" y2="${sy(zTop)}" stroke="var(--text3)" stroke-width="1" stroke-dasharray="${DASH.loose}"/>`;
+  }
+  let dots = "";
+  for (const [x, z] of e.points || []) {
+    if (x < x0 || x > x1 || !Number.isFinite(z)) continue;
+    dots += `<circle cx="${sx(x).toFixed(1)}" cy="${sy(z).toFixed(1)}" r="1.6"/>`;
+  }
+  inside += `<g fill="var(${color})">${dots}</g>`;
+  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(e.series)} on probability paper">${g}</svg></div>`;
+}
+
+// The three Distribution panes, from the readings (the app's default).
+function distributionCards(d) {
+  const all = (d && d.overall) || [];
+  return ["rate", "amplitude", "beat_error"].map((key) => {
+    const e = all.find((x) => x.series === key && x.values === "readings");
+    if (!e) return "";
+    const [title, color, unit, hint] = DISTRIBUTIONS[key];
+    return `<div class="card"><h2>${title}</h2><p class="hint">${hint}</p>
+      <p class="sub caption">${esc(e.summary || "")}</p>${probabilityChart(e, color, unit)}</div>`;
+  }).join("");
+}
+
+function seriesView(doc) {
+  const name = fileName(doc);
+  const len = Number.isFinite(doc.duration_s) ? ` · ${timeLabel(doc.duration_s)}` : "";
+  return `<h1>Steadiness</h1><p class="sub">${esc(name)}${len}</p>${distributionCards(doc.distributions)}${findingsCard(doc.findings || [])}`;
+}
+
 // ---- Dispatch -------------------------------------------------------------
 
 let last = null;
@@ -671,6 +773,8 @@ function redraw() {
     html = sessionView(doc);
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
     html = profileView(doc);
+  } else if (doc.schema.startsWith("timegrapher.series/")) {
+    html = seriesView(doc);
   } else {
     html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
   }
