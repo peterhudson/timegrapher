@@ -180,9 +180,17 @@ jobs:
           # From the Actions tab the tag does not exist yet: --target names
           # the commit built, and GitHub makes the tag when the draft is
           # published.
+          # The notes for testers and users come from
+          # packaging/release-notes/X.Y.Z.md when there is one; otherwise
+          # GitHub lists the pull requests merged since the last release.
+          notes="packaging/release-notes/${TAG#v}.md"
+          if [ -f "$notes" ]; then
+            body=(--notes-file "$notes")
+          else
+            body=(--notes "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." --generate-notes)
+          fi
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft --target "$GITHUB_SHA" \
             --title "Timegrapher ${TAG#v}" \
-            --notes "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." \
-            --generate-notes
+            "${body[@]}"
