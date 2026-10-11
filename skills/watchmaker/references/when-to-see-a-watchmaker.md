@@ -34,23 +34,34 @@ The thresholds below assume:
 
 ## What normal looks like for the calibre
 
-Amplitude, dial up, fully wound, on a healthy, recently serviced watch.
-Vertical positions typically sit 20–50° lower.
+No maker publishes a "normal" amplitude for a healthy watch: ETA's,
+Seiko's and Miyota's technical documents give the lift angle and test
+conditions, not a range. What there is:
 
-| Kind of movement | Normal dial up | Worth a look below about |
-| --- | --- | --- |
-| Modern Swiss 28,800 vph (ETA 2824-2, 2892, Sellita SW200, Valjoux 7750, Rolex 31xx, most of their clones) | 260–310° | 230° |
-| Rolex 32xx (Chronergy escapement); measure at 55° lift | 250–300° (check) | 220° |
-| Seiko and Seiko-made 21,600 vph (NH35/36, 4R35/36, 7S26/36, 6R15) | 230–280°; 260°+ is very good | 210° |
-| Miyota 8215 (21,600 vph) | 230–280°; wide positional spread and beat error are normal for the type | 210° |
-| Miyota 9015 (28,800 vph) | 250–300° (check) | 220° |
-| Vintage 18,000–21,600 vph (1950s–70s), serviced | 230–280°; 220–250° can be perfectly good | 200° |
-| Omega co-axial and other non-lever escapements | not comparable: most timegraphers, this one included, can't measure their amplitude properly | judge on rate, beat error and history instead |
+- **Witschi's tolerances**, which the `session` report judges against,
+  fully wound: 260–320° horizontal, 240–280° vertical
+  ([sessions.md](https://github.com/peterhudson/timegrapher/blob/main/docs/sessions.md#findings)).
+  Witschi is also quoted as "the amplitude values of today's popular
+  wristwatches are located at about 260° – 310°"
+  ([Caliber Corner](https://calibercorner.com/school/amplitude/); the
+  Witschi original wasn't found).
+- **Sellita's limits for the SW200** (an ETA 2824-2 equivalent): at most
+  315° dial up at full wind and at least 200° crown down (6H up) after
+  24 hours, for 95% of a production lot
+  ([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf));
+  the SW200-2 sheet gives 320° and 200°
+  ([SW200-2](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-2.pdf)).
+- **The project's own thresholds** in the `session` report: under 200°
+  is a fault, vertical more than 50° below horizontal a warning, over
+  330° (Witschi's figure) overbanking.
 
-At 24 hours unwound, most watchmakers want at least about **200°** in the
-vertical positions on a modern watch (some makers' tolerances go down to
-180° or even 160°). A fall from dial up to vertical of about 30° is
-typical; more than about 45–50° points at the balance pivots or the oil.
+Use those, and the watch's own earlier tests, rather than a figure per
+calibre. For calibres not built like a Swiss 28,800 vph lever movement
+(slower beats, older or simpler escapements), say that these tolerances
+are for modern watches and lean on the trend between tests. Omega
+co-axial and other non-lever escapements can't be measured for
+amplitude by most timegraphers, this one included: judge them on rate,
+beat error and history.
 
 ## How long since the service?
 
@@ -86,7 +97,7 @@ The watch is healthy. Wear it and enjoy it.
 
 - Amplitude within the normal range for its calibre, and holding up at
   24 hours.
-- Beat error under about 0.7 ms (1.0 ms on an older watch).
+- Beat error within Witschi's 0.5 ms (the report's `beat_error_tolerance`).
 - The rate over the positions within the maker's own figure for the
   calibre (SKILL.md, "Judge the rate against the maker's own figure").
 - A straight, steady trace across the whole run; no periodic pattern
@@ -103,7 +114,7 @@ Nothing to do now; re-test in six to twelve months or if its timekeeping
 changes.
 
 - Amplitude a little below normal for the calibre, but steady.
-- Beat error 0.7–1.5 ms.
+- Beat error over 0.5 ms but well under the report's 2 ms fault.
 - Positional spread wider than the calibre should manage.
 - A small regular wave or once-a-minute dip that isn't affecting
   timekeeping.
@@ -118,11 +129,11 @@ again in six months; if it's dropped further, book a service."
 Book it in within the next few months; it's fine to wear meanwhile unless
 it gets worse.
 
-- Amplitude clearly below normal for the calibre (roughly 20–30° under
-  the "worth a look" figure), or under about 180–200° vertical at 24 hours.
+- Amplitude clearly below Witschi's tolerance fully wound, or under
+  Sellita's 200° minimum crown down at 24 hours.
 - Amplitude falling between tests months apart.
-- Dial up and dial down more than about 20° apart, or vertical more than
-  about 50–60° below horizontal.
+- Dial up and dial down clearly apart in amplitude, or vertical more than
+  50° below horizontal (`vh_amplitude_drop`).
 - A large drop from full wind to 24 hours, or a power reserve clearly
   short of the maker's figure.
 - Rate spread or average the owner can't live with: regulation is usually
@@ -133,7 +144,7 @@ it gets worse.
   3235 at +66 s/d crown left and −18 crown right, a spread of 84 s/d,
   and a mean of +23 over six positions (+46 DU, +37 DD, +17 CD, −11 CU,
   +66 CL, −18 CR), against Rolex's −2/+2 for the cased watch.
-- Beat error over about 1.5 ms.
+- Beat error at the report's 2 ms fault (`beat_error_large`) or near it.
 - A clear periodic fault confirmed on a long run.
 - Still gaining hundreds of seconds a day after demagnetising properly
   (see below).
@@ -153,8 +164,8 @@ Stop wearing it and take it in; carrying on can turn a service into a
 repair.
 
 - It stops, or stops in some positions.
-- Amplitude very low for the calibre (far below the "worth a look" figure,
-  say under about 150–160° on a modern watch).
+- Amplitude far below the report's 200° fault threshold on a modern
+  watch, fully wound.
 - Signs of knocking: amplitude over about 330° with a jumping or doubled
   trace, or a double tick you can hear.
 - A sudden change after a knock or drop.

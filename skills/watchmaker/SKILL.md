@@ -121,7 +121,9 @@ Work through them in this order. The reasons are in
 
 1. **Is the measurement sound?** First `watch_heard`: when it is false
    no watch was heard (an empty stand, a stopped watch, no contact), and
-   every number describes noise, so show none of them. Then beats found against expected (duration ×
+   every number describes noise, so show none of them. Readings that are
+   absent (null) beside `watch_heard` false mean the same: no watch was
+   heard. Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, Tick and Tock amplitudes
    within a few degrees of each other, the beat rate one the calibre
    actually runs at. If not, back to set-up. If the signal is clean but
@@ -135,11 +137,14 @@ Work through them in this order. The reasons are in
    amplitude. If the beat rate changes, ask again about the lift angle.
 2. **Amplitude first.** It is the best single measure of the health of a
    movement: how much energy reaches the balance, after everything the
-   train, the oil and the escapement take out of it. Fully wound and dial
-   up, a healthy modern watch shows roughly 270–310°; 250° is fine, 230° is
-   acceptable on many calibres, under 200° dial up wants looking at. Vertical
-   positions run 20–50° lower than horizontal, so judge them against the
-   dial-up range less 20–50°, not against the dial-up range itself.
+   train, the oil and the escapement take out of it. The `session` report
+   judges it, fully wound, against Witschi's tolerances: 260–320°
+   horizontal and 240–280° vertical (docs/sessions.md), and calls under
+   200° a fault (the project's threshold). Vertical positions read lower
+   than horizontal because the balance pivots turn on their sides, so
+   judge them against the vertical range, not the horizontal one. What
+   normal looks like by calibre, with sources:
+   [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
 3. **Lift angle.** Amplitude is only as good as the lift angle you gave it.
    A wrong lift angle scales the amplitude: 2° out at 52° is about 4%, or
    ±11° at 280°. Look up the calibre in the table; if unknown, use 52 and say
@@ -148,10 +153,9 @@ Work through them in this order. The reasons are in
    (as a positive number): this project's headline beat error is the
    unlock figure. `overall.beat_error_ms` is measured from the drop; the two
    differ when Tick and Tock take different times from unlock to drop.
-   Under about 0.5 ms is good, under 0.7 ms fine for a
-   modern watch, up to about 1 ms acceptable on an older one. It is an
-   adjustment, not a fault in itself, but a large one makes a low-amplitude
-   watch reluctant to start.
+   The `session` report holds it to Witschi's tolerance, under 0.5 ms,
+   and calls 2 ms or more a fault (the project's threshold;
+   docs/sessions.md). It is an adjustment, not a fault in itself.
 5. **Rate last**, and never on its own. The rate in one position moves with
    position, state of wind, temperature and handling; a watchmaker regulates
    to the average over positions. A rate of +8 dial up says very little. A
@@ -194,22 +198,24 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   and treat a higher reading first as a reason to check the mount and the
   lift angle, before any verdict.
 - **Low amplitude everywhere**, judged against what *that calibre* normally
-  does (a Seiko NH35 at 235° is fine; an ETA 2824 at 235° is tired): dirty
-  or dried oil, a tired mainspring, or wear. Weigh it with the time since
+  does where a source says (see the table in when-to-see-a-watchmaker.md):
+  dirty or dried oil, a tired mainspring, or wear. Weigh it with the time since
   the last service and how hard the watch is worn before calling a
   service.
-- **Dial up and dial down differ by more than ~15–20°**: something at the
+- **Dial up and dial down clearly apart** in amplitude: something at the
   balance pivots or end stones, or a hairspring out of flat. Watchmaker.
-- **Vertical much lower than horizontal (more than ~60–70°)**: worn or dirty
-  balance pivots and jewels, or a lubrication problem. Service.
+- **Vertical far below horizontal**: the report warns at more than 50°
+  (`vh_amplitude_drop`, the project's threshold): worn or dirty balance
+  pivots and jewels, or a lubrication problem. Service.
 - **Rate differs a lot between vertical positions**, and the difference
   changes with amplitude: poise or hairspring centring. An adjustment job.
 - **A regular wave in the trace**: something that turns. Period tells you
   which wheel (escape wheel a few seconds, fourth wheel a minute, centre
   wheel an hour). Confirm with a long run; see
   [long-runs.md](references/long-runs.md).
-- **Amplitude falls a lot from full wind to 24 hours** (more than about
-  40–50°): mainspring, barrel or train friction. Mention it; it usually
+- **Amplitude falls a lot from full wind to 24 hours**, or ends below
+  Sellita's 200° minimum at 24 h for the SW200 (see the table in
+  when-to-see-a-watchmaker.md): mainspring, barrel or train friction. Mention it; it usually
   comes out at the next service.
 - **A trace that wanders while everything else is good** may be the watch
   settling, a loose clamp, or the room. Re-test before concluding.

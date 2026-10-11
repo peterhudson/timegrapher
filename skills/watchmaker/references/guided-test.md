@@ -19,10 +19,13 @@ is the part that shows a tired mainspring).
 
 Ask, in one message:
 
-- **What is the watch?** Make and model, and the calibre if they know it
-  (it's often on the maker's website, or in the papers). The calibre gives
-  the beat rate and the lift angle; without the right lift angle the
-  amplitude can be 10–15° out.
+- **What is the watch?** Make and model, and the calibre if they know it.
+  If they don't, ask them to look in the papers, on the maker's website
+  for the model or reference number, and on the case back (an engraving,
+  or the movement itself behind a display back), and to send a photo of
+  the dial and the case back if they can. The calibre gives the beat rate
+  and the lift angle; without the right lift angle the amplitude is off
+  in proportion (see SKILL.md).
 - **When was it last serviced**, roughly, and **how is it worn**: every
   day, now and then, or in a drawer. You need both to judge the results;
   the numbers alone are not a service verdict.
@@ -95,7 +98,10 @@ Stop here if:
   step 1.
 
 Otherwise tell them what you see in one line (*"It's running, and it
-sounds healthy; now let's do the positions"*) and go on.
+sounds healthy; now let's do the positions"*) and go on. Say that this is
+a first look: the figures to keep come from the session in step 5. Any
+figure from `doctor` covers a few seconds and is for the signal only;
+never quote it as the watch's rate.
 
 ## 4. Six positions (15 minutes)
 
@@ -117,7 +123,9 @@ If the crown is not at 3 o'clock, name the position by which number is up
 (DU and DD don't change; with the crown at 4, "crown down" is 4 o'clock
 down). Many stands have a clamp that turns; if theirs doesn't, they hold
 the watch on its edge against the microphone with something soft, as long
-as it doesn't move.
+as it doesn't move. Tell them a propped-up watch can shift during the
+take; if one position reads very differently from the rest, record it
+again before believing it.
 
 Record each position into one session folder for this watch. The first
 take writes the session file, with the watch and calibre:
@@ -156,6 +164,47 @@ watchmaker; one in a single position is more likely the set-up.
 
 If the fully-wound half already shows a fault (`severity` `fault`), say
 so now: the 24-hour half will not change that answer.
+
+For someone new to this, give one plain line for each number before the
+verdict:
+
+- **Amplitude**: how far the balance swings each way. It is the best
+  single sign of whether the watch is getting the power it should.
+- **Beat error**: how evenly the tick and the tock are spaced. It is an
+  adjustment a watchmaker makes, not wear.
+- **Rate**: how many seconds a day it would gain or lose if it stayed in
+  that position, at that state of wind. A watch on the wrist moves
+  through all of them.
+
+### Checking a claimed rate (a certificate, a seller's ±2 s/d)
+
+A maker's or certificate's rate is a mean over several positions, not
+one reading. COSC, for instance, tests five positions: 3 o'clock, 6
+o'clock, 9 o'clock, dial up and dial down
+([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)),
+that is CU, CL, CD, DU and DD here, fully wound, over days and at
+several temperatures. To compare with a claim:
+
+1. Record those five positions fully wound, as in step 4.
+2. Take the mean of their rates (the `session` report's X, when those
+   five are the positions recorded), and compare that with the claim,
+   not any one position.
+3. Say what this can't match: one sitting at room temperature, minutes
+   per position, and the sound card's clock unless it was calibrated.
+   A mean a few s/d from the claim doesn't disprove it; one many times
+   the claim's size is worth a watchmaker's look (SKILL.md, "A rate far
+   outside the maker's figure").
+
+### Comparing with the wrist
+
+To see how it keeps time in real wear, which no timegrapher test gives:
+
+1. Set the watch to a phone's clock (the phone keeps network time) to
+   the second.
+2. Wear it as usual for a week, and note the difference from the phone
+   at the same time each day.
+3. The gain or loss over the week, divided by the days, is its rate on
+   the wrist. Compare that with the maker's figure.
 
 ## 6. Twenty-four hours later (optional, 15 minutes)
 
@@ -205,11 +254,12 @@ What `session` says, and how to reason from it:
    started in the first half hour would have mixed the settling into the
    differences between positions. Judge the rate on the last 40 minutes:
    about +9 s/d dial up, which says little on its own (rate comes last).
-3. **Amplitude is 247–252° dial up** at the table's lift angle, below the
-   270–310° a recently serviced modern calibre usually shows fully wound,
-   and steady over two hours. On its own that is a reason to look further,
+3. **Amplitude is 247–252° dial up** at the table's lift angle, below
+   Witschi's 260° horizontal tolerance (the report's
+   `amplitude_tolerance`; the lift angle for the 32xx is itself not
+   settled, see the calibre table's notes), and steady over two hours. On its own that is a reason to look further,
    not a verdict.
-4. **Beat error 0.27–0.35 ms**: good.
+4. **Beat error 0.27–0.35 ms**: within Witschi's 0.5 ms.
 5. **A once-a-minute change**: amplitude repeats every 60 s, 5–10° peak to
    peak, in six of the twelve readings (and at a third of a minute in
    three more), and the rate does too in two of them. The fourth wheel turns once a minute. This is already a two-hour
