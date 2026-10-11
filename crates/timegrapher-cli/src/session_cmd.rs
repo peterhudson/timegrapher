@@ -397,6 +397,12 @@ fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>),
     Ok((cfg, cal))
 }
 
+/// Whether the lift angle came from `--lift`, the session file or
+/// the calibre, rather than the default.
+fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
+    c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some())
+}
+
 /// Longest stretch of a reading that [`faults_of`] reads, seconds.
 pub(crate) const FAULTS_S: f64 = 1800.0;
 
@@ -410,8 +416,7 @@ pub(crate) fn faults_of(
 ) -> Result<Vec<timegrapher_core::faults::Finding>, String> {
     let files = expand_dirs(&[c.base.join(&e.file)])?;
     let (mut cfg, cal) = stream_config(c)?;
-    cfg.analysis.lift_known =
-        c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some());
+    cfg.analysis.lift_known = lift_known(c, cal);
     let (samples, fs) = excerpt(&files, from_s, (to_s - from_s).min(FAULTS_S))?;
     let a = audio::Audio {
         samples,
@@ -456,7 +461,10 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         .or(c.m.measure_s)
         .map_or(stop, |m| settle + m)
         .min(stop);
-    let measurement = session::measure_with_breaks(&log, clock.as_ref(), &breaks, settle, end);
+    let mut measurement = session::measure_with_breaks(&log, clock.as_ref(), &breaks, settle, end);
+    if !lift_known(c, cal) {
+        measurement.lift_unknown();
+    }
 
     // Cycles and shape of noise would only mislead.
     let heard = measurement.watch_heard;
@@ -889,6 +897,31 @@ mod tests {
             no_shape: false,
             no_cycles: false,
         }
+    }
+
+    #[test]
+    fn a_defaulted_lift_angle_is_unknown() {
+        let base = Path::new(".");
+        let known = |o: &Options, m: &Manifest| {
+            let cal = o.calibre(m).unwrap();
+            let c = Ctx {
+                m,
+                base,
+                o,
+                tty: false,
+                quiet: true,
+            };
+            lift_known(&c, cal)
+        };
+        let none = Manifest::default();
+        assert!(!known(&options(None, None, None), &none));
+        assert!(known(&options(None, Some(50.0), None), &none));
+        assert!(known(&options(None, None, Some("Unitas 6497-2")), &none));
+        let file: Manifest = toml::from_str("lift = 50\n").unwrap();
+        assert!(known(&options(None, None, None), &file));
+        // A calibre the table does not know leaves the lift angle unknown.
+        let label: Manifest = toml::from_str("calibre = \"Bespoke 9999\"\n").unwrap();
+        assert!(!known(&options(None, None, None), &label));
     }
 
     #[test]

@@ -65,7 +65,10 @@ known ones). `--bph` and `--lift`, then the session file's `bph`, `lift`
 and `escape_teeth`, win over the calibre's; where they disagree with it,
 `session` says so (`note: the Dandong 4130's lift angle is 52°, the session
 file says 55°; using 55°`), and `summary.json` lists the same notes under
-`input.settings.calibre_notes`, beside the `calibre` used.
+`input.settings.calibre_notes`, beside the `calibre` used. With none of
+them, the lift angle is the default 52°, and each reading carries the
+`lift_unknown` caveat: its amplitude is graded one step lower, as
+`analyze` grades it.
 
 Paths are relative to the session file. Any recording-level `settle_s` or
 `measure_s` overrides the session's. `shape = false` or `cycles = false`
