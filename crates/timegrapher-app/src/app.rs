@@ -3,6 +3,7 @@
 //! that can be dragged by their tabs into any arrangement.
 
 use crate::applog;
+use crate::calibre_ui;
 use crate::fields::{self, Format};
 use crate::guided;
 use crate::help;
@@ -10,7 +11,7 @@ use crate::isochronism;
 use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::scope;
-use crate::settings::{CustomCalibre, CustomWheel, Settings};
+use crate::settings::Settings;
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -21,7 +22,6 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 use timegrapher_core::beats::STANDARD_BPH;
-use timegrapher_core::calibres;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
@@ -493,40 +493,12 @@ const MS: Format = Format {
     parse: fields::parse_number,
 };
 /// A wheel's period: as many decimals as it has, up to three (3.75 s).
-const PERIOD: Format = Format {
-    show: |v| {
-        let s = format!("{v:.3}");
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    },
-    parse: fields::parse_number,
-};
 const DURATION: Format = Format {
     show: fields::duration,
     parse: fields::parse_duration,
 };
 
 /// One point of the charts over time.
-/// The calibre picked under Watch.
-#[derive(Clone, Copy)]
-enum Calibre<'a> {
-    None,
-    Table(&'a calibres::Calibre),
-    Custom(usize),
-}
-
-/// What the table says about a calibre, for its entry in the menu.
-fn calibre_hint(c: &calibres::Calibre) -> String {
-    let mut t = c.bph.map_or(String::new(), |b| format!("{b} bph"));
-    if let Some(l) = c.lift_angle_deg {
-        let sep = if t.is_empty() { "" } else { ", " };
-        t += &format!("{sep}lift angle {}°", fields::plain(l));
-    }
-    for w in &c.wheels {
-        t += &format!("\n{}: {} s", w.name, (PERIOD.show)(w.period_s));
-    }
-    t
-}
-
 /// One line on a reading's chart over the session.
 #[derive(Clone)]
 struct ChartLine {
@@ -657,10 +629,11 @@ pub struct TimegrapherApp {
     session: Session,
     average_s: f64,
     watch: String,
-    /// The calibre picked under Watch: a name in the built-in table or one
-    /// of `custom_calibres`, or empty when not set.
+    /// The calibre picked under Watch: a name in the table or one of the
+    /// user's own, or empty when not set.
     calibre: String,
-    custom_calibres: Vec<CustomCalibre>,
+    /// The user's calibres, the short list and the recent picks.
+    cal: calibre_ui::Calibres,
     /// Panes that average over their own time rather than Readings'
     /// Average Over, and that time in seconds.
     pane_average: std::collections::BTreeMap<Pane, f64>,
@@ -678,8 +651,6 @@ pub struct TimegrapherApp {
     /// The watch set up for the microphone, kept while a recording with
     /// its own (or no) settings is open, and put back on listening again.
     mic_setup: Option<WatchSetup>,
-    /// What is typed in the Calibre menu's search box.
-    calibre_search: String,
     /// The newest beat looked at for a break in the sound, session s.
     last_beat_seen: f64,
     /// A break in the sound while listening, from and to (session s), that
@@ -788,6 +759,7 @@ impl TimegrapherApp {
         // No device is touched at launch: see `devices_listed`.
         let mut app = Self::with_devices(Vec::new(), file, analyse);
         app.devices_listed = false;
+        app.cal = calibre_ui::Calibres::open(timegrapher_core::calibre_store::default_path());
         if let Some(s) = saved {
             app.apply_settings(s);
         }
@@ -816,7 +788,11 @@ impl TimegrapherApp {
             steady_series: self.steady_series,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
-            custom_calibres: self.custom_calibres.clone(),
+            // Kept in the user calibre file now.
+            custom_calibres: Vec::new(),
+            recent_calibres: self.cal.recent.clone(),
+            short_added: self.cal.short_added.clone(),
+            short_removed: self.cal.short_removed.clone(),
             pane_average: self.pane_average.iter().map(|(&p, &s)| (p, s)).collect(),
             check_updates: self.check_at_start,
         }
@@ -845,6 +821,9 @@ impl TimegrapherApp {
             scope,
             panes,
             custom_calibres,
+            recent_calibres,
+            short_added,
+            short_removed,
             pane_average,
             check_updates,
         } = s;
@@ -853,7 +832,11 @@ impl TimegrapherApp {
             .into_iter()
             .filter(|(p, s)| Pane::AVERAGING.contains(p) && AVERAGES.contains(s))
             .collect();
-        self.custom_calibres = custom_calibres;
+        self.cal.migrate(custom_calibres);
+        self.cal.recent = recent_calibres;
+        self.cal.recent.truncate(calibre_ui::RECENT);
+        self.cal.short_added = short_added;
+        self.cal.short_removed = short_removed;
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
             !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
@@ -934,13 +917,12 @@ impl TimegrapherApp {
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
-            custom_calibres: Vec::new(),
+            cal: calibre_ui::Calibres::in_memory(),
             pane_average: Default::default(),
             other_trends: Default::default(),
             confirm: None,
             opened_path: String::new(),
             mic_setup: None,
-            calibre_search: String::new(),
             last_beat_seen: 0.0,
             move_prompt: None,
             open_note: None,
@@ -1442,12 +1424,8 @@ impl TimegrapherApp {
             lift: Some(self.lift_deg),
             ..Default::default()
         };
-        if let Calibre::Custom(i) = self.calibre_choice() {
-            m.wheels = self.custom_calibres[i]
-                .wheels
-                .iter()
-                .map(|w| (w.name.clone(), w.period_s))
-                .collect();
+        if let Some(w) = self.cal.custom_wheels(&self.calibre) {
+            m.wheels = w.into_iter().collect();
         }
         // The positions in the saved sound's own time (the sound leaves
         // out the pauses the session's clock counts).
@@ -1503,21 +1481,9 @@ impl TimegrapherApp {
             self.watch = w.clone();
         }
         if let Some(c) = &m.calibre {
-            let known =
-                calibres::find(c).is_some() || self.custom_calibres.iter().any(|x| &x.name == c);
-            if !known && !m.wheels.is_empty() {
-                self.custom_calibres.push(CustomCalibre {
-                    name: c.clone(),
-                    wheels: m
-                        .wheels
-                        .iter()
-                        .map(|(name, &period_s)| CustomWheel {
-                            name: name.clone(),
-                            period_s,
-                        })
-                        .collect(),
-                });
-            }
+            let wheels: Vec<(String, f64)> =
+                m.wheels.iter().map(|(n, &p)| (n.clone(), p)).collect();
+            self.cal.adopt(c, &wheels);
             self.set_calibre(c.clone());
         }
         if let Some(l) = m.lift {
@@ -3710,302 +3676,92 @@ impl TimegrapherApp {
             ui.label(RichText::new(e).small().color(pal.bad));
         }
     }
-    /// The calibre picked, from the built-in table or typed in.
-    fn calibre_choice(&self) -> Calibre<'_> {
-        if self.calibre.is_empty() {
-            return Calibre::None;
-        }
-        if let Some(i) = self
-            .custom_calibres
-            .iter()
-            .position(|c| c.name == self.calibre)
-        {
-            return Calibre::Custom(i);
-        }
-        calibres::find(&self.calibre).map_or(Calibre::None, Calibre::Table)
-    }
-
     /// The train the Steadiness tests name cycles after, when a calibre is
     /// picked; `None` leaves them to the beat rate's usual wheels.
     fn calibre_wheels(&self) -> Option<Vec<Wheel>> {
-        match self.calibre_choice() {
-            Calibre::None => None,
-            Calibre::Table(c) => Some(c.wheels()),
-            Calibre::Custom(i) => Some(
-                self.custom_calibres[i]
-                    .wheels
-                    .iter()
-                    .filter(|w| w.period_s > 0.0 && !w.name.trim().is_empty())
-                    .map(|w| Wheel {
-                        name: w.name.trim().to_lowercase(),
-                        period_s: w.period_s,
-                    })
-                    .collect(),
-            ),
-        }
+        self.cal.wheels(&self.calibre)
     }
 
-    /// Pick a calibre: its lift angle, where the table has one, and its
-    /// wheels for naming the cycles Steadiness finds.
+    /// Pick a calibre: its lift angle, where the list or the user gives
+    /// one, and its wheels for naming the cycles Steadiness finds.
     fn set_calibre(&mut self, name: String) {
         if name == self.calibre {
             return;
         }
         self.calibre = name;
-        if let Calibre::Table(c) = self.calibre_choice() {
-            if let Some(l) = c.lift_angle_deg {
-                self.set_lift(l);
-            }
+        if let Some(l) = self.cal.lift(&self.calibre) {
+            self.set_lift(l);
         }
+        let n = self.calibre.clone();
+        self.cal.remember(&n);
         // Named afresh with the new wheels.
         self.steady = None;
         self.steady_job = None;
     }
 
-    /// The Calibre row under Watch, and the editor for a typed-in one.
+    /// The Calibre row under Watch, and what is known about the one picked.
     fn calibre_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        let mut typed = std::mem::take(&mut self.calibre_search);
-        let choice = self.calibre_choice();
-        let shown = match choice {
-            Calibre::None => "Not Set".to_string(),
-            Calibre::Table(c) => c.calibre.clone(),
-            Calibre::Custom(i) => self.custom_calibres[i].name.clone(),
-        };
-        let mut picked: Option<String> = None;
-        let mut new_custom = false;
-        theme::row(
+        let current = self.calibre.clone();
+        let picked = theme::row(
             ui,
             "Calibre",
             Some(
-                "The movement, so that cycles Steadiness finds are named after the right \
-                 wheels and the lift angle is filled in. Pick New Custom Calibre for one \
-                 that isn't listed, and type its wheels' periods.",
+                "The movement, so that the lift angle is filled in and cycles Steadiness \
+                 finds are named after the right wheels. The menu offers your short list \
+                 and recent picks; search, or Show All Calibres, for the rest.",
             ),
-            |ui| {
-                egui::ComboBox::from_id_salt("calibre")
-                    .width(ui.available_width())
-                    .height(420.0)
-                    // Clicking the search box mustn't close the menu; a pick
-                    // closes it below.
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                    .selected_text(shown)
-                    .show_ui(ui, |ui| {
-                        // Type to narrow the list: maker or calibre, any case,
-                        // spaces ignored ("rolex", "3235", "eta 28").
-                        let search = ui.add(
-                            egui::TextEdit::singleline(&mut typed)
-                                .hint_text("Search makers and calibres")
-                                .desired_width(f32::INFINITY),
-                        );
-                        if !search.has_focus() && typed.is_empty() {
-                            search.request_focus();
-                        }
-                        let matches = |c: &calibres::Calibre| calibre_matches(&typed, c);
-                        if ui
-                            .selectable_label(matches!(choice, Calibre::None), "Not Set")
-                            .on_hover_text(
-                                "Name cycles after the wheels most calibres at this beat rate \
-                                 share",
-                            )
-                            .clicked()
-                        {
-                            picked = Some(String::new());
-                            ui.close();
-                        }
-                        // Until something is typed, only the common calibres.
-                        let mut table: Vec<&calibres::Calibre> = calibres::all()
-                            .iter()
-                            .filter(|c| matches(c) && (c.common || !typed.trim().is_empty()))
-                            .collect();
-                        if table.is_empty() {
-                            ui.label(
-                                RichText::new(
-                                    "No listed calibre matches. New Custom Calibre… adds one.",
-                                )
-                                .small()
-                                .color(pal.text_tertiary),
-                            );
-                        }
-                        table.sort_by(|a, b| (&a.maker, &a.calibre).cmp(&(&b.maker, &b.calibre)));
-                        let mut maker = "";
-                        for c in table {
-                            if c.maker != maker {
-                                maker = &c.maker;
-                                ui.separator();
-                                ui.label(RichText::new(maker).small().color(pal.text_tertiary));
-                            }
-                            let on = matches!(choice, Calibre::Table(x) if x.calibre == c.calibre);
-                            if ui
-                                .selectable_label(on, &c.calibre)
-                                .on_hover_text(calibre_hint(c))
-                                .clicked()
-                            {
-                                picked = Some(c.calibre.clone());
-                                ui.close();
-                            }
-                        }
-                        ui.separator();
-                        ui.label(
-                            RichText::new("Your Calibres")
-                                .small()
-                                .color(pal.text_tertiary),
-                        );
-                        for (i, c) in self.custom_calibres.iter().enumerate() {
-                            let on = matches!(choice, Calibre::Custom(x) if x == i);
-                            if ui.selectable_label(on, &c.name).clicked() {
-                                picked = Some(c.name.clone());
-                                ui.close();
-                            }
-                        }
-                        if ui
-                            .selectable_label(false, "New Custom Calibre…")
-                            .on_hover_text(
-                                "Type the turn period of each wheel of a calibre that isn't \
-                                 listed; it is kept for next time",
-                            )
-                            .clicked()
-                        {
-                            new_custom = true;
-                            ui.close();
-                        }
-                    });
-            },
+            |ui| self.cal.picker(ui, &current),
         );
-        self.calibre_search = typed;
-        if new_custom {
-            let mut n = self.custom_calibres.len() + 1;
-            let mut name = format!("My Calibre {n}");
-            while self.custom_calibres.iter().any(|c| c.name == name) {
-                n += 1;
-                name = format!("My Calibre {n}");
-            }
-            self.custom_calibres.push(CustomCalibre::new(name.clone()));
-            picked = Some(name);
-        }
         if let Some(p) = picked {
             self.set_calibre(p);
-            self.calibre_search.clear();
         }
-        match self.calibre_choice() {
-            Calibre::Table(c) => {
-                let heard = self.live.as_ref().and_then(|l| l.bph());
-                if let Some((b, cb)) = heard.zip(c.bph).filter(|&(b, cb)| b != cb) {
-                    ui.label(
-                        RichText::new(format!(
-                            "The {} beats at {cb} bph, but this watch beats at {b}.",
-                            c.calibre
-                        ))
-                        .small()
-                        .color(pal.text_secondary),
-                    );
-                }
-            }
-            Calibre::Custom(i) => self.custom_calibre_editor(ui, i),
-            Calibre::None => {
-                if self.lift_deg == DEFAULT_LIFT_DEG {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(format!(
-                                "No calibre: the lift angle is the default \
-                                 {DEFAULT_LIFT_DEG}°, and every amplitude is worked out from \
-                                 it. A calibre picked above, or a lift angle typed below, \
-                                 replaces it."
-                            ))
-                            .small()
-                            .color(pal.text_secondary),
-                        )
-                        .wrap(),
-                    );
-                }
-            }
-        }
-    }
-
-    /// Name and wheels of a typed-in calibre, edited in place.
-    fn custom_calibre_editor(&mut self, ui: &mut egui::Ui, i: usize) {
-        let pal = theme::pal(ui);
-        let before = self.custom_calibres[i].clone();
-        let mut delete = false;
-        ui.add_space(2.0);
-        let c = &mut self.custom_calibres[i];
-        theme::row(
-            ui,
-            "Calibre Name",
-            Some("What the calibre is called in the menu"),
-            |ui| {
-                ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(f32::INFINITY));
-            },
-        );
-        let mut remove = None;
-        for (j, w) in c.wheels.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut w.name)
-                        .hint_text("wheel")
-                        .desired_width(theme::LABEL_W - 8.0),
-                )
-                .on_hover_text("The wheel's name, as Steadiness labels it");
-                fields::entry(
-                    ui,
-                    &format!("wheel-{i}-{j}"),
-                    &mut w.period_s,
-                    0.01..=1.0e6,
-                    &PERIOD,
-                    60.0,
+        if self.cal.find(&self.calibre).is_some() {
+            let heard = self.live.as_ref().and_then(|l| l.bph());
+            if let Some((b, cb)) = heard
+                .zip(self.cal.bph(&self.calibre))
+                .filter(|&(b, cb)| b != cb)
+            {
+                ui.label(
+                    RichText::new(format!(
+                        "The {} beats at {cb} bph, but this watch beats at {b}.",
+                        self.calibre
+                    ))
+                    .small()
+                    .color(pal.text_secondary),
                 );
-                ui.label("s");
-                if ui
-                    .small_button("Remove")
-                    .on_hover_text("Remove this wheel")
-                    .clicked()
-                {
-                    remove = Some(j);
-                }
-            })
-            .response
-            .on_hover_text("The time the wheel takes to turn once, in seconds");
-        }
-        if let Some(j) = remove {
-            c.wheels.remove(j);
-        }
-        ui.horizontal(|ui| {
-            if ui
-                .button("Add Wheel")
-                .on_hover_text("Another wheel, such as the third wheel or the barrel")
-                .clicked()
-            {
-                c.wheels.push(CustomWheel {
-                    name: String::new(),
-                    period_s: 60.0,
-                });
             }
-            if ui
-                .button("Delete Calibre")
-                .on_hover_text("Forget this calibre")
-                .clicked()
-            {
-                delete = true;
+            let current = self.calibre.clone();
+            let change = self.cal.panel(ui, &current, env!("CARGO_PKG_VERSION"));
+            if let Some(n) = change.renamed {
+                self.calibre = n.clone();
+                self.cal.recent.retain(|r| r != &current);
+                self.cal.remember(&n);
             }
-        });
-        ui.label(
-            RichText::new(
-                "A wheel's period is one full turn: 60 s for a fourth wheel carrying the \
-                 seconds hand, 3600 s for the centre wheel.",
-            )
-            .small()
-            .color(pal.text_tertiary),
-        );
-        let renamed = self.custom_calibres[i].name != before.name;
-        if renamed {
-            self.calibre = self.custom_calibres[i].name.clone();
-        }
-        if delete {
-            self.custom_calibres.remove(i);
-            self.set_calibre(String::new());
-        } else if self.custom_calibres[i].wheels != before.wheels {
-            self.steady = None;
-            self.steady_job = None;
+            if change.deleted {
+                self.cal.recent.retain(|r| r != &current);
+                self.set_calibre(String::new());
+            }
+            if let Some(l) = change.lift {
+                self.set_lift(l);
+            }
+            if change.wheels {
+                self.steady = None;
+                self.steady_job = None;
+            }
+        } else if self.lift_deg == DEFAULT_LIFT_DEG {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!(
+                        "No calibre: the lift angle is the default {DEFAULT_LIFT_DEG}°, and \
+                         every amplitude is worked out from it. A calibre picked above, or a \
+                         lift angle typed below, replaces it."
+                    ))
+                    .small()
+                    .color(pal.text_secondary),
+                )
+                .wrap(),
+            );
         }
     }
 
@@ -6185,19 +5941,6 @@ fn sound_break(
     (back - seen > MOVE_GAP_S && !moved).then_some((seen, back))
 }
 
-/// Whether a calibre answers what is typed in the Calibre menu's search:
-/// the maker or the calibre, any case, spaces ignored.
-fn calibre_matches(typed: &str, c: &calibres::Calibre) -> bool {
-    let squash = |t: &str| {
-        t.chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .to_lowercase()
-    };
-    let want = squash(typed);
-    want.is_empty() || squash(&format!("{}{}", c.maker, c.calibre)).contains(&want)
-}
-
 /// The Watch settings a take is read with.
 #[derive(Clone, Debug, PartialEq)]
 struct WatchSetup {
@@ -6628,7 +6371,7 @@ fn file_name(p: &Path) -> String {
 
 /// Names compared with each run of digits read as a number, so part2
 /// comes before part10, and otherwise ignoring case.
-fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+pub(crate) fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
     fn chunks(s: &str) -> Vec<(bool, String)> {
         let mut out: Vec<(bool, String)> = Vec::new();
         for c in s.chars() {
@@ -7549,23 +7292,6 @@ mod tests {
         assert_eq!(sound_break(&beats, 10.25, &marked), None);
     }
 
-    /// The Calibre search finds the 3235 by number and by maker.
-    #[test]
-    fn the_calibre_search_finds_by_maker_and_number() {
-        let hits = |q: &str| -> Vec<String> {
-            calibres::all()
-                .iter()
-                .filter(|c| calibre_matches(q, c))
-                .map(|c| c.calibre.clone())
-                .collect()
-        };
-        assert!(hits("3235").iter().any(|c| c.contains("3235")));
-        assert!(hits("rolex 32").iter().all(|c| c.contains("32")));
-        assert!(!hits("ROLEX").is_empty());
-        assert_eq!(hits("").len(), calibres::all().len());
-        assert!(hits("no such thing").is_empty());
-    }
-
     /// A position as a word of its own in a file's name, and only one.
     #[test]
     fn positions_are_read_from_file_names() {
@@ -7817,8 +7543,10 @@ mod tests {
         let mut app = synthetic(5.0, 0.0);
         app.session.listen();
         app.watch = "Test Watch".into();
-        app.custom_calibres
-            .push(CustomCalibre::new("Bench Calibre".into()));
+        app.cal.user.put_custom(calibre_ui::custom(
+            "Bench Calibre",
+            [("escape wheel", 5.0), ("fourth wheel", 60.0)],
+        ));
         app.calibre = "Bench Calibre".into();
         app.set_lift(49.0);
         app.bph = Some(28800);
@@ -7860,7 +7588,7 @@ mod tests {
         let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
         let m: Manifest = toml::from_str(&text).unwrap();
         assert_eq!(m.calibre.as_deref(), Some("Bench Calibre"));
-        assert_eq!(m.wheels.len(), 3, "{text}");
+        assert_eq!(m.wheels.len(), 2, "{text}");
         let starts: Vec<_> = m.recordings.iter().map(|e| e.start_s).collect();
         // Each later position starts once it has settled.
         assert_eq!(starts, [Some(0.0), Some(40.0), Some(70.0)], "{text}");
@@ -7879,7 +7607,12 @@ mod tests {
         assert!(again.live.is_some(), "analysed");
         assert_eq!(again.watch, "Test Watch");
         assert_eq!(again.calibre, "Bench Calibre");
-        assert!(matches!(again.calibre_choice(), Calibre::Custom(_)));
+        // Not known there: added to its own calibres from the wheels.
+        assert!(again
+            .cal
+            .find("Bench Calibre")
+            .is_some_and(|e| e.is_custom()));
+        assert_eq!(again.calibre_wheels().map(|w| w.len()), Some(2));
         assert_eq!((again.lift_deg, again.bph), (49.0, Some(28800)));
         assert_eq!(
             again.session.stretches(),
@@ -8064,31 +7797,36 @@ mod tests {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         assert!(app.calibre_wheels().is_none());
         // From the table: its train, and its lift angle where it has one.
-        let c = calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
         app.set_calibre(c.calibre.clone());
         let wheels = app.calibre_wheels().expect("wheels");
         assert_eq!(wheels.len(), c.wheels.len());
         if let Some(l) = c.lift_angle_deg {
             assert_eq!(app.lift_deg, l);
         }
-        // Typed in: tidied for the tests, and kept with the settings.
-        let mut mine = CustomCalibre::new("Bench Watch".into());
-        mine.wheels.push(CustomWheel {
-            name: " Third Wheel ".into(),
-            period_s: 450.0,
-        });
-        mine.wheels.push(CustomWheel {
-            name: String::new(),
-            period_s: 10.0,
-        });
-        app.custom_calibres.push(mine.clone());
+        // Typed in: tidied for the tests; the recent picks are kept with
+        // the settings, the calibre itself in the user calibre file.
+        app.cal.user.put_custom(calibre_ui::custom(
+            "Bench Watch",
+            [
+                ("escape wheel", 5.0),
+                ("fourth wheel", 60.0),
+                ("centre wheel", 3600.0),
+                (" Third Wheel ", 450.0),
+                ("", 10.0),
+            ],
+        ));
         app.set_calibre("Bench Watch".into());
         let wheels = app.calibre_wheels().expect("wheels");
         assert_eq!(wheels.len(), 4, "the unnamed wheel is left out");
         assert!(wheels.iter().any(|w| w.name == "third wheel"));
         let mut next = TimegrapherApp::with_devices(Vec::new(), None, false);
         next.apply_settings(app.settings());
-        assert_eq!(next.custom_calibres, vec![mine]);
+        assert_eq!(
+            next.cal.recent,
+            ["Bench Watch".to_string(), c.calibre.clone()]
+        );
+        assert!(app.settings().custom_calibres.is_empty());
         // The pick itself is about the watch on the stand, so it isn't kept.
         assert!(next.calibre.is_empty());
     }
