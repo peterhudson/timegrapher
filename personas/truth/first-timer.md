@@ -1,11 +1,11 @@
 # Truth: Sam (first-timer)
 
-Stand, dial up: corpus `dd3235_DU_30min`, file -01 (looped). Dandong 3235
+Stand, dial up: corpus `dd3235_DU_30min`, file take_part01-001 (looped). Dandong 3235
 clone ("bench watch 3"), 28,800 bph, lift 55° in the corpus.
 
 | | Reference (tg, lift 55°, card clock) |
 |---|---|
-| Rate | +0.6 s/d on file -01 (+3.8 over the whole 30 min) |
+| Rate | +0.6 s/d on file take_part01-001 (+3.8 over the whole 30 min) |
 | Amplitude | 280° |
 | Beat error | 0.19 ms |
 

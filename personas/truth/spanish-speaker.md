@@ -6,12 +6,12 @@ the first file of its corpus take (recorded on different days).
 
 | Position | Take, file | Rate (s/d) | Amplitude | Beat error (ms) |
 |---|---|---|---|---|
-| DU | ym42_DU_2h -01 | +46.4 | 254° | 0.29 |
-| DD | ym42_DD_30min -01 | +46.8 | 235° | 0.25 |
-| CU | ym42_CU_8h -01 | −15.5 | 221° | 0.28 |
-| CD | ym42_CD_90min part01-01 | +24.5 | 225° | 0.20 |
-| CL | ym42_CL_90min part01-01 | +67.2 (median +71.2) | 233° | 0.21 |
-| CR | ym42_CR_long part01-01 | −18.7 (median −21.2) | 228° | 0.22 |
+| DU | ym42_DU_2h take_part01-001 | +46.4 | 254° | 0.29 |
+| DD | ym42_DD_30min take_part01-001 | +46.8 | 235° | 0.25 |
+| CU | ym42_CU_8h take_part01-001 | −15.5 | 221° | 0.28 |
+| CD | ym42_CD_90min take_part01-001 | +24.5 | 225° | 0.20 |
+| CL | ym42_CL_90min take_part01-001 | +67.2 (median +71.2) | 233° | 0.21 |
+| CR | ym42_CR_long take_part01-001 | −18.7 (median −21.2) | 228° | 0.22 |
 
 All tg, lift 55°, card clock. The takes wander within themselves; 10 s
 readings across each take span roughly DD +9 to +60 s/d (per-file fits +28 to

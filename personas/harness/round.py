@@ -602,7 +602,7 @@ def main():
     s.add_argument("--build", required=True, help="a release tag (drafts too), e.g. v0.1.0, or a commit")
     s.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r = sub.add_parser("run")
-    r.add_argument("--out", required=True, help="where the reports go, e.g. /mnt/project-files/testing/2026-10-11")
+    r.add_argument("--out", required=True, help="where the reports go, e.g. ~/persona-reports/2026-10-11")
     r.add_argument("--only", nargs="*", help="persona ids (default: every persona not parked)")
     r.add_argument("--work", default=os.path.expanduser("~/persona-round"))
     r.add_argument("--model", help="model for every agent (default: claude's default)")
