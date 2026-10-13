@@ -1,9 +1,8 @@
 # Long runs
 
 `timegrapher long` analyses a recording of hours or days: rate and
-amplitude over the whole run, and any change that repeats with a wheel's
-turn, which is how a damaged tooth, a worn pinion or an eccentric wheel
-shows itself.
+amplitude over the whole run, and any change that repeats, named after
+the wheel whose turn it matches.
 
 ```sh
 timegrapher long run.flac --clock run-clock.csv --lift 52
@@ -14,14 +13,15 @@ amplitude for 8 s of every minute
 (`timegrapher synth syn.wav --duration 1800 --rate 8 --snr 24 --fault-period 60`):
 
 ```
-Recording    30:00 at 48000 Hz, 28800 bph, 14400 beats (100.0% clean)
-Clock        not calibrated: absolute rate is only as good as the sound card (use --clock)
+Recording    30:00 at 48000 Hz, 28800 bph, 14399 beats (100.0% clean)
+Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
-Amplitude    268 deg median; slices from 253 to 268 deg (lift angle 52 deg)
+Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
+Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
 Periodic changes in rate:
-      60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel
+      60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
-      60.03 s ±2.00   swing 16.4 deg p-p     explains  42%  false alarm 4e-52    matches the fourth wheel
+      60.03 s ±2.00   swing 17.7 deg p-p     explains  99%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Report       syn_long/report.html
 ```
 

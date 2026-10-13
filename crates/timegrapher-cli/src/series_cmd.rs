@@ -1,5 +1,6 @@
-//! The `series` command: is each reading series of a take steady, or does
-//! it carry a cycle, two states, a shifting mean, a drift or wander?
+//! The `series` command: the structure each reading series of a take
+//! shows in time order (a cycle, two levels, level changes, a trend,
+//! correlation between readings), with the statistics behind it.
 
 use std::fs;
 use std::io::IsTerminal;
@@ -164,7 +165,7 @@ fn print_text(r: &Report, calibrated: bool) {
         }
     );
     for s in &r.series {
-        print_series(s);
+        print_series(s, r.config.outlier_sigma);
     }
     if let Some(c) = &r.isochronism {
         println!();
@@ -214,7 +215,7 @@ fn print_text(r: &Report, calibrated: bool) {
         }
     }
     if r.findings.is_empty() {
-        println!("\nEvery series is steady: the readings look independent about one level.");
+        println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
     }
 }
 
@@ -222,16 +223,17 @@ fn opt(v: Option<f64>, d: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.d$}"))
 }
 
-fn print_series(s: &SeriesCheck) {
+fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     let name = s.series.name();
     println!();
     println!("{}", s.headline);
     println!(
-        "  {:<14} {} readings of {:.0} s ({} outliers left out); median {}, sd {}, reading to reading {} {}",
+        "  {:<14} {} readings of {:.0} s ({} left out as more than {:.0} σ from their 5-minute level); median {}, sd {}, reading to reading {} {}",
         name,
         s.readings,
         s.step_s,
         s.outliers,
+        outlier_sigma,
         opt(s.median, 2),
         opt(s.sd, 2),
         opt(s.short_term_sd, 2),

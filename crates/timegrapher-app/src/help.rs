@@ -29,15 +29,13 @@ pub const MICROPHONE: &[&str] = &[
      pressed or Start is clicked, never at launch: asking an input what it supports \
      briefly opens it, which could disturb another program recording from it. \
      Replaying a recording never touches the microphone.",
-    "Input Level is the microphone's gain. Aim for the ticks to peak around -10 dBFS: \
-     the light mark on the meter. The red mark is -6 dBFS, the most that leaves room \
-     for a louder watch; past it the sound clips, the meter turns red, and amplitude \
-     and beat error become unreliable.",
+    "Input Level is the microphone's gain. The meter has plain marks at -10 and -6 dBFS \
+     for reference. At 0 dBFS the sound clips and the meter turns red.",
     "For the system default input this is the sound server's input volume, which it \
      puts back on the microphone every time it opens it; for a direct device it is the \
      card's own capture level.",
-    "The Peak meter shows the loudest sample in the last half second: green when it is \
-     right, amber when very quiet or too hot, red when clipping.",
+    "The Peak meter shows the loudest sample in the last half second, in dBFS \
+     (decibels below the most the input can carry). It turns red when the sound clips.",
 ];
 
 pub const READINGS: &[&str] = &[
@@ -60,9 +58,8 @@ pub const READINGS: &[&str] = &[
      Rate, Amplitude and Beat Error charts and the lines drawn over the Paper Strip, \
      the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
      beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
-     Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, \
-     and the Positions Test a minute a position, \
-     whatever it is set to.",
+     Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
+     the Positions Test a minute a position, whatever it is set to.",
     "The tick is simply the first beat heard: the sound can't tell which pallet stone \
      made which beat.",
 ];
@@ -78,10 +75,9 @@ pub const RATE: &[&str] = &[
     "Under it: how many beats the reading used over how many seconds, and the jitter: \
      how far single beats land from that straight line, as a robust standard deviation \
      in microseconds (millionths of a second). It is the spread of the dots across the \
-     paper strip. Lower is steadier. It rises with background noise, a muffled sound \
-     or a loose stand, as well as with a watch that runs unevenly (a rubbing part, a \
-     worn tooth, low amplitude), so compare it on the same stand and microphone. \
-     tg doesn't show it.",
+     paper strip; smaller means less scatter. Background noise, a muffled sound and \
+     the stand add to it as well as the watch, so figures from different stands and \
+     microphones differ. tg doesn't show it.",
     "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
@@ -90,7 +86,7 @@ pub const RATE: &[&str] = &[
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
     "The ± is how far the figure could be off from the scatter of 10-second rates over \
-     the run so far: it says how sure the measurement is, not how steady the watch is. \
+     the run so far: a property of the measurement, not of the watch. \
      It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
      an unmeasured clock) is named beside the title. Stopped after a long run, a line \
      under the figure gives the whole take's mean and spread.",
@@ -101,11 +97,9 @@ pub const CLIPPING_BANNER: &[&str] = &[
      flat. That moves where the drop seems to be, so the amplitude and the beat error \
      read wrong. The rate comes from when the beats arrive, which clipping doesn't \
      change.",
-    "Lower Input Level in the Microphone card until the ticks peak around -10 dBFS and \
-     this note goes away. If the level can't go low enough, move the microphone a \
-     little away from the watch.",
-    "It shows when more than 1% of the beats in the readings have a clipped sample in \
-     their sound, counted the same way `timegrapher analyze` counts them.",
+    "It shows whenever a beat in the readings has a clipped sample in its sound, \
+     counted the same way `timegrapher analyze` counts them. Input Level is in the \
+     Microphone card.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -117,17 +111,14 @@ pub const AMPLITUDE: &[&str] = &[
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: 1° of lift angle moves \
      the amplitude about 4°, so a lift angle that is a little out matters more.",
-    "Tick and Tock are the amplitude measured from each kind of beat alone. They \
-     should agree to a few degrees; a big difference usually means one side's sounds \
-     were misread, not a fault in the watch.",
+    "Tick and Tock are the amplitude measured from each kind of beat alone.",
     "Anything the ± can't show (a lift angle assumed, clipped beats, a short stretch) \
      is named beside the title.",
 ];
 
 pub const BEAT_ERROR: &[&str] = &[
     "How unevenly the tick and the tock are spaced, in milliseconds: zero when the \
-     balance's rest point sits exactly midway between the pallet stones' lifting. A \
-     watchmaker corrects it by turning the hairspring stud or collet.",
+     balance's rest point sits exactly midway between the pallet stones' lifting.",
     "The big figure is timed from the unlock, the first sound of each beat, as tg \
      measures it (checked against tg in the regression tests). The smaller one is timed from the beat as a \
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
@@ -182,12 +173,11 @@ pub const PROFILE: &[&str] = &[
      drop's peak (a thinner indigo line). Amplitude comes from the time between unlock and drop; the beat \
      error from the unlocks.",
     "The dashed brown lines mark where each of the three sounds rises halfway up its own \
-     climb. They come from a separate measurement of the beat's shape, used to \
-     recognise escapement faults, so they sit near but not exactly on the edges. Both \
+     climb. They come from a separate measurement of the beat's shape, so they sit \
+     near but not exactly on the edges. Both \
      are measured on the same averaged sound, not on single beats.",
     "A dashed sound line is missing when that sound can't be told apart from its \
-     neighbour: a soft unlock that merges into the impulse, say. That is a finding in \
-     itself, not a fault in the app.",
+     neighbour: a soft unlock that merges into the impulse, say.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
      in beat would drop, and each side sits half the beat error from it, so the two \
@@ -215,21 +205,21 @@ pub const CHARTS: &[&str] = &[
 ];
 
 pub const STEADINESS: &[&str] = &[
-    "Whether the rate, the amplitude and the beat error (from the unlock) each hold \
-     steady over the session. A healthy watch on a quiet bench gives readings that \
-     scatter about one level, each independent of the last. A distribution can't show \
+    "How the rate, the amplitude and the beat error (from the unlock) each change over \
+     the session: cycles, steps, trends and how each reading relates to the last. A \
+     distribution can't show \
      a cycle, a step or a slow wander because it throws the time order away; these \
      tests keep it. They are the same as `timegrapher series`.",
-    "Each series gets one verdict and a sentence saying why. Steady: independent \
-     readings about one level. Periodic: the readings repeat on a cycle, named after \
-     the wheel whose turn it matches (the fourth wheel turns once a minute). Two \
-     States: the readings switch between two levels. Measurement: two levels that come \
-     from the unlock mark hopping between two edges of the sound, a problem with the \
-     measurement rather than the watch. Shifting Mean: the level steps and stays. \
-     Drifting: the level slides slowly. Wandering: each reading remembers the last \
-     ones with no cycle, step or trend to explain it. Too Short: not enough readings.",
-    "Under Each Verdict, in the Steadiness section of the sidebar, picks what is \
-     drawn under each verdict. Readings: every \
+    "Each series gets a sentence saying what the tests found: a cycle (named after \
+     the wheel whose turn it matches; the fourth wheel turns once a minute), two \
+     levels the readings switch between, a level that steps and stays, a slow trend, \
+     correlation between readings, or none of these. When two levels come from the \
+     unlock mark hopping between two edges of the sound, the sentence says so. Under \
+     it are the statistics: readings, median, standard deviation, the scatter from one \
+     reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
+     trend and period when found.",
+    "Under Each Series, in the Steadiness toolbar, picks what is \
+     drawn under each series. Readings: every \
      reading in time order (10 s rate readings, 2 s amplitude and beat error \
      readings), with the stretches of constant level and the two state levels. \
      Periods: how strongly the readings repeat at each period, with the 1% \
@@ -270,8 +260,8 @@ pub const ISOCHRONISM: &[&str] = &[
      readings in each, which a session of some hours from full wind gives. It comes \
      from the same tests as Steadiness, the same as `timegrapher series`.",
     "0 h / 24 h compares the first half hour of the session with the half hour 24 hours \
-     later, as the commercial test does for one position: rate, amplitude and beat \
-     error, and how much each changed. It needs at least 2 hours; under 24 hours, the \
+     later in one position: rate, amplitude and beat error, and how much each \
+     changed. It needs at least 2 hours; under 24 hours, the \
      last half hour stands in for the 24 h one.",
 ];
 
@@ -300,30 +290,13 @@ pub const HISTOGRAMS: &[&str] = &[
      can't squeeze the rest together; the line above says how many were left off.",
 ];
 
-pub const WINDOW: &[&str] = &[
-    "Appearance: Auto follows the system's light or dark setting.",
-    "The app remembers its views for next time: the strip, the profile, the panes and \
-     their layout, the averaging time, folded cards, the sidebar, the microphone and the \
-     window's size. The watch's lift angle, beat rate and position start fresh.",
-    "The sidebar button at the left of the toolbar, or Ctrl+B (Cmd+B on a Mac), hides the \
-     sidebar to give the panes the whole window, and brings it back. Clicking a card's \
-     name folds the card away.",
-    "Panes can be dragged by their tabs beside, above or below each other, or onto \
-     another's tab to stack them, and resized by dragging the gaps. The × on a tab \
-     hides a pane; its switch in the sidebar brings it back where it was: in its \
-     section's caption, or under Charts or Distributions. Reset Panes puts \
-     everything back as it started.",
-];
-
 pub const SIGNAL: &str = "How far the beats stand above the background noise: the \
-     typical beat's peak over the typical level between beats.\n\
-     10× and above: good, all readings can be trusted.\n\
-     5 to 10×: fair. Rate is reliable; amplitude and beat error may be off on some \
-     watches. Press the watch more firmly against the pickup, or raise the input level \
-     a little, to get above 10×.\n\
-     3 to 5×: poor. Only the rate can be trusted; ignore amplitude and beat error. \
-     Reposition the watch on the pickup, check the microphone cable, and raise the \
-     input level.\n\
-     Below 3×: no watch heard, nothing to trust (pure noise reads about 2×).\n\
+     typical beat's peak over the typical level between beats. Pure noise reads about \
+     2×; below 4× no beats are logged.\n\
      It measures loudness, not the shape of the tick: hum, knocks or a holder that \
      smears the sound are not caught by it.";
+
+pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular intervals: \
+     their timing scatter (the median jitter about a straight-line fit) is 2% of a beat \
+     or more, as on an empty stand, where it is about 5%. No rate, amplitude or beat \
+     error is shown then, since those figures would describe noise.";

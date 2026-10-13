@@ -33,7 +33,6 @@ use crate::dsp::median;
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig};
 use crate::periodicity::{polyfit2, Wheel};
-use crate::session::Severity;
 use crate::stream::BeatLog;
 use crate::timing;
 use crate::twostate::{self, TwoState};
@@ -136,7 +135,9 @@ impl SeriesKind {
     }
 }
 
-/// The one-word answer for a series.
+/// Which detected structure leads a series' headline. Internal only: it
+/// is not in the JSON (schema /2 removed the one-word verdict), and says
+/// nothing about whether the watch is good or bad.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
@@ -312,8 +313,10 @@ pub struct Period {
 pub struct SeriesCheck {
     pub series: SeriesKind,
     pub unit: &'static str,
+    /// Which detected structure leads the headline; not serialized.
+    #[serde(skip)]
     pub verdict: Verdict,
-    /// One plain sentence for people.
+    /// One plain sentence of what was measured.
     pub headline: String,
     /// Length of each reading, seconds; readings used; readings left out
     /// as outliers.
@@ -333,12 +336,12 @@ pub struct SeriesCheck {
     /// The strongest periodic component, when the period search found one.
     pub period: Option<Period>,
     pub two_state: Option<TwoState>,
-    /// The cycle the verdict rests on, when it is `periodic`, or one
-    /// found under another verdict.
+    /// The cycle found by the two-state finder, the autocorrelation or the
+    /// period search, if any.
     pub cycle: Option<Cycle>,
-    /// Amplitude and beat error only: one side's unlock edges split in
-    /// two (the two-state finder's check), so what this series shows may
-    /// be the measurement.
+    /// Amplitude and beat error only: one side's unlock edges or 2 s
+    /// windows fall in two clusters the other side's do not (the two-state
+    /// finder's check).
     pub unlock_hopping: bool,
 }
 
@@ -346,10 +349,8 @@ pub struct SeriesCheck {
 pub struct Finding {
     pub code: &'static str,
     pub series: SeriesKind,
-    pub severity: Severity,
     pub title: String,
     pub evidence: String,
-    pub advice: String,
 }
 
 /// The rate's median over the readings whose amplitude falls in one bin.
@@ -445,9 +446,6 @@ pub struct CrossCorrelation {
     /// slow change included (a shared drift counts here).
     pub take_r: f64,
     pub take_s_per_day_per_deg: f64,
-    /// Significant and strong enough to say the rate moves with the
-    /// amplitude.
-    pub moves_with: bool,
     pub headline: String,
 }
 
@@ -886,9 +884,11 @@ pub fn check_series(
     };
     if n < 30 || g.span() < 120.0 {
         out.headline = format!(
-            "Too few {:.0} s {} readings to say whether they are steady.",
+            "{} {:.0} s {} readings over {:.0} s: too few to search for structure (needs 30 readings over 120 s).",
+            n,
             g.step,
-            kind.name()
+            kind.name(),
+            g.span()
         );
         return out;
     }
@@ -1346,9 +1346,12 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
     };
     let step = every(s.step_s);
     match s.verdict {
-        Verdict::TooShort => format!("Too few {step} {name} readings to say whether they are steady."),
+        // check_series states the too-short case, with its rule, before
+        // the tests run.
+        Verdict::TooShort => s.headline.clone(),
         Verdict::Steady => format!(
-            "{cap} is steady: {step} readings scatter independently about {} (±{} from one {step} reading to the next).",
+            "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
+            s.readings,
             k.fmt(s.median.unwrap_or(mean)),
             k.fmt_size(s.short_term_sd.unwrap_or(0.0))
         ),
@@ -1363,7 +1366,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 k.fmt_size(p.peak_to_peak)
             ),
             (None, Some(t)) => format!(
-                "{cap} drops to a low level and back on a regular cycle{}.",
+                "{cap} drops to a low level and back on a cycle{}.",
                 t.period_s
                     .map_or(String::new(), |p| format!(" of about {}", every(p)))
             ),
@@ -1371,11 +1374,24 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
         },
         Verdict::TwoStates | Verdict::Measurement => {
             let t = s.two_state.as_ref().unwrap();
-            let base = twostate::describe(t, if k == SeriesKind::Rate { "rate" } else { name });
-            let mut c = base.chars();
-            let base: String = c.next().map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+            let base = format!(
+                "{cap} switches between two levels, {} and {}, about every {}",
+                k.fmt(t.low),
+                k.fmt(t.high),
+                every(t.switch_every_s)
+            );
             if s.verdict == Verdict::Measurement {
-                format!("{base}; this looks like the measurement, not the watch.")
+                let why = match lone_side(t) {
+                    Some(side) => clusters(side),
+                    None if t.unlock_jump => "the beat error from the unlock jumps between the levels; the one from the drop does not".to_string(),
+                    None => {
+                        let tick = t.tick_change.unwrap_or(0.0).abs();
+                        let tock = t.tock_change.unwrap_or(0.0).abs();
+                        let (a, b) = if tick > tock { ("Tick", "Tock") } else { ("Tock", "Tick") };
+                        format!("the {a} side changes between the levels; the {b} side does not")
+                    }
+                };
+                format!("{base}; {why}.")
             } else {
                 format!("{base}.")
             }
@@ -1402,7 +1418,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 );
             }
             format!(
-                "{cap} slides slowly from {} to {} ({} per hour) rather than scattering about one level.",
+                "{cap} slides from {} to {} ({} per hour).",
                 k.fmt(t.start),
                 k.fmt(t.end),
                 match k {
@@ -1412,61 +1428,53 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 }
             )
         }
-        Verdict::Wandering => format!(
-            "{cap} wanders: each {step} reading remembers the last ones{}, with no cycle, steps or trend to account for it.",
-            s.autocorrelation
-                .as_ref()
-                .and_then(|a| a.memory_s)
-                .map_or(String::new(), |m| format!(" for about {}", every(m)))
-        ),
+        Verdict::Wandering => {
+            let mut parts = Vec::new();
+            if let Some(a) = &s.autocorrelation {
+                parts.push(format!(
+                    "lag-1 correlation {:.2}, Ljung–Box p {}{}",
+                    a.r.get(1).copied().unwrap_or(f64::NAN),
+                    p_text(a.p_value),
+                    a.memory_s
+                        .map_or(String::new(), |m| format!(", correlated for about {}", every(m)))
+                ));
+            }
+            if let Some(a) = s.allan.as_ref().filter(|a| a.max_excess >= 2.0) {
+                parts.push(format!(
+                    "Allan deviation up to {:.1}× what independent readings give",
+                    a.max_excess
+                ));
+            }
+            format!(
+                "Successive {step} {name} readings are correlated ({}); no cycle, level change or trend detected.",
+                parts.join("; ")
+            )
+        }
     }
 }
 
 fn findings(s: &SeriesCheck) -> Option<Finding> {
     let k = s.series;
     let name = k.name();
-    let (code, severity, title, advice) = match s.verdict {
+    let (code, title) = match s.verdict {
         Verdict::Steady | Verdict::TooShort => return None,
-        Verdict::Periodic => (
-            "periodic",
-            Severity::Warning,
-            format!("The {name} repeats on a cycle"),
-            "A change that comes back once per turn points at that wheel: a damaged tooth, an eccentric or bent wheel, or a pivot binding once a turn. Check the wheel the period matches.".to_string(),
-        ),
+        Verdict::Periodic => ("periodic", format!("The {name} repeats on a cycle")),
         Verdict::TwoStates => (
             "two_states",
-            Severity::Warning,
             format!("The {name} switches between two levels"),
-            "A watch that flips between two rates or amplitudes is often touching something part of the time: a hairspring coil rubbing, a balance rubbing the cock or the pallet bridge, or a hand or the rotor catching. Look for the rub in this position.".to_string(),
         ),
         Verdict::Measurement => (
             "measurement_split",
-            Severity::Note,
-            format!("The {name} splits in two, but in the measurement"),
-            "The unlock mark is hopping between two points of the sound, so the two levels are not the watch. Read the beat error from the drop and the amplitude with care on this take.".to_string(),
+            format!("The {name} switches between two levels; the change shows on one side only, or in the unlock but not the drop"),
         ),
         Verdict::ShiftingMean => (
             "shifting_mean",
-            Severity::Warning,
-            format!("The {name} changed level during the take"),
-            "A lasting step usually has a cause at that moment: the watch moved or was knocked, the room got noisier, or something in the movement settled. Check what happened at the times given.".to_string(),
+            format!("The {name} changes level during the take"),
         ),
-        Verdict::Drifting => (
-            "drifting",
-            Severity::Note,
-            format!("The {name} drifts through the take"),
-            if k == SeriesKind::Amplitude {
-                "Amplitude falls as the mainspring lets down; a fall of tens of degrees over a day is normal, a fast one in a few hours suggests a weak or dirty mainspring or barrel."
-            } else {
-                "A slow slide follows the mainspring letting down or the temperature changing. Compare readings taken at the same state of wind."
-            }
-            .to_string(),
-        ),
+        Verdict::Drifting => ("drifting", format!("The {name} slides through the take")),
         Verdict::Wandering => (
             "wandering",
-            Severity::Note,
-            format!("The {name} wanders"),
-            "Readings that remember the last ones are not independent, so a short reading can mislead: average for longer (see the Allan deviation for how long) before judging.".to_string(),
+            format!("Successive {name} readings are correlated"),
         ),
     };
     let mut ev = Vec::new();
@@ -1525,22 +1533,30 @@ fn findings(s: &SeriesCheck) -> Option<Finding> {
             a.max_excess
         ));
     }
-    let (severity, advice) = if s.unlock_hopping {
-        (
-            Severity::Note,
-            format!("{advice} First check the unlock mark with `timegrapher profile`: one side's unlock edges split in two, so this may be the measurement."),
-        )
-    } else {
-        (severity, advice)
-    };
     Some(Finding {
         code,
         series: k,
-        severity,
         title,
         evidence: format!("{} Evidence: {}.", s.headline, ev.join("; ")),
-        advice,
     })
+}
+
+/// The side whose unlock edges or 2 s windows fall in two clusters the
+/// other side's do not, if one does.
+fn lone_side(t: &TwoState) -> Option<&'static str> {
+    if t.tick_edge_split_alone == Some(true) || t.tick_split_alone == Some(true) {
+        Some("Tick")
+    } else if t.tock_edge_split_alone == Some(true) || t.tock_split_alone == Some(true) {
+        Some("Tock")
+    } else {
+        None
+    }
+}
+
+/// "Tick windows fall in two clusters; Tock windows do not".
+fn clusters(side: &str) -> String {
+    let other = if side == "Tick" { "Tock" } else { "Tick" };
+    format!("{side} windows fall in two clusters; {other} windows do not")
 }
 
 pub fn p_text(p: f64) -> String {
@@ -1754,15 +1770,7 @@ pub fn check(
     // hopping (the two-state finder's direct check): whatever the
     // amplitude and the beat error from the unlock seem to do may be the
     // measurement.
-    let lone = series[1].two_state.as_ref().and_then(|t| {
-        if t.tick_edge_split_alone == Some(true) || t.tick_split_alone == Some(true) {
-            Some("Tick")
-        } else if t.tock_edge_split_alone == Some(true) || t.tock_split_alone == Some(true) {
-            Some("Tock")
-        } else {
-            None
-        }
-    });
+    let lone = series[1].two_state.as_ref().and_then(lone_side);
     if let Some(side) = lone {
         for s in series.iter_mut().skip(1) {
             if !matches!(
@@ -1770,31 +1778,17 @@ pub fn check(
                 Verdict::Steady | Verdict::TooShort | Verdict::Measurement
             ) {
                 s.unlock_hopping = true;
-                s.headline = format!(
-                    "{} The {side} windows fall in two clusters the other side does not follow, so the unlock mark may be hopping and this may be the measurement rather than the watch.",
-                    s.headline
-                );
+                s.headline = format!("{} {}.", s.headline, {
+                    let c = clusters(side);
+                    let mut ch = c.chars();
+                    ch.next().map_or(String::new(), |f| {
+                        f.to_uppercase().chain(ch).collect::<String>()
+                    })
+                });
             }
         }
     }
-    let mut findings: Vec<Finding> = series.iter().filter_map(findings).collect();
-    if let Some(x) = rate_amplitude.as_ref().filter(|x| x.moves_with) {
-        findings.push(Finding {
-            code: "rate_moves_with_amplitude",
-            series: SeriesKind::Rate,
-            severity: Severity::Note,
-            title: "The rate moves with the amplitude".into(),
-            evidence: format!(
-                "{} Evidence: r {:.2} over {} pairs of readings (worth about {:.0} independent ones), p {}.",
-                x.headline,
-                x.r,
-                x.readings,
-                x.effective_readings,
-                p_text(x.p_value)
-            ),
-            advice: "A rate that moves with the amplitude is the movement's isochronism: as the mainspring lets down and the amplitude falls, the rate moves by this much per degree. Compare rates taken at the same amplitude.".into(),
-        });
-    }
+    let findings: Vec<Finding> = series.iter().filter_map(findings).collect();
     Report {
         duration_s: long.duration_s,
         bph: log.bph,
@@ -1832,9 +1826,6 @@ fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
             .collect(),
     }
 }
-
-/// The correlation a rate–amplitude link has to reach to be named.
-const FOLLOWS_MIN_R: f64 = 0.3;
 
 /// Correlate the rate with the amplitude, each reading against the same
 /// reading (no lag: the rate answers the amplitude at once, and a lag
@@ -1889,24 +1880,18 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
     let n_eff = (n * (1.0 - rr) / (1.0 + rr)).clamp(4.0, n);
     let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
     let p_value = chi2_tail(z * z, 1);
-    let moves_with = p_value < cfg.alpha && r.abs() >= FOLLOWS_MIN_R;
     let step = rate.step;
-    let headline = if moves_with {
-        format!(
-            "Rate moves with amplitude: {:+.2} s/d per degree from one {:.0} s reading to the next (r {:.2}); over the whole take, {:+.2} s/d per degree.",
-            slope,
-            step,
-            r,
-            take_slope
-        )
-    } else {
-        format!(
-            "Rate does not move with amplitude from one {:.0} s reading to the next (r {:.2}, p {}).",
-            step,
-            r,
-            p_text(p_value)
-        )
-    };
+    let headline = format!(
+        "Rate against amplitude from one {:.0} s reading to the next: {:+.2} s/d per degree, r {:.2}, p {} over {} pairs (worth about {:.0} independent ones); over the whole take, {:+.2} s/d per degree (r {:.2}).",
+        step,
+        slope,
+        r,
+        p_text(p_value),
+        p.len(),
+        n_eff,
+        take_slope,
+        take_r
+    );
     Some(CrossCorrelation {
         step_s: step,
         readings: p.len(),
@@ -1916,7 +1901,6 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
         s_per_day_per_deg: slope,
         take_r: finite_or_nan(take_r),
         take_s_per_day_per_deg: finite_or_nan(take_slope),
-        moves_with,
         headline,
     })
 }

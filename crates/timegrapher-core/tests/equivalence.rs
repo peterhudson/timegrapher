@@ -399,7 +399,10 @@ fn clipping_is_named_in_every_pipeline() {
     let s = analyze(&a, &AnalysisConfig::default()).summary;
     assert!(s.doubts.clipped, "analyze: {:?}", s.clipping);
     let m = whole(&log);
-    assert!(m.clipping_warns(), "session");
+    assert!(
+        m.clipped_fraction > timegrapher_core::analysis::Clipping::NOTED_FRACTION,
+        "session"
+    );
     let named = |c: &[Caveat]| c.iter().any(|c| matches!(c, Caveat::Clipped { .. }));
     assert!(named(&s.caveats) && named(&m.caveats));
     let r = pushed(&a, 4800).reading(a.duration());

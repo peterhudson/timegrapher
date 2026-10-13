@@ -6,9 +6,11 @@ complete and current; check them when this file and the program disagree.
 Commands: `update`, `devices`, `doctor`, `calibres`, `record`, `analyze`, `shape`, `profile`,
 `long`, `series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
-`docs/sessions.md`, `series` in `docs/series.md`. What each finding code
-of `doctor`, `session` and `series` means, and what to do about it, is in
-[findings.md](findings.md).
+`docs/sessions.md`, `series` in `docs/series.md`. How to read what
+`doctor`, `session` and `series` measure, and what to do about it, is in
+[findings.md](findings.md). Verdict, grade, severity, advice and fault
+fields below are the program's labels from fixed cut-offs, which later
+builds drop: read the measured fields beside them instead.
 
 **Calibres** (from this version; `timegrapher --help` shows whether a
 build has them):
@@ -109,13 +111,14 @@ JSON body:
 | `fixes` | `[{ issue, description, command?, requires_consent }]`. `command` is an argument list (Linux `amixer`); without one, `description` is instructions for the person |
 | `applied` | Whether `--apply` ran the commands |
 | `after` | The check repeated after applying (live only) |
-| `verdict` | `ok` or `needs_attention` |
+| `verdict` | `ok` or `needs_attention` (a label; read `check`) |
 
 `check` fields: `sample_rate`, `duration_s`, `peak_dbfs`, `rms_dbfs`,
 `dc_offset`, `clipped_samples`, `bph`, `beats_expected`, `beats_found`,
 `tick_level_dbfs`, `noise_level_dbfs`, `tick_to_noise_db`, `signal_x`
-and `signal_band` (the desktop app's "signal N×" and its band: `good`,
-`fair`, `poor`, `none`; see the table in setup-and-microphone.md), `gap_rise_db`
+and `signal_band` (a band word from fixed cut-offs: `good`, `fair`,
+`poor`, `none`; read `signal_x` against the table in
+setup-and-microphone.md), `gap_rise_db`
 (background rise between ticks; several dB means automatic gain),
 `rate_s_per_day`, `beat_error_ms` (a few seconds only, uncalibrated),
 `suggested_gain_change_db` (negative: turn down), and `issues`:
@@ -151,17 +154,18 @@ timegrapher record FOLDER --position P [--seconds 120] [--device NAME]
 Records one position for `--seconds`, then stops; it listens only while
 it runs. Each run makes a take folder in FOLDER as the desktop app saves
 one (`audio-001.wav`, `clock.csv`, `session.json`, `session.toml`),
-checks it, and when a watch is heard and under 1% of beats clip, adds it
-to `FOLDER/session.toml` (written on the first take with the watch,
-calibre, bph, lift and `settle_s = 30`) with its position and `--wind-h`.
-`timegrapher session FOLDER` then reads them all.
+checks it, and adds every take to `FOLDER/session.toml` (written on the
+first take with the watch, calibre, bph, lift and `settle_s = 30`) with
+its position and `--wind-h`, and a comment line for no regular beat or
+clipping. `timegrapher session FOLDER` then reads them all. It exits 0.
 
-JSON body: `take`, `session_file` (null when not added), `position`,
-`wind_h`, `seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
-`bph`, `beats_found`, `beats_expected`, `rate_s_per_day`,
-`amplitude_deg`, `beat_error_ms`, `clipping`), `verdict` (`ok`,
-`no_watch_heard`, `clipping`). Exit 3 when the verdict is not `ok`:
-record that position again. `--bph` or `--lift` that disagree with the
+JSON body (`record/2`): `take`, `session_file`, `position`, `wind_h`,
+`seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
+`timing_scatter_ms`, `timing_scatter_fraction`, `bph`, `beats_found`,
+`beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`,
+`clipping`). When no regular beat was found or the ticks clipped, record
+that position again. Older builds (`record/1`) print a `verdict` and
+leave such a take out of the session with exit 3. `--bph` or `--lift` that disagree with the
 folder's session file are an error. `--file` reads a recording instead of
 the microphone.
 
@@ -192,7 +196,7 @@ JSON body:
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
 | `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch`, `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`). Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
-| `faults[]` | Possible escapement faults from the shape of the Tick and Tock (from this version): `id`, `label`, `side`, `strength` (all `possible` for now), `evidence`, `see`. Empty when nothing is seen or the shape can't be judged. How to read and report each one: [findings.md](findings.md#faults-the-program-names) |
+| `faults[]` | Possible escapement faults from the shape of the Tick and Tock (from this version): `id`, `label`, `side`, `strength` (all `possible` for now), `evidence`, `see`. Empty when nothing is seen or the shape can't be judged. Read the measures with [tick-shape.md](tick-shape.md#rules-for-possible-faults) instead of repeating the names |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
 | `beat_error_unlock_ms` | **The beat error to quote**: signed, measured from the unlock (this project's headline beat error); report its absolute value |
 | `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop |
@@ -335,7 +339,7 @@ Is the take steady? Reads rate, amplitude and beat error in time order
 `rate_amplitude` (does the rate follow the amplitude) and `findings[]`.
 `--calibre` names periodic changes after that movement's wheels; an
 unknown name lists the calibres the program knows. Same input as `long`.
-What each verdict means for the watch: [findings.md](findings.md#series-long-runs).
+How to read the statistics behind each verdict, without its words: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
 

@@ -51,9 +51,7 @@ svg text { fill: var(--text2); font-size: 11px; font-variant-numeric: tabular-nu
 svg .plot { fill: var(--card); stroke: var(--separator); stroke-width: 1; }
 svg .grid { stroke: var(--grid); stroke-width: 1; }
 svg .zero { stroke: var(--text3); stroke-width: 1; }
-svg .tol { fill: var(--tolerance); }
 svg .cursor { stroke: var(--text3); stroke-width: 1; }
-.tolkey { display: inline-block; vertical-align: -1px; background: var(--tolerance); border: 1px solid var(--good); }
 .chart { position: relative; }
 .tip {
   position: absolute; pointer-events: none; background: var(--card); color: var(--text);
@@ -65,18 +63,11 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-nu
 th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--separator); }
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--text2); font-weight: 500; }
-.out { color: var(--bad); font-weight: 600; }
 .sub.off { margin: 4px 0 0; }
 .hint { color: var(--text2); font-size: 12px; margin: -2px 0 8px; }
-svg text.out { font-weight: 600; }
 .findings { list-style: none; margin: 0; padding: 0; }
 .findings li { padding: 8px 0; border-bottom: 1px solid var(--separator); }
 .findings li:last-child { border-bottom: none; }
-.sev { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 6px; }
-.sev-fault, .sev-serious { color: var(--bad); }
-.sev-warning, .sev-warn { color: var(--warn); }
-.sev-note, .sev-info { color: var(--text2); }
-.findings .evidence, .findings .advice { color: var(--text2); font-size: 12px; margin-top: 2px; }
 .limits li { font-size: 13px; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .seg button { font: inherit; font-size: 12px; color: var(--text); background: var(--control); border: 0; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
@@ -508,7 +499,7 @@ function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Watch Heard</b>The beats are no steadier than noise, so there are no readings to show. Check that the watch is on the microphone and running, then record again.</div>`;
+    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc, doc.bph)}</div>`;
   }
   const o = doc.overall || {};
   // The headline beat error is the unlock's, with the drop's beside it, as
@@ -527,29 +518,36 @@ function recordingView(doc, extra, limits) {
   const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
   const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", graded(Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "", conf.rate))}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", graded(sides, conf.amplitude), "°")}
-    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", graded(beNote, conf.beat_error))}
+    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
   </div>`;
   // The caveats say what limits the readings, clipping among them; a
   // server without them still gets the clipping notice.
   if (limits && limits.length) html += limitsCard(limits);
-  else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped, so amplitude and beat error may be off. Turn the microphone down.</div>`;
+  else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped.</div>`;
   html += stripCards(extra && extra.strip);
   html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
   return html;
 }
 
+// The canonical sentence for no regular beat, with the timing scatter of
+// the beats when the document gives it (as the server's caveats.rs says it).
+function noRegularBeat(m, bph) {
+  const j = m && m.jitter_us;
+  const scatter = Number.isFinite(j) && bph > 0
+    ? ` (timing scatter ${num(j / 1000, 1)} ms, ${num(j / (3.6e9 / bph) * 100, 1)}% of a beat)` : "";
+  return `No regular beat found${scatter}. There are no rate, amplitude or beat error readings.`;
+}
+
 function sessionView(doc, limits) {
   const rep = doc.report || {};
-  const tol = rep.tolerance || {};
-  // Keep each reading's index: the verdicts are listed in the same order.
   const readings = (doc.readings || []).map((r, i) => Object.assign({ index: i }, r));
   const rank = (r) => { const k = ORDER.indexOf(r.position); return k < 0 ? ORDER.length : k; };
   readings.sort((a, b) => rank(a) - rank(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
   const title = [doc.watch, doc.calibre].filter(Boolean).join(" · ");
-  let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°${tol.name ? ` · tolerance ${esc(tol.name)}` : ""}</p>`;
+  let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   const state = (rep.states || [])[0];
   if (state) {
     html += `<div class="tiles">
@@ -558,21 +556,16 @@ function sessionView(doc, limits) {
       ${tile("Mean Amplitude", "--amplitude", num(state.amplitude_mean, 0), "°", Number.isFinite(state.dvh_amplitude) ? `vertical minus horizontal ${signed(state.dvh_amplitude, 0)}°` : "")}
     </div>`;
   }
-  const verdicts = rep.verdicts || [];
-  const cell = (v, verdict, digits, sign) => {
-    const text = sign ? signed(v, digits) : num(v, digits);
-    return verdict && verdict !== "within" ? `<td class="out" title="Outside tolerance">${text}</td>` : `<td>${text}</td>`;
-  };
+  const cell = (v, digits, sign) => `<td>${sign ? signed(v, digits) : num(v, digits)}</td>`;
   html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
   readings.forEach((r) => {
     const m = r.measurement || {};
     const pos = POSITIONS[r.position] || [r.position, r.position];
-    const v = verdicts[r.index] || {};
     const heard = m.watch_heard !== false;
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
-      (heard ? cell(m.rate_s_per_day, v.rate, 1, true) + cell(m.amplitude_deg, v.amplitude, 0) +
-        cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), v.beat_error, 2)
-        : `<td colspan="3" style="text-align:center;color:var(--text2)">No watch heard</td>`) +
+      (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
+        cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), 2)
+        : `<td colspan="3" style="text-align:center;color:var(--text2)">No regular beat found</td>`) +
       `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
   });
   html += `</tbody></table></div>`;
@@ -580,22 +573,17 @@ function sessionView(doc, limits) {
   const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
   if (heard.length) {
     const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
-    const horizontal = (r) => r.position === "CH" || r.position === "CB";
-    const rateTol = Number.isFinite(tol.rate_min) ? [tol.rate_min, tol.rate_max] : null;
-    const ampTol = (r) => (horizontal(r) ? tol.amplitude_h : tol.amplitude_v) || null;
-    const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day, tol: rateTol, out: (verdicts[r.index] || {}).rate && verdicts[r.index].rate !== "within" }));
-    const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg, tol: ampTol(r), out: (verdicts[r.index] || {}).amplitude && verdicts[r.index].amplitude !== "within" }));
-    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate, against the tolerance</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
-    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2><p class="hint">Each position's amplitude, against the tolerance for that position</p>${bars(amp, "--amplitude", "°", 0)}</div>`;
+    const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day }));
+    const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg }));
+    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
+    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2><p class="hint">Each position's amplitude</p>${bars(amp, "--amplitude", "°", 0)}</div>`;
   }
-  html += findingsCard(rep.findings);
   return html;
 }
 
 // Horizontal bars from zero, one per position, on a plot area wide enough
-// for every bar and its value. Each row's tolerance is a green band behind
-// its bar; a value outside it is red, as in the table.
-//   rows: [{label, value, tol: [lo, hi] or null, out}]
+// for every bar and its value.
+//   rows: [{label, value}]
 function bars(rows, color, unit, decimals) {
   const W = chartWidth(), rowH = 26, T = 4, B = 20, R = 6;
   const fmt = (v) => (v > 0 && unit !== "°" ? "+" : "") + v.toFixed(decimals) + unit;
@@ -604,7 +592,6 @@ function bars(rows, color, unit, decimals) {
   let lo = 0, hi = 0;
   for (const r of rows) {
     lo = Math.min(lo, r.value); hi = Math.max(hi, r.value);
-    if (r.tol) { lo = Math.min(lo, r.tol[0]); hi = Math.max(hi, r.tol[1]); }
   }
   if (!(hi > lo)) hi = lo + 1;
   // Room inside the plot for the values beside the bars' ends.
@@ -631,10 +618,6 @@ function bars(rows, color, unit, decimals) {
     const anchor = sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
     g += `<text x="${sx(v)}" y="${T + plotH + 15}" text-anchor="${anchor}">${esc(t)}</text>`;
   }
-  rows.forEach((r, i) => {
-    const y = T + i * rowH;
-    if (r.tol) inside += `<rect class="tol" x="${sx(r.tol[0])}" y="${y + 1}" width="${sx(r.tol[1]) - sx(r.tol[0])}" height="${rowH - 2}"/>`;
-  });
   inside += `<line class="zero" x1="${sx(0)}" x2="${sx(0)}" y1="${T}" y2="${T + plotH}"/>`;
   rows.forEach((r, i) => {
     const y = T + i * rowH, v = r.value;
@@ -642,31 +625,16 @@ function bars(rows, color, unit, decimals) {
     g += `<text x="${L - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" style="fill:var(--text)">${esc(r.label)}</text>`;
     inside += `<rect x="${x0}" y="${y + 6}" width="${w}" height="${rowH - 12}" rx="3" fill="var(${color})"><title>${esc(r.label)}: ${esc(fmt(v))}</title></rect>`;
     const right = v >= 0;
-    inside += `<text x="${right ? sx(v) + 5 : sx(v) - 5}" y="${y + rowH / 2 + 4}" text-anchor="${right ? "start" : "end"}" class="${r.out ? "out" : ""}" style="fill:var(${r.out ? "--bad" : "--text"})">${esc(fmt(v))}</text>`;
+    inside += `<text x="${right ? sx(v) + 5 : sx(v) - 5}" y="${y + rowH / 2 + 4}" text-anchor="${right ? "start" : "end"}" style="fill:var(--text)">${esc(fmt(v))}</text>`;
   });
   g += `<g clip-path="url(#${area.id})">${inside}</g>`;
-  const note = rows.some((r) => r.tol) ? `<p class="sub" style="margin:6px 0 0"><span class="swatch tolkey"></span> Tolerance</p>` : "";
-  return `<svg viewBox="0 0 ${W} ${T + plotH + B}" width="${W}" height="${T + plotH + B}" role="img">${g}</svg>${note}`;
+  return `<svg viewBox="0 0 ${W} ${T + plotH + B}" width="${W}" height="${T + plotH + B}" role="img">${g}</svg>`;
 }
 
 // What limits the readings: the server's sentences from the caveats, each
 // with the positions it is about when not every one.
 function limitsCard(limits) {
   return `<div class="card"><h2>What Limits These Readings</h2><ul class="findings limits">${limits.map((l) => `<li>${l.where ? `<b>${esc(l.where)}</b> ` : ""}${esc(l.text)}</li>`).join("")}</ul></div>`;
-}
-
-// A tile's note with the reading's confidence grade after it.
-function graded(note, c) {
-  const g = c && c.grade ? `${esc(c.grade)} confidence` : "";
-  return [note, g].filter(Boolean).join(" · ");
-}
-
-function findingsCard(findings) {
-  if (!findings || !findings.length) return "";
-  return `<div class="card"><h2>Findings</h2><ul class="findings">${findings.map((f) => `<li>
-    <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span><b>${esc(f.title)}</b>
-    ${f.evidence ? `<div class="evidence">${esc(f.evidence)}</div>` : ""}
-    ${f.advice ? `<div class="advice">${esc(f.advice)}</div>` : ""}</li>`).join("")}</ul></div>`;
 }
 
 function profileView(doc) {
@@ -1100,7 +1068,7 @@ function seriesView(doc, extra) {
   }
   const name = fileName(doc);
   const len = Number.isFinite(doc.duration_s) ? ` · ${timeLabel(doc.duration_s)}` : "";
-  return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${distributionCards(doc.distributions)}${findingsCard(doc.findings || [])}`;
+  return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${distributionCards(doc.distributions)}`;
 }
 
 // ---- Live: a take as it is heard ------------------------------------------
@@ -1225,7 +1193,7 @@ function liveView(l) {
     ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(r.beat_error_unlock_ms) ? "from the unlock" : "from the drop") : wait)}
     ${tile("Beats Heard", "", esc(d.beats_heard || 0), "", heard ? `${esc(r.beats_used)} in the last ${num(r.span_s, 0)} s` : wait)}
   </div>`;
-  if (r.clipped_fraction > 0.01) html += `<div class="card notice"><b>Clipping</b>${num(r.clipped_fraction * 100, 0)}% of beats are clipped: turn the microphone down before the next take.</div>`;
+  if (r.clipped_fraction > 0.01) html += `<div class="card notice"><b>Clipping</b>${num(r.clipped_fraction * 100, 0)}% of beats are clipped.</div>`;
   html += liveStrip(d);
   html += stripCards(trendStrip(d.trend));
   return html;

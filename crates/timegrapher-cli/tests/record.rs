@@ -101,8 +101,8 @@ fn takes_build_up_a_session() {
         String::from_utf8_lossy(&out.stderr)
     );
     let j = doc(&out);
-    assert_eq!(j["schema"], "timegrapher.record/1");
-    assert_eq!(j["verdict"], "ok");
+    assert_eq!(j["schema"], "timegrapher.record/2");
+    assert!(j.get("verdict").is_none());
     assert_eq!(j["position"], "DU");
     assert_eq!(j["check"]["watch_heard"], true);
     assert_eq!(j["check"]["bph"], 28800);
@@ -182,23 +182,31 @@ fn takes_build_up_a_session() {
 }
 
 #[test]
-fn an_empty_stand_is_not_added() {
+fn an_empty_stand_is_kept_and_stated() {
     let d = scratch("empty");
     let wav = hiss(&d);
     let sess = d.join("sess");
     let out = record(&sess, &wav, &["--position", "DU", "--bph", "28800"]);
     assert_eq!(
         out.status.code(),
-        Some(3),
+        Some(0),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
     let j = doc(&out);
-    assert_eq!(j["verdict"], "no_watch_heard");
     assert_eq!(j["check"]["watch_heard"], false);
     assert!(j["check"]["rate_s_per_day"].is_null());
-    assert!(j["session_file"].is_null());
-    assert!(!sess.join("session.toml").exists());
+    assert!(j["check"]["timing_scatter_fraction"].as_f64().unwrap() >= 0.02);
+    let toml = fs::read_to_string(sess.join("session.toml")).unwrap();
+    assert!(
+        toml.contains("# No regular beat found (timing scatter"),
+        "{toml}"
+    );
+    assert!(toml.contains("[[recording]]"), "{toml}");
+    assert_eq!(
+        j["session_file"],
+        sess.join("session.toml").display().to_string()
+    );
     let _ = fs::remove_dir_all(&d);
 }
 

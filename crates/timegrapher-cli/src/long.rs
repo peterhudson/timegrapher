@@ -385,9 +385,22 @@ pub fn false_alarm(sig: f64) -> String {
 }
 
 pub fn wheel_note(c: &Component) -> String {
+    // The match rule is longterm's: within the search's resolution or 1%
+    // of the wheel's turn, whichever is wider.
+    let rule = format!("±{:.1} s or 1%", c.resolution_s);
+    let pct = |off: f64| format!("{:+.1}%", (off * 10.0).round() / 10.0 + 0.0);
     match (&c.wheel, &c.nearest_wheel) {
-        (Some(w), _) => format!("matches the {w}"),
-        (None, Some((w, off))) => format!("not a wheel listed; nearest is the {w}, {off:+.1}% off"),
+        (Some(w), Some((n, off))) if n == w => {
+            format!(
+                "matches the {w} ({} off; a match is within {rule})",
+                pct(*off)
+            )
+        }
+        (Some(w), _) => format!("matches the {w} (a match is within {rule})"),
+        (None, Some((w, off))) => format!(
+            "no wheel listed within {rule}; nearest is the {w}, {} off",
+            pct(*off)
+        ),
         (None, None) => String::new(),
     }
 }
@@ -423,7 +436,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             c.residual_ms,
             if c.tracks_drift { ", drift followed" } else { "" }
         ),
-        (None, _) => println!("Clock        not calibrated: absolute rate is only as good as the sound card (use --clock, or store the card's error with `timegrapher clock`)"),
+        (None, _) => println!("Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)"),
     }
     if r.clock.is_some() {
         println!("             tg, and a session's reference rates, read on the sound card's clock: add the error above to compare");

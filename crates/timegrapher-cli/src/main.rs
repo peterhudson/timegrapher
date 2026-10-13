@@ -33,7 +33,7 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
     after_help = "Every command with --json prints one JSON document with a `schema` field \
 (e.g. timegrapher.analyze/2), the software version and the input it read. \
 `timegrapher doctor` measures the microphone input. Exit codes: 0 success, \
-1 error, 3 a take was not fit to keep (record)."
+1 error, 3 a take moved beyond its margins (regress)."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -193,12 +193,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Is each series of readings steady? Tests the rate, amplitude and
-    /// beat error of a take in time order for independence
-    /// (autocorrelation, Allan deviation, CUSUM, change points), alongside
-    /// the period search and the two-state finder, and gives one verdict
-    /// per series: steady, periodic, two states, measurement, shifting
-    /// mean, drifting or wandering.
+    /// The structure of each series of readings in time order. Tests the
+    /// rate, amplitude and beat error of a take for correlation between
+    /// readings (autocorrelation, Ljung–Box, Allan deviation, CUSUM),
+    /// level changes, a trend, a cycle (period search) and two levels
+    /// (two-state finder), and states what each finds with its statistics.
     Series {
         /// The recording; several files are read as one continuous
         /// recording, in the order given. A folder stands for its WAV and
@@ -321,10 +320,10 @@ enum Command {
         json: bool,
     },
     /// Record one position of a test into a session folder: a take folder
-    /// as the desktop app saves it, checked at once and, when a watch is
-    /// heard cleanly, added to the folder's session.toml for `session`.
-    /// Listens only while it runs, for --seconds. Exits 3 when the take is
-    /// not fit to keep (no watch heard, or clipped).
+    /// as the desktop app saves it, checked at once and added to the
+    /// folder's session.toml for `session`, with what was measured: no
+    /// regular beat, or clipping, is stated, not refused. Listens only while
+    /// it runs, for --seconds.
     Record {
         /// The session folder (created if missing); one per watch and test.
         folder: PathBuf,
@@ -391,9 +390,6 @@ enum Command {
         /// where --bph, --lift and the session file give none.
         #[arg(long)]
         calibre: Option<String>,
-        /// Tolerance class: ladies, mens, cosc-small, cosc, metas (default mens).
-        #[arg(long)]
-        tolerance: Option<String>,
         /// Seconds skipped at the start of each recording while the watch
         /// settles (overrides the session file; default 20).
         #[arg(long)]
@@ -834,11 +830,7 @@ fn main() -> ExitCode {
                 json,
                 live,
             };
-            match record_cmd::run(&o) {
-                Ok(true) => Ok(()),
-                Ok(false) => return ExitCode::from(3),
-                Err(e) => Err(e),
-            }
+            record_cmd::run(&o)
         }
         Command::Session {
             paths,
@@ -846,7 +838,6 @@ fn main() -> ExitCode {
             bph,
             lift,
             calibre,
-            tolerance,
             settle,
             no_shape,
             no_cycles,
@@ -858,7 +849,6 @@ fn main() -> ExitCode {
                 bph,
                 lift,
                 calibre,
-                tolerance,
                 settle,
                 out,
                 json,

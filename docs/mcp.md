@@ -92,15 +92,15 @@ That route has not been tried with this server yet.
 
 | Tool | Runs | What for |
 |---|---|---|
-| `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a watch was heard at all |
-| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR), Witschi style, with findings; writes `report.html` |
+| `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
+| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
 | `check_steadiness` | `series` | Steadiness verdicts over a long recording |
 | `long_run` | `long` | Rate and amplitude over hours and the wheel behind a periodic change; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
 | `record_position` | `record` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |
 | `check_microphone` | `doctor` | Listens a few seconds and says what to change in the sound settings; **uses the microphone**, changes nothing |
-| `check_recording` | `doctor --file` | Whether a recording is fit to measure with |
+| `check_recording` | `doctor --file` | A recording's level, clipping, automatic gain and noise |
 | `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
@@ -149,9 +149,10 @@ the timegrapher app draws them:
 - `analyze_recording`: the rate, amplitude and beat error, those three over
   time, and the Tick and Tock profiles from ten seconds in the middle of the
   recording.
-- `run_session`: each position's readings against the tolerance, the
-  characteristic values, rate and amplitude by position with each
-  position's tolerance behind its bar, and the findings.
+- `run_session`: each position's readings, the characteristic values, and
+  rate and amplitude by position. It sets no limits: the server does not
+  judge the readings against a tolerance, so `run_session` takes no
+  tolerance class.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.
 - `record_position`: a **Live** view while it records, like the app's
   live screen. It shows the rate, amplitude, beat error and beats heard,
@@ -167,9 +168,9 @@ the timegrapher app draws them:
   over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
   CUSUM view, picked with the buttons above it), the readings on
   probability paper as the app's Distribution panes draw them (one steady
-  state falls on the dashed straight line, two states bend it), and the
-  findings. The chart data rides beside the result, so the model reads the
-  verdicts and not the thousands of numbers behind the plots.
+  state falls on the dashed straight line, two states bend it). The chart
+  data rides beside the result, so the model reads the verdicts and not the
+  thousands of numbers behind the plots.
 
 The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
@@ -207,11 +208,10 @@ document, about what the numbers alone do not say:
   the lift angle and whether it was given, the calibre's or the default,
   how many of the expected beats were found and clipped, and whether the
   take was added to the test.
-- `check_microphone`: its rate and beat error come from a few seconds, so
-  they are too short to give as the watch's readings.
+- `check_microphone`: its rate and beat error come from a few seconds of
+  sound, so they are not the watch's readings.
 
-The charts list the caveats under **What Limits These Readings**, and the
-`analyze_recording` charts give each reading's confidence grade.
+The charts list the same facts under **What Limits These Readings**.
 
 The **Test My Watch** prompt is the skill's own
 (`prompt-test-my-watch.md`): the step-by-step test an experienced

@@ -12,8 +12,7 @@ use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::{standard_wheels, Wheel};
 use timegrapher_core::session::{
-    self, Finding, Manifest, Mark, Position, Reading, RecordingEntry, SessionReport, Severity,
-    Tolerance,
+    self, Finding, Manifest, Position, Reading, RecordingEntry, SessionReport,
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
@@ -21,7 +20,7 @@ use timegrapher_core::{audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 /// The layout of `summary.json` and `--json`.
-pub const SCHEMA: &str = "timegrapher.session/1";
+pub const SCHEMA: &str = "timegrapher.session/2";
 
 pub struct Options {
     pub bph: Option<u32>,
@@ -29,7 +28,6 @@ pub struct Options {
     /// A calibre in the table (`calibres`): its beat rate, lift angle and
     /// wheels, where the flags and the session file give none.
     pub calibre: Option<String>,
-    pub tolerance: Option<String>,
     pub settle: Option<f64>,
     pub out: Option<PathBuf>,
     pub json: bool,
@@ -252,11 +250,6 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         o.lift
             .or(cal.and_then(|c| c.lift_angle_deg))
             .unwrap_or(52.0)
-    ));
-    t.push_str("# ladies, mens, cosc-small, cosc or metas\n");
-    t.push_str(&format!(
-        "tolerance = \"{}\"\n",
-        o.tolerance.as_deref().unwrap_or("mens")
     ));
     t.push_str("# seconds skipped at the start of each recording while the watch settles\n");
     t.push_str(&format!("settle_s = {}\n", o.settle.unwrap_or(20.0)));
@@ -548,15 +541,6 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     for e in &m.recordings {
         position_of(e)?;
     }
-    let tol_name = o
-        .tolerance
-        .as_deref()
-        .or(m.tolerance.as_deref())
-        .unwrap_or("mens");
-    let tol = Tolerance::named(tol_name).ok_or_else(|| {
-        format!("unknown tolerance '{tol_name}' (ladies, mens, cosc-small, cosc, metas)")
-    })?;
-    let limits = m.limits.clone().unwrap_or_default();
     let ctx = Ctx {
         m: &m,
         base: &base,
@@ -572,7 +556,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     if ctx.tty {
         eprintln!();
     }
-    let report = session::evaluate(&readings, &tol, &limits);
+    let report = session::evaluate(&readings);
     let bph = readings.first().map_or(0, |r| r.bph);
     let files: Vec<PathBuf> = m.recordings.iter().map(|e| base.join(&e.file)).collect();
     let settings = serde_json::json!({
@@ -580,7 +564,6 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "lift_deg": o.lift(&m, cal),
         "calibre": cal.map(|c| c.calibre.as_str()),
         "calibre_notes": calibre_notes,
-        "tolerance": tol_name,
         "settle_s": o.settle,
         "shape": !o.no_shape,
         "cycles": !o.no_cycles,
@@ -658,23 +641,6 @@ fn wind_state(w: f64) -> String {
     }
 }
 
-pub fn severity(s: Severity) -> &'static str {
-    match s {
-        Severity::Fault => "FAULT",
-        Severity::Warning => "CHECK",
-        Severity::Note => "NOTE",
-    }
-}
-
-pub fn mark(m: Mark) -> &'static str {
-    match m {
-        Mark::Within => "",
-        Mark::Outside => "*",
-        Mark::NotJudged => "",
-        Mark::Unreliable => "?",
-    }
-}
-
 fn csv(s: &Session) -> String {
     let mut t = String::from(
         "recording,position,wind_h,measured_s,beats,clean_fraction,calibrated,rate_s_per_day,rate_window_median_s_per_day,amplitude_deg,beat_error_unlock_ms,beat_error_drop_ms,jitter_us,rate_p05,rate_p95,clipped_fraction,ref_rate,ref_amplitude,ref_beat_error\n",
@@ -711,9 +677,8 @@ fn csv(s: &Session) -> String {
 }
 
 fn finding_lines(f: &Finding) {
-    println!("  {:<6} {}", severity(f.severity), f.title);
-    println!("         {}", f.evidence);
-    println!("         {}", f.advice);
+    println!("  {}", f.title);
+    println!("    {}", f.evidence);
 }
 
 fn print_summary(s: &Session) {
@@ -734,21 +699,26 @@ fn print_summary(s: &Session) {
         s.bph,
         s.lift_deg
     );
-    let t = &r.tolerance;
-    println!(
-        "Tolerance    {}: {:+.0} to {:+.0} s/d, amplitude {:.0}-{:.0} deg horizontal and {:.0}-{:.0} vertical, beat error under {} ms",
-        t.name, t.rate_min, t.rate_max, t.amplitude_h.0, t.amplitude_h.1, t.amplitude_v.0, t.amplitude_v.1, t.beat_error_ms
-    );
     println!();
     println!(
-        "{:<17} {:<18} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}  Recording",
-        "Position", "Wind", "Rate", "Amp", "BE", "drop", "Jitter", "10 s rates", "Reference"
+        "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  Recording",
+        "Position",
+        "Wind",
+        "Rate",
+        "Amp",
+        "BE",
+        "drop",
+        "Jitter",
+        "10 s rates",
+        "Unlock",
+        "Clip",
+        "Reference"
     );
     println!(
-        "{:<17} {:<18} {:>8} {:>6} {:>6} {:>5} {:>7} {:>15} {:>17}",
-        "", "", "s/d", "deg", "ms", "ms", "us", "s/d", "s/d, deg, ms"
+        "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}",
+        "", "", "s/d", "deg", "ms", "ms", "us", "s/d", "%", "%", "s/d, deg, ms"
     );
-    for (rd, v) in s.readings.iter().zip(&r.verdicts) {
+    for rd in &s.readings {
         let m = &rd.measurement;
         let rf = rd
             .reference
@@ -762,25 +732,37 @@ fn print_summary(s: &Session) {
                 )
             })
             .unwrap_or_default();
+        let clock = if m.calibrated { "" } else { " (card clock)" };
+        if !m.watch_heard {
+            println!(
+                "{:<17} {:<18} {:<62} {:>17}  {}{clock}",
+                rd.position.label(),
+                wind(rd.wind_h),
+                session::no_regular_beat(m.jitter_us, rd.bph),
+                rf,
+                rd.label,
+            );
+            continue;
+        }
         println!(
-            "{:<17} {:<18} {:>7}{:1} {:>5}{:1} {:>5}{:1} {:>5} {:>7} {:>15} {:>17}  {}{}",
+            "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  {}{clock}",
             rd.position.label(),
             wind(rd.wind_h),
             signed(m.rate_s_per_day, 1),
-            mark(v.rate),
             opt(m.amplitude_deg, 0),
-            mark(v.amplitude),
             opt(m.beat_error(), 2),
-            mark(v.beat_error),
             opt(m.beat_error_ms.map(f64::abs), 2),
             opt(m.jitter_us, 0),
             format!("{}..{}", signed(m.rate_p05, 0), signed(m.rate_p95, 0)),
+            opt(m.unlock_coverage.map(|c| 100.0 * c), 0),
+            opt(Some(100.0 * m.clipped_fraction), 1),
             rf,
             rd.label,
-            if m.calibrated { "" } else { " (card clock)" }
         );
     }
-    println!("* outside tolerance, ? not measured reliably");
+    println!(
+        "Unlock is the share of 2 s windows that found the unlock on both sides, on which amplitude and BE rest; Clip is the share of beats with a clipped sample."
+    );
     println!(
         "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
     );
@@ -838,11 +820,10 @@ fn print_summary(s: &Session) {
     }
     if r.im.is_some() || r.ie.is_some() {
         println!(
-            "Im {} s/d, Im* {} s/d, Ie {} s/d, N {}",
+            "Im {} s/d, Im* {} s/d, Ie {} s/d",
             signed(r.im, 1),
             signed(r.im_all, 1),
-            opt(r.ie, 1),
-            opt(r.n, 1)
+            opt(r.ie, 1)
         );
     }
     println!();
@@ -865,7 +846,6 @@ mod tests {
             bph,
             lift,
             calibre: calibre.map(String::from),
-            tolerance: None,
             settle: None,
             out: None,
             json: false,
@@ -988,6 +968,17 @@ mod tests {
             .map(|e| span_of(e, 1500.0).unwrap())
             .collect();
         assert_eq!(spans, [(0.0, 600.0), (600.0, 1200.0), (1200.0, 1500.0)]);
+    }
+
+    #[test]
+    fn a_session_file_with_a_tolerance_and_limits_still_reads() {
+        // Written by `session --init` before schema /2; both are ignored.
+        let m: Manifest = toml::from_str(
+            "tolerance = \"mens\"\n[limits]\ndelta_rate = 12.0\noverbanking = 340.0\n",
+        )
+        .unwrap();
+        assert!(m.recordings.is_empty());
+        assert!(toml::from_str::<Manifest>("no_such_key = 1\n").is_err());
     }
 
     #[test]

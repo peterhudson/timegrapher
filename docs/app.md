@@ -16,9 +16,22 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 ## The screen
 
-Along the top, the toolbar: the sidebar button, which hides the sidebar
+Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
+Cmd+O on a Mac), Open Folder…, Save… or Save Again… (Ctrl+S), New Session
+and Quit (Ctrl+Q). **View**: a tick for the readings and for each pane,
+the sidebar, Reset Panes and Appearance (Auto, Light, Dark). **Help**:
+Check for Updates…, Check for Updates at Start, Report a Problem… and, on
+Linux, **Add to Applications Menu**, which puts the app and its icon (a
+black dial with red lines) in the desktop's menu, so the window shows that
+icon too (it writes `timegrapher.desktop` and the icon under
+`~/.local/share`, pointing at the program running now).
+
+Below it, the toolbar: the sidebar button, which hides the sidebar
 to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
-a Mac), **Microphone** or **Recording**, the
+a Mac), one icon for each pane that shows or hides it (resting the pointer
+on an icon names its pane; a pane showing has its icon lit, and the
+charts' and distributions' icons take their colours),
+**Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
 buttons for the session (see Sessions below; **Replay**, **Stop** and,
 while one is being analysed, **Cancel** for a recording). Opening a
@@ -29,17 +42,19 @@ live, and **Analyse All**, shown during a replay and after it, goes back
 to the whole recording analysed at once without opening it again,
 keeping the settings chosen under Watch. Dropping a file or folder on the window opens it too where the
 desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
-**Watch**, **Microphone** (only for the microphone), then one card for each
-part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
-**Charts**, **Distributions**), each with its switch to show or hide it and
-its own options, and **Window** for the appearance and the pane layout.
-Clicking a card's name folds the card away to its caption, and clicking it
+**Watch**, **Microphone** (only for the microphone) and **Readings**, with
+its switch to show or hide the readings and the averaging time. Every
+pane's own settings sit in a toolbar across the top of the pane, with the
+pane's **?** at its right; a toolbar too narrow for its settings carries
+them onto a second line. The charts carry theirs in the tab bar: **Match
+Strip**, on, shows the same stretch of time as the paper strip, and off,
+the whole session. Clicking a card's name folds the card away to its caption, and clicking it
 again opens it. A choice between two options, such as Stacked and Beside,
 switches to the other option wherever it is clicked, so it can be flipped
 back and forth without moving the pointer. Titles and labels are in Title
 Case. In the rest, the
 three readings in cards and below them the panes. Along the bottom, the
-status line. Every card and reading has a **?** beside its name: resting
+status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
@@ -53,7 +68,7 @@ shown in place, and the path box goes back to it. Choosing **Recording**
 while a stopped microphone session is in hand shows the ways in again
 rather than that session's figures, and says the session is kept;
 **Microphone** brings it back. The app follows the
-desktop's light or dark setting (Appearance, under Window, overrides it),
+desktop's light or dark setting (Appearance, in the View menu, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
 
@@ -74,7 +89,7 @@ Steadiness then covers the whole night.
 
 **Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
-from 1 s to an hour, or pick one of Witschi's 2 to 60 s; the setting is
+from 1 s to an hour, or pick one of the presets from 2 to 60 s; the setting is
 in the Readings card). Early in a session, or after a pause or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
@@ -86,9 +101,7 @@ scatter alone. It is precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
 (orange dot). The sound can't tell which beat is
-which pallet, so the first beat heard is called the tick. A big gap
-between tick and tock usually means one side's sounds were misread rather than a fault in the
-watch;
+which pallet, so the first beat heard is called the tick;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
@@ -100,65 +113,56 @@ from the scatter of the beats alone; it shrinks with a longer averaging
 time. Under the rate: how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
-which is the spread of the dots across the strip. Lower is steadier; it
-rises with noise or a muffled sound as well as with a watch that runs
-unevenly, so compare it on the same stand and microphone. The **?** on
+which is the spread of the dots across the strip; smaller means less
+scatter. Noise, a muffled sound and the stand add to it as well as the
+watch. The **?** on
 each reading explains it at length.
 
 **What limits a reading.** Each figure carries its ±, worked out as
 `analyze` and `session` work out theirs (`timegrapher_core::measure`),
-over the averaging time: it says how far the figure could be off, not
-how steady the watch is. The amplitude's and beat error's ± are the
+over the averaging time: how far the figure could be off, a property of
+the measurement rather than of the watch. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 pause or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, at the right of the reading's caption, with a sentence on
-hover: the beats spanning under 10 s, the share of expected beats found
-when under 95%, the share of beats clipped when over 1% (amplitude and
-beat error), the lift angle assumed when no calibre or lift angle is set
-(amplitude), an input whose clock hasn't been measured (rate), a beat
-rate set that differs from the one heard, and pauses in the stretch. No
-reading is graded. When the beats found scatter
-like noise rather than a watch's ticks (`beats::watch_heard`, as
-`analyze` uses), the cards show no figures, only **No watch heard**.
-When nothing in the take has sounded like a watch after its first few
-seconds, the cards and charts give way to one card, **No watch heard. Is
-it on the microphone?**, with what to check; they appear as soon as a
-watch is heard.
-
-**Possible Faults.** Under the readings, an amber banner names any
-escapement fault the shape of the Tick and Tock points to (unlocking too
-strong, no unlock sound, friction during the impulse, an uneven unlock,
-a rub after the drop) and the beat it is on. The shape needs more sound
-than the live engine keeps, so the app reads the last minute up to the
-moment shown back from the recording (the session's own scratch
-recording while listening) and analyses it as `analyze` does, in the
-background: every 30 s while listening, and when the moment shown moves.
-Hovering on a fault shows the measures behind it. Nothing shows when
-nothing is seen, or when the sound can't be judged (no watch heard,
-clipping, or readings too scattered to read the shape). A finding is worth
-checking on the bench, not a diagnosis; see
-[fault-signatures.md](fault-signatures.md).
+hover: "12 s of beats" when the beats span under 10 s, "540 of 600
+expected beats found" when under 95% were found, "3% of beats clipped"
+when over 1% clip (amplitude and beat error), "lift angle 52°, the
+default (calibre not set)" when no calibre or lift angle is set
+(amplitude), "input clock not measured" (rate), a beat rate set that
+differs from the one heard, and pauses in the stretch. No reading is
+graded. When the beats found don't come at regular intervals (their
+timing scatter is 2% of a beat or more, `beats::watch_heard`, as
+`analyze` uses), the cards show no figures, only **No regular beat found
+(timing scatter 8.6 ms, 5.2% of a beat)**. When nothing in the take has
+had a regular beat after its first few seconds, the cards and charts give
+way to one card saying the same; they appear once a regular beat is
+found.
 
 **Positions Test.** Positions Test… beside the microphone buttons leads
-through the six positions in Witschi's order: Dial Up, Dial Down, Crown
+through the six positions in the app's order: Dial Up, Dial Down, Crown
 Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
-while the watch settles (20 s) and is measured (60 s; Witschi asks for at
-least 40). It then says which position to turn the watch to; press
-**Next** once it is there. **Measure Again** repeats a position, after a
-knock for instance, and **Stop** ends the test. Each position is a
+while the watch settles (20 s) and is measured (60 s), times the project
+chose. It then says which position to turn the watch to; press the
+button naming it (**Start CL Measurement**) once it is there. **Measure
+DD Again**, naming the position just measured (or the one under way),
+repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
-with core `session::measure` and `session::evaluate`, as `session` does
-(rate on the input's measured clock when there is one). A window shows:
-- each position's rate, amplitude and beat error, red when outside the
-  chosen tolerances (Men's, Ladies' or COSC);
-- the mean rate X, the largest difference D, and vertical minus
-  horizontal for rate and amplitude;
-- the findings, each with its evidence and Witschi's advice in its hint.
+with core `session::measure`, as `session` does (rate on the input's
+measured clock when there is one), and a window shows them as a table:
+each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
+less the mean of the six, its amplitude and its beat error (a size), a
+Mean row, the largest difference between the rates (D), and vertical
+less horizontal for rate and amplitude (DVH). Under
+them, a plain line for each condition found in a position's sound: no
+regular beat (with its timing scatter), clipping, or under 10 s of
+beats. The figures are `session`'s for the same stretches. It gives no verdict and no
+pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside Steadiness, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
@@ -167,8 +171,7 @@ first half hour against the half hour 24 hours later (or the session's last),
 the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
 Later. It needs the amplitude to fall
 through at least three 2° steps, which a run-down over some hours gives.
-Its switch and a note on what it needs are in the Isochronism section of
-the sidebar. Until there are 5 minutes of beats in one position, the
+A note on what it needs is behind the **?** in its toolbar. Until there are 5 minutes of beats in one position, the
 Steadiness and Isochronism tabs say so; during a Positions Test they say
 that the test never stays that long in one position. Both scroll with a
 bar always showing when the pane is too short for every row.
@@ -185,17 +188,16 @@ compares directly with them; the True Clock line is beside it, never
 instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording.
 
-**Clipping.** When more than 1% of the beats in the readings have a
-clipped sample in their sound, counted as `timegrapher analyze` counts
-them, an amber banner above the readings says so and what to do: lower
-Input Level in the Microphone card (or, for a recording, record with the
-level lower). Clipping flattens the loudest part of each tick, which moves
+**Clipping.** Whenever a beat in the readings has a clipped sample in
+its sound, counted as `timegrapher analyze` counts them, an amber banner
+above the readings says **Clipping on 3% of beats** (or "under 1%").
+Clipping flattens the loudest part of each tick, which moves
 the drop and so the amplitude and the beat error; the rate is unaffected.
 The banner follows the readings: it shows while the beats being averaged
 clip and goes when they no longer do, and looking back through a
 recording shows it for the stretches that clipped. The level meter in the
-toolbar turns red on any clipped sample at once; the banner is the
-judgement on the readings. Even a watch driven several times past full scale is
+toolbar turns red on any clipped sample at once; the banner counts the
+beats in the readings. Even a watch driven several times past full scale is
 still read, with the banner, rather than taken for silence: when most of
 the beats found clip, the flattened peaks no longer count against the
 signal.
@@ -205,10 +207,11 @@ profile, and charts of rate, amplitude and beat error over the session. Drag a p
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides
-that pane (the status line says which switch brings it back), and the switch on each card in the sidebar hides or shows its pane
-or the readings across the top; a hidden pane comes back where it was,
+that pane (the status line says it comes back from its icon at the top or
+the View menu), and the icons and the View menu hide or show each pane
+and the readings across the top; a hidden pane comes back where it was,
 and changing the strip's direction keeps the choice. **Reset Panes**
-(under Window) shows them all in their starting places. Periodicity views will join
+(in the View menu) shows them all in their starting places. Periodicity views will join
 them.
 
 **Tick Tock Profile.** The typical sound of the ticks (blue) and of
@@ -224,10 +227,10 @@ indigo line), the three sounds where the engine tells them apart (dashed brown: 
 The solid edges and the dashed sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
 readings come from, and the sounds are where each of the three sounds
-rises halfway up its own climb, used to recognise escapement faults, so
-they sit near but not exactly on the edges. A sound line is missing when
+rises halfway up its own climb, from a separate measurement of the
+beat's shape, so they sit near but not exactly on the edges. A sound line is missing when
 that sound can't be told apart from its neighbour (a soft unlock merged
-into the impulse, say), which is a finding in itself. The Tick tock
+into the impulse, say). The Tick tock
 profile card switches the edges and the sounds on and off, sets the scale
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
@@ -250,8 +253,9 @@ When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
 **Scope.** The sound itself, beat by beat, like the scope view on a
-Witschi: what the engine heard, high-passed at 1 kHz, not an average. A
-tab beside the Tick Tock Profile, set in the Scope section of the sidebar.
+Witschi (whose training course, doc. 71.1010D35e p. 12, gives the
+same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not an average. A
+tab beside the Tick Tock Profile, set in its toolbar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
 after, with the profile's Unlock and Drop marks. **200 ms** shows one
@@ -268,7 +272,8 @@ headers (`span.rs`). No crosshair, as on the other sound plots.
 **Paper Strip.** One dot per beat, tick and tock in two colours. Across the
 strip is how early or late each beat came against a perfect clock beating
 exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
-before that clock's beat is early, after it late, the words Witschi uses.
+before that clock's beat is early, after it late, the words Witschi's
+training course uses (doc. 71.1010D35e p. 6).
 Along it is time; both axes are labelled, in ms across and in minutes and
 seconds along, and every grid line is drawn alike. **Rate Line** (on by
 default) draws the Rate reading as a thin solid red line over the beats it was
@@ -320,7 +325,9 @@ time axis lines up: the strip and the charts keep the same width of axis
 on the left and of overlay scales on the right, so their times sit one
 above the other. In Strip mode the strip sets the time, so only the
 vertical scale can be dragged or zoomed. Wherever the pointer is on the
-strip or a chart, a thin line marks that moment on all of them. With the pointer
+strip or a chart, a thin line marks that moment on all of them, and on the
+strip a label gives its time from the start to the hundredth of a second
+(such as 1:23.45). With the pointer
 anywhere over a chart, a vertical line marks that moment and a box lists
 every line's value there. Their time axes move together:
 the mouse wheel zooms time around the pointer, Ctrl and the wheel zooms
@@ -358,17 +365,17 @@ the outliers left off and the peaks when there is more than one. The
 statistics are in `timegrapher_core::histogram`, so the CLI and reports can
 share them.
 
-**Steadiness.** Whether the rate, the amplitude and the beat error (from
-the unlock) each hold steady over the session, from the same tests as
+**Steadiness.** How the rate, the amplitude and the beat error (from the
+unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)): a tab beside the Tick
-Tock Profile, with its switch in the Steadiness card. Each series gets one
-verdict, with a coloured dot (green for Steady, amber for something to look
-at, grey for Measurement and Too Short), and the sentence `series` writes to
-say why; the verdict's meaning shows when the pointer rests on it.
-Measurement means the two levels come from the unlock mark hopping between
-two edges of the sound, a problem with the measurement and not the watch.
-Under Each Verdict, in the Steadiness section of the sidebar, chooses what
-is drawn under every verdict:
+Tock Profile, with its switch in the Steadiness card. Each series shows
+the sentence `series` writes, saying what was detected (a cycle, two
+levels, a step, a trend, correlation between readings, or none of these),
+with no verdict word or colour, and under it the statistics: readings,
+median, standard deviation, the scatter from one reading to the next, the
+lag-1 correlation and Ljung–Box p-value, and the trend and period when
+found. Under Each Series, in the Steadiness toolbar,
+chooses what is drawn under every series:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
 **Periods** (the period search's score at each period on a logarithmic
@@ -378,8 +385,7 @@ wheels' periods marked, and the strongest component labelled), **Cycle**
 the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
 (log-log, against the dashed line independent readings follow, labelled
-where it ends, with the averaging time of least scatter labelled; lower
-is steadier) and **CUSUM** (with the ±1.36
+where it ends, with the averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
 lines dashed and the largest excursion labelled). The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
@@ -428,7 +434,7 @@ stored clock corrections, with the home folder, user name and host name
 removed. Saving opens the zip's folder and the matching GitHub form; the app
 sends nothing itself.
 
-**Appearance.** Under Window: Auto follows the desktop's light or dark
+**Appearance.** In the View menu: Auto follows the desktop's light or dark
 setting; Light and Dark override it.
 
 **No input touched at launch.** Listing the inputs asks each one what it
@@ -440,28 +446,26 @@ last time, or System Default. Replaying or analysing a recording never
 touches an input.
 
 **Level meter.** In the toolbar, while listening to a microphone: a bar to
-the loudest sample of the last half second, green when it is right, amber
-when it is very quiet or too hot, red when the input clips, with marks at
-the −10 dBFS target and the −6 dBFS limit, and the peak in dBFS beside it.
+the loudest sample of the last half second, grey, or red while the input
+clips, with plain reference marks at −10 and −6 dBFS, and the peak in
+dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
 
-**Status bar.** The input; the signal, how far the typical beat's peak
-stands above the typical level between beats, with a coloured dot and
-what it means: 10× and above good; 5 to 10× fair, the rate reliable; 3 to
-5× poor, only the rate to be trusted; below 3× no watch heard (noise alone
-reads about 2×); its hint says what to do about a low figure. It measures
+**Status bar.** The input; the signal, "signal 12×", how far the typical
+beat's peak stands above the typical level between beats (noise alone
+reads about 2×, and below 4× no beats are logged). It measures
 loudness, not the shape of the tick, so hum, knocks or a holder that
 smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and on the right the beat rate and the
 position, **Check for Updates…** and **Report a Problem…**.
 
-**Updates.** With **Check for Updates at Start** on (the Window settings;
+**Updates.** With **Check for Updates at Start** on (the Help menu;
 on unless switched off), the app asks GitHub once at start, on a
 background thread, whether a newer release is published
 (`timegrapher_core::update::check`). If one is, a banner says
 "Timegrapher 0.2.0 is available" with **Download**, which opens the
 release's page in the browser. Nothing installs itself. At start, a
 failed check or an up-to-date version says nothing. **Check for
-Updates…** in the status bar makes the same check and always says what it
+Updates…** in the status bar or the Help menu makes the same check and always says what it
 found: the notice, "up to date", or why it couldn't check ("no release has
 been published yet"). The request carries no account or identifier.
 
@@ -492,17 +496,16 @@ been published yet"). The request carries no account or identifier.
   control (`amixer`). The change is made when you let go of the slider.
   On other systems, set the level in the system's sound settings. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
-  proposals. A microphone's automatic gain chases every tick, so it
-  clips and changes the shape of the sound; if it is on, the card shows
-  an amber warning with **Turn it off**, and otherwise says nothing about
-  it.
+  proposals. When the microphone's automatic gain is on, the card says
+  **Automatic gain: on** with a **Turn It Off** button, and otherwise
+  says nothing about it.
 - **Calibre.** Not Set, a calibre from the built-in table
   (`timegrapher_core::calibres`, grouped by maker; each entry's hint gives
   its beat rate, lift angle and wheel periods), or one of your own. The
   search box at the top of the menu narrows it as you type, by maker or
   calibre, any case, spaces ignored ("rolex", "3235", "eta 28"). With
-  none picked and the lift angle left at 52°, an amber line under it says
-  the amplitude rests on that guess.
+  none picked and the lift angle left at 52°, a line under it says the
+  amplitude is worked out from that default.
   Picking one fills in its lift angle and names the cycles Steadiness
   finds after its own wheels; if the watch beats at another rate than the
   calibre, the card says so. **New Custom Calibre** adds one with a name
@@ -574,7 +577,7 @@ holding:
 | `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a pause starts a new file |
 | `clock.csv` | System time against frames captured, every 10 s, and on both sides of each pause; frames run on across a pause, with no line made up for the gap |
 | `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has been paused) `breaks`: one entry per resume with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
-| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` |
+| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after its 20 s settling and for its 60 s, so `timegrapher session` reads the seconds its table did) |
 
 Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins
