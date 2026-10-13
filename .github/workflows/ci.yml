@@ -57,6 +57,19 @@ jobs:
             corpus/takes/**/*.flac
           key: corpus-audio-${{ hashFiles('corpus/corpus.json') }}
           restore-keys: corpus-audio-
+      # A cache from an older corpus.json can hold files the corpus has
+      # since renamed; a take read as a whole folder would read them too.
+      - name: Drop cached audio the corpus no longer lists
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          c = json.load(open("corpus/corpus.json"))
+          keep = {f"{t['id']}/{f['name']}" for t in c["takes"] for f in t["files"]}
+          for p in pathlib.Path("corpus/takes").glob("*/*.flac"):
+              if f"{p.parent.name}/{p.name}" not in keep:
+                  print(f"removing stale {p}")
+                  p.unlink()
+          PY
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
