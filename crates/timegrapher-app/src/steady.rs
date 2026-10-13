@@ -135,6 +135,7 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         clipped_beats: live.clipped_beats().to_vec(),
         // Not counted live; the tests don't use it.
         clipped_samples: 0,
+        jumps: Vec::new(),
     })
 }
 
@@ -168,6 +169,7 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
         amplitude_windows: Vec::new(),
         clipped_beats: Vec::new(),
         clipped_samples: log.clipped_samples,
+        jumps: Vec::new(),
     };
     // The last kept span's end and last beat (time, number), joined.
     let mut prev: Option<(f64, f64, i64)> = None;

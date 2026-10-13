@@ -127,6 +127,28 @@ pub fn of_files(
     for_take(json.as_ref().filter(|_| whole), clock, sample_rate)
 }
 
+/// How near a jump in the beats must be to a listed break to be that break,
+/// seconds: the beats can take a second or two to be found again after it.
+pub const JUMP_MATCH_S: f64 = 5.0;
+
+/// The breaks with the jumps the beats show ([`crate::stream::BeatLog`]'s
+/// `jumps`) where none is listed: a jump within [`JUMP_MATCH_S`] of a
+/// listed break is that break; any other is a break of unknown length,
+/// with `gap_s` 0.
+pub fn with_jumps(listed: Vec<Break>, jumps: &[f64]) -> Vec<Break> {
+    let mut out = listed.clone();
+    for &j in jumps {
+        if !listed.iter().any(|b| (b.audio_s - j).abs() <= JUMP_MATCH_S) {
+            out.push(Break {
+                audio_s: j,
+                gap_s: 0.0,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    out
+}
+
 /// True seconds from the start of the take for audio second `t`, adding
 /// the gaps of the breaks before it.
 pub fn wall(breaks: &[Break], t: f64) -> f64 {

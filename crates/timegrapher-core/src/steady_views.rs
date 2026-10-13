@@ -346,6 +346,7 @@ mod tests {
             amplitude_windows: live.amplitude_windows().to_vec(),
             clipped_beats: live.clipped_beats().to_vec(),
             clipped_samples: 0,
+            jumps: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),

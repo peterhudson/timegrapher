@@ -51,12 +51,23 @@ pub struct BeatLog {
     pub clipped_beats: Vec<f64>,
     /// Clipped samples in the whole recording.
     pub clipped_samples: usize,
+    /// Audio seconds where the beats jumped ([`beats::jumps`]): listening
+    /// stopped and started again there, whether or not a break is listed.
+    /// [`crate::breaks::with_jumps`] makes them breaks for the readings.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub jumps: Vec<f64>,
 }
 
 struct State {
     fs: f64,
     cfg: StreamConfig,
     template: Option<Vec<f32>>,
+    /// The sound of each side so far, to tell the sides apart after a jump.
+    sides: Option<beats::SideSounds>,
+    jumps: Vec<f64>,
+    /// The last jump's stretch was too short to tell its sides: check
+    /// the start of the next chunk instead.
+    recheck: bool,
     bph: u32,
     beats: Vec<Beat>,
     amp: Vec<AmplitudeWindow>,
@@ -102,13 +113,25 @@ impl State {
             None => 0,
         };
         let shift = anchor_index - local[anchor].index;
-        let numbered: Vec<Beat> = local
+        let mut numbered: Vec<Beat> = local
             .iter()
             .map(|b| Beat {
                 index: b.index + shift,
                 ..*b
             })
             .collect();
+        match_sides(
+            &mut self.sides,
+            &mut self.jumps,
+            &mut self.recheck,
+            &self.beats[self.beats.len().saturating_sub(beats::JUMP_CONTEXT)..],
+            fs,
+            &env,
+            off,
+            &mut numbered,
+            anchor,
+            core_b,
+        );
         let kept_from = self.beats.len();
         for b in &numbered[anchor..] {
             let t = b.time + off;
@@ -166,6 +189,97 @@ impl State {
                 win
             }));
             self.next_amp_s = to;
+        }
+    }
+}
+
+/// Keep Tick and Tock on their own sides across a jump in the beats.
+///
+/// Counting beats names the sides only while the beats run on without
+/// a jump. Where listening stopped and started again (a pause, the
+/// computer suspended, a join between two takes) the count across the
+/// hole is a guess, and half the time it swaps the sides. So at each
+/// jump, and at the start of a chunk that follows one, the side sounds
+/// after it are compared with those before ([`beats::side_margin`]);
+/// when they match the other way round, the beats from there on are
+/// numbered one further, which swaps their sides back. A stretch too
+/// short or too alike on both sides to tell keeps its count.
+#[allow(clippy::too_many_arguments)]
+fn match_sides(
+    sides: &mut Option<beats::SideSounds>,
+    jumps: &mut Vec<f64>,
+    recheck: &mut bool,
+    last: &[Beat],
+    fs: f64,
+    env: &[f32],
+    off: f64,
+    numbered: &mut [Beat],
+    anchor: usize,
+    core_b: f64,
+) {
+    let end = numbered[anchor..]
+        .iter()
+        .position(|b| b.time + off >= core_b)
+        .map_or(numbered.len(), |p| anchor + p);
+    if end <= anchor {
+        return;
+    }
+    let before: Vec<Beat> = last
+        .iter()
+        .map(|b| Beat {
+            time: b.time - off,
+            ..*b
+        })
+        .collect();
+    let cuts: Vec<usize> = beats::jumps(&numbered[anchor..end], &before)
+        .into_iter()
+        .map(|p| p + anchor)
+        .collect();
+    let join = cuts.first() == Some(&anchor) || std::mem::take(recheck);
+    for &c in &cuts {
+        // Seen again from the next chunk: the same jump.
+        let t = numbered[c].time + off;
+        if !jumps.last().is_some_and(|&j| t - j <= 1.0) {
+            jumps.push(t);
+        }
+    }
+    let mut starts = vec![anchor];
+    starts.extend(cuts.iter().copied().filter(|&c| c > anchor));
+    let mut reference = sides.clone();
+    let mut sure = true;
+    for (i, &s) in starts.iter().enumerate() {
+        let e = starts.get(i + 1).copied().unwrap_or(end);
+        let now = beats::side_sounds(env, fs, &numbered[s..e]);
+        let Some(r) = reference.as_ref().filter(|_| i > 0 || join) else {
+            // Before any jump: the count names the sides.
+            if reference.is_none() {
+                reference = now;
+            }
+            continue;
+        };
+        match now.map(|now| beats::side_margin(r, &now)) {
+            Some(m) if m <= -beats::SIDE_MARGIN_MIN => {
+                for b in &mut numbered[s..] {
+                    b.index += 1;
+                }
+            }
+            Some(m) if m >= beats::SIDE_MARGIN_MIN => {}
+            Some(_) => sure = false,
+            None => {
+                sure = false;
+                // Too few beats here: the next stretch, whatever chunk it
+                // is in, still owes the check.
+                *recheck = i + 1 == starts.len();
+            }
+        }
+    }
+    // Keep the side sounds up to date, from beats whose sides are known.
+    if sure {
+        if let Some(now) = beats::side_sounds(env, fs, &numbered[anchor..end]) {
+            match sides {
+                Some(s) => s.blend(&now),
+                None => *sides = Some(now),
+            }
         }
     }
 }
@@ -248,6 +362,9 @@ impl Chunker {
                 fs,
                 cfg: cfg.clone(),
                 template: None,
+                sides: None,
+                jumps: Vec::new(),
+                recheck: false,
                 bph: cfg.analysis.bph.unwrap_or(0),
                 beats: Vec::new(),
                 amp: Vec::new(),
@@ -307,6 +424,7 @@ impl Chunker {
             },
             clipped_beats: st.clipped_beats,
             clipped_samples: st.clipped_samples,
+            jumps: st.jumps,
         }
     }
 }

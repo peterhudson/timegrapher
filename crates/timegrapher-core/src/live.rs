@@ -896,6 +896,7 @@ mod tests {
             amplitude_windows: a.amp.clone(),
             clipped_beats: a.clipped_beats().to_vec(),
             clipped_samples: 0,
+            jumps: Vec::new(),
         };
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();
