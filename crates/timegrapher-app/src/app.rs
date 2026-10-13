@@ -605,6 +605,8 @@ struct Batch {
     stretches: Vec<(f64, Position)>,
     /// The settling before each position's readings, from the same file.
     settles: Vec<(f64, f64)>,
+    /// Where the files' order disagrees with when they were written.
+    order_note: Option<String>,
 }
 
 impl Drop for Batch {
@@ -1560,11 +1562,49 @@ impl TimegrapherApp {
         }
     }
 
+    /// Play a recording through as if live. A folder plays its files one
+    /// after the other in the order it is analysed in, with the watch from
+    /// its session file when it has one.
     fn start_replay(&mut self, path: &Path) {
         self.stop();
-        match capture::replay_file(path) {
+        let inner = match take_folder(path) {
+            Ok(p) => p,
+            Err(e) => return self.open_failed(e),
+        };
+        let path = inner.as_path();
+        let files = match recordings_in(path) {
+            Ok(f) => f,
+            Err(e) => return self.open_failed(e),
+        };
+        let started = if path.is_dir() {
+            let label = match files.len() {
+                1 => format!("{} (1 file)", capture_label(path)),
+                n => format!("{} ({n} files)", capture_label(path)),
+            };
+            capture::replay_files(&files, label)
+        } else {
+            capture::replay_file(path)
+        };
+        match started {
             Ok(c) => {
-                self.fresh_setup(path, std::slice::from_ref(&path.to_path_buf()));
+                match read_manifest(path) {
+                    Ok(Some((m, entries))) if path.is_dir() => {
+                        self.keep_mic_setup();
+                        self.set_watch_setup(WatchSetup::default());
+                        self.open_note = None;
+                        self.apply_manifest(&m, &entries);
+                    }
+                    _ => self.fresh_setup(path, &files),
+                }
+                if let Some(n) = order_warning(&files) {
+                    self.open_note = Some(match self.open_note.take() {
+                        Some(o) => format!("{o} {n}"),
+                        None => n,
+                    });
+                }
+                if self.file_path.trim() != path.display().to_string() {
+                    self.file_path = path.display().to_string();
+                }
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
                 self.opened_path = path.display().to_string();
@@ -1684,6 +1724,7 @@ impl TimegrapherApp {
             Ok(f) => f,
             Err(e) => return self.open_failed(e),
         };
+        let order_note = order_warning(&files);
         let mut info = match timegrapher_core::audio::info(&files[0]) {
             Ok(i) => i,
             Err(e) => return self.open_failed(format!("Can't read {}: {e}", files[0].display())),
@@ -1720,6 +1761,12 @@ impl TimegrapherApp {
                 Default::default()
             }
         };
+        if let Some(n) = &order_note {
+            self.open_note = Some(match self.open_note.take() {
+                Some(o) => format!("{o} {n}"),
+                None => n.clone(),
+            });
+        }
         let label = if path.is_dir() {
             match files.len() {
                 1 => format!("{} (1 file)", capture_label(path)),
@@ -1773,6 +1820,7 @@ impl TimegrapherApp {
             last,
             stretches,
             settles,
+            order_note,
         });
     }
 
@@ -2436,14 +2484,12 @@ impl TimegrapherApp {
                 }
             } else {
                 if ui
-                    .add_enabled(path.is_file(), theme::secondary(ui, "Replay"))
+                    .add_enabled(path.exists(), theme::secondary(ui, "Replay"))
                     .on_hover_text(
                         "Play the recording through as if live, from the start, at the \
-                         speed set beside it",
+                         speed set beside it. A folder plays its files one after the other.",
                     )
-                    .on_disabled_hover_text(
-                        "Open a recording first. A folder is analysed all at once.",
-                    )
+                    .on_disabled_hover_text("Open a recording or a folder first")
                     .clicked()
                 {
                     self.open_recording(&path, true, true);
@@ -4696,12 +4742,15 @@ impl TimegrapherApp {
         if b.files > 1 {
             ui.label(
                 RichText::new(format!(
-                    "{} files joined in name order, {} to {}.",
+                    "{} files joined in order, {} to {}.",
                     b.files, b.first, b.last
                 ))
                 .small()
                 .color(pal.text_tertiary),
             );
+        }
+        if let Some(n) = &b.order_note {
+            ui.label(RichText::new(n).small().color(pal.warn));
         }
         if ui
             .add(theme::secondary(ui, "Cancel"))
@@ -6500,11 +6549,14 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
 /// How the files in a folder are put together, said where a folder is
 /// opened. The command line's `long` and `series` read folders the same way.
 const FOLDER_RULE: &str = "A recording this app saved (its own folder, or the folder you saved it \
-     into), or a folder of WAV or FLAC segments of one long run, joined end to end in file-name \
-     order (audio-001.wav, audio-002.wav, …).";
+     into), or a folder of WAV or FLAC segments of one long run, joined end to end in the order \
+     its session.toml lists them, else in file-name order with numbers counted (part2 before \
+     part10).";
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
-/// WAV and FLAC files in name order (the segments of one long recording).
+/// WAV and FLAC files (the segments of one long recording) in the order
+/// its session file lists them, then any it doesn't list in natural name
+/// order.
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Ok(vec![path.to_path_buf()]);
@@ -6525,8 +6577,97 @@ fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
             path.display()
         ));
     }
-    files.sort();
+    files.sort_by(|a, b| natural_order(&file_name(a), &file_name(b)));
+    if let Some(listed) = listed_order(path) {
+        let rank = |f: &PathBuf| listed.iter().position(|l| l == &file_name(f));
+        // A stable sort keeps the unlisted ones in name order, after.
+        files.sort_by_key(|f| rank(f).unwrap_or(usize::MAX));
+    }
     Ok(files)
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Names compared with each run of digits read as a number, so part2
+/// comes before part10, and otherwise ignoring case.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    fn chunks(s: &str) -> Vec<(bool, String)> {
+        let mut out: Vec<(bool, String)> = Vec::new();
+        for c in s.chars() {
+            let digit = c.is_ascii_digit();
+            match out.last_mut() {
+                Some((d, run)) if *d == digit => run.push(c),
+                _ => out.push((digit, c.to_string())),
+            }
+        }
+        out
+    }
+    let (ca, cb) = (chunks(a), chunks(b));
+    for ((da, ra), (db, rb)) in ca.iter().zip(&cb) {
+        let o = match (da, db) {
+            (true, true) => {
+                let (ta, tb) = (ra.trim_start_matches('0'), rb.trim_start_matches('0'));
+                ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb))
+            }
+            _ => ra.to_lowercase().cmp(&rb.to_lowercase()),
+        };
+        if o.is_ne() {
+            return o;
+        }
+    }
+    ca.len().cmp(&cb.len()).then_with(|| a.cmp(b))
+}
+
+/// The files a folder's session file lists as recordings, in its order:
+/// none when it has no session file or lists the folder as a whole.
+fn listed_order(dir: &Path) -> Option<Vec<String>> {
+    let text = std::fs::read_to_string(dir.join(MANIFEST)).ok()?;
+    let m: Manifest = toml::from_str(&text).ok()?;
+    let mut names: Vec<String> = Vec::new();
+    for e in &m.recordings {
+        let f = dir.join(&e.file);
+        if f.is_file() && f.parent().is_some_and(|p| p == dir) {
+            let n = file_name(&f);
+            if !names.contains(&n) {
+                names.push(n);
+            }
+        }
+    }
+    (!names.is_empty()).then_some(names)
+}
+
+/// Where the order the files are joined in disagrees with when they were
+/// written: a file whose modification time is earlier than the one before
+/// it by more than that file's own length. Said so the order can be
+/// checked, not changed.
+fn order_warning(files: &[PathBuf]) -> Option<String> {
+    let when = |f: &PathBuf| std::fs::metadata(f).and_then(|m| m.modified()).ok();
+    let length = |f: &PathBuf| {
+        timegrapher_core::audio::info(f)
+            .ok()
+            .and_then(|i| i.frames.map(|n| n as f64 / i.sample_rate.max(1) as f64))
+    };
+    for pair in files.windows(2) {
+        let (Some(a), Some(b)) = (when(&pair[0]), when(&pair[1])) else {
+            continue;
+        };
+        let Ok(back) = a.duration_since(b) else {
+            continue;
+        };
+        if back.as_secs_f64() > length(&pair[0]).unwrap_or(0.0) {
+            return Some(format!(
+                "{} was written before {}, which comes ahead of it: check the order the files \
+                 are joined in.",
+                file_name(&pair[1]),
+                file_name(&pair[0])
+            ));
+        }
+    }
+    None
 }
 
 /// The folder to open for `path`: itself when it holds sound (or isn't a
@@ -7229,6 +7370,57 @@ mod tests {
         std::fs::create_dir_all(&empty).unwrap();
         assert!(recordings_in(&empty).is_err());
         assert!(take_folder(&empty).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Numbers in names count as numbers; a session file's list comes
+    /// first; files written out of the joining order are pointed out.
+    #[test]
+    fn folder_files_join_in_the_agreed_order() {
+        use std::cmp::Ordering::Less;
+        assert_eq!(natural_order("part2.wav", "part10.wav"), Less);
+        assert_eq!(natural_order("take_part01-009", "take_part01-010"), Less);
+        assert_eq!(natural_order("take_part01-099", "take_part02-001"), Less);
+        assert_eq!(natural_order("A.wav", "b.wav"), Less);
+
+        let dir = std::env::temp_dir().join(format!("tg-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = |name: &str| {
+            let a = timegrapher_core::audio::Audio {
+                samples: vec![0.0; 8000],
+                sample_rate: 8000,
+            };
+            timegrapher_core::audio::write_wav(&dir.join(name), &a).unwrap();
+        };
+        for n in ["b-1.wav", "a-2.wav", "a-10.wav", "a-1.wav"] {
+            part(n);
+        }
+        let names = |d: &Path| -> Vec<String> {
+            recordings_in(d)
+                .unwrap()
+                .iter()
+                .map(|f| file_name(f))
+                .collect()
+        };
+        assert_eq!(names(&dir), ["a-1.wav", "a-2.wav", "a-10.wav", "b-1.wav"]);
+        // Written within a second of each other, one second long each.
+        assert_eq!(order_warning(&recordings_in(&dir).unwrap()), None);
+        std::fs::write(
+            dir.join(MANIFEST),
+            "[[recording]]\nfile = \"b-1.wav\"\n\n[[recording]]\nfile = \"a-2.wav\"\n",
+        )
+        .unwrap();
+        assert_eq!(names(&dir), ["b-1.wav", "a-2.wav", "a-1.wav", "a-10.wav"]);
+        // a-2 written an hour before b-1, which is joined ahead of it.
+        let f = std::fs::File::options()
+            .write(true)
+            .open(dir.join("a-2.wav"))
+            .unwrap();
+        f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+            .unwrap();
+        let w = order_warning(&recordings_in(&dir).unwrap()).unwrap();
+        assert!(w.starts_with("a-2.wav was written before b-1.wav"), "{w}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

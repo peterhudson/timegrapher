@@ -43,7 +43,8 @@ being analysed, and **Analyse All**) and **Replay Speed**. Below, under
 recording, by **Open…**, **Open Folder…**, a path typed into the box and
 Enter, or the command line, analyses it all at once, which is how a
 watchmaker looks back through a take; **Replay** plays a file through as if
-live, at **Replay Speed** (from half to 16 times its own speed, changeable
+live (a folder's files one after the other, in the order it is analysed
+in, with the watch from its session file), at **Replay Speed** (from half to 16 times its own speed, changeable
 while it plays; the readings are the same at any speed), and **Analyse
 All**, shown during a replay and after it, goes back to the whole
 recording analysed at once without opening it again, keeping the settings
@@ -87,11 +88,15 @@ the Watch pane or the File menu, a folder typed into the path box, or `timegraph
 A saved take opens from its own folder or from the folder it was saved
 into, when that holds just the one take; with several, the message names
 them so one can be picked.
-Its WAV and FLAC files are joined end to end in file-name order, as
-`timegrapher long` and `series` read a folder: name segments so that they
-sort in time order (`audio-001.wav`, `audio-002.wav`, … or a time stamp
-with leading zeros); the files' dates are not used. A folder can't be
-replayed in real time. A 16-hour night takes some minutes to analyse; the
+Its WAV and FLAC files are joined end to end in the order its
+`session.toml` lists them as `[[recording]]` entries, with any it doesn't
+list after them; without such a list, in natural name order, where a run
+of digits counts as a number (`part2` before `part10`, `take_part01-099`
+before `take_part02-001`). The files' dates never change the order, but
+when a file was written earlier than the one joined ahead of it by more
+than that file's own length, the window says so, so a wrongly named file
+can be spotted. **Replay** plays a folder's files one after the other in
+the same order. A 16-hour night takes some minutes to analyse; the
 window shows the hours done, the time left and the files in order, and
 Steadiness then covers the whole night.
 

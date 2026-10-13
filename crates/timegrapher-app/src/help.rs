@@ -42,7 +42,7 @@ pub const RECORDING: &[&str] = &[
     "Open… analyses a WAV or FLAC recording all at once, which is how to look back \
      through a take; Open Folder… does the same for a take saved as segments.",
     "Replay plays the recording through as if the watch were on the microphone, at the \
-     Replay Speed set below it. Analyse All goes back to the whole recording analysed \
+     Replay Speed set below it; a folder plays its files one after the other. Analyse All goes back to the whole recording analysed \
      at once.",
 ];
 
