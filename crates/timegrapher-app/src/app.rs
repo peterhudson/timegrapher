@@ -3828,6 +3828,41 @@ impl TimegrapherApp {
     }
 
     /// The Calibre row under Watch, and what is known about the one picked.
+    /// Manage Calibres, when open, over everything else.
+    fn manage_calibres(&mut self, ctx: &egui::Context) {
+        let current = self.calibre.clone();
+        let out = self.cal.manager(ctx, &current, env!("CARGO_PKG_VERSION"));
+        let name = out.name.clone();
+        self.calibre_changed(&name, out.change);
+        if let Some(p) = out.picked {
+            self.set_calibre(p);
+        }
+    }
+
+    /// Act on what was changed for the calibre `name`: only this watch's
+    /// calibre moves anything outside the list.
+    fn calibre_changed(&mut self, name: &str, change: calibre_ui::Change) {
+        if name.is_empty() || name != self.calibre {
+            return;
+        }
+        if let Some(n) = change.renamed {
+            self.calibre = n.clone();
+            self.cal.recent.retain(|r| r != name);
+            self.cal.remember(&n);
+        }
+        if change.deleted {
+            self.cal.recent.retain(|r| r != name);
+            self.set_calibre(String::new());
+        }
+        if let Some(l) = change.lift {
+            self.set_lift(l);
+        }
+        if change.wheels {
+            self.steady = None;
+            self.steady_job = None;
+        }
+    }
+
     fn calibre_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let current = self.calibre.clone();
@@ -3837,13 +3872,16 @@ impl TimegrapherApp {
             Some(
                 "The movement, so that the lift angle is filled in and cycles Steadiness \
                  finds are named after the right wheels. The menu offers your short list \
-                 and recent picks; search, or Show All Calibres, for the rest.",
+                 and recent picks; Manage Calibres has every calibre, to search and to \
+                 choose your short list.",
             ),
             |ui| self.cal.picker(ui, &current),
         );
         if let Some(p) = picked {
             self.set_calibre(p);
         }
+        let current = self.calibre.clone();
+        self.cal.manage_button(ui, &current);
         if self.cal.find(&self.calibre).is_some() {
             let heard = self.live.as_ref().and_then(|l| l.bph());
             if let Some((b, cb)) = heard
@@ -3861,22 +3899,7 @@ impl TimegrapherApp {
             }
             let current = self.calibre.clone();
             let change = self.cal.panel(ui, &current, env!("CARGO_PKG_VERSION"));
-            if let Some(n) = change.renamed {
-                self.calibre = n.clone();
-                self.cal.recent.retain(|r| r != &current);
-                self.cal.remember(&n);
-            }
-            if change.deleted {
-                self.cal.recent.retain(|r| r != &current);
-                self.set_calibre(String::new());
-            }
-            if let Some(l) = change.lift {
-                self.set_lift(l);
-            }
-            if change.wheels {
-                self.steady = None;
-                self.steady_job = None;
-            }
+            self.calibre_changed(&current, change);
         } else if self.lift_deg == DEFAULT_LIFT_DEG {
             ui.add(
                 egui::Label::new(
@@ -6741,6 +6764,7 @@ impl TimegrapherApp {
                 bottom: 12,
             }))
             .show(ctx, |ui| self.main_view(ui));
+        self.manage_calibres(ctx);
     }
 }
 
