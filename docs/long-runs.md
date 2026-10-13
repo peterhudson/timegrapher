@@ -127,7 +127,11 @@ single file does not look for breaks, so read a paused take with `long`,
    the best sum converts to a chance of arising from noise. A sinusoid
    scores best with one harmonic, a short event (a dip for four minutes
    every hour) with eight; twice the true period loses because half its
-   harmonics are noise. A component is reported when the chance of noise
+   harmonics are noise. Only harmonics inside the searched band count: a
+   strong line just below the shortest period searched (a 5 s escape
+   wheel under the 8 s floor of a run over 12 hours, whose timing is
+   gridded every second) would otherwise lift every period it divides,
+   10, 20 and 40 s. A component is reported when the chance of noise
    producing it anywhere in the search is under 1% and it explains at
    least 0.5% of the variation.
 4. **Fold and subtract.** The strongest period is refined, the series is

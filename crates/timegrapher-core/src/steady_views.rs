@@ -314,7 +314,7 @@ mod tests {
     use crate::live::{LiveAnalyzer, LiveConfig};
     use crate::longrun;
     use crate::periodicity::default_wheels;
-    use crate::steadiness::{self, Config, Verdict};
+    use crate::steadiness::{self, Config};
     use crate::synth::{generate, SynthConfig};
 
     /// The app's own test take: ten minutes of a watch whose rate swings
@@ -354,7 +354,7 @@ mod tests {
         let check = Config::default();
         let long = longrun::analyse(&log, None, &lc);
         let report = steadiness::check(&log, None, &long, &lc, &check);
-        assert_eq!(report.series[0].verdict, Verdict::Periodic);
+        assert!(report.series[0].cycle.is_some());
         let v = views(&log, &report, &long, &lc, check.rate_reading_s);
         let names: Vec<&str> = v.series.iter().map(|s| s.series).collect();
         assert_eq!(names, ["rate", "amplitude", "beat_error"]);

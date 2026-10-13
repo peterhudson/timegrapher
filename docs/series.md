@@ -16,7 +16,7 @@ detect, and adds a sentence for the others:
 | two levels | the two levels and how often the series switches between them (the two-state finder in `twostate.rs`) |
 | two levels on one side only | the same, and which side carries them: "Tick windows fall in two clusters; Tock windows do not", or that the beat error from the unlock jumps between the levels while the one from the drop does not |
 | a cycle | its period, the wheel whose turn it matches, and its size peak to peak |
-| level changes | the number of changes and the level of each stretch |
+| level changes | the number of changes and the level of each stretch; beyond three changes, the number, the range, and the first and last levels (every stretch is in `changes.segments[]`, and the text output lists each with its start and end) |
 | a trend | the start and end level and the change per hour |
 | correlation between readings | the lag-1 correlation, the Ljung–Box p, how long the correlation lasts, and the Allan excess |
 | none of these | the number of readings, the median and the reading-to-reading scatter |

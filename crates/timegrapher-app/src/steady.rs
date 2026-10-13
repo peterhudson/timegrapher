@@ -18,7 +18,7 @@ use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
 use timegrapher_core::periodicity::{default_wheels, Wheel};
-use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind, Verdict};
+use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind};
 use timegrapher_core::steady_views::{self, FoldFrom};
 use timegrapher_core::stream::BeatLog;
 
@@ -524,7 +524,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
     if one_line {
         ui.add_space(line_h);
     }
-    if c.verdict == Verdict::TooShort {
+    // Too few readings: no tests ran, so there is nothing to draw.
+    if c.autocorrelation.is_none() {
         return;
     }
     ui.add(egui::Label::new(RichText::new(&stats).small().color(pal.text_tertiary)).truncate())
@@ -1050,7 +1051,7 @@ mod tests {
         let log = log_of(&live).expect("beat rate");
         let s = compute(&log, None);
         let rate = &s.report.series[0];
-        assert_eq!(rate.verdict, Verdict::Periodic, "{}", rate.headline);
+        assert!(rate.cycle.is_some(), "{}", rate.headline);
         assert!(s.folds[0].is_some());
         assert_eq!(s.fold_from[0], FoldFrom::Own);
         // The steady amplitude still has a Cycle chart, folded at the
