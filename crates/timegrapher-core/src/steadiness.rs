@@ -467,6 +467,10 @@ pub struct Report {
     /// How often each value came up, over the take and each stretch: the
     /// app's Distributions pane as data.
     pub distributions: Distributions,
+    /// The plain amplitude spectrum of each series: the rate's from the
+    /// beat timing (ms), the amplitude's and the beat error's from their
+    /// 2 s windows.
+    pub spectra: Vec<crate::spectrum::AmplitudeSpectrum>,
     pub findings: Vec<Finding>,
 }
 
@@ -1398,13 +1402,24 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
         }
         Verdict::ShiftingMean => {
             let ch = s.changes.as_ref().unwrap();
-            let means: Vec<String> = ch.segments.iter().map(|g| k.fmt(g.mean)).collect();
-            format!(
-                "{cap} shifts level {} time{}: {}.",
-                ch.segments.len() - 1,
-                if ch.segments.len() == 2 { "" } else { "s" },
-                means.join(", then ")
-            )
+            let n = ch.segments.len() - 1;
+            let times = if n == 1 { "" } else { "s" };
+            // A long take can shift dozens of times: past a few, name the
+            // range and the ends, and leave each level to the table.
+            if ch.segments.len() <= 4 {
+                let means: Vec<String> = ch.segments.iter().map(|g| k.fmt(g.mean)).collect();
+                format!("{cap} shifts level {n} time{times}: {}.", means.join(", then "))
+            } else {
+                let lo = ch.segments.iter().map(|g| g.mean).fold(f64::INFINITY, f64::min);
+                let hi = ch.segments.iter().map(|g| g.mean).fold(f64::NEG_INFINITY, f64::max);
+                format!(
+                    "{cap} shifts level {n} time{times}, between {} and {}: {} at the start, {} at the end.",
+                    k.fmt(lo),
+                    k.fmt(hi),
+                    k.fmt(ch.segments[0].mean),
+                    k.fmt(ch.segments[n].mean)
+                )
+            }
         }
                 Verdict::Drifting => {
             let t = s.trend.as_ref().unwrap();
@@ -1727,14 +1742,24 @@ pub fn check(
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
-    let be_period = {
+    let be_long = {
         let mut lg = be_grid.clone();
         lg.t0 = 0.0;
-        period_of(
-            &longterm::analyse(&lg, long_cfg),
-            SeriesKind::BeatError.unit(),
-        )
+        longterm::analyse(&lg, long_cfg)
     };
+    let be_period = period_of(&be_long, SeriesKind::BeatError.unit());
+    // The plain spectra of the series the period searches read, with
+    // their slow change taken off as the searches take it off.
+    let spectra = [
+        (&long.timing.detrended, "rate", "ms", 1000.0),
+        (&long.amplitude.detrended, "amplitude", "deg", 1.0),
+        (&be_long.detrended, "beat_error", "ms", 1.0),
+    ]
+    .into_iter()
+    .filter_map(|(g, name, unit, scale)| {
+        crate::spectrum::amplitude_spectrum(g, name, unit, scale, cfg.max_points)
+    })
+    .collect();
 
     let series = vec![
         check_series(
@@ -1799,6 +1824,7 @@ pub fn check(
         isochronism,
         wind_down,
         distributions,
+        spectra,
         findings,
     }
 }
