@@ -154,17 +154,18 @@ timegrapher record FOLDER --position P [--seconds 120] [--device NAME]
 Records one position for `--seconds`, then stops; it listens only while
 it runs. Each run makes a take folder in FOLDER as the desktop app saves
 one (`audio-001.wav`, `clock.csv`, `session.json`, `session.toml`),
-checks it, and when a watch is heard and under 1% of beats clip, adds it
-to `FOLDER/session.toml` (written on the first take with the watch,
-calibre, bph, lift and `settle_s = 30`) with its position and `--wind-h`.
-`timegrapher session FOLDER` then reads them all.
+checks it, and adds every take to `FOLDER/session.toml` (written on the
+first take with the watch, calibre, bph, lift and `settle_s = 30`) with
+its position and `--wind-h`, and a comment line for no regular beat or
+clipping. `timegrapher session FOLDER` then reads them all. It exits 0.
 
-JSON body: `take`, `session_file` (null when not added), `position`,
-`wind_h`, `seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
-`bph`, `beats_found`, `beats_expected`, `rate_s_per_day`,
-`amplitude_deg`, `beat_error_ms`, `clipping`), `verdict` (`ok`,
-`no_watch_heard`, `clipping`). Exit 3 when the verdict is not `ok`:
-record that position again. `--bph` or `--lift` that disagree with the
+JSON body (`record/2`): `take`, `session_file`, `position`, `wind_h`,
+`seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
+`timing_scatter_ms`, `timing_scatter_fraction`, `bph`, `beats_found`,
+`beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`,
+`clipping`). When no regular beat was found or the ticks clipped, record
+that position again. Older builds (`record/1`) print a `verdict` and
+leave such a take out of the session with exit 3. `--bph` or `--lift` that disagree with the
 folder's session file are an error. `--file` reads a recording instead of
 the microphone.
 

@@ -99,7 +99,7 @@ fn a_live_take_keeps_its_readings_in_the_file() {
 
     // Standard output still carries the one document `record --json` prints.
     let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(doc["schema"], "timegrapher.record/1");
+    assert_eq!(doc["schema"], "timegrapher.record/2");
     let _ = fs::remove_dir_all(&dir);
 }
 
