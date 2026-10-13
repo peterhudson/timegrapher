@@ -5853,9 +5853,9 @@ impl TimegrapherApp {
                 .collect()
         };
         // Each line in its reading's colour, as on the strip and in the
-        // distributions. Tick's amplitude is purple dashed and Tock's purple
-        // dotted, with blue and orange swatches in the box at the pointer;
-        // beat error from the drop is a fainter dashed yellow.
+        // distributions. Tick's amplitude dashes purple over blue and Tock's
+        // purple over orange, the key drawn the same; beat error from the
+        // drop is a fainter dashed yellow.
         let solid = LineStyle::Solid;
         let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match pane {
             Pane::Rate => (
@@ -5942,17 +5942,9 @@ impl TimegrapherApp {
             .allow_axis_zoom_drag(false)
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-            .custom_x_axes(vec![egui_plot::AxisHints::new_x().formatter(|m, r| {
-                // Nothing before the session starts: a time there read as a
-                // second "0:00".
-                if m.value < -1e-6 {
-                    return String::new();
-                }
-                // A long time ("1:30:00") at the right end would be cut.
-                let t = strip::fmt_time(m.value);
-                let frac = if t.len() > 5 { 0.03 } else { 0.0 };
-                theme::clear_of_right_edge(t, m.value, r, frac)
-            })])
+            .custom_x_axes(vec![
+                egui_plot::AxisHints::new_x().formatter(|m, r| chart_time_label(m.value, r))
+            ])
             // Short charts still get a label at the top and the bottom:
             // the labels are painted below, in small text, so they fit
             // closer than the plot's own.
@@ -6213,6 +6205,19 @@ fn position_in_name(path: &Path) -> Option<Position> {
 /// The names in a chart's key and their colours, when it has more than one
 /// line.
 /// A second colour is drawn as a dash of the two, as the line is.
+/// A chart's time label at `t` seconds, in view `r`.
+fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
+    // Nothing before the session starts: a time there read as a second
+    // "0:00".
+    if t < -1e-6 {
+        return String::new();
+    }
+    // A long time ("1:30:00") at the right end would be cut.
+    let label = strip::fmt_time(t);
+    let frac = if label.len() > 5 { 0.03 } else { 0.0 };
+    theme::clear_of_right_edge(label, t, r, frac)
+}
+
 fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
     match pane {
         Pane::Amplitude => vec![
@@ -8220,6 +8225,23 @@ mod tests {
     /// A pane follows Readings' Average Over until given a time of its
     /// own, which keeps its own readings until Readings' Average Over is
     /// changed: then every pane follows it again.
+    #[test]
+    fn tick_and_tock_amplitude_dash_over_their_own_colours() {
+        let pal = theme::palette(true);
+        let key = chart_key(Pane::Amplitude, pal);
+        assert_eq!(key[0], ("Average Amplitude", pal.trace_amplitude, None));
+        assert_eq!(key[1], ("From Tick", pal.trace_amplitude, Some(pal.tick)));
+        assert_eq!(key[2], ("From Tock", pal.trace_amplitude, Some(pal.tock)));
+    }
+
+    #[test]
+    fn a_chart_labels_no_time_before_the_start() {
+        let r = -30.0..=600.0;
+        assert_eq!(chart_time_label(-30.0, &r), "");
+        assert_eq!(chart_time_label(0.0, &r), "0:00");
+        assert_eq!(chart_time_label(120.0, &r), "2:00");
+    }
+
     #[test]
     fn a_pane_follows_readings_unless_set() {
         let mut app = synthetic(40.0, 0.0);

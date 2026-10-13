@@ -346,8 +346,9 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 unlock and from the drop) over time. Each reading keeps its colour across
 the app (rate red, amplitude purple, beat error yellow), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
-dashed and from the tocks dotted, beat error from the drop dashed, with a
-blue or orange swatch for Tick and Tock in the box at the pointer. A chart
+dashes purple over blue and from the tocks purple over orange, and beat
+error from the drop is a fainter dashed yellow; the key and the box at the
+pointer draw them the same way. A chart
 with more than one line has its key at the right of its tab bar, where it
 covers nothing. Each chart labels its vertical scale at two marks or more,
 in small text, however short the chart; a long time at the right end of
