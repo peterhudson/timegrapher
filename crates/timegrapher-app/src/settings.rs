@@ -32,11 +32,16 @@ pub struct Settings {
     pub folded: Vec<String>,
     pub theme: ThemePreference,
     pub steady_view: steady::View,
+    /// The Steadiness series shown: rate, amplitude, beat error.
+    pub steady_series: [bool; 3],
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// Calibres the watchmaker entered by hand, for movements the built-in
     /// table doesn't have.
     pub custom_calibres: Vec<CustomCalibre>,
+    /// Panes averaged over their own time rather than Readings' Average
+    /// Over.
+    pub pane_average: Vec<(Pane, f64)>,
     /// Look for a newer release each time the app starts.
     pub check_updates: bool,
 }
@@ -98,9 +103,11 @@ impl Default for Settings {
             folded: Vec::new(),
             theme: ThemePreference::System,
             steady_view: steady::View::default(),
+            steady_series: [true; 3],
             scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),
+            pane_average: Vec::new(),
             check_updates: true,
         }
     }

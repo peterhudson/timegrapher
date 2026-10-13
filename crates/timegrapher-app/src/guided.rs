@@ -60,6 +60,10 @@ pub struct Test {
     start: Option<f64>,
     /// The measured stretch of each position done so far.
     spans: Vec<(Position, f64, f64)>,
+    /// The time the test didn't use, from the steps before this one:
+    /// start, end and why ("Settling", or "Not Measured" while the watch
+    /// waited to be turned or a measurement was started again).
+    unused: Vec<(f64, f64, &'static str)>,
     /// The six readings, once the last position is measured.
     pub readings: Option<Vec<Reading>>,
     pub show_results: bool,
@@ -71,6 +75,7 @@ impl Test {
             step: 0,
             start: None,
             spans: Vec::new(),
+            unused: Vec::new(),
             readings: None,
             show_results: false,
         }
@@ -114,6 +119,7 @@ impl Test {
     /// On to the next position, from `now`. Returns it, or None after the
     /// last, when the readings are to be made.
     pub fn advance(&mut self, now: f64) -> Option<Position> {
+        self.close_step(now, false);
         self.step += 1;
         self.start = Some(now);
         self.next_or_none()
@@ -125,8 +131,53 @@ impl Test {
 
     /// Measure this position again from `now`.
     pub fn redo(&mut self, now: f64) {
+        self.close_step(now, true);
         self.spans.truncate(self.step);
         self.start = Some(now);
+    }
+
+    /// The time the test doesn't use, up to `now`: each settling, and
+    /// what came between a measurement's end (or a measurement given up)
+    /// and the next start. The strip marks it so the sound outside the
+    /// measured stretches reads as left out.
+    pub fn unused(&self, now: f64) -> Vec<(f64, f64, &'static str)> {
+        let mut out = self.unused.clone();
+        // Once finished, the last step was closed as the test ended.
+        if let (Some(s), None) = (self.start, &self.readings) {
+            out.extend(Self::step_unused(s, now, false));
+        }
+        out
+    }
+
+    /// One attempt at a position, started at `start`, seen at `now`.
+    fn step_unused(start: f64, now: f64, given_up: bool) -> Vec<(f64, f64, &'static str)> {
+        let mut out = Vec::new();
+        if now <= start {
+            return out;
+        }
+        let settled = start + SETTLE_S;
+        out.push((start, now.min(settled), "Settling"));
+        let end = settled + MEASURE_S;
+        if given_up && now > settled {
+            out.push((settled, now, "Not Measured"));
+        } else if now > end {
+            out.push((end, now, "Not Measured"));
+        }
+        out
+    }
+
+    /// The test ended at `now` before it finished: what this position
+    /// measured so far isn't used either.
+    pub fn stop(&mut self, now: f64) {
+        self.close_step(now, true);
+        self.start = None;
+    }
+
+    /// Keep this attempt's unused time, at `now` as it ends.
+    fn close_step(&mut self, now: f64, given_up: bool) {
+        if let Some(s) = self.start {
+            self.unused.extend(Self::step_unused(s, now, given_up));
+        }
     }
 
     #[cfg(test)]
@@ -199,7 +250,11 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 Phase::Turn => match test.next_position() {
                     Some(p) => (
                         format!("Turn the watch to {}", p.name()),
-                        format!("then press Start {} Measurement", p.code()),
+                        format!(
+                            "then press Start {} Measurement. Nothing until then is measured; \
+                             the strip marks it Not Measured.",
+                            p.code()
+                        ),
                         1.0,
                     ),
                     None => (
@@ -595,5 +650,42 @@ mod tests {
         }
         assert_eq!(t.measured(), 6);
         assert_eq!(t.next_position(), None);
+    }
+
+    /// The time the test leaves out: each settling, the wait for the next
+    /// turn, a measurement started again, and a test stopped part way.
+    #[test]
+    fn the_unused_time_is_named() {
+        let (sm, m) = (SETTLE_S, MEASURE_S);
+        let mut t = Test::new();
+        t.tick(0.0);
+        assert_eq!(t.unused(5.0), [(0.0, 5.0, "Settling")]);
+        assert_eq!(t.unused(sm + 1.0), [(0.0, sm, "Settling")]);
+        // Measured, then 30 s turning the watch before the next start.
+        let end = sm + m;
+        t.tick(end);
+        assert_eq!(
+            t.unused(end + 30.0),
+            [(0.0, sm, "Settling"), (end, end + 30.0, "Not Measured")]
+        );
+        t.advance(end + 30.0);
+        let s2 = end + 30.0;
+        // Knocked 10 s into measuring: that try is left out whole.
+        t.redo(s2 + sm + 10.0);
+        let s3 = s2 + sm + 10.0;
+        let u = t.unused(s3 + 1.0);
+        assert_eq!(
+            &u[2..],
+            [
+                (s2, s2 + sm, "Settling"),
+                (s2 + sm, s3, "Not Measured"),
+                (s3, s3 + 1.0, "Settling")
+            ]
+        );
+        // Stopped while measuring: none of it was used.
+        t.stop(s3 + sm + 5.0);
+        let u = t.unused(s3 + 100.0);
+        assert_eq!(u.last(), Some(&(s3 + sm, s3 + sm + 5.0, "Not Measured")));
+        assert_eq!(t.stretches().len(), 1);
     }
 }
