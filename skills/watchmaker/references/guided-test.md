@@ -57,8 +57,8 @@ lay it on a table. Make sure it's held firmly; a loose watch sounds like a
 faulty one."*
 
 Run `timegrapher doctor --json` (with `--device NAME` from
-`timegrapher devices` if the stand isn't the default input). Read the
-facts, not any `verdict` or band word an older build prints: go on when
+`timegrapher devices` if the stand isn't the default input). It gives
+levels and what it detected, with no verdict. Go on when
 a regular beat is found, nothing clips, the peak sits below about
 −6 dBFS and the ticks stand well clear of the noise (the levels and the
 project's rules of thumb are in
@@ -157,8 +157,7 @@ be moved` at the end; tell the person both. Before you ask them to
 turn the watch, read the take's facts: if no regular beat was found
 (`watch_heard` false) or the ticks clipped (`clipping`), fix the cause
 and record that position again: `record` keeps every take, so the
-session then holds both, and `session` reads each (older builds left
-such a take out and exited 3). A bad
+session then holds both, and `session` reads each. A bad
 position is cheaper to redo now than tomorrow.
 
 ## 5. Read the session
@@ -173,14 +172,12 @@ the characteristic values, then hold them against the tolerance set
 that fits the watch
 ([when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source)).
 The program applies no tolerance: hold the numbers against the tables
-yourself. Any grade, finding code or tolerance class an older build
-prints is its opinion from fixed limits: read the numbers behind it
-instead. Write the answer as SKILL.md's "How to write the
+yourself. Write the answer as SKILL.md's "How to write the
 answer" says, with the service history and wear from step 0 in it.
 
-Then look at the shape of the Tick and the Tock: run `timegrapher shape
+Then look at the shape of the Tick and the Tock: run `timegrapher analyze
 TAKE/audio-001.wav --calibre NAME --json` on each take (`take` in
-`record`'s output) and read its measures against
+`record`'s output) and read its `shape` block against
 [tick-shape.md](tick-shape.md#rules-for-possible-faults). A pattern
 that shows on the same side in several positions is worth passing on to
 a watchmaker; one in a single position is more likely the set-up.

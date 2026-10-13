@@ -65,10 +65,9 @@ Three jobs, in order:
 2. `timegrapher devices` to find the microphone.
 3. `timegrapher doctor --device NAME` with the watch clamped in the stand.
    It reports levels and what it detected, each with a code (`silent`,
-   `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `noisy`, `hot`),
-   with proposed fixes, and the signal figure `signal_x`. Read the levels
-   and codes, not any fault, warning, band or verdict word a build
-   prints: those are fixed cut-offs, and what each level means is in
+   `too_quiet`, `clipping`, `agc_suspected`, `no_ticks`, `hot`), with
+   proposed fixes, and the signal figure `signal_x`. It gives no verdict
+   and always exits 0; what each level means is in
    [findings.md](references/findings.md#doctor) (the project's rule of
    thumb: 10× and up, every reading; 5–10×, the rate, amplitude and beat
    error may be off; 3–5×, the rate only). Explain what it found in plain
@@ -130,10 +129,9 @@ For several positions, name each file after its position (`watch_DU.flac`,
 `timegrapher session FOLDER --lift L --json`, or `timegrapher session
 --init FOLDER` to write a `session.toml` to fill in (calibre, wind
 state). It gives per-position readings and the characteristic values
-(X, D, DV, DH, DVH, Di, isochronism) that docs/sessions.md defines. Some
-builds also print a tolerance class, findings with a `severity` and
-advice, and a grade: those are the program's opinions from fixed
-limits, so read the numbers behind them instead.
+(X, D, DV, DH, DVH, Di, isochronism) that docs/sessions.md defines, and
+`findings[]`: what it detected in the sound (`no_regular_beat`,
+`clipping`, `cycle_wheel`, ...), with no severity, advice or tolerance.
 [findings.md](references/findings.md#session-the-positions-test) gives
 the rules to judge the numbers by, each with its source, and what to
 tell the person. Two of those values are easy
@@ -210,13 +208,11 @@ Work through them in this order. The reasons are in
 7. **Positions.** Compare dial up with dial down (friction at the balance
    pivots, end shake, a hairspring out of flat), horizontal with vertical,
    and the vertical positions with each other (poise, hairspring centring).
-8. **The shape of the beat.** Run `shape` on each take's
-   `audio-001.wav` and read its measures against
+8. **The shape of the beat.** `analyze` gives each take's shape
+   measures (`shape`: the Tick and the Tock); read them against
    [tick-shape.md](references/tick-shape.md#rules-for-possible-faults).
    Anything they find is a possible fault worth checking on the bench,
-   never a diagnosis, and it counts only if it repeats. Some builds list
-   `faults[]` in `analyze`: the same rules, applied by the program;
-   don't repeat its names as findings.
+   never a diagnosis, and it counts only if it repeats.
 
 Then decide. [when-to-see-a-watchmaker.md](references/when-to-see-a-watchmaker.md)
 gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
@@ -369,7 +365,7 @@ and if one decides your verdict, say so.
 | File | When |
 | --- | --- |
 | [guided-test.md](references/guided-test.md) | Walking a first-timer through the whole test: what to ask, what to say, what to run, step by step |
-| [findings.md](references/findings.md) | How to read each command's measured fields from `doctor`, `session` and `series`, and the possible faults from `analyze`: what it means, how sure, what to do, what to tell the person |
+| [findings.md](references/findings.md) | How to read each command's measured fields from `analyze`, `doctor`, `session` and `series`: what it means, how sure, what to do, what to tell the person |
 | [setup-and-microphone.md](references/setup-and-microphone.md) | Installing, choosing and setting the microphone, recording, positions, `doctor` issues and per-OS fixes |
 | [qc-videos.md](references/qc-videos.md) | A seller's QC photo or video from a cheap timegrapher: the beginner's 60-second read |
 | [reading-the-numbers.md](references/reading-the-numbers.md) | What each number means and how to read it, the lift angle, positions, COSC and chronometer criteria, trace patterns |

@@ -103,11 +103,9 @@ it detected and beats found against expected, a quick rate and beat error
 it detected, each with a `code`. On Linux it also reads the card's mixer
 (`amixer`) and shows the level and auto-gain controls.
 
-Read the levels and the codes, not the labels: some builds also mark
-each issue a fault or a warning, print a `verdict` (`ok` or
-`needs_attention`) and exit 3 on a fault. Those are the program's fixed
-cut-offs, not facts about this stand; the table says what each code
-measures and what usually fixes it.
+It gives no verdict and always exits 0: the table says what each code
+measures and what usually fixes it, and the signal table below what the
+project found each level good for.
 
 It changes nothing unless you give `--apply`, and **you only give
 `--apply` after the person has agreed** to the specific fix it proposed.
@@ -124,13 +122,14 @@ live `doctor` checks again and reports the result under `after`.
 | `hot` | Peaks above −6 dBFS, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
 | `agc_suspected` | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
 | `no_ticks` | Fewer than half the expected beats, or signal below 3×. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
-| `noisy` | Signal under 10× (the figure is in the result). | Press the watch more firmly against the pickup, or raise the input level a little, to get above 10×. Also: mains chargers near the mic, fans, touching the stand; `--notch` for steady tones. |
 
 The signal figure (`signal_x`) is how many times louder the typical
 beat is than the background between beats. What each level is good for
 is the project's rule of thumb, from its own added-noise tests of
-2026-10-09 (not yet published), not a property of the microphone; some builds print it as a
-band word (`signal_band`), which you should not repeat:
+2026-10-09 (not yet published), not a property of the microphone. Under
+10×, press the watch more firmly against the pickup or raise the input
+level a little; look for mains chargers near the mic, fans, or a hand on
+the stand; `--notch` takes out steady tones.
 
 | Signal | What the project's tests found could be trusted |
 | --- | --- |
