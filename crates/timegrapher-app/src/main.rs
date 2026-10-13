@@ -17,6 +17,7 @@
 
 mod app;
 mod applog;
+mod desktop;
 mod fields;
 mod guided;
 mod help;
@@ -171,7 +172,10 @@ fn main() -> ExitCode {
             .with_title("Timegrapher")
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([800.0, 560.0])
-            .with_icon(icon()),
+            .with_icon(icon())
+            // The name a Wayland desktop finds the app's menu entry and
+            // icon by (see `desktop`).
+            .with_app_id("timegrapher"),
         ..Default::default()
     };
     let file = args.file.clone();

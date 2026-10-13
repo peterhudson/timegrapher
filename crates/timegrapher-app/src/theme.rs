@@ -407,6 +407,24 @@ pub fn section_header(
     changed
 }
 
+/// Lays out `add` as one piece in a pane toolbar's wrapping row, starting
+/// a new line first when the piece didn't fit on the last frame. egui only
+/// wraps single widgets, so a group (a name and its control, or a
+/// segmented control) would otherwise run off the pane's edge.
+fn keep_together<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let id = ui.id().with(("toolbar piece", key));
+    let last: Option<f32> = ui.ctx().data(|d| d.get_temp(id));
+    if last.is_some_and(|w| w > ui.available_size_before_wrap().x)
+        && ui.cursor().left() > ui.max_rect().left() + 1.0
+    {
+        ui.end_row();
+    }
+    let inner = ui.horizontal(add);
+    let w = inner.response.rect.width();
+    ui.ctx().data_mut(|d| d.insert_temp(id, w));
+    inner.inner
+}
+
 /// A row in a settings card: the name on the left (with its hint on hover)
 /// and the control after it, lined up with the rows above and below.
 pub fn row<R>(
@@ -415,6 +433,23 @@ pub fn row<R>(
     hint: Option<&str>,
     control: impl FnOnce(&mut Ui) -> R,
 ) -> R {
+    if in_toolbar(ui) {
+        // In a pane's toolbar: the name in small grey type just before
+        // its control, kept together. A setting that didn't fit last
+        // frame starts a new line, so nothing runs off the pane's edge.
+        return keep_together(ui, label, |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let l = ui.label(
+                RichText::new(label)
+                    .size(12.0)
+                    .color(pal(ui).text_secondary),
+            );
+            if let Some(h) = hint {
+                l.on_hover_text(h);
+            }
+            control(ui)
+        });
+    }
     ui.horizontal(|ui| {
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(LABEL_W, 24.0), Sense::hover());
         ui.painter().text(
@@ -438,6 +473,11 @@ pub const LABEL_W: f32 = 92.0;
 /// A row with a name on the left and a switch on the right. True when the
 /// switch was flipped.
 pub fn switch_row(ui: &mut Ui, label: &str, on: &mut bool, hint: &str) -> bool {
+    if in_toolbar(ui) {
+        // In a pane's toolbar a switch is a button that stays pressed
+        // while it is on.
+        return toggle(ui, label, on).on_hover_text(hint).changed();
+    }
     ui.horizontal(|ui| {
         let l = ui.add(egui::Label::new(label).sense(Sense::click()));
         let flip_by_label = l.clicked();
@@ -502,6 +542,18 @@ pub fn segmented<T: PartialEq + Copy>(
     value: &mut T,
     choices: &[(T, &str, &str)],
 ) -> bool {
+    if in_toolbar(ui) {
+        let key = choices.first().map_or("", |c| c.1);
+        return keep_together(ui, key, |ui| segmented_body(ui, value, choices));
+    }
+    segmented_body(ui, value, choices)
+}
+
+fn segmented_body<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    choices: &[(T, &str, &str)],
+) -> bool {
     let p = pal(ui);
     let mut changed = false;
     Frame::new()
@@ -562,6 +614,28 @@ pub fn choice_list<T: PartialEq + Copy>(
     choices: &[(T, &str, &str)],
 ) -> bool {
     let p = pal(ui);
+    if in_toolbar(ui) {
+        // In a pane's toolbar the list folds into a menu.
+        let mut changed = false;
+        let current = choices.iter().find(|c| c.0 == *value).map_or("", |c| c.1);
+        egui::ComboBox::from_id_salt(ui.next_auto_id())
+            .selected_text(RichText::new(current).size(12.5))
+            .show_ui(ui, |ui| {
+                for &(v, label, hint) in choices {
+                    let r = ui.selectable_label(*value == v, label);
+                    let r = if hint.is_empty() {
+                        r
+                    } else {
+                        r.on_hover_text(hint)
+                    };
+                    if r.clicked() && *value != v {
+                        *value = v;
+                        changed = true;
+                    }
+                }
+            });
+        return changed;
+    }
     let mut changed = false;
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
@@ -830,6 +904,200 @@ mod tests {
             assert!(contrast(p.tick, p.card) > 3.0);
             assert!(contrast(p.tock, p.card) > 3.0);
             assert!(contrast(p.on_accent, p.accent) > 3.0);
+        }
+    }
+}
+
+/// Whether controls are being drawn into a pane's toolbar, where they sit
+/// in a row rather than one above another.
+pub fn in_toolbar(ui: &Ui) -> bool {
+    ui.ctx()
+        .data(|d| d.get_temp::<bool>(egui::Id::new("pane toolbar")))
+        .unwrap_or(false)
+}
+
+/// A pane's toolbar: its controls in a row that wraps when the pane is
+/// narrow, and its "?" at the right.
+pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnOnce(&mut Ui)) {
+    let id = egui::Id::new("pane toolbar");
+    let full = ui.available_rect_before_wrap();
+    let q = egui::Rect::from_min_size(
+        egui::pos2(full.right() - 18.0, full.top() + 4.0),
+        Vec2::splat(16.0),
+    );
+    ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
+        help(ui, title, help_text)
+    });
+    let room = full.with_max_x(full.right() - 26.0);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(10.0, 4.0);
+            ui.ctx().data_mut(|d| d.insert_temp(id, true));
+            controls(ui);
+            ui.ctx().data_mut(|d| d.insert_temp(id, false));
+        });
+    });
+}
+
+/// A button that stays pressed while `on`: a switch in a toolbar. Its
+/// response is marked changed when clicked.
+pub fn toggle(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
+    let p = pal(ui);
+    let text = RichText::new(label)
+        .size(12.5)
+        .color(if *on { p.text } else { p.text_secondary });
+    let mut resp = ui.add(
+        egui::Button::new(text)
+            .selected(*on)
+            .corner_radius(CornerRadius::same(CONTROL_RADIUS)),
+    );
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    resp
+}
+
+/// The small pictures on the pane buttons at the top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    Readings,
+    Strip,
+    Profile,
+    Scope,
+    Steadiness,
+    Isochronism,
+    Chart,
+    Distribution,
+}
+
+/// A square button with an icon, filled while `on`. The icon is drawn in
+/// `color`, faded while off.
+pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Response {
+    let p = pal(ui);
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
+    let fill = if on {
+        p.raised
+    } else if resp.hovered() {
+        p.control_hover
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter()
+        .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), fill);
+    let c = if on {
+        color
+    } else {
+        color.gamma_multiply(0.45)
+    };
+    draw_icon(ui.painter(), rect.shrink(6.0), icon, c);
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), on, "")
+    });
+    resp
+}
+
+/// Draw an icon in the square `r`.
+pub fn draw_icon(painter: &egui::Painter, r: egui::Rect, icon: Icon, c: Color32) {
+    let s = Stroke::new(1.5_f32, c);
+    let at = |x: f32, y: f32| egui::pos2(r.left() + x * r.width(), r.top() + y * r.height());
+    let line = |pts: &[(f32, f32)]| {
+        let pts: Vec<egui::Pos2> = pts.iter().map(|&(x, y)| at(x, y)).collect();
+        painter.add(egui::Shape::line(pts, s));
+    };
+    match icon {
+        // Three cards side by side.
+        Icon::Readings => {
+            for i in 0..3 {
+                let x = i as f32 * 0.36;
+                painter.rect_stroke(
+                    egui::Rect::from_min_max(at(x, 0.2), at(x + 0.28, 0.8)),
+                    1.5,
+                    s,
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+        // Two slanting rows of dots, as on a paper strip.
+        Icon::Strip => {
+            for i in 0..5 {
+                let t = i as f32 / 4.0;
+                painter.circle_filled(at(0.1 + 0.8 * t, 0.35 - 0.2 * t + 0.1), 1.3, c);
+                painter.circle_filled(at(0.1 + 0.8 * t, 0.75 - 0.2 * t + 0.1), 1.3, c);
+            }
+        }
+        // A beat's envelope: a small bump, a big one, a smaller one.
+        Icon::Profile => line(&[
+            (0.0, 0.85),
+            (0.15, 0.85),
+            (0.22, 0.6),
+            (0.3, 0.85),
+            (0.42, 0.85),
+            (0.52, 0.15),
+            (0.62, 0.85),
+            (0.75, 0.85),
+            (0.82, 0.5),
+            (0.9, 0.85),
+            (1.0, 0.85),
+        ]),
+        // A burst of oscillation.
+        Icon::Scope => {
+            let pts: Vec<(f32, f32)> = (0..=24)
+                .map(|i| {
+                    let t = i as f32 / 24.0;
+                    let env = (-((t - 0.45) * 4.0).powi(2)).exp();
+                    (t, 0.5 - 0.42 * env * (t * 40.0).sin())
+                })
+                .collect();
+            line(&pts)
+        }
+        // Readings scattering about a level, with a step.
+        Icon::Steadiness => {
+            line(&[
+                (0.0, 0.62),
+                (0.12, 0.5),
+                (0.24, 0.66),
+                (0.36, 0.54),
+                (0.48, 0.6),
+                (0.56, 0.3),
+                (0.68, 0.4),
+                (0.8, 0.26),
+                (0.9, 0.38),
+                (1.0, 0.3),
+            ]);
+        }
+        // Rate against amplitude: a curve that turns.
+        Icon::Isochronism => {
+            let pts: Vec<(f32, f32)> = (0..=16)
+                .map(|i| {
+                    let t = i as f32 / 16.0;
+                    (t, 0.25 + 2.2 * (t - 0.55).powi(2))
+                })
+                .collect();
+            line(&pts);
+            for t in [0.15_f32, 0.4, 0.65, 0.9] {
+                painter.circle_filled(at(t, 0.25 + 2.2 * (t - 0.55).powi(2)), 1.4, c);
+            }
+        }
+        // A line over time.
+        Icon::Chart => line(&[
+            (0.0, 0.7),
+            (0.2, 0.45),
+            (0.4, 0.55),
+            (0.6, 0.25),
+            (0.8, 0.4),
+            (1.0, 0.2),
+        ]),
+        // Bars of a distribution.
+        Icon::Distribution => {
+            for (i, h) in [0.25_f32, 0.55, 0.85, 0.6, 0.3].into_iter().enumerate() {
+                let x = i as f32 * 0.2;
+                painter.rect_filled(
+                    egui::Rect::from_min_max(at(x + 0.03, 1.0 - h), at(x + 0.17, 1.0)),
+                    0.0,
+                    c,
+                );
+            }
         }
     }
 }

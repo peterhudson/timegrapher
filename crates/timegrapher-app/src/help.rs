@@ -218,7 +218,7 @@ pub const STEADINESS: &[&str] = &[
      it are the statistics: readings, median, standard deviation, the scatter from one \
      reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
      trend and period when found.",
-    "Under Each Series, in the Steadiness section of the sidebar, picks what is \
+    "Under Each Series, in the Steadiness toolbar, picks what is \
      drawn under each series. Readings: every \
      reading in time order (10 s rate readings, 2 s amplitude and beat error \
      readings), with the stretches of constant level and the two state levels. \
@@ -288,21 +288,6 @@ pub const HISTOGRAMS: &[&str] = &[
      catches quicker changes, with more scatter. Rate always counts readings.",
     "The scale leaves out the most extreme 0.5% at each end, so a few stray readings \
      can't squeeze the rest together; the line above says how many were left off.",
-];
-
-pub const WINDOW: &[&str] = &[
-    "Appearance: Auto follows the system's light or dark setting.",
-    "The app remembers its views for next time: the strip, the profile, the panes and \
-     their layout, the averaging time, folded cards, the sidebar, the microphone and the \
-     window's size. The watch's lift angle, beat rate and position start fresh.",
-    "The sidebar button at the left of the toolbar, or Ctrl+B (Cmd+B on a Mac), hides the \
-     sidebar to give the panes the whole window, and brings it back. Clicking a card's \
-     name folds the card away.",
-    "Panes can be dragged by their tabs beside, above or below each other, or onto \
-     another's tab to stack them, and resized by dragging the gaps. The × on a tab \
-     hides a pane; its switch in the sidebar brings it back where it was: in its \
-     section's caption, or under Charts or Distributions. Reset Panes puts \
-     everything back as it started.",
 ];
 
 pub const SIGNAL: &str = "How far the beats stand above the background noise: the \
