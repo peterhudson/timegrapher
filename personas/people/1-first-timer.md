@@ -4,7 +4,7 @@ name = "Sam"
 surface = "mcp-pair"
 language = "English"
 # The watch on Sam's stand, by position. Paths are corpus take/file.
-stand = { DU = "dd3235_DU_30min/dd3235_DU_48000-01.flac" }
+stand = { DU = "dd3235_DU_30min/take_part01-001.flac" }
 files = {}
 on_stand = "DU"
 # Parked: rounds before a public release use the watchmaking and UX experts only.

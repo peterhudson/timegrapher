@@ -1,0 +1,563 @@
+[
+  {
+    "maker": "ETA",
+    "common": true,
+    "aliases": [
+      "Ebauches SA"
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/ETA_SA (Valjoux and Unitas are ETA's own calibre families)"
+    ]
+  },
+  {
+    "maker": "Sellita",
+    "common": true,
+    "aliases": [
+      "Sellita Watch Co",
+      "SW"
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/2020/03/02/further-sellita-research-sw300-and-more/ (Sellita names its calibres SW)"
+    ]
+  },
+  {
+    "maker": "Audemars Piguet",
+    "common": true,
+    "aliases": [
+      "AP",
+      "Audemars"
+    ],
+    "sources": [
+      "AP is the abbreviation watch dealers and owners use for the maker"
+    ]
+  },
+  {
+    "maker": "Patek Philippe",
+    "common": true,
+    "aliases": [
+      "PP",
+      "Patek"
+    ],
+    "sources": [
+      "PP is the abbreviation watch dealers and owners use for the maker"
+    ]
+  },
+  {
+    "maker": "Seiko (SII)",
+    "common": true,
+    "aliases": [
+      "SII",
+      "Seiko Instruments",
+      "TMI",
+      "Time Module"
+    ],
+    "sources": [
+      "https://calibercorner.com/seiko-nh-caliber-differences/ (the NH calibres are sold by Seiko Instruments under the TMI name)"
+    ]
+  },
+  {
+    "maker": "Miyota (Citizen)",
+    "common": true,
+    "aliases": [
+      "Miyota"
+    ],
+    "sources": [
+      "https://calibercorner.com/miyota-caliber-8215/ (Miyota is Citizen's movement maker)"
+    ]
+  },
+  {
+    "maker": "Tianjin Seagull",
+    "common": true,
+    "aliases": [
+      "Seagull",
+      "Tianjin"
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/Clone_movements (Sea-Gull ST calibres)"
+    ]
+  },
+  {
+    "maker": "Peacock (Dandong)",
+    "common": true,
+    "aliases": [
+      "Dandong",
+      "DD",
+      "Peacock",
+      "Liaoning Peacock",
+      "SL"
+    ],
+    "sources": [
+      "The DD prefix in clone calibre names (DD3235, DD4130) and parts listings; no neutral reference lists the prefixes",
+      "The SL prefix in Peacock calibre names (SL1258, SL3000)",
+      "Peacock's own site, http://en.cpeacockmovement.com/Movement/2.html (SL calibres)",
+      "Calibercorner names the maker \"Dandong/Peacock Watch Factory\": https://calibercorner.com/dandong-peacock-caliber-sl-3006/",
+      "Clone calibres sold as \"Dandong\" (DD3235, DD4130) come from the same factory as the Peacock SL calibres, per the project owner, who works on them"
+    ]
+  },
+  {
+    "maker": "Shanghai (clone)",
+    "common": true,
+    "aliases": [
+      "Shanghai",
+      "SH"
+    ],
+    "sources": [
+      "The SH prefix in clone calibre names (SH3135, SH4131); no neutral reference lists the prefixes"
+    ]
+  },
+  {
+    "maker": "Shanghai Jinghe (clone)",
+    "common": true,
+    "aliases": [
+      "Jinghe",
+      "JH"
+    ],
+    "sources": [
+      "The JH prefix in clone calibre names (JH3235); no neutral reference lists the prefixes"
+    ]
+  },
+  {
+    "maker": "APS (clone)",
+    "common": true,
+    "aliases": [
+      "APS"
+    ],
+    "sources": [
+      "The APS prefix in clone calibre names (APS 4401)"
+    ]
+  },
+  {
+    "maker": "APS / ZF (clone)",
+    "common": true,
+    "aliases": [
+      "ZF"
+    ],
+    "sources": [
+      "The ZF prefix in clone calibre names (ZF 3120)"
+    ]
+  },
+  {
+    "maker": "Various Chinese makers",
+    "common": true,
+    "aliases": [
+      "PTS",
+      "DG"
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/Clone_movements (DG28 series, Dixmont Guangzhou)"
+    ]
+  },
+  {
+    "maker": "A. Schild",
+    "aliases": [
+      "AS"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists A. Schild as \"AS\""
+    ]
+  },
+  {
+    "maker": "Alpina",
+    "aliases": [
+      "Alpina Straub"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Alpina as \"Alpina Straub\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists Alpina as \"Alpina Straub\""
+    ]
+  },
+  {
+    "maker": "BRAC",
+    "aliases": [
+      "Breiten-Bach"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists BRAC as \"Breiten-Bach\""
+    ]
+  },
+  {
+    "maker": "Baume & Mercier",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Baumgartner",
+    "aliases": [
+      "Baumgartner Freres",
+      "BFG"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Baumgartner as \"Baumgartner Freres\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists Baumgartner as \"BFG\""
+    ]
+  },
+  {
+    "maker": "Becker",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Bifora",
+    "aliases": [
+      "Bidling-Maier"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Bifora as \"Bidling-Maier\"",
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Bifora as \"Bidling-Maier\""
+    ]
+  },
+  {
+    "maker": "Blancpain",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Breguet",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Bulova",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Buren",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Buser",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Cartier",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Certina",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Chezard",
+    "aliases": [
+      "C"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Chezard as \"C\""
+    ]
+  },
+  {
+    "maker": "Citizen",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Cressarow",
+    "aliases": [
+      "Cresaux"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Cressarow as \"Cresaux\""
+    ]
+  },
+  {
+    "maker": "Doxa",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Ebauches Bettlach",
+    "aliases": [
+      "Bettlach",
+      "EB"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Ebauches Bettlach as \"Bettlach\"",
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Ebauches Bettlach as \"Bettlach\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists Ebauches Bettlach as \"EB\""
+    ]
+  },
+  {
+    "maker": "Eterna",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Favre-Leuba",
+    "aliases": [
+      "Favre"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Favre-Leuba as \"Favre\""
+    ]
+  },
+  {
+    "maker": "Felsa",
+    "aliases": [
+      "F"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Felsa as \"F\""
+    ]
+  },
+  {
+    "maker": "Fleurier",
+    "aliases": [
+      "FEF"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Fleurier as \"FEF\"",
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Fleurier as \"FEF\""
+    ]
+  },
+  {
+    "maker": "Fontainemelon",
+    "aliases": [
+      "FHF",
+      "Font"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Fontainemelon as \"FHF\"",
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Fontainemelon as \"FHF\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists Fontainemelon as \"FHF\"",
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Fontainemelon as \"Font\""
+    ]
+  },
+  {
+    "maker": "France Ebauches",
+    "aliases": [
+      "FE",
+      "France Ebauche"
+    ],
+    "sources": [
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists France Ebauches as \"FE\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists France Ebauches as \"France Ebauche\""
+    ]
+  },
+  {
+    "maker": "Girard Perregaux",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Glashütte Original",
+    "common": true,
+    "aliases": [
+      "Glashuette Original"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists Glashütte Original as \"Glashuette Original\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists Glashütte Original as \"Glashuette Original\""
+    ]
+  },
+  {
+    "maker": "Gruen",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Hamilton",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "IWC",
+    "common": true,
+    "aliases": [
+      "International Watch Company"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists IWC as \"International Watch Company\"",
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/: Watchmaking Tools lists IWC as \"International Watch Company\""
+    ]
+  },
+  {
+    "maker": "Ingersoll",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Jaeger-LeCoultre",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Junghans",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Lapanouse",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Longines",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Meylan",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Nomos",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Omega",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Oris",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Peseux",
+    "aliases": [
+      "P"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Peseux as \"P\""
+    ]
+  },
+  {
+    "maker": "Piaget",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Record",
+    "aliases": [
+      "Record Geneve"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Record as \"Record Geneve\""
+    ]
+  },
+  {
+    "maker": "Roamer",
+    "aliases": [
+      "MST"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Roamer as \"MST\""
+    ]
+  },
+  {
+    "maker": "Rolex",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Ronda",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Seiko",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Standard",
+    "aliases": [],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Standard as \"ST\""
+    ]
+  },
+  {
+    "maker": "Tissot",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Tudor",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Ulysse Nardin",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Unitas",
+    "aliases": [
+      "UT"
+    ],
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles: WatchGuy lists Unitas as \"UT\""
+    ]
+  },
+  {
+    "maker": "VEB Glashütte",
+    "aliases": [
+      "Glashuette",
+      "VEG"
+    ],
+    "sources": [
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists VEB Glashütte as \"Glashuette\"",
+      "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle): the lift-angle sheet lists VEB Glashütte as \"VEG\""
+    ]
+  },
+  {
+    "maker": "Vacheron Constantin",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Valjoux",
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Zenith",
+    "common": true,
+    "aliases": [],
+    "sources": []
+  },
+  {
+    "maker": "Hangzhou",
+    "aliases": [
+      "HZ",
+      "Hangzhou Watch Co"
+    ],
+    "sources": [
+      "Hangzhou Watch Co. (杭州手表有限公司) assembly drawings name its calibres HZ8230A, HZ8220A"
+    ]
+  }
+]

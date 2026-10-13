@@ -46,10 +46,10 @@ impl Train<'_> {
         let Some(c) = self.calibre()? else {
             return Ok(escape(self.escape_teeth));
         };
-        if c.bph != bph {
+        if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
-                "note: the {} beats at {} vph, the recording at {bph}",
-                c.calibre, c.bph
+                "note: the {} beats at {cb} vph, the recording at {bph}",
+                c.calibre
             );
         }
         let mut w = c.wheels();

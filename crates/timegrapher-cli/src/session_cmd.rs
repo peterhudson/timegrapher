@@ -67,11 +67,10 @@ impl Options {
             }
         }
         let from = |flag: bool| if flag { "the flag" } else { "the session file" };
-        if let Some(b) = self.bph.or(m.bph).filter(|&b| b != c.bph) {
+        if let Some((b, cb)) = self.bph.or(m.bph).zip(c.bph).filter(|&(b, cb)| b != cb) {
             notes.push(format!(
-                "the {} beats at {} bph, {} says {b}; using {b}",
+                "the {} beats at {cb} bph, {} says {b}; using {b}",
                 c.calibre,
-                c.bph,
                 from(self.bph.is_some())
             ));
         }
@@ -98,7 +97,7 @@ impl Options {
     /// Beat rate: the flag, else the session file, else the calibre's;
     /// none means it is measured.
     fn bph(&self, m: &Manifest, cal: Option<&Calibre>) -> Option<u32> {
-        self.bph.or(m.bph).or(cal.map(|c| c.bph))
+        self.bph.or(m.bph).or(cal.and_then(|c| c.bph))
     }
 
     /// Lift angle: the flag, else the session file, else the calibre's,
@@ -241,7 +240,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let cal = o.calibre(&Manifest::default())?;
     t.push_str(&format!(
         "bph = {}\n",
-        o.bph.or(cal.map(|c| c.bph)).unwrap_or(28800)
+        o.bph.or(cal.and_then(|c| c.bph)).unwrap_or(28800)
     ));
     t.push_str(&format!(
         "lift = {}\n",

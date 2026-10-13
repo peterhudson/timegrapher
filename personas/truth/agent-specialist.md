@@ -7,11 +7,11 @@ position is consistent with those figures and with the ranges in
 [tinkerer.md](tinkerer.md).
 
 `~/Recordings/eta_movement_DU.flac` = corpus `eta2824_holder_DU_30min` file
--01, the same file as Mika's: tg (lift 50°, card clock) rate +11.4 s/d,
+take_part01-001, the same file as Mika's: tg (lift 50°, card clock) rate +11.4 s/d,
 amplitude 294°, beat error 0.07 ms.
 
 `~/Recordings/my_watch_test.flac` = corpus `silence_empty_stand`
-`silence_mic10.flac`: 300 s of an empty stand, no watch. A correct program
+`take_part01-001.flac` (formerly `silence_mic10.flac`): 300 s of an empty stand, no watch. A correct program
 says no watch was heard and gives no rate or amplitude (see
 [sceptic.md](sceptic.md)).
 
