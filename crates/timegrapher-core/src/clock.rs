@@ -183,8 +183,8 @@ impl ClockFit {
         }
         let (a, b, b_sd) = line_sd(&p);
         let span = p[p.len() - 1].0 - p[0].0;
-        let tracks_drift = span > DRIFT_SPAN_S;
-        let knots = if tracks_drift {
+        let mut knots = Vec::new();
+        if span > DRIFT_SPAN_S {
             let step = 600.0;
             let mut k = Vec::new();
             let mut x = p[0].0;
@@ -203,11 +203,15 @@ impl ClockFit {
                 }
                 x = (x + step).min(p[p.len() - 1].0);
             }
-            k
-        } else {
+            knots = k;
+        }
+        // Entries too sparse for local fits (a stored correction gives
+        // three points over the whole run) keep the one straight line.
+        let tracks_drift = knots.len() >= 2;
+        if !tracks_drift {
             let (x0, x1) = (p[0].0, p[p.len() - 1].0);
-            vec![(x0, a + b * x0), (x1, a + b * x1)]
-        };
+            knots = vec![(x0, a + b * x0), (x1, a + b * x1)];
+        }
         let mut fit = ClockFit {
             points: p.len(),
             rejected: total - p.len(),
@@ -239,6 +243,28 @@ impl ClockFit {
         Ok(fit)
     }
 
+    /// The fit for a sound card known to be `ppm` slow (negative: fast)
+    /// over a run of `duration_s`: one straight line, no breaks. Built
+    /// directly rather than from synthetic entries, which past about 13
+    /// hours sit far enough apart to read as pauses in listening.
+    pub fn fixed(ppm: f64, duration_s: f64) -> ClockFit {
+        let b = 1.0 + ppm * 1e-6;
+        let d = duration_s.max(3.0);
+        ClockFit {
+            points: 3,
+            rejected: 0,
+            span_s: d,
+            ppm,
+            rate_error_s_per_day: ppm * 1e-6 * 86400.0,
+            ppm_sd: 0.0,
+            residual_ms: 0.0,
+            tracks_drift: false,
+            breaks: Vec::new(),
+            knots: vec![(0.0, 0.0), (d, d * b)],
+            origin: (0.0, 0.0),
+        }
+    }
+
     /// True time relative to the first entry, with the gaps of the breaks
     /// before audio time `x` (also relative to the first entry).
     fn map_rel(&self, x: f64) -> f64 {
@@ -249,6 +275,9 @@ impl ClockFit {
     /// piecewise linear, extended along the end segments.
     fn map_gapless(&self, x: f64) -> f64 {
         let k = &self.knots;
+        if k.is_empty() {
+            return x;
+        }
         if k.len() == 1 {
             return k[0].1 + (x - k[0].0);
         }
@@ -545,6 +574,44 @@ mod tests {
         assert!(fit.residual_ms < 1.0, "{}", fit.residual_ms);
         let want = |a: f64| a + 1e-6 * (10.0 * a + 10.0 * a * a / 86400.0);
         assert!((fit.map(43200.0) - want(43200.0)).abs() < 0.005);
+    }
+
+    #[test]
+    fn sparse_entries_over_40_hours_keep_one_line() {
+        // Entries every 2.5 hours over a 40 h run are too sparse for any
+        // local fit (three entries within an hour): the run falls back to
+        // the one straight line instead of failing.
+        let k = 1.0 + 21.11e-6;
+        let pairs: Vec<(f64, f64)> = (0..=16)
+            .map(|i| {
+                let a = i as f64 * 9000.0;
+                (a, a * k)
+            })
+            .collect();
+        let fit = ClockFit::new(&pairs).unwrap();
+        assert!(fit.breaks.is_empty());
+        assert!((fit.ppm - 21.11).abs() < 1e-6, "{}", fit.ppm);
+        for a in [0.0, 8100.0, 72_000.0, 144_000.0, 144_600.0] {
+            assert!((fit.map(a) - a * k).abs() < 1e-6, "{a}");
+        }
+    }
+
+    #[test]
+    fn a_fixed_correction_holds_over_40_hours() {
+        let d = 40.0 * 3600.0;
+        let k = 1.0 + 21.11e-6;
+        let fit = ClockFit::fixed(21.11, d);
+        assert!(fit.breaks.is_empty() && !fit.tracks_drift);
+        assert!((fit.rate_error_s_per_day - 21.11e-6 * 86400.0).abs() < 1e-9);
+        for a in [0.0, 8100.0, d / 2.0, d, d + 600.0] {
+            assert!((fit.map(a) - a * k).abs() < 1e-6, "{a}");
+        }
+        // Over two hours it matches the fit of the same three entries.
+        let short =
+            ClockFit::new(&[(0.0, 0.0), (3600.0, 3600.0 * k), (7200.0, 7200.0 * k)]).unwrap();
+        let fixed = ClockFit::fixed(21.11, 7200.0);
+        assert!((short.ppm - fixed.ppm).abs() < 1e-6);
+        assert!((short.map(5000.0) - fixed.map(5000.0)).abs() < 1e-9);
     }
 
     #[test]
