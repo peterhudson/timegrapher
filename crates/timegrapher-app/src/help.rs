@@ -91,9 +91,11 @@ pub const RATE: &[&str] = &[
      microphones differ. tg doesn't show it.",
     "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
-     rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
-     (`timegrapher clock measure --save`, or `clock from-log --save` after a recording \
-     with a clock log), the app shows the corrected rate under the big figure. Until \
+     rate read on it by 1 to 4 seconds a day. The app times the card's clock against \
+     the computer's while it listens, and after 20 minutes offers the result under the \
+     rate with a Keep button; that is only right if the computer's clock is kept by \
+     internet time. Once the error is kept (by Keep, `timegrapher clock measure --save`, \
+     or `clock from-log --save` after a recording with a clock log), the app shows the corrected rate under the big figure. Until \
      then the rate is read on the card's clock alone, as tg reads it. The big \
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
