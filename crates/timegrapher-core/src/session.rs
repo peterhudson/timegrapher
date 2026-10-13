@@ -6,11 +6,12 @@
 //! after a settling time, plus any periodic change and the beat shape.
 //! [`evaluate`] turns the readings into Witschi's characteristic values
 //! (mean rate X, largest difference D, vertical minus horizontal DVH,
-//! Di = 6H − CH, isochronism and Im, Ie) and into findings, each with the
-//! evidence that triggered it. The positions, indices and tolerances
-//! follow Witschi, *Testing methods for mechanical watches* (2025); the
-//! thresholds Witschi does not give are this project's defaults, in
-//! [`Limits`], and say so in their findings.
+//! Di = 6H − CH, isochronism and Im, Ie) and into findings: conditions
+//! detected in the sound, each with the figures that show it. The
+//! positions and indices follow Witschi, *Testing Methods for Mechanical
+//! Watches* (D40e, 18.11.2025). Nothing here judges the watch: tolerances and what a
+//! figure means for the movement are for the person, or for the
+//! watchmaker skill, to weigh.
 
 use crate::beats::{self, Beat};
 use crate::breaks::Break;
@@ -185,108 +186,6 @@ impl Serialize for Position {
     }
 }
 
-/// Witschi's tolerances for a fully wound watch (1.9 in the project's
-/// notes on the testing-methods document).
-#[derive(Debug, Clone, Serialize)]
-pub struct Tolerance {
-    pub name: String,
-    pub rate_min: f64,
-    pub rate_max: f64,
-    /// Amplitude range in the horizontal and vertical positions, degrees.
-    pub amplitude_h: (f64, f64),
-    pub amplitude_v: (f64, f64),
-    pub beat_error_ms: f64,
-}
-
-impl Tolerance {
-    /// `ladies`, `mens`, `cosc-small` (movement under 20 mm), `cosc` or
-    /// `cosc-large`, and `metas`.
-    pub fn named(name: &str) -> Option<Tolerance> {
-        let k: String = name
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .map(|c| c.to_ascii_lowercase())
-            .collect();
-        let (label, lo, hi) = match k.as_str() {
-            "ladies" | "lady" | "small" => ("Ladies'", -5.0, 25.0),
-            "mens" | "men" | "standard" => ("Men's", -5.0, 15.0),
-            "coscsmall" | "cosc20" => ("COSC, movement under 20 mm", -5.0, 8.0),
-            "cosc" | "cosclarge" => ("COSC, movement over 20 mm", -4.0, 6.0),
-            "metas" => ("METAS", 0.0, 5.0),
-            _ => return None,
-        };
-        Some(Tolerance {
-            name: label.into(),
-            rate_min: lo,
-            rate_max: hi,
-            amplitude_h: (260.0, 320.0),
-            amplitude_v: (240.0, 280.0),
-            beat_error_ms: 0.5,
-        })
-    }
-
-    pub fn amplitude(&self, p: Position) -> (f64, f64) {
-        if p.is_vertical() {
-            self.amplitude_v
-        } else {
-            self.amplitude_h
-        }
-    }
-}
-
-impl Default for Tolerance {
-    fn default() -> Self {
-        Tolerance::named("mens").expect("built in")
-    }
-}
-
-/// Thresholds for findings that Witschi names without a number. These
-/// are this project's defaults; a session file can change them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Limits {
-    /// Largest rate difference between positions before it is a finding, s/d.
-    pub delta_rate: f64,
-    /// Amplitude loss from horizontal to vertical before it is a finding, deg.
-    pub vh_amplitude_drop: f64,
-    /// Beat error at which it is a fault rather than out of tolerance, ms.
-    pub beat_error_fault: f64,
-    /// Amplitude below which the movement needs service, deg.
-    pub amplitude_fault: f64,
-    /// Median amplitude of a position above which the lift angle and the
-    /// microphone are to be checked (Witschi's knocking limit, 330°), deg.
-    /// A check, not a fault: knocking shows as jumps in the trace.
-    #[serde(alias = "overbanking")]
-    pub amplitude_high: f64,
-    /// Spread of the 10 s rate readings (5th to 95th percentile) before
-    /// the rate counts as unsteady, s/d.
-    pub rate_spread: f64,
-    /// Shortest measurement Witschi recommends per position, s.
-    pub min_measure_s: f64,
-    /// Readings taken this soon after a full wind count as fully wound
-    /// for the tolerance checks, hours.
-    pub full_wind_h: f64,
-    /// Share of amplitude windows that must find the unlock on both sides
-    /// before amplitude and beat error are judged, 0..1.
-    pub min_unlock_coverage: f64,
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Limits {
-            delta_rate: 10.0,
-            vh_amplitude_drop: 50.0,
-            beat_error_fault: 2.0,
-            amplitude_fault: 200.0,
-            amplitude_high: 330.0,
-            rate_spread: 20.0,
-            min_measure_s: 40.0,
-            full_wind_h: 2.0,
-            min_unlock_coverage: 0.6,
-        }
-    }
-}
-
 /// A reading from the watch's own timegrapher (or anyone else's), to set
 /// beside this one.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -330,9 +229,10 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
-    /// Whether the beats look like a watch's (see [`beats::watch_heard`]).
+    /// Whether a regular beat was found (see [`beats::watch_heard`]).
     /// When false, as on an empty stand, rate, amplitude and beat error
-    /// would describe noise, and they are left out.
+    /// would describe noise, and they are left out; the findings state
+    /// [`no_regular_beat`].
     pub watch_heard: bool,
     /// Median of the rate in 10 s windows, s/d. For a watch whose rate
     /// wanders with dips, this sits above `rate_s_per_day` (the fit over
@@ -384,7 +284,7 @@ impl Measurement {
             )
         });
         let d = crate::confidence::Doubts {
-            clipped: self.clipping_warns(),
+            clipped: self.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION,
             beats_missing: self
                 .caveats
                 .iter()
@@ -399,32 +299,12 @@ impl Measurement {
         }
     }
 
-    /// The beat error the report judges: from the unlock where it was
+    /// The beat error the report shows: from the unlock where it was
     /// found, else from the drop. Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
         self.beat_error_unlock_ms
             .or(self.beat_error_ms)
             .map(f64::abs)
-    }
-
-    /// Whether too few windows found the unlock for amplitude and the
-    /// beat error from the unlock to be trusted.
-    pub fn unlock_unreliable(&self, lim: &Limits) -> bool {
-        self.unlock_coverage
-            .is_some_and(|c| c < lim.min_unlock_coverage)
-    }
-
-    /// The position's median amplitude, when it is above `amplitude_high`
-    /// and the unlock was timed reliably enough to judge it, deg.
-    pub fn amplitude_over_high(&self, lim: &Limits) -> Option<f64> {
-        self.amplitude_deg
-            .filter(|&a| a > lim.amplitude_high && !self.unlock_unreliable(lim))
-    }
-
-    /// Enough clipped beats to doubt amplitude and beat error, by the
-    /// same rule as `analyze`.
-    pub fn clipping_warns(&self) -> bool {
-        self.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION
     }
 }
 
@@ -809,6 +689,8 @@ pub struct Isochronism {
     pub beat_error_change: Option<f64>,
 }
 
+/// How a steadiness finding is ranked (see [`crate::steadiness`]). The
+/// session's own findings carry none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
@@ -817,47 +699,23 @@ pub enum Severity {
     Note,
 }
 
-/// Something worth the watchmaker's attention, with what triggered it.
+/// A condition detected in one recording's sound, with the figures that
+/// show it. A finding states what was measured; it does not say what it
+/// means for the watch.
 #[derive(Debug, Clone, Serialize)]
 pub struct Finding {
-    /// Stable identifier of the rule, for programs and agents reading the
-    /// report (e.g. "positional_delta"); the title is for people.
+    /// Stable identifier of the condition, for programs and agents
+    /// reading the report (e.g. "clipping"); the title is for people.
     pub code: &'static str,
     /// Index into the readings, for a finding about one recording.
     pub recording: Option<usize>,
-    pub severity: Severity,
     pub title: String,
-    /// The measurement that triggered it, with the threshold.
+    /// The figures, and the recording they come from.
     pub evidence: String,
-    /// What Witschi recommends, or what to check.
-    pub advice: String,
-}
-
-/// Whether a value is within tolerance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Mark {
-    Within,
-    Outside,
-    /// Not judged: not measured, or not fully wound.
-    NotJudged,
-    /// Measured, but not reliably enough to judge (see `unlock_unreliable`).
-    Unreliable,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Verdict {
-    pub rate: Mark,
-    pub amplitude: Mark,
-    pub beat_error: Mark,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionReport {
-    pub tolerance: Tolerance,
-    pub limits: Limits,
-    /// One per reading, in the readings' order.
-    pub verdicts: Vec<Verdict>,
     /// One per state of wind, fullest first.
     pub states: Vec<StateIndices>,
     pub isochronism: Vec<Isochronism>,
@@ -868,9 +726,6 @@ pub struct SessionReport {
     /// Change of the mean rate X from the fullest to the least wound state,
     /// over the positions measured in both, s/d.
     pub ie: Option<f64>,
-    /// Witschi's quality factor N = 0.15·|Im| + 0.1·Pmax + C, with the
-    /// thermal coefficient C left at Witschi's default of 0.6.
-    pub n: Option<f64>,
     pub findings: Vec<Finding>,
 }
 
@@ -958,45 +813,9 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
     v.max_by(|a, b| a.abs().total_cmp(&b.abs()))
 }
 
-fn s(v: f64) -> String {
-    format!("{v:+.1} s/d")
-}
-
-/// Judge the readings against `tol` and `limits`.
-pub fn evaluate(readings: &[Reading], tol: &Tolerance, limits: &Limits) -> SessionReport {
-    let full = |r: &Reading| r.wind_h.unwrap_or(0.0) <= limits.full_wind_h;
-    let verdicts: Vec<Verdict> = readings
-        .iter()
-        .map(|r| {
-            let m = &r.measurement;
-            let judge = |v: Option<f64>, lo: f64, hi: f64| match v {
-                Some(v) if full(r) => {
-                    if v >= lo && v <= hi {
-                        Mark::Within
-                    } else {
-                        Mark::Outside
-                    }
-                }
-                _ => Mark::NotJudged,
-            };
-            let (alo, ahi) = tol.amplitude(r.position);
-            let unsure = m.unlock_unreliable(limits);
-            Verdict {
-                rate: judge(m.rate_s_per_day, tol.rate_min, tol.rate_max),
-                amplitude: match m.amplitude_deg {
-                    Some(_) if unsure => Mark::Unreliable,
-                    a => judge(a, alo, ahi),
-                },
-                beat_error: match m.beat_error() {
-                    Some(_) if unsure && m.beat_error_unlock_ms.is_some() => Mark::Unreliable,
-                    Some(b) if b < tol.beat_error_ms => Mark::Within,
-                    Some(_) => Mark::Outside,
-                    None => Mark::NotJudged,
-                },
-            }
-        })
-        .collect();
-
+/// Witschi's characteristic values for the readings, and the conditions
+/// found in each recording.
+pub fn evaluate(readings: &[Reading]) -> SessionReport {
     // States of wind, fullest first.
     let mut keys: Vec<i64> = readings.iter().map(|r| wind_key(r.wind_h)).collect();
     keys.sort_unstable();
@@ -1059,47 +878,50 @@ pub fn evaluate(readings: &[Reading], tol: &Tolerance, limits: &Limits) -> Sessi
         }
         _ => None,
     };
-    let pmax = states.first().and_then(|s| s.d_rate);
-    let n = im.zip(pmax).map(|(i, p)| 0.15 * i.abs() + 0.1 * p + 0.6);
-
-    let findings = findings(readings, &states, tol, limits);
+    let findings = findings(readings);
     SessionReport {
-        tolerance: tol.clone(),
-        limits: limits.clone(),
-        verdicts,
         states,
         isochronism,
         im,
         im_all,
         ie,
-        n,
         findings,
     }
 }
 
-fn findings(
-    readings: &[Reading],
-    states: &[StateIndices],
-    tol: &Tolerance,
-    lim: &Limits,
-) -> Vec<Finding> {
+/// Below this share of amplitude windows that found the unlock on both
+/// sides, the share is listed among the findings.
+const UNLOCK_COVERAGE_LISTED: f64 = 0.6;
+
+/// Below this many seconds measured after settling, the length is listed
+/// among the findings: the "≥40 s measurement time" of Witschi's
+/// *Testing Methods for Mechanical Watches* (D40e, 2025, measurement tips).
+const SHORT_MEASURE_S: f64 = 40.0;
+
+/// The sentence for a recording with no regular beat, e.g. "No regular
+/// beat found (timing scatter 8.6 ms, 2.4% of a beat)", as every surface
+/// states it.
+pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
+    match jitter_us.filter(|j| j.is_finite()) {
+        Some(j) => format!(
+            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
+            j / 1000.0,
+            100.0 * j * 1e-6 * bph as f64 / 3600.0
+        ),
+        None => "No regular beat found".into(),
+    }
+}
+
+fn findings(readings: &[Reading]) -> Vec<Finding> {
     let mut out = Vec::new();
-    let mut push = |code: &'static str,
-                    recording: Option<usize>,
-                    severity,
-                    title: &str,
-                    evidence: String,
-                    advice: &str| {
+    let mut push = |code: &'static str, recording: usize, title: String, evidence: String| {
         out.push(Finding {
             code,
-            recording,
-            severity,
-            title: title.into(),
+            recording: Some(recording),
+            title,
             evidence,
-            advice: advice.into(),
         })
     };
-    let full = |r: &Reading| r.wind_h.unwrap_or(0.0) <= lim.full_wind_h;
     let at = |r: &Reading| {
         let w = r
             .wind_h
@@ -1113,174 +935,54 @@ fn findings(
         format!("{} ({name}{w})", r.position.label())
     };
 
-    // Per reading.
     for (ri, r) in readings.iter().enumerate() {
         let m = &r.measurement;
         if !m.watch_heard {
             push(
-                "no_watch_heard",
-                Some(ri),
-                Severity::Warning,
-                "No watch heard",
-                format!(
-                    "the beats found in {} are no steadier than noise (jitter {} µs, {:.0}% of the beat or more means no watch)",
-                    at(r),
-                    m.jitter_us.map_or("-".into(), |j| format!("{j:.0}")),
-                    100.0 * beats::NO_WATCH_JITTER_FRACTION
-                ),
-                "No readings are shown for this recording. Check that the watch is on the pickup and running, and that the right input was recorded.",
+                "no_regular_beat",
+                ri,
+                no_regular_beat(m.jitter_us, r.bph),
+                format!("in {}; rate, amplitude and beat error are not shown", at(r)),
             );
             continue;
         }
-        let unsure = m.unlock_unreliable(lim);
-        if unsure {
+        if let Some(c) = m.unlock_coverage.filter(|&c| c < UNLOCK_COVERAGE_LISTED) {
             let sides = match (m.amplitude_even_deg, m.amplitude_odd_deg) {
                 (Some(e), Some(o)) => format!("; Tick and Tock read {e:.0}° and {o:.0}°"),
                 _ => String::new(),
             };
             push(
                 "unlock_unreliable",
-                Some(ri),
-                Severity::Warning,
-                "Unlock not timed reliably",
+                ri,
+                format!("Unlock found in {:.0}% of windows", 100.0 * c),
                 format!(
-                    "only {:.0}% of the {} amplitude windows in {} found the unlock on both sides (at least {:.0}% needed){sides}",
-                    100.0 * m.unlock_coverage.unwrap_or(0.0),
+                    "{:.0}% of the {} amplitude windows in {} found the unlock on both sides; amplitude and the beat error from the unlock rest on those windows{sides}",
+                    100.0 * c,
                     m.amplitude_windows,
                     at(r),
-                    100.0 * lim.min_unlock_coverage
                 ),
-                "Amplitude and the beat error from the unlock are shown but not judged; rate is unaffected. A holder or stand that rings, a weak or clipped signal or a noisy room smears the tick; try the watch cased or on another stand.",
             );
         }
-        if m.clipping_warns() {
+        if m.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION {
             push(
                 "clipping",
-                Some(ri),
-                Severity::Warning,
-                "Recording clipped",
+                ri,
+                format!("Clipped on {:.1}% of beats", 100.0 * m.clipped_fraction),
                 format!(
-                    "{:.1}% of the {} beats in {} have a clipped sample (above {:.0}% warns)",
-                    100.0 * m.clipped_fraction,
+                    "{} of the {} beats in {} have a clipped sample",
+                    m.clipped_beats,
                     m.beats,
                     at(r),
-                    100.0 * crate::analysis::Clipping::WARN_FRACTION
                 ),
-                "Clipping flattens the loudest part of the tick, which can move the amplitude and the beat error; rate is unaffected. Turn the input level down for the next take.",
             );
         }
-        if let Some(a) = m.amplitude_deg.filter(|_| !unsure) {
-            if m.amplitude_over_high(lim).is_some() {
-                push(
-                    "amplitude_high",
-                    Some(ri),
-                    Severity::Warning,
-                    "Very high amplitude",
-                    format!(
-                        "median amplitude {a:.0}° in {}, at the lift angle set for this take; above {:.0}°, Witschi's knocking limit",
-                        at(r),
-                        lim.amplitude_high
-                    ),
-                    "Check the lift angle and the microphone; knocking is confirmed only by jumps in the trace. A lift angle set too high, or a pickup that misses the first sound of the beat, reads amplitude high.",
-                );
-            } else if a < lim.amplitude_fault {
-                push(
-                    "amplitude_very_low",
-                    Some(ri),
-                    Severity::Fault,
-                    "Very low amplitude",
-                    format!("{a:.0}° in {}; below {:.0}° (project default)", at(r), lim.amplitude_fault),
-                    "Usually a movement that needs servicing: dirty or dry, a weak mainspring, or a power loss in the train. Check the lift angle setting first.",
-                );
-            } else if full(r) {
-                let (lo, hi) = tol.amplitude(r.position);
-                if a < lo || a > hi {
-                    push(
-                        "amplitude_tolerance",
-                        Some(ri),
-                        Severity::Warning,
-                        "Amplitude outside tolerance",
-                        format!(
-                            "{a:.0}° in {}; {} range for {} positions is {lo:.0}–{hi:.0}° fully wound",
-                            at(r),
-                            tol.name,
-                            if r.position.is_vertical() { "vertical" } else { "horizontal" }
-                        ),
-                        if a < lo {
-                            "Low amplitude points at lubrication, mainspring or train friction; confirm the lift angle for this calibre."
-                        } else {
-                            "High amplitude is rarely a problem below the knocking limit; check the mainspring is the right strength."
-                        },
-                    );
-                }
-            }
-        }
-        if let Some(b) = m
-            .beat_error()
-            .filter(|_| !(unsure && m.beat_error_unlock_ms.is_some()))
-        {
-            let how = match (m.beat_error_unlock_ms, m.beat_error_ms) {
-                (Some(_), Some(d)) => format!(" from the unlock ({:.2} ms from the drop)", d.abs()),
-                (None, Some(_)) => " from the drop (unlock not found)".to_string(),
-                _ => String::new(),
-            };
-            if b >= lim.beat_error_fault {
-                push(
-                    "beat_error_large",
-                    Some(ri),
-                    Severity::Fault,
-                    "Large beat error",
-                    format!(
-                        "{b:.2} ms{how} in {}; at or above {:.1} ms (project default)",
-                        at(r),
-                        lim.beat_error_fault
-                    ),
-                    "Witschi: correct the beat error (repère) first, then adjust the rate.",
-                );
-            } else if b >= tol.beat_error_ms {
-                push(
-                    "beat_error_tolerance",
-                    Some(ri),
-                    Severity::Warning,
-                    "Beat error outside tolerance",
-                    format!(
-                        "{b:.2} ms{how} in {}; Witschi's tolerance is under {:.1} ms",
-                        at(r),
-                        tol.beat_error_ms
-                    ),
-                    "Put the watch in beat (turn the stud or collet) before regulating.",
-                );
-            }
-        }
-        if let (Some(lo), Some(hi)) = (m.rate_p05, m.rate_p95) {
-            if hi - lo > lim.rate_spread {
-                push(
-                    "rate_unsteady",
-                    Some(ri),
-                    Severity::Warning,
-                    "Rate unsteady within the reading",
-                    format!(
-                        "10 s readings from {lo:+.1} to {hi:+.1} s/d (5th to 95th percentile) in {}; more than {:.0} s/d (project default)",
-                        at(r),
-                        lim.rate_spread
-                    ),
-                    "Witschi calls a scattered, wandering rate a functional fault, usually from low amplitude, and a regular wave a gear-train fault. See the periodic changes for this recording.",
-                );
-            }
-        }
         let measured = m.end_s - m.start_s;
-        if measured < lim.min_measure_s {
+        if measured < SHORT_MEASURE_S {
             push(
                 "measurement_short",
-                Some(ri),
-                Severity::Note,
-                "Short measurement",
-                format!(
-                    "{measured:.0} s measured in {}; Witschi recommends at least {:.0} s",
-                    at(r),
-                    lim.min_measure_s
-                ),
-                "Record longer, or shorten the settling time if the watch had already settled.",
+                ri,
+                format!("{measured:.0} s measured"),
+                format!("{measured:.0} s measured after settling in {}", at(r)),
             );
         }
         // A sharp event once per turn also shows at whole fractions of
@@ -1310,43 +1012,38 @@ fn findings(
                 String::new()
             } else {
                 format!(
-                    "; also at whole fractions of the turn ({}), as a short sharp change gives",
+                    "; also at whole fractions of the turn ({})",
                     harmonics.join(", ")
                 )
             };
             match &c.wheel {
                 Some(w) => push(
                     "cycle_wheel",
-                    Some(ri),
-                    Severity::Warning,
-                    &format!("Regular {} change once per turn of the {w}", c.series),
+                    ri,
+                    format!("Regular {} change once per turn of the {w}", c.series),
                     format!(
                         "{} repeats every {:.2} s ({size}, {:.0}% of the variation) in {}; false-alarm chance {fa:.0e}{harmonics}",
                         c.series, c.period_s, c.explained * 100.0, at(r)
                     ),
-                    "Witschi: large but regular rate variations are a fault in the gear train. Inspect that wheel and its pinion for a damaged tooth, wear or eccentricity, and check the hands for rubbing if it is the fourth wheel.",
                 ),
                 None if c.fraction_of.is_some() => {
                     let (w, n) = c.fraction_of.clone().unwrap();
                     push(
                         "cycle_wheel_fraction",
-                        Some(ri),
-                        Severity::Note,
-                        &format!("Regular {} change at 1/{n} of the {w}'s turn", c.series),
+                        ri,
+                        format!("Regular {} change at 1/{n} of the {w}'s turn", c.series),
                         format!(
                             "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}",
                             c.series,
                             c.period_s,
                             at(r)
                         ),
-                        "A short, sharp change once per turn of that wheel shows at whole fractions of its turn, even when the turn itself is too weak to stand out. Look at the wheel's turn in a longer recording.",
                     )
                 }
                 None => push(
                     "cycle_other",
-                    Some(ri),
-                    Severity::Note,
-                    &format!("Regular {} change not tied to a listed wheel", c.series),
+                    ri,
+                    format!("Regular {} change not tied to a listed wheel", c.series),
                     format!(
                         "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}{}",
                         c.series,
@@ -1356,7 +1053,6 @@ fn findings(
                             .as_ref()
                             .map_or(String::new(), |(w, off)| format!("; nearest is the {w}, {off:+.1}% off"))
                     ),
-                    "Could be another wheel or pinion of the train (add its turn period to name it), or a disturbance near the microphone.",
                 ),
             }
         }
@@ -1365,123 +1061,32 @@ fn findings(
                 if let Some(q) = v.ratio13.filter(|&q| q >= 1.0) {
                     push(
                         "shape_unlock_loud",
-                        Some(ri),
-                        Severity::Note,
-                        "Unlocking as loud as the drop",
-                        format!("Level of sound 1 to sound 3 is {q:.2} on {side} beats in {}", at(r)),
-                        "Witschi's 'unlocking too strong' (deep lock). The rule is not yet checked against watches with confirmed faults.",
+                        ri,
+                        format!("Unlocking as loud as the drop on {side}"),
+                        format!(
+                            "level of sound 1 to sound 3 is {q:.2} on {side} beats in {}",
+                            at(r)
+                        ),
                     );
                 }
                 let extra = v.extra_pre.len() + v.extra_post.len();
                 if extra > 0 {
                     push(
                         "shape_extra_sounds",
-                        Some(ri),
-                        Severity::Note,
-                        "Extra sounds around the beat",
+                        ri,
+                        format!("Extra sounds around the beat on {side}"),
                         format!(
                             "{} before the unlock and {} after the drop on {side} beats in {}",
                             v.extra_pre.len(),
                             v.extra_post.len(),
                             at(r)
                         ),
-                        "Witschi lists the safety pin touching the roller, too little impulse-pin clearance, and the impulse pin knocking the fork horn. Not yet checked against watches with confirmed faults.",
                     );
                 }
             }
         }
     }
-
-    // Across positions.
-    for st in states {
-        let label = if states.len() > 1 && st.wind_h <= 0.0 {
-            " fully wound".to_string()
-        } else if states.len() > 1 {
-            format!(" at {:.0} h after winding", st.wind_h)
-        } else {
-            String::new()
-        };
-        if st.wind_h <= lim.full_wind_h {
-            if let Some(x) = st.x {
-                if x < tol.rate_min || x > tol.rate_max {
-                    push(
-                        "rate_tolerance",
-                        None,
-                        Severity::Warning,
-                        "Mean rate outside tolerance",
-                        format!(
-                            "X = {}{label} over {} position(s); {} range is {:+.0} to {:+.0} s/d",
-                            s(x),
-                            st.positions.len(),
-                            tol.name,
-                            tol.rate_min,
-                            tol.rate_max
-                        ),
-                        "Witschi: adjust towards a target such as 0 to +10 s/d, after the beat error.",
-                    );
-                }
-            }
-        }
-        if let Some(d) = st.d_rate.filter(|&d| d > lim.delta_rate) {
-            let (hi, lo) = extremes(st);
-            push(
-                "positional_delta",
-                None,
-                Severity::Warning,
-                "Large differences between positions",
-                format!(
-                    "D = {d:.1} s/d{label}, from {lo} to {hi}; above {:.0} s/d (project default){}",
-                    lim.delta_rate,
-                    st.dv_rate
-                        .map_or(String::new(), |v| format!("; DV = {v:.1} s/d over the vertical positions"))
-                ),
-                "Witschi: centre the hairspring, poise the balance wheel, or replace the regulating organ. A large DV with a small DH points at poise.",
-            );
-        }
-        if let Some(a) = st.dvh_amplitude.filter(|&a| a < -lim.vh_amplitude_drop) {
-            push(
-                "vh_amplitude_drop",
-                None,
-                Severity::Warning,
-                "Large amplitude loss in the vertical positions",
-                format!(
-                    "Vertical positions average {:.0}° less than horizontal{label}; more than {:.0}° (project default)",
-                    -a, lim.vh_amplitude_drop
-                ),
-                "Some loss is normal (pivot friction). A large one points at worn or dry balance pivots or jewels, or a bent pivot.",
-            );
-        }
-        if let Some(v) = st.dvh_rate.filter(|v| v.abs() >= 5.0) {
-            push(
-                "dvh_rate",
-                None,
-                Severity::Note,
-                "Vertical and horizontal rates differ",
-                format!("DVH = {}{label}", s(v)),
-                if v < 0.0 {
-                    "Witschi: with regulator pins, a negative DVH means reduce the clearance (close the pins). Free-sprung balances have no pins."
-                } else {
-                    "Witschi: with regulator pins, a positive DVH means increase the clearance (open the pins). Free-sprung balances have no pins."
-                },
-            );
-        }
-    }
-    out.sort_by_key(|f| f.severity);
     out
-}
-
-fn extremes(st: &StateIndices) -> (String, String) {
-    let with: Vec<(Position, f64)> = st
-        .positions
-        .iter()
-        .filter_map(|v| v.rate_s_per_day.map(|r| (v.position, r)))
-        .collect();
-    let fmt = |o: Option<&(Position, f64)>| {
-        o.map_or("-".into(), |(p, r)| format!("{} in {}", s(*r), p.label()))
-    };
-    let hi = with.iter().max_by(|a, b| a.1.total_cmp(&b.1));
-    let lo = with.iter().min_by(|a, b| a.1.total_cmp(&b.1));
-    (fmt(hi), fmt(lo))
 }
 
 /// What a session file describes: the watch and its recordings.
@@ -1499,8 +1104,10 @@ pub struct Manifest {
     /// turn, e.g. { "third wheel" = 450.0 }.
     #[serde(default)]
     pub wheels: std::collections::BTreeMap<String, f64>,
-    /// Witschi tolerance class: ladies, mens (default), cosc, cosc-small, metas.
-    pub tolerance: Option<String>,
+    /// Read and ignored: session files written before schema /2 named a
+    /// tolerance class here.
+    #[serde(default, skip_serializing)]
+    pub tolerance: Option<serde::de::IgnoredAny>,
     /// Seconds to skip at the start of each recording while the watch
     /// settles after a position change (Witschi: 20 s).
     pub settle_s: Option<f64>,
@@ -1514,7 +1121,9 @@ pub struct Manifest {
     /// Run the periodic-change search on each recording (default true).
     pub cycles: Option<bool>,
     pub notes: Option<String>,
-    pub limits: Option<Limits>,
+    /// Read and ignored, as `tolerance` is.
+    #[serde(default, skip_serializing)]
+    pub limits: Option<serde::de::IgnoredAny>,
     #[serde(default, rename = "recording")]
     pub recordings: Vec<RecordingEntry>,
 }

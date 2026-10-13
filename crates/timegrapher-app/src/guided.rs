@@ -510,7 +510,7 @@ mod tests {
         }
         // The table's figures are session's: its D and mean X, its names.
         let tbl = table(readings);
-        let report = session::evaluate(readings, &Default::default(), &Default::default());
+        let report = session::evaluate(readings);
         let d = tbl.largest_difference.unwrap();
         assert!((d - report.states[0].d_rate.unwrap()).abs() < 1e-9);
         assert!((tbl.mean_rate.unwrap() - report.states[0].x.unwrap()).abs() < 1e-9);

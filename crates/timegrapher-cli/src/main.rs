@@ -390,9 +390,6 @@ enum Command {
         /// where --bph, --lift and the session file give none.
         #[arg(long)]
         calibre: Option<String>,
-        /// Tolerance class: ladies, mens, cosc-small, cosc, metas (default mens).
-        #[arg(long)]
-        tolerance: Option<String>,
         /// Seconds skipped at the start of each recording while the watch
         /// settles (overrides the session file; default 20).
         #[arg(long)]
@@ -849,7 +846,6 @@ fn main() -> ExitCode {
             bph,
             lift,
             calibre,
-            tolerance,
             settle,
             no_shape,
             no_cycles,
@@ -861,7 +857,6 @@ fn main() -> ExitCode {
                 bph,
                 lift,
                 calibre,
-                tolerance,
                 settle,
                 out,
                 json,
