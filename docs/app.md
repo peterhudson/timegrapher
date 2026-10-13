@@ -60,9 +60,9 @@ tab bar: **Match Strip**, on, shows the same stretch of time as the paper
 strip, and off, the whole session. A choice between two options, such as
 Stacked and Beside, switches to the other option wherever it is clicked,
 so it can be flipped back and forth without moving the pointer. Titles and
-labels are in Title Case. Across the top, the readings: their caption with its **?** and
-**Average Over**, then four cards, Rate, Amplitude, Beat Error and Beat
-Rate, and below them the panes. Along the bottom, the
+labels are in Title Case. Across the top, the readings: five cards of one width, Readings (with
+**Average Over**), Rate, Amplitude, Beat Error and Beat Rate, and below
+them the panes. Along the bottom, the
 status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
@@ -105,7 +105,7 @@ readings use: found from the beats while Beat Rate under Watch is Auto,
 or the one set there, and says which. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
 from 1 s to an hour, or pick one of the presets from 2 to 60 s; the setting is
-Average Over, beside the Readings caption). Early in a session, or after a pause or a gap of
+Average Over, in the Readings card). Early in a session, or after a pause or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
@@ -151,9 +151,9 @@ hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), "lift angle 52°, the
 default (calibre not set)" when no calibre or lift angle is set
-(amplitude), "input clock not measured" (rate), a beat rate set that
-differs from the one heard, and pauses in the stretch. No reading is
-graded. When the beats found don't come at regular intervals (their
+(amplitude), a beat rate set that differs from the one heard, and pauses in the stretch. No reading is
+graded. That the input's clock hasn't been measured is said in the Rate
+card's **?** rather than on the card, with how to measure it. When the beats found don't come at regular intervals (their
 timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No regular beat found
 (timing scatter 8.6 ms, 5.2% of a beat)**. When nothing in the take has

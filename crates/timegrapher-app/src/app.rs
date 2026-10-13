@@ -39,6 +39,8 @@ const SOUND_EVERY_S: f64 = 2.0;
 const SPAN_SESSION_HINT: &str = "Everything since the session started, growing as it goes";
 const SPAN_STRIP_HINT: &str = "Only the paper strip's length, ending where the strip does: the \
      newest readings, moving along with the strip";
+/// The Rate caveat for an input whose clock hasn't been measured.
+const CLOCK_UNKNOWN: &str = "input clock not measured";
 /// Plain marks on the level meter, for reference only.
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
@@ -2510,29 +2512,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// The Readings caption across the top, its "?" and Average Over.
-    fn readings_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(theme::caption("Readings").color(theme::pal(ui).text_secondary));
-            theme::help(ui, "Readings", help::READINGS);
-            ui.add_space(12.0);
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(egui::Id::new("pane toolbar"), true));
-            let mut avg = self.average_s;
-            let changed = theme::row(ui, "Average Over", Some(AVERAGE_REACH), |ui| {
-                let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
-                let b =
-                    fields::presets(ui, "average-presets", &mut avg, &AVERAGES, fields::duration);
-                a || b
-            });
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(egui::Id::new("pane toolbar"), false));
-            if changed {
-                self.set_average(avg);
-            }
-        });
-    }
-
     /// A group of settings in the Watch pane under its caption, which
     /// folds it away.
     fn section(
@@ -3802,7 +3781,10 @@ impl TimegrapherApp {
 
     /// The three readings, each in a card: a caption with what limits the
     /// reading, the figure large with its ± beside it, and a line of detail.
-    fn readouts(&self, ui: &mut egui::Ui) {
+    /// The reading cards across the top: Readings with its Average Over,
+    /// then Rate, Amplitude, Beat Error and Beat Rate, all one width.
+    /// Returns a new Average Over when one was picked.
+    fn readouts(&self, ui: &mut egui::Ui) -> Option<f64> {
         let pal = theme::pal(ui);
         let r = self.reading();
         let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str| {
@@ -3912,14 +3894,11 @@ impl TimegrapherApp {
                 });
         };
         ui.spacing_mut().item_spacing.x = theme::GAP;
-        // Rate, Amplitude and Beat Error share the width; the Beat Rate
-        // card, a short figure, takes less.
         let gap = theme::GAP;
         let total = ui.available_width();
-        let narrow = (total * 0.15).clamp(150.0, 220.0);
-        let wide = ((total - narrow - 3.0 * gap) / 3.0).max(100.0);
+        let wide = ((total - 4.0 * gap) / 5.0).max(100.0);
         let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [wide, wide, wide, narrow]
+        let mut cols: Vec<egui::Ui> = [wide; 5]
             .iter()
             .scan(origin.x, |x, &w| {
                 let rect =
@@ -3935,113 +3914,146 @@ impl TimegrapherApp {
                 )
             })
             .collect();
+        let picked = std::cell::Cell::new(None);
+        card(
+            &mut cols[0],
+            "Readings",
+            help::READINGS,
+            Vec::new(),
+            &|ui| {
+                let small = |t: &str| RichText::new(t).small().color(pal.text_secondary);
+                ui.add_space(4.0);
+                ui.label(small("Average Over")).on_hover_text(AVERAGE_REACH);
+                let mut avg = self.average_s;
+                let changed = ui
+                    .horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let a =
+                            fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
+                        let b = fields::presets(
+                            ui,
+                            "average-presets",
+                            &mut avg,
+                            &AVERAGES,
+                            fields::duration,
+                        );
+                        a || b
+                    })
+                    .inner;
+                if changed {
+                    picked.set(Some(avg));
+                }
+                ui.label(small("for every pane without its own"))
+                    .on_hover_text(PANE_AVERAGE_HINT);
+            },
+        );
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            card(
-                &mut cols[0],
-                "Rate",
-                help::RATE,
-                reading_limits("Rate", caveats, lift_now, beats),
-                &|ui| {
-                    let unit = match pm {
-                        Some(e) if e < 0.05 => "seconds per day".to_string(),
-                        Some(e) => format!("± {e:.1} seconds per day"),
-                        None => "seconds per day".to_string(),
-                    };
-                    figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                        let Some(r) = r else {
-                            if let Some(left) = self.settling_left() {
-                                ui.label(small(format!(
-                                    "settling in the new position, {:.0} s",
-                                    left.ceil()
-                                )))
-                                .on_hover_text(SETTLE_HINT);
-                            } else if heard {
-                                ui.label(small("waiting for beats".into()));
-                            } else {
-                                unheard(ui);
-                            }
-                            return;
-                        };
-                        if let Some(at) = self.stopped_in_settle() {
-                            ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
-                                .on_hover_text(
-                                    "Stopped while the watch settled in its new position, so \
-                                     these are the last readings of the position before it.",
-                                );
-                            ui.label(small("·".into()));
-                        }
-                        let short = r.span_s + 1.0 < self.average_s;
-                        ui.label(small(if short {
-                            format!(
-                                "{} beats in {} of {}",
-                                r.beats_used,
-                                fields::duration(r.span_s.round()),
-                                fields::duration(self.average_s)
-                            )
+            // The input's clock is named in the Rate "?" rather than on the
+            // card: nothing on the card can change it.
+            let rate_facts = reading_limits("Rate", caveats, lift_now, beats)
+                .into_iter()
+                .filter(|f| f.0 != CLOCK_UNKNOWN)
+                .collect();
+            card(&mut cols[1], "Rate", help::RATE, rate_facts, &|ui| {
+                let unit = match pm {
+                    Some(e) if e < 0.05 => "seconds per day".to_string(),
+                    Some(e) => format!("± {e:.1} seconds per day"),
+                    None => "seconds per day".to_string(),
+                };
+                figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
+                    let Some(r) = r else {
+                        if let Some(left) = self.settling_left() {
+                            ui.label(small(format!(
+                                "settling in the new position, {:.0} s",
+                                left.ceil()
+                            )))
+                            .on_hover_text(SETTLE_HINT);
+                        } else if heard {
+                            ui.label(small("waiting for beats".into()));
                         } else {
-                            format!(
-                                "{} beats in {}",
-                                r.beats_used,
-                                fields::duration(self.average_s)
-                            )
-                        }))
-                        .on_hover_text(if short {
-                            "The beats the readings are fitted to. There are fewer seconds of \
+                            unheard(ui);
+                        }
+                        return;
+                    };
+                    if let Some(at) = self.stopped_in_settle() {
+                        ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
+                            .on_hover_text(
+                                "Stopped while the watch settled in its new position, so \
+                                     these are the last readings of the position before it.",
+                            );
+                        ui.label(small("·".into()));
+                    }
+                    let short = r.span_s + 1.0 < self.average_s;
+                    ui.label(small(if short {
+                        format!(
+                            "{} beats in {} of {}",
+                            r.beats_used,
+                            fields::duration(r.span_s.round()),
+                            fields::duration(self.average_s)
+                        )
+                    } else {
+                        format!(
+                            "{} beats in {}",
+                            r.beats_used,
+                            fields::duration(self.average_s)
+                        )
+                    }))
+                    .on_hover_text(if short {
+                        "The beats the readings are fitted to. There are fewer seconds of \
                              beats than Average Over asks for, early in a session or after a \
                              pause, so the readings use what there is."
-                        } else {
-                            "The beats the readings are fitted to. Set the time with Average \
+                    } else {
+                        "The beats the readings are fitted to. Set the time with Average \
                              Over under Readings."
-                        });
-                        if let Some(j) = r.jitter_us {
-                            ui.label(small("·".into()));
-                            ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
-                                "How far single beats land from the rate's straight line: the \
-                                 spread of the dots across the strip. The ? beside Rate says more.",
-                            );
-                        }
                     });
-                    if let (Some(rate), Some(c)) = (rate, &self.clock) {
-                        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
-                        let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
-                        ui.label(
-                            RichText::new(format!("True Clock {v} seconds per day"))
-                                .small()
-                                .color(pal.text_secondary),
-                        )
-                        .on_hover_text(format!(
-                            "The rate corrected for this input's own clock, which runs {:.1} ppm \
+                    if let Some(j) = r.jitter_us {
+                        ui.label(small("·".into()));
+                        ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
+                            "How far single beats land from the rate's straight line: the \
+                                 spread of the dots across the strip. The ? beside Rate says more.",
+                        );
+                    }
+                });
+                if let (Some(rate), Some(c)) = (rate, &self.clock) {
+                    let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+                    let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
+                    ui.label(
+                        RichText::new(format!("True Clock {v} seconds per day"))
+                            .small()
+                            .color(pal.text_secondary),
+                    )
+                    .on_hover_text(format!(
+                        "The rate corrected for this input's own clock, which runs {:.1} ppm \
                          {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
                          figure stays on the card's clock, the one tg and an analysis of \
                          the recording read, so the two compare directly.",
-                            c.ppm.abs(),
-                            c.rate_error_s_per_day(),
-                            c.measured_utc,
-                            match c.source.as_str() {
-                                "log" => "a recording's clock log",
-                                "measure" => "listening against the system clock",
-                                _ => "a value typed in",
-                            }
-                        ));
-                    }
-                    if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
-                        whole_line(
-                            ui,
-                            format!("{m:+.1} s/d").replace('-', "−"),
-                            format!("{sd:.1} s/d"),
-                            span,
-                        );
-                    }
-                },
-            );
+                        c.ppm.abs(),
+                        c.rate_error_s_per_day(),
+                        c.measured_utc,
+                        match c.source.as_str() {
+                            "log" => "a recording's clock log",
+                            "measure" => "listening against the system clock",
+                            _ => "a value typed in",
+                        }
+                    ));
+                }
+                if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
+                    whole_line(
+                        ui,
+                        format!("{m:+.1} s/d").replace('-', "−"),
+                        format!("{sd:.1} s/d"),
+                        span,
+                    );
+                }
+            });
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
             card(
-                &mut cols[1],
+                &mut cols[2],
                 "Amplitude",
                 help::AMPLITUDE,
                 reading_limits("Amplitude", caveats, lift_now, beats),
@@ -4090,7 +4102,7 @@ impl TimegrapherApp {
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
             card(
-                &mut cols[2],
+                &mut cols[3],
                 "Beat Error",
                 help::BEAT_ERROR,
                 reading_limits("Beat Error", caveats, lift_now, beats),
@@ -4140,7 +4152,7 @@ impl TimegrapherApp {
             let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
             let set_bph = self.bph;
             card(
-                &mut cols[3],
+                &mut cols[4],
                 "Beat Rate",
                 help::BEAT_RATE,
                 Vec::new(),
@@ -4178,6 +4190,7 @@ impl TimegrapherApp {
                 .data_mut(|d| d.insert_temp(height_id, tallest.get()));
             ui.ctx().request_repaint();
         }
+        picked.get()
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -4866,9 +4879,10 @@ impl TimegrapherApp {
             return;
         }
         if self.show_readings {
-            self.readings_toolbar(ui);
             self.clipping_banner(ui);
-            self.readouts(ui);
+            if let Some(avg) = self.readouts(ui) {
+                self.set_average(avg);
+            }
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
         }
 
@@ -6686,7 +6700,7 @@ type ScopeKey = (i64, u64, scope::Zoom, u64);
 
 /// What a pane's Average Over does.
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
-     As Readings follows Average Over beside the Readings caption, so changing that moves this \
+     As Readings follows Average Over in the Readings card, so changing that moves this \
      pane too; a time of its own stays put and is named on the pane's tab.";
 
 /// Everything Average Over sets, and what it leaves alone.
@@ -6800,7 +6814,7 @@ fn reading_limits(
                 ),
             )),
             (Caveat::ClockUnknown, "Rate") => Some((
-                "input clock not measured".to_string(),
+                CLOCK_UNKNOWN.to_string(),
                 "This input's clock hasn't been measured, so the rate includes the sound \
                  card's own clock error."
                     .to_string(),
