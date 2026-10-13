@@ -1,9 +1,10 @@
-//! Signal checks for setting up a microphone: is the level right, does it
-//! clip, is automatic gain fighting us, and can we hear the ticks?
+//! Signal checks for setting up a microphone: the level, clipping, whether
+//! the background rises between ticks, and whether a regular beat is
+//! found.
 //!
 //! Works on a few seconds of audio from a live device or a file. It only
-//! measures and names the problems; what to change on the computer is the
-//! caller's business (see the CLI's `doctor` command).
+//! measures and names the conditions detected; the mixer changes for
+//! `--apply` are the caller's business (see the CLI's `doctor` command).
 
 use crate::audio::Audio;
 use crate::beats;
@@ -11,14 +12,23 @@ use crate::dsp::{envelope, median, EnvelopeConfig};
 use crate::timing;
 use serde::Serialize;
 
-/// Tick peaks aimed for, dBFS: loud enough to sit well above the
-/// sound card's own noise, with headroom for a louder watch.
+/// The peak level, dBFS, that `doctor --apply` sets the input to: about
+/// −10 dBFS.
 pub const TARGET_PEAK_DBFS: f64 = -10.0;
 
-/// Peaks above this, dBFS, leave too little headroom: tick loudness
-/// varies by a few dB through a run and between positions, and a fully
-/// wound watch at high amplitude is louder still.
+/// Peaks above this, dBFS, are the `hot` condition.
 pub const HOT_PEAK_DBFS: f64 = -6.0;
+
+/// Peaks below this, dBFS, are the `too_quiet` condition.
+pub const QUIET_PEAK_DBFS: f64 = -30.0;
+
+/// Background rising more than this between ticks, dB, is the
+/// `agc_suspected` condition.
+pub const GAP_RISE_DB: f64 = 3.0;
+
+/// Below this `signal_x` the `no_ticks` condition is named: pure noise
+/// reads about 2× (see `docs/validation.md`).
+pub const NO_TICKS_SIGNAL_X: f64 = 3.0;
 
 #[derive(Debug, Clone)]
 pub struct DiagnoseConfig {
@@ -39,87 +49,34 @@ impl Default for DiagnoseConfig {
     }
 }
 
-/// How bad an issue is: a `fault` spoils measurements; a `warning` is
-/// worth fixing but readings are still usable. Same words as the
-/// findings of a test session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Severity {
-    Fault,
-    Warning,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IssueCode {
-    /// Nothing at all: muted, unplugged or the wrong device.
+    /// Peak under −80 dBFS: no signal.
     Silent,
-    /// Ticks are there but far below full scale.
+    /// Peak under [`QUIET_PEAK_DBFS`].
     TooQuiet,
-    /// Samples hit full scale; tick shapes and amplitude are distorted.
+    /// Three or more samples at full scale or in flat tops.
     Clipping,
-    /// Peaks above -6 dBFS; a louder watch, or another position, would clip.
+    /// Peak above [`HOT_PEAK_DBFS`], not clipped.
     Hot,
-    /// The background rises between ticks: the input's automatic gain
-    /// turns itself down on each tick and back up in the gaps.
+    /// The background rises more than [`GAP_RISE_DB`] between ticks, as
+    /// it does when the input's automatic gain turns down on each tick
+    /// and back up in the gaps.
     AgcSuspected,
-    /// No regular beat found.
+    /// No regular beat found: fewer than half the beats expected, no fit,
+    /// or `signal_x` under [`NO_TICKS_SIGNAL_X`].
     NoTicks,
-    /// Ticks found but the background is loud next to them: the signal is
-    /// fair (a warning) or poor (a fault), see [`SignalBand`].
-    Noisy,
-}
-
-/// How far the beats stand above the background, in the desktop app's
-/// bands: "signal Nx" is the median beat peak over the median of the
-/// envelope. Pure noise reads about 2x.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SignalBand {
-    /// 10x and above: all readings can be trusted.
-    Good,
-    /// 5 to 10x: rate reliable; amplitude and beat error may be off.
-    Fair,
-    /// 3 to 5x: only the rate can be trusted.
-    Poor,
-    /// Below 3x: no watch heard.
-    None,
-}
-
-impl SignalBand {
-    pub fn of(signal_x: f64) -> SignalBand {
-        if signal_x >= 10.0 {
-            SignalBand::Good
-        } else if signal_x >= 5.0 {
-            SignalBand::Fair
-        } else if signal_x >= 3.0 {
-            SignalBand::Poor
-        } else {
-            SignalBand::None
-        }
-    }
-
-    /// The words the app shows after "signal Nx, ".
-    pub fn word(self) -> &'static str {
-        match self {
-            SignalBand::Good => "good",
-            SignalBand::Fair => "fair: rate reliable",
-            SignalBand::Poor => "poor: only the rate",
-            SignalBand::None => "no watch heard",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Issue {
     /// Stable identifier for programs and agents; the title is for people.
     pub code: IssueCode,
-    pub severity: Severity,
+    /// The condition in words, with its figure.
     pub title: String,
-    /// The measurement that triggered it.
+    /// The measurements it was detected from.
     pub evidence: String,
-    /// What to do about it.
-    pub advice: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,26 +104,24 @@ pub struct SignalCheck {
     /// Tick peak over background, dB.
     pub tick_to_noise_db: Option<f64>,
     /// Median beat peak over the median of the envelope, as the desktop
-    /// app's "signal Nx" (None when no beat was found).
+    /// app's "signal Nx" (None when no beat was found). Pure noise reads
+    /// about 2×.
     pub signal_x: Option<f64>,
-    /// The band `signal_x` falls in.
-    pub signal_band: SignalBand,
     /// Background late in the gap between ticks over early in it, dB.
     /// Near 0 for a fixed gain; several dB when automatic gain pumps.
     pub gap_rise_db: Option<f64>,
     pub rate_s_per_day: Option<f64>,
     pub beat_error_ms: Option<f64>,
-    /// Gain change that would bring the ticks to the target level, dB.
-    /// Negative means turn the input down.
+    /// The gain change `doctor --apply` makes, dB: it sets the peak to
+    /// about −10 dBFS ([`TARGET_PEAK_DBFS`]), or steps down 6 dB when the
+    /// input clips. Negative means down. `None` when the peak is between
+    /// [`QUIET_PEAK_DBFS`] and [`HOT_PEAK_DBFS`].
     pub suggested_gain_change_db: Option<f64>,
+    /// The conditions detected; empty when none of them is.
     pub issues: Vec<Issue>,
 }
 
 impl SignalCheck {
-    /// True when nothing would spoil a measurement.
-    pub fn ok(&self) -> bool {
-        self.issues.iter().all(|i| i.severity != Severity::Fault)
-    }
     pub fn has(&self, code: IssueCode) -> bool {
         self.issues.iter().any(|i| i.code == code)
     }
@@ -218,7 +173,7 @@ pub fn clipped_indices(x: &[f32], clip_level: f32) -> Vec<usize> {
     out
 }
 
-/// Measure a short recording and name what is wrong with it.
+/// Measure a short recording and name the conditions detected in it.
 pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     let fs = audio.sample_rate as f64;
     let x = &audio.samples;
@@ -294,104 +249,63 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     });
     let tick_to_noise = tick.map(|t| db(t) - db(noise));
     let signal_x = signal_ratio(&env, fs, &found);
-    let band = signal_x.map_or(SignalBand::None, SignalBand::of);
 
     let mut issues = Vec::new();
-    let mut add = |code, severity, title: &str, evidence: String, advice: &str| {
+    let mut add = |code, title: String, evidence: String| {
         issues.push(Issue {
             code,
-            severity,
-            title: title.to_string(),
+            title,
             evidence,
-            advice: advice.to_string(),
         })
     };
     let silent = peak < 1e-4;
     if silent {
         add(
             IssueCode::Silent,
-            Severity::Fault,
-            "No signal at all",
+            format!("No signal: peak {:.0} dBFS", db(peak)),
             format!("peak {:.0} dBFS", db(peak)),
-            "Check the input is the timegrapher microphone, that it is plugged in and not muted.",
         );
     }
     let clipping = clipped >= 3;
     if clipping {
         add(
             IssueCode::Clipping,
-            Severity::Fault,
-            "The input clips",
+            format!("Clipping: {clipped} samples"),
             format!("{clipped} samples clipped, peak {:.1} dBFS", db(peak)),
-            "Turn the input level down (and automatic gain off): clipping flattens the ticks \
-             and spoils amplitude and tick shape.",
         );
     } else if !silent && db(peak) > HOT_PEAK_DBFS {
         add(
             IssueCode::Hot,
-            Severity::Warning,
-            "Peaks close to full scale",
+            format!("Peak {:.1} dBFS", db(peak)),
             format!(
-                "peak {:.1} dBFS, {:.1} dB short of clipping",
+                "peak {:.1} dBFS, {:.1} dB below full scale",
                 db(peak),
                 -db(peak)
             ),
-            "Turn the input down a little: a louder watch, or this one in another position, \
-             would clip.",
         );
     }
-    let agc = gap_rise.is_some_and(|r| r > 3.0);
-    if agc {
+    if let Some(r) = gap_rise.filter(|&r| r > GAP_RISE_DB) {
         add(
             IssueCode::AgcSuspected,
-            Severity::Fault,
-            "Automatic gain looks to be on",
-            format!(
-                "background rises {:.1} dB between ticks (over 3 dB)",
-                gap_rise.unwrap_or(0.0)
-            ),
-            "Turn the input's automatic gain control off so every tick is measured at the same gain.",
+            format!("Background rises {r:.1} dB between ticks"),
+            format!("background late in the gap {r:.1} dB above early in it"),
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
-    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.0}x"));
-    if !silent && (few_beats || band == SignalBand::None) {
+    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.0}×"));
+    if !silent && (few_beats || !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X)) {
         add(
             IssueCode::NoTicks,
-            Severity::Fault,
-            "No watch heard",
+            "No regular beat found".to_string(),
             format!("{} of about {expected} beats found, {signal}", good.len()),
-            "Check the watch is running and clamped firmly against the microphone, and that \
-             this is the right input.",
-        );
-    } else if band == SignalBand::Poor {
-        add(
-            IssueCode::Noisy,
-            Severity::Fault,
-            "Signal poor: only the rate",
-            format!("{signal}, under 5x"),
-            "Only the rate can be trusted; ignore amplitude and beat error. Reposition the \
-             watch on the pickup, check the microphone cable, and raise the input level.",
-        );
-    } else if band == SignalBand::Fair && !clipping {
-        add(
-            IssueCode::Noisy,
-            Severity::Warning,
-            "Signal fair: rate reliable",
-            format!("{signal}, under 10x"),
-            "Rate is reliable; amplitude and beat error may be off on some watches. Press the \
-             watch more firmly against the pickup, or raise the input level a little, to get \
-             above 10x.",
         );
     }
-    let too_quiet = !silent && !clipping && db(peak) < -30.0;
+    let too_quiet = !silent && !clipping && db(peak) < QUIET_PEAK_DBFS;
     if too_quiet {
         add(
             IssueCode::TooQuiet,
-            Severity::Warning,
-            "The input is quiet",
-            format!("peak {:.0} dBFS (under -30)", db(peak)),
-            "Raise the input level so ticks peak near -10 dBFS.",
+            format!("Peak {:.0} dBFS", db(peak)),
+            format!("peak {:.0} dBFS", db(peak)),
         );
     }
     let suggested = if silent {
@@ -419,7 +333,6 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         noise_level_dbfs: db(noise),
         tick_to_noise_db: tick_to_noise,
         signal_x,
-        signal_band: band,
         gap_rise_db: gap_rise,
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms.abs()),

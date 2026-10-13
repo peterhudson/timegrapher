@@ -742,12 +742,6 @@ pub struct HoldoutReading {
     /// The fault the session file names (`id` or `id:side`); none for a
     /// healthy watch.
     pub fault: Option<String>,
-    /// What `analyze` found in the measured stretch, as `id:side`.
-    pub found: Vec<String>,
-    /// The named fault was found (on the named side, if one is named).
-    pub fault_found: Option<bool>,
-    /// Findings that are not the named fault.
-    pub false_findings: usize,
 }
 
 /// Pass, fail and not judged, for one value over every holdout reading.
@@ -772,20 +766,6 @@ impl Tally {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct FaultTally {
-    /// Readings whose session file names a fault ...
-    pub named: usize,
-    /// ... and how many of those `analyze` found.
-    pub found: usize,
-    pub missed: usize,
-    /// Healthy readings, and those with any finding.
-    pub healthy: usize,
-    pub healthy_with_findings: usize,
-    /// Findings that are not the named fault, over every reading.
-    pub false_findings: usize,
-}
-
 /// What `regress --holdout` reports. `readings` stays empty unless --reveal.
 #[derive(Debug, Clone, Serialize)]
 pub struct HoldoutOutcome {
@@ -797,66 +777,30 @@ pub struct HoldoutOutcome {
     pub rate_s_per_day: Tally,
     pub amplitude_deg: Tally,
     pub beat_error_ms: Tally,
-    pub faults: FaultTally,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub readings: Vec<HoldoutReading>,
 }
 
-/// Whether a finding is the fault a session file names.
-fn is_named(
-    f: &timegrapher_core::faults::Finding,
-    k: &timegrapher_core::session::KnownFault,
-) -> bool {
-    f.id == k.id
-        && k.side
-            .as_deref()
-            .map_or(true, |s| s.eq_ignore_ascii_case(&format!("{:?}", f.side)))
-}
-
 /// `regress --holdout`: measure the holdout takes, judge them against tg
-/// with [`HOLDOUT_MARGINS`] and against their named faults, and print the
-/// counts. Exits 0 whatever the result; only an unreadable reading fails.
+/// with [`HOLDOUT_MARGINS`], and print the counts. Exits 0 whatever the
+/// result; only an unreadable reading fails.
 fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String> {
     let jobs = o.jobs.unwrap_or_else(|| {
         std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
     });
     let measured = measure_all(root, sessions, jobs, true)?;
-    let opts = session_opts();
     let mg = HOLDOUT_MARGINS;
     let mut readings = Vec::new();
     let mut unreadable = 0;
     for (s, (m, rs)) in sessions.iter().zip(&measured) {
-        let (_, base) = session_cmd::load_manifest(&[root.join(s)])?;
-        let ctx = Ctx {
-            m,
-            base: &base,
-            o: &opts,
-            tty: false,
-            quiet: true,
-        };
         for (i, (e, r)) in m.recordings.iter().zip(rs).enumerate() {
             let Ok(r) = r else {
                 unreadable += 1;
                 continue;
             };
             let me = &r.measurement;
-            let found = if me.watch_heard {
-                match session_cmd::faults_of(e, &ctx, me.start_s, me.end_s) {
-                    Ok(f) => f,
-                    Err(_) => {
-                        unreadable += 1;
-                        continue;
-                    }
-                }
-            } else {
-                Vec::new()
-            };
             let tg = e.reference.clone().unwrap_or_default();
             let named = e.fault.as_ref();
-            let hits = found
-                .iter()
-                .filter(|f| named.is_some_and(|k| is_named(f, k)))
-                .count();
             readings.push(HoldoutReading {
                 take: take_name(s),
                 reading: i + 1,
@@ -878,32 +822,8 @@ fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String
                     Some(side) => format!("{}:{side}", k.id),
                     None => k.id.clone(),
                 }),
-                found: found
-                    .iter()
-                    .map(|f| format!("{}:{}", f.id, f.side.word()))
-                    .collect(),
-                fault_found: named.map(|_| hits > 0),
-                false_findings: found.len() - hits,
             });
         }
-    }
-    let mut faults = FaultTally::default();
-    for r in &readings {
-        match r.fault_found {
-            Some(true) => {
-                faults.named += 1;
-                faults.found += 1;
-            }
-            Some(false) => {
-                faults.named += 1;
-                faults.missed += 1;
-            }
-            None => {
-                faults.healthy += 1;
-                faults.healthy_with_findings += usize::from(r.false_findings > 0);
-            }
-        }
-        faults.false_findings += r.false_findings;
     }
     let outcome = HoldoutOutcome {
         takes: sessions.len(),
@@ -913,7 +833,6 @@ fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String
         rate_s_per_day: Tally::of(readings.iter().map(|r| &r.rate_s_per_day)),
         amplitude_deg: Tally::of(readings.iter().map(|r| &r.amplitude_deg)),
         beat_error_ms: Tally::of(readings.iter().map(|r| &r.beat_error_ms)),
-        faults,
         readings: if o.reveal { readings } else { Vec::new() },
     };
     if o.json {
@@ -943,7 +862,7 @@ fn print_holdout(o: &HoldoutOutcome) {
         };
         for r in &o.readings {
             println!(
-                "  {} #{} {}: rate {}, amplitude {}, beat error {}; fault {}, found {}",
+                "  {} #{} {}: rate {}, amplitude {}, beat error {}; fault named {}",
                 r.take,
                 r.reading,
                 r.label,
@@ -951,11 +870,6 @@ fn print_holdout(o: &HoldoutOutcome) {
                 f(&r.amplitude_deg, 1),
                 f(&r.beat_error_ms, 3),
                 r.fault.as_deref().unwrap_or("none"),
-                if r.found.is_empty() {
-                    "none".to_string()
-                } else {
-                    r.found.join(", ")
-                }
             );
         }
         println!();
@@ -993,11 +907,6 @@ fn print_holdout(o: &HoldoutOutcome) {
         "beat error",
         &o.beat_error_ms,
         format!("{} ms", o.margins.beat_error_ms),
-    );
-    let f = &o.faults;
-    println!(
-        "  {:<11} {} of {} named faults found, {} missed; {} of {} healthy readings with a finding; {} findings that are not the named fault",
-        "faults", f.found, f.named, f.missed, f.healthy_with_findings, f.healthy, f.false_findings
     );
     println!("Holdout results never fail the run; only a reading that cannot be measured does.");
 }
@@ -1271,35 +1180,6 @@ mod tests {
         assert_eq!(j.pass, Some(false));
         assert_eq!(judge(None, Some(1.0), 0.5, false).pass, None);
         assert_eq!(judge(Some(1.0), None, 0.5, false).pass, None);
-    }
-
-    #[test]
-    fn a_named_fault_matches_its_id_and_side() {
-        use timegrapher_core::faults::{Finding, Side, Strength};
-        use timegrapher_core::session::KnownFault;
-        let f = |side| Finding {
-            id: "unlock_too_strong",
-            label: "",
-            side,
-            strength: Strength::Possible,
-            evidence: Default::default(),
-            see: "",
-        };
-        let k = |side: Option<&str>| KnownFault {
-            id: "unlock_too_strong".into(),
-            side: side.map(String::from),
-            source: None,
-        };
-        assert!(is_named(&f(Side::Tick), &k(Some("Tick"))));
-        assert!(is_named(&f(Side::Tick), &k(Some("tick"))));
-        assert!(is_named(&f(Side::Tock), &k(None)));
-        assert!(is_named(&f(Side::Both), &k(Some("both"))));
-        assert!(!is_named(&f(Side::Tock), &k(Some("Tick"))));
-        let other = KnownFault {
-            id: "unlock_uneven".into(),
-            ..k(None)
-        };
-        assert!(!is_named(&f(Side::Tick), &other));
     }
 
     #[test]

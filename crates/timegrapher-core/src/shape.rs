@@ -1,9 +1,10 @@
 //! The shape of one beat: its three sounds and what surrounds them.
 //!
 //! Each beat has three sounds, 1 unlock, 2 impulse and 3 drop, and beats
-//! alternate between the two pallet stones. Many escapement faults change
-//! the spacing, levels or separation of these sounds, or add sounds or
-//! noise around them, on one stone or both (see `docs/fault-signatures.md`).
+//! alternate between the two pallet stones. This module measures the
+//! spacing, levels and separation of these sounds, and the sound around
+//! them, on each stone (see `docs/fault-signatures.md` for what each
+//! measure is).
 //!
 //! As for amplitude, single beats are too noisy to read, so the shape is
 //! measured on median envelope templates of each side, both over short
@@ -17,8 +18,7 @@
 //! crosses halfway up. Sound 3 is the drop peak used by the amplitude
 //! measurement, sound 1 the rise at the unlock edge, and sound 2 the biggest
 //! rise between them. Each sound's level is the highest point in the 1 ms
-//! after its rise. A sound that cannot be separated is `None`, which is
-//! itself a finding ("1 and 2 not separable").
+//! after its rise. A sound that cannot be separated is `None`.
 
 use crate::amplitude::edges;
 use crate::beats::{median_window, Beat};
@@ -631,6 +631,77 @@ fn median_shape(shapes: &[&Shape]) -> Shape {
         rises: all(&|s| s.rises as f64).round() as usize,
         extra_pre: Vec::new(),
         extra_post: Vec::new(),
+    }
+}
+
+/// The shape measures `analyze` reports for one side, from the windowed
+/// medians of [`SideReport`]. Each is `None` when no window was measured.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SideMeasures {
+    /// Windows measured on this side.
+    pub windows_measured: usize,
+    /// Share of those windows in which sound 1 (the unlock) was found.
+    pub share_with_sound_1: Option<f64>,
+    /// Share of those windows in which sound 2 (the impulse) was found
+    /// apart from sound 1.
+    pub share_with_sound_2: Option<f64>,
+    /// Sound 1 to sound 2, and sound 1 to sound 3, ms.
+    pub i12_ms: Option<f64>,
+    pub i13_ms: Option<f64>,
+    /// Level of sound 1 over the level of sound 3.
+    pub ratio13: Option<f64>,
+    /// Mean level 3 to 15 ms after the drop over the drop's level.
+    pub tail_ratio: Option<f64>,
+}
+
+impl SideMeasures {
+    pub fn of(r: &SideReport) -> SideMeasures {
+        let m = r.windows_measured;
+        let some = |v: f64| (m > 0).then_some(v);
+        let share = |n: usize| some(n as f64 / m.max(1) as f64);
+        SideMeasures {
+            windows_measured: m,
+            share_with_sound_1: share(r.windows_with_1),
+            share_with_sound_2: share(r.windows_with_2),
+            i12_ms: r.windows.i12_ms.filter(|_| m > 0),
+            i13_ms: r.windows.i13_ms.filter(|_| m > 0),
+            ratio13: r.windows.ratio13.filter(|_| m > 0),
+            tail_ratio: some(r.windows.tail_ratio).filter(|v| v.is_finite()),
+        }
+    }
+}
+
+/// The shape of the Tick (even beats) and the Tock (odd beats), and the
+/// beat error from the unlock early and late in the recording: measures
+/// only, with no reading of what they mean.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Measures {
+    pub even: SideMeasures,
+    pub odd: SideMeasures,
+    /// Median of the signed beat error from the unlock over the first and
+    /// the last quarter of the 2 s amplitude windows that have one, ms.
+    pub beat_error_first_quarter_ms: Option<f64>,
+    pub beat_error_last_quarter_ms: Option<f64>,
+    /// Windows in each of those quarters.
+    pub beat_error_quarter_windows: usize,
+}
+
+impl Measures {
+    pub fn of(r: &ShapeReport, windows: &[crate::amplitude::AmplitudeWindow]) -> Measures {
+        let be: Vec<f64> = windows
+            .iter()
+            .filter_map(|w| w.beat_error_unlock_ms)
+            .filter(|v| v.is_finite())
+            .collect();
+        let q = be.len() / 4;
+        let quarter = |v: &[f64]| (q > 0).then(|| median(&mut v.to_vec()));
+        Measures {
+            even: SideMeasures::of(&r.even),
+            odd: SideMeasures::of(&r.odd),
+            beat_error_first_quarter_ms: quarter(&be[..q]),
+            beat_error_last_quarter_ms: quarter(&be[be.len() - q..]),
+            beat_error_quarter_windows: q,
+        }
     }
 }
 
