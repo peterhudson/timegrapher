@@ -1,51 +1,63 @@
-//! What a measurement over a stretch of beats can be trusted for: the ± and
-//! grade of each reading and the caveats behind them, decided in one place
-//! for every reading of a recording (`analyze`, `session`, and later the
-//! live screen and `long`'s slices).
+//! What was measured over a stretch of beats beyond the readings
+//! themselves: the ± of each reading and the conditions detected, decided
+//! in one place for every reading of a recording (`analyze`, `session`,
+//! the live screen and `long`'s slices).
 //!
 //! The readings themselves come from the one beat pipeline
-//! ([`crate::stream`]); this module only judges them. Each caveat says
-//! what it does to the grades:
+//! ([`crate::stream`]); this module only states what they rest on. Each
+//! caveat names a condition detected, with its figure; none of them
+//! changes a reading or its ±, except `no_watch`: when no regular beat is
+//! found, rate, amplitude and beat error are not given, since they would
+//! describe noise.
 //!
-//! | caveat | rate | amplitude | beat error |
-//! |---|---|---|---|
-//! | `no_watch` | withheld | withheld | withheld |
-//! | `set_rate_disagrees` | poor | poor | poor |
-//! | `short_span` | poor | poor | poor |
-//! | `clipped` | | one step down | one step down |
-//! | `beats_missing` | one step down | one step down | one step down |
-//! | `lift_unknown` | | one step down | |
-//! | `clock_unknown` | one step down | | |
-//! | `breaks` | | | |
-//!
-//! Whether a watch is heard is judged on 10 s windows, so a stretch under
-//! [`SHORT_SPAN_S`] cannot show one: its readings are withheld with
-//! `short_span` alone, not `no_watch`.
+//! Whether the beats are regular is assessed on 10 s windows, so with
+//! less than [`SHORT_SPAN_S`] of sound it is not assessed: the readings
+//! are given, `watch_heard` stays true, and `short_span` says how short
+//! the stretch is (see [`watch_heard`]).
 //!
 //! The beat error's sign: positive means Tick, the first beat of the run,
 //! comes late. Tick is whichever beat a reading locks on first, so the sign
 //! holds within one run only; text shows the size.
 
 use crate::amplitude::{standard_error, AmplitudeWindow};
-use crate::confidence::{self, Confidence, Doubts, Grade};
+use crate::confidence::{self, Confidence, Doubts};
 use crate::timing::WindowFit;
 use serde::Serialize;
 
-/// Below this many seconds of beats a reading is too short to trust, and
-/// every grade is poor.
+/// Seconds of sound needed to assess whether the beats are regular, and
+/// below which a stretch of beats is named `short_span`.
 pub const SHORT_SPAN_S: f64 = 10.0;
+
+/// Whether `listened_s` seconds of sound are enough to assess whether the
+/// beats are regular (see [`SHORT_SPAN_S`]).
+pub fn regularity_assessed(listened_s: f64) -> bool {
+    // A tolerance, so a 10 s average reached by subtraction counts.
+    listened_s >= SHORT_SPAN_S - 1e-6
+}
+
+/// False when a regular beat was looked for and not found: with at least
+/// [`SHORT_SPAN_S`] of sound, the beat timing scatter is at or above
+/// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. With less sound,
+/// regularity is not assessed and this is true.
+pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
+    !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
+}
 
 /// Something that limits how far a measurement can be trusted.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum Caveat {
-    /// The beats are no steadier than noise: no readings are given.
+    /// No regular beat found: the beat timing scatter is at or above
+    /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. No readings
+    /// are given.
     NoWatch,
     /// A set beat rate (`--bph`, `--calibre`) differs from the one heard.
     SetRateDisagrees { heard: u32 },
-    /// More than 1% of the beats have a clipped sample.
+    /// More than [`crate::analysis::Clipping::NOTED_FRACTION`] of the beats
+    /// have a clipped sample; `fraction` is their share.
     Clipped { fraction: f64 },
-    /// Fewer than 95% of the beats expected were found.
+    /// Fewer than [`confidence::MIN_BEAT_FRACTION`] of the beats expected
+    /// were found; `fraction` is the share found.
     BeatsMissing { fraction: f64 },
     /// The lift angle is a default, not the calibre's.
     LiftUnknown,
@@ -58,7 +70,7 @@ pub enum Caveat {
 }
 
 impl Caveat {
-    /// Where the caveat sits in a list: the order of the table above.
+    /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {
             Caveat::NoWatch => 0,
@@ -84,6 +96,7 @@ pub fn add(caveats: &mut Vec<Caveat>, c: Caveat) {
 /// What a stretch of beats was measured on, beyond its readings.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Context {
+    /// See [`watch_heard`].
     pub watch_heard: bool,
     /// The beat rate heard, when a set one differs from it.
     pub bph_heard: Option<u32>,
@@ -97,8 +110,7 @@ pub struct Context {
     /// Seconds from the first beat to the last.
     pub span_s: f64,
     /// Seconds of sound the beats were sought in: the recording, the
-    /// stretch, or the live screen's averaging time so far. Shorter than
-    /// [`SHORT_SPAN_S`], whether a watch is heard cannot be told.
+    /// stretch, or the live screen's averaging time so far.
     pub listened_s: f64,
     pub breaks: usize,
     /// The seconds a shown rate is averaged over, when shorter than the
@@ -121,16 +133,16 @@ pub fn rate_se_over(rate_windows: &[WindowFit], average_s: f64) -> Option<f64> {
     Some(se * (independent / averaged).sqrt())
 }
 
-/// The judgement on one measurement.
+/// What one measurement rests on.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Assessment {
-    /// `None` when no watch is heard.
+    /// Each reading's ±; `None` when no regular beat is found.
     pub confidence: Option<Confidence>,
     pub caveats: Vec<Caveat>,
     pub doubts: Doubts,
 }
 
-/// Judge a measurement from its 10 s rate windows (half overlapping) and
+/// State what a measurement rests on, from its 10 s rate windows (half overlapping) and
 /// its 2 s amplitude windows.
 pub fn assess(
     rate_windows: &[WindowFit],
@@ -143,24 +155,19 @@ pub fn assess(
         1.0
     };
     let doubts = Doubts {
-        clipped: c.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION,
+        clipped: c.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION,
         beats_missing: found < confidence::MIN_BEAT_FRACTION,
         lift_unknown: !c.lift_known,
         clock_unknown: !c.clock_known,
     };
     let mut caveats = Vec::new();
-    let short = c.span_s < SHORT_SPAN_S;
-    // Whether a watch is heard is judged on 10 s windows of beats, so less
-    // than 10 s of sound cannot show one: its readings are withheld, but
-    // `short_span` alone says why. Beats too scattered to span 10 s in
-    // longer sound are no watch.
-    if !c.watch_heard && c.listened_s >= SHORT_SPAN_S {
+    if !c.watch_heard {
         caveats.push(Caveat::NoWatch);
     }
     if let Some(heard) = c.bph_heard {
         caveats.push(Caveat::SetRateDisagrees { heard });
     }
-    if short {
+    if c.span_s < SHORT_SPAN_S {
         caveats.push(Caveat::ShortSpan { span_s: c.span_s });
     }
     if doubts.clipped {
@@ -186,21 +193,14 @@ pub fn assess(
             .iter()
             .filter_map(|w| w.beat_error_unlock_ms)
             .collect();
-        let mut k = Confidence::new(
+        Confidence::new(
             match c.average_s {
                 Some(t) => rate_se_over(rate_windows, t),
                 None => confidence::rate_se(rate_windows),
             },
             standard_error(&amps),
             standard_error(&bes),
-            doubts,
-        );
-        if c.bph_heard.is_some() || short {
-            for r in [&mut k.rate, &mut k.amplitude, &mut k.beat_error] {
-                r.grade = Grade::Poor;
-            }
-        }
-        k
+        )
     });
     Assessment {
         confidence,
@@ -234,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn no_watch_withholds_the_grades() {
+    fn no_regular_beat_withholds_the_readings() {
         let a = assess(
             &[],
             &[],
@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn a_short_stretch_grades_poor() {
+    fn a_short_stretch_is_named_and_keeps_its_readings() {
         let a = assess(
             &[],
             &[],
@@ -258,8 +258,7 @@ mod tests {
             },
         );
         assert_eq!(a.caveats, vec![Caveat::ShortSpan { span_s: 6.0 }]);
-        let c = a.confidence.unwrap();
-        assert_eq!(c.amplitude.grade, Grade::Poor);
+        assert!(a.confidence.is_some());
     }
 
     /// Rate windows 5 s apart, alternately reading `rates`' values.
@@ -317,20 +316,30 @@ mod tests {
         assert_eq!(rate_se_over(&rate_windows(&[1.0, -1.0]), 10.0), None);
     }
 
+    /// Under 10 s of sound, regularity is not assessed: however scattered
+    /// the beats, a regular beat is not said to be missing, the readings
+    /// stay, and the short span is named.
     #[test]
-    fn a_stretch_too_short_to_judge_is_short_not_silent() {
+    fn a_stretch_too_short_to_assess_keeps_its_readings() {
+        assert!(!regularity_assessed(8.0));
+        assert!(regularity_assessed(10.0));
+        // Scatter of 8.6 ms at 21,600 bph: no regular beat over 10 s or
+        // more, not assessed under it.
+        assert!(!watch_heard(Some(8600.0), 21_600, 60.0));
+        assert!(watch_heard(Some(8600.0), 21_600, 8.0));
+        assert!(watch_heard(None, 21_600, 8.0));
         let a = assess(
             &[],
             &[],
             &Context {
-                watch_heard: false,
+                watch_heard: watch_heard(Some(8600.0), 21_600, 8.0),
                 span_s: 8.0,
                 listened_s: 8.0,
                 ..heard()
             },
         );
         assert_eq!(a.caveats, vec![Caveat::ShortSpan { span_s: 8.0 }]);
-        assert!(a.confidence.is_none());
+        assert!(a.confidence.is_some());
     }
 
     /// Beats too scattered to make 10 s of a run, in a minute of sound, as

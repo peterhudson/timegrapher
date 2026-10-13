@@ -67,11 +67,10 @@ impl Options {
             }
         }
         let from = |flag: bool| if flag { "the flag" } else { "the session file" };
-        if let Some(b) = self.bph.or(m.bph).filter(|&b| b != c.bph) {
+        if let Some((b, cb)) = self.bph.or(m.bph).zip(c.bph).filter(|&(b, cb)| b != cb) {
             notes.push(format!(
-                "the {} beats at {} bph, {} says {b}; using {b}",
+                "the {} beats at {cb} bph, {} says {b}; using {b}",
                 c.calibre,
-                c.bph,
                 from(self.bph.is_some())
             ));
         }
@@ -98,7 +97,7 @@ impl Options {
     /// Beat rate: the flag, else the session file, else the calibre's;
     /// none means it is measured.
     fn bph(&self, m: &Manifest, cal: Option<&Calibre>) -> Option<u32> {
-        self.bph.or(m.bph).or(cal.map(|c| c.bph))
+        self.bph.or(m.bph).or(cal.and_then(|c| c.bph))
     }
 
     /// Lift angle: the flag, else the session file, else the calibre's,
@@ -241,7 +240,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let cal = o.calibre(&Manifest::default())?;
     t.push_str(&format!(
         "bph = {}\n",
-        o.bph.or(cal.map(|c| c.bph)).unwrap_or(28800)
+        o.bph.or(cal.and_then(|c| c.bph)).unwrap_or(28800)
     ));
     t.push_str(&format!(
         "lift = {}\n",
@@ -392,30 +391,6 @@ fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>),
 /// the calibre, rather than the default.
 fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
     c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some())
-}
-
-/// Longest stretch of a reading that [`faults_of`] reads, seconds.
-pub(crate) const FAULTS_S: f64 = 1800.0;
-
-/// The escapement faults `analyze` finds in a reading's measured stretch
-/// (`from_s` to `to_s`, as in its measurement), at most [`FAULTS_S`] of it.
-pub(crate) fn faults_of(
-    e: &RecordingEntry,
-    c: &Ctx,
-    from_s: f64,
-    to_s: f64,
-) -> Result<Vec<timegrapher_core::faults::Finding>, String> {
-    let files = expand_dirs(&[c.base.join(&e.file)])?;
-    let (mut cfg, cal) = stream_config(c)?;
-    cfg.analysis.lift_known = lift_known(c, cal);
-    let (samples, fs) = excerpt(&files, from_s, (to_s - from_s).min(FAULTS_S))?;
-    let a = audio::Audio {
-        samples,
-        sample_rate: fs as u32,
-    };
-    Ok(timegrapher_core::analysis::analyze(&a, &cfg.analysis)
-        .summary
-        .faults)
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {

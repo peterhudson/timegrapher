@@ -88,7 +88,11 @@ pub struct LiveReading {
     pub amplitude_error_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
+    /// Timing scatter of the fit, microseconds.
     pub jitter_us: Option<f64>,
+    /// `jitter_us` as a share of the beat period at `bph`, 0 to 1 (see
+    /// `beats::timing_scatter_fraction`); what `watch_heard` is decided on.
+    pub timing_scatter_fraction: Option<f64>,
     pub beats_used: usize,
     /// Seconds the readings actually cover: from the first beat of the
     /// latest unbroken run in the averaging time to the reading's time.
@@ -101,29 +105,22 @@ pub struct LiveReading {
     pub clipped_beats: usize,
     /// `clipped_beats` as a fraction of the beats in the reading.
     pub clipped_fraction: Option<f64>,
-    /// Whether the beats look like a watch's (`beats::watch_heard` on the
-    /// fit's jitter). When not, every reading is `None`, as `analyze`
-    /// nulls them; the jitter and the beats used stay, to say why.
+    /// False when a regular beat was looked for and not found
+    /// (`measure::watch_heard` on the fit's jitter, assessed once the
+    /// averaging time holds 10 s of sound). Then every reading is `None`,
+    /// as `analyze` leaves them out; `jitter_us`,
+    /// `timing_scatter_fraction` and `bph` stay.
     pub watch_heard: bool,
     /// The rate's ±, from `measure::assess` as `analyze` and `session`
     /// give theirs: the scatter of 10 s windows over the run so far,
     /// scaled to the averaging time. `None` until about 30 s of unbroken
-    /// beats, and when no watch is heard.
+    /// beats, and when no regular beat is found.
     pub rate_error_s_per_day: Option<f64>,
     /// `beat_error_unlock_ms`'s ±: the standard error of its 2 s windows
     /// in the averaging time.
     pub beat_error_unlock_error_ms: Option<f64>,
     /// What limits the readings, in `measure`'s order.
     pub caveats: Vec<Caveat>,
-}
-
-impl LiveReading {
-    /// Enough clipped beats to doubt the amplitude and beat error, by the
-    /// same threshold as `analysis::Clipping::warns`.
-    pub fn clipping_warns(&self) -> bool {
-        self.clipped_fraction
-            .is_some_and(|f| f > Clipping::WARN_FRACTION)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -597,10 +594,13 @@ impl LiveAnalyzer {
         let amplitude_error_deg = crate::amplitude::standard_error(
             &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
         );
-        // Beats scattered like noise are no watch: no readings, as
-        // `analyze` gives none.
-        let watch_heard =
-            bph.is_some_and(|b| crate::beats::watch_heard(fit.map(|f| f.jitter_us), b));
+        // Beats scattered like noise are no regular beat: no readings, as
+        // `analyze` gives none. Under 10 s of sound it is not assessed.
+        let jitter_us = fit.map(|f| f.jitter_us);
+        let timing_scatter_fraction =
+            bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
+        let watch_heard = !measure::regularity_assessed(listened_s)
+            || bph.is_some_and(|b| crate::beats::watch_heard(jitter_us, b));
         let heard = |v: Option<f64>| v.filter(|_| watch_heard);
         let clipped_fraction = (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64);
         // The rate's ± from 10 s windows over the run so far (the latest
@@ -652,7 +652,8 @@ impl LiveAnalyzer {
             amplitude_error_deg: heard(amplitude_error_deg),
             amplitude_even_deg: heard(med(&|w| w.even_deg)),
             amplitude_odd_deg: heard(med(&|w| w.odd_deg)),
-            jitter_us: fit.map(|f| f.jitter_us),
+            jitter_us,
+            timing_scatter_fraction,
             beats_used: fit.map_or(0, |f| f.beats_used),
             span_s,
             snr: self.snr,
@@ -717,8 +718,8 @@ mod tests {
             .collect()
     }
 
-    /// An empty stand, heard live or read back from its beat log, gives no
-    /// readings, and says no watch was heard.
+    /// An empty stand, heard live or read back from its beat log over a
+    /// 10 s average, gives no readings, and says no regular beat was found.
     #[test]
     fn an_empty_stand_reads_nothing() {
         let x = empty_stand(60);
@@ -761,6 +762,13 @@ mod tests {
             early.caveats
         );
         assert!(early.rate_error_s_per_day.is_none(), "{early:?}");
+        // Under 10 s of sound regularity is not assessed: the readings
+        // are shown, not withheld.
+        assert!(early.watch_heard, "{early:?}");
+        assert!(
+            early.rate_s_per_day.is_some() && early.amplitude_deg.is_some(),
+            "{early:?}"
+        );
         let late = a.reading(10.0);
         assert!(
             late.caveats.contains(&Caveat::LiftUnknown),
@@ -802,7 +810,7 @@ mod tests {
         feed(&mut a, &audio.samples);
         let r = a.reading(10.0);
         assert!(
-            r.beats_used > 0 && r.watch_heard && r.clipping_warns(),
+            r.beats_used > 0 && r.watch_heard && r.clipped_fraction.is_some_and(|f| f > 0.5),
             "{r:?}"
         );
     }
@@ -862,7 +870,7 @@ mod tests {
         feed(&mut a, &audio.samples);
         let clean = a.reading(10.0);
         assert_eq!(clean.clipped_beats, 0);
-        assert!(!clean.clipping_warns());
+        assert_eq!(clean.clipped_fraction, Some(0.0));
 
         // The next 20 s 12 dB too hot, clipped at full scale.
         let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
@@ -873,13 +881,12 @@ mod tests {
             .collect();
         feed(&mut a, &hot);
         let r = a.reading(10.0);
-        assert!(r.clipping_warns(), "{r:?}");
         assert!(r.clipped_fraction.unwrap() > 0.5, "{r:?}");
-        // A reading back in the clean stretch carries no warning.
-        assert!(!a.reading_at(15.0, 10.0).clipping_warns());
+        // A reading back in the clean stretch has no clipped beats.
+        assert_eq!(a.reading_at(15.0, 10.0).clipped_fraction, Some(0.0));
 
         // Made again from its beat log (a recording analysed at once), it
-        // warns the same.
+        // counts the same.
         let log = BeatLog {
             sample_rate: 48000,
             duration_s: a.duration_s(),
@@ -893,9 +900,9 @@ mod tests {
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();
         let again = b.reading_at(end, 10.0);
-        assert!(again.clipping_warns(), "{again:?}");
+        assert!(again.clipped_fraction.unwrap() > 0.5, "{again:?}");
         assert_eq!(again.clipped_beats, a.reading_at(end, 10.0).clipped_beats);
-        assert!(!b.reading_at(15.0, 10.0).clipping_warns());
+        assert_eq!(b.reading_at(15.0, 10.0).clipped_fraction, Some(0.0));
     }
 
     #[test]

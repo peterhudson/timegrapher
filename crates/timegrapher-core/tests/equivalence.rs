@@ -10,7 +10,7 @@
 //! names it, and the shared measurement (`measure.rs`) is meant to close it.
 
 use std::path::{Path, PathBuf};
-use timegrapher_core::analysis::{analyze, AnalysisConfig, Summary};
+use timegrapher_core::analysis::{analyze, AnalysisConfig, Clipping, Summary};
 use timegrapher_core::audio::{load, write_wav, Audio};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
 use timegrapher_core::longrun;
@@ -155,16 +155,25 @@ fn analyze_and_session_agree_on_a_whole_file() {
     let mut m = whole(&stream(&path, 47.0));
     std::fs::remove_file(&path).ok();
     assert_none("analyze against session", analyze_vs_session(&s, &m));
-    // The same judgement too: the clock is unknown to both, and session
+    // The same conditions too: the clock is unknown to both, and session
     // takes the lift angle as known unless told.
     if !AnalysisConfig::default().lift_known {
         m.lift_unknown();
     }
     assert_eq!(s.caveats, m.caveats);
-    let grades = |c: &Option<timegrapher_core::confidence::Confidence>| {
-        c.map(|c| (c.rate.grade, c.amplitude.grade, c.beat_error.grade))
+    // The same ± on each reading, to within 1% (the streamed read sums
+    // in a different order).
+    let se = |c: &Option<timegrapher_core::confidence::Confidence>| {
+        c.map(|c| [c.rate.se, c.amplitude.se, c.beat_error.se])
     };
-    assert_eq!(grades(&s.confidence), grades(&m.confidence));
+    let (a, b) = (se(&s.confidence).unwrap(), se(&m.confidence).unwrap());
+    for (x, y) in a.iter().zip(&b) {
+        let (x, y) = (x.unwrap(), y.unwrap());
+        assert!(
+            (x - y).abs() <= 0.01 * x.abs().max(y.abs()),
+            "{a:?} against {b:?}"
+        );
+    }
 }
 
 #[test]
@@ -394,7 +403,7 @@ fn clipped(over: f32) -> Audio {
 }
 
 #[test]
-fn clipping_warns_in_every_pipeline() {
+fn clipping_is_named_in_every_pipeline() {
     let a = clipped(2.0);
     let path = on_disk(&a, "t5c");
     let log = stream(&path, 47.0);
@@ -403,13 +412,18 @@ fn clipping_warns_in_every_pipeline() {
     assert!(s.doubts.clipped, "analyze: {:?}", s.clipping);
     let m = whole(&log);
     assert!(
-        m.clipped_fraction > timegrapher_core::analysis::Clipping::WARN_FRACTION,
+        m.clipped_fraction > timegrapher_core::analysis::Clipping::NOTED_FRACTION,
         "session"
     );
     let named = |c: &[Caveat]| c.iter().any(|c| matches!(c, Caveat::Clipped { .. }));
     assert!(named(&s.caveats) && named(&m.caveats));
     let r = pushed(&a, 4800).reading(a.duration());
-    assert!(r.clipping_warns(), "live: {:?}", r.clipped_fraction);
+    assert!(
+        r.clipped_fraction
+            .is_some_and(|f| f > Clipping::NOTED_FRACTION),
+        "live: {:?}",
+        r.clipped_fraction
+    );
 }
 
 #[test]
@@ -419,7 +433,9 @@ fn heavy_clipping_still_reads_live() {
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(s.watch_heard && s.doubts.clipped);
     assert!(
-        r.beats_used > 0 && r.clipping_warns(),
+        r.beats_used > 0
+            && r.clipped_fraction
+                .is_some_and(|f| f > Clipping::NOTED_FRACTION),
         "live read {} beats",
         r.beats_used
     );

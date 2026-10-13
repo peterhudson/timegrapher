@@ -4,7 +4,7 @@ name = "Robin"
 surface = "cli-pair"
 language = "English"
 stand = {}
-files = { "Recordings/aquanaut_DU_1.flac" = "patek324_DU_30min/patek324_DU_48000-01.flac", "Recordings/aquanaut_DU_2.flac" = "patek324_DU_30min/patek324_DU_48000-02.flac", "Recordings/aquanaut_DU_3.flac" = "patek324_DU_30min/patek324_DU_48000-03.flac" }
+files = { "Recordings/aquanaut_DU_1.flac" = "patek324_DU_30min/take_part01-001.flac", "Recordings/aquanaut_DU_2.flac" = "patek324_DU_30min/take_part01-002.flac", "Recordings/aquanaut_DU_3.flac" = "patek324_DU_30min/take_part01-003.flac" }
 # Parked: rounds before a public release use the watchmaking and UX experts only.
 parked = true
 +++
