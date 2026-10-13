@@ -311,6 +311,12 @@ fn search(g: &Grid, min_p: f64, max_p: f64, false_alarm: f64, exclude: &[f64]) -
         let mut sum = 0.0;
         let mut best = (0.0f64, 1u8);
         for h in 1..=HARMONICS[HARMONICS.len() - 1] {
+            // Only harmonics inside the searched band count: a strong line
+            // below the shortest period (a 5 s escape wheel on a long run's
+            // 8 s floor) would otherwise lift every period it divides.
+            if h * j > jmax {
+                break;
+            }
             let Some(&w) = sp.white.get(h * j) else { break };
             sum += w;
             if HARMONICS.contains(&h) && (h == 1 || fundamental_seen) {
