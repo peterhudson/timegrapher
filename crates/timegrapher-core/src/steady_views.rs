@@ -1,7 +1,7 @@
-//! What the app's Steadiness pane draws behind each verdict, as data: the
+//! What the app's Steadiness pane draws behind each headline, as data: the
 //! readings the tests were made on, each series' period search, and each
 //! series folded at a cycle. The Autocorrelation, Allan Deviation and CUSUM
-//! views come with the verdicts themselves ([`crate::steadiness`]); these
+//! views come with the statistics themselves ([`crate::steadiness`]); these
 //! are the Readings, Periods and Cycle views, so a chart outside the app can
 //! draw the same thing.
 //!
@@ -22,7 +22,7 @@ pub const MAX_PERIODS: usize = 600;
 /// Most folded cycles kept per series; the rest are counted.
 pub const MAX_CYCLES: usize = 200;
 
-/// The views behind one series' verdict.
+/// The views behind one series' headline.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeriesViews {
     /// "rate", "amplitude" or "beat_error".
@@ -237,7 +237,7 @@ fn spread(n: usize, max: usize) -> Vec<usize> {
         .collect()
 }
 
-/// The views behind each verdict in `report`, from the take `log` it was
+/// The views behind each headline in `report`, from the take `log` it was
 /// made on and its long-run analysis `long` under `lc`.
 pub fn views(
     log: &BeatLog,
@@ -314,7 +314,7 @@ mod tests {
     use crate::live::{LiveAnalyzer, LiveConfig};
     use crate::longrun;
     use crate::periodicity::default_wheels;
-    use crate::steadiness::{self, Config, Verdict};
+    use crate::steadiness::{self, Config};
     use crate::synth::{generate, SynthConfig};
 
     /// The app's own test take: ten minutes of a watch whose rate swings
@@ -354,7 +354,11 @@ mod tests {
         let check = Config::default();
         let long = longrun::analyse(&log, None, &lc);
         let report = steadiness::check(&log, None, &long, &lc, &check);
-        assert_eq!(report.series[0].verdict, Verdict::Periodic);
+        assert!(
+            report.series[0].period.is_some(),
+            "{}",
+            report.series[0].headline
+        );
         let v = views(&log, &report, &long, &lc, check.rate_reading_s);
         let names: Vec<&str> = v.series.iter().map(|s| s.series).collect();
         assert_eq!(names, ["rate", "amplitude", "beat_error"]);

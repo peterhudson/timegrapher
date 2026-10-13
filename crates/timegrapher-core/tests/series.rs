@@ -6,7 +6,7 @@ use timegrapher_core::audio::write_wav;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::standard_wheels;
-use timegrapher_core::steadiness::{self, Config, Report, SeriesKind, Verdict};
+use timegrapher_core::steadiness::{self, Config, Report, SeriesKind};
 use timegrapher_core::stream::{analyze_file, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
 
@@ -38,7 +38,13 @@ fn series(r: &Report, k: SeriesKind) -> &steadiness::SeriesCheck {
 fn steady_watch_is_steady() {
     let r = run("steady", 900.0, |_| 270.0, |_| 0.0);
     for s in &r.series {
-        assert_eq!(s.verdict, Verdict::Steady, "{}", s.headline);
+        assert!(s.cycle.is_none(), "{}", s.headline);
+        assert!(
+            s.headline
+                .contains("no cycle, level change, trend or correlation"),
+            "{}",
+            s.headline
+        );
     }
     assert!(r.findings.is_empty());
 }
@@ -55,7 +61,13 @@ fn once_a_minute_fault_is_the_fourth_wheel() {
     );
     for k in [SeriesKind::Rate, SeriesKind::Amplitude] {
         let s = series(&r, k);
-        assert_eq!(s.verdict, Verdict::Periodic, "{}", s.headline);
+        assert!(
+            r.findings
+                .iter()
+                .any(|f| f.series == k && f.code == "periodic"),
+            "{}",
+            s.headline
+        );
         let c = s.cycle.as_ref().unwrap();
         assert!((c.period_s - 60.0).abs() < 2.0, "{}", c.period_s);
         assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
@@ -72,7 +84,13 @@ fn a_step_in_rate_is_a_shifting_mean() {
         |t| if t < 700.0 { 0.0 } else { 15.0 },
     );
     let s = series(&r, SeriesKind::Rate);
-    assert_eq!(s.verdict, Verdict::ShiftingMean, "{}", s.headline);
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.series == SeriesKind::Rate && f.code == "shifting_mean"),
+        "{}",
+        s.headline
+    );
     let ch = s.changes.as_ref().unwrap();
     assert_eq!(ch.segments.len(), 2, "{:?}", ch.segments);
     assert!((ch.segments[1].start_s - 700.0).abs() < 60.0);
@@ -97,7 +115,13 @@ fn a_48_s_cycle_is_not_read_as_a_multiple() {
     );
     for k in [SeriesKind::Rate, SeriesKind::Amplitude] {
         let s = series(&r, k);
-        assert_eq!(s.verdict, Verdict::Periodic, "{}", s.headline);
+        assert!(
+            r.findings
+                .iter()
+                .any(|f| f.series == k && f.code == "periodic"),
+            "{}",
+            s.headline
+        );
         let c = s.cycle.as_ref().unwrap();
         assert!((c.period_s - 48.0).abs() < 2.0, "{k:?}: {}", c.period_s);
     }

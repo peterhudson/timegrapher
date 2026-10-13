@@ -3,9 +3,8 @@
 use crate::amplitude::{self, AmplitudeConfig, AmplitudeWindow};
 use crate::audio::Audio;
 use crate::beats::{self, Beat};
-use crate::confidence::{self, Confidence, Doubts};
+use crate::confidence::{Confidence, Doubts};
 use crate::dsp::{envelope, median, EnvelopeConfig};
-use crate::faults::{self, Finding};
 use crate::periodicity::{self, Component, Series};
 use crate::timing::{self, TimingFit, WindowFit};
 use crate::usbclock::{self, UsbClock};
@@ -46,14 +45,18 @@ pub struct Summary {
     pub sample_rate: u32,
     pub bph: u32,
     /// The beat rate the recording sounds like, when a set `bph` differs
-    /// from it. Every reading is then measured against the wrong beat, so
-    /// all three are graded poor.
+    /// from it: every reading is then measured against the set rate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bph_heard: Option<u32>,
     pub beats_found: usize,
-    /// False when the beats are no steadier than noise, as on an empty
-    /// stand: the readings below then describe noise and must not be shown
-    /// (see [`beats::watch_heard`]).
+    /// `beats_found` over the beats the recording's length holds at `bph`.
+    pub beats_found_fraction: f64,
+    /// False when a regular beat was looked for and not found, as on an
+    /// empty stand: the readings below are then left out, since they would
+    /// describe noise, and `jitter_us` gives the timing scatter. Regularity
+    /// is assessed only with [`crate::measure::SHORT_SPAN_S`] of sound or
+    /// more; a shorter recording keeps its readings and this stays true
+    /// (see [`crate::measure::watch_heard`]).
     pub watch_heard: bool,
     /// Fit over the whole recording; its beat error is the drop's.
     pub overall: Option<TimingFit>,
@@ -64,8 +67,12 @@ pub struct Summary {
     /// Spread of the windowed rate (5th and 95th percentiles), s/d.
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
-    /// Median per-beat timing jitter within the rate windows, microseconds.
+    /// Median per-beat timing jitter (the timing scatter) within the rate
+    /// windows, microseconds.
     pub jitter_us: Option<f64>,
+    /// `jitter_us` as a share of the beat period at `bph`, 0 to 1 (see
+    /// [`beats::timing_scatter_fraction`]); what `watch_heard` is decided on.
+    pub timing_scatter_fraction: Option<f64>,
     /// Median amplitude over the recording, degrees.
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
@@ -91,24 +98,24 @@ pub struct Summary {
     pub rate_s_per_day: Option<f64>,
     /// Rate corrected onto true time with `usb_clock`, s/d.
     pub rate_corrected_s_per_day: Option<f64>,
-    /// What lowers the grades below beyond each reading's ±.
+    /// Conditions detected, as flags; each set one is also a caveat.
     pub doubts: Doubts,
-    /// A ± and a grade for rate, amplitude and beat error; `None` when no
-    /// watch is heard.
+    /// Each reading's ± (standard error) for rate, amplitude and beat
+    /// error; `None` when no regular beat is found.
     pub confidence: Option<Confidence>,
-    /// What limits how far the readings can be trusted, each with what it
-    /// does to the grades (see [`crate::measure`]); empty when nothing does.
+    /// Conditions detected that the readings rest on, each with its
+    /// figure (see [`crate::measure`]); empty when none is.
     pub caveats: Vec<crate::measure::Caveat>,
-    /// Possible escapement faults from the shape of the Tick and Tock;
-    /// empty when none is seen, or when the shape cannot be judged (no
-    /// watch heard, clipping, or unsteady readings; see [`faults`]).
-    pub faults: Vec<Finding>,
+    /// The shape of the Tick and Tock and the beat error early and late
+    /// (see [`crate::shape::Measures`]); `None` when no readings are given.
+    pub shape: Option<crate::shape::Measures>,
 }
 
 impl Summary {
-    /// Clear every reading, as when no watch is heard: they would describe
-    /// noise. What says so (`watch_heard`, `jitter_us`, `beats_found`) and
-    /// what describes the recording and the sound card stay.
+    /// Clear every reading, as when no regular beat is found: they would
+    /// describe noise. What says so (`watch_heard`, `jitter_us`,
+    /// `timing_scatter_fraction`, `beats_found`) and what describes the recording and the sound card
+    /// stay.
     pub fn withhold_readings(&mut self) {
         self.overall = None;
         self.beat_error_unlock_ms = None;
@@ -125,32 +132,20 @@ impl Summary {
         self.rate_s_per_day = None;
         self.rate_corrected_s_per_day = None;
         self.confidence = None;
-        self.faults.clear();
+        self.shape = None;
     }
 
-    /// Grade again once the sound card's clock is known from elsewhere (a
-    /// stored correction), which lifts the rate's clock doubt.
+    /// The sound card's clock is known from elsewhere (a stored or given
+    /// correction): the `clock_unknown` condition no longer holds.
     pub fn clock_known(&mut self) {
         self.doubts.clock_unknown = false;
         self.caveats
             .retain(|c| *c != crate::measure::Caveat::ClockUnknown);
-        let poor = self.caveats.iter().any(|c| {
-            matches!(
-                c,
-                crate::measure::Caveat::SetRateDisagrees { .. }
-                    | crate::measure::Caveat::ShortSpan { .. }
-            )
-        });
-        if let Some(c) = &mut self.confidence {
-            if !poor {
-                c.rate = confidence::rate(c.rate.se, self.doubts);
-            }
-        }
     }
 }
 
-/// Clipping flattens the loudest part of a tick, which moves the drop and
-/// so the amplitude and the beat error; rate is unaffected.
+/// How much of the recording is clipped: the samples, and the beats with a
+/// clipped sample in their sound.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Clipping {
     /// Clipped samples (see [`crate::diagnose::clipped_indices`]).
@@ -164,8 +159,9 @@ pub struct Clipping {
 }
 
 impl Clipping {
-    /// Above this fraction of clipped beats the readings carry a warning.
-    pub const WARN_FRACTION: f64 = 0.01;
+    /// Above this share of clipped beats the `clipped` condition is named
+    /// among the caveats.
+    pub const NOTED_FRACTION: f64 = 0.01;
 
     pub fn measure(x: &[f32], fs: f64, beats: &[Beat]) -> Clipping {
         let idx = crate::diagnose::clipped_indices(x, CLIP_LEVEL);
@@ -192,9 +188,9 @@ impl Clipping {
         }
     }
 
-    /// Enough clipped beats to doubt the amplitude and beat error.
-    pub fn warns(&self) -> bool {
-        self.beat_fraction > Self::WARN_FRACTION
+    /// More than [`Self::NOTED_FRACTION`] of the beats clipped.
+    pub fn noted(&self) -> bool {
+        self.beat_fraction > Self::NOTED_FRACTION
     }
 }
 
@@ -289,10 +285,11 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
         amplitude::standard_error(&v)
     };
-    let watch_heard = beats::watch_heard(jitter_us, bph);
+    let watch_heard = crate::measure::watch_heard(jitter_us, bph, duration);
     let clipping = Clipping::measure(&audio.samples, fs, &beats);
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
     let amplitude_se_deg = se(&|w| w.mean());
+    let expected = duration * bph as f64 / 3600.0;
     let assessment = crate::measure::assess(
         &rate_windows,
         &amplitude_windows.iter().collect::<Vec<_>>(),
@@ -302,7 +299,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             lift_known: cfg.lift_known,
             clock_known: usb_clock.is_some(),
             beats: beats.len(),
-            expected: duration * bph as f64 / 3600.0,
+            expected,
             clipped_fraction: clipping.beat_fraction,
             span_s: match (beats.first(), beats.last()) {
                 (Some(a), Some(b)) => b.time - a.time,
@@ -315,25 +312,22 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     );
     let doubts = assessment.doubts;
     let confidence = assessment.confidence;
-    let faults = if faults::judged(confidence.as_ref(), doubts) {
+    let shape = watch_heard.then(|| {
         let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
-        let mut f = faults::from_shape(&r, confidence.as_ref(), doubts);
-        f.extend(faults::from_timing(
-            &amplitude_windows,
-            confidence.as_ref(),
-            doubts,
-        ));
-        f
-    } else {
-        Vec::new()
-    };
+        crate::shape::Measures::of(&r, &amplitude_windows)
+    });
     let mut summary = Summary {
         duration_s: duration,
         sample_rate: audio.sample_rate,
         bph,
         bph_heard: (bph != guessed).then_some(guessed),
         beats_found: beats.len(),
+        beats_found_fraction: if expected > 0.0 {
+            beats.len() as f64 / expected
+        } else {
+            0.0
+        },
         watch_heard,
         overall,
         beat_error_unlock_ms: median_of(
@@ -344,6 +338,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         jitter_us,
+        timing_scatter_fraction: beats::timing_scatter_fraction(jitter_us, bph),
         amplitude_deg: median_of(amplitude_windows.iter().filter_map(|w| w.mean())),
         amplitude_even_deg: median_of(amplitude_windows.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amplitude_windows.iter().filter_map(|w| w.odd_deg)),
@@ -362,7 +357,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         doubts,
         confidence,
         caveats: assessment.caveats,
-        faults,
+        shape,
     };
     if !summary.watch_heard {
         summary.withhold_readings();

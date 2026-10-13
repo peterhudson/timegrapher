@@ -1,0 +1,43 @@
+name: Calibre data
+description: Add a wheel's turn period, correct one, or add a calibre the table does not list.
+title: "Calibre data: "
+labels: ["calibre"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Every figure added here helps the next person read the periodicity charts on that calibre. In the app or the command line, **Share with the project…** fills in this form for you; it opens in your browser and nothing is sent until you press **Create**.
+  - type: input
+    id: calibre
+    attributes:
+      label: Calibre
+      description: The name as the app lists it, or the maker and calibre for one it does not list.
+      placeholder: "Rolex 4130"
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data
+      description: Filled in by **Share with the project…**. Without the app, list each wheel and one full turn in seconds, and for a new calibre its beat rate and lift angle.
+      placeholder: |
+        third wheel: one full turn, in seconds
+        for a new calibre: beat rate in vph, lift angle in degrees
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Where the figures come from
+      description: A service sheet or parts list (with a link where there is one), a tooth count you made, or a measurement and how you took it. Say which figures each source covers.
+      placeholder: "Third wheel: counted the teeth of the third wheel and the fourth wheel's pinion on a movement I serviced."
+    validations:
+      required: true
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Licence
+      options:
+        - label: I release these figures and what I wrote above under CC0 (no rights reserved), so the project and anyone else may use them. This issue is public.
+          required: true

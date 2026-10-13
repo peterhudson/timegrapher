@@ -1,6 +1,6 @@
 //! What the app remembers between runs: the views and choices a watchmaker
 //! sets once (the strip's direction and scale, the panes and their layout,
-//! the profile's scale, the sidebar), not anything about the watch on the
+//! the profile's scale), not anything about the watch on the
 //! pickup. The window's size and place are kept by eframe itself.
 
 use crate::app::Pane;
@@ -30,7 +30,6 @@ pub struct Settings {
     pub hist_readings: bool,
     pub sound: profiles::Options,
     pub folded: Vec<String>,
-    pub sidebar: bool,
     pub theme: ThemePreference,
     pub steady_view: steady::View,
     pub scope: scope::View,
@@ -97,7 +96,6 @@ impl Default for Settings {
             hist_readings: true,
             sound: profiles::Options::default(),
             folded: Vec::new(),
-            sidebar: true,
             theme: ThemePreference::System,
             steady_view: steady::View::default(),
             scope: scope::View::default(),

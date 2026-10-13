@@ -384,7 +384,7 @@ pub fn table(readings: &[Reading]) -> Table {
             .map(|r| {
                 let m = &r.measurement;
                 (
-                    r.position.label(),
+                    position_label(r.position),
                     m.rate_s_per_day,
                     m.rate_s_per_day.zip(mean_rate).map(|(x, x0)| x - x0),
                     m.amplitude_deg,
@@ -400,8 +400,18 @@ pub fn table(readings: &[Reading]) -> Table {
         dvh_amplitude,
         notes: readings
             .iter()
-            .flat_map(|r| conditions(&r.position.label(), r.bph, &r.measurement))
+            .flat_map(|r| conditions(&position_label(r.position), r.bph, &r.measurement))
             .collect(),
+    }
+}
+
+/// A position as the app names it: "Crown Up (CU, 3H)", the hobby
+/// code with the Swiss laboratory name beside it, or "Dial Up (DU)".
+fn position_label(p: session::Position) -> String {
+    if p.code().starts_with(|c: char| c.is_ascii_digit()) {
+        format!("{} ({}, {})", p.name(), p.common(), p.code())
+    } else {
+        format!("{} ({})", p.name(), p.common())
     }
 }
 
@@ -559,7 +569,7 @@ mod tests {
         let dvh_a = tbl.dvh_amplitude.unwrap();
         assert!((dvh_a - report.states[0].dvh_amplitude.unwrap()).abs() < 1e-9);
         assert!((d - 9.0).abs() < 1.5, "D {d}");
-        assert_eq!(tbl.rows[4].0, "Crown Up (3H)");
+        assert_eq!(tbl.rows[4].0, "Crown Up (CU, 3H)");
         let spread: f64 = tbl.rows.iter().filter_map(|r| r.2).sum();
         assert!(spread.abs() < 1e-9, "differences from the mean sum to zero");
     }

@@ -31,9 +31,9 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
     version = env!("TIMEGRAPHER_LONG_VERSION"),
     about = "Analyse mechanical watch recordings beat by beat",
     after_help = "Every command with --json prints one JSON document with a `schema` field \
-(e.g. timegrapher.analyze/1), the software version and the input it read. \
-Start with `timegrapher doctor` to check the microphone. Exit codes: 0 success, \
-1 error, 3 doctor found problems."
+(e.g. timegrapher.analyze/2), the software version and the input it read. \
+`timegrapher doctor` measures the microphone input. Exit codes: 0 success, \
+1 error, 3 a take moved beyond its margins (regress)."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -54,8 +54,8 @@ enum Command {
         /// Beat rate in beats per hour (default: the calibre's, or guessed).
         #[arg(long)]
         bph: Option<u32>,
-        /// Lift angle in degrees (default: the calibre's, or 52, graded as
-        /// unknown).
+        /// Lift angle in degrees (default: the calibre's, or 52, named as
+        /// the default).
         #[arg(long)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz (e.g. 5000,6000,7000).
@@ -280,10 +280,10 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Check the microphone: record a few seconds and report level,
-    /// clipping, automatic gain, noise and whether ticks are heard, with
-    /// the exact settings to change. Changes nothing without --apply.
-    /// Exits 0 when the input is fit to measure with, 3 when it is not.
+    /// Measure the microphone input: record a few seconds and report the
+    /// level, clipping, whether the background rises between ticks, the
+    /// signal above noise and whether a regular beat is found, with the
+    /// mixer changes --apply makes. Changes nothing without --apply.
     Doctor {
         /// Sound input to use: part of its name or id from `devices`
         /// (default: the system's default input).
@@ -303,7 +303,8 @@ enum Command {
         /// settings in FILE.json beside it.
         #[arg(long)]
         save: Option<PathBuf>,
-        /// Make the proposed mixer changes (Linux), then check again.
+        /// Make the listed mixer changes (Linux): sets the peak to about
+        /// −10 dBFS and turns automatic gain off, then checks again.
         /// Ask the watch's owner before using this: it changes their
         /// computer's settings.
         #[arg(long)]
@@ -460,8 +461,8 @@ enum Command {
         /// engine; they fail only if it panics.
         #[arg(long)]
         smoke: bool,
-        /// Read only the corpus's holdout takes: judged against tg and
-        /// their known faults, printed as counts only, never failing.
+        /// Read only the corpus's holdout takes: judged against tg,
+        /// printed as counts only, never failing.
         #[arg(long)]
         holdout: bool,
         /// With --holdout, print every reading's numbers too (milestone
@@ -808,11 +809,7 @@ fn main() -> ExitCode {
                 json,
                 bph,
             };
-            match doctor::run(&o) {
-                Ok(true) => Ok(()),
-                Ok(false) => return ExitCode::from(3),
-                Err(e) => Err(e),
-            }
+            doctor::run(&o)
         }
         Command::Record {
             folder,
@@ -1064,7 +1061,7 @@ fn run_analyze(
                 cfg.amplitude.lift_deg
             );
         }
-        print_summary(&a, clock.as_ref());
+        print_summary(&a, clock.as_ref(), calibre.is_some());
     }
     Ok(())
 }
@@ -1138,90 +1135,66 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
     }
 }
 
-fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
+fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool) {
+    use timegrapher_core::measure::{self, Caveat};
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     if !s.watch_heard {
-        use timegrapher_core::measure::Caveat;
-        // Too short to tell only when the caveats do not say no watch.
-        let short = s
-            .caveats
-            .iter()
-            .find_map(|c| match c {
-                Caveat::ShortSpan { span_s } => Some(*span_s),
-                _ => None,
-            })
-            .filter(|_| !s.caveats.contains(&Caveat::NoWatch));
-        match short {
-            Some(span_s) => println!(
-                "Too short to tell: the beats span {span_s:.1} s, and whether a watch is heard is judged over 10 s, so no readings are shown. Record for longer."
-            ),
-            None => println!(
-                "No watch heard: the sounds found are no steadier than noise (jitter {} us), so no readings are shown. Check that the watch is on the pickup and running.",
-                opt(s.jitter_us, 0)
-            ),
-        }
+        println!(
+            "{}",
+            timegrapher_core::beats::no_regular_beat_text(s.jitter_us, s.timing_scatter_fraction)
+        );
         return;
     }
-    println!("Beat rate    {} bph, {} beats found", s.bph, s.beats_found);
+    if !measure::regularity_assessed(s.duration_s) {
+        println!(
+            "Beat regularity not assessed: {:.1} s of sound, {} s needed",
+            s.duration_s,
+            measure::SHORT_SPAN_S
+        );
+    }
+    println!(
+        "Beat rate    {} bph, {} beats found ({:.1}% of those expected)",
+        s.bph,
+        s.beats_found,
+        s.beats_found_fraction * 100.0
+    );
     if let Some(heard) = s.bph_heard {
         println!(
-            "Warning      the beat rate was set to {} bph, but the recording sounds like {heard} bph: every reading below is measured against the wrong beat and graded poor. Check the calibre or --bph.",
+            "Set rate     set {} bph; the beats are {heard} bph apart",
             s.bph
         );
     }
-    if let Some(c) = &s.confidence {
-        let g = |r: &timegrapher_core::confidence::Reading, unit: &str, d: usize| {
-            format!(
-                "{:?}{}",
-                r.grade,
-                r.se.map_or(String::new(), |e| format!(" (± {e:.d$} {unit})"))
-            )
-            .to_lowercase()
-        };
-        let mut why = Vec::new();
-        if s.doubts.clipped {
-            why.push("clipping");
-        }
-        if s.doubts.beats_missing {
-            why.push("beats missing");
-        }
-        if s.doubts.lift_unknown {
-            why.push("lift angle not given");
-        }
-        if s.doubts.clock_unknown {
-            why.push("sound card clock unknown");
-        }
-        println!(
-            "Confidence   rate {}, amplitude {}, beat error {}{}",
-            g(&c.rate, "s/d", 1),
-            g(&c.amplitude, "deg", 1),
-            g(&c.beat_error, "ms", 2),
-            if why.is_empty() {
-                String::new()
-            } else {
-                format!("; lowered for {}", why.join(", "))
-            }
-        );
-    }
+    let se = |r: Option<&timegrapher_core::confidence::Reading>, unit: &str, d: usize| {
+        r.and_then(|r| r.se)
+            .map_or(String::new(), |e| format!(" ± {e:.d$}{unit}"))
+    };
+    let c = s.confidence.as_ref();
     if let Some(f) = &s.overall {
+        let pm = se(c.map(|c| &c.rate), "", 1);
         match clock {
             Some((ppm, from)) => println!(
-                "Rate         {:+.1} s/d, corrected for the sound card's clock ({:.1} ppm {}, {from}); {:+.1} s/d on the card's clock",
+                "Rate         {:+.1}{pm} s/d, corrected for the sound card's clock ({:.1} ppm {}, {from}); {:+.1} s/d on the card's clock",
                 timegrapher_core::clockstore::correct_rate(f.rate_s_per_day, *ppm),
                 ppm.abs(),
                 if *ppm >= 0.0 { "slow" } else { "fast" },
                 f.rate_s_per_day
             ),
-            None => println!(
-                "Rate         {:+.1} s/d (uncalibrated sound-card clock)",
-                f.rate_s_per_day
+            None => println!("Rate         {:+.1}{pm} s/d", f.rate_s_per_day),
+        }
+        // The ± is the unlock figure's.
+        let be_se = c.and_then(|c| c.beat_error.se);
+        match (s.beat_error_unlock_ms, be_se) {
+            (Some(u), Some(e)) => println!(
+                "Beat error   {:.2} ± {e:.2} ms (from the unlock; {:.2} ms from the drop)",
+                u.abs(),
+                f.beat_error_ms.abs()
+            ),
+            _ => println!(
+                "Beat error   {}",
+                beat_error_text(s.beat_error_unlock_ms, f.beat_error_ms)
             ),
         }
-        println!(
-            "Beat error   {}",
-            beat_error_text(s.beat_error_unlock_ms, f.beat_error_ms)
-        );
     } else {
         println!("Rate         not enough clean beats to fit");
     }
@@ -1246,18 +1219,69 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
         opt(s.amplitude_odd_deg, 0),
         s.lift_deg
     );
+    let conditions: Vec<String> = s
+        .caveats
+        .iter()
+        .filter_map(|c| match c {
+            Caveat::ShortSpan { span_s } => Some(format!(
+                "the beats span {span_s:.1} s (under {} s)",
+                measure::SHORT_SPAN_S
+            )),
+            Caveat::LiftUnknown => Some(format!(
+                "lift {}°, the default; {}",
+                s.lift_deg,
+                if calibre_set {
+                    "the calibre's lift angle is not in the table"
+                } else {
+                    "calibre not set"
+                }
+            )),
+            Caveat::ClockUnknown => Some("clock: card clock, not corrected".to_string()),
+            Caveat::Breaks { count } => Some(format!("{count} breaks in the take")),
+            // Said on their own lines.
+            Caveat::NoWatch
+            | Caveat::SetRateDisagrees { .. }
+            | Caveat::Clipped { .. }
+            | Caveat::BeatsMissing { .. } => None,
+        })
+        .collect();
+    for (i, line) in conditions.iter().enumerate() {
+        println!("{:<13}{line}", if i == 0 { "Conditions" } else { "" });
+    }
     let c = &s.clipping;
-    if c.warns() {
+    if c.samples > 0 {
         println!(
-            "Clipping     in {:.0}% of beats ({} samples): amplitude and beat error may be off; turn the input down",
+            "Clipping     on {:.1}% of beats ({} of {}, {} samples), peak {:.1} dBFS",
             c.beat_fraction * 100.0,
-            c.samples
+            c.beats,
+            s.beats_found,
+            c.samples,
+            c.peak_dbfs
         );
-    } else if c.samples > 0 {
-        println!(
-            "Clipping     {} samples, in {} of {} beats: too few to matter",
-            c.samples, c.beats, s.beats_found
-        );
+    }
+    if let Some(m) = &s.shape {
+        let pct = |v: Option<f64>| v.map_or("-".to_string(), |v| format!("{:.0}%", v * 100.0));
+        for (i, (side, d)) in [("Tick", &m.even), ("Tock", &m.odd)].iter().enumerate() {
+            println!(
+                "{:<13}{side}: sound 1 in {}, sound 2 in {} of {} windows; 1-2 {} ms, 1-3 {} ms, level 1/3 {}, tail {}",
+                if i == 0 { "Shape" } else { "" },
+                pct(d.share_with_sound_1),
+                pct(d.share_with_sound_2),
+                d.windows_measured,
+                opt(d.i12_ms, 2),
+                opt(d.i13_ms, 2),
+                opt(d.ratio13, 2),
+                opt(d.tail_ratio, 2),
+            );
+        }
+        if let (Some(a), Some(b)) = (m.beat_error_first_quarter_ms, m.beat_error_last_quarter_ms) {
+            println!(
+                "{:<13}beat error from the unlock {a:+.2} ms in the first quarter, {b:+.2} ms in the last ({} window{} each)",
+                "",
+                m.beat_error_quarter_windows,
+                if m.beat_error_quarter_windows == 1 { "" } else { "s" }
+            );
+        }
     }
     for (title, list) in [
         ("timing", &s.timing_periods),
@@ -1276,23 +1300,6 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>) {
                     .as_deref()
                     .map(|w| format!("({w}?)"))
                     .unwrap_or_default()
-            );
-        }
-    }
-    if !s.faults.is_empty() {
-        println!("Possible faults, from the shape of the Tick and Tock (worth checking, not a diagnosis):");
-        for f in &s.faults {
-            let evidence: Vec<String> = f
-                .evidence
-                .iter()
-                .map(|(k, v)| format!("{} {v:.2}", k.replace('_', " ")))
-                .collect();
-            println!(
-                "  {:<13} {} ({}; {})",
-                f.side.word(),
-                f.label,
-                evidence.join(", "),
-                f.see
             );
         }
     }

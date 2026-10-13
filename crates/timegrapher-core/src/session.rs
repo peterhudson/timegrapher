@@ -13,7 +13,7 @@
 //! figure means for the movement are for the person, or for the
 //! watchmaker skill, to weigh.
 
-use crate::beats::{self, Beat};
+use crate::beats::Beat;
 use crate::breaks::Break;
 use crate::clock::ClockFit;
 use crate::dsp::median;
@@ -229,7 +229,7 @@ pub struct Measurement {
     pub amplitude_odd_deg: Option<f64>,
     /// Median beat-to-beat timing scatter in 10 s windows, microseconds.
     pub jitter_us: Option<f64>,
-    /// Whether a regular beat was found (see [`beats::watch_heard`]).
+    /// Whether a regular beat was found (see [`crate::measure::watch_heard`]).
     /// When false, as on an empty stand, rate, amplitude and beat error
     /// would describe noise, and they are left out; the findings state
     /// [`no_regular_beat`].
@@ -268,35 +268,11 @@ pub struct Measurement {
 }
 
 impl Measurement {
-    /// The lift angle was a default, not the calibre's: amplitude is
-    /// graded one step lower and the caveat named, as `analyze` does.
-    /// [`measure`] takes the lift angle as known.
+    /// The lift angle was a default, not the calibre's: the caveat is
+    /// named, as `analyze` names it. [`measure`] takes the lift angle as
+    /// known.
     pub fn lift_unknown(&mut self) {
-        use crate::measure::Caveat;
-        if self.caveats.contains(&Caveat::LiftUnknown) {
-            return;
-        }
-        crate::measure::add(&mut self.caveats, Caveat::LiftUnknown);
-        let poor = self.caveats.iter().any(|c| {
-            matches!(
-                c,
-                Caveat::SetRateDisagrees { .. } | Caveat::ShortSpan { .. }
-            )
-        });
-        let d = crate::confidence::Doubts {
-            clipped: self.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION,
-            beats_missing: self
-                .caveats
-                .iter()
-                .any(|c| matches!(c, Caveat::BeatsMissing { .. })),
-            lift_unknown: true,
-            clock_unknown: !self.calibrated,
-        };
-        if let Some(c) = &mut self.confidence {
-            if !poor {
-                c.amplitude = crate::confidence::amplitude(c.amplitude.se, d);
-            }
-        }
+        crate::measure::add(&mut self.caveats, crate::measure::Caveat::LiftUnknown);
     }
 
     /// The beat error the report shows: from the unlock where it was
@@ -421,7 +397,7 @@ pub fn measure_with_breaks(
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
         jitter_us,
-        watch_heard: beats::watch_heard(jitter_us, log.bph),
+        watch_heard: crate::measure::watch_heard(jitter_us, log.bph, to_s - from_s),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
@@ -684,16 +660,6 @@ pub struct Isochronism {
     /// Change in the unsigned beat error (from the unlock where found,
     /// else from the drop), ms.
     pub beat_error_change: Option<f64>,
-}
-
-/// How a steadiness finding is ranked (see [`crate::steadiness`]). The
-/// session's own findings carry none.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Severity {
-    Fault,
-    Warning,
-    Note,
 }
 
 /// A condition detected in one recording's sound, with the figures that
@@ -960,7 +926,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                 ),
             );
         }
-        if m.clipped_fraction > crate::analysis::Clipping::WARN_FRACTION {
+        if m.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION {
             push(
                 "clipping",
                 ri,

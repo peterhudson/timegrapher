@@ -135,12 +135,11 @@ impl SeriesKind {
     }
 }
 
-/// Which detected structure leads a series' headline. Internal only: it
-/// is not in the JSON (schema /2 removed the one-word verdict), and says
-/// nothing about whether the watch is good or bad.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Verdict {
+/// Which detected structure leads a series' headline and names its
+/// finding. Private: it is in no output and says nothing about whether
+/// the watch is good or bad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Lead {
     /// Independent readings about one level.
     Steady,
     /// A repeating change, found by the period search (with the wheel
@@ -159,7 +158,8 @@ pub enum Verdict {
     /// Readings that remember the last ones without steps, a cycle or a
     /// trend: slow, irregular wander.
     Wandering,
-    /// Too few readings to say.
+    /// Too few readings to search.
+    #[default]
     TooShort,
 }
 
@@ -313,9 +313,8 @@ pub struct Period {
 pub struct SeriesCheck {
     pub series: SeriesKind,
     pub unit: &'static str,
-    /// Which detected structure leads the headline; not serialized.
     #[serde(skip)]
-    pub verdict: Verdict,
+    lead: Lead,
     /// One plain sentence of what was measured.
     pub headline: String,
     /// Length of each reading, seconds; readings used; readings left out
@@ -328,6 +327,8 @@ pub struct SeriesCheck {
     /// Scatter from one reading to the next, √(½·mean of squared
     /// differences): the noise without the slow changes.
     pub short_term_sd: Option<f64>,
+    /// Null, like the other tests, when there are too few readings to
+    /// search (the headline says how many).
     pub autocorrelation: Option<Autocorrelation>,
     pub allan: Option<Allan>,
     pub cusum: Option<Cusum>,
@@ -467,6 +468,10 @@ pub struct Report {
     /// How often each value came up, over the take and each stretch: the
     /// app's Distributions pane as data.
     pub distributions: Distributions,
+    /// The plain amplitude spectrum of each series: the rate's from the
+    /// beat timing (ms), the amplitude's and the beat error's from their
+    /// 2 s windows.
+    pub spectra: Vec<crate::spectrum::AmplitudeSpectrum>,
     pub findings: Vec<Finding>,
 }
 
@@ -861,7 +866,7 @@ pub fn check_series(
     let mut out = SeriesCheck {
         series: kind,
         unit: kind.unit(),
-        verdict: Verdict::TooShort,
+        lead: Lead::TooShort,
         headline: String::new(),
         step_s: g.step,
         readings: n,
@@ -1043,7 +1048,7 @@ pub fn check_series(
     out.trend = Some(trend);
 
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
-    out.verdict = verdict(&out, cfg);
+    out.lead = lead(&out, cfg);
     out.headline = headline(&out, mean);
     if let Some(more) = also(&out, cfg) {
         out.headline = format!("{} {more}", out.headline);
@@ -1056,7 +1061,7 @@ pub fn check_series(
 fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
     let k = s.series;
     let mut out = Vec::new();
-    if let Some(c) = s.cycle.as_ref().filter(|_| s.verdict != Verdict::Periodic) {
+    if let Some(c) = s.cycle.as_ref().filter(|_| s.lead != Lead::Periodic) {
         out.push(format!(
             "It also repeats every {:.0} s{}{}, {} peak to peak.",
             c.period_s,
@@ -1067,7 +1072,7 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
             k.fmt_size(c.peak_to_peak)
         ));
     }
-    let moves = !matches!(s.verdict, Verdict::ShiftingMean | Verdict::Drifting);
+    let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
     if let Some(ch) = s.changes.as_ref().filter(|_| moves) {
         if ch.segments.len() >= 2 && ch.explained >= cfg.min_explained {
             let lo = ch
@@ -1156,7 +1161,7 @@ fn cycle(
     let d = longterm::detrend(g, 1800.0);
     let mut cands: Vec<(f64, CycleSource)> = Vec::new();
     if let Some(t) = &s.two_state {
-        if t.verdict == twostate::Verdict::Regular {
+        if t.repeating_levels() {
             if let Some(p) = t.period_s {
                 cands.push((refine(&d, p, 0.05), CycleSource::TwoState));
             }
@@ -1289,15 +1294,17 @@ fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
     }
 }
 
-fn verdict(s: &SeriesCheck, cfg: &Config) -> Verdict {
-    use twostate::Verdict as T;
-    match s.two_state.as_ref().map(|t| t.verdict) {
-        Some(T::TwoStates) => return Verdict::TwoStates,
-        Some(T::Measurement) => return Verdict::Measurement,
-        _ => {}
+fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
+    if let Some(t) = &s.two_state {
+        if t.switching_levels() {
+            return Lead::TwoStates;
+        }
+        if t.one_side_or_unlock() {
+            return Lead::Measurement;
+        }
     }
     if s.cycle.is_some() {
-        return Verdict::Periodic;
+        return Lead::Periodic;
     }
     let trend = s
         .trend
@@ -1307,23 +1314,23 @@ fn verdict(s: &SeriesCheck, cfg: &Config) -> Verdict {
         if ch.segments.len() > 1 && ch.explained >= cfg.min_explained {
             // A slide cut into steps is still a slide.
             return if trend >= 0.8 * ch.explained {
-                Verdict::Drifting
+                Lead::Drifting
             } else {
-                Verdict::ShiftingMean
+                Lead::ShiftingMean
             };
         }
     }
     if trend >= cfg.min_explained {
-        return Verdict::Drifting;
+        return Lead::Drifting;
     }
     let ac = s.autocorrelation.as_ref();
     let memory =
         ac.is_some_and(|a| a.p_value < cfg.alpha && a.max_short_lag_r >= cfg.min_correlation);
     let excess = s.allan.as_ref().is_some_and(|a| a.max_excess >= 2.0);
     if memory || excess {
-        Verdict::Wandering
+        Lead::Wandering
     } else {
-        Verdict::Steady
+        Lead::Steady
     }
 }
 
@@ -1345,17 +1352,17 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
         }
     };
     let step = every(s.step_s);
-    match s.verdict {
+    match s.lead {
         // check_series states the too-short case, with its rule, before
         // the tests run.
-        Verdict::TooShort => s.headline.clone(),
-        Verdict::Steady => format!(
+        Lead::TooShort => s.headline.clone(),
+        Lead::Steady => format!(
             "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
             s.readings,
             k.fmt(s.median.unwrap_or(mean)),
             k.fmt_size(s.short_term_sd.unwrap_or(0.0))
         ),
-                Verdict::Periodic => match (&s.cycle, &s.two_state) {
+                Lead::Periodic => match (&s.cycle, &s.two_state) {
             (Some(p), _) => format!(
                 "{cap} repeats every {}{}{}, {} peak to peak.",
                 every(p.period_s),
@@ -1372,7 +1379,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
             ),
             _ => format!("{cap} repeats on a cycle."),
         },
-        Verdict::TwoStates | Verdict::Measurement => {
+        Lead::TwoStates | Lead::Measurement => {
             let t = s.two_state.as_ref().unwrap();
             let base = format!(
                 "{cap} switches between two levels, {} and {}, about every {}",
@@ -1380,7 +1387,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 k.fmt(t.high),
                 every(t.switch_every_s)
             );
-            if s.verdict == Verdict::Measurement {
+            if s.lead == Lead::Measurement {
                 let why = match lone_side(t) {
                     Some(side) => clusters(side),
                     None if t.unlock_jump => "the beat error from the unlock jumps between the levels; the one from the drop does not".to_string(),
@@ -1396,17 +1403,28 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 format!("{base}.")
             }
         }
-        Verdict::ShiftingMean => {
+        Lead::ShiftingMean => {
             let ch = s.changes.as_ref().unwrap();
-            let means: Vec<String> = ch.segments.iter().map(|g| k.fmt(g.mean)).collect();
-            format!(
-                "{cap} shifts level {} time{}: {}.",
-                ch.segments.len() - 1,
-                if ch.segments.len() == 2 { "" } else { "s" },
-                means.join(", then ")
-            )
+            let n = ch.segments.len() - 1;
+            let times = if n == 1 { "" } else { "s" };
+            // A long take can shift dozens of times: past a few, name the
+            // range and the ends, and leave each level to the table.
+            if ch.segments.len() <= 4 {
+                let means: Vec<String> = ch.segments.iter().map(|g| k.fmt(g.mean)).collect();
+                format!("{cap} shifts level {n} time{times}: {}.", means.join(", then "))
+            } else {
+                let lo = ch.segments.iter().map(|g| g.mean).fold(f64::INFINITY, f64::min);
+                let hi = ch.segments.iter().map(|g| g.mean).fold(f64::NEG_INFINITY, f64::max);
+                format!(
+                    "{cap} shifts level {n} time{times}, between {} and {}: {} at the start, {} at the end.",
+                    k.fmt(lo),
+                    k.fmt(hi),
+                    k.fmt(ch.segments[0].mean),
+                    k.fmt(ch.segments[n].mean)
+                )
+            }
         }
-                Verdict::Drifting => {
+                Lead::Drifting => {
             let t = s.trend.as_ref().unwrap();
             if let Some((at, v)) = t.turn.filter(|_| t.curve_explained > t.explained + 0.05) {
                 return format!(
@@ -1428,7 +1446,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                 }
             )
         }
-        Verdict::Wandering => {
+        Lead::Wandering => {
             let mut parts = Vec::new();
             if let Some(a) = &s.autocorrelation {
                 parts.push(format!(
@@ -1456,23 +1474,23 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
 fn findings(s: &SeriesCheck) -> Option<Finding> {
     let k = s.series;
     let name = k.name();
-    let (code, title) = match s.verdict {
-        Verdict::Steady | Verdict::TooShort => return None,
-        Verdict::Periodic => ("periodic", format!("The {name} repeats on a cycle")),
-        Verdict::TwoStates => (
+    let (code, title) = match s.lead {
+        Lead::Steady | Lead::TooShort => return None,
+        Lead::Periodic => ("periodic", format!("The {name} repeats on a cycle")),
+        Lead::TwoStates => (
             "two_states",
             format!("The {name} switches between two levels"),
         ),
-        Verdict::Measurement => (
+        Lead::Measurement => (
             "measurement_split",
             format!("The {name} switches between two levels; the change shows on one side only, or in the unlock but not the drop"),
         ),
-        Verdict::ShiftingMean => (
+        Lead::ShiftingMean => (
             "shifting_mean",
             format!("The {name} changes level during the take"),
         ),
-        Verdict::Drifting => ("drifting", format!("The {name} slides through the take")),
-        Verdict::Wandering => (
+        Lead::Drifting => ("drifting", format!("The {name} slides through the take")),
+        Lead::Wandering => (
             "wandering",
             format!("Successive {name} readings are correlated"),
         ),
@@ -1727,14 +1745,24 @@ pub fn check(
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
-    let be_period = {
+    let be_long = {
         let mut lg = be_grid.clone();
         lg.t0 = 0.0;
-        period_of(
-            &longterm::analyse(&lg, long_cfg),
-            SeriesKind::BeatError.unit(),
-        )
+        longterm::analyse(&lg, long_cfg)
     };
+    let be_period = period_of(&be_long, SeriesKind::BeatError.unit());
+    // The plain spectra of the series the period searches read, with
+    // their slow change taken off as the searches take it off.
+    let spectra = [
+        (&long.timing.detrended, "rate", "ms", 1000.0),
+        (&long.amplitude.detrended, "amplitude", "deg", 1.0),
+        (&be_long.detrended, "beat_error", "ms", 1.0),
+    ]
+    .into_iter()
+    .filter_map(|(g, name, unit, scale)| {
+        crate::spectrum::amplitude_spectrum(g, name, unit, scale, cfg.max_points)
+    })
+    .collect();
 
     let series = vec![
         check_series(
@@ -1773,10 +1801,7 @@ pub fn check(
     let lone = series[1].two_state.as_ref().and_then(lone_side);
     if let Some(side) = lone {
         for s in series.iter_mut().skip(1) {
-            if !matches!(
-                s.verdict,
-                Verdict::Steady | Verdict::TooShort | Verdict::Measurement
-            ) {
+            if !matches!(s.lead, Lead::Steady | Lead::TooShort | Lead::Measurement) {
                 s.unlock_hopping = true;
                 s.headline = format!("{} {}.", s.headline, {
                     let c = clusters(side);
@@ -1799,6 +1824,7 @@ pub fn check(
         isochronism,
         wind_down,
         distributions,
+        spectra,
         findings,
     }
 }
@@ -2183,7 +2209,7 @@ mod tests {
             &[],
             &Config::default(),
         );
-        assert_eq!(s.verdict, Verdict::Steady, "{}", s.headline);
+        assert_eq!(s.lead, Lead::Steady, "{}", s.headline);
         let a = s.allan.unwrap();
         assert!(a.max_excess < 1.5, "{}", a.max_excess);
         assert!(a.slope_short.unwrap() < -0.4);
@@ -2204,7 +2230,7 @@ mod tests {
             &[],
             &Config::default(),
         );
-        assert_eq!(s.verdict, Verdict::ShiftingMean, "{}", s.headline);
+        assert_eq!(s.lead, Lead::ShiftingMean, "{}", s.headline);
         let ch = s.changes.unwrap();
         assert_eq!(ch.segments.len(), 2);
         assert!((ch.segments[1].start_s - 2000.0).abs() < 90.0);
@@ -2226,7 +2252,7 @@ mod tests {
             &[],
             &Config::default(),
         );
-        assert_eq!(s.verdict, Verdict::Drifting, "{}", s.headline);
+        assert_eq!(s.lead, Lead::Drifting, "{}", s.headline);
         assert!((s.trend.unwrap().per_hour + 10.0).abs() < 1.0);
     }
 
@@ -2250,7 +2276,7 @@ mod tests {
             &[],
             &Config::default(),
         );
-        assert_eq!(s.verdict, Verdict::Wandering, "{}", s.headline);
+        assert_eq!(s.lead, Lead::Wandering, "{}", s.headline);
     }
 
     #[test]
@@ -2285,7 +2311,7 @@ mod tests {
             &[],
             &Config::default(),
         );
-        assert_eq!(s.verdict, Verdict::Periodic, "{}", s.headline);
+        assert_eq!(s.lead, Lead::Periodic, "{}", s.headline);
         let c = s.cycle.unwrap();
         assert!((c.period_s - 240.02).abs() < 0.1, "{c:?}");
         assert!((c.inner_period_s.unwrap() - 48.004).abs() < 0.02, "{c:?}");

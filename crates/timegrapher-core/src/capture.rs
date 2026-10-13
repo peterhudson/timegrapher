@@ -10,7 +10,7 @@
 use crate::audio;
 use serde::Serialize;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -41,8 +41,19 @@ pub struct Capture {
     pub label: String,
     pub is_file: bool,
     stop: Arc<AtomicBool>,
+    /// A replayed file's speed, times its own, as f32 bits.
+    speed: Arc<AtomicU32>,
     #[cfg(feature = "capture")]
     _stream: Option<cpal::Stream>,
+}
+
+impl Capture {
+    /// Play a replayed file faster or slower than its own speed (1.0),
+    /// from the next block on. No effect on a device.
+    pub fn set_speed(&self, speed: f32) {
+        self.speed
+            .store(speed.clamp(0.1, 100.0).to_bits(), Ordering::Relaxed);
+    }
 }
 
 impl Drop for Capture {
@@ -83,27 +94,31 @@ impl Level {
 }
 
 /// Replay a WAV or FLAC file at its own speed, as if the watch were on the
-/// microphone.
+/// microphone; [`Capture::set_speed`] plays it faster or slower.
 pub fn replay_file(path: &Path) -> Result<Capture, String> {
     let info = audio::info(path).map_err(|e| e.to_string())?;
     let fs = info.sample_rate;
     let (tx, rx) = channel();
     let stop = Arc::new(AtomicBool::new(false));
     let stop2 = stop.clone();
+    let speed = Arc::new(AtomicU32::new(1.0f32.to_bits()));
+    let speed2 = speed.clone();
     let p = path.to_path_buf();
     std::thread::spawn(move || {
         let start = Instant::now();
-        let mut sent = 0u64;
+        // When the sound sent so far is due, at the speed each block went
+        // out at.
+        let mut due = Duration::ZERO;
         let r = audio::stream(&p, (fs / 50).max(1) as usize, |b| {
             if stop2.load(Ordering::Relaxed) {
                 return;
             }
-            sent += b.len() as u64;
+            let x = f32::from_bits(speed2.load(Ordering::Relaxed)) as f64;
+            due += Duration::from_secs_f64(b.len() as f64 / fs as f64 / x);
             let _ = tx.send(Event::Audio(Block {
                 samples: b.to_vec(),
                 at: SystemTime::now(),
             }));
-            let due = Duration::from_secs_f64(sent as f64 / fs as f64);
             if let Some(wait) = due.checked_sub(start.elapsed()) {
                 std::thread::sleep(wait);
             }
@@ -123,6 +138,7 @@ pub fn replay_file(path: &Path) -> Result<Capture, String> {
             .unwrap_or_else(|| path.display().to_string()),
         is_file: true,
         stop,
+        speed,
         #[cfg(feature = "capture")]
         _stream: None,
     })
@@ -517,6 +533,7 @@ mod device {
                 label: info.name.clone(),
                 is_file: false,
                 stop: Arc::new(AtomicBool::new(false)),
+                speed: Arc::new(AtomicU32::new(1.0f32.to_bits())),
                 _stream: Some(stream),
             },
             rec,
@@ -739,6 +756,35 @@ mod tests {
             default_config: None,
             supported: Vec::new(),
         }
+    }
+
+    /// A replay at 8 times its own speed takes an eighth of the time.
+    #[test]
+    fn replay_speed_sets_the_pace() {
+        let dir = std::env::temp_dir().join(format!("tg-replay-speed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("two-seconds.wav");
+        let audio = audio::Audio {
+            samples: vec![0.0; 16_000],
+            sample_rate: 8000,
+        };
+        audio::write_wav(&f, &audio).unwrap();
+        let c = replay_file(&f).unwrap();
+        c.set_speed(8.0);
+        let start = Instant::now();
+        let mut samples = 0;
+        loop {
+            match c.rx.recv_timeout(Duration::from_secs(5)).unwrap() {
+                Event::Audio(b) => samples += b.samples.len(),
+                Event::End => break,
+                Event::Error(e) => panic!("{e}"),
+            }
+        }
+        let took = start.elapsed().as_secs_f64();
+        assert_eq!(samples, 16_000);
+        assert!(took < 1.0, "2 s at 8x took {took:.2} s");
+        assert!(took > 0.15, "2 s at 8x took only {took:.2} s");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

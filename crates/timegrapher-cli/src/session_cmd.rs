@@ -19,8 +19,6 @@ use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
-/// The layout of `summary.json` and `--json`.
-pub const SCHEMA: &str = "timegrapher.session/2";
 
 pub struct Options {
     pub bph: Option<u32>,
@@ -395,30 +393,6 @@ fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
     c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some())
 }
 
-/// Longest stretch of a reading that [`faults_of`] reads, seconds.
-pub(crate) const FAULTS_S: f64 = 1800.0;
-
-/// The escapement faults `analyze` finds in a reading's measured stretch
-/// (`from_s` to `to_s`, as in its measurement), at most [`FAULTS_S`] of it.
-pub(crate) fn faults_of(
-    e: &RecordingEntry,
-    c: &Ctx,
-    from_s: f64,
-    to_s: f64,
-) -> Result<Vec<timegrapher_core::faults::Finding>, String> {
-    let files = expand_dirs(&[c.base.join(&e.file)])?;
-    let (mut cfg, cal) = stream_config(c)?;
-    cfg.analysis.lift_known = lift_known(c, cal);
-    let (samples, fs) = excerpt(&files, from_s, (to_s - from_s).min(FAULTS_S))?;
-    let a = audio::Audio {
-        samples,
-        sample_rate: fs as u32,
-    };
-    Ok(timegrapher_core::analysis::analyze(&a, &cfg.analysis)
-        .summary
-        .faults)
-}
-
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let position = position_of(e)?;
     let path = c.base.join(&e.file);
@@ -535,7 +509,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 #[derive(serde::Serialize)]
 pub struct Session<'a> {
     /// Name and version of this layout; bumped when a field changes meaning.
-    pub schema: &'static str,
+    pub schema: String,
     /// Name, version and platform of the software, as in every `--json`
     /// document (see docs/agent-interface.md).
     pub software: serde_json::Value,
@@ -592,7 +566,10 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "cycles": !o.no_cycles,
     });
     let s = Session {
-        schema: SCHEMA,
+        schema: format!(
+            "timegrapher.session/{}",
+            crate::output::schema_version("session")
+        ),
         software: crate::output::software(),
         input: crate::output::input(&files, settings),
         watch: m.watch.as_deref().filter(|w| !w.is_empty()),

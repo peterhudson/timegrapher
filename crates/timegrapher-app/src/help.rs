@@ -38,6 +38,14 @@ pub const MICROPHONE: &[&str] = &[
      (decibels below the most the input can carry). It turns red when the sound clips.",
 ];
 
+pub const RECORDING: &[&str] = &[
+    "Open… analyses a WAV or FLAC recording all at once, which is how to look back \
+     through a take; Open Folder… does the same for a take saved as segments.",
+    "Replay plays the recording through as if the watch were on the microphone, at the \
+     Replay Speed set below it. Analyse All goes back to the whole recording analysed \
+     at once.",
+];
+
 pub const READINGS: &[&str] = &[
     "Rate is how many seconds a day the watch gains (+) or loses (−), from how often it \
      beats compared with how often it should.",
@@ -98,8 +106,8 @@ pub const CLIPPING_BANNER: &[&str] = &[
      read wrong. The rate comes from when the beats arrive, which clipping doesn't \
      change.",
     "It shows whenever a beat in the readings has a clipped sample in its sound, \
-     counted the same way `timegrapher analyze` counts them. Input Level is in the \
-     Microphone card.",
+     counted the same way `timegrapher analyze` counts them. Input Level is under \
+     Microphone in the Watch pane.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -126,6 +134,14 @@ pub const BEAT_ERROR: &[&str] = &[
      locks on, so which side is longer can flip from one run to the next. \
      The ± is the scatter of its 2-second pieces; anything it can't show (clipped \
      beats, a short stretch) is named beside the title.",
+];
+
+pub const BEAT_RATE: &[&str] = &[
+    "How many beats the watch makes an hour, ticks and tocks counted alike: 28,800 \
+     for a balance swinging 4 times a second each way, 21,600 for 3, 18,000 for 2.5.",
+    "With Beat Rate under Watch on Auto, it is the standard rate nearest to the beats \
+     of the first few seconds. Set it under Watch when the watch beats at an unusual \
+     rate, or to read a watch that runs far off.",
 ];
 
 pub const STRIP: &[&str] = &[
