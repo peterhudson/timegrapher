@@ -77,14 +77,21 @@
     ]
   },
   {
-    "maker": "Dandong (clone)",
+    "maker": "Peacock (Dandong)",
     "common": true,
     "aliases": [
       "Dandong",
-      "DD"
+      "DD",
+      "Peacock",
+      "Liaoning Peacock",
+      "SL"
     ],
     "sources": [
-      "The DD prefix in clone calibre names (DD3235, DD4130) and parts listings; no neutral reference lists the prefixes"
+      "The DD prefix in clone calibre names (DD3235, DD4130) and parts listings; no neutral reference lists the prefixes",
+      "The SL prefix in Peacock calibre names (SL1258, SL3000)",
+      "Peacock's own site, http://en.cpeacockmovement.com/Movement/2.html (SL calibres)",
+      "Calibercorner names the maker \"Dandong/Peacock Watch Factory\": https://calibercorner.com/dandong-peacock-caliber-sl-3006/",
+      "Clone calibres sold as \"Dandong\" (DD3235, DD4130) come from the same factory as the Peacock SL calibres, per the project owner, who works on them"
     ]
   },
   {
@@ -107,17 +114,6 @@
     ],
     "sources": [
       "The JH prefix in clone calibre names (JH3235); no neutral reference lists the prefixes"
-    ]
-  },
-  {
-    "maker": "Liaoning Peacock (clone)",
-    "common": true,
-    "aliases": [
-      "Peacock",
-      "SL"
-    ],
-    "sources": [
-      "The SL prefix in Peacock calibre names (SL1258, SL3000)"
     ]
   },
   {
