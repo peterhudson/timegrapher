@@ -1181,10 +1181,10 @@
       },
       {
         "label": "take_part01-003.flac",
-        "rate_s_per_day": -9.209535493098642,
-        "amplitude_deg": 232.87762087428686,
-        "beat_error_unlock_ms": 0.21374798136407178,
-        "beat_error_ms": 0.0448976663658378,
+        "rate_s_per_day": -12.38954418041107,
+        "amplitude_deg": 233.11979042646,
+        "beat_error_unlock_ms": -0.23411731174051076,
+        "beat_error_ms": -0.05174675350787207,
         "beats": 2384
       },
       {

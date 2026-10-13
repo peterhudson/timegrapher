@@ -122,3 +122,82 @@ fn a_take_with_a_pause_reads_as_one_watch() {
     assert_eq!(m.breaks.len(), 1);
     assert!(m.clean_fraction > 0.95, "clean {}", m.clean_fraction);
 }
+
+/// A hole in the sound with no break listed and no clock log: the beats
+/// show the jump, the sides keep their names across it by their sound,
+/// and the rate is fitted on each stretch. One of the two joins puts an
+/// odd number of beats in the hole, so counting alone would swap the sides
+/// there.
+#[test]
+fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
+    let piece = |duration_s: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.6,
+                // The Tock sounds unlike the Tick: a louder unlock.
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    for (n, first_s) in [90.03, 90.155].into_iter().enumerate() {
+        let a = piece(first_s, 1);
+        let b = piece(90.0, 2);
+        let fs = a.sample_rate;
+        let join_s = a.samples.len() as f64 / fs as f64;
+        let mut samples = a.samples;
+        samples.extend(b.samples);
+        let dir = std::env::temp_dir().join(format!("tg-hole-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hole.wav");
+        write_wav(
+            &path,
+            &Audio {
+                samples,
+                sample_rate: fs,
+            },
+        )
+        .unwrap();
+        let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+        let listed = breaks::of_files(&[path.as_path()], None, log.sample_rate);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(listed.is_empty());
+        assert_eq!(log.jumps.len(), 1, "{first_s}: {:?}", log.jumps);
+        // Found once the beats are found again: within the 2 s of beats the
+        // tracker may miss before it takes what it finds, and a few beats.
+        assert!(
+            log.jumps[0] >= join_s && log.jumps[0] - join_s < 3.0,
+            "{first_s}: jump at {:?}, join at {join_s}",
+            log.jumps
+        );
+        let found = breaks::with_jumps(listed, &log.jumps);
+        assert_eq!(found.len(), 1);
+
+        // The same signed beat error on both sides of the hole.
+        let side = |from: f64, to: f64| {
+            let run: Vec<_> = log
+                .beats
+                .iter()
+                .filter(|b| b.time >= from && b.time < to)
+                .copied()
+                .collect();
+            timegrapher_core::timing::beat_error_ms(&run).expect("beat error")
+        };
+        let (before, after) = (side(5.0, join_s - 1.0), side(join_s + 5.0, f64::INFINITY));
+        assert!(
+            before.abs() > 0.4 && (before - after).abs() < 0.1,
+            "{first_s}: beat error {before} then {after}"
+        );
+
+        breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &found, log.bph);
+        let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+        let r = m.rate_s_per_day.expect("rate");
+        assert!((r - 10.0).abs() < 0.3, "{first_s}: session rate {r}");
+        assert_eq!(m.breaks.len(), 1);
+    }
+}

@@ -413,7 +413,10 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
         (None, Some(ppm)) => session::fixed_clock(ppm, log.duration_s),
         (None, None) => None,
     };
-    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    let breaks = breaks::with_jumps(
+        breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
+        &log.jumps,
+    );
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     let (start, stop) = span_of(e, log.duration_s)?;
     let settle = start

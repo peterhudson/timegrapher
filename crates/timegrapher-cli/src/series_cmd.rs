@@ -91,7 +91,10 @@ pub fn run(o: Options) -> Result<(), String> {
     };
     lc.wheels.extend(extra);
     let mut log = log;
-    let breaks = breaks::of_files(&paths, clock.as_ref(), log.sample_rate);
+    let breaks = breaks::with_jumps(
+        breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
+        &log.jumps,
+    );
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     let long = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
     let rep = steadiness::check(&log, clock.as_ref(), &long, &lc, &o.check);
