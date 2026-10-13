@@ -169,7 +169,14 @@ while the watch settles (20 s) and is measured (60 s), times the project
 chose. It then says which position to turn the watch to; press the
 button naming it (**Start CL Measurement**) once it is there. **Measure
 DD Again**, naming the position just measured (or the one under way),
-repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
+repeats it, after a knock for instance, and **Stop** ends the test.
+Only the 60 s measured in each position count. The strip's position
+ticker says so over the rest, with its beats drawn faintly:
+**Settling** over each 20 s settle, and **Not Measured** over the time
+after a measurement while the watch is being turned, over a measurement
+given up for Measure Again, and over the part of a position measured
+when the test was stopped. The marks stay after the test until a new
+session. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches

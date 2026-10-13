@@ -643,6 +643,9 @@ pub struct TimegrapherApp {
     updates: crate::update::Updates,
     /// The Positions Test, while it runs and until its results are closed.
     guided: Option<guided::Test>,
+    /// The time the Positions Test didn't use, marked on the strip; kept
+    /// after the test ends, until a new session.
+    guided_unused: Vec<(f64, f64, &'static str)>,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -924,6 +927,7 @@ impl TimegrapherApp {
             report: ReportDialog::default(),
             updates: Default::default(),
             guided: None,
+            guided_unused: Vec::new(),
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -1130,6 +1134,7 @@ impl TimegrapherApp {
         self.message = None;
         self.sound_history.clear();
         self.guided = None;
+        self.guided_unused.clear();
         self.sound_at = None;
         self.sound_job = None;
         self.steady = None;
@@ -1279,6 +1284,7 @@ impl TimegrapherApp {
         self.clear_trends();
         self.sound_history.clear();
         self.guided = None;
+        self.guided_unused.clear();
         self.source_label.clear();
         self.message = None;
     }
@@ -3009,6 +3015,24 @@ impl TimegrapherApp {
     /// Seconds of settling still to come at the time on show.
     fn settling_left(&self) -> Option<f64> {
         self.session.settling_left(self.end_s())
+    }
+
+    /// The stretches the strip draws faintly, each with what the ticker
+    /// says over it: the settling after each move, and during and after a
+    /// Positions Test the time it didn't use, in place of the moves'
+    /// settling it covers.
+    fn strip_settles(&self) -> Vec<(f64, f64, &'static str)> {
+        let test = &self.guided_unused;
+        let mut out: Vec<(f64, f64, &'static str)> = self
+            .session
+            .settles()
+            .into_iter()
+            .filter(|s| !test.iter().any(|t| s.0 < t.1 && t.0 < s.1))
+            .map(|(a, b)| (a, b, "Settling"))
+            .chain(test.iter().copied())
+            .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        out
     }
 
     /// When stopped (and not looking back) inside the settle after a
@@ -4780,6 +4804,7 @@ impl TimegrapherApp {
             self.set_position(guided::ORDER[0]);
         }
         self.guided = Some(guided::Test::new());
+        self.guided_unused.clear();
     }
 
     /// After a break in the sound while listening: was the watch moved?
@@ -4860,9 +4885,14 @@ impl TimegrapherApp {
             },
             Some(guided::Action::Redo) => test.redo(now),
             Some(guided::Action::Results) => test.show_results = true,
-            Some(guided::Action::Stop) => return,
+            Some(guided::Action::Stop) => {
+                test.stop(now);
+                self.guided_unused = test.unused(now);
+                return;
+            }
             None => {}
         }
+        self.guided_unused = test.unused(now);
         if matches!(
             phase,
             guided::Phase::Settling(_) | guided::Phase::Measuring(_)
@@ -5213,7 +5243,7 @@ impl TimegrapherApp {
             });
         }
         let bands = self.position_bands();
-        let settles = self.session.settles();
+        let settles = self.strip_settles();
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
