@@ -73,7 +73,8 @@ Options: `--bph` (guessed if omitted), `--lift` (degrees),
 `--notch 5000,7000` (remove steady interference tones), `--escape-teeth`
 (`long` and `series` also take `--calibre NAME`),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
-beat error and amplitude over time), `--json`.
+beat error and amplitude over time, and where each side's unlock and drop
+sat in each 2 s window, ms from the beat time), `--json`.
 
 `timegrapher profile recording.flac --at 60 --svg profile.svg` shows the
 sound of the tick and the tock (even and odd beats) over a 10 s stretch,
