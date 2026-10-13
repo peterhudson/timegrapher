@@ -31,7 +31,7 @@ Then use the positions to split one cause from another.
 | Comparison | What differs mechanically | A big difference points at |
 | --- | --- | --- |
 | Dial up vs dial down | Which balance pivot carries the weight on its end stone | One pivot or end stone (dirty, dry, damaged), end shake, a hairspring out of flat touching in one position, the balance touching something in one position |
-| Horizontal vs vertical (amplitude) | Pivots run on tips (horizontal) or on their sides in the hole jewels (vertical) | Witschi's tolerances put vertical at 240–280° against 260–320° horizontal (docs/sessions.md); the `session` report warns when vertical is more than 50° below horizontal (the project's threshold). Much more: worn, bent or dirty pivots, dirty hole jewels, thick oil |
+| Horizontal vs vertical (amplitude) | Pivots run on tips (horizontal) or on their sides in the hole jewels (vertical) | Witschi's training course puts vertical at 250–270° against 250–330° horizontal; more than 50° below horizontal is the project's rule of thumb for mentioning it. Much more: worn, bent or dirty pivots, dirty hole jewels, thick oil |
 | Horizontal vs vertical (rate) | Regulator pin clearance, amplitude | Regulator pins too open or closed (index watches), or simply low vertical amplitude |
 | Vertical vs vertical (rate) | Gravity pulls the balance's heavy side round | Poise error, hairspring off centre |
 | Opposite verticals (crown up vs crown down; crown left vs right) | The same axis, heavy side up vs down | Poise along that axis: opposite rate errors in opposite positions |
@@ -123,7 +123,7 @@ particles build up. The train and escapement lose more of the
 mainspring's energy before it reaches the balance.
 
 **Typical history:** a watch some years past its service, amplitude
-clearly lower than it was at its last test or below Witschi's tolerance. That's what a service is for, and it's the commonest
+clearly lower than it was at its last test or below the set that fits the watch ([tolerance sets](when-to-see-a-watchmaker.md#tolerance-sets-by-source)). That's what a service is for, and it's the commonest
 finding by far.
 
 **A freshly serviced watch:** re-test after a week before judging it,

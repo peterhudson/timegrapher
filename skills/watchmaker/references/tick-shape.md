@@ -116,6 +116,47 @@ A fault that shows on **one side only** points at one pallet stone or one
 side of the fork and roller. A fault on **both sides** points at
 something common: the balance, its pivots, the hairspring, or the room.
 
+## Rules for possible faults
+
+These are the rules the program used to name possible faults, restated
+against `shape --json`'s measures for each side (`even` is the Tick,
+`odd` the Tock; `windows` holds the medians over 2 s windows). They are
+the project's rules of thumb: each limit sits well outside what the 16
+healthy takes of the public corpus measure, and **none has been checked
+against a watch with a confirmed fault**. Anything they find is worth
+checking on the bench, never a diagnosis. Apply them only when a regular
+beat was found, no beats clipped (clipping flattens the drop every level
+is measured against), the amplitude's ± is within 5° and the beat
+error's within 0.1 ms, and a side has at least 5 windows measured.
+
+| Rule | Measure | Limit, and the corpus behind it | In Witschi's words |
+| --- | --- | --- | --- |
+| No distinct unlock | `windows_with_1` ÷ `windows_measured` | Under 0.3. The corpus never falls below 0.65 (the Reverso's quiet unlock). Also when sound 2 is found in under half the windows and that side's 1-to-3 interval (`i13_ms`) is under 0.75 of the other side's: the impulse was taken for the unlock. | An escape tooth landing directly on the impulse plane |
+| Unlock and impulse not separable | `windows_with_2` ÷ `windows_measured` under 0.5, without the short 1-to-3 above | The corpus never falls below 0.94. | Additional friction in the escapement |
+| Unlocking too strong | `ratio13` (sound 1 against sound 3) | 1.0 or more. The corpus reaches 0.78. | Unlocking too strong |
+| One side's unlock much earlier | `i12_ms`, Tick against Tock, the longer over the shorter | 1.8 or more. The corpus reaches 1.46 per file, and a plastic holder alone moved an ETA 2824 from 1.03 to 1.40. An extra sound just before the unlock, taken for sound 1, lands here too, so the program named two causes: an uneven lock, or an extra sound before the unlock (the safety pin or the impulse pin). | Escapement fitting too strong, on one side |
+| Sound after the drop on one side | `tail_ratio`, Tick against Tock | One side 3 or more times the other, and the louder at least 0.1. Case and holder ringing lengthen both sides (up to 0.33 on the ETA 2824 in its holder), so only a one-sided tail counts; the corpus reaches a ratio of about 1.7. | A grazing balance wheel or hairspring |
+| Beat error drifting through the take | The unlock beat error, first quarter of the recording against the last (at least 8 windows in each) | A change of 1 ms or more. The corpus reaches 0.44 ms (the Yacht-Master crown right); a beat error that wanders without a trend, as the Yacht-Master dial down does over 1.5 ms, is not counted. The program read it as a hairspring rubbing. | |
+
+The program's session report also noted two shapes: sound 1 as loud as
+the drop (the `ratio13` rule above), and extra sounds around the beat
+(`extra_pre` and `extra_post`, `windows_with_extra_pre`), which Witschi's
+*Testing methods for mechanical watches* (2025, "Fault Detection") links to the safety pin (dart) touching the roller, too little
+impulse-pin clearance, and the impulse pin knocking the fork horn.
+
+How to report what they find:
+
+- **"Possible", always.** Never name a broken part from it.
+- **Check it repeats.** One seen in one position and not another, or not
+  again after re-clamping, is more likely the set-up. One that shows in
+  every position, on the same side, is worth passing on.
+- **Put it with the rest.** On a watch with good amplitude, small beat
+  error and a steady rate, it is a note for the next service. With low
+  amplitude beside it, it supports a service-soon verdict.
+- **Give the owner the words to pass on**: the shape in Witschi's words,
+  the side (Tick or Tock) and the position, so the watchmaker knows where
+  to look. The repository's docs/fault-signatures.md has the diagrams.
+
 ## Before you believe a shape
 
 - **Missing sound 1** is far more often a level problem than a fault: the
