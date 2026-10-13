@@ -7,7 +7,7 @@
 //! mainspring runs down does not read as two levels. The blocks are then
 //! fitted with one Gaussian and with a mixture of two of equal width.
 //!
-//! Two states are called only when all of these hold:
+//! Two levels are reported only when all of these hold:
 //! - the mixture wins by BIC by at least 10 (Kass and Raftery's "very
 //!   strong" evidence);
 //! - the two levels are at least two widths apart (Ashman's D ≥ 2, the
@@ -18,17 +18,15 @@
 //!   blocks), so a step or a drift the running median left is not called
 //!   switching.
 //!
-//! Two kinds of two-level series are then told apart from a watch with
-//! two states:
-//! - **regular**: the low state comes back on a fixed period (the state
+//! Beside the levels, the finder records facts a reader weighs:
+//! - whether the low state comes back on a fixed period (the state
 //!   sequence correlates with itself at one lag at 0.5 or more), as the
-//!   once-a-minute dip of a fourth wheel does. That is a cycle, which the
-//!   cycle finder already reports with its period and wheel.
-//! - **measurement**: for amplitude, a real change of the balance's swing
-//!   moves Tick and Tock together. A split that one side carries alone, or
-//!   one that comes with a jump in the beat error from the unlock while
-//!   the beat error from the drop stays put, points at the edge finder
-//!   hopping between two marks, not at the watch.
+//!   once-a-minute dip of a fourth wheel does;
+//! - for amplitude, whether one side, Tick or Tock, carries the split
+//!   alone, and whether the beat error from the unlock jumps between the
+//!   levels while the beat error from the drop stays put.
+//!
+//! What the levels mean for the watch is not decided here.
 
 use serde::Serialize;
 
@@ -90,6 +88,8 @@ impl Default for Params {
     }
 }
 
+/// How the steadiness report sorts the facts below. Not part of the
+/// JSON: a report states the levels, the switching and the tests' figures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
@@ -105,19 +105,15 @@ pub enum Verdict {
     TooShort,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Confidence {
-    Low,
-    Medium,
-    High,
-}
-
-/// What the finder saw, whatever the verdict.
+/// What the finder saw.
 #[derive(Debug, Clone, Serialize)]
 pub struct TwoState {
+    #[serde(skip)]
     pub verdict: Verdict,
-    pub confidence: Confidence,
+    /// All the two-level tests hold: ΔBIC, separation, the smaller
+    /// state's share, the switches and the spread over the take (see the
+    /// module notes for the figures).
+    pub two_levels: bool,
     /// Blocks fitted, and their length, s.
     pub blocks: usize,
     pub block_s: f64,
@@ -334,7 +330,7 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     let n = b.len();
     let mut out = TwoState {
         verdict: Verdict::TooShort,
-        confidence: Confidence::Low,
+        two_levels: false,
         blocks: n,
         block_s: p.block_s,
         low: f64::NAN,
@@ -496,6 +492,7 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         && out.low_share.min(1.0 - out.low_share) >= p.min_share
         && out.switches >= p.min_switches
         && out.spread;
+    out.two_levels = two;
     out.verdict = if !two {
         Verdict::OneLevel
     } else if out.one_sided || out.unlock_jump {
@@ -504,15 +501,6 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         Verdict::Regular
     } else {
         Verdict::TwoStates
-    };
-    out.confidence = match out.verdict {
-        Verdict::OneLevel if out.delta_bic < 0.0 || out.separation < 1.5 => Confidence::High,
-        Verdict::OneLevel => Confidence::Medium,
-        Verdict::TooShort => Confidence::Low,
-        _ if out.separation >= 3.0 && out.delta_bic >= 30.0 && out.switches >= 10 => {
-            Confidence::High
-        }
-        _ => Confidence::Medium,
     };
     out
 }
@@ -528,9 +516,9 @@ fn lone_split(r: &TwoState) -> Option<&'static str> {
     }
 }
 
-/// One plain phrase for a report, e.g. "two amplitude states, 293° and
-/// 312°, switching about every 40 s". `series` is "amplitude" or
-/// "rate".
+/// One plain phrase for a report, e.g. "two amplitude levels, 293° and
+/// 312°, switching about every 40 s (ΔBIC 42, separation 3.1)". `series`
+/// is "amplitude" or "rate".
 pub fn describe(r: &TwoState, series: &str) -> String {
     let v = |x: f64| {
         if series == "rate" {
@@ -547,47 +535,42 @@ pub fn describe(r: &TwoState, series: &str) -> String {
             format!("{:.0} s", (s / 5.0).round() * 5.0)
         }
     };
-    match r.verdict {
-        Verdict::TooShort => format!("too short to look for {series} states"),
-        Verdict::OneLevel => match lone_split(r) {
-            Some(side) => format!(
-                "one {series} level, though the {side} windows fall in two clusters (likely the unlock mark hopping, not the watch)"
-            ),
-            None => format!("one {series} level"),
-        },
-        Verdict::TwoStates => format!(
-            "two {series} states, {} and {}{unit}, switching about every {} ({} confidence)",
-            v(r.low),
-            v(r.high),
-            every(r.switch_every_s),
-            match r.confidence {
-                Confidence::High => "high",
-                Confidence::Medium => "medium",
-                Confidence::Low => "low",
-            }
-        ),
-        Verdict::Regular => format!(
-            "{series} drops from {} to {}{unit} about every {}, a regular cycle rather than two states",
-            v(r.high),
-            v(r.low),
-            every(r.period_s.unwrap_or(r.switch_every_s))
-        ),
-        Verdict::Measurement => {
-            let why = if r.one_sided {
-                let tick = r.tick_change.unwrap_or(0.0).abs();
-                let tock = r.tock_change.unwrap_or(0.0).abs();
-                let side = lone_split(r).unwrap_or(if tick > tock { "Tick" } else { "Tock" });
-                format!("{side} carries the change alone")
-            } else {
-                "the beat error from the unlock jumps with it".to_string()
-            };
-            format!(
-                "two {series} levels, {} and {}{unit}, but {why}: likely the measurement, not the watch",
-                v(r.low),
-                v(r.high)
-            )
-        }
+    if r.verdict == Verdict::TooShort {
+        return format!(
+            "{} blocks of {:.0} s, too few to look for two {series} levels",
+            r.blocks, r.block_s
+        );
     }
+    if !r.two_levels {
+        return match lone_split(r) {
+            Some(side) => {
+                format!("one {series} level; the {side} windows fall in two clusters")
+            }
+            None => format!("one {series} level"),
+        };
+    }
+    let mut t = format!(
+        "two {series} levels, {} and {}{unit}, switching about every {} (ΔBIC {:.0}, separation {:.1})",
+        v(r.low),
+        v(r.high),
+        every(r.switch_every_s),
+        r.delta_bic,
+        r.separation
+    );
+    if r.one_sided {
+        let tick = r.tick_change.unwrap_or(0.0).abs();
+        let tock = r.tock_change.unwrap_or(0.0).abs();
+        let side = lone_split(r).unwrap_or(if tick > tock { "Tick" } else { "Tock" });
+        t += &format!("; {side} carries the change alone");
+    } else if r.unlock_jump {
+        t += "; the beat error from the unlock jumps with it, the one from the drop does not";
+    } else if r.verdict == Verdict::Regular {
+        t += &format!(
+            "; the low level comes back about every {}",
+            every(r.period_s.unwrap_or(r.switch_every_s))
+        );
+    }
+    t
 }
 
 #[cfg(test)]
