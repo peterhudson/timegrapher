@@ -91,13 +91,14 @@ pub const RATE: &[&str] = &[
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. Once the error is measured and stored \
      (`timegrapher clock measure --save`, or `clock from-log --save` after a recording \
-     with a clock log), the app shows the corrected rate under the big figure. The big \
+     with a clock log), the app shows the corrected rate under the big figure. Until \
+     then the rate is read on the card's clock alone, as tg reads it. The big \
      figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
     "The ± is how far the figure could be off from the scatter of 10-second rates over \
      the run so far: a property of the measurement, not of the watch. \
      It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
-     an unmeasured clock) is named beside the title. Stopped after a long run, a line \
+     missing beats) is named beside the title. Stopped after a long run, a line \
      under the figure gives the whole take's mean and spread.",
 ];
 
