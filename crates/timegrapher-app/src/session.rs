@@ -566,7 +566,7 @@ mod tests {
                 .iter()
                 .map(|b| b.2)
                 .collect::<Vec<_>>(),
-            ["Dial Up (DU)", "Crown Left (CL)"]
+            ["Dial Up (DU)", "Crown Left (CL, 6H)"]
         );
     }
 
