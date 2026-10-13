@@ -104,7 +104,12 @@ Average Over, beside the Readings caption). Early in a session, or after a pause
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
-been moved or have drifted meanwhile. The big amplitude is the average of the two
+been moved or have drifted meanwhile. The panes that average (the Paper Strip's
+overlays, the Tick Tock Profile, the three charts and the three
+distributions) follow Readings' Average Over unless set otherwise: each has
+its own **Average Over** in its toolbar (the charts' in their tab bar),
+"As Readings" by default or one of the presets, and a pane with its own
+time names it in its tab ("Rate · 30 s"). The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
 median of its 2 s windows, roughly how far it could be off from their
 scatter alone. It is precision, not accuracy: a wrong lift angle moves
@@ -268,7 +273,12 @@ same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not
 tab beside the Tick Tock Profile, set in its toolbar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
-after, with the profile's Unlock and Drop marks. **200 ms** shows one
+after, with the profile's Unlock and Drop marks. **5 ms** (3.5 ms before
+the drop to 1.5 ms after) and **10 ms** (8 ms before to 2 ms after) show
+the drop closer still, and **50 ms** (15 ms before to 35 ms after) the
+sound and what rings on after it, all with the same marks. **One Beat**
+runs from 15 ms before one beat to 15 ms before the next, at the
+watch's beat rate (125 ms at 28,800 bph, 200 ms at 18,000). **200 ms** shows one
 row each from 20 ms before the beat to 180 ms after, so the next beat
 shows too. **400 ms** shows every beat in one grey row, three or four
 beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
@@ -384,7 +394,9 @@ levels, a step, a trend, correlation between readings, or none of these),
 with no verdict word or colour, and under it the statistics: readings,
 median, standard deviation, the scatter from one reading to the next, the
 lag-1 correlation and Ljung–Box p-value, and the trend and period when
-found. Under Each Series, in the Steadiness toolbar,
+found. **Rate**, **Amplitude** and **Beat Error**, in the Steadiness
+toolbar, choose which series are shown; at least one stays on. Under Each
+Series, in the same toolbar,
 chooses what is drawn under every series:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
