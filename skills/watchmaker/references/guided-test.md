@@ -156,8 +156,9 @@ Each run says on stderr when it starts and prints `done: the watch can
 be moved` at the end; tell the person both. Before you ask them to
 turn the watch, read the take's facts: if no regular beat was found
 (`watch_heard` false) or the ticks clipped (`clipping`), fix the cause
-and record that position again. Some builds leave such a take out of
-the session and exit 3; read the take's facts either way. A bad
+and record that position again: `record` keeps every take, so the
+session then holds both, and `session` reads each (older builds left
+such a take out and exited 3). A bad
 position is cheaper to redo now than tomorrow.
 
 ## 5. Read the session
