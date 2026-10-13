@@ -99,12 +99,18 @@ fn silence_and_noise_only() {
 #[test]
 fn signal_above_noise_is_a_figure() {
     let cfg = DiagnoseConfig::default();
-    for snr in [16.0, 21.0, 40.0] {
+    // The same figures the bands were drawn at: 3 to 5× at 16 dB, 5 to
+    // 10× at 21 dB, 10× and above at 40 dB.
+    for (snr, lo, hi) in [
+        (16.0, 3.0, 5.0),
+        (21.0, 5.0, 10.0),
+        (40.0, 10.0, f64::INFINITY),
+    ] {
         let c = check(&watch(snr), &cfg);
-        assert!(c.signal_x.unwrap() >= 3.0, "{snr}: {:?}", c.signal_x);
+        let x = c.signal_x.unwrap();
+        assert!((lo..hi).contains(&x), "{snr} dB: {x}");
         assert!(!c.has(IssueCode::NoTicks), "{snr}: {:?}", c.issues);
     }
-    assert!(check(&watch(40.0), &cfg).signal_x.unwrap() >= 10.0);
     let none = check(&watch(11.0), &cfg);
     assert!(none.has(IssueCode::NoTicks), "{:?}", none.signal_x);
 }

@@ -161,7 +161,19 @@ fn analyze_and_session_agree_on_a_whole_file() {
         m.lift_unknown();
     }
     assert_eq!(s.caveats, m.caveats);
-    assert_eq!(s.confidence.is_some(), m.confidence.is_some());
+    // The same ± on each reading, to within 1% (the streamed read sums
+    // in a different order).
+    let se = |c: &Option<timegrapher_core::confidence::Confidence>| {
+        c.map(|c| [c.rate.se, c.amplitude.se, c.beat_error.se])
+    };
+    let (a, b) = (se(&s.confidence).unwrap(), se(&m.confidence).unwrap());
+    for (x, y) in a.iter().zip(&b) {
+        let (x, y) = (x.unwrap(), y.unwrap());
+        assert!(
+            (x - y).abs() <= 0.01 * x.abs().max(y.abs()),
+            "{a:?} against {b:?}"
+        );
+    }
 }
 
 #[test]

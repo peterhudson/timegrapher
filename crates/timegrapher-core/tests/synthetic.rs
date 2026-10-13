@@ -260,6 +260,11 @@ fn an_empty_stand_is_no_watch() {
     let c = watch.confidence.expect("a ± for each reading");
     assert!(watch.doubts.clock_unknown && watch.doubts.lift_unknown);
     assert!(watch.usb_clock.is_none());
+    assert!(
+        !watch.doubts.clipped && !watch.doubts.beats_missing,
+        "{:?}",
+        watch.doubts
+    );
     assert!(c.beat_error.se.is_some_and(|e| e < 0.05), "{c:?}");
 }
 
@@ -286,12 +291,63 @@ fn shape_measures_follow_the_sound() {
         let (a, b) = (f(&m.even), f(&m.odd));
         (a.max(b), a.min(b))
     };
+    // The healthy bounds, each written so that a measure not taken stays
+    // inside it: sound 1 quieter than sound 3, sounds 1 and 2 found in most
+    // windows, 1-to-2 within 1.8× between the sides, tails within 3× (or
+    // both under 0.1), and beat error moving under 1 ms over the take.
+    // Under (or at least) a bound, or not measured at all.
+    let under = |x: f64, bound: f64| x.is_nan() || x < bound;
+    let at_least = |x: f64, bound: f64| x.is_nan() || x >= bound;
+    let unlock = |m: &Measures| under(both(m, &|s| v(s.ratio13)).0, 1.0);
+    let shares = |m: &Measures| {
+        at_least(both(m, &|s| v(s.share_with_sound_1)).1, 0.3)
+            && at_least(both(m, &|s| v(s.share_with_sound_2)).1, 0.5)
+    };
+    let i12 = |m: &Measures| {
+        let (hi, lo) = both(m, &|s| v(s.i12_ms));
+        under(hi / lo, 1.8)
+    };
+    let tail = |m: &Measures| {
+        let (hi, lo) = both(m, &|s| v(s.tail_ratio));
+        under(hi / lo, 3.0) || under(hi, 0.1)
+    };
+    let drift = |m: &Measures| {
+        under(
+            (v(m.beat_error_last_quarter_ms) - v(m.beat_error_first_quarter_ms)).abs(),
+            1.0,
+        )
+    };
+    type Bound<'a> = (&'a str, &'a dyn Fn(&Measures) -> bool);
+    let healthy: [Bound; 5] = [
+        ("unlock", &unlock),
+        ("shares", &shares),
+        ("i12", &i12),
+        ("tail", &tail),
+        ("drift", &drift),
+    ];
+
     let clean = measures(&base());
     println!("clean {clean:?}");
     assert!(both(&clean, &|s| v(s.share_with_sound_1)).1 > 0.9);
     assert!(both(&clean, &|s| v(s.share_with_sound_2)).1 > 0.9);
     assert!(both(&clean, &|s| v(s.ratio13)).0 < 1.0);
     assert!(clean.even.windows_measured >= 5 && clean.odd.windows_measured >= 5);
+    // Taken, not just absent, on the healthy watch.
+    assert!(both(&clean, &|s| v(s.i12_ms)).1 > 0.0, "{clean:?}");
+    assert!(
+        both(&clean, &|s| v(s.tail_ratio)).1.is_finite(),
+        "{clean:?}"
+    );
+    assert!(
+        v(clean.beat_error_first_quarter_ms).is_finite(),
+        "{clean:?}"
+    );
+    for (name, ok) in &healthy {
+        assert!(
+            ok(&clean),
+            "a healthy watch outside the {name} bound: {clean:?}"
+        );
+    }
 
     let knock = Sound {
         gain: 0.15,
@@ -299,9 +355,12 @@ fn shape_measures_follow_the_sound() {
         decay_s: 0.0003,
     };
     type Check = Box<dyn Fn(&Measures) -> bool>;
-    let cases: Vec<(&str, SynthConfig, Check)> = vec![
+    // Each case, the measure it moves, and a check on that measure; every
+    // other measure stays inside its healthy bound.
+    let cases: Vec<(&str, &str, SynthConfig, Check)> = vec![
         (
             "a loud unlock on one side: sound 1 louder than sound 3 there only",
+            "unlock",
             SynthConfig {
                 odd_gains: Some([1.6, 0.25, 1.0]),
                 ..base()
@@ -313,6 +372,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "no unlock on one side: sound 1 or 2 rarely found there",
+            "shares",
             SynthConfig {
                 odd_gains: Some([0.0, 0.25, 1.0]),
                 ..base()
@@ -325,6 +385,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "unlock and impulse merged on both sides: sound 2 rarely apart",
+            "shares",
             SynthConfig {
                 impulse_at: 0.03,
                 ..base()
@@ -333,6 +394,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "a shallow lock on one side: 1-to-2 far longer on one side",
+            "i12",
             SynthConfig {
                 odd_impulse_at: Some(0.18),
                 ..base()
@@ -344,6 +406,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "a knock before one side's unlock: 1-to-2 far longer on one side",
+            "i12",
             SynthConfig {
                 extra: Some(ExtraSound {
                     offset_s: -0.016,
@@ -359,6 +422,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "rubbing after one side's drop: a longer tail on that side",
+            "tail",
             SynthConfig {
                 rub: Some(Rub {
                     even: false,
@@ -374,6 +438,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "beat error drifting by 2 ms over two minutes",
+            "drift",
             SynthConfig {
                 duration_s: 120.0,
                 beat_error_drift_ms_per_s: 0.017,
@@ -386,6 +451,7 @@ fn shape_measures_follow_the_sound() {
         ),
         (
             "beat error drifting by 0.4 ms",
+            "drift",
             SynthConfig {
                 duration_s: 120.0,
                 beat_error_drift_ms_per_s: 0.0035,
@@ -399,9 +465,15 @@ fn shape_measures_follow_the_sound() {
     ];
     let wrong: Vec<String> = cases
         .into_iter()
-        .filter_map(|(name, cfg, ok)| {
+        .filter_map(|(name, moved, cfg, ok)| {
             let m = measures(&cfg);
-            (!ok(&m)).then(|| format!("{name}: {m:?}"))
+            let outside: Vec<&str> = healthy
+                .iter()
+                .filter(|(n, h)| *n != moved && !h(&m))
+                .map(|(n, _)| *n)
+                .collect();
+            (!ok(&m) || !outside.is_empty())
+                .then(|| format!("{name}: also outside {outside:?}: {m:?}"))
         })
         .collect();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
