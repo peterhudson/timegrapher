@@ -60,15 +60,13 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
 /// timing scatter of the beats, in ms and as a share of the beat period,
 /// when the measurement gives it (`jitter_us`, with the beat rate).
 pub fn no_regular_beat(m: &Value, bph: Option<f64>) -> String {
-    let scatter = match (m["jitter_us"].as_f64(), bph.filter(|b| *b > 0.0)) {
-        (Some(j), Some(b)) => format!(
-            " (timing scatter {:.1} ms, {:.1}% of a beat)",
-            j / 1000.0,
-            j / (3.6e9 / b) * 100.0
-        ),
-        _ => String::new(),
+    let said = match bph.filter(|b| *b > 0.0) {
+        Some(b) => {
+            timegrapher_core::session::no_regular_beat(m["jitter_us"].as_f64(), b.round() as u32)
+        }
+        None => timegrapher_core::session::no_regular_beat(None, 0),
     };
-    format!("No regular beat found{scatter}. There are no rate, amplitude or beat error readings.")
+    format!("{said}. There are no rate, amplitude or beat error readings.")
 }
 
 /// A session reading's name: its position, and its state of wind when the
