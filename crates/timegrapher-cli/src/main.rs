@@ -33,7 +33,7 @@ use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
     after_help = "Every command with --json prints one JSON document with a `schema` field \
 (e.g. timegrapher.analyze/1), the software version and the input it read. \
 Start with `timegrapher doctor` to check the microphone. Exit codes: 0 success, \
-1 error, 3 doctor found problems or a take was not fit to keep."
+1 error, 3 doctor found problems."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -320,10 +320,10 @@ enum Command {
         json: bool,
     },
     /// Record one position of a test into a session folder: a take folder
-    /// as the desktop app saves it, checked at once and, when a watch is
-    /// heard cleanly, added to the folder's session.toml for `session`.
-    /// Listens only while it runs, for --seconds. Exits 3 when the take is
-    /// not fit to keep (no watch heard, or clipped).
+    /// as the desktop app saves it, checked at once and added to the
+    /// folder's session.toml for `session`, with what was measured: no
+    /// regular beat, or clipping, is stated, not refused. Listens only while
+    /// it runs, for --seconds.
     Record {
         /// The session folder (created if missing); one per watch and test.
         folder: PathBuf,
@@ -837,11 +837,7 @@ fn main() -> ExitCode {
                 json,
                 live,
             };
-            match record_cmd::run(&o) {
-                Ok(true) => Ok(()),
-                Ok(false) => return ExitCode::from(3),
-                Err(e) => Err(e),
-            }
+            record_cmd::run(&o)
         }
         Command::Session {
             paths,

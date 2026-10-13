@@ -10,8 +10,17 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// Current version of each document kind.
+/// Version of the document kinds that have not changed since the first.
 pub const SCHEMA_VERSION: u32 = 1;
+
+/// Current version of a document kind. `record/2` keeps every take and
+/// drops the verdict.
+pub fn schema_version(kind: &str) -> u32 {
+    match kind {
+        "record" => 2,
+        _ => SCHEMA_VERSION,
+    }
+}
 
 #[derive(Serialize)]
 pub struct Envelope<'a, T: Serialize> {
@@ -47,7 +56,7 @@ pub fn software() -> Value {
 /// The JSON text of a document of `kind`.
 pub fn to_json<T: Serialize>(kind: &str, input: Value, body: &T) -> Result<String, String> {
     serde_json::to_string_pretty(&Envelope {
-        schema: format!("timegrapher.{kind}/{SCHEMA_VERSION}"),
+        schema: format!("timegrapher.{kind}/{}", schema_version(kind)),
         software: software(),
         input,
         body,

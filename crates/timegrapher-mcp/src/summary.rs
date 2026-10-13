@@ -189,6 +189,8 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
             Some("clipping") => {
                 "The take was not added to the test, as more than 1% of its beats were clipped."
             }
+            // record/2 has no verdict: every take is added.
+            None if doc["session_file"].is_string() => "The take was added to the test.",
             _ => "",
         }
         .to_string(),

@@ -12,8 +12,8 @@ The [watchmaker skill](../skills/watchmaker/SKILL.md) builds on it.
   exactly one JSON document on stdout. Progress and warnings go to stderr.
 - Exit codes: `0` success, `1` error (message on stderr), `3` from `doctor`
   when the input is not fit to measure with, and from `regress` when the
-  engine moved away from tg ([regress](regress.md)), and from `record` when
-  the take was not fit to keep.
+  engine moved away from tg ([regress](regress.md)). `record` exits 0 for
+  every take it keeps, which is every take.
 - Nothing listens unless asked: `doctor` and `record` open the microphone
   only while they run, for the time they say.
 - Nothing changes the computer's settings unless the person asked for it:
@@ -61,7 +61,7 @@ readings: anything that compares two documents should leave `software` out.
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | `source`, `check`, `mixer`, `fixes[]`, `applied`, `after`, `verdict` (below) |
-| `record` | `record FOLDER --position P --json` | `take` (the take's folder), `session_file` (the session file the take was added to, or null), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no watch is heard or the stretch after settling is too short), `verdict` (`ok`, `no_watch_heard`, `clipping`); see [`record`](#record) |
+| `record` | `record FOLDER --position P --json` | (`record/2`) `take` (the take's folder), `session_file` (the session file the take was added to), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `timing_scatter_ms` and `timing_scatter_fraction` (the median timing scatter over the whole take, in ms and as a share of the beat; 2% or more is no regular beat), `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no regular beat is found or the stretch after settling is too short); `record/1` also had `verdict` (`ok`, `no_watch_heard`, `clipping`) and left a take with no watch heard or clipping out of the session; see [`record`](#record) |
 | `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values (`d_rate`, `d_amplitude`: the largest difference between any two positions; `dv_rate`, `dh_rate`: the same among the vertical or the horizontal positions; `dvh_rate`, `dvh_amplitude`: the vertical mean minus the horizontal mean), `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `severity`, `recording`, `title`, `evidence`, `advice`); also written to `summary.json`; see [sessions.md](sessions.md) Each reading's measurement has `breaks` too, with the same meaning, when its stretch holds one. Each reading's `measurement` also carries `confidence` (`rate`, `amplitude`, `beat_error`, each `se` and `grade`, judged as `analyze` judges them; `null` when no watch is heard) and `caveats[]` (as for `analyze`; `lift_unknown` when no `--lift`, session-file `lift` or known calibre gave the lift angle). |
 | `report` | `report [RECORDING] --json` | the bundle's manifest: `created_utc`, `kind`, `note`, `os_version`, `recording`, `commands[]` (`args`, `cwd`, `output`, `replayable`), `files[]` (`path`, `bytes`, `sha256`), `consent`, `redacted`, `left_out`; the zip's path goes to stdout without `--json`; see [reports.md](reports.md) |
 | `replay` | `report --replay BUNDLE --json` | `bundle` (when and by which build it was made), `damaged[]`, `commands[]` (`args`, `output`, `ran`, `error`, `moved[]` of `path`, `then`, `now`) |
@@ -139,21 +139,22 @@ Each run makes one take folder in FOLDER, the same as the desktop app
 saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
 the app opens it with; a take paused and resumed in the app also has a
 `breaks` list in `session.json`, described in [app.md](app.md)), named after the start time, the watch and the
-position. The take is analysed at once. Whether a watch is heard and clipping
-are judged over the whole take, so a short take still gets a verdict.
+position. The take is analysed at once. Whether a regular beat is found
+(`watch_heard`, with the timing scatter behind it) and clipping are
+measured over the whole take, so a short take still gets them.
 The readings come from the stretch `session` will read: the check skips
 the take's `settle_s` from the session file (30 s in a file `record`
 writes; at most half the take) and reads the rest on the sound card's
 clock, as `session` does, so the check and the report agree; they are
-null when that stretch is too short to hear the watch on its own. When a
-watch is heard and under
-1% of beats clip, the take is added to `FOLDER/session.toml` (written on
-the first take with the watch, calibre, bph, lift and `settle_s = 30`,
-then appended to, comments and all) with its position, `wind_h` when
-given, and start time, and the exit code is 0. Otherwise the take folder is kept, the
-session file is left alone, `verdict` says why, and the exit code is 3:
-record that position again. `timegrapher session FOLDER` then reads every
-take in the session.
+null when no regular beat is found or that stretch is too short to hear
+the watch on its own. Every take is added to `FOLDER/session.toml`
+(written on the first take with the watch, calibre, bph, lift and
+`settle_s = 30`, then appended to, comments and all) with its position,
+`wind_h` when given, and start time, and a comment line above the entry
+for each fact worth seeing there ("No regular beat found (timing scatter
+X ms, Y% of a beat)", "N% of beats clipped"); the exit code is 0. Whether
+to record a position again is the agent's call from those facts.
+`timegrapher session FOLDER` then reads every take in the session.
 
 `--calibre` fills bph and lift from the calibre table when they are not
 given. A session file already in FOLDER sets them for every take; a
