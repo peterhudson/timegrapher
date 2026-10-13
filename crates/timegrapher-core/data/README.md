@@ -79,6 +79,34 @@ How the rows were merged:
   out of the row, with a note. Calibre names the spreadsheet turned into
   dates ("13-Mar") are read back as numbers ("13.3").
 
+## Chinese makers' own pages
+
+Rows with `confidence` "maker's page" come from the makers' own
+specification pages, read on 2026-10-13:
+
+- Peacock (Dandong): http://en.cpeacockmovement.com/Movement/2.html to
+  /Movement/8.html and each calibre's page;
+- Shanghai Jinghe: http://en.jingheshiye.com/jingdianzhizuo/ and its
+  other product lists;
+- Tianjin Seagull: https://en.seagullwatch.com/ movement pages;
+- Hangzhou: two assembly drawings (HZ8230A, HZ8220A) downloaded from
+  Hangzhou's site.
+
+Each row cites the page it came from and the beat rate as the page
+wrote it. Only Hangzhou's drawings give a lift angle; the other pages
+give the beat rate, jewels, size and power reserve, so those rows carry
+a beat rate and a balance period and no lift angle. Seagull's pages print
+the beat rate as a bare number ("Frequency: 21600"), read as vph. Pages
+with no figures were left out, and none of the pages says which calibre
+a movement copies.
+
+Still to do: Hangzhou (hzwatch.com), Beijing (beijingwatch.com) and
+Guangzhou Five Goats, now Dixmont (dixmont.com.cn), publish a
+drawing per calibre with its lift angle, but their sites refuse
+automated readers, so only the two Hangzhou drawings above are in.
+Shanghai Watch Co. (shwatch.cn) shows no movement pages. These makers'
+calibres are wanted in the table.
+
 ## What users add
 
 Wheel periods a user enters and calibres they add are not written here:

@@ -549,5 +549,15 @@
     "common": true,
     "aliases": [],
     "sources": []
+  },
+  {
+    "maker": "Hangzhou",
+    "aliases": [
+      "HZ",
+      "Hangzhou Watch Co"
+    ],
+    "sources": [
+      "Hangzhou Watch Co. (杭州手表有限公司) assembly drawings name its calibres HZ8230A, HZ8220A"
+    ]
   }
 ]

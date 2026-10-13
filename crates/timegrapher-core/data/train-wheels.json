@@ -263,7 +263,8 @@
     ],
     "sources": [
       "https://reference.grail-watch.com/movement/st36/amp/",
-      "https://calibercorner.com/seagull-caliber-st3621"
+      "https://calibercorner.com/seagull-caliber-st3621",
+      "https://en.seagullwatch.com/products/small-second-movement-ty3600-st3600: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "derived from the beat rate",
     "notes": "A copy of the Unitas 6497/6498; it probably shares the 6497-2 train (escape 5 s, third wheel 450 s) but no source confirms it, so those wheels are left out. Lift angle not documented (44° as the 6497 is often used)."
@@ -1382,7 +1383,8 @@
       }
     ],
     "sources": [
-      "https://calibercorner.com/seagull-caliber-ty2130"
+      "https://calibercorner.com/seagull-caliber-ty2130",
+      "https://en.seagullwatch.com/products/hands-date-movement-ty2130-st2130: maker's page, \"Frequency: 28800 (no unit stated on page)\""
     ],
     "confidence": "derived from the beat rate",
     "notes": "A 2824-2 copy, about 40 h. Lift 50° is Caliber Corner's unconfirmed figure, so no lift angle is given here."
@@ -1539,7 +1541,8 @@
     ],
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
-      "Project bench notes: like the Dandong 324, with a monolithic bridge"
+      "Project bench notes: like the Dandong 324, with a monolithic bridge",
+      "http://en.cpeacockmovement.com/Movement_detail/56.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
     ],
     "confidence": "measured",
     "notes": "No published data found under this name. Taken from this project's recordings only. Bench takes use lift 52°, a setting rather than a documented figure."
@@ -73413,5 +73416,1953 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zodiac Dynotron, 52°, 28800 vph)"
     ],
     "confidence": "published list"
+  },
+  {
+    "calibre": "Peacock SL1200",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL1200"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/100.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL1632",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL1632"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/98.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL1632A2",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL1632A2"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/101.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL2208",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL2208"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/96.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3001",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3001"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/22.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3002B",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3002B"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/43.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3006",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3006"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/44.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3009",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3009"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/45.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3011",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3011"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/46.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3015",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3015"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/47.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3032",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3032"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/53.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3034",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3034"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/54.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL3511",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL3511"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/55.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4601",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4601"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/16.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4602",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4602"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/17.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4609",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4609"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/32.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4612",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4612"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/13.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4613D",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4613D"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/10.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4615",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4615"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/34.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4617",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4617"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/36.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4617II",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4617II"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/89.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4617Ⅲ",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4617Ⅲ"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/99.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4619",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4619"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/37.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4610D",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4610D"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/33.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4644",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4644"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/39.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4801",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4801"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/11.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4802",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4802"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/12.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4817",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4817"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/95.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL4858",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL4858"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/94.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5003A",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5003A"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/2.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5003AT",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5003AT"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/15.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5006",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5006"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/6.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5110",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5110"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/27.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5120T",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5120T"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/30.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5200",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5200"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/31.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5207",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5207"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/90.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5210",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5210"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/65.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5211",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5211"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/68.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5212",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5212"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/69.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5005",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5005"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/26.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5215",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5215"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/70.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5216",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5216"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/71.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5231P",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5231P"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/14.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5301",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5301"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/73.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5710",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5710"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/79.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5710K",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5710K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/80.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5711",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5711"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/81.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5120",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5120"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/28.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5620K",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5620K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/78.html: maker's page, \"Frequency: 21600 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5811",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5811"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/86.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL5812",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL5812"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/87.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL6601",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL6601"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/4.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL7021",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL7021"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/29.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Peacock SL7020C",
+    "maker": "Peacock (Dandong)",
+    "family": [
+      "SL7020C"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.cpeacockmovement.com/Movement_detail/61.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8501",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8501"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/254.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8002",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8002"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/217.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8003-2",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8003-2"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/216.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8032",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8032"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/215.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8033",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8033"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/214.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8056",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8056"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/213.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8058",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8058"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/212.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH8087",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH8087"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/211.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7152",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7152"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/210.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7155",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7155"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/209.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7156",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7156"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/208.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7157",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7157"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/207.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7158-1",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7158-1"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/205.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH7301",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH7301"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/204.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH6203",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH6203"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/203.html: maker's page, \"Frequency：28800vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH5031",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH5031"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/202.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH4033-1",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH4033-1"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/201.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH3005P",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH3005P"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/200.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH3034",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH3034"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/199.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH2019-2P",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH2019-2P"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/198.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH2032P",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH2032P"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/197.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH1008P",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH1008P"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/196.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Jinghe JH1025P",
+    "maker": "Shanghai Jinghe (clone)",
+    "family": [
+      "JH1025P"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "http://en.jingheshiye.com/jingdianzhizuo/195.html: maker's page, \"Frequency：21600vibrations/hr\""
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Seagull ST6103K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TYDSK",
+      "ST6103K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/skeleton-movement-tydsk-st6103k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1701",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2706",
+      "ST1701"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/small-second-movement-ty2706-st1701: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1700",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2705",
+      "ST1700"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/small-second-movement-ty2705-st1700: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1612",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2806",
+      "ST1612"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/hands-date-movement-ty2806-st1612: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2500",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2500",
+      "ST2500"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2500-st2500: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1601K1",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2808",
+      "ST1601K1"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/skeleton-movement-ty2808-st1601k1: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2551K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2551SK",
+      "ST2551K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/skeleton-movement-ty2551sk-st2551k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2625",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2625",
+      "ST2625"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2625-st2625: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2502K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2500SK",
+      "ST2502K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/skeleton-movement-ty2500sk-st2502k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2502",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2502",
+      "ST2502"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2502-st2502: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2100",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2100",
+      "ST2100"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/hands-date-movement-ty2100-st2100: maker's page, \"Frequency: 28800 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST8000",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY800",
+      "ST8000"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty800-st8000: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1818",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY1818",
+      "ST1818"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/multifunction-moon-phase-movement-ty1818-st1818: maker's page, \"Frequency: 28800 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2108",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2108",
+      "ST2108"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/multifunction-moon-phase-movement-ty2108-st2108: maker's page, \"Frequency: 28800 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2553JK1",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2553JK1",
+      "ST2553JK1"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/skeleton-movement-ty2553jk1-st2553jk1: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST2505",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2505",
+      "ST2505"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2505-st2505: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST1812",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY2661",
+      "ST1812"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/hands-date-movement-ty2661-st1812: maker's page, \"Frequency: 28800 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST8006",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY806",
+      "ST8006"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty805-st8005-copy: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST8003",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY803",
+      "ST8003"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty803-st8003: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST8002",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY802",
+      "ST8002"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty802-st8002: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Seagull ST8001",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "TY801",
+      "ST8001"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty801-st8001: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+    ],
+    "confidence": "maker's page",
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+  },
+  {
+    "calibre": "Hangzhou HZ8230A",
+    "maker": "Hangzhou",
+    "family": [
+      "HZ8230A",
+      "HZ8230"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 53.0,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "Hangzhou Watch Co. (杭州手表有限公司) assembly drawing HZ8230A (3针 双历), dated 2026-01-02, downloaded from Hangzhou's site: 全升角 (lift angle) 53°, 频率 28800/h, 21 jewels, 动力储存 72 h"
+    ],
+    "confidence": "maker's page",
+    "notes": "Hours, minutes, seconds, date and day at 3; 21 jewels; power reserve 72 h; 30 mm."
+  },
+  {
+    "calibre": "Hangzhou HZ8220A",
+    "maker": "Hangzhou",
+    "family": [
+      "HZ8220A",
+      "HZ8220"
+    ],
+    "bph": 28800,
+    "lift_angle_deg": 53.0,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "Hangzhou Watch Co. (杭州手表有限公司) assembly drawing HZ8220A (短秒3针 单历), dated 2026-01-02, downloaded from Hangzhou's site: 全升角 (lift angle) 53°, 频率 28800/h, 27 jewels, 动力储存 ≥72 h"
+    ],
+    "confidence": "maker's page",
+    "notes": "Hours, minutes, small seconds and date at 3; 27 jewels; power reserve ≥72 h; 30 mm."
   }
 ]
