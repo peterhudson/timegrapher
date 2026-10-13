@@ -49,14 +49,18 @@ pub struct Options {
     pub live: Option<PathBuf>,
 }
 
-/// A quick look at the take, enough to say whether to keep it: the
-/// stretch `session` will read, after the settling time.
+/// A quick look at the take: the stretch `session` will read, after the
+/// settling time, with the facts over the whole take.
 #[derive(Serialize)]
 struct Check {
     /// The stretch read, seconds from the start of the take.
     from_s: f64,
     to_s: f64,
     watch_heard: bool,
+    /// The median timing scatter of the beats over the whole take, and
+    /// that as a share of the beat: 2% or more is no regular beat.
+    timing_scatter_ms: Option<f64>,
+    timing_scatter_fraction: Option<f64>,
     bph: u32,
     beats_found: usize,
     beats_expected: usize,
@@ -70,17 +74,14 @@ struct Check {
 struct Report {
     /// The take's folder.
     take: String,
-    /// The session file the take was added to; null when it was not.
-    session_file: Option<String>,
+    /// The session file the take was added to.
+    session_file: String,
     position: &'static str,
     wind_h: Option<f64>,
     seconds: f64,
     source: String,
     sample_rate: u32,
     check: Check,
-    /// `ok`, or why the take was not added to the session file:
-    /// `no_watch_heard` or `clipping`.
-    verdict: &'static str,
 }
 
 /// The session settings: what the folder's session file says, filled in
@@ -95,8 +96,9 @@ struct Settings {
     existing: bool,
 }
 
-/// Returns whether the take was fit to keep.
-pub fn run(o: &Options) -> Result<bool, String> {
+/// Every take is kept and added to the session; the report states what
+/// was measured.
+pub fn run(o: &Options) -> Result<(), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
             "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
@@ -121,29 +123,17 @@ pub fn run(o: &Options) -> Result<bool, String> {
     write_take_manifest(&dir, pos, &set)?;
 
     let check = check(&dir, &set)?;
-    let verdict = if !check.watch_heard {
-        "no_watch_heard"
-    } else if check.clipping.beat_fraction > Clipping::WARN_FRACTION {
-        "clipping"
-    } else {
-        "ok"
-    };
-    let session_file = if verdict == "ok" {
-        Some(add_to_session(o, pos, &set, &dir, &started)?)
-    } else {
-        None
-    };
+    let session_file = add_to_session(o, pos, &set, &dir, &started, &check)?;
 
     let rep = Report {
         take: dir.display().to_string(),
-        session_file: session_file.map(|p| p.display().to_string()),
+        session_file: session_file.display().to_string(),
         position: pos.common(),
         wind_h: o.wind_h,
         seconds: o.seconds,
         source,
         sample_rate,
         check,
-        verdict,
     };
     if o.json {
         let files: Vec<PathBuf> = o.file.iter().cloned().collect();
@@ -155,7 +145,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
     } else {
         print_report(&rep);
     }
-    Ok(verdict == "ok")
+    Ok(())
 }
 
 fn settings(o: &Options) -> Result<Settings, String> {
@@ -470,9 +460,8 @@ fn live(
 
 fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
     let wav = dir.join("audio-001.wav");
-    // Whether a watch was heard, and clipping, over the whole take, as
-    // `analyze` reports them: the keep-or-redo call, which a short take
-    // still gets.
+    // Whether a regular beat was found, and clipping, over the whole take,
+    // as `analyze` reports them, which a short take still gets.
     let a = audio::load(&wav).map_err(|e| format!("{}: {e}", wav.display()))?;
     let mut cfg = AnalysisConfig {
         bph: set.bph,
@@ -496,6 +485,8 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         from_s: m.start_s,
         to_s: m.end_s,
         watch_heard: whole.watch_heard,
+        timing_scatter_ms: whole.jitter_us.map(|j| j / 1000.0),
+        timing_scatter_fraction: whole.jitter_us.map(|j| j * 1e-6 * log.bph as f64 / 3600.0),
         bph: log.bph,
         beats_found: m.beats,
         beats_expected: ((m.end_s - m.start_s) * log.bph as f64 / 3600.0).round() as usize,
@@ -548,6 +539,7 @@ fn add_to_session(
     set: &Settings,
     take: &Path,
     started: &str,
+    c: &Check,
 ) -> Result<PathBuf, String> {
     let file = o.folder.join(MANIFEST);
     let before = if set.existing {
@@ -568,7 +560,11 @@ fn add_to_session(
         text.push('\n');
     }
     text += &format!(
-        "\n[[recording]]\nfile = {}\nposition = {}\n{}date = {}\n",
+        "\n{}[[recording]]\nfile = {}\nposition = {}\n{}date = {}\n",
+        facts(c)
+            .iter()
+            .map(|f| format!("# {f}\n"))
+            .collect::<String>(),
         q(&name),
         q(pos.common()),
         o.wind_h.map_or(String::new(), |w| format!(
@@ -583,6 +579,28 @@ fn add_to_session(
     Ok(file)
 }
 
+/// The facts about the whole take worth stating beside its readings:
+/// no regular beat, and clipping.
+fn facts(c: &Check) -> Vec<String> {
+    let mut f = Vec::new();
+    if !c.watch_heard {
+        f.push(match (c.timing_scatter_ms, c.timing_scatter_fraction) {
+            (Some(ms), Some(x)) => format!(
+                "No regular beat found (timing scatter {ms:.1} ms, {:.1}% of a beat)",
+                100.0 * x
+            ),
+            _ => "No regular beat found".to_string(),
+        });
+    }
+    if c.clipping.beats > 0 {
+        f.push(format!(
+            "{:.1}% of beats clipped",
+            100.0 * c.clipping.beat_fraction
+        ));
+    }
+    f
+}
+
 fn print_report(r: &Report) {
     let c = &r.check;
     println!("Take         {}", r.take);
@@ -592,9 +610,10 @@ fn print_report(r: &Report) {
             format!("{w} h after full wind")
         });
     println!("Position     {} for {:.0} s, {wind}", r.position, r.seconds);
-    if !c.watch_heard {
-        println!("No watch heard: is it running and clamped against the microphone?");
-    } else {
+    for f in facts(c) {
+        println!("             {f}");
+    }
+    if c.watch_heard {
         let f = |v: Option<f64>, d: usize, u: &str| {
             v.map_or("-".to_string(), |x| format!("{x:+.d$} {u}"))
         };
@@ -611,15 +630,12 @@ fn print_report(r: &Report) {
                 .map_or("-".into(), |b| format!("{:.2} ms", b.abs())),
         );
         if c.rate_s_per_day.is_none() {
-            println!("             Too little left after settling for readings; record longer for figures to quote.");
+            println!(
+                "             {:.0} s measured after the {:.0} s settle: no readings from so short a stretch.",
+                (c.to_s - c.from_s).max(0.0),
+                c.from_s
+            );
         }
     }
-    match &r.session_file {
-        Some(f) => println!("Added to     {f}"),
-        None if r.verdict == "clipping" => println!(
-            "Not added to the session: {:.0}% of beats clipped; lower the input level (see `doctor`) and record it again.",
-            100.0 * c.clipping.beat_fraction
-        ),
-        None => println!("Not added to the session; record it again once the watch is heard."),
-    }
+    println!("Added to     {}", r.session_file);
 }

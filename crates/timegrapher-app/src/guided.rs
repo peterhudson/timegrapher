@@ -306,10 +306,10 @@ pub struct Table {
     pub mean_rate: Option<f64>,
     pub mean_amplitude: Option<f64>,
     pub mean_beat_error: Option<f64>,
-    /// The largest difference between the rates, s/d (Witschi's D).
+    /// The largest difference between the rates, s/d (D).
     pub largest_difference: Option<f64>,
     /// The vertical positions' mean rate less the horizontal ones', s/d
-    /// (Witschi's DVH).
+    /// (DVH).
     pub dvh_rate: Option<f64>,
     /// The same for amplitude, degrees.
     pub dvh_amplitude: Option<f64>,
@@ -439,7 +439,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                 ))
                 .color(pal.text),
             )
-            .on_hover_text("Witschi's D: the fastest position's rate less the slowest's");
+            .on_hover_text("D: the fastest position's rate less the slowest's");
             ui.label(
                 RichText::new(format!(
                     "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
@@ -450,7 +450,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                 .color(pal.text),
             )
             .on_hover_text(
-                "Witschi's DVH: the vertical positions' mean less the horizontal ones', \
+                "DVH: the vertical positions' mean less the horizontal ones', \
                  for rate and for amplitude",
             );
             ui.add_space(8.0);
@@ -510,7 +510,7 @@ mod tests {
         }
         // The table's figures are session's: its D and mean X, its names.
         let tbl = table(readings);
-        let report = session::evaluate(readings, &Default::default(), &Default::default());
+        let report = session::evaluate(readings);
         let d = tbl.largest_difference.unwrap();
         assert!((d - report.states[0].d_rate.unwrap()).abs() < 1e-9);
         assert!((tbl.mean_rate.unwrap() - report.states[0].x.unwrap()).abs() < 1e-9);

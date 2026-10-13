@@ -238,7 +238,7 @@ fn a_recording_can_be_followed_live() {
         next_id += 1;
     }
     let r = result.unwrap();
-    assert_eq!(r["structuredContent"]["verdict"], "ok", "{r}");
+    assert_eq!(r["structuredContent"]["check"]["watch_heard"], true, "{r}");
     // The view saw the take as it went, readings and the strip included.
     let heard: Vec<&Value> = live
         .iter()
@@ -367,7 +367,7 @@ fn a_chat_app_reads_a_watch() {
         json!({ "paths": [path(&dir.join("session"))] }),
     );
     assert!(r.get("isError").is_none(), "{r}");
-    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/1");
+    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/2");
     assert_eq!(
         r["structuredContent"]["readings"].as_array().unwrap().len(),
         3
@@ -403,8 +403,7 @@ fn a_chat_app_reads_a_watch() {
                     "take_id": format!("{pos}-1") }),
         );
         assert!(r.get("isError").is_none(), "{r}");
-        assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/1");
-        assert_eq!(r["structuredContent"]["verdict"], "ok");
+        assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/2");
         // The facts in words first: the lift angle is the calibre's.
         let said = r["content"][0]["text"].as_str().unwrap();
         assert!(said.starts_with("Recorded "), "{said}");

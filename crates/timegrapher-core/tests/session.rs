@@ -1,10 +1,11 @@
 //! Test sessions end to end: synthetic recordings in six positions, read
-//! as a session, with Witschi's values and the findings checked.
+//! as a session, with Witschi's values and the findings checked. The
+//! findings state conditions found in the sound; none judges the watch.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use timegrapher_core::audio::write_wav;
-use timegrapher_core::session::{self, evaluate, Limits, Position, Reading, Severity, Tolerance};
+use timegrapher_core::session::{self, evaluate, Position, Reading};
 use timegrapher_core::stream::{analyze_file, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
 
@@ -48,6 +49,25 @@ fn reading(position: Position, wind_h: f64, rate: f64, amp: f64, beat_error: f64
 
 fn close(a: Option<f64>, b: f64, tol: f64) -> bool {
     a.is_some_and(|a| (a - b).abs() < tol)
+}
+
+/// Every code a session finding can carry: conditions found in the sound.
+const FACT_CODES: [&str; 9] = [
+    "no_regular_beat",
+    "unlock_unreliable",
+    "clipping",
+    "measurement_short",
+    "cycle_wheel",
+    "cycle_wheel_fraction",
+    "cycle_other",
+    "shape_unlock_loud",
+    "shape_extra_sounds",
+];
+
+fn only_facts(rep: &session::SessionReport) {
+    for f in &rep.findings {
+        assert!(FACT_CODES.contains(&f.code), "{f:?}");
+    }
 }
 
 #[test]
@@ -121,7 +141,7 @@ fn six_positions_give_witschi_values_and_findings() {
             "settling time not skipped"
         );
     }
-    let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
+    let rep = evaluate(&readings);
     assert_eq!(rep.states.len(), 1);
     let st = &rep.states[0];
     assert!(close(st.x, 8.0 / 6.0, 0.4), "X {:?}", st.x);
@@ -132,48 +152,9 @@ fn six_positions_give_witschi_values_and_findings() {
     assert!(close(st.dvh_rate, -8.5, 0.6), "DVH {:?}", st.dvh_rate);
     assert!(close(st.di, -14.0, 0.6), "Di {:?}", st.di);
 
-    let titles: Vec<&str> = rep.findings.iter().map(|f| f.title.as_str()).collect();
-    assert!(
-        titles.contains(&"Large differences between positions"),
-        "{titles:?}"
-    );
-    assert!(
-        titles.contains(&"Amplitude outside tolerance"),
-        "{titles:?}"
-    );
-    assert!(
-        titles.contains(&"Vertical and horizontal rates differ"),
-        "{titles:?}"
-    );
-    assert!(
-        !titles.contains(&"Mean rate outside tolerance"),
-        "{titles:?}"
-    );
-    assert!(
-        !titles.iter().any(|t| t.contains("Beat error")),
-        "{titles:?}"
-    );
-    let codes: Vec<&str> = rep.findings.iter().map(|f| f.code).collect();
-    assert!(codes.contains(&"positional_delta"), "{codes:?}");
-    let low = rep
-        .findings
-        .iter()
-        .find(|f| f.code == "amplitude_tolerance")
-        .unwrap();
-    assert_eq!(readings[low.recording.unwrap()].position, Position::H6);
-    // Faults first.
-    assert!(rep
-        .findings
-        .windows(2)
-        .all(|w| w[0].severity <= w[1].severity));
-    // Only the low 6H amplitude (210°, under the vertical 240°) is outside.
-    let out: Vec<Position> = readings
-        .iter()
-        .zip(&rep.verdicts)
-        .filter(|(_, v)| v.amplitude == session::Mark::Outside)
-        .map(|(r, _)| r.position)
-        .collect();
-    assert_eq!(out, vec![Position::H6]);
+    // A 210° amplitude, a 16 s/d spread and a DVH of −8.5 s/d are figures
+    // in the table, not findings.
+    only_facts(&rep);
 }
 
 #[test]
@@ -184,7 +165,7 @@ fn isochronism_from_two_states_of_wind() {
         reading(Position::CH, 24.0, 7.0, 250.0, 0.4),
         reading(Position::H6, 24.0, -3.0, 215.0, 0.1),
     ];
-    let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
+    let rep = evaluate(&readings);
     assert_eq!(rep.states.len(), 2);
     assert_eq!(rep.isochronism.len(), 2);
     let ch = rep
@@ -205,49 +186,41 @@ fn isochronism_from_two_states_of_wind() {
     );
     assert!(close(rep.im, -4.0, 0.6), "Im {:?}", rep.im);
     assert!(close(rep.ie, 0.5, 0.6), "Ie {:?}", rep.ie);
-    // The tolerance applies fully wound only: the 215° at 24 h is not judged.
-    assert_eq!(rep.verdicts[3].amplitude, session::Mark::NotJudged);
 }
 
 #[test]
-fn large_beat_error_is_a_fault() {
+fn large_beat_error_is_measured_not_judged() {
     // Also checks the beat rate is still guessed right with 2.5 ms of beat error.
     let readings = vec![reading(Position::CH, 0.0, 2.0, 280.0, 2.5)];
-    let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
-    let f = &rep.findings[0];
-    assert_eq!(f.severity, Severity::Fault);
-    assert_eq!(f.title, "Large beat error");
-    assert!(f.evidence.contains("2.5"), "{}", f.evidence);
+    assert!(close(readings[0].measurement.beat_error(), 2.5, 0.1));
+    let rep = evaluate(&readings);
+    only_facts(&rep);
 }
 
 #[test]
-fn unlock_missing_in_most_windows_is_not_judged() {
+fn unlock_missing_in_most_windows_is_stated_with_its_share() {
     let mut readings = vec![reading(Position::CH, 0.0, 2.0, 200.0, 0.1)];
     assert!(readings[0].measurement.unlock_coverage.unwrap() > 0.9);
     // As on a smeared tick, where most windows lose one side's unlock.
     readings[0].measurement.unlock_coverage = Some(0.2);
-    let rep = evaluate(&readings, &Tolerance::default(), &Limits::default());
-    let codes: Vec<&str> = rep.findings.iter().map(|f| f.code).collect();
-    assert!(codes.contains(&"unlock_unreliable"), "{codes:?}");
-    // The low amplitude is shown but not judged.
-    assert!(
-        !codes.iter().any(|c| c.starts_with("amplitude")),
-        "{codes:?}"
-    );
-    assert_eq!(rep.verdicts[0].amplitude, session::Mark::Unreliable);
-    assert_eq!(rep.verdicts[0].beat_error, session::Mark::Unreliable);
-    assert_ne!(rep.verdicts[0].rate, session::Mark::Unreliable);
+    let rep = evaluate(&readings);
+    only_facts(&rep);
+    let f = rep
+        .findings
+        .iter()
+        .find(|f| f.code == "unlock_unreliable")
+        .expect("coverage stated");
+    assert_eq!(f.title, "Unlock found in 20% of windows");
+    assert!(f.evidence.starts_with("20% of the "), "{}", f.evidence);
+    // The amplitude is still shown.
+    assert!(readings[0].measurement.amplitude_deg.is_some());
 }
 
 #[test]
 fn clipped_recording_is_flagged() {
     let clean = reading(Position::CH, 0.0, 2.0, 280.0, 0.1);
     assert_eq!(clean.measurement.clipped_beats, 0);
-    let rep = evaluate(
-        std::slice::from_ref(&clean),
-        &Tolerance::default(),
-        &Limits::default(),
-    );
+    let rep = evaluate(std::slice::from_ref(&clean));
     assert!(!rep.findings.iter().any(|f| f.code == "clipping"));
 
     // The same watch with the input level far too high: every tick's peak
@@ -281,9 +254,14 @@ fn clipped_recording_is_flagged() {
         measurement: m,
         ..clean
     };
-    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
+    let rep = evaluate(&[r]);
     let f = rep.findings.iter().find(|f| f.code == "clipping").unwrap();
-    assert_eq!(f.severity, Severity::Warning);
+    assert!(f.title.starts_with("Clipped on "), "{}", f.title);
+    assert!(
+        f.evidence.contains(" beats in Dial Up (CH)"),
+        "{}",
+        f.evidence
+    );
 }
 
 #[test]
@@ -319,7 +297,7 @@ fn short_rate_cycle_is_sized_in_ms() {
 #[test]
 fn an_empty_stand_gives_no_readings() {
     // Hiss with no ticks in it: the session shows no rate, amplitude or
-    // beat error, and says why.
+    // beat error, and states the timing scatter it found instead.
     let fs = 48000u32;
     let mut state = 12345u64;
     let mut uniform = || {
@@ -355,9 +333,18 @@ fn an_empty_stand_gives_no_readings() {
         measurement: m,
         ..reading(Position::CH, 0.0, 5.0, 280.0, 0.2)
     };
-    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
+    let rep = evaluate(&[r]);
     assert_eq!(rep.findings.len(), 1, "{:?}", rep.findings);
-    assert_eq!(rep.findings[0].code, "no_watch_heard");
+    let f = &rep.findings[0];
+    assert_eq!(f.code, "no_regular_beat");
+    assert!(
+        f.title
+            .starts_with("No regular beat found (timing scatter ")
+            && f.title.ends_with("% of a beat)"),
+        "{}",
+        f.title
+    );
+    assert!(f.evidence.starts_with("in Dial Up (CH)"), "{}", f.evidence);
 
     // A watch is still heard.
     assert!(
@@ -368,34 +355,10 @@ fn an_empty_stand_gives_no_readings() {
 }
 
 #[test]
-fn amplitude_over_330_is_a_check_not_a_fault() {
-    // A position whose median amplitude is over Witschi's knocking limit:
-    // a check of the lift angle and the microphone, never a fault, since
-    // knocking shows only as jumps in the trace.
+fn amplitude_over_330_is_shown_not_judged() {
     let mut r = reading(Position::CH, 0.0, 5.0, 280.0, 0.2);
     r.measurement.amplitude_deg = Some(335.0);
-    let rep = evaluate(&[r.clone()], &Tolerance::default(), &Limits::default());
-    let f = rep
-        .findings
-        .iter()
-        .find(|f| f.code == "amplitude_high")
-        .expect("amplitude check");
-    assert_eq!(f.severity, Severity::Warning);
-    assert!(
-        f.evidence.starts_with("median amplitude 335°"),
-        "{}",
-        f.evidence
-    );
-    assert!(f.advice.contains("Check the lift angle and the microphone"));
-    assert!(!rep.findings.iter().any(|f| f.severity == Severity::Fault));
-    assert!(!rep.findings.iter().any(|f| f.code == "amplitude_tolerance"));
-
-    // At the limit itself, nothing.
-    r.measurement.amplitude_deg = Some(330.0);
-    let rep = evaluate(&[r], &Tolerance::default(), &Limits::default());
-    assert!(!rep.findings.iter().any(|f| f.code == "amplitude_high"));
-
-    // Session files that set the old `overbanking` key still read.
-    let lim: Limits = serde_json::from_str(r#"{"overbanking": 340.0}"#).unwrap();
-    assert_eq!(lim.amplitude_high, 340.0);
+    let rep = evaluate(&[r]);
+    only_facts(&rep);
+    assert!(!rep.findings.iter().any(|f| f.evidence.contains("335")));
 }

@@ -38,36 +38,145 @@ The thresholds below assume:
   re-test after 24 hours unwound (the 24-hour figures tell you more about
   the state of the oil than a fresh full wind does).
 
-## What normal looks like for the calibre
+## Tolerance sets, by source
 
-No maker publishes a "normal" amplitude for a healthy watch: ETA's,
-Seiko's and Miyota's technical documents give the lift angle and test
-conditions, not a range. What there is:
+Judge a watch against its own movement's figures where the maker
+publishes them, and say so ("ETA's figure for a Top-grade 2824-2").
+Only when none is known, use one of Witschi's classes, and say that
+too. Offer a grade's set only when a source below gives it; for any
+other calibre or grade, say none was found. Start from the assumption
+that the watch is within its maker's figure; one just outside it wants
+a second measurement before anyone talks of a fault.
 
-- **Witschi's tolerances**, which the `session` report judges against,
-  fully wound: 260–320° horizontal, 240–280° vertical
-  ([sessions.md](https://github.com/peterhudson/timegrapher/blob/main/docs/sessions.md#findings)).
-  Witschi is also quoted as "the amplitude values of today's popular
-  wristwatches are located at about 260° – 310°"
-  ([Caliber Corner](https://calibercorner.com/school/amplitude/); the
-  Witschi original wasn't found).
-- **Sellita's limits for the SW200** (an ETA 2824-2 equivalent): at most
-  315° dial up at full wind and at least 200° crown left (6H, 6 o'clock up) after
-  24 hours, for 95% of a production lot
-  ([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf));
-  the SW200-2 sheet gives 320° and 200°
-  ([SW200-2](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-2.pdf)).
-- **The project's own thresholds** in the `session` report: under 200°
-  is a fault, vertical more than 50° below horizontal a warning, over
-  330° (Witschi's knocking limit) a "Very high amplitude" warning.
+Read every set with its conditions: ETA and Sellita measure the
+movement 1 to 3 hours after full wind, and say instantaneous checks must
+allow for the instrument, the temperature and the air pressure. A
+timegrapher at home is close to that for rate and amplitude, but not
+the same test, and certifiers (COSC) measure for days.
 
-Use those, and the watch's own earlier tests, rather than a figure per
-calibre. For calibres not built like a Swiss 28,800 vph lever movement
-(slower beats, older or simpler escapements), say that these tolerances
-are for modern watches and lean on the trend between tests. Omega
-co-axial and other non-lever escapements can't be measured for
-amplitude by most timegraphers, this one included: judge them on rate,
-beat error and history.
+### Witschi's classes
+
+Witschi's training course, *Measuring Technology and Troubleshooting for
+Watches* (doc. 71.1010D35e, rel. 1.1, 2010, p. 15), gives acceptable
+values with the movement wound up
+([copy](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf)):
+
+| Class | Rate | Amplitude, horizontal | Amplitude, vertical | Beat error |
+| --- | --- | --- | --- | --- |
+| Gent's watch | −5 to +15 s/d | 250–330° | 250–270° | 0.0–0.5 ms |
+| Lady's watch | −5 to +25 s/d | 250–330° | 250–270° | 0.0–0.5 ms |
+| Chronometer | −2 to +6 s/d | 250–330° | 250–270° | 0.0–0.5 ms |
+| Chronograph | −5 to +15 s/d | 250–330° | 250–270° | 0.0–0.5 ms |
+
+After 24 hours, "approx −10% to −15% is ok". The same course's worked
+example on p. 14 gives vertical as 220–270°, so treat the vertical floor
+as soft. Witschi's later *Testing methods for mechanical watches*
+(2025, doc. D40e, about p. 34; the page is approximate) gives 260–320°
+horizontal and 240–280° vertical in its "Standard Tolerances": when you
+quote those, name that document, not the course. The same list agrees
+with the course on rate (men's −5 to +15 s/d, women's −5 to +25) and
+beat error (under 0.5 ms), and its COSC and METAS figures match the
+table below; only the amplitude ranges differ between the two Witschi
+documents. Caliber Corner's "about 260° – 310°" was not
+verified here.
+
+### Makers' figures by movement
+
+**ETA 2824-2**, from ETA's *Manufacturing Information* sheet (versions 09
+and 11 agree; [v11 copy](https://www.watch-spare.com/amfile/file/download/file/1/product/10107/)).
+Positions are NIHS: CH dial up, FH dial down, 6H/9H/3H that hour up.
+Rates are measured 1 to 3 hours after full wind.
+
+| Grade | Positions | Mean rate | Largest difference, all positions | Isochronism, CH full wind to 24 h | Beat error, CH |
+| --- | --- | --- | --- | --- | --- |
+| Standard | CH, 6H | "12 ±12 s/d" | 30 s/d | ±20 s/d | 0.8 ms |
+| Elaboré | CH, 6H, 9H | "7 ±7 s/d" | 20 s/d | ±15 s/d | 0.8 ms |
+| Top | CH, FH, 6H, 9H, 3H | "4 ±4 s/d" | 15 s/d | ±10 s/d | 0.6 ms |
+| Chronometer | five | "COSC criteria" | | | 0.6 ms |
+
+All grades: amplitude at most 315° dial up fully wound, at least 200° at
+6H after 24 hours; 95% of a lot within the limits. The
+mean rate is quoted as ETA prints it: the sheet doesn't say what "12 ±12"
+means, so don't turn it into a range. Sites that write "±12 to ±30 s/d"
+have merged the mean rate with the largest difference.
+
+**Sellita SW200-1**, from Sellita's technical documentation (v06, 2021,
+[copy](https://watchangels-live-171a32ea5b4446588cdf25-2d56b1d.divio-media.com/filer_public/d9/9a/d99abed7-ceec-4b9f-b2dd-cc797de80398/brochure_technique-sw200-1_6.pdf)):
+the same figures as the ETA 2824-2 for Elaboré (Sellita's Spécial) and
+Top (Premium), the same amplitude limits (315° and 200°), and a timegrapher set to 20 s to stabilise and 40 s to measure.
+The SW200-1 sheet lists no Standard grade; Sellita's sheets for its
+sibling calibres give the same Standard figures as ETA's
+([SW288-1](https://www.sellita.ch/scripts/calibres/images/Brochure_technique-SW288-1_1.pdf)).
+
+**Miyota** (Citizen's own pages and specification sheets), measured dial
+up within 10 to 60 minutes of a full wind (40 crown turns), posture
+difference over dial up and 6, 9 and 3 o'clock up; no temperature given:
+
+| Calibre | Rate | Posture difference |
+| --- | --- | --- |
+| 8215 | −20 to +40 s/d ([Miyota](https://miyotamovement.com/product/8215/)) | under 50 s |
+| 82S7 | −20 to +40 s/d ([Miyota](https://miyotamovement.com/product/82s7/)) | under 50 s |
+| 9015 | −10 to +30 s/d ([Miyota](https://miyotamovement.com/product/9015/)) | under 30 s |
+
+**Seiko and TMI.** Two kinds of figure: the manuals' accuracy on the
+wrist (worn, 5–35 °C), and the technical guides' bench figures.
+
+| Calibre | On the wrist | On the bench |
+| --- | --- | --- |
+| NH35, NH36 | | −20 to +40 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up; posture difference under 60 s (SII technical guide, NH3 series, [copy](https://cousinsuk.com/pdf/categories/6810_seiko%20nh3%20series%20part%20sheet.pdf)); NH36A at 23 ± 2 °C ([copy](https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf)) |
+| 4R35 | +45 to −35 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_4R35_4R36_D_EN/BONDSYkqbeszsf)) | dial up ±20 s/d, 6 and 9 o'clock up ±30 s/d, dial up full wind to 24 h ±30 s/d, within 30 min of full wind (technical guide, [copy](https://www.cousinsuk.com/pdf/skus/9022_4r35b_4r36a.pdf)) |
+| 6R15 | +25 to −15 s/d (instruction booklet, [copy](https://api.seikoboutique.hu/Instructions/6R15D_EN.pdf)) | as the 4R35 (technical guide, [copy](https://www.cousinsuk.com/pdf/categories/8955_pao024_14267_191030121314_1_6r15cd.pdf)) |
+| 6R35 | +25 to −15 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_6R35_D_EN/BONDSYkqbeszsf)) | −15 to +25 s/d, 10–60 min after full wind, dial up, 9 and 6 o'clock up (technical guide, [copy](https://cousinsuk.com/pdf/skus/9509_6r35.pdf)) |
+| 8L35 | +15 to −10 s/d ([Seiko](https://www.seikowatches.com/instructions/html/SEIKO_8L35_8L55_D_EN/BONDSYkqbeszsf)) | |
+
+No beat-error or amplitude limit was found for any Miyota or Seiko
+calibre.
+
+### Certified chronometers
+
+**COSC** ([cosc.swiss](https://www.cosc.swiss/en/certification/mechanical-movements)):
+the uncased movement, 15 days, five positions (3, 6 and 9 o'clock up,
+dial up, dial down) and several temperatures; the limits are absolute.
+
+| Criterion | Over 20 mm | 20 mm or under |
+| --- | --- | --- |
+| Average daily rate | −4 to +6 s/d | −5 to +8 s/d |
+| Mean variation in rates | 2 s/d | 3.4 s/d |
+| Greatest variation in rates | 5 s/d | 7 s/d |
+| Horizontal against vertical | −6 to +8 s/d | −8 to +10 s/d |
+| Largest variation in rates | 10 s/d | 15 s/d |
+| Thermal variation | ±0.6 s/d per °C | ±0.7 s/d per °C |
+| Rate resumption | ±5 s/d | ±6 s/d |
+
+COSC sets no beat-error, amplitude or isochronism limit.
+
+**METAS Master Chronometer**: 0 to +5 s/d,
+the cased watch, after chronometer certification of the movement
+([Omega](https://www.omegawatches.com/masterchronometercertification)).
+
+**Rolex Superlative Chronometer**: −2 to +2 s/d for the cased watch,
+after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)).
+
+A COSC or Rolex figure is a mean over days and positions: a certified
+watch reading +7 dial up on a timegrapher is not out of its
+specification.
+
+### The project's rules of thumb
+
+Where no source gives a figure, the program's old thresholds are the
+project's rules of thumb (see
+[findings.md](findings.md#session-the-positions-test)): under 200° fully
+wound is very low; vertical more than 50° below horizontal is worth a
+look; over 330° means check the lift angle and the microphone; 2 ms of
+beat error is large; a spread between positions over 10 s/d is worth a
+look when no maker's figure exists.
+
+For calibres not built like a Swiss 28,800 vph lever movement (slower
+beats, older or simpler escapements), say that these sets are for modern
+watches and lean on the trend between tests. Omega co-axial and other
+non-lever escapements can't be measured for amplitude by most
+timegraphers, this one included: judge them on rate, beat error and
+history.
 
 ## How long since the service?
 
@@ -105,14 +214,14 @@ The watch is healthy. Wear it and enjoy it.
 
 - Amplitude within the normal range for its calibre, and holding up at
   24 hours.
-- Beat error within Witschi's 0.5 ms (the report's `beat_error_tolerance`).
+- Beat error within the maker's figure, or Witschi's 0.0–0.5 ms.
 - The rate over the positions within the maker's own figure for the
   calibre (SKILL.md, "Judge the rate against the maker's own figure").
 - A straight, steady trace across the whole run, and no periodic change
-  the program names as a finding (`cycle_wheel` in `session`, or a
-  wheel `long` confirms). A period listed in `analyze`'s
+  tied to a wheel (in `session`'s readings, or a wheel `long`
+  confirms). A period listed in `analyze`'s
   `amplitude_periods` or `timing_periods` is a hint to confirm with
-  `long`, not a finding; if the person asks about one, a line is
+  `long`, not a fault; if the person asks about one, a line is
   enough: the program noted a repeat it can't tie to a fault, so ignore
   it unless a long run confirms it.
 - Serviced within the interval above, or new.
@@ -127,7 +236,8 @@ Nothing to do now; re-test in six to twelve months or if its timekeeping
 changes.
 
 - Amplitude a little below normal for the calibre, but steady.
-- Beat error over 0.5 ms but well under the report's 2 ms fault.
+- Beat error over the maker's figure or Witschi's 0.5 ms, but well under
+  2 ms (the project's rule of thumb for "large").
 - Positional spread wider than the calibre should manage.
 - A small regular wave or once-a-minute dip that isn't affecting
   timekeeping.
@@ -142,11 +252,12 @@ again in six months; if it's dropped further, book a service."
 Book it in within the next few months; it's fine to wear meanwhile unless
 it gets worse.
 
-- Amplitude clearly below Witschi's tolerance fully wound, or under
-  Sellita's 200° minimum crown left (6H, 6 o'clock up) at 24 hours.
+- Amplitude fully wound clearly below the set that fits the watch, or
+  under ETA's and Sellita's 200° minimum at 6H (6 o'clock up) at 24
+  hours.
 - Amplitude falling between tests months apart.
 - Dial up and dial down clearly apart in amplitude, or vertical more than
-  50° below horizontal (`vh_amplitude_drop`).
+  50° below horizontal (`dvh_amplitude`; the project's rule of thumb).
 - A large drop from full wind to 24 hours, or a power reserve clearly
   short of the maker's figure.
 - Rate spread or average the owner can't live with: regulation is usually
@@ -157,7 +268,7 @@ it gets worse.
   3235 at +66 s/d crown left and −18 crown right, a spread of 84 s/d,
   and a mean of +23 over six positions (+46 DU, +37 DD, +17 CD, −11 CU,
   +66 CL, −18 CR), against Rolex's −2/+2 for the cased watch.
-- Beat error at the report's 2 ms fault (`beat_error_large`) or near it.
+- Beat error at 2 ms or near it (the project's rule of thumb for "large").
 - A clear periodic fault confirmed on a long run.
 - Still gaining hundreds of seconds a day after demagnetising properly
   (see below).

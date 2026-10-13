@@ -99,14 +99,15 @@ beat is than the typical background, the same "signal N×" the desktop
 app shows, with its band), whether the
 background rises between ticks (the sign of automatic gain), the beat rate
 it detected and beats found against expected, a quick rate and beat error
-(a few seconds only; don't read the watch from it), and a list of issues.
-Each issue is a **fault** (spoils measurements) or a **warning** (worth
-fixing; readings still usable). On Linux it also reads the card's mixer
+(a few seconds only; don't read the watch from it), and a list of what
+it detected, each with a `code`. On Linux it also reads the card's mixer
 (`amixer`) and shows the level and auto-gain controls.
 
-Exit code **0** means nothing spoils a measurement (there may still be
-warnings), **3** means at least one fault, **1** an error. The JSON
-`verdict` is `ok` or `needs_attention`.
+Read the levels and the codes, not the labels: some builds also mark
+each issue a fault or a warning, print a `verdict` (`ok` or
+`needs_attention`) and exit 3 on a fault. Those are the program's fixed
+cut-offs, not facts about this stand; the table says what each code
+measures and what usually fixes it.
 
 It changes nothing unless you give `--apply`, and **you only give
 `--apply` after the person has agreed** to the specific fix it proposed.
@@ -115,35 +116,37 @@ Every proposed fix carries `requires_consent: true` for that reason.
 the fixes are instructions for the person to follow. After applying, a
 live `doctor` checks again and reports the result under `after`.
 
-| Issue | What it means | Usual fix |
+| Code | What was measured | Usual fix |
 | --- | --- | --- |
-| `silent` (fault) | Nothing, or digital silence. | Wrong device; device muted; mic not plugged in; on macOS the terminal hasn't been given microphone permission. |
-| `too_quiet` (warning) | Peaks below about −30 dBFS. | Raise the mic level; clamp the watch firmly; make sure the case touches the pick-up. |
-| `clipping` (fault) | Samples at full scale, or flat-topped peaks below it (clipping in the analogue stage). Amplitude and shape will be wrong. | Lower the mic level (it suggests about −6 dB and a re-check); turn off any "boost". |
-| `hot` (warning) | Peaks above −6 dBFS, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
-| `agc_suspected` (fault) | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
-| `no_ticks` (fault) | Fewer than half the expected beats, or signal below 3×: no watch heard. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
-| `noisy` (fault) | Signal poor, 3 to 5×: only the rate can be trusted; ignore amplitude and beat error. | Reposition the watch on the pickup, check the microphone cable, and raise the input level. |
-| `noisy` (warning) | Signal fair, 5 to 10×: rate reliable; amplitude and beat error may be off on some watches. | Press the watch more firmly against the pickup, or raise the input level a little, to get above 10×. Also: mains chargers near the mic, fans, touching the stand; `--notch` for steady tones. |
+| `silent` | Nothing, or digital silence. | Wrong device; device muted; mic not plugged in; on macOS the terminal hasn't been given microphone permission. |
+| `too_quiet` | Peaks below −30 dBFS. | Raise the mic level; clamp the watch firmly; make sure the case touches the pick-up. |
+| `clipping` | Samples at full scale, or flat-topped peaks below it (clipping in the analogue stage). Amplitude and shape may be off; the rate is not. | Lower the mic level (it suggests about −6 dB and a re-check); turn off any "boost". |
+| `hot` | Peaks above −6 dBFS, not yet clipping. | Lower the level a step or two; a fully wound watch at high amplitude is louder. |
+| `agc_suspected` | The background rises by more than 3 dB through the gap between ticks: automatic gain turning down on each tick and back up in the gaps. | Turn off auto gain / AGC / "audio enhancements". |
+| `no_ticks` | Fewer than half the expected beats, or signal below 3×. | Watch stopped? Not touching the mic? Very noisy room? Wrong device? Wrong beat rate (give `--bph`)? |
+| `noisy` | Signal under 10× (the figure is in the result). | Press the watch more firmly against the pickup, or raise the input level a little, to get above 10×. Also: mains chargers near the mic, fans, touching the stand; `--notch` for steady tones. |
 
-The signal bands are the desktop app's, so what `doctor` says matches the
-app's status bar:
+The signal figure (`signal_x`) is how many times louder the typical
+beat is than the background between beats. What each level is good for
+is the project's rule of thumb, from its own added-noise tests of
+2026-10-09 (not yet published), not a property of the microphone; some builds print it as a
+band word (`signal_band`), which you should not repeat:
 
-| Signal | Band (`signal_band`) | What can be trusted |
-| --- | --- | --- |
-| 10× and above | good (`good`) | All readings |
-| 5 to 10× | fair: rate reliable (`fair`) | Rate; amplitude and beat error may be off |
-| 3 to 5× | poor: only the rate (`poor`) | Rate only |
-| Below 3× | no watch heard (`none`) | Nothing (pure noise reads about 2×) |
+| Signal | What the project's tests found could be trusted |
+| --- | --- |
+| 10× and above | All readings |
+| 5 to 10× | The rate; amplitude and beat error may be off on some watches |
+| 3 to 5× | The rate only |
+| Below 3× | Nothing: pure noise reads about 2× |
 
 The signal measures loudness, not the shape of the tick: hum, knocks or a
 holder that smears the sound are not caught by it. A movement in a plastic
-holder can read "good" and still give amplitude and beat error that are
+holder can read 10× and still give amplitude and beat error that are
 off; `profile` shows whether the marks sit on the right sounds.
 
-Good signal: tick peaks around −10 dBFS (the level `doctor` aims for, with
+What the project aims for: tick peaks around −10 dBFS (the level `doctor` aims for, with
 room for a louder watch), no clipped samples, the background flat between
-ticks, signal 10× or more ("good"), and all the expected beats found.
+ticks, signal 10× or more, and all the expected beats found.
 `suggested_gain_change_db` in the JSON says how far to move the level.
 
 ### Per-OS mixer advice

@@ -577,7 +577,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
             c.points,
             c.residual_ms
         ),
-        (None, _) => "not calibrated; the rate is only as good as the sound card's crystal".into(),
+        (None, _) => "not calibrated: rates are on the sound card's clock".into(),
     };
     let o = |v: Option<f64>, d: usize| v.map_or("-".into(), |x| format!("{x:.d$}"));
     let _ = write!(
@@ -661,7 +661,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
             RasterKind::Value(1.0),
         ));
     }
-    body.push_str(r#"<p class="note">In the rasters each row is one turn of the cycle. A fault tied to a wheel shows as a stripe running straight down the raster at the same place in every row; noise or a disturbance in the room does not line up. Rows are merged when there are more than 240 cycles.</p>"#);
+    body.push_str(r#"<p class="note">In the rasters each row is one turn of the cycle. A change that repeats once per turn lines up at the same place in every row. Rows are merged when there are more than 240 cycles.</p>"#);
     format!(
         r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

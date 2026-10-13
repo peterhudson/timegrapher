@@ -146,7 +146,7 @@ async fn call(
     let series_charts =
         (tool.name == "check_steadiness").then(|| views::take_series_charts(&mut doc));
     // The text blocks carry, first, a lead in plain words (the readings
-    // with how sure each is, what limits them, notes), so a model reads
+    // with their standard errors, what limits them, notes), so a model reads
     // that before the numbers; then the same document as the structured
     // content, for chat apps that show the model only text, with any
     // warnings from stderr after it.

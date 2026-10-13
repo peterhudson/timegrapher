@@ -13,10 +13,12 @@ use std::path::{Path, PathBuf};
 /// Version of the document kinds that have not changed since the first.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// Current version of a document kind. `series/2` dropped the one-word
-/// verdict, the findings' severity and advice, and `moves_with`.
+/// Current version of a document kind. `record/2` keeps every take and
+/// drops the verdict; `series/2` dropped the one-word verdict, the
+/// findings' severity and advice, and `moves_with`.
 pub fn schema_version(kind: &str) -> u32 {
     match kind {
+        "record" => 2,
         "series" => 2,
         _ => SCHEMA_VERSION,
     }

@@ -1,12 +1,13 @@
 # Reading the numbers
 
-What each figure means, why it matters, and what good, fair and poor look
-like. Read the numbers in this order: is the measurement sound, amplitude,
+What each figure means, why it matters, and what to hold it against.
+Read the numbers in this order: is the measurement sound, amplitude,
 lift angle, beat error, rate, the trace, then the positions.
 
-Figures in this file are a working watchmaker's rules of thumb, not
-factory tolerances. Where a maker publishes its own figures for a calibre,
-theirs win.
+Each figure here is either sourced or labelled as a rule of thumb.
+Where a maker publishes its own figures for a calibre, theirs win; the
+sets, by source, are in
+[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source).
 
 ## First: is the measurement any good?
 
@@ -60,27 +61,27 @@ beat rate, the swing follows: `A = L / (2 sin(π t / T))`. So a wrong lift
 angle gives a wrong amplitude, and a missed unlock sound gives a wildly
 wrong one.
 
-**What to judge it against, fully wound.** Witschi's tolerance, which
-the `session` report uses, is 260–320° horizontal and 240–280° vertical
-(docs/sessions.md); the report calls under 200° a fault, vertical more
-than 50° below horizontal a warning, and over 330° a "Very high
-amplitude" warning, never a fault, since only jumps in the trace confirm
-knocking (the first two are the project's thresholds, the last Witschi's
-knocking limit). Sellita
-allows its SW200 at most 315–320° dial up at full wind and at least 200°
-crown left (6H, 6 o'clock up) after 24 hours. Sources and the limits of these figures are in
-[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#what-normal-looks-like-for-the-calibre).
+**What to judge it against, fully wound.** The maker's figure where
+one exists: ETA's 2824-2 and Sellita's SW200-1 sheets allow at most 315°
+dial up at full wind and at least 200° at 6H (6 o'clock up) after 24
+hours. Otherwise Witschi's training course: 250–330° horizontal and
+250–270° vertical, with a worked example going down to 220° vertical.
+Under 200° fully wound and vertical more than 50° below horizontal are
+the project's rules of thumb for "worth saying"; 330° is the amplitude
+Witschi's course (p. 15) names as causing knocking, and only jumps in the trace
+confirm it. Sources and the limits of these figures are in
+[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source).
 
 Vertical positions read lower than horizontal: there the balance pivots
 run on their sides in the jewel holes, which is more friction than
 running on their tips on the end stones. So judge a vertical reading
-against the vertical tolerance.
+against a vertical range.
 
 These tolerances are for modern watches. For older, slower or simpler
 calibres no published figure is given here: say so, and lean on the
 trend between tests of the same watch and on the trace.
 
-**Too high.** Over about 320° dial up, check in this order:
+**Too high.** Over 315° dial up (the ETA and Sellita maximum), check in this order:
 
 1. The lift angle (too high a lift angle inflates amplitude).
 2. The measurement: a missed unlock or a doubled sound reads as huge
@@ -91,7 +92,7 @@ trend between tests of the same watch and on the trace.
    amplitude while it wears). Around 320–340°, depending
    on the calibre, the impulse pin can strike the outside of the fork horn:
    **knocking**, or rebanking. It upsets the rate and can damage the
-   escapement. Witschi gives over 330°.
+   escapement. Witschi's training course (p. 15) names 330°.
 
 People who know the trick can make a tired watch look good on a photo
 by raising the lift angle on the machine. Always ask what lift angle was
@@ -164,9 +165,10 @@ amplitude (run down, or dirty) it can stop or be reluctant to start after
 it stops. It's corrected by turning the hairspring stud carrier or collet;
 a watchmaker's adjustment, not a repair.
 
-Witschi's tolerance, which the `session` report uses, is under 0.5 ms;
-the report calls 2 ms or more a fault (the project's threshold;
-docs/sessions.md). Between the two is a matter for the next service.
+Witschi's training course gives 0.0–0.5 ms as acceptable; ETA's 2824-2
+sheet allows 0.8 ms (Standard, Elaboré) or 0.6 ms (Top, Chronometer)
+dial up fully wound. 2 ms or more is the project's rule of thumb for
+"large". Between those is a matter for the next service.
 
 A slower watch shows more beat error for the same fault: the same small *angle* of being out
 of beat takes longer in milliseconds on a slower balance, and on a smaller
@@ -192,15 +194,18 @@ crown down and average +4 on the wrist.
 
 What matters:
 
-- **The average over positions**, for regulating. Most watchmakers aim
-  slightly fast, say 0 to +5, because a watch usually loses a little as it
-  runs down.
+- **The average over positions**, for regulating, against the maker's
+  figure for the grade where there is one (ETA's 2824-2 sheet gives
+  "12 ±12" s/d for Standard, "7 ±7" Elaboré, "4 ±4" Top, quoted as
+  printed) or a Witschi class.
 - **The spread between positions** (the positional delta), for health
   and quality of adjustment.
 - **Whether it's steady**: the trace.
 
-General tolerance (Witschi, fully wound, mean over positions): men's
-watches −5 to +15 s/d, ladies' −5 to +25 s/d.
+Witschi's training course gives, for the mean rate fully wound: gent's
+watches −5 to +15 s/d, lady's −5 to +25, chronometers −2 to +6. Every
+set is in
+[when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source).
 
 ### Chronometer standards
 
@@ -212,7 +217,7 @@ not out of spec.
 | --- | --- | --- |
 | COSC / ISO 3159, category 1 (fitting diameter over 20 mm) | −4 to +6 s/d | Uncased movement, five positions (3, 6 and 9 o'clock, dial up, dial down) and several temperatures, 15 days. Also: mean variation 2 s/d, greatest variation 5, horizontal to vertical −6 to +8, largest variation 10, thermal ±0.6, rate resumption ±5 ([COSC](https://www.cosc.swiss/en/certification/mechanical-movements)) |
 | COSC, category 2 (20 mm or under) | −5 to +8 s/d | Same tests; the other limits are a little wider (same source) |
-| METAS Master Chronometer | 0 to +5 s/d (up to 0 to +7 by calibre) | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
+| METAS Master Chronometer | 0 to +5 s/d | Cased watch, after chronometer certification of the movement (ISO 3159, COSC in Switzerland); also 15,000 gauss ([Omega](https://www.omegawatches.com/masterchronometercertification)) |
 | Rolex Superlative Chronometer | −2 to +2 s/d | Cased, after COSC ([FH](https://www.fhs.swiss/eng/2016_04_28_01_Rolex.html)) |
 
 ## Positions and the positional delta
@@ -221,10 +226,10 @@ The full test is six positions (see
 [setup-and-microphone.md](setup-and-microphone.md#positions)). From them:
 
 - **Delta (D)**: the biggest rate difference between any two positions.
-  Good modern Swiss: under about 10 s/d. Decent: 10–20. Over 25–30 on a
-  watch that should be better wants adjusting. Clones and cheap Chinese
-  calibres often show 20–40 s/d new, because their hairsprings and their
-  fitting are less carefully made and the balance less carefully poised.
+  Hold it against the maker's figure: ETA's 2824-2 sheet allows 30,
+  20 or 15 s/d by grade, Miyota's 8215 under 50 s/d, Seiko's NH35 under
+  60 s/d, COSC's largest variation 10 s/d. With no maker figure, over
+  10 s/d is the project's rule of thumb for "worth a look".
 - **Horizontal vs vertical (DVH)**: mean of vertical positions minus mean
   of horizontal. Mostly governed by the regulator pin clearance (on an
   index-regulated watch) and by the amplitude.
@@ -236,10 +241,10 @@ The full test is six positions (see
   being out of poise (heavier on one side) or the hairspring off centre.
 
 Amplitude across positions tells you as much as the rate. Witschi's
-tolerances put vertical at 240–280° against 260–320° horizontal
-(docs/sessions.md), and the `session` report warns when vertical is more
-than 50° below horizontal (the project's threshold). A big difference
-between the four vertical positions is worth a second look.
+training course puts vertical at 250–270° against 250–330° horizontal,
+and more than 50° below horizontal is the project's rule of thumb for
+mentioning it. A big difference between the four vertical positions is
+worth a second look.
 
 ## Isochronism: full wind against 24 hours
 
@@ -248,10 +253,11 @@ falls. Test fully wound, and again 24 hours later without winding, same
 positions.
 
 The `session` report gives the change per position between states of
-wind (`isochronism`); no maker publishes a normal drop. Sellita's SW200
-limit, at least 200° crown left (6H, 6 o'clock up) after 24 hours
-([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf)),
-is one published floor. Compare the drop with the same watch's earlier
+wind (`isochronism`). Witschi's training course: "Decrease of the
+values after 24 h: approx -10% to -15% is ok". ETA's 2824-2 sheet gives
+the rate change dial up from full wind to 24 h (±20, ±15 or ±10 s/d by
+grade), and ETA and Sellita both set a floor of 200° at 6H after 24
+hours ([SW200-1](https://www.sellita.ch/scripts/calibres/images/DocTec_SW200-1_7.pdf)). Compare the drop with the same watch's earlier
 tests: a drop that grows between tests is the useful sign.
 
 A watch that's fine fully wound but goes badly off at 24 hours is telling

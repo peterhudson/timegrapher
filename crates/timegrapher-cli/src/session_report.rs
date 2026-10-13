@@ -1,10 +1,11 @@
 //! A self-contained HTML report for a test session: the positions side
-//! by side, Witschi's characteristic values, and the findings with their
-//! evidence. Inline SVG, no scripts, light and dark themes.
+//! by side, Witschi's characteristic values, and the conditions found in
+//! the sound with their figures. Inline SVG, no scripts, light and dark
+//! themes.
 
-use crate::session_cmd::{opt, severity, signed, wind, Session};
+use crate::session_cmd::{opt, signed, wind, Session};
 use std::fmt::Write;
-use timegrapher_core::session::{Mark, Position, Reading, Severity, StateIndices, Tolerance};
+use timegrapher_core::session::{Position, Reading, StateIndices};
 use timegrapher_core::twostate;
 
 fn esc(s: &str) -> String {
@@ -14,14 +15,8 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn cell(text: String, m: Mark) -> String {
-    match m {
-        Mark::Outside => format!(r#"<td class="num out" title="outside tolerance">{text}</td>"#),
-        Mark::Unreliable => format!(
-            r#"<td class="num unsure" title="not measured reliably: see the findings">{text}?</td>"#
-        ),
-        _ => format!(r#"<td class="num">{text}</td>"#),
-    }
+fn cell(text: String) -> String {
+    format!(r#"<td class="num">{text}</td>"#)
 }
 
 const W: f64 = 760.0;
@@ -48,17 +43,11 @@ struct Series<'a> {
     points: Vec<(Position, f64)>,
 }
 
-/// Values per position as dots, with tolerance bands behind them.
-fn position_chart(
-    unit: &str,
-    series: &[Series],
-    bands: &[(Option<bool>, f64, f64)],
-    zero: bool,
-) -> String {
+/// Values per position as dots.
+fn position_chart(unit: &str, series: &[Series], zero: bool) -> String {
     let vals: Vec<f64> = series
         .iter()
         .flat_map(|s| s.points.iter().map(|p| p.1))
-        .chain(bands.iter().flat_map(|b| [b.1, b.2]))
         .chain(zero.then_some(0.0))
         .collect();
     if series.iter().all(|s| s.points.is_empty()) {
@@ -83,22 +72,6 @@ fn position_chart(
         s,
         r#"<svg viewBox="0 0 {W} {H}" role="img" aria-label="{unit} by position">"#
     );
-    // Bands: Some(false) horizontal positions only, Some(true) vertical only.
-    for &(vert, a, b) in bands {
-        for p in Position::ALL {
-            if vert.is_some_and(|v| v != p.is_vertical()) {
-                continue;
-            }
-            let _ = write!(
-                s,
-                r#"<rect class="band" x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}"/>"#,
-                x(p) - col / 2.0 + 2.0,
-                y(b),
-                col - 4.0,
-                (y(a) - y(b)).max(0.5)
-            );
-        }
-    }
     let mut t = lo;
     while t <= hi + 1e-9 {
         let _ = write!(
@@ -188,7 +161,7 @@ fn position_chart(
     s
 }
 
-fn charts(st: &StateIndices, readings: &[&Reading], tol: &Tolerance) -> String {
+fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
     let refs = |f: &dyn Fn(&Reading) -> Option<f64>| -> Vec<(Position, f64)> {
         readings
             .iter()
@@ -231,27 +204,10 @@ fn charts(st: &StateIndices, readings: &[&Reading], tol: &Tolerance) -> String {
             points: aref,
         });
     }
-    let full = st.wind_h <= 2.0;
-    let rate_band = [(None, tol.rate_min, tol.rate_max)];
-    let amp_band = [
-        (Some(false), tol.amplitude_h.0, tol.amplitude_h.1),
-        (Some(true), tol.amplitude_v.0, tol.amplitude_v.1),
-    ];
     format!(
-        r#"<h3>Rate by position</h3>{}<h3>Amplitude by position</h3>{}<p class="note">Shaded: {} tolerance{}.</p>"#,
-        position_chart(
-            "seconds per day",
-            &rs,
-            if full { &rate_band } else { &[] },
-            true
-        ),
-        position_chart("deg", &as_, if full { &amp_band } else { &[] }, false),
-        esc(&tol.name),
-        if full {
-            ", fully wound"
-        } else {
-            " applies fully wound only, so not shown"
-        }
+        r#"<h3>Rate by position</h3>{}<h3>Amplitude by position</h3>{}"#,
+        position_chart("seconds per day", &rs, true),
+        position_chart("deg", &as_, false),
     )
 }
 
@@ -341,32 +297,50 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th title="Hours since the watch was fully wound (wind_h in the session file). Where it is not given, the reading is taken as fully wound.">Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>sec/day</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num" title="The size of the difference between Tick and Tock, from the unlock where it was found. Which beat is longer is not shown: it depends on the beat the analysis locked on first, so it can change from one run to the next.">Beat error<br>ms</th><th class="num" title="The same size, measured from the drop.">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. Low is steady; a rising value can mean a dirty or worn escapement, or a noisy recording.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th title="Hours since the watch was fully wound (wind_h in the session file). Where it is not given, the reading is taken as fully wound.">Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>sec/day</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>sec/day</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num" title="The size of the difference between Tick and Tock, from the unlock where it was found. Which beat is longer is not shown: it depends on the beat the analysis locked on first, so it can change from one run to the next.">Beat error<br>ms</th><th class="num" title="The same size, measured from the drop.">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. A noisy recording raises it too.">Jitter<br>µs</th><th class="num">10 s rates<br>sec/day</th><th class="num" title="Share of the 2 s windows that found the unlock on both sides. Amplitude and the beat error from the unlock rest on those windows.">Unlock<br>found</th><th class="num" title="Share of the beats with a clipped sample. Clipping flattens the loudest part of the tick.">Clipped</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
-    for (r, v) in sn.readings.iter().zip(&sn.report.verdicts) {
+    for r in &sn.readings {
         let m = &r.measurement;
+        let clock = if m.calibrated {
+            ""
+        } else {
+            r#" <span class="sub">card clock</span>"#
+        };
+        if !m.watch_heard {
+            let _ = write!(
+                s,
+                r#"<tr><th>{}</th><td>{}</td><td colspan="10">{}</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
+                r.position.label(),
+                wind(r.wind_h),
+                esc(&timegrapher_core::session::no_regular_beat(
+                    m.jitter_us,
+                    r.bph
+                )),
+                duration(m.end_s - m.start_s),
+                esc(&r.label),
+            );
+            continue;
+        }
         let _ = write!(
             s,
-            r#"<tr><th>{}</th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="file">{}{}</td></tr>"#,
+            r#"<tr><th>{}</th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="num">{:.1}%</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
             r.position.label(),
             wind(r.wind_h),
-            cell(signed(m.rate_s_per_day, 1), v.rate),
+            cell(signed(m.rate_s_per_day, 1)),
             signed(m.rate_window_median_s_per_day, 1),
-            cell(opt(m.amplitude_deg, 0), v.amplitude),
+            cell(opt(m.amplitude_deg, 0)),
             opt(m.amplitude_even_deg, 0),
             opt(m.amplitude_odd_deg, 0),
-            cell(opt(m.beat_error(), 2), v.beat_error),
+            cell(opt(m.beat_error(), 2)),
             opt(m.beat_error_ms.map(f64::abs), 2),
             opt(m.jitter_us, 0),
             signed(m.rate_p05, 0),
             signed(m.rate_p95, 0),
+            m.unlock_coverage
+                .map_or("-".into(), |c| format!("{:.0}%", 100.0 * c)),
+            100.0 * m.clipped_fraction,
             duration(m.end_s - m.start_s),
             esc(&r.label),
-            if m.calibrated {
-                ""
-            } else {
-                r#" <span class="sub">card clock</span>"#
-            }
         );
     }
     s.push_str("</tbody></table>");
@@ -459,7 +433,7 @@ fn cycles_table(sn: &Session) -> String {
 
 fn states_lines(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<h2>Two states</h2><p class="note">Whether amplitude (from 2 s windows) and rate (from 10 s readings) sit at two levels the watch switches between, rather than one level with noise and slow drift. Tested on 10 s medians with the slow drift taken off. A dip that comes back on a fixed period is a cycle (see above); a split that only Tick or only Tock carries is likely the measurement.</p>"#,
+        r#"<h2>Two states</h2><p class="note">Whether amplitude (from 2 s windows) and rate (from 10 s readings) sit at two levels the watch switches between, rather than one level with noise and slow drift. Tested on 10 s medians with the slow drift taken off. ΔBIC is the evidence for two levels over one (10 or more is needed); separation is the gap between the levels in fitted widths (2 or more). Each line also says when the low level comes back on a fixed period, as a cycle does (see above), and when only Tick or only Tock carries the split.</p>"#,
     );
     for r in sn.readings.iter().filter(|r| r.measurement.watch_heard) {
         let m = &r.measurement;
@@ -525,7 +499,6 @@ pub fn html(sn: &Session) -> String {
         (None, None) => "Test session".to_string(),
     };
     let mut body = String::new();
-    let t = &r.tolerance;
     let positions: Vec<&str> = {
         let mut p: Vec<Position> = sn.readings.iter().map(|r| r.position).collect();
         p.sort();
@@ -543,7 +516,6 @@ pub fn html(sn: &Session) -> String {
 <tr><th>Movement</th><td>{} bph, lift angle {}°</td></tr>
 <tr><th>Recordings</th><td>{} in {} position(s): {}</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
-<tr><th>Tolerance</th><td>{}: {:+.0} to {:+.0} seconds per day; amplitude {:.0}–{:.0}° horizontal, {:.0}–{:.0}° vertical; beat error under {} ms (fully wound)</td></tr>
 {}</table>"#,
         sn.bph,
         sn.lift_deg,
@@ -551,41 +523,23 @@ pub fn html(sn: &Session) -> String {
         positions.len(),
         positions.join(", "),
         match calibrated {
-            0 => "rates are on the sound card's clock (uncalibrated), good to a few seconds per day".to_string(),
+            0 => "rates are on the sound card's clock, not calibrated".to_string(),
             n if n == sn.readings.len() => "every rate is corrected for the sound card's clock".to_string(),
             n => format!("{n} of {} rates corrected for the sound card's clock; the others are on the card's clock", sn.readings.len()),
         },
-        esc(&t.name),
-        t.rate_min,
-        t.rate_max,
-        t.amplitude_h.0,
-        t.amplitude_h.1,
-        t.amplitude_v.0,
-        t.amplitude_v.1,
-        t.beat_error_ms,
         sn.notes
             .map(|n| format!("<tr><th>Notes</th><td>{}</td></tr>", esc(n)))
             .unwrap_or_default()
     );
 
-    body.push_str("<h2>Findings</h2>");
-    if r.findings.is_empty() {
-        body.push_str("<p>Nothing outside tolerance or the project's limits.</p>");
-    } else {
-        body.push_str(r#"<ul class="findings">"#);
+    if !r.findings.is_empty() {
+        body.push_str(r#"<h2>Findings</h2><ul class="findings">"#);
         for f in &r.findings {
-            let class = match f.severity {
-                Severity::Fault => "fault",
-                Severity::Warning => "warn",
-                Severity::Note => "note",
-            };
             let _ = write!(
                 body,
-                r#"<li class="{class}"><span class="tag">{}</span> <strong>{}</strong><br><span class="evidence">{}</span><br><span class="advice">{}</span></li>"#,
-                severity(f.severity),
+                r#"<li><strong>{}</strong><br><span class="evidence">{}</span></li>"#,
                 esc(&f.title),
                 esc(&f.evidence),
-                esc(&f.advice)
             );
         }
         body.push_str("</ul>");
@@ -593,7 +547,7 @@ pub fn html(sn: &Session) -> String {
 
     body.push_str("<h2>Readings</h2>");
     body.push_str(&readings_table(sn));
-    body.push_str(&format!(r#"<p class="note">Red: outside tolerance. Each reading starts after the settling time and runs to the end of the recording (or the measuring time set in the session file). 10 s rates: the 5th to 95th percentile of rate over 10 s windows, a measure of how steady the rate is. Beat error is a size: which beat is longer is not shown, because it depends on the beat the analysis locked on first. Because the settling time is left out{}, these readings can differ by a few seconds per day from the quick check shown while recording.</p>"#, if sn.readings.iter().any(|r| r.measurement.calibrated) { " and the sound card's clock error is corrected where it was logged" } else { "" }));
+    body.push_str(&format!(r#"<p class="note">Each reading starts after the settling time and runs to the end of the recording (or the measuring time set in the session file). 10 s rates: the 5th to 95th percentile of rate over 10 s windows, a measure of how steady the rate is. Beat error is a size: which beat is longer is not shown, because it depends on the beat the analysis locked on first. Because the settling time is left out{}, these readings can differ by a few seconds per day from the quick check shown while recording.</p>"#, if sn.readings.iter().any(|r| r.measurement.calibrated) { " and the sound card's clock error is corrected where it was logged" } else { "" }));
 
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&r.states));
@@ -613,11 +567,10 @@ pub fn html(sn: &Session) -> String {
         }
         let _ = write!(
             body,
-            r#"</tbody></table><p>Im {} seconds per day (largest, excluding 12H), Im* {} (all positions), Ie {} (change in mean rate), N {} (with Witschi's default thermal term 0.6).</p>"#,
+            r#"</tbody></table><p>Im {} seconds per day (largest, excluding 12H), Im* {} (all positions), Ie {} (change in mean rate).</p>"#,
             signed(r.im, 1),
             signed(r.im_all, 1),
-            opt(r.ie, 1),
-            opt(r.n, 1)
+            opt(r.ie, 1)
         );
     }
     for st in &r.states {
@@ -639,7 +592,7 @@ pub fn html(sn: &Session) -> String {
                 ((rd.wind_h.unwrap_or(0.0) * 10.0).round() / 10.0 - st.wind_h).abs() < 0.05
             })
             .collect();
-        body.push_str(&charts(st, &rs, t));
+        body.push_str(&charts(st, &rs));
     }
 
     body.push_str(&reference_table(sn));
@@ -655,19 +608,19 @@ pub fn html(sn: &Session) -> String {
 :root {{
   color-scheme: light;
   --surface: #fcfcfb; --text: #0b0b0b; --text2: #52514e; --muted: #8a8984; --rule: #e4e3df;
-  --series: #2a78d6; --ref: #d97a1f; --band: #e3efe0; --bad: #c0302f; --warn: #b26b00; --badbg: #fbe9e7;
+  --series: #2a78d6; --ref: #d97a1f;
 }}
 @media (prefers-color-scheme: dark) {{
   :root:not([data-theme="light"]) {{
     color-scheme: dark;
     --surface: #1a1a19; --text: #ffffff; --text2: #c3c2b7; --muted: #8f8e86; --rule: #34342f;
-    --series: #3987e5; --ref: #f0a050; --band: #22332a; --bad: #ff7b72; --warn: #f0b34a; --badbg: #3a2220;
+    --series: #3987e5; --ref: #f0a050;
   }}
 }}
 :root[data-theme="dark"] {{
   color-scheme: dark;
   --surface: #1a1a19; --text: #ffffff; --text2: #c3c2b7; --muted: #8f8e86; --rule: #34342f;
-  --series: #3987e5; --ref: #f0a050; --band: #22332a; --bad: #ff7b72; --warn: #f0b34a; --badbg: #3a2220;
+  --series: #3987e5; --ref: #f0a050;
 }}
 body {{ background: var(--surface); color: var(--text); font: 15px/1.45 system-ui, sans-serif; margin: 0 auto; max-width: 820px; padding: 16px; }}
 h1 {{ font-size: 22px; margin: 8px 0 4px; }} h2 {{ font-size: 18px; margin-top: 28px; }} h3 {{ font-size: 15px; margin: 18px 0 4px; }}
@@ -680,21 +633,15 @@ svg {{ width: 100%; height: auto; display: block; }}
 .data th, .data td {{ padding: 4px 8px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }}
 .data thead th {{ color: var(--text2); font-weight: 600; font-size: 12px; }}
 .data .num {{ text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }}
-.data .out {{ color: var(--bad); font-weight: 600; background: var(--badbg); }}
-.data .unsure {{ color: var(--muted); font-style: italic; }}
 .data .file {{ color: var(--text2); font-size: 12px; word-break: break-all; }}
 .states {{ margin: 4px 0; }}
 .states .file {{ color: var(--text2); font-size: 12px; margin-left: 6px; }}
 .data .what {{ color: var(--text2); font-size: 12px; }}
 .sub {{ color: var(--muted); font-weight: 400; font-size: 12px; }}
 .findings {{ list-style: none; padding: 0; }} .findings li {{ padding: 8px 0 8px 12px; border-left: 3px solid var(--muted); margin: 8px 0; }}
-.findings .fault {{ border-color: var(--bad); }} .findings .warn {{ border-color: var(--warn); }}
-.tag {{ font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--text2); }}
-.fault .tag {{ color: var(--bad); }} .warn .tag {{ color: var(--warn); }}
-.evidence {{ font-variant-numeric: tabular-nums; }} .advice {{ color: var(--text2); font-size: 13px; }}
+.evidence {{ font-variant-numeric: tabular-nums; }}
 .grid {{ stroke: var(--rule); stroke-width: 1; }} .axis {{ stroke: var(--muted); stroke-width: 1; }}
 .tick {{ fill: var(--text2); font-size: 11px; }} .label {{ fill: var(--text2); font-size: 11px; }}
-.band {{ fill: var(--band); }}
 .dot {{ fill: var(--series); }} .ref {{ fill: none; stroke: var(--ref); stroke-width: 2; }}
 code {{ font-size: 13px; }}
 </style></head><body>
