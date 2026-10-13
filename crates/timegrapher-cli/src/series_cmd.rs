@@ -275,18 +275,23 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
             p_text(c.p_value)
         );
     }
-    if let Some(c) = &s.changes {
-        let means: Vec<String> = c
-            .segments
-            .iter()
-            .map(|g| format!("{:.0}–{:.0} s: {:.2}", g.start_s, g.end_s, g.mean))
-            .collect();
+    if let Some(c) = s.changes.as_ref().filter(|c| c.segments.len() > 1) {
         println!(
-            "  {:<14} {} ({:.0}% explained)",
+            "  {:<14} {} stretches of one level, {:.0}% explained:",
             "levels",
-            means.join("; "),
+            c.segments.len(),
             c.explained * 100.0
         );
+        for g in &c.segments {
+            println!(
+                "  {:<14}   {:>9} to {:>9}  {:>8.2} {}",
+                "",
+                crate::long::duration(g.start_s),
+                crate::long::duration(g.end_s),
+                g.mean,
+                s.unit
+            );
+        }
     }
     if let Some(t) = &s.trend {
         println!(
