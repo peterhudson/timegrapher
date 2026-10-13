@@ -99,7 +99,7 @@ That route has not been tried with this server yet.
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
 | `record_position` | `record` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |
-| `check_microphone` | `doctor` | Listens a few seconds and says what to change in the sound settings; **uses the microphone**, changes nothing |
+| `check_microphone` | `doctor` | Listens a few seconds and states the level, clipping, automatic gain and noise, with the sound card's controls; **uses the microphone**, changes nothing |
 | `check_recording` | `doctor --file` | A recording's level, clipping, automatic gain and noise |
 | `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
@@ -227,8 +227,9 @@ positions to a plain answer, with the watch you name added at the end.
 - It never uploads anything. A report bundle is a file on your computer
   that you attach to an issue yourself, and only you can say that you
   listened to the excerpt or offer it to the public test corpus.
-- It never changes your computer's sound settings: `check_microphone` says
-  what to change, and you change it.
+- It never changes your computer's sound settings: `check_microphone` states
+  the level, clipping, automatic gain and noise it measured, and any change is
+  yours to make.
 - It uses the microphone only for `record_position` and `check_microphone`,
   and only for the seconds asked.
 

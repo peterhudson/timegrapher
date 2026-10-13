@@ -317,17 +317,17 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_recording_leads_with_its_readings_and_no_grades() {
+    fn a_recording_leads_with_its_readings() {
         let doc = json!({
-            "schema": "timegrapher.analyze/1",
+            "schema": "timegrapher.analyze/2",
             "watch_heard": true,
             "overall": { "rate_s_per_day": 6.01, "beat_error_ms": -0.39 },
             "amplitude_deg": 269.6,
             "beat_error_unlock_ms": -0.4,
             "input": { "settings": { "lift_deg": 52.0 } },
-            "confidence": { "rate": { "grade": "poor", "se": null },
-                            "amplitude": { "grade": "fair", "se": 0.042 },
-                            "beat_error": { "grade": "good", "se": 0.004 } },
+            "confidence": { "rate": { "se": null },
+                            "amplitude": { "se": 0.042 },
+                            "beat_error": { "se": 0.004 } },
             "caveats": [{ "code": "lift_unknown" }],
         });
         let s = lead(&doc, &Map::new()).unwrap();
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn a_take_states_its_facts_and_its_lift_angle() {
         let doc = json!({
-            "schema": "timegrapher.record/1",
+            "schema": "timegrapher.record/2",
             "input": { "settings": { "calibre": null, "lift_deg": 52.0 } },
             "position": "DU", "seconds": 30.0,
             "check": { "from_s": 15.0, "to_s": 30.0, "watch_heard": true,
@@ -437,11 +437,11 @@ mod tests {
 
     #[test]
     fn no_watch_heard_has_no_readings() {
-        let doc = json!({ "schema": "timegrapher.analyze/1", "watch_heard": false,
+        let doc = json!({ "schema": "timegrapher.analyze/2", "watch_heard": false,
             "caveats": [{ "code": "no_watch" }] });
         assert!(lead(&doc, &Map::new())
             .unwrap()
             .starts_with("No regular beat found"));
-        assert!(lead(&json!({ "schema": "timegrapher.doctor/1" }), &Map::new()).is_none());
+        assert!(lead(&json!({ "schema": "timegrapher.doctor/2" }), &Map::new()).is_none());
     }
 }

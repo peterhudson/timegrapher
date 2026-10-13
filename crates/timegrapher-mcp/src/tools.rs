@@ -395,9 +395,11 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "check_microphone",
         title: "Check the Microphone",
-        description: "Listen for a few seconds and report level, clipping, automatic gain, \
-            noise and whether ticks are heard, with the exact settings to change. It \
-            changes nothing: tell the person the settings to change and let them do it. \
+        description: "Listen for a few seconds and report the level, clipping, automatic \
+            gain, the noise and whether ticks are heard: `issues[]` names each condition \
+            detected with its figure, and on Linux `mixer` holds the sound card's controls \
+            with the `amixer` command for each change in `fixes[]`. It changes nothing; \
+            any change is the person's to make. \
             Its rate and beat error come from a few seconds of sound (5 s unless set), \
             not from a measurement of the watch. \
             This uses the microphone: put the watch on it first.",
