@@ -10,6 +10,7 @@ pub mod archive;
 pub mod audio;
 pub mod beats;
 pub mod breaks;
+pub mod calibre_store;
 pub mod calibres;
 pub mod capture;
 pub mod clock;

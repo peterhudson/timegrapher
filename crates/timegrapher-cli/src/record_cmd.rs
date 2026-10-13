@@ -166,7 +166,7 @@ fn settings(o: &Options) -> Result<Settings, String> {
         })?),
         None => None,
     };
-    let bph = o.bph.or(table.map(|c| c.bph));
+    let bph = o.bph.or(table.and_then(|c| c.bph));
     let lift = o.lift.or(table.and_then(|c| c.lift_angle_deg));
     let calibre = table.map(|c| c.calibre.clone());
     let Some(m) = m else {

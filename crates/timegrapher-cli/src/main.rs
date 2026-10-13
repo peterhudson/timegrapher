@@ -258,16 +258,23 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// List the sound inputs, with the sample rates and formats each supports.
-    /// The built-in table of calibres: beat rate, lift angle, escape wheel
-    /// teeth and the turn of each train wheel, for `--calibre`.
+    /// The table of calibres: beat rate, lift angle, escape wheel teeth and
+    /// the turn of each train wheel, for `--calibre`, with the wheel periods
+    /// and calibres added in the app (calibres.json in the settings folder).
     Calibres {
-        /// Show only this calibre, with its wheels, notes and sources.
+        /// Show only this calibre, with every wheel: its period from the
+        /// table or the user, or unknown; and its notes and sources.
         name: Option<String>,
+        /// List the calibres that answer this, best first: a calibre's
+        /// name, other names or maker under any of its names ("dd 3235",
+        /// "AP 3120").
+        #[arg(long, conflicts_with = "name")]
+        search: Option<String>,
         /// Print the table as JSON instead of text.
         #[arg(long)]
         json: bool,
     },
+    /// List the sound inputs, with the sample rates and formats each supports.
     Devices {
         /// Print the list as JSON instead of text.
         #[arg(long)]
@@ -749,7 +756,9 @@ fn main() -> ExitCode {
                 })
             }
         }
-        Command::Calibres { name, json } => calibres_cmd::run(name.as_deref(), json),
+        Command::Calibres { name, search, json } => {
+            calibres_cmd::run(name.as_deref(), search.as_deref(), json)
+        }
         Command::Devices { json } => run_devices(json),
         Command::Update { json } => update_cmd::run(json),
         Command::Clock { action, json } => {
@@ -1046,8 +1055,10 @@ fn run_analyze(
     } else {
         if let Some(c) = calibre {
             println!(
-                "Calibre      {}: {} bph, lift {}°, as set unless a flag said otherwise",
-                c.calibre, c.bph, cfg.amplitude.lift_deg
+                "Calibre      {}: {}lift {}°, as set unless a flag said otherwise",
+                c.calibre,
+                c.bph.map_or(String::new(), |b| format!("{b} bph, ")),
+                cfg.amplitude.lift_deg
             );
         }
         print_summary(&a, clock.as_ref(), calibre.is_some());
