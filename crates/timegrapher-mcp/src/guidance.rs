@@ -46,8 +46,7 @@ pub const DOCS: &[Doc] = &[
         "timegrapher://skill/findings",
         "findings",
         "Findings",
-        "Every finding code and verdict, and the possible faults in the Tick and Tock: what \
-         it means, how sure, what to do, what to tell the person.",
+        "The finding codes and the patterns in the Tick and Tock, as the skill reads them.",
         "skills/watchmaker/references/findings.md"
     ),
     doc!(
@@ -82,7 +81,7 @@ pub const DOCS: &[Doc] = &[
         "timegrapher://skill/long-runs",
         "long-runs",
         "Long Runs",
-        "Hours-long recordings, steadiness verdicts and wheel-named periodic changes.",
+        "Hours-long recordings, the steadiness of each series and wheel-named periodic changes.",
         "skills/watchmaker/references/long-runs.md"
     ),
     doc!(
@@ -123,8 +122,8 @@ pub const DOCS: &[Doc] = &[
     doc!(
         "timegrapher://docs/series",
         "series",
-        "Steadiness Verdicts",
-        "What each steadiness verdict means and the evidence behind it.",
+        "Steadiness",
+        "What each steadiness result describes and the evidence behind it.",
         "docs/series.md"
     ),
     doc!(
