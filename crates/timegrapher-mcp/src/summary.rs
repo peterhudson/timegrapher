@@ -71,14 +71,17 @@ fn position_name(p: &str) -> &str {
     }
 }
 
-/// The lead for `analyze`, `session` and `record` documents; `None` for
-/// others. `args` are the tool call's, to tell a given lift angle from the
+/// The lead for `analyze`, `session`, `record` and `series` documents;
+/// `None` for others. `args` are the tool call's, to tell a given lift angle from the
 /// default.
 pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     let schema = doc["schema"].as_str().unwrap_or("");
     let mut lines = Vec::new();
     if schema.starts_with("timegrapher.record/") {
         return Some(take(doc, args));
+    }
+    if schema.starts_with("timegrapher.series/") {
+        return series(doc);
     }
     if schema.starts_with("timegrapher.analyze/") {
         if doc["watch_heard"] == false {
@@ -125,8 +128,8 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
 }
 
 /// A recorded take: what was recorded, what its quick check measured, the
-/// lift angle and where it came from, the beats found and clipped, and
-/// whether the take joined the test. Facts only: no grades.
+/// lift angle and where it came from, the beats found and clipped, and the
+/// test it joined. Facts only: no grades.
 fn take(doc: &Value, args: &Map<String, Value>) -> String {
     let c = &doc["check"];
     let pos = position_name(doc["position"].as_str().unwrap_or(""));
@@ -139,7 +142,15 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
         _ => String::new(),
     };
     if c["watch_heard"] == false {
-        lines.push(format!("The check{window} found no regular beat."));
+        let bph = c["bph"].as_u64().map(|b| b as u32);
+        let said = timegrapher_core::session::no_regular_beat(
+            c["timing_scatter_ms"]
+                .as_f64()
+                .filter(|_| bph.is_some())
+                .map(|ms| ms * 1000.0),
+            bph.unwrap_or(0),
+        );
+        lines.push(format!("{said} over the whole take."));
     } else {
         let mut parts = Vec::new();
         if let Some(r) = c["rate_s_per_day"].as_f64() {
@@ -182,21 +193,65 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
             format!("{n} {beats} ({pct:.1}%) {were} clipped.")
         });
     }
-    lines.push(
-        match doc["verdict"].as_str() {
-            Some("ok") => "The take was added to the test.",
-            Some("no_watch_heard") => "The take was not added to the test, as no watch was heard.",
-            Some("clipping") => {
-                "The take was not added to the test, as more than 1% of its beats were clipped."
-            }
-            // record/2 has no verdict: every take is added.
-            None if doc["session_file"].is_string() => "The take was added to the test.",
-            _ => "",
-        }
-        .to_string(),
-    );
+    // Every take joins the test, whatever its sound: the clipping and
+    // no-regular-beat facts above go with it.
+    if doc["session_file"].is_string() {
+        lines.push("The take was added to the test.".to_string());
+    }
     lines.retain(|l| !l.is_empty());
     lines.join(" ")
+}
+
+/// A long take's series: each one's headline as `series` words it, with
+/// the readings behind it, then the findings' titles. Facts only: no word
+/// or colour stands beside a headline.
+fn series(doc: &Value) -> Option<String> {
+    let mut lines = Vec::new();
+    for s in doc["series"].as_array().into_iter().flatten() {
+        let Some(h) = s["headline"].as_str() else {
+            continue;
+        };
+        let unit = match s["unit"].as_str().unwrap_or("") {
+            "deg" => "°",
+            u => u,
+        };
+        let mut facts = Vec::new();
+        if let (Some(n), Some(step)) = (s["readings"].as_u64(), s["step_s"].as_f64()) {
+            facts.push(format!("{n} readings of {step:.0} s"));
+        }
+        let mut say = |key: &str, what: &str| {
+            if let Some(v) = s[key].as_f64() {
+                let gap = if unit == "°" { "" } else { " " };
+                facts.push(format!("{what} {v:.2}{gap}{unit}"));
+            }
+        };
+        say("median", "median");
+        say("sd", "SD");
+        say("short_term_sd", "reading to reading");
+        let h = h.trim_end_matches('.');
+        // A headline with no structure found already gives the readings
+        // and their median.
+        lines.push(if facts.is_empty() || h.contains(" readings") {
+            format!("- {h}.")
+        } else {
+            format!("- {h} ({}).", facts.join("; "))
+        });
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    lines.insert(0, "Series:".to_string());
+    let found: Vec<&str> = doc["findings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|f| f["title"].as_str())
+        .collect();
+    if !found.is_empty() {
+        lines.push("Detected:".to_string());
+        lines.extend(found.iter().map(|t| format!("- {t}")));
+    }
+    Some(lines.join("\n"))
 }
 
 /// Witschi's characteristic values for one state of wind, each named by
@@ -316,7 +371,7 @@ mod tests {
                 "beats_found": 118, "beats_expected": 120, "rate_s_per_day": 3.0,
                 "amplitude_deg": 269.4, "beat_error_ms": -0.4,
                 "clipping": { "beats": 0, "beat_fraction": 0.0 } },
-            "verdict": "ok",
+            "session_file": "/tests/ym42/session.toml",
         });
         let s = lead(&doc, &Map::new()).unwrap();
         assert_eq!(
@@ -331,6 +386,53 @@ mod tests {
         assert!(lead(&doc, &given)
             .unwrap()
             .contains("Lift angle 52°: as given."));
+    }
+
+    #[test]
+    fn a_take_with_no_regular_beat_is_still_added() {
+        let doc = json!({
+            "schema": "timegrapher.record/2",
+            "position": "CU", "seconds": 30.0,
+            "session_file": "/tests/ym42/session.toml",
+            "check": { "from_s": 15.0, "to_s": 30.0, "watch_heard": false,
+                "timing_scatter_ms": 8.6, "timing_scatter_fraction": 0.0688, "bph": 28800,
+                "beats_found": 40, "beats_expected": 120,
+                "clipping": { "beats": 3, "beat_fraction": 0.025 } },
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert_eq!(
+            s,
+            "Recorded Crown Up (CU) for 30 s. No regular beat found (timing scatter 8.6 ms, \
+             6.9% of a beat) over the whole take. 40 of 120 expected beats were found. 3 \
+             beats (2.5%) were clipped. The take was added to the test."
+        );
+        assert!(!s.contains("not added"));
+    }
+
+    #[test]
+    fn a_series_leads_with_each_headline_and_its_readings() {
+        let doc = json!({
+            "schema": "timegrapher.series/2",
+            "series": [
+                { "series": "rate", "unit": "s/d", "readings": 360, "step_s": 10.0,
+                  "median": 3.1, "sd": 1.24, "short_term_sd": 0.9,
+                  "headline": "Rate repeats every 60 min (third wheel), 2.4 s/d peak to peak." },
+                { "series": "amplitude", "unit": "deg", "readings": 3, "step_s": 10.0,
+                  "headline": "Amplitude: too few readings for the tests" },
+            ],
+            "findings": [{ "code": "periodic", "series": "rate",
+                "title": "Rate repeats every 60 min", "evidence": "p < 0.001" }],
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert_eq!(
+            s,
+            "Series:\n\
+             - Rate repeats every 60 min (third wheel), 2.4 s/d peak to peak (360 readings of \
+             10 s; median 3.10 s/d; SD 1.24 s/d; reading to reading 0.90 s/d).\n\
+             - Amplitude: too few readings for the tests.\n\
+             Detected:\n\
+             - Rate repeats every 60 min"
+        );
     }
 
     #[test]

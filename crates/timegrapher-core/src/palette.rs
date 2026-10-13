@@ -50,8 +50,8 @@ pub struct Palette {
     /// Tick (Side A, the even beats) and Tock (Side B, the odd beats).
     pub tick: Rgb,
     pub tock: Rgb,
-    /// Good, warning and bad, as on the level meter and the verdicts.
-    pub good: Rgb,
+    /// The app's own warnings and errors (a banner, a failed save). Never
+    /// on a reading: readings carry no good or bad colour.
     pub warn: Rgb,
     pub bad: Rgb,
     /// The marks on the Tick Tock profile.
@@ -86,7 +86,6 @@ pub const DARK: Palette = Palette {
     on_accent: rgb(0xffffff),
     tick: rgb(0x64d2ff),
     tock: rgb(0xff9f0a),
-    good: rgb(0x30d158),
     warn: rgb(0xffb340),
     bad: rgb(0xff453a),
     unlock: rgb(0x30d158),
@@ -113,7 +112,6 @@ pub const LIGHT: Palette = Palette {
     on_accent: rgb(0xffffff),
     tick: rgb(0x0068c9),
     tock: rgb(0xc45100),
-    good: rgb(0x248a3d),
     warn: rgb(0xb25000),
     bad: rgb(0xd70015),
     unlock: rgb(0x248a3d),

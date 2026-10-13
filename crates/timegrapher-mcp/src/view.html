@@ -32,7 +32,7 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--text2); }
 .tile .unit { font-size: 13px; color: var(--text2); font-weight: 400; }
 .tile .note { font-size: 12px; color: var(--text2); }
 .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.notice { border-left: 4px solid var(--warn); }
+.notice { border-left: 4px solid var(--text3); }
 .notice b { display: block; margin-bottom: 2px; }
 .dot { border-radius: 50%; width: 8px; height: 8px; }
 /* The legend sits inside the plot, top right, as the app's does. */
@@ -72,10 +72,9 @@ th { color: var(--text2); font-weight: 500; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .seg button { font: inherit; font-size: 12px; color: var(--text); background: var(--control); border: 0; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--text); color: var(--card); }
-.verdict { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin: 10px 0 2px; }
-.verdict .name { color: var(--text2); }
-.verdict b { font-weight: 600; }
-.headline { color: var(--text2); font-size: 12px; margin: 0 0 4px; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.series-name { font-size: 12.5px; font-weight: 600; margin: 12px 0 2px; }
+.headline { color: var(--text); font-size: 12.5px; margin: 0 0 2px; }
+.stats { color: var(--text2); font-size: 11.5px; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
 .empty { color: var(--text2); padding: 24px 0; text-align: center; }
 .bar { height: 4px; border-radius: 2px; background: var(--control); margin: -6px 0 12px; overflow: hidden; }
 .bar > div { height: 100%; background: var(--text2); }
@@ -652,16 +651,6 @@ const STEADY_VIEWS = [
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
 ];
-const VERDICTS = {
-  steady: ["Steady", "Independent readings about one level: what a healthy watch on a quiet bench gives", "--good"],
-  periodic: ["Periodic", "The readings repeat on a cycle, named after the wheel whose turn it matches: something in the train changes once a turn", "--warn"],
-  two_states: ["Two States", "The readings switch between two levels, as when a part rubs some of the time", "--warn"],
-  measurement: ["Measurement", "Two levels that come from the unlock mark hopping between two edges of the sound, not from the watch: a problem with the measurement, so don't read it as a fault", "--text2"],
-  shifting_mean: ["Shifting Mean", "The level steps once or more and stays at the new level, as after a knock or when the watch was moved", "--warn"],
-  drifting: ["Drifting", "The level slides or curves slowly, as the amplitude does when the mainspring runs down", "--warn"],
-  wandering: ["Wandering", "Each reading remembers the last ones, with no cycle, steps or trend to explain it: slow, irregular wander", "--warn"],
-  too_short: ["Too Short", "Too few readings to say; the tests need about 5 minutes of beats", "--text3"],
-};
 const SERIES = {
   rate: ["Rate", "--rate", " s/d"],
   amplitude: ["Amplitude", "--amplitude", "°"],
@@ -795,7 +784,7 @@ function steadyPlot(s, view, doc) {
       const pts = r.t_s.map((t, i) => [t, r.values[i]]).filter(([, y]) => Number.isFinite(y));
       const [lo, hi] = spreadRange(pts.map((p) => p[1]));
       const segs = s.changes && s.changes.segments && s.changes.segments.length > 1 ? s.changes.segments : [];
-      const ts = (s.verdict === "two_states" || s.verdict === "measurement") && s.two_state ? s.two_state : null;
+      const ts = s.two_state && s.two_state.two_levels ? s.two_state : null;
       return xyChart({
         title: "Readings", x: [Math.min(...r.t_s), Math.max(...r.t_s)], y: [lo, hi],
         xTicks: (a, b, w) => linTicks(a, b, w, Math.min(80, w / 4), (t) => fmtTime(t), TIME_STEPS),
@@ -934,23 +923,39 @@ function spreadRange(values) {
   return [lo - pad, hi + pad];
 }
 
+// The statistics behind a series' headline, as the JSON gives them.
+function steadyStats(s) {
+  const u = s.unit === "deg" ? "°" : s.unit ? ` ${s.unit}` : "";
+  const parts = [`${s.readings} readings of ${num(s.step_s, 0)} s`];
+  if (Number.isFinite(s.median)) parts.push(`median ${num(s.median, 2)}${u}`);
+  if (Number.isFinite(s.sd)) parts.push(`SD ${num(s.sd, 2)}${u}`);
+  if (Number.isFinite(s.short_term_sd)) parts.push(`reading to reading ${num(s.short_term_sd, 2)}${u}`);
+  const a = s.autocorrelation;
+  if (a && Number.isFinite(a.p_value)) parts.push(`Ljung–Box p ${pText(a.p_value)}`);
+  if (s.allan && Number.isFinite(s.allan.max_excess)) parts.push(`Allan up to ${num(s.allan.max_excess, 1)}× the independent line`);
+  if (s.trend && Number.isFinite(s.trend.per_hour)) parts.push(`trend ${s.trend.per_hour >= 0 ? "+" : ""}${num(s.trend.per_hour, 2)}${u} per hour`);
+  return parts.join(" · ");
+}
+
 function steadinessCard(doc) {
   const series = doc.series || [];
   if (!series.length) return "";
   const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold };
   const offered = STEADY_VIEWS.filter(([key]) => !has[key] || series.some(has[key]));
   if (!offered.some(([k]) => k === steadyView)) steadyView = offered[0][0];
-  const drawn = series.some((s) => s.verdict !== "too_short");
+  // A series too short for the tests has no autocorrelation: no plot.
+  const tested = (s) => !!s.autocorrelation;
+  const drawn = series.some(tested);
   const [, , hint] = STEADY_VIEWS.find(([k]) => k === steadyView);
   const status = Number.isFinite(doc.duration_s) ? `Tested over ${fmtTime(doc.duration_s)} of beats` : "";
   const rows = series.map((s) => {
     const [title] = SERIES[s.series] || [s.series];
-    const [word, meaning, colour] = VERDICTS[s.verdict] || [s.verdict, "", "--text3"];
-    return `<div class="verdict"><span class="name">${esc(title)}</span><span class="swatch dot" style="background:var(${colour})"></span><b title="${esc(meaning)}">${esc(word)}</b></div>
-      <p class="headline" title="${esc(s.headline || "")}">${esc(s.headline || "")}</p>
-      ${s.verdict === "too_short" ? "" : steadyPlot(s, steadyView, doc)}`;
+    return `<p class="series-name">${esc(title)}</p>
+      <p class="headline">${esc(s.headline || "")}</p>
+      <p class="stats">${esc(steadyStats(s))}</p>
+      ${tested(s) ? steadyPlot(s, steadyView, doc) : ""}`;
   }).join("");
-  return `<div class="card"><h2>Steadiness</h2><p class="hint">Whether the rate, amplitude and beat error each hold steady over the session, or carry a cycle, two states, a step, a drift or wander</p>
+  return `<div class="card"><h2>Steadiness</h2><p class="hint">How the rate, amplitude and beat error each move over the session: what was detected in each (a cycle, two levels, level changes, a trend, or none), with the statistics behind it</p>
     ${drawn ? `<div class="seg" role="group" aria-label="View">${offered.map(([key, label]) => `<button data-steady="${key}" aria-pressed="${key === steadyView}">${esc(label)}</button>`).join("")}</div>
     <p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
 }
@@ -1205,15 +1210,16 @@ function recordView(doc, heard) {
   const c = doc.check || {};
   const name = positionName(doc.position);
   let html = `<h1>${esc(name)}</h1><p class="sub">${timeLabel(doc.seconds)} recorded · ${esc(c.bph)} beats per hour${Number.isFinite(doc.wind_h) ? ` · ${num(doc.wind_h, 0)} h after full wind` : ""}</p>`;
-  if (doc.verdict === "no_watch_heard") {
-    html += `<div class="card notice"><b>No Watch Heard</b>This take was not added to the test. Check that the watch is running and touching the microphone, then record it again.</div>`;
-    return html;
-  }
-  if (doc.verdict === "clipping") {
-    html += `<div class="card notice"><b>Clipping</b>${num(c.clipping.beat_fraction * 100, 0)}% of beats were clipped, so this take was not added to the test. Turn the microphone down and record it again.</div>`;
-  } else if (doc.session_file) {
+  // record/2 adds every take; its sound is stated as facts beside it.
+  if (doc.session_file) {
     html += `<p class="hint">Added to the test in ${esc(String(doc.session_file).split(/[\\/]/).slice(-2, -1)[0] || doc.session_file)}. The watch can be moved.</p>`;
   }
+  const clipped = c.clipping && c.clipping.beats > 0 ? `${num(c.clipping.beat_fraction * 100, 1)}% of beats were clipped.` : "";
+  if (c.watch_heard === false) {
+    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat({ jitter_us: Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null }, c.bph))}${clipped ? ` ${clipped}` : ""}</div>`;
+    return html;
+  }
+  if (clipped) html += `<div class="card notice"><b>Clipping</b>${clipped}</div>`;
   html += `<div class="tiles">
     ${tile("Rate", "--rate", signed(c.rate_s_per_day, 1), "seconds per day", "a quick look; the test's report has the reading")}
     ${tile("Amplitude", "--amplitude", num(c.amplitude_deg, 0), "", "", "°")}
