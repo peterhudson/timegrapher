@@ -18,28 +18,32 @@ sure you are. Call the two sides of the beat Tick and Tock.
    Look it up with `calibres`: it gives the beat rate and lift angle.
    Take the lift angle from the table, never from memory; without one,
    use 52°, say so, and give the range the likely lift angles would give.
-2. **Microphone.** Watch clamped dial up. Run `doctor`. Go on when the
-   verdict is `ok` and the signal is `good` (or `fair`, saying amplitude
-   and beat error are then less sure). Propose any fix and ask first.
+2. **Microphone.** Watch clamped dial up. Run `doctor` and read its
+   levels, not any verdict or grade word: go on when a regular beat is
+   found, nothing clips and the ticks stand well clear of the noise
+   (findings.md has the levels). If they won't lift further, go on and
+   say amplitude and beat error are less sure. Propose any fix and ask
+   first.
 3. **Wind** fully (a hand-wound watch until it gently stops; an automatic
    about 40 turns), clamp dial up, wait a few minutes. Note the time.
 4. **First look**: `record` 60 s dial up into a folder of its own. Stop if no watch is heard
    (`watch_heard` false), if the rate is hundreds of s/d out (magnetism:
    demagnetise first, then start again), if the beat rate is not the
-   calibre's, or if the ticks clip.
+   calibre's, or if the ticks clip (`clipping`).
 5. **Six positions**, 2 minutes each, recording as soon as the watch is
    turned (the first 30 s are skipped while it settles): dial up, dial
    down, crown down, crown left, crown up, crown right, each a `record`
    into one session folder. Tell them when it starts and when it ends.
-   A take that is not fit to keep (no watch heard, or clipped) is not
-   added; fix it and record that position again before moving on.
-6. **Read** the session: first whether the measurement is sound, then
-   faults, warnings and notes, then the numbers behind them. `analyze`
-   each take for `faults[]`, the possible faults in the shape of the Tick
-   and the Tock: worth checking on the bench, never a diagnosis, and only
-   when they repeat across positions. Judge
-   against the calibre's normal values, the time since service and the
-   wear, never on one number.
+   If a take has no regular beat or clipped ticks, fix the cause and
+   record that position again before moving on.
+6. **Read** the session's numbers, not any grade, finding code or fault
+   name a build prints: first whether the measurement is sound, then the
+   positions and the characteristic values, held against the tolerance
+   set that fits the watch (the maker's figures where they exist; say
+   which set). `shape` each take and read it against tick-shape.md's
+   rules: worth checking on the bench, never a diagnosis, and only when
+   they repeat across positions. Judge with the time since service and
+   the wear, never on one number.
 7. **Answer** in one line first: fine, keep an eye on it, service soon,
    or stop wearing it. Then the two or three numbers that decided it,
    and what to do next.
