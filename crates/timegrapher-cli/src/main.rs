@@ -1322,29 +1322,36 @@ fn write_beats(p: &Path, a: &Analysis) -> std::io::Result<()> {
 }
 
 fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
+    // Where each side's unlock and drop sat, ms from the beat time; the
+    // sign matters here, so these are not run through `opt`.
+    let edge = |v: Option<f64>| v.map_or(String::new(), |v| format!("{v:.4}"));
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(
         w,
-        "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg"
+        "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg,unlock_even_ms,unlock_odd_ms,drop_even_ms,drop_odd_ms"
     )?;
     for r in &a.rate_windows {
         writeln!(
             w,
-            "rate,{:.2},{:.2},{:.2},{:.3},,,",
+            "rate,{:.2},{:.2},{:.2},{:.3},,,,,,,",
             r.start_s, r.end_s, r.fit.rate_s_per_day, r.fit.beat_error_ms
         )?;
     }
     for m in &a.amplitude_windows {
         writeln!(
             w,
-            "amplitude,{:.2},{:.2},,{},{},{},{}",
+            "amplitude,{:.2},{:.2},,{},{},{},{},{},{},{},{}",
             m.start_s,
             m.end_s,
             m.beat_error_ms.map_or(String::new(), |v| format!("{v:.3}")),
             m.beat_error_unlock_ms
                 .map_or(String::new(), |v| format!("{v:.3}")),
             opt(m.even_deg, 1).replace('-', ""),
-            opt(m.odd_deg, 1).replace('-', "")
+            opt(m.odd_deg, 1).replace('-', ""),
+            edge(m.even_unlock_ms),
+            edge(m.odd_unlock_ms),
+            edge(m.even_drop_ms),
+            edge(m.odd_drop_ms)
         )?;
     }
     w.flush()
