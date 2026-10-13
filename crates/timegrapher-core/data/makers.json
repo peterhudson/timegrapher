@@ -1,72 +1,159 @@
 [
   {
     "maker": "ETA",
-    "aliases": ["ETA SA", "Ebauches SA", "Valjoux", "Unitas"],
-    "sources": ["https://en.wikipedia.org/wiki/ETA_SA (Valjoux and Unitas are ETA's own calibre families)"]
+    "common": true,
+    "aliases": [
+      "ETA SA",
+      "Ebauches SA",
+      "Valjoux",
+      "Unitas"
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/ETA_SA (Valjoux and Unitas are ETA's own calibre families)"
+    ]
   },
   {
     "maker": "Sellita",
-    "aliases": ["Sellita Watch Co", "SW"],
-    "sources": ["https://reference.grail-watch.com/2020/03/02/further-sellita-research-sw300-and-more/ (Sellita names its calibres SW)"]
+    "common": true,
+    "aliases": [
+      "Sellita Watch Co",
+      "SW"
+    ],
+    "sources": [
+      "https://reference.grail-watch.com/2020/03/02/further-sellita-research-sw300-and-more/ (Sellita names its calibres SW)"
+    ]
   },
   {
     "maker": "Audemars Piguet",
-    "aliases": ["AP", "Audemars"],
-    "sources": ["AP is the abbreviation watch dealers and owners use for the maker"]
+    "common": true,
+    "aliases": [
+      "AP",
+      "Audemars"
+    ],
+    "sources": [
+      "AP is the abbreviation watch dealers and owners use for the maker"
+    ]
   },
   {
     "maker": "Patek Philippe",
-    "aliases": ["PP", "Patek"],
-    "sources": ["PP is the abbreviation watch dealers and owners use for the maker"]
+    "common": true,
+    "aliases": [
+      "PP",
+      "Patek"
+    ],
+    "sources": [
+      "PP is the abbreviation watch dealers and owners use for the maker"
+    ]
   },
   {
     "maker": "Seiko (SII)",
-    "aliases": ["SII", "Seiko Instruments", "TMI", "Time Module"],
-    "sources": ["https://calibercorner.com/seiko-nh-caliber-differences/ (the NH calibres are sold by Seiko Instruments under the TMI name)"]
+    "common": true,
+    "aliases": [
+      "SII",
+      "Seiko Instruments",
+      "TMI",
+      "Time Module"
+    ],
+    "sources": [
+      "https://calibercorner.com/seiko-nh-caliber-differences/ (the NH calibres are sold by Seiko Instruments under the TMI name)"
+    ]
   },
   {
     "maker": "Miyota (Citizen)",
-    "aliases": ["Miyota", "Citizen"],
-    "sources": ["https://calibercorner.com/miyota-caliber-8215/ (Miyota is Citizen's movement maker)"]
+    "common": true,
+    "aliases": [
+      "Miyota",
+      "Citizen"
+    ],
+    "sources": [
+      "https://calibercorner.com/miyota-caliber-8215/ (Miyota is Citizen's movement maker)"
+    ]
   },
   {
     "maker": "Tianjin Seagull",
-    "aliases": ["Seagull", "Tianjin", "ST"],
-    "sources": ["https://chinesewatchwiki.net/Clone_movements (Sea-Gull ST calibres)"]
+    "common": true,
+    "aliases": [
+      "Seagull",
+      "Tianjin",
+      "ST"
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/Clone_movements (Sea-Gull ST calibres)"
+    ]
   },
   {
     "maker": "Dandong (clone)",
-    "aliases": ["Dandong", "DD"],
-    "sources": ["The DD prefix in clone calibre names (DD3235, DD4130) and parts listings; no neutral reference lists the prefixes"]
+    "common": true,
+    "aliases": [
+      "Dandong",
+      "DD"
+    ],
+    "sources": [
+      "The DD prefix in clone calibre names (DD3235, DD4130) and parts listings; no neutral reference lists the prefixes"
+    ]
   },
   {
     "maker": "Shanghai (clone)",
-    "aliases": ["Shanghai", "SH"],
-    "sources": ["The SH prefix in clone calibre names (SH3135, SH4131); no neutral reference lists the prefixes"]
+    "common": true,
+    "aliases": [
+      "Shanghai",
+      "SH"
+    ],
+    "sources": [
+      "The SH prefix in clone calibre names (SH3135, SH4131); no neutral reference lists the prefixes"
+    ]
   },
   {
     "maker": "Shanghai Jinghe (clone)",
-    "aliases": ["Jinghe", "JH"],
-    "sources": ["The JH prefix in clone calibre names (JH3235); no neutral reference lists the prefixes"]
+    "common": true,
+    "aliases": [
+      "Jinghe",
+      "JH"
+    ],
+    "sources": [
+      "The JH prefix in clone calibre names (JH3235); no neutral reference lists the prefixes"
+    ]
   },
   {
     "maker": "Liaoning Peacock (clone)",
-    "aliases": ["Peacock", "SL"],
-    "sources": ["The SL prefix in Peacock calibre names (SL1258, SL3000)"]
+    "common": true,
+    "aliases": [
+      "Peacock",
+      "SL"
+    ],
+    "sources": [
+      "The SL prefix in Peacock calibre names (SL1258, SL3000)"
+    ]
   },
   {
     "maker": "APS (clone)",
-    "aliases": ["APS"],
-    "sources": ["The APS prefix in clone calibre names (APS 4401)"]
+    "common": true,
+    "aliases": [
+      "APS"
+    ],
+    "sources": [
+      "The APS prefix in clone calibre names (APS 4401)"
+    ]
   },
   {
     "maker": "APS / ZF (clone)",
-    "aliases": ["ZF"],
-    "sources": ["The ZF prefix in clone calibre names (ZF 3120)"]
+    "common": true,
+    "aliases": [
+      "ZF"
+    ],
+    "sources": [
+      "The ZF prefix in clone calibre names (ZF 3120)"
+    ]
   },
   {
     "maker": "Various Chinese makers",
-    "aliases": ["PTS", "DG"],
-    "sources": ["https://chinesewatchwiki.net/Clone_movements (DG28 series, Dixmont Guangzhou)"]
+    "common": true,
+    "aliases": [
+      "PTS",
+      "DG"
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/Clone_movements (DG28 series, Dixmont Guangzhou)"
+    ]
   }
 ]

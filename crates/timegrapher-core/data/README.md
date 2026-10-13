@@ -19,7 +19,7 @@ A JSON array, one object per calibre:
 | `calibre` | Name shown to the user, e.g. "ETA 2824-2" |
 | `maker` | Maker, or "(clone)" for a copy |
 | `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
-| `common` | `true` for the calibres most often met, which the app offers before a search |
+| `common` | `true` for common and modern calibres, the short list the app offers first; uncommon and vintage ones (most of the imported list) leave it out and appear when the list is expanded or searched |
 | `bph` | Beats per hour |
 | `escape_teeth` | Escape wheel teeth, only where there is evidence |
 | `lift_angle_deg` | Lift angle, only where a source gives one |
@@ -31,7 +31,8 @@ A JSON array, one object per calibre:
 
 ## Makers' other names
 
-`makers.json` lists, for a `maker` as the table writes it, the other
+`makers.json` lists, for a `maker` as the table writes it, whether it is
+one of the big makers listed first (`common`), and the other
 names people search by: abbreviations ("AP" for Audemars Piguet, "DD" for
 Dandong), older names, and the families a maker's calibres are sold
 under ("Valjoux" and "Unitas" for ETA). Each carries its source. The

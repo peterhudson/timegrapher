@@ -231,6 +231,7 @@
       "ST3621",
       "ST 36"
     ],
+    "common": true,
     "bph": 21600,
     "seconds": "small seconds (ST3600 at 9, ST3621 at 6), fourth wheel",
     "wheels": [
@@ -268,6 +269,7 @@
       "H-10",
       "Powermatic 80.111"
     ],
+    "common": true,
     "bph": 21600,
     "seconds": "centre",
     "wheels": [
@@ -356,6 +358,7 @@
       "VR3130",
       "VR3186"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
@@ -394,6 +397,7 @@
     "calibre": "SH3135",
     "maker": "Shanghai (clone)",
     "family": [],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "centre (fourth wheel)",
@@ -526,6 +530,7 @@
     "family": [
       "JH32xx"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 55,
@@ -568,6 +573,7 @@
       "VR32xx",
       "SH3235"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "centre",
@@ -602,6 +608,7 @@
       "VR3285",
       "SH3285-2"
     ],
+    "common": true,
     "bph": 28800,
     "seconds": "centre",
     "wheels": [
@@ -682,6 +689,7 @@
       "DD4130",
       "4130 (clone)"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
@@ -723,6 +731,7 @@
     "family": [
       "4131"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 55,
@@ -767,6 +776,7 @@
       "VS4131",
       "4131 (clone)"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 55,
@@ -806,6 +816,7 @@
     "calibre": "SH4131",
     "maker": "Shanghai (clone)",
     "family": [],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "small seconds at 6 (fourth wheel)",
@@ -840,6 +851,7 @@
       "AP 3120",
       "3120"
     ],
+    "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
     "seconds": "centre",
@@ -876,6 +888,7 @@
       "AP 4302",
       "4302"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "centre",
@@ -911,6 +924,7 @@
       "AP 4401",
       "4401"
     ],
+    "common": true,
     "bph": 28800,
     "seconds": "small seconds at 6; centre chronograph seconds",
     "wheels": [
@@ -948,6 +962,7 @@
       "JLC 920",
       "Jaeger-LeCoultre 920"
     ],
+    "common": true,
     "bph": 19800,
     "seconds": "none (hours and minutes only)",
     "wheels": [
@@ -977,6 +992,7 @@
       "APS 3120",
       "ZF 3120"
     ],
+    "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
     "seconds": "centre",
@@ -1014,6 +1030,7 @@
       "APS 4302",
       "ZF 4302"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "centre",
@@ -1048,6 +1065,7 @@
     "family": [
       "4401 (clone)"
     ],
+    "common": true,
     "bph": 28800,
     "seconds": "small seconds at 6; centre chronograph seconds",
     "wheels": [
@@ -1129,6 +1147,7 @@
       "Seiko 6R15",
       "6R"
     ],
+    "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
     "seconds": "centre",
@@ -1164,6 +1183,7 @@
       "7S36",
       "7S"
     ],
+    "common": true,
     "bph": 21600,
     "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
     "wheels": [
@@ -1272,6 +1292,7 @@
       "ST1901",
       "ST19"
     ],
+    "common": true,
     "bph": 21600,
     "seconds": "small seconds at 9 (fourth wheel); centre chronograph seconds",
     "wheels": [
@@ -1345,6 +1366,7 @@
       "DG2813",
       "2813"
     ],
+    "common": true,
     "bph": 21600,
     "seconds": "centre",
     "wheels": [
@@ -1379,6 +1401,7 @@
       "324 S QA LU",
       "324 S C FUS"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 52,
     "seconds": "centre, indirect (a centre seconds wheel held by a friction spring)",
@@ -1417,6 +1440,7 @@
       "DD324",
       "Dandong 324 S C"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
@@ -1458,6 +1482,7 @@
     "family": [
       "SL1258"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "seconds": "centre",

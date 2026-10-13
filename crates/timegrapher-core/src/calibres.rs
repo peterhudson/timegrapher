@@ -29,7 +29,9 @@ pub struct Calibre {
     /// train, clones, and the names the session files use.
     #[serde(default)]
     pub family: Vec<String>,
-    /// One of the calibres most often met, offered before a search.
+    /// Common and modern: in the short list the app offers first. The
+    /// rest (uncommon and vintage calibres) appear when the list is
+    /// expanded or searched.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub common: bool,
     pub bph: u32,
@@ -77,6 +79,10 @@ pub struct TrainWheel {
 pub struct Maker {
     /// As the table's `maker` field writes it.
     pub maker: String,
+    /// One of the big makers listed first; the rest appear when the list
+    /// of makers is expanded.
+    #[serde(default)]
+    pub common: bool,
     /// Abbreviations, older names and the names clone factories and
     /// sellers use: "DD" for Dandong, "AP" for Audemars Piguet.
     pub aliases: Vec<String>,
@@ -88,6 +94,11 @@ pub struct Maker {
 pub fn all() -> &'static [Calibre] {
     static TABLE: OnceLock<Vec<Calibre>> = OnceLock::new();
     TABLE.get_or_init(|| serde_json::from_str(DATA).expect("data/train-wheels.json parses"))
+}
+
+/// The calibres in the short list, common and modern ones.
+pub fn common() -> impl Iterator<Item = &'static Calibre> {
+    all().iter().filter(|c| c.common)
 }
 
 /// Every maker with other names.
