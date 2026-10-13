@@ -403,10 +403,9 @@ tg over those 14, too few to call a trend; +0.20 with the holder in). The Dandon
 19° and its mean is 2° from tg, while the bare ETA splits by 0.7° and its
 mean is 10° from tg.
 
-So a split is not a doubt about `amplitude_deg`, and no caveat lowers a
-grade for it. Quote `amplitude_deg`. On these clean recordings a split of
-up to about 20° was common and is not a fault on its own; `profile` shows
-each side's sound for a closer look. Whether a larger split means something
+So no caveat is named for a split. On these clean recordings a split of
+up to about 20° was common; `profile` shows each side's sound for a closer
+look. Whether a larger split means something
 on the bench needs a watch with a confirmed fault recorded before and after
 repair.
 
@@ -441,3 +440,42 @@ synthetic beats whose three sounds are placed and scaled on purpose:
 | Level ratios 1:3 and 2:3 | ±0.03 |
 | An extra sound 4 ms after the drop on every other beat | found on that side only, ±0.1 ms |
 | Impulse 0.2 ms after the unlock | reported as not separable (no sound 2) |
+
+## Signal above noise (`signal_x`): what the added-noise tests showed
+
+`signal_x` is the median beat peak over the median of the envelope, the
+desktop app's "signal N×" and `doctor`'s `check.signal_x`. Measured
+2026-10-09:
+
+- Pure noise reads about 1.9 to 2×.
+- Real takes (median of 4 s windows): Patek 11×, Daytona 12×, Dandong
+  3235 16×, Yacht-Master dial down 24× and crown up 28×, ETA in its holder
+  31×, Peacock 33×, bare ETA 75 to 76×. All of them read within 1 s/d of
+  tg on rate.
+- White noise was added to 5-minute clean stretches of the Peacock, the
+  Yacht-Master crown up and the Patek. The rate held within 0.1 s/d of the
+  clean reading down to 2.2 to 3×, and collapsed at about 2×. Amplitude
+  and beat error held down to 3 to 4× on the Peacock, but broke at about
+  5× on the Yacht-Master (odd side 321° against 229°, beat error 2.5 ms)
+  and at 5.5× on the Patek. Above about 9×, all three watches read within
+  2° and 0.05 ms of their clean figures.
+
+These tests used white noise and eight takes. Hum, knocks and a holder
+that smears the sound are not captured by them: the ETA in its holder
+reads 31×, yet its amplitude is unreliable.
+
+## Short takes: regularity not assessed
+
+Whether a regular beat is found is assessed on 10 s windows, so with less
+than 10 s of sound it is not assessed. "Not assessed" and "not found" are
+two different facts, and withholding the readings on length alone was a
+judgement. This reverses the withholding of readings under 10 s that #155
+and #162 introduced: a short take now shows its readings, `watch_heard`
+stays true, the `short_span` caveat gives the span, and `analyze` prints,
+for example, "Beat regularity not assessed: 8.0 s of sound, 10 s needed".
+
+Only an assessed timing scatter (`jitter_us`, and `timing_scatter_fraction`
+as a share of the beat period) of 2% of the beat period or more nulls the
+readings, stated as "No regular beat found (timing scatter X ms, Y% of a
+beat)". 2% is the engine's regularity criterion (see
+`beats::NO_WATCH_JITTER_FRACTION`), not a quality grade.

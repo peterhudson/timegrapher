@@ -47,7 +47,7 @@ The corpus's *holdout* tier (`"tier": "holdout"` in `corpus.json`; see "The
 holdout seal" in the corpus README) holds recordings the engine is never
 tuned on. Plain `regress`, `--fetch` and `--smoke` leave them out.
 `regress corpus --holdout` reads only them, and no baseline: each reading is
-judged against tg alone, and against the fault its session file names.
+judged against tg alone.
 
 - Rate, amplitude and beat error (from the unlock, by size) pass within
   0.5 s/d, 8° and 0.2 ms of tg on the same file at the same lift angle
@@ -64,21 +64,18 @@ judged against tg alone, and against the fault its session file names.
   movements. At 4° about a third of holdout readings would fail for that
   known reason; at 8° a failure shows something new.
 - A `[[recording]]` entry may name a fault confirmed at the bench:
-  `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
-  `id` is one of `analyze`'s `faults[]` ids and `side` (Tick, Tock or both)
-  is optional. The fault is found when `analyze`'s findings on the reading's
-  measured stretch (after settling, at most 30 minutes of it) include that
-  id on that side. An entry with no `fault` is a healthy watch, and any
-  finding on it counts against the engine.
-- It prints counts only: pass, fail and not judged for each value, and how
-  many named faults were found or missed and how many findings were not the
-  named fault. No take names, file names or numbers, and `--fetch` does not
-  name what it downloads.
+  `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`
+  (`side`, Tick, Tock or both, is optional). The program names no faults,
+  so the entry is only carried into the revealed readings, beside the
+  measured figures.
+- It prints counts only: pass, fail and not judged for each value. No take
+  names, file names or numbers, and `--fetch` does not name what it
+  downloads.
 - The run exits 0 whatever the counts say: a holdout result never blocks a
   change. Only a reading that cannot be measured fails it.
 - `--reveal` also prints every reading's numbers, for the announced
   milestone run whose results go in each take's README. Run it locally,
-  never in CI. `--json` prints the same as a `timegrapher.regress-holdout/1`
+  never in CI. `--json` prints the same as a `timegrapher.regress-holdout/2`
   document.
 
 ## What fails

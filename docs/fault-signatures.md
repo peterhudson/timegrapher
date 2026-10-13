@@ -1,12 +1,13 @@
 # Fault signatures
 
-How common escapement and gear-train faults show up, and the measurements
-timegrapher will use to flag them. The fault list and the waveform shapes
-follow Witschi, *Testing methods for mechanical watches* (2025),
-"Fault Detection". Witschi's own note applies: the examples are not
-exhaustive, and similar patterns can have different mechanical causes.
-The suggested features are this project's interpretation and still need
-checking against recordings of watches with confirmed faults.
+How common escapement faults show up in the sound of a beat, and the
+measurements timegrapher reports that describe that sound. The fault list
+and the waveform shapes follow Witschi, *Testing methods for mechanical
+watches* (2025), "Fault Detection". Witschi's own note applies: the
+examples are not exhaustive, and similar patterns can have different
+mechanical causes. The features listed are this project's reading of
+Witschi and have not been checked against recordings of watches with
+confirmed faults.
 
 Each beat has three sounds: **1** unlock, **2** impulse, **3** drop. Beats
 alternate between the two pallet stones, so a fault confined to one stone
@@ -29,57 +30,33 @@ shows on every other beat only. Amplitude is measured from 1 to 3.
 | Grazing balance wheel or hairspring | Sustained rubbing noise after the drop, ending in another burst | Long post-drop energy; periodic rubbing bursts |
 | Escape tooth lands directly on the impulse plane | No distinct unlock; a small sound where the impulse should be, then the drop | Missing sound 1; only two events |
 
-### What `analyze` flags today
+### What `analyze` reports
 
-`analyze` lists these as **Possible faults** (`faults[]` in the JSON;
-rules in `crates/timegrapher-core/src/faults.rs`). No recording of a watch
-with a confirmed fault has been through them yet, so every finding is
-"possible", and each limit sits well outside what the 16 healthy takes of
-the public corpus measure. Each is also found on a synthetic recording
-made with that fault (`tests/synthetic.rs`).
+`analyze` measures the shape and reports it as figures; it no longer
+names faults. The `shape` block of `analyze --json` (and the `Shape` lines
+of its text) gives, for the Tick (`even`) and the Tock (`odd`):
 
-| Finding | Rule | Healthy corpus reaches |
-| --- | --- | --- |
-| `unlock_too_strong` | Sound 1 at least as loud as sound 3 | 0.78 (Patek 324 clone) |
-| `no_unlock_sound` | Sound 1 missing in most windows, or no sound 2 and a 1-to-3 interval under 75% of the other side's (the impulse taken for the unlock) | sound 1 in 65% of windows or more |
-| `escapement_friction` | Sound 2 not separable from sound 1 in most windows | sound 2 in 94% or more |
-| `unlock_uneven` | One side's 1-to-2 interval 1.8 times the other's: uneven lock, or an extra sound just before the unlock, which is taken for sound 1 | 1.46 (DD 3235); a plastic holder alone gave 1.40 |
-| `rubbing_after_drop` | Level 3 to 15 ms after the drop at least 0.1 of the drop, and 3 times the other side's | about 1.7 times |
-| `beat_error_drift` | Unlock beat error in the last quarter of the recording at least 1 ms from the first quarter (needs about a minute of beat error) | 0.44 ms (Yacht-Master, crown right) |
+| Measure | What it is |
+| --- | --- |
+| `windows_measured` | 2 s windows in which the side's shape was measured |
+| `share_with_sound_1` | share of those windows in which sound 1 (the unlock) was found |
+| `share_with_sound_2` | share in which sound 2 (the impulse) was found apart from sound 1 |
+| `i12_ms`, `i13_ms` | sound 1 to sound 2, and sound 1 to sound 3, ms (medians over the windows) |
+| `ratio13` | level of sound 1 over the level of sound 3 |
+| `tail_ratio` | mean level 3 to 15 ms after the drop over the drop's level |
 
-Not flagged yet: extra sounds after the drop (case and holder ringing
-gives them on most beats of the ETA, Daytona and Peacock takes), doubled
-sounds (end shake; needs a measured spacing of doubled peaks), and noise
-between beats (a worn pivot; the measure reads about 1 on every take).
-From the diagram, only the hairspring's drifting beat error is flagged.
-The pallet fork's late outliers are not, because healthy watches already
-show them: on the corpus, up to 14% of one side's beats sit more than four
-spreads late of their neighbours (Yacht-Master, Daytona, ETA in its
-holder), against almost none early. Overbanking is not flagged either: no
-corpus take shows it, and the ETA in its plastic holder already reads 320
-to 332°, so amplitude above 330° alone would be a false finding.
+and, for the beat error measured from the unlock,
+`beat_error_first_quarter_ms` and `beat_error_last_quarter_ms`: its median
+over the first and the last quarter of the 2 s windows
+(`beat_error_quarter_windows` in each). `timegrapher shape` gives the full
+set of measures.
 
-## Diagram (beat timing over time)
-
-| Fault | What the diagram shows | Feature to measure |
-| --- | --- | --- |
-| Good condition | One straight line | — |
-| Beat error too large (about 3 ms) | Two parallel lines | Beat error |
-| Rate needs adjusting | A steep line | Rate |
-| Large differences between vertical positions | Rate changes a lot between vertical positions | Positional spread |
-| Vertical vs horizontal difference | Rate differs between dial up and pendant positions | V–H index |
-| **Large but regular rate variations** | Line waves regularly: a gear-train fault | Periodicity of rate (Feature 1) |
-| Very irregular rate | Scattered, wandering line; usually low amplitude, needs service | Jitter, amplitude |
-| Balance knocks intermittently (overbanking) | Line jumps in steps; amplitude above 330° | Amplitude > 330°, step changes in residual |
-| Balance knocks continuously | Line breaks into doubled segments | Persistent double beats |
-| Escape wheel out of round | Smooth wave, one cycle per escape-wheel turn (15–21 teeth) | Period = teeth × 2 beats (3.75 s for 15 teeth at 28,800) |
-| Pallet fork poorly fitted or dry (gummed) | Points scatter below the line | One-sided late outliers |
-| Hairspring rubbing | Two lines that drift apart | Beat error changing over time |
-| Slow oscillation after a position change | A slow curve after moving the watch | Settling time after a position change |
+Reading these figures against the faults above, and Witschi's timing
+diagram patterns, is interpretation: it lives in the
+[watchmaker skill](../skills/watchmaker/SKILL.md), not in the program.
 
 ## Calibre 3235 notes
 
 The first recordings (dial up, 2026-10-08) show the rate moving between
 about 0 and +50 s/d over tens of seconds, and the amplitude varying with a
-period close to 60 s. That matches "large but regular rate variations" with
-the period of the fourth wheel. Longer recordings are needed to confirm it.
+period close to 60 s, the period of the fourth wheel. Longer recordings are needed to confirm it.

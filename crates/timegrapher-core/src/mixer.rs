@@ -214,7 +214,7 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
         fix(
             IssueCode::AgcSuspected,
             format!(
-                "Turn off '{}' on card {} so the gain stays fixed, then run doctor again.",
+                "Turns off '{}' on card {}, so the gain stays fixed.",
                 c.name, m.card
             ),
             Some(amixer(&m.card, c, "off")),
@@ -224,9 +224,8 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
     } else if check.has(IssueCode::AgcSuspected) {
         fix(
             IssueCode::AgcSuspected,
-            "Automatic gain looks to be on, but the mixer shows no switch for it. Look for \
-             'Auto Gain Control' in alsamixer (F4 for capture controls) or in your desktop's \
-             sound settings."
+            "The background rises between ticks, as automatic gain makes it; the mixer \
+             shows no automatic gain switch to turn off."
                 .into(),
             None,
         );
@@ -267,17 +266,16 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
             };
             let lasting = match sound_server() {
                 Some(server) => format!(
-                    " {server} is running and puts back its own saved microphone level whenever \
-                     the microphone is opened, so for a change that lasts lower or raise the \
-                     input volume in the sound settings (or wpctl/pactl) until doctor shows \
-                     this level."
+                    " {server} is running and puts back its own saved microphone level \
+                     whenever the microphone is opened, so the change may not last; the \
+                     input volume in the sound settings (or wpctl/pactl) is the one it keeps."
                 ),
                 None => String::new(),
             };
             fix(
                 issue,
                 format!(
-                    "Change '{}' on card {} {to}, then run doctor again.{lasting}",
+                    "Sets '{}' on card {} {to}, which puts the peak at about -10 dBFS.{lasting}",
                     c.name, m.card
                 ),
                 Some(amixer(&m.card, c, &value)),
@@ -286,8 +284,10 @@ pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
         None => fix(
             issue,
             format!(
-                "Change the microphone's input level by about {change:+.0} dB in your sound \
-                 settings (or alsamixer, F4 for capture), then run doctor again."
+                "The peak is {:.0} dB {} -10 dBFS; no capture control was found on the \
+                 mixer to set it.",
+                change.abs(),
+                if change < 0.0 { "above" } else { "below" }
             ),
             None,
         ),
@@ -310,40 +310,44 @@ pub fn sound_server() -> Option<&'static str> {
 /// Fixes on macOS and Windows: which setting to change, in words.
 pub fn other_fixes(check: &SignalCheck, os: &str) -> Vec<Fix> {
     let mut fixes = Vec::new();
-    let mut fix = |issue, description: &str| {
+    let mut fix = |issue, description: String| {
         fixes.push(Fix {
             issue,
-            description: description.to_string(),
+            description,
             command: None,
             requires_consent: true,
         })
     };
-    let level = |down: bool| {
-        match (os, down) {
-        ("macos", true) => "Open Audio MIDI Setup, select the microphone, and lower its Input volume slider; or in System Settings > Sound > Input lower the Input volume. Then run doctor again.",
-        ("macos", false) => "Open Audio MIDI Setup, select the microphone, and raise its Input volume slider; or in System Settings > Sound > Input raise the Input volume. Then run doctor again.",
-        ("windows", true) => "Open Settings > System > Sound, choose the microphone under Input, and lower its Input volume (or Control Panel > Sound > Recording > Properties > Levels). Then run doctor again.",
-        ("windows", false) => "Open Settings > System > Sound, choose the microphone under Input, and raise its Input volume (or Control Panel > Sound > Recording > Properties > Levels). Then run doctor again.",
-        (_, true) => "Lower the microphone's input level in your sound settings, then run doctor again.",
-        (_, false) => "Raise the microphone's input level in your sound settings, then run doctor again.",
-    }
+    let place = match os {
+        "macos" => "the microphone's Input volume in Audio MIDI Setup, or System Settings > Sound > Input",
+        "windows" => "the microphone's Input volume in Settings > System > Sound, or Control Panel > Sound > Recording > Properties > Levels",
+        _ => "the microphone's input level in the sound settings",
+    };
+    let level = |change: Option<f64>| match change {
+        Some(c) => format!(
+            "The peak is {:.0} dB {} -10 dBFS. The input level is {place}.",
+            c.abs(),
+            if c < 0.0 { "above" } else { "below" }
+        ),
+        None => format!("The input level is {place}."),
     };
     if check.has(IssueCode::AgcSuspected) {
         fix(
             IssueCode::AgcSuspected,
             match os {
-                "windows" => "Turn off automatic gain: Control Panel > Sound > Recording > the microphone > Properties: untick 'Allow applications to take exclusive control' only if needed, and under Advanced or Enhancements turn off 'Audio enhancements' and any AGC option. Then run doctor again.",
-                "macos" => "macOS has no system automatic gain for USB microphones, but some apps and voice-processing tools add it; quit other audio apps and run doctor again.",
-                _ => "Turn off the microphone's automatic gain in your sound settings, then run doctor again.",
-            },
+                "windows" => "The background rises between ticks, as automatic gain makes it. Windows keeps automatic gain under Control Panel > Sound > Recording > the microphone > Properties, as 'Audio enhancements' or an AGC option.",
+                "macos" => "The background rises between ticks, as automatic gain makes it. macOS has no system automatic gain for USB microphones; some apps and voice-processing tools add it.",
+                _ => "The background rises between ticks, as automatic gain makes it.",
+            }
+            .to_string(),
         );
     }
     if check.has(IssueCode::Clipping) {
-        fix(IssueCode::Clipping, level(true));
+        fix(IssueCode::Clipping, level(check.suggested_gain_change_db));
     } else if check.has(IssueCode::Hot) {
-        fix(IssueCode::Hot, level(true));
+        fix(IssueCode::Hot, level(check.suggested_gain_change_db));
     } else if check.has(IssueCode::TooQuiet) {
-        fix(IssueCode::TooQuiet, level(false));
+        fix(IssueCode::TooQuiet, level(check.suggested_gain_change_db));
     }
     fixes
 }
