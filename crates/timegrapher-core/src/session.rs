@@ -490,10 +490,7 @@ pub fn measure_with_breaks(
 /// A clock fit for a sound card known to be `ppm` slow (negative: fast),
 /// for recordings made without a clock log on a card calibrated before.
 pub fn fixed_clock(ppm: f64, duration_s: f64) -> Option<ClockFit> {
-    let k = 1.0 + ppm * 1e-6;
-    let d = duration_s.max(3.0);
-    let pairs = [(0.0, 0.0), (d / 2.0, d / 2.0 * k), (d, d * k)];
-    ClockFit::new(&pairs).ok()
+    Some(ClockFit::fixed(ppm, duration_s))
 }
 
 /// A periodic change found in one recording.
