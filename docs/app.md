@@ -16,9 +16,22 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 ## The screen
 
-Along the top, the toolbar: the sidebar button, which hides the sidebar
+Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
+Cmd+O on a Mac), Open Folder…, Save… or Save Again… (Ctrl+S), New Session
+and Quit (Ctrl+Q). **View**: a tick for the readings and for each pane,
+the sidebar, Reset Panes and Appearance (Auto, Light, Dark). **Help**:
+Check for Updates…, Check for Updates at Start, Report a Problem… and, on
+Linux, **Add to Applications Menu**, which puts the app and its icon (a
+black dial with red lines) in the desktop's menu, so the window shows that
+icon too (it writes `timegrapher.desktop` and the icon under
+`~/.local/share`, pointing at the program running now).
+
+Below it, the toolbar: the sidebar button, which hides the sidebar
 to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
-a Mac), **Microphone** or **Recording**, the
+a Mac), one icon for each pane that shows or hides it (resting the pointer
+on an icon names its pane; a pane showing has its icon lit, and the
+charts' and distributions' icons take their colours),
+**Microphone** or **Recording**, the
 microphone menu (or the file to open), the input's level meter and the
 buttons for the session (see Sessions below; **Replay**, **Stop** and,
 while one is being analysed, **Cancel** for a recording). Opening a
@@ -29,17 +42,19 @@ live, and **Analyse All**, shown during a replay and after it, goes back
 to the whole recording analysed at once without opening it again,
 keeping the settings chosen under Watch. Dropping a file or folder on the window opens it too where the
 desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
-**Watch**, **Microphone** (only for the microphone), then one card for each
-part of the window (**Readings**, **Paper Strip**, **Tick Tock Profile**,
-**Charts**, **Distributions**), each with its switch to show or hide it and
-its own options, and **Window** for the appearance and the pane layout.
-Clicking a card's name folds the card away to its caption, and clicking it
+**Watch**, **Microphone** (only for the microphone) and **Readings**, with
+its switch to show or hide the readings and the averaging time. Every
+pane's own settings sit in a toolbar across the top of the pane, with the
+pane's **?** at its right; a toolbar too narrow for its settings carries
+them onto a second line. The charts carry theirs in the tab bar: **Match
+Strip**, on, shows the same stretch of time as the paper strip, and off,
+the whole session. Clicking a card's name folds the card away to its caption, and clicking it
 again opens it. A choice between two options, such as Stacked and Beside,
 switches to the other option wherever it is clicked, so it can be flipped
 back and forth without moving the pointer. Titles and labels are in Title
 Case. In the rest, the
 three readings in cards and below them the panes. Along the bottom, the
-status line. Every card and reading has a **?** beside its name: resting
+status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
@@ -53,7 +68,7 @@ shown in place, and the path box goes back to it. Choosing **Recording**
 while a stopped microphone session is in hand shows the ways in again
 rather than that session's figures, and says the session is kept;
 **Microphone** brings it back. The app follows the
-desktop's light or dark setting (Appearance, under Window, overrides it),
+desktop's light or dark setting (Appearance, in the View menu, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
 
@@ -156,8 +171,7 @@ first half hour against the half hour 24 hours later (or the session's last),
 the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
 Later. It needs the amplitude to fall
 through at least three 2° steps, which a run-down over some hours gives.
-Its switch and a note on what it needs are in the Isochronism section of
-the sidebar. Until there are 5 minutes of beats in one position, the
+A note on what it needs is behind the **?** in its toolbar. Until there are 5 minutes of beats in one position, the
 Steadiness and Isochronism tabs say so; during a Positions Test they say
 that the test never stays that long in one position. Both scroll with a
 bar always showing when the pane is too short for every row.
@@ -193,10 +207,11 @@ profile, and charts of rate, amplitude and beat error over the session. Drag a p
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides
-that pane (the status line says which switch brings it back), and the switch on each card in the sidebar hides or shows its pane
-or the readings across the top; a hidden pane comes back where it was,
+that pane (the status line says it comes back from its icon at the top or
+the View menu), and the icons and the View menu hide or show each pane
+and the readings across the top; a hidden pane comes back where it was,
 and changing the strip's direction keeps the choice. **Reset Panes**
-(under Window) shows them all in their starting places. Periodicity views will join
+(in the View menu) shows them all in their starting places. Periodicity views will join
 them.
 
 **Tick Tock Profile.** The typical sound of the ticks (blue) and of
@@ -240,7 +255,7 @@ built on them are suspect.
 **Scope.** The sound itself, beat by beat, like the scope view on a
 Witschi (whose training course, doc. 71.1010D35e p. 12, gives the
 same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not an average. A
-tab beside the Tick Tock Profile, set in the Scope section of the sidebar.
+tab beside the Tick Tock Profile, set in its toolbar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
 after, with the profile's Unlock and Drop marks. **200 ms** shows one
@@ -359,7 +374,7 @@ levels, a step, a trend, correlation between readings, or none of these),
 with no verdict word or colour, and under it the statistics: readings,
 median, standard deviation, the scatter from one reading to the next, the
 lag-1 correlation and Ljung–Box p-value, and the trend and period when
-found. Under Each Series, in the Steadiness section of the sidebar,
+found. Under Each Series, in the Steadiness toolbar,
 chooses what is drawn under every series:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
@@ -419,7 +434,7 @@ stored clock corrections, with the home folder, user name and host name
 removed. Saving opens the zip's folder and the matching GitHub form; the app
 sends nothing itself.
 
-**Appearance.** Under Window: Auto follows the desktop's light or dark
+**Appearance.** In the View menu: Auto follows the desktop's light or dark
 setting; Light and Dark override it.
 
 **No input touched at launch.** Listing the inputs asks each one what it
@@ -443,14 +458,14 @@ smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and on the right the beat rate and the
 position, **Check for Updates…** and **Report a Problem…**.
 
-**Updates.** With **Check for Updates at Start** on (the Window settings;
+**Updates.** With **Check for Updates at Start** on (the Help menu;
 on unless switched off), the app asks GitHub once at start, on a
 background thread, whether a newer release is published
 (`timegrapher_core::update::check`). If one is, a banner says
 "Timegrapher 0.2.0 is available" with **Download**, which opens the
 release's page in the browser. Nothing installs itself. At start, a
 failed check or an up-to-date version says nothing. **Check for
-Updates…** in the status bar makes the same check and always says what it
+Updates…** in the status bar or the Help menu makes the same check and always says what it
 found: the notice, "up to date", or why it couldn't check ("no release has
 been published yet"). The request carries no account or identifier.
 

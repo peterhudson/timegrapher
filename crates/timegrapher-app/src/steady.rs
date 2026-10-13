@@ -432,7 +432,7 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
 }
 
 /// The picker for what the pane draws under each series, for the
-/// Steadiness section of the sidebar. True when the view changed.
+/// Steadiness toolbar. True when the view changed.
 pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
     let choices: Vec<(View, &str, &str)> = View::ALL
         .iter()

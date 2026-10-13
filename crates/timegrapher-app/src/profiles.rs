@@ -52,7 +52,7 @@ pub fn summary(p: &TickProfile) -> String {
     s
 }
 
-/// How the pane is drawn: set in the sidebar.
+/// How the pane is drawn: set in its toolbar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Options {

@@ -35,6 +35,10 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
+/// The hints on Time Span's two choices.
+const SPAN_SESSION_HINT: &str = "Everything since the session started, growing as it goes";
+const SPAN_STRIP_HINT: &str = "The same stretch of time as the paper strip, so the charts line \
+     up with it and move with it";
 /// Plain marks on the level meter, for reference only.
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
@@ -182,18 +186,7 @@ impl Pane {
         }
     }
 
-    /// The short name in a sidebar card that is already about charts or
-    /// histograms.
-    fn short(self) -> &'static str {
-        match self {
-            Pane::Rate | Pane::RateHistogram => "Rate",
-            Pane::Amplitude | Pane::AmplitudeHistogram => "Amplitude",
-            Pane::BeatError | Pane::BeatErrorHistogram => "Beat Error",
-            p => p.title(),
-        }
-    }
-
-    /// What the pane shows, for its switch in the sidebar.
+    /// What the pane shows, for its icon and its line in the View menu.
     fn hint(self) -> &'static str {
         match self {
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
@@ -231,6 +224,25 @@ impl Pane {
 /// The starting arrangement: the strip beside the sound and the three
 /// charts when it runs down the window, above them when it lies on its
 /// side.
+/// A pane's icon and the colour it is drawn in: the series' colour for a
+/// chart or a distribution, grey otherwise.
+fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
+    use theme::Icon;
+    match pane {
+        Pane::Strip => (Icon::Strip, pal.text_secondary),
+        Pane::Sound => (Icon::Profile, pal.text_secondary),
+        Pane::Scope => (Icon::Scope, pal.text_secondary),
+        Pane::Steadiness => (Icon::Steadiness, pal.text_secondary),
+        Pane::Isochronism => (Icon::Isochronism, pal.text_secondary),
+        Pane::Rate => (Icon::Chart, pal.trace_rate),
+        Pane::Amplitude => (Icon::Chart, pal.trace_amplitude),
+        Pane::BeatError => (Icon::Chart, pal.trace_beat_error),
+        Pane::RateHistogram => (Icon::Distribution, pal.trace_rate),
+        Pane::AmplitudeHistogram => (Icon::Distribution, pal.trace_amplitude),
+        Pane::BeatErrorHistogram => (Icon::Distribution, pal.trace_beat_error),
+    }
+}
+
 fn default_layout(horizontal: bool) -> Tree<Pane> {
     let mut tiles = Tiles::default();
     // Each pane in its own tab bar from the start. Left to the tree, the
@@ -1936,7 +1948,9 @@ impl TimegrapherApp {
             {
                 self.sidebar = !self.sidebar;
             }
-            ui.add_space(2.0);
+            ui.add_space(6.0);
+            self.pane_icons(ui);
+            ui.add_space(10.0);
             theme::segmented(
                 ui,
                 &mut self.input,
@@ -2284,9 +2298,8 @@ impl TimegrapherApp {
         }
     }
 
-    /// The sidebar: the watch and the microphone, then a section for each
-    /// pane with the switch that shows it, its options and a "?" that
-    /// explains it.
+    /// The sidebar: the watch, the microphone and the readings. Each pane's
+    /// own settings are in its toolbar.
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 8.0;
         self.section(ui, "Watch", None, help::WATCH, Self::watch_settings);
@@ -2308,33 +2321,6 @@ impl TimegrapherApp {
             Self::readings_settings,
         );
         self.show_readings = on;
-        self.pane_section(ui, Pane::Strip, help::STRIP, Self::strip_settings);
-        self.pane_section(ui, Pane::Sound, help::PROFILE, Self::profile_settings);
-        self.pane_section(ui, Pane::Scope, help::SCOPE, |app, ui| {
-            scope::settings(ui, &mut app.scope_view);
-        });
-        self.pane_section(
-            ui,
-            Pane::Steadiness,
-            help::STEADINESS,
-            Self::steady_settings,
-        );
-        self.pane_section(
-            ui,
-            Pane::Isochronism,
-            help::ISOCHRONISM,
-            Self::isochronism_settings,
-        );
-        self.section(ui, "Charts", None, help::CHARTS, |app, ui| {
-            app.pane_switches(ui, &Pane::CHARTS);
-            app.span_setting(ui);
-        });
-        self.section(ui, "Distributions", None, help::HISTOGRAMS, |app, ui| {
-            app.pane_switches(ui, &Pane::HISTOGRAMS);
-            app.span_setting(ui);
-            app.histogram_settings(ui);
-        });
-        self.section(ui, "Window", None, help::WINDOW, Self::window_settings);
         ui.add_space(8.0);
     }
 
@@ -2360,72 +2346,47 @@ impl TimegrapherApp {
         changed
     }
 
-    /// A pane's section: its switch in the caption, its settings below.
-    fn pane_section(
-        &mut self,
-        ui: &mut egui::Ui,
-        pane: Pane,
-        help: &[&str],
-        settings: fn(&mut Self, &mut egui::Ui),
-    ) {
-        let mut on = pane_visible(&self.panes.tiles, pane);
-        if self.section(ui, pane.title(), Some(&mut on), help, settings) {
-            set_pane_visible(&mut self.panes.tiles, pane, on);
-        }
-    }
-
-    /// A switch for each of these panes.
-    fn pane_switches(&mut self, ui: &mut egui::Ui, panes: &[Pane]) {
-        for &pane in panes {
-            let mut on = pane_visible(&self.panes.tiles, pane);
-            if theme::switch_row(ui, pane.short(), &mut on, pane.hint()) {
-                set_pane_visible(&mut self.panes.tiles, pane, on);
+    /// A pane's toolbar: its settings in a row and its "?" at the right.
+    /// The charts keep theirs in the tab bar (see `top_bar_right_ui`), so
+    /// a short chart loses no height; false for them.
+    fn pane_tools(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
+        let title = pane.title();
+        match pane {
+            Pane::Strip => {
+                theme::pane_toolbar(ui, title, help::STRIP, |ui| self.strip_settings(ui))
             }
+            Pane::Sound => {
+                theme::pane_toolbar(ui, title, help::PROFILE, |ui| self.profile_settings(ui))
+            }
+            Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
+                scope::settings(ui, &mut self.scope_view)
+            }),
+            Pane::Steadiness => {
+                theme::pane_toolbar(ui, title, help::STEADINESS, |ui| self.steady_settings(ui))
+            }
+            Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |_| {}),
+            p if Pane::HISTOGRAMS.contains(&p) => {
+                theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
+                    self.span_setting(ui);
+                    self.histogram_settings(ui);
+                })
+            }
+            _ => return false,
         }
+        true
     }
 
     fn steady_settings(&mut self, ui: &mut egui::Ui) {
-        let pal = theme::pal(ui);
-        ui.label(
-            RichText::new("Under Each Series")
-                .small()
-                .color(pal.text_secondary),
-        );
-        steady::view_list(ui, &mut self.steady_view);
-        ui.add(
-            egui::Label::new(
-                RichText::new(
-                    "Tested over the session's beats in the watch's position once there \
-                     are 5 minutes of them, and again every minute while they grow.",
-                )
-                .small()
-                .color(pal.text_tertiary),
-            )
-            .wrap(),
+        theme::row(
+            ui,
+            "Under Each Series",
+            Some("What is drawn under each series' sentence"),
+            |ui| {
+                steady::view_list(ui, &mut self.steady_view);
+            },
         );
     }
 
-    fn isochronism_settings(&mut self, ui: &mut egui::Ui) {
-        let pal = theme::pal(ui);
-        ui.add(
-            egui::Label::new(
-                RichText::new(
-                    "From the same tests as Steadiness. The curve needs the amplitude to \
-                     fall as the mainspring lets down, which takes hours; the 0 h / 24 h \
-                     table needs 2 hours, and 24 for the full test.",
-                )
-                .small()
-                .color(pal.text_tertiary),
-            )
-            .wrap(),
-        );
-    }
-
-    /// The Steadiness pane: start the tests when there is enough new, show
-    /// the latest answer.
-    /// Take in a finished steadiness run, and start another when enough
-    /// new beats have come. The Steadiness and Isochronism panes share it.
-    /// Returns the seconds of beats in the position shown.
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
         if let Some(rx) = &self.steady_job {
             match rx.try_recv() {
@@ -2633,17 +2594,8 @@ impl TimegrapherApp {
                     ui,
                     &mut self.span_of_strip,
                     &[
-                        (
-                            false,
-                            "Session",
-                            "Everything since the session started, growing as it goes",
-                        ),
-                        (
-                            true,
-                            "Strip",
-                            "The same stretch of time as the paper strip, so the charts \
-                             line up with it and move with it",
-                        ),
+                        (false, "Session", SPAN_SESSION_HINT),
+                        (true, "Strip", SPAN_STRIP_HINT),
                     ],
                 );
             },
@@ -3098,46 +3050,235 @@ impl TimegrapherApp {
         );
     }
 
-    fn window_settings(&mut self, ui: &mut egui::Ui) {
-        let mut t = ui.ctx().options(|o| o.theme_preference);
-        theme::row(
-            ui,
-            "Appearance",
-            Some("Light or dark, or follow the system"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut t,
-                    &[
-                        (egui::ThemePreference::System, "Auto", "Follow the system"),
-                        (egui::ThemePreference::Light, "Light", ""),
-                        (egui::ThemePreference::Dark, "Dark", ""),
-                    ],
-                );
-            },
-        );
-        if t != ui.ctx().options(|o| o.theme_preference) {
-            ui.ctx().set_theme(t);
-            self.theme = t;
+    /// The menus across the very top: File, View and Help.
+    fn menu_bar(&mut self, ui: &mut egui::Ui) {
+        egui::MenuBar::new().ui(ui, |ui| {
+            ui.menu_button("File", |ui| self.file_menu(ui));
+            ui.menu_button("View", |ui| self.view_menu(ui));
+            ui.menu_button("Help", |ui| self.help_menu(ui));
+        });
+    }
+
+    fn file_menu(&mut self, ui: &mut egui::Ui) {
+        let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
+        if ui
+            .add(
+                egui::Button::new("Open Recording…")
+                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::O))),
+            )
+            .on_hover_text("Choose a WAV or FLAC recording and analyse it all")
+            .clicked()
+        {
+            ui.close();
+            self.open_from_menu(false);
         }
-        theme::switch_row(
-            ui,
-            "Check for Updates at Start",
-            &mut self.check_at_start,
-            "Ask GitHub whether a newer Timegrapher is published each time the app \
-             starts, and say so if there is. It sends no account or identifier, and nothing \
-             installs itself. Check for Updates… in the status bar asks at any time.",
-        );
-        ui.horizontal(|ui| {
+        if ui
+            .button("Open Folder…")
+            .on_hover_text(FOLDER_RULE)
+            .clicked()
+        {
+            ui.close();
+            self.open_from_menu(true);
+        }
+        ui.separator();
+        let saved = self.session.saved_to().is_some();
+        if ui
+            .add_enabled(
+                self.session.allows(Action::Save),
+                egui::Button::new(if saved { "Save Again…" } else { "Save…" })
+                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::S))),
+            )
+            .on_hover_text("Save the sound of this session so far, to analyse again later")
+            .on_disabled_hover_text("Nothing to save yet: listen to a watch first")
+            .clicked()
+        {
+            ui.close();
+            self.save_recording();
+        }
+        let mic_data = self.session.mic() && self.live.is_some();
+        if ui
+            .add_enabled(
+                mic_data && !self.running(),
+                egui::Button::new("New Session"),
+            )
+            .on_hover_text("Clear everything and start again with the next watch or position")
+            .on_disabled_hover_text("Stop listening first")
+            .clicked()
+        {
+            ui.close();
+            if self.unsaved_s() > 5.0 {
+                self.confirm = Some(Confirm::NewSession);
+            } else {
+                self.new_session();
+            }
+        }
+        ui.separator();
+        if ui
+            .add(
+                egui::Button::new("Quit")
+                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
+            )
+            .clicked()
+        {
+            ui.close();
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    fn view_menu(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.show_readings, "Readings")
+            .on_hover_text("The rate, amplitude and beat error cards");
+        for pane in Pane::ALL {
+            let mut on = pane_visible(&self.panes.tiles, pane);
             if ui
-                .button("Reset Panes")
-                .on_hover_text("Show every pane and put them back where they started")
-                .clicked()
+                .checkbox(&mut on, pane.title())
+                .on_hover_text(pane.hint())
+                .changed()
             {
-                self.show_readings = true;
-                self.panes = default_layout(self.strip.horizontal);
+                set_pane_visible(&mut self.panes.tiles, pane, on);
+            }
+        }
+        ui.separator();
+        let mut side = self.sidebar;
+        if ui
+            .checkbox(&mut side, "Sidebar")
+            .on_hover_text(
+                "The watch, microphone and readings settings (Ctrl+B, or Cmd+B on a Mac)",
+            )
+            .changed()
+        {
+            self.sidebar = side;
+        }
+        if ui
+            .button("Reset Panes")
+            .on_hover_text("Show every pane and put them back where they started")
+            .clicked()
+        {
+            ui.close();
+            self.show_readings = true;
+            self.panes = default_layout(self.strip.horizontal);
+        }
+        ui.separator();
+        ui.menu_button("Appearance", |ui| {
+            let mut t = ui.ctx().options(|o| o.theme_preference);
+            for (v, name, hint) in [
+                (
+                    egui::ThemePreference::System,
+                    "Auto",
+                    "Follow the system's light or dark setting",
+                ),
+                (egui::ThemePreference::Light, "Light", "Always light"),
+                (egui::ThemePreference::Dark, "Dark", "Always dark"),
+            ] {
+                ui.radio_value(&mut t, v, name).on_hover_text(hint);
+            }
+            if t != ui.ctx().options(|o| o.theme_preference) {
+                ui.ctx().set_theme(t);
+                self.theme = t;
             }
         });
+    }
+
+    fn help_menu(&mut self, ui: &mut egui::Ui) {
+        let checking = self.updates.checking();
+        if ui
+            .add_enabled(
+                !checking,
+                egui::Button::new(if checking {
+                    "Checking for Updates…"
+                } else {
+                    "Check for Updates…"
+                }),
+            )
+            .on_hover_text(
+                "Ask GitHub whether a newer Timegrapher is published. Nothing downloads or \
+                 installs itself.",
+            )
+            .clicked()
+        {
+            ui.close();
+            self.updates.start(ui.ctx(), true);
+        }
+        ui.checkbox(&mut self.check_at_start, "Check for Updates at Start")
+            .on_hover_text(
+                "Ask GitHub whether a newer Timegrapher is published each time the app \
+                 starts, and say so if there is. It sends no account or identifier, and \
+                 nothing installs itself.",
+            );
+        ui.separator();
+        if ui
+            .button("Report a Problem…")
+            .on_hover_text(
+                "Make a zip of what went wrong, with up to five minutes of the sound, to \
+                 attach to a GitHub issue. The app sends nothing itself.",
+            )
+            .clicked()
+        {
+            ui.close();
+            self.open_report();
+        }
+        if cfg!(target_os = "linux") {
+            ui.separator();
+            if ui
+                .button("Add to Applications Menu")
+                .on_hover_text(
+                    "Add Timegrapher to this computer's applications menu, with its icon, \
+                     so the desktop shows the icon on the window and in the task bar. It \
+                     writes one entry and one icon in your home folder.",
+                )
+                .clicked()
+            {
+                ui.close();
+                match crate::desktop::install() {
+                    Ok(p) => self.info_msg(format!(
+                        "Added to the applications menu ({}). The icon shows from the next \
+                         start.",
+                        p.display()
+                    )),
+                    Err(e) => self.error(format!("Couldn't add it to the menu: {e}")),
+                }
+            }
+        }
+    }
+
+    /// Open a recording, or a folder of segments, chosen in a dialog.
+    fn open_from_menu(&mut self, folder: bool) {
+        let picked = if folder {
+            self.open_folder_dialog()
+        } else {
+            self.open_file_dialog()
+        };
+        if let Some(p) = picked {
+            self.input = Input::File;
+            self.open_recording(&p, false, true);
+        }
+    }
+
+    /// A button for each pane, its icon pressed while the pane shows.
+    fn pane_icons(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let pal = theme::pal(ui);
+        if theme::icon_toggle(
+            ui,
+            theme::Icon::Readings,
+            self.show_readings,
+            pal.text_secondary,
+        )
+        .on_hover_text("Readings: the rate, amplitude and beat error cards")
+        .clicked()
+        {
+            self.show_readings = !self.show_readings;
+        }
+        for pane in Pane::ALL {
+            let on = pane_visible(&self.panes.tiles, pane);
+            let (icon, color) = pane_icon(pane, pal);
+            if theme::icon_toggle(ui, icon, on, color)
+                .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
+                .clicked()
+            {
+                set_pane_visible(&mut self.panes.tiles, pane, !on);
+            }
+        }
     }
 
     fn clipping(&self) -> bool {
@@ -4657,8 +4798,8 @@ impl TimegrapherApp {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new(
-                        "Every pane is hidden. Turn one on with its switch in the sidebar, or press \
-                         Reset Panes under Window.",
+                        "Every pane is hidden. Turn one on with its icon at the top or in the \
+                         View menu, or choose Reset Panes in the View menu.",
                     )
                     .size(15.0)
                     .weak(),
@@ -5819,14 +5960,19 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
         let inner = rect.shrink2(Vec2::new(8.0, 6.0));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| match pane {
-            Pane::Strip => self.app.strip_pane(ui),
-            Pane::Sound => self.app.sound_pane(ui),
-            Pane::Steadiness => self.app.steady_pane(ui),
-            Pane::Isochronism => self.app.isochronism_pane(ui),
-            Pane::Scope => self.app.scope_pane(ui),
-            p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
-            p => self.app.chart(ui, *p),
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            if self.app.pane_tools(ui, *pane) {
+                ui.add_space(4.0);
+            }
+            match pane {
+                Pane::Strip => self.app.strip_pane(ui),
+                Pane::Sound => self.app.sound_pane(ui),
+                Pane::Steadiness => self.app.steady_pane(ui),
+                Pane::Isochronism => self.app.isochronism_pane(ui),
+                Pane::Scope => self.app.scope_pane(ui),
+                p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
+                p => self.app.chart(ui, *p),
+            }
         });
         UiResponse::None
     }
@@ -5848,7 +5994,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             let p = *p;
             set_pane_visible(tiles, p, false);
             self.app.info_msg(format!(
-                "Hid {}. Its switch in the sidebar brings it back.",
+                "Hid {}. Its icon at the top, or the View menu, brings it back.",
                 p.title()
             ));
         }
@@ -5893,7 +6039,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     ) -> egui::Response {
         button_response.on_hover_text(
             "Drag a tab to move the pane, or beside another to show both. The × hides it; \
-             its switch in the sidebar brings it back.",
+             its icon at the top, or the View menu, brings it back.",
         )
     }
 
@@ -5912,7 +6058,17 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         };
         let pal = theme::pal(ui);
         ui.spacing_mut().item_spacing.x = 4.0;
-        // Right to left.
+        // Right to left: a chart's "?" and Match Strip, then its key.
+        if Pane::CHARTS.contains(pane) {
+            ui.add_space(4.0);
+            theme::help(ui, pane.title(), help::CHARTS);
+            ui.add_space(6.0);
+            theme::toggle(ui, "Match Strip", &mut self.app.span_of_strip).on_hover_text(
+                "Show the same stretch of time as the paper strip, so the charts line up with \
+                 it and move with it. Off, the charts show the whole session.",
+            );
+            ui.add_space(8.0);
+        }
         for (name, color) in chart_key(*pane, pal).into_iter().rev() {
             ui.add_space(6.0);
             ui.label(RichText::new(name).small().color(pal.text_secondary));
@@ -6106,15 +6262,30 @@ impl TimegrapherApp {
     fn panels(&mut self, ctx: &egui::Context) {
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         let bar = egui::Frame::new().fill(pal.window);
+        egui::TopBottomPanel::top("menus")
+            .frame(bar.inner_margin(egui::Margin::symmetric(10, 3)))
+            .show(ctx, |ui| self.menu_bar(ui));
         egui::TopBottomPanel::top("toolbar")
             .frame(bar.inner_margin(egui::Margin::symmetric(14, 10)))
             .show(ctx, |ui| self.toolbar(ui));
         egui::TopBottomPanel::bottom("status")
             .frame(bar.inner_margin(egui::Margin::symmetric(14, 5)))
             .show(ctx, |ui| self.status_bar(ui));
-        let toggle = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
-        if ctx.input_mut(|i| i.consume_shortcut(&toggle)) {
+        let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::B))) {
             self.sidebar = !self.sidebar;
+        }
+        // The File menu's shortcuts.
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::O))) {
+            self.open_from_menu(false);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S)))
+            && self.session.allows(Action::Save)
+        {
+            self.save_recording();
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::Q))) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         egui::SidePanel::left("controls")
             .resizable(false)
