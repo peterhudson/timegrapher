@@ -8,6 +8,7 @@
       "2836-2",
       "2834-2"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 50,
@@ -49,8 +50,11 @@
     "maker": "Sellita",
     "family": [
       "SW200",
-      "SW200-1"
+      "SW200-1",
+      "SW220",
+      "SW220-1"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "seconds": "centre, direct (fourth wheel at the centre)",
@@ -78,7 +82,8 @@
       }
     ],
     "sources": [
-      "https://17jewels.info/movements/e/eta/eta-2824-2/ (the 2824-2 it copies)"
+      "https://17jewels.info/movements/e/eta/eta-2824-2/ (the 2824-2 it copies)",
+      "https://reference.grail-watch.com/2020/03/02/further-sellita-research-sw300-and-more/ (SW220-1 is the day-date SW200-1, as the 2836-2 is the 2824-2's)"
     ],
     "confidence": "derived from the beat rate",
     "notes": "Built to the 2824-2 layout after the patents lapsed; no Sellita document with train counts was found. Lift angle not documented by Sellita (50° as the 2824-2 is the usual setting). Power reserve 38 h, 41 h on later versions."
@@ -93,6 +98,7 @@
       "SW300",
       "SW300-1"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 51,
     "seconds": "centre",
@@ -129,6 +135,7 @@
       "Sellita SW500",
       "SW500"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 49,
     "seconds": "small seconds at 9 (fourth wheel)",
@@ -169,6 +176,7 @@
       "ETA 6497-2",
       "ETA 6498-2"
     ],
+    "common": true,
     "bph": 21600,
     "escape_teeth": 15,
     "lift_angle_deg": 44,
@@ -296,6 +304,7 @@
       "3185",
       "3186"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
@@ -421,6 +430,7 @@
       "3255",
       "3285"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 55,
@@ -473,6 +483,7 @@
       "3235 (clone)",
       "DD3285"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 55,
@@ -622,6 +633,7 @@
     "family": [
       "4130"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
@@ -1079,6 +1091,7 @@
       "Seiko 4R35",
       "Seiko 4R36"
     ],
+    "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
     "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
@@ -1187,6 +1200,7 @@
       "8217",
       "8200"
     ],
+    "common": true,
     "bph": 21600,
     "lift_angle_deg": 49,
     "seconds": "centre, indirect (a seconds pinion with a friction spring)",
@@ -1222,6 +1236,7 @@
       "9015",
       "9039"
     ],
+    "common": true,
     "bph": 28800,
     "lift_angle_deg": 51,
     "seconds": "centre (described as direct drive)",
@@ -1290,6 +1305,7 @@
       "ST2130",
       "TY2130"
     ],
+    "common": true,
     "bph": 28800,
     "escape_teeth": 20,
     "seconds": "centre",

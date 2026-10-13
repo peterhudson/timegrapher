@@ -6,7 +6,8 @@
 use crate::long::Train;
 use crate::output;
 use serde_json::json;
-use timegrapher_core::calibres::{self, Calibre};
+use timegrapher_core::calibre_store::{self, Catalog, Entry, Origin, UserCalibres};
+use timegrapher_core::calibres::Calibre;
 use timegrapher_core::periodicity::{standard_wheels, Component, Wheel};
 
 /// Lift angle when neither `--lift` nor the calibre gives one, degrees.
@@ -73,86 +74,171 @@ pub fn rename(components: &mut [Component], wheels: &[Wheel]) {
     }
 }
 
-/// `timegrapher calibres [NAME]`: every calibre, or the one called NAME.
-pub fn run(name: Option<&str>, json: bool) -> Result<(), String> {
-    let list: Vec<&Calibre> = match name {
-        Some(n) => vec![calibres::find(n).ok_or_else(|| {
-            format!("'{n}' is not in the table; `timegrapher calibres` lists the known calibres")
+/// `timegrapher calibres [NAME] [--search QUERY]`: every calibre, the
+/// one called NAME with each wheel's period and where it comes from, or
+/// those answering QUERY, best first. What the user added in the app
+/// (`calibre_store::default_path`) is read over the table.
+pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), String> {
+    let path = calibre_store::default_path();
+    let user = match &path {
+        Some(p) => UserCalibres::load(p)?,
+        None => UserCalibres::default(),
+    };
+    let cat = Catalog::new(&user);
+    let list: Vec<Entry> = match (name, search) {
+        (Some(n), _) => vec![cat.find(n).ok_or_else(|| {
+            format!("'{n}' is not in the table; `timegrapher calibres --search {n}` looks wider")
         })?],
-        None => calibres::all().iter().collect(),
+        (None, Some(q)) => cat.search(q),
+        (None, None) => cat.search(""),
     };
     if json {
+        let table: Vec<&Calibre> = list
+            .iter()
+            .filter_map(|e| match e {
+                Entry::Table(c) => Some(*c),
+                Entry::Custom(_) => None,
+            })
+            .collect();
+        let custom: Vec<_> = list
+            .iter()
+            .filter_map(|e| match e {
+                Entry::Custom(c) => Some(*c),
+                Entry::Table(_) => None,
+            })
+            .collect();
+        let mut body = json!({ "calibres": table, "custom": custom });
+        if name.is_some() {
+            body["slots"] = json!(cat.slots(list[0]));
+        }
         return output::print(
             "calibres",
-            output::input(&[], json!({ "name": name })),
-            &json!({ "calibres": list }),
+            output::input(
+                &[],
+                json!({
+                    "name": name,
+                    "search": search,
+                    "user_calibres": path.as_ref().map(|p| p.display().to_string()),
+                }),
+            ),
+            &body,
         );
     }
     if name.is_some() {
-        for c in list {
-            print_one(c);
-        }
+        print_one(&cat, list[0]);
+        return Ok(());
+    }
+    if list.is_empty() {
+        println!("No calibre answers that; try fewer words, or the maker alone.");
         return Ok(());
     }
     println!(
-        "{:<22} {:>7}  {:>5}  {:>6}  {:>9}  Also matches",
+        "{:<26} {:>7}  {:>5}  {:>6}  {:>6}  Also matches",
         "Calibre", "vph", "Lift", "Escape", "Wheels"
     );
-    for c in list {
+    let dash = || "-".to_string();
+    for e in &list {
+        let known = cat
+            .slots(*e)
+            .iter()
+            .filter(|s| s.origin != Origin::Unknown)
+            .count();
+        let also = match e {
+            Entry::Table(c) => c.family.join(", "),
+            Entry::Custom(c) => {
+                let mut v = vec!["(yours)".to_string()];
+                v.extend(c.aliases.iter().cloned());
+                v.join(", ")
+            }
+        };
         println!(
-            "{:<22} {:>7}  {:>5}  {:>6}  {:>9}  {}",
-            c.calibre,
-            c.bph,
-            c.lift_angle_deg
+            "{:<26} {:>7}  {:>5}  {:>6}  {:>6}  {}",
+            e.name(),
+            e.bph().map(|b| b.to_string()).unwrap_or_else(dash),
+            e.lift_angle_deg()
                 .map(|l| format!("{l:.0}°"))
-                .unwrap_or_else(|| "-".into()),
-            c.escape_teeth
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "-".into()),
-            c.wheels.len(),
-            c.family.join(", ")
+                .unwrap_or_else(dash),
+            e.escape_teeth().map(|t| t.to_string()).unwrap_or_else(dash),
+            known,
+            also
         );
     }
     println!(
-        "\nLift: the lift angle; Escape: escape wheel teeth; '-' where no source gives one. \
-`timegrapher calibres NAME` shows one calibre's wheels and sources."
+        "\nLift: the lift angle; Escape: escape wheel teeth; Wheels: how many wheel periods \
+are known; '-' where no source gives one. `timegrapher calibres NAME` shows one \
+calibre's wheels and sources."
     );
     Ok(())
 }
 
-fn print_one(c: &Calibre) {
-    println!("{} ({})", c.calibre, c.maker);
-    if !c.family.is_empty() {
-        println!("Also matches  {}", c.family.join(", "));
+fn print_one(cat: &Catalog, e: Entry) {
+    match e.maker() {
+        Some(m) => println!("{} ({m})", e.name()),
+        None => println!("{}", e.name()),
     }
-    println!("Beat rate     {} vph", c.bph);
-    match c.lift_angle_deg {
+    let also = match e {
+        Entry::Table(c) => c.family.clone(),
+        Entry::Custom(c) => c.aliases.clone(),
+    };
+    if !also.is_empty() {
+        println!("Also matches  {}", also.join(", "));
+    }
+    if e.is_custom() {
+        println!("Added by you  (not in the shipped table)");
+    }
+    match e.bph() {
+        Some(b) => println!("Beat rate     {b} vph"),
+        None => println!("Beat rate     not given"),
+    }
+    match e.lift_angle_deg() {
         Some(l) => println!("Lift angle    {l}°"),
         None => println!("Lift angle    not published (analyze uses {DEFAULT_LIFT_DEG}°)"),
     }
-    if let Some(t) = c.escape_teeth {
+    if let Some(t) = e.escape_teeth() {
         println!("Escape wheel  {t} teeth");
     }
-    if let Some(s) = &c.seconds {
-        println!("Seconds       {s}");
+    if let Entry::Table(c) = e {
+        if let Some(s) = &c.seconds {
+            println!("Seconds       {s}");
+        }
     }
     println!("Wheels (one full turn):");
-    for w in &c.wheels {
-        println!("  {:<16} {:>10.2} s", w.name, w.period_s);
+    for s in cat.slots(e) {
+        let period = s
+            .period_s
+            .map(|p| format!("{p:>10.2} s"))
+            .unwrap_or_else(|| format!("{:>12}", "unknown"));
+        let from = match s.origin {
+            Origin::Shipped => "table",
+            Origin::User => "you",
+            Origin::Unknown => "",
+        };
+        let mut line = format!("  {:<16} {period}  {from}", s.name);
+        if let Some(t) = s.shipped_period_s {
+            line.push_str(&format!(" (the table says {t:.2} s)"));
+        }
+        println!("{}", line.trim_end());
     }
-    println!("Confidence    {}", c.confidence);
-    if let Some(n) = &c.notes {
-        println!("Notes         {n}");
-    }
-    println!("Sources:");
-    for s in &c.sources {
-        println!("  {s}");
+    if let Entry::Table(c) = e {
+        println!("Confidence    {}", c.confidence);
+        if let Some(n) = &c.notes {
+            println!("Notes         {n}");
+        }
+        println!("Sources:");
+        for s in &c.sources {
+            println!("  {s}");
+        }
+    } else if let Entry::Custom(c) = e {
+        if let Some(n) = &c.notes {
+            println!("Notes         {n}");
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use timegrapher_core::calibres;
 
     #[test]
     fn flags_win_over_the_calibre_and_the_calibre_over_defaults() {

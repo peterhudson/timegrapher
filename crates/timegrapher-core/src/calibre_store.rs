@@ -85,6 +85,13 @@ pub struct CustomWheel {
     pub period_s: f64,
 }
 
+/// Where the app keeps the store: `calibres.json` in the settings folder
+/// ([`crate::clockstore::config_dir`]), so the command line and the MCP
+/// server read what the app saved.
+pub fn default_path() -> Option<std::path::PathBuf> {
+    crate::clockstore::config_dir().map(|d| d.join("calibres.json"))
+}
+
 impl Default for UserCalibres {
     fn default() -> Self {
         UserCalibres {

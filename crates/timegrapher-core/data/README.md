@@ -19,14 +19,32 @@ A JSON array, one object per calibre:
 | `calibre` | Name shown to the user, e.g. "ETA 2824-2" |
 | `maker` | Maker, or "(clone)" for a copy |
 | `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
+| `common` | `true` for the calibres most often met, which the app offers before a search |
 | `bph` | Beats per hour |
 | `escape_teeth` | Escape wheel teeth, only where there is evidence |
 | `lift_angle_deg` | Lift angle, only where a source gives one |
 | `seconds` | Where the seconds hand sits and how it is driven |
-| `wheels` | `name` (lower case), `period_s` (one full turn, seconds), and where known `teeth`, `pinion` (leaves on the same arbor) and `basis` (how the period is known) |
+| `wheels` | `name` (lower case), `period_s` (one full turn, seconds), and where known `teeth`, `pinion` (leaves on the same arbor) and `basis` (how the period is known); empty when no wheel's period is known |
 | `sources` | Where each figure came from |
 | `confidence` | The best basis in the entry: "derived from tooth counts", "measured" (from this project's recordings), or "derived from the beat rate" |
 | `notes` | What is inferred, where sources disagree, what is missing |
+
+## Makers' other names
+
+`makers.json` lists, for a `maker` as the table writes it, the other
+names people search by: abbreviations ("AP" for Audemars Piguet, "DD" for
+Dandong), older names, and the families a maker's calibres are sold
+under ("Valjoux" and "Unitas" for ETA). Each carries its source. The
+clone prefixes (DD, SH, JH, VR, PTS) appear in calibre names and parts
+listings but in no neutral reference list.
+
+## What users add
+
+Wheel periods a user enters and calibres they add are not written here:
+they live in `calibres.json` in the user's settings folder and are read
+over this table (`timegrapher_core::calibre_store`). A user can send them
+to the project as a pre-filled GitHub issue; accepted ones are folded
+into this table with the issue as their source.
 
 ## How the periods were worked out
 
