@@ -17,48 +17,56 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 ## The screen
 
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
-Cmd+O on a Mac), Open Folder…, Save… or Save Again… (Ctrl+S), New Session
-and Quit (Ctrl+Q). **View**: a tick for the readings and for each pane,
-the sidebar, Reset Panes and Appearance (Auto, Light, Dark). **Help**:
-Check for Updates…, Check for Updates at Start, Report a Problem… and, on
-Linux, **Add to Applications Menu**, which puts the app and its icon (a
-black dial with red lines) in the desktop's menu, so the window shows that
-icon too (it writes `timegrapher.desktop` and the icon under
-`~/.local/share`, pointing at the program running now).
-
-Below it, the toolbar: the sidebar button, which hides the sidebar
-to give the panes the whole window and brings it back (Ctrl+B, or Cmd+B on
-a Mac), one icon for each pane that shows or hides it (resting the pointer
+Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
+(Ctrl+Shift+S), New Session and Quit (Ctrl+Q). **View**: a tick for the
+readings and for each pane, Reset Panes and Appearance (Auto, Light,
+Dark). **Help**: Check for Updates…, Check for Updates at Start, Report a
+Problem… and, on Linux, **Add to Applications Menu**, which puts the app
+and its icon (a black dial with red lines) in the desktop's menu, so the
+window shows that icon too (it writes `timegrapher.desktop` and the icon
+under `~/.local/share`, pointing at the program running now). Beside the
+menus, one icon for each pane that shows or hides it (resting the pointer
 on an icon names its pane; a pane showing has its icon lit, and the
-charts' and distributions' icons take their colours),
-**Microphone** or **Recording**, the
-microphone menu (or the file to open), the input's level meter and the
-buttons for the session (see Sessions below; **Replay**, **Stop** and,
-while one is being analysed, **Cancel** for a recording). Opening a
+charts' and distributions' icons take their colours).
+
+**The Watch pane**, at the left to begin with, is where the sound comes
+from and what to do with it, then the watch itself. It is a pane like the
+others: drag it by its tab, or hide it and bring it back from its icon or
+the View menu. At its top, **Microphone** or **Recording**. For the
+microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
+**Resume**), **New Session** when stopped, **Positions Test…**, **Save…**
+(then **Save Again** and **Save As…**), and the microphone's Input Level,
+peak meter and Show Every Input. For a recording: **Open…**, **Open
+Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
+being analysed, and **Analyse All**) and **Replay Speed**. Below, under
+**Watch**: name, calibre, beat rate, lift angle and position. Opening a
 recording, by **Open…**, **Open Folder…**, a path typed into the box and
 Enter, or the command line, analyses it all at once, which is how a
 watchmaker looks back through a take; **Replay** plays a file through as if
-live, and **Analyse All**, shown during a replay and after it, goes back
-to the whole recording analysed at once without opening it again,
-keeping the settings chosen under Watch. Dropping a file or folder on the window opens it too where the
-desktop passes drops to the app (Windows, macOS and X11; not Wayland). On the left, the settings in cards:
-**Watch**, **Microphone** (only for the microphone) and **Readings**, with
-its switch to show or hide the readings and the averaging time. Every
-pane's own settings sit in a toolbar across the top of the pane, with the
-pane's **?** at its right; a toolbar too narrow for its settings carries
-them onto a second line. The charts carry theirs in the tab bar: **Match
-Strip**, on, shows the same stretch of time as the paper strip, and off,
-the whole session. Clicking a card's name folds the card away to its caption, and clicking it
-again opens it. A choice between two options, such as Stacked and Beside,
-switches to the other option wherever it is clicked, so it can be flipped
-back and forth without moving the pointer. Titles and labels are in Title
-Case. In the rest, the
-three readings in cards and below them the panes. Along the bottom, the
+live, at **Replay Speed** (from half to 16 times its own speed, changeable
+while it plays; the readings are the same at any speed), and **Analyse
+All**, shown during a replay and after it, goes back to the whole
+recording analysed at once without opening it again, keeping the settings
+chosen under Watch. Dropping a file or folder on the window opens it too
+where the desktop passes drops to the app (Windows, macOS and X11; not
+Wayland). Clicking a group's name, such as Watch, folds it away to its
+caption, and clicking it again opens it.
+
+Every other pane's own settings sit in a toolbar across the top of the
+pane, with the pane's **?** at its right; a toolbar too narrow for its
+settings carries them onto a second line. The charts carry theirs in the
+tab bar: **Match Strip**, on, shows the same stretch of time as the paper
+strip, and off, the whole session. A choice between two options, such as
+Stacked and Beside, switches to the other option wherever it is clicked,
+so it can be flipped back and forth without moving the pointer. Titles and
+labels are in Title Case. Across the top, the readings: their caption with its **?** and
+**Average Over**, then four cards, Rate, Amplitude, Beat Error and Beat
+Rate, and below them the panes. Along the bottom, the
 status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
-open, the main area offers the three ways in: **Listen to a Watch**,
+open, the main area offers the three ways in, beside the Watch pane: **Listen to a Watch**,
 **Open a Recording…** and **Open a Folder…**. While a recording is being
 analysed it shows how far the analysis has got, in hours of sound and time
 left, with **Cancel**; a problem shows in a red banner floating over the
@@ -75,7 +83,7 @@ shift as they change.
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
 recording: **Open a Folder…** on the opening screen, **Open Folder…** in
-the toolbar, a folder typed into the path box, or `timegrapher-app FOLDER`.
+the Watch pane or the File menu, a folder typed into the path box, or `timegrapher-app FOLDER`.
 A saved take opens from its own folder or from the folder it was saved
 into, when that holds just the one take; with several, the message names
 them so one can be picked.
@@ -87,10 +95,12 @@ replayed in real time. A 16-hour night takes some minutes to analyse; the
 window shows the hours done, the time left and the files in order, and
 Steadiness then covers the whole night.
 
-**Readings.** Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
+**Readings.** The **Beat Rate** card gives the beats per hour the
+readings use: found from the beats while Beat Rate under Watch is Auto,
+or the one set there, and says which. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default; type any time
 from 1 s to an hour, or pick one of the presets from 2 to 60 s; the setting is
-in the Readings card). Early in a session, or after a pause or a gap of
+Average Over, beside the Readings caption). Early in a session, or after a pause or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
@@ -155,7 +165,7 @@ and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
 with core `session::measure`, as `session` does (rate on the input's
 measured clock when there is one), and a window shows them as a table:
-each position by `session`'s name ("Crown Up (3H)"), its rate, its rate
+each position by name ("Crown Up (CU, 3H)"), its rate, its rate
 less the mean of the six, its amplitude and its beat error (a size), a
 Mean row, the largest difference between the rates (D), and vertical
 less horizontal for rate and amplitude (DVH). Under
@@ -195,8 +205,8 @@ Clipping flattens the loudest part of each tick, which moves
 the drop and so the amplitude and the beat error; the rate is unaffected.
 The banner follows the readings: it shows while the beats being averaged
 clip and goes when they no longer do, and looking back through a
-recording shows it for the stretches that clipped. The level meter in the
-toolbar turns red on any clipped sample at once; the banner counts the
+recording shows it for the stretches that clipped. The peak meter in the
+Watch pane turns red on any clipped sample at once; the banner counts the
 beats in the readings. Even a watch driven several times past full scale is
 still read, with the banner, rather than taken for silence: when most of
 the beats found clip, the flattened peaks no longer count against the
@@ -397,7 +407,7 @@ shows. The plots don't pan, zoom or show values under the pointer.
 **Remembered settings.** The app keeps its views between runs: the strip's
 direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement, the
-distribution settings, the averaging time, folded cards, the sidebar, the
+distribution settings, the averaging time, folded groups in the Watch pane, the
 appearance, the last microphone (used again when it is plugged in) and the
 window's size and place. Nothing about the watch is kept: the lift angle,
 beat rate and position start fresh, since the next watch on the pickup may
@@ -445,7 +455,7 @@ or **Start** is clicked; until then the menu names the microphone kept from
 last time, or System Default. Replaying or analysing a recording never
 touches an input.
 
-**Level meter.** In the toolbar, while listening to a microphone: a bar to
+**Level meter.** In the Watch pane, while listening to a microphone: a bar to
 the loudest sample of the last half second, grey, or red while the input
 clips, with plain reference marks at −10 and −6 dBFS, and the peak in
 dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
@@ -471,7 +481,7 @@ been published yet"). The request carries no account or identifier.
 
 ## Settings
 
-- **Input.** In the toolbar: a sound input device, or a WAV or FLAC file chosen with
+- **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:
   **System default (via PipeWire)**, which is whatever input the
   desktop's sound settings choose and works alongside other programs, and
@@ -479,7 +489,7 @@ been published yet"). The request carries no account or identifier.
   the card but can't open while the desktop sound server holds it. With a
   USB timegrapher microphone set as the desktop's input, choose the system
   default. **Show every input** lists everything the system offers, with
-  ids, as `timegrapher devices` does (the switch is in the Microphone card). If the input can't be opened, stops,
+  ids, as `timegrapher devices` does (the switch is under Microphone). If the input can't be opened, stops,
   or sends no sound for 3 s, the app stops and says why above the
   readings, rather than showing an empty strip. The status bar shows the
   sample rate and bit depth the input opened at. Where the desktop passes
@@ -487,7 +497,7 @@ been published yet"). The request carries no account or identifier.
   or a folder on the window analyses it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
-- **Input level.** In the Microphone card: the microphone's gain and a peak meter
+- **Input level.** Under Microphone in the Watch pane: the microphone's gain and a peak meter
   with marks at the −10 dBFS target and the −6 dBFS limit. On Linux, for
   the system default the level is the sound server's input volume
   (`wpctl`, or `pactl` on PulseAudio), which the server writes back onto
@@ -518,7 +528,10 @@ been published yet"). The request carries no account or identifier.
 - **Lift angle.** 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.
-- **Position.** DU, DD, CU, CD, CL, CR. A new position is a new
+- **Position.** DU, DD, CU, CD, CL, CR, with the Swiss laboratory names
+  beside the crown positions, the hour that points up: Crown Up (CU, 3H),
+  Crown Down (CD, 9H), Crown Left (CL, 6H) and Crown Right (CR, 12H).
+  The Positions Test's table names them the same way. A new position is a new
   measurement, so changing it while listening (or paused) starts a new
   stretch, noted in the saved recording. While listening, when the beats
   stop for more than 3 seconds and come back with no change of position
@@ -558,8 +571,10 @@ the stopped time out, and the readings start from the beats after the
 stop. **New session**, shown while stopped, clears everything for the
 next watch or position. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
-folder and copies the session into a folder of its own inside it, and **Save again…** later brings
-that copy up to date. Once the take has had a position change, the copy's
+folder and copies the session into a folder of its own inside it.
+**Save Again** (Ctrl+S) later brings that copy up to date without asking
+again, and **Save As…** (Ctrl+Shift+S) copies the session to a new folder
+of your choosing, which Save Again then keeps up to date. Once the take has had a position change, the copy's
 folder name ends in `_positions` rather than the first position. Sound that hasn't been saved is never thrown away
 without asking: New session, opening or replaying a recording, and
 closing the window ask whether to save it first. The microphone's own
