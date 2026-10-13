@@ -88,28 +88,17 @@ impl Default for Params {
     }
 }
 
-/// How the steadiness report sorts the facts below. Not part of the
-/// JSON: a report states the levels, the switching and the tests' figures.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Verdict {
-    /// One level: noise and wander only.
-    OneLevel,
-    /// Two levels the watch switches between.
-    TwoStates,
-    /// Two levels, but the low one comes back on a fixed period: a cycle.
-    Regular,
-    /// Two levels that look like the measurement, not the watch.
-    Measurement,
-    /// Too little data to say.
-    TooShort,
-}
-
 /// What the finder saw.
 #[derive(Debug, Clone, Serialize)]
 pub struct TwoState {
+    /// Enough blocks to fit (at least `min_blocks`); false, nothing below
+    /// the block count was looked for.
     #[serde(skip)]
-    pub verdict: Verdict,
+    pub fitted: bool,
+    /// The level sequence repeats at one lag (`regularity` at least
+    /// `min_regularity`).
+    #[serde(skip)]
+    pub repeats: bool,
     /// All the two-level tests hold: ΔBIC, separation, the smaller
     /// state's share, the switches and the spread over the take (see the
     /// module notes for the figures).
@@ -329,7 +318,8 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     let b = blocks(samples, p);
     let n = b.len();
     let mut out = TwoState {
-        verdict: Verdict::TooShort,
+        fitted: false,
+        repeats: false,
         two_levels: false,
         blocks: n,
         block_s: p.block_s,
@@ -492,17 +482,29 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         && out.low_share.min(1.0 - out.low_share) >= p.min_share
         && out.switches >= p.min_switches
         && out.spread;
+    out.fitted = true;
     out.two_levels = two;
-    out.verdict = if !two {
-        Verdict::OneLevel
-    } else if out.one_sided || out.unlock_jump {
-        Verdict::Measurement
-    } else if out.regularity >= p.min_regularity {
-        Verdict::Regular
-    } else {
-        Verdict::TwoStates
-    };
+    out.repeats = out.regularity >= p.min_regularity;
     out
+}
+
+impl TwoState {
+    /// Two levels that only one side carries, or that the unlock beat
+    /// error jumps with while the drop's stays put.
+    pub fn one_side_or_unlock(&self) -> bool {
+        self.two_levels && (self.one_sided || self.unlock_jump)
+    }
+
+    /// Two levels, both sides moving, whose low level comes back on a
+    /// fixed period.
+    pub fn repeating_levels(&self) -> bool {
+        self.two_levels && !self.one_side_or_unlock() && self.repeats
+    }
+
+    /// Two levels, both sides moving, switched between with no fixed period.
+    pub fn switching_levels(&self) -> bool {
+        self.two_levels && !self.one_side_or_unlock() && !self.repeats
+    }
 }
 
 /// The side whose windows split in two while the other's do not follow.
@@ -535,7 +537,7 @@ pub fn describe(r: &TwoState, series: &str) -> String {
             format!("{:.0} s", (s / 5.0).round() * 5.0)
         }
     };
-    if r.verdict == Verdict::TooShort {
+    if !r.fitted {
         return format!(
             "{} blocks of {:.0} s, too few to look for two {series} levels",
             r.blocks, r.block_s
@@ -564,7 +566,7 @@ pub fn describe(r: &TwoState, series: &str) -> String {
         t += &format!("; {side} carries the change alone");
     } else if r.unlock_jump {
         t += "; the beat error from the unlock jumps with it, the one from the drop does not";
-    } else if r.verdict == Verdict::Regular {
+    } else if r.repeats {
         t += &format!(
             "; the low level comes back about every {}",
             every(r.period_s.unwrap_or(r.switch_every_s))
@@ -616,7 +618,7 @@ mod tests {
         // 30 minutes falling 15 degrees as the mainspring runs down.
         let s = series(900, |_, t| 300.0 - 15.0 * t / 1800.0);
         let r = find(&s, &Params::default());
-        assert_eq!(r.verdict, Verdict::OneLevel, "{r:?}");
+        assert!(r.fitted && !r.two_levels, "{r:?}");
     }
 
     #[test]
@@ -641,7 +643,7 @@ mod tests {
             }
         });
         let r = find(&s, &Params::default());
-        assert_eq!(r.verdict, Verdict::TwoStates, "{r:?}");
+        assert!(r.switching_levels(), "{r:?}");
         assert!((r.low - 293.0).abs() < 2.0 && (r.high - 312.0).abs() < 2.0);
         assert!(r.switches >= 20);
     }
@@ -650,7 +652,7 @@ mod tests {
     fn a_dip_once_a_minute_is_regular() {
         let s = series(900, |_, t| if t % 60.0 < 20.0 { 232.0 } else { 245.0 });
         let r = find(&s, &Params::default());
-        assert_eq!(r.verdict, Verdict::Regular, "{r:?}");
+        assert!(r.repeating_levels(), "{r:?}");
         assert_eq!(r.period_s, Some(60.0));
     }
 
@@ -681,14 +683,14 @@ mod tests {
         }
         let r = find(&s, &Params::default());
         assert!(r.one_sided);
-        assert_eq!(r.verdict, Verdict::Measurement, "{r:?}");
+        assert!(r.one_side_or_unlock(), "{r:?}");
     }
 
     #[test]
     fn a_single_step_is_not_switching() {
         let s = series(900, |_, t| if t < 1200.0 { 300.0 } else { 280.0 });
         let r = find(&s, &Params::default());
-        assert_ne!(r.verdict, Verdict::TwoStates, "{r:?}");
+        assert!(!r.switching_levels(), "{r:?}");
     }
 
     #[test]
@@ -710,7 +712,7 @@ mod tests {
         assert_eq!(r.tock_split_alone, Some(false));
         assert_eq!(r.tick_edge_split_alone, Some(true));
         assert_eq!(r.tock_edge_split_alone, Some(false));
-        assert_ne!(r.verdict, Verdict::TwoStates);
+        assert!(!r.switching_levels());
         assert!(describe(&r, "amplitude").contains("Tick windows"));
     }
 
@@ -730,6 +732,6 @@ mod tests {
     #[test]
     fn short_takes_are_not_judged() {
         let s = series(20, |_, _| 300.0);
-        assert_eq!(find(&s, &Params::default()).verdict, Verdict::TooShort);
+        assert!(!find(&s, &Params::default()).fitted);
     }
 }

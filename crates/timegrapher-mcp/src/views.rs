@@ -27,15 +27,15 @@ pub fn page() -> &'static str {
     PAGE.get_or_init(|| {
         let css = format!(
             ":root {{\n  color-scheme: light;\n{}}}\n:root[data-theme=\"dark\"] {{\n  color-scheme: dark;\n{}}}",
-            variables(&LIGHT, 0.16),
-            variables(&DARK, 0.18)
+            variables(&LIGHT),
+            variables(&DARK)
         );
         HTML.replace("/*PALETTE*/", &css)
     })
 }
 
 /// One theme as the page's CSS variables.
-fn variables(p: &Palette, tolerance: f64) -> String {
+fn variables(p: &Palette) -> String {
     let rgba = |c: Rgb, a: f64| format!("rgba({}, {}, {}, {a})", c.r, c.g, c.b);
     [
         ("window", p.window.css()),
@@ -50,16 +50,12 @@ fn variables(p: &Palette, tolerance: f64) -> String {
         ("rate", p.trace_rate.css()),
         ("amplitude", p.trace_amplitude.css()),
         ("beat-error", p.trace_beat_error.css()),
-        ("good", p.good.css()),
-        ("warn", p.warn.css()),
-        ("bad", p.bad.css()),
         ("unlock", p.unlock.css()),
         ("drop", p.drop.css()),
         ("peak", p.peak.css()),
         ("sound", p.sound.css()),
         // The grid is the text colour, faint, as in the app.
         ("grid", rgba(p.text, 0.12)),
-        ("tolerance", rgba(p.good, tolerance)),
     ]
     .iter()
     .map(|(name, value)| format!("  --{name}: {value};\n"))
@@ -201,7 +197,7 @@ fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 /// Takes out of a `series --views` document what only the Steadiness and
 /// Distribution charts draw (each series' `views`, the shared
 /// `period_span` and each distribution's probability-plot `points`, a few
-/// hundred kB on a long take), so the model reads the verdicts and not
+/// hundred kB on a long take), so the model reads the headlines and not
 /// thousands of numbers; the view puts them back.
 pub fn take_series_charts(doc: &mut Value) -> Value {
     let mut views = Vec::new();
@@ -299,7 +295,7 @@ mod tests {
     #[test]
     fn the_chart_data_stays_out_of_what_the_model_reads() {
         let mut doc = json!({
-            "series": [{ "series": "rate", "verdict": "steady", "views": { "readings": {} } }],
+            "series": [{ "series": "rate", "headline": "Rate: no cycle or level change detected", "views": { "readings": {} } }],
             "period_span": [0.5, 2.0],
             "distributions": {
                 "overall": [{ "series": "rate", "points": [[1.0, 0.0]] }],
@@ -311,7 +307,10 @@ mod tests {
         assert!(
             !text.contains("views") && !text.contains("points") && !text.contains("period_span")
         );
-        assert_eq!(doc["series"][0]["verdict"], "steady");
+        assert_eq!(
+            doc["series"][0]["headline"],
+            "Rate: no cycle or level change detected"
+        );
         assert_eq!(charts["views"][0]["readings"], json!({}));
         assert_eq!(charts["period_span"], json!([0.5, 2.0]));
         assert_eq!(charts["points"][0], json!([[1.0, 0.0]]));

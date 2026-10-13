@@ -94,7 +94,7 @@ That route has not been tried with this server yet.
 |---|---|---|
 | `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
 | `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
-| `check_steadiness` | `series` | Steadiness verdicts over a long recording |
+| `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics |
 | `long_run` | `long` | Rate and amplitude over hours and the wheel behind a periodic change; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
@@ -109,8 +109,8 @@ That route has not been tried with this server yet.
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
 Before each take it tells you how to place the watch and waits for you; your
-chat app also asks you to allow each tool call. A take in which no watch is
-heard is not added to the test.
+chat app also asks you to allow each tool call. Every take is added to the
+test; the check says when no regular beat was found or beats were clipped.
 
 ### Repeated and overlapping calls
 
@@ -164,12 +164,12 @@ the timegrapher app draws them:
   the microphone. Chat apps without views, and any that ask for progress,
   get the latest reading in the progress messages instead, for example
   "Recording CD: 72 of 120 s · +4.1 s/day · 268° · 0.3 ms".
-- `check_steadiness`: the app's Steadiness pane (each series' verdict
-  over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
+- `check_steadiness`: the app's Steadiness pane (each series' headline,
+  as `series` words it, and its statistics, over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
   CUSUM view, picked with the buttons above it), the readings on
   probability paper as the app's Distribution panes draw them (one steady
   state falls on the dashed straight line, two states bend it). The chart
-  data rides beside the result, so the model reads the verdicts and not the
+  data rides beside the result, so the model reads the headlines and not the
   thousands of numbers behind the plots.
 
 The charts use the app's colours for each reading (rate red, amplitude
@@ -206,8 +206,12 @@ document, about what the numbers alone do not say:
   about every one.
 - `record_position`: what was recorded, what the take's check measured,
   the lift angle and whether it was given, the calibre's or the default,
-  how many of the expected beats were found and clipped, and whether the
-  take was added to the test.
+  how many of the expected beats were found and clipped (or that no
+  regular beat was found, with the timing scatter), and the test the take
+  was added to: every take is added.
+- `check_steadiness`: each series' headline with its number of readings,
+  median, SD and reading-to-reading scatter, then the titles of the
+  findings.
 - `check_microphone`: its rate and beat error come from a few seconds of
   sound, so they are not the watch's readings.
 

@@ -19,8 +19,6 @@ use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
-/// The layout of `summary.json` and `--json`.
-pub const SCHEMA: &str = "timegrapher.session/2";
 
 pub struct Options {
     pub bph: Option<u32>,
@@ -512,7 +510,7 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 #[derive(serde::Serialize)]
 pub struct Session<'a> {
     /// Name and version of this layout; bumped when a field changes meaning.
-    pub schema: &'static str,
+    pub schema: String,
     /// Name, version and platform of the software, as in every `--json`
     /// document (see docs/agent-interface.md).
     pub software: serde_json::Value,
@@ -569,7 +567,10 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "cycles": !o.no_cycles,
     });
     let s = Session {
-        schema: SCHEMA,
+        schema: format!(
+            "timegrapher.session/{}",
+            crate::output::schema_version("session")
+        ),
         software: crate::output::software(),
         input: crate::output::input(&files, settings),
         watch: m.watch.as_deref().filter(|w| !w.is_empty()),

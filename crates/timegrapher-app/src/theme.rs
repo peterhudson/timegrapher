@@ -16,7 +16,7 @@ use timegrapher_core::palette as core_palette;
 /// The colours of one theme, from [`timegrapher_core::palette`].
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
-    /// Behind everything: the window, the sidebar, the gaps between cards.
+    /// Behind everything: the window, the menu bar, the gaps between cards.
     pub window: Color32,
     /// Cards: the readings, the panes, the groups of settings.
     pub card: Color32,
@@ -258,18 +258,6 @@ pub fn card() -> Frame {
     Frame::new()
         .corner_radius(CornerRadius::same(CARD_RADIUS))
         .inner_margin(Margin::same(CARD_PADDING))
-}
-
-/// Paint the card colour behind `contents` and lay them out inside.
-pub fn card_ui<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
-    let fill = pal(ui).card;
-    card()
-        .fill(fill)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            contents(ui)
-        })
-        .inner
 }
 
 /// A small, spaced, upper-case caption over a group of settings or a
@@ -790,31 +778,6 @@ pub const TIME_STEPS: [f64; 22] = [
     3600.0, 7200.0, 10800.0, 21600.0, 43200.0, 86400.0, 172800.0,
 ];
 
-/// The button that hides and shows the sidebar: a window with its left
-/// column filled while the sidebar is shown.
-pub fn sidebar_button(ui: &mut Ui, shown: bool) -> Response {
-    let p = pal(ui);
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(30.0, 26.0), Sense::click());
-    let bg = if resp.hovered() {
-        p.control_hover
-    } else {
-        p.control
-    };
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), bg);
-    let icon = egui::Rect::from_center_size(rect.center(), Vec2::new(16.0, 12.0));
-    let stroke = Stroke::new(1.3_f32, p.text);
-    ui.painter()
-        .rect_stroke(icon, 2.0, stroke, egui::StrokeKind::Inside);
-    let column = egui::Rect::from_min_max(icon.min, egui::pos2(icon.left() + 5.5, icon.bottom()));
-    if shown {
-        ui.painter().rect_filled(column, 2.0, p.text);
-    } else {
-        ui.painter().vline(column.right(), icon.y_range(), stroke);
-    }
-    resp
-}
-
 /// A coloured dot, the key to a line or side. Its response joins the
 /// label beside it (`Response::union`), so its hover text shows over both.
 pub fn dot(ui: &mut Ui, color: Color32) -> Response {
@@ -961,6 +924,7 @@ pub fn toggle(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
 /// The small pictures on the pane buttons at the top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
+    Watch,
     Readings,
     Strip,
     Profile,
@@ -1006,6 +970,15 @@ pub fn draw_icon(painter: &egui::Painter, r: egui::Rect, icon: Icon, c: Color32)
         painter.add(egui::Shape::line(pts, s));
     };
     match icon {
+        // A watch case with its crown, and two hands.
+        Icon::Watch => {
+            let c0 = at(0.45, 0.5);
+            let rad = 0.4 * r.width();
+            painter.circle_stroke(c0, rad, s);
+            line(&[(0.85, 0.5), (0.97, 0.5)]);
+            line(&[(0.45, 0.5), (0.45, 0.25)]);
+            line(&[(0.45, 0.5), (0.62, 0.6)]);
+        }
         // Three cards side by side.
         Icon::Readings => {
             for i in 0..3 {

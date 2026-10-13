@@ -662,16 +662,6 @@ pub struct Isochronism {
     pub beat_error_change: Option<f64>,
 }
 
-/// How a steadiness finding is ranked (see [`crate::steadiness`]). The
-/// session's own findings carry none.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Severity {
-    Fault,
-    Warning,
-    Note,
-}
-
 /// A condition detected in one recording's sound, with the figures that
 /// show it. A finding states what was measured; it does not say what it
 /// means for the watch.

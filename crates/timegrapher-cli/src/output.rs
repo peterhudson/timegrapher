@@ -15,13 +15,15 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Current version of a document kind. `record/2` keeps every take and
 /// drops the verdict; `series/2` dropped the one-word verdict, the
-/// findings' severity and advice, and `moves_with`; `analyze/2`,
-/// `doctor/2` and `regress-holdout/2` dropped their grades, verdicts,
-/// named faults and advice.
+/// findings' severity and advice, and `moves_with`; `session/2` dropped
+/// the tolerances, limits, verdicts and the findings' severity and advice;
+/// `analyze/2`, `doctor/2` and `regress-holdout/2` dropped their grades,
+/// verdicts, named faults and advice.
 pub fn schema_version(kind: &str) -> u32 {
     match kind {
         "record" => 2,
         "series" => 2,
+        "session" => 2,
         "analyze" => 2,
         "doctor" => 2,
         "regress-holdout" => 2,
