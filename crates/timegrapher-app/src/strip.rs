@@ -797,6 +797,24 @@ pub fn draw_strip(
     if let Some(t) = extras.cursor_t.filter(|t| *t >= oldest && *t <= end_s) {
         let (a, b) = (g.pos(-half, t), g.pos(half, t));
         painter.line_segment([a, b], Stroke::new(1.0_f32, vis.weak_text_color()));
+        // The line's time, to the hundredth, at the edge away from the
+        // positions' names: along the bottom when time runs across, at the
+        // right otherwise. Kept inside the plotting area.
+        let galley = painter.layout_no_wrap(
+            fmt_time_fine(t),
+            FontId::proportional(11.0),
+            vis.strong_text_color(),
+        );
+        let size = galley.size() + Vec2::splat(4.0);
+        let rect = if view.horizontal {
+            let x = (a.x - size.x / 2.0).clamp(r.left(), (r.right() - size.x).max(r.left()));
+            Rect::from_min_size(Pos2::new(x, r.bottom() - size.y - 2.0), size)
+        } else {
+            let y = (a.y - size.y / 2.0).clamp(r.top(), (r.bottom() - size.y).max(r.top()));
+            Rect::from_min_size(Pos2::new(r.right() - size.x - 2.0, y), size)
+        };
+        painter.rect_filled(rect, 2.0, vis.extreme_bg_color.gamma_multiply(0.9));
+        painter.galley(rect.min + Vec2::splat(2.0), galley, vis.strong_text_color());
     }
     input
 }
@@ -817,6 +835,18 @@ pub fn fmt_time(t: f64) -> String {
         format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
     } else {
         format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+/// A time to the hundredth of a second, such as "1:23.45", for the
+/// cursor's label.
+pub fn fmt_time_fine(t: f64) -> String {
+    let cs = (t.max(0.0) * 100.0).round() as u64;
+    let (s, frac) = (cs / 100, cs % 100);
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}.{frac:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}.{frac:02}", s / 60, s % 60)
     }
 }
 
@@ -891,5 +921,8 @@ mod tests {
         assert_eq!(nice_step(3.0), 5.0);
         assert_eq!(nice_step(0.12), 0.2);
         assert_eq!(fmt_time(3725.0), "1:02:05");
+        assert_eq!(fmt_time_fine(83.456), "1:23.46");
+        assert_eq!(fmt_time_fine(59.996), "1:00.00");
+        assert_eq!(fmt_time_fine(3725.5), "1:02:05.50");
     }
 }

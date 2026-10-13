@@ -99,8 +99,7 @@ const LIFT: Param = p(
     Kind::Number,
     Arg::Flag("--lift"),
     false,
-    "Lift angle of the calibre in degrees (52 if left out). Amplitude depends on it: \
-     find the calibre's angle before quoting amplitude.",
+    "Lift angle of the calibre in degrees (52 if left out). Amplitude depends on it.",
 );
 const CALIBRE: Param = p(
     "calibre",
@@ -135,8 +134,8 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Analyse a Recording",
         description: "Measure one recording of a watch in one position: rate (seconds per \
             day, positive gaining), amplitude (degrees), beat error (ms), how steady the \
-            beats are, and whether a watch was heard at all. When `watch_heard` is false \
-            the readings describe noise: do not show them; check the microphone instead.",
+            beats are, and whether a regular beat was found. When `watch_heard` is false \
+            no regular beat was found, and the readings are null.",
         command: &["analyze"],
         params: &[RECORDING, CALIBRE_READING, BPH, LIFT],
         charts: true,
@@ -149,7 +148,7 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Read a Multi-Position Test",
         description: "Read a watch measured in several positions (and states of wind) as \
             one Witschi-style report: per-position readings, the characteristic values \
-            (mean rate, largest difference, isochronism) and findings with advice. Give a \
+            (mean rate, largest difference, vertical against horizontal). Give a \
             folder holding session.toml, the session.toml itself, or recordings with the \
             position in each file name (DU, DD, CU, CD, CL, CR). Also writes report.html \
             next to the recordings. The report may name the vertical positions by the \
@@ -276,8 +275,8 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "check_recording",
         title: "Check a Recording",
-        description: "Is a recording fit to measure with? Level, clipping, automatic gain, \
-            noise and whether ticks are heard, with the settings to change. Reads the file \
+        description: "A recording's sound: level, clipping, automatic gain, noise and \
+            whether ticks are heard. Reads the file \
             only: it never opens the microphone and changes nothing.",
         command: &["doctor"],
         params: &[
@@ -300,8 +299,8 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Look Up a Calibre",
         description: "The calibre table: each movement's beat rate, lift angle, escape \
             wheel and train, how sure the figures are and their sources. Give a name for \
-            one calibre (an unknown name lists the known ones). Find the calibre before \
-            quoting amplitude, which depends on the lift angle.",
+            one calibre (an unknown name lists the known ones). Amplitude depends on the \
+            lift angle.",
         command: &["calibres"],
         params: &[p(
             "name",
@@ -397,8 +396,8 @@ pub const TOOLS: &[ToolSpec] = &[
         description: "Listen for a few seconds and report level, clipping, automatic gain, \
             noise and whether ticks are heard, with the exact settings to change. It \
             changes nothing: tell the person the settings to change and let them do it. \
-            Its rate and beat error come from a few seconds: they only show that ticks \
-            are heard, so never give them as the watch's readings. \
+            Its rate and beat error come from a few seconds of sound (5 s unless set), \
+            not from a measurement of the watch. \
             This uses the microphone: put the watch on it first.",
         command: &["doctor"],
         params: &[
@@ -512,15 +511,15 @@ pub fn listens(t: &ToolSpec) -> bool {
 }
 
 /// Plain notes before a result's document, for what the numbers alone do
-/// not say: a microphone check's readings are too short to trust. What
+/// not say: a microphone check's readings come from a few seconds. What
 /// limits a recording's or a test's readings is in its lead (summary.rs).
 pub fn notes(t: &ToolSpec) -> Vec<String> {
     let mut notes = Vec::new();
     if t.name == "check_microphone" {
         notes.push(
-            "The rate and beat error here come from a few seconds of sound and are \
-             too short to trust; they only show that ticks are heard. Do not give them \
-             as the watch's readings: record_position or analyze_recording measures it."
+            "The rate and beat error here come from a few seconds of sound (5 s unless \
+             set), not from a measurement of the watch: record_position or \
+             analyze_recording measures the watch."
                 .to_string(),
         );
     }
@@ -782,7 +781,7 @@ mod tests {
     #[test]
     fn a_quick_check_is_called_out() {
         let mic = find("check_microphone").unwrap();
-        assert!(notes(mic)[0].contains("too short to trust"));
+        assert!(notes(mic)[0].contains("a few seconds of sound"));
         assert!(notes(find("analyze_recording").unwrap()).is_empty());
     }
 

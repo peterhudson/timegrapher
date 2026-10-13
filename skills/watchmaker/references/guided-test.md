@@ -57,10 +57,14 @@ lay it on a table. Make sure it's held firmly; a loose watch sounds like a
 faulty one."*
 
 Run `timegrapher doctor --json` (with `--device NAME` from
-`timegrapher devices` if the stand isn't the default input). Go on only
-when `verdict` is `ok` and `check.signal_band` is `good` (or `fair`, if
-nothing you try improves it: then the rate is sound but amplitude and
-beat error are less sure, and you say so in the result).
+`timegrapher devices` if the stand isn't the default input). Read the
+facts, not any `verdict` or band word an older build prints: go on when
+a regular beat is found, nothing clips, the peak sits below about
+−6 dBFS and the ticks stand well clear of the noise (the levels and the
+project's rules of thumb are in
+[findings.md](findings.md#doctor)). If nothing you try lifts the ticks
+further, go on and say in the result that amplitude and beat error are
+less sure than the rate.
 
 If `doctor` proposes mixer changes, explain each one and ask before
 running it with `--apply`. Issue codes and their fixes are in
@@ -149,33 +153,40 @@ timegrapher record FOLDER --position DD --seconds 120 --json
 ```
 
 Each run says on stderr when it starts and prints `done: the watch can
-be moved` at the end; tell the person both. A take that exits 3
-(`verdict` `no_watch_heard` or `clipping`) is not added to the session:
-fix the cause and record that position again before you ask them to
-turn the watch. A bad position is cheaper to redo now than tomorrow.
+be moved` at the end; tell the person both. Before you ask them to
+turn the watch, read the take's facts: if no regular beat was found
+(`watch_heard` false) or the ticks clipped (`clipping`), fix the cause
+and record that position again. Some builds leave such a take out of
+the session and exit 3; read the take's facts either way. A bad
+position is cheaper to redo now than tomorrow.
 
 ## 5. Read the session
 
 `record` has written the session file (watch, calibre, bph, lift,
-`settle_s = 30` and one entry per take). Pass `--tolerance cosc` for a
-chronometer, or `ladies` for a small ladies' watch; men's is the default.
+`settle_s = 30` and one entry per take).
 
 Run `timegrapher session FOLDER --json` and read it as
-[findings.md](findings.md) says: first whether the measurement is sound,
-then the findings in order of severity, then the numbers behind them.
-Write the answer as SKILL.md's "How to write the answer" says, with the
-service history and wear from step 0 in the verdict.
+[findings.md](findings.md#session-the-positions-test) says: first
+whether the measurement is sound, then the per-position readings and
+the characteristic values, then hold them against the tolerance set
+that fits the watch
+([when-to-see-a-watchmaker.md](when-to-see-a-watchmaker.md#tolerance-sets-by-source)).
+The program applies no tolerance: hold the numbers against the tables
+yourself. Any grade, finding code or tolerance class an older build
+prints is its opinion from fixed limits: read the numbers behind it
+instead. Write the answer as SKILL.md's "How to write the
+answer" says, with the service history and wear from step 0 in it.
 
-Then look for possible faults in the shape of the Tick and the Tock:
-`session` doesn't carry them, so run `timegrapher analyze
+Then look at the shape of the Tick and the Tock: run `timegrapher shape
 TAKE/audio-001.wav --calibre NAME --json` on each take (`take` in
-`record`'s output) and read `faults[]` as
-[findings.md](findings.md#faults-the-program-names) says. One that shows
-on the same side in several positions is worth passing on to a
-watchmaker; one in a single position is more likely the set-up.
+`record`'s output) and read its measures against
+[tick-shape.md](tick-shape.md#rules-for-possible-faults). A pattern
+that shows on the same side in several positions is worth passing on to
+a watchmaker; one in a single position is more likely the set-up.
 
-If the fully-wound half already shows a fault (`severity` `fault`), say
-so now: the 24-hour half will not change that answer.
+If the fully-wound half already shows something clearly outside the
+watch's tolerance set (amplitude well under 200° in several positions,
+say), tell them now: the 24-hour half will not change that answer.
 
 For someone new to this, give one plain line for each number before the
 verdict:
@@ -239,8 +250,9 @@ they mean is in [reading-the-numbers.md](reading-the-numbers.md#isochronism-full
 
 ## 7. A long run (only if something points at it)
 
-If the trace in a position wanders or waves (`cycle_wheel`,
-`rate_unsteady`, or a two-state note in [findings.md](findings.md)),
+If the trace in a position wanders or waves (the 10 s rates spread
+widely, a regular change matches a wheel's turn, or the rate switches
+between two levels: see [findings.md](findings.md#session-the-positions-test)),
 offer a long run: an hour or more in that one position, read with
 `timegrapher series` (is it steady, and if not, which wheel) and
 `timegrapher long` (the report). See [long-runs.md](long-runs.md).
@@ -248,15 +260,15 @@ offer a long run: an hour or more in that one position, read with
 ## A worked example: a Rolex 3235, dial up for two hours
 
 The take `ym42_DU_2h` in the project's public test corpus is a Rolex
-3235 (28,800 bph, lift angle 55° from the calibre table) recorded dial up
+3235 (28,800 bph, the lift angle from the program's calibre table) recorded dial up
 for two hours in twelve ten-minute files, one `session` reading each.
 What `session` says, and how to reason from it:
 
-| Readings | Rate s/d | Amplitude | Beat error | Findings |
+| Readings | Rate s/d | Amplitude | Beat error | Also measured |
 | --- | --- | --- | --- | --- |
-| 1–2 (first 20 min) | +49, +48 | 252° | 0.27 ms | `rate_unsteady` (10 s rates +20 to +75), `amplitude_tolerance` |
-| 3–8 (20–80 min) | +35 falling to +14 | 247–252° | 0.30–0.33 ms | `rate_unsteady` in all six, `amplitude_tolerance`, `cycle_wheel` (fourth wheel) in four |
-| 9–12 (last 40 min) | +8 to +10 | 247–251° | 0.33–0.35 ms | `amplitude_tolerance`, `cycle_wheel` in two |
+| 1–2 (first 20 min) | +49, +48 | 252° | 0.27 ms | 10 s rates spread from +20 to +75 |
+| 3–8 (20–80 min) | +35 falling to +14 | 247–252° | 0.30–0.33 ms | 10 s rates spread over 20 s/d in all six; a change once a minute (the fourth wheel's turn) in four |
+| 9–12 (last 40 min) | +8 to +10 | 247–251° | 0.33–0.35 ms | a change once a minute in two |
 
 1. **Is the measurement sound?** Yes: a watch is heard in every reading,
    there is no clipping, the beat rate is the calibre's, and a second
@@ -270,12 +282,13 @@ What `session` says, and how to reason from it:
    started in the first half hour would have mixed the settling into the
    differences between positions. Judge the rate on the last 40 minutes:
    about +9 s/d dial up, which says little on its own (rate comes last).
-3. **Amplitude is 247–252° dial up** at the table's lift angle, below
-   Witschi's 260° horizontal tolerance (the report's
-   `amplitude_tolerance`; the lift angle for the 32xx is itself not
-   settled, see the calibre table's notes), and steady over two hours. On its own that is a reason to look further,
-   not a verdict.
-4. **Beat error 0.27–0.35 ms**: within Witschi's 0.5 ms.
+3. **Amplitude is 247–252° dial up** at the table's lift angle, at the
+   bottom of the horizontal range in Witschi's training course
+   (250–330°), and steady over two hours. No Rolex amplitude figure was
+   found, and the lift angle for the 32xx is itself not settled (see
+   the calibre table's notes). On its own that is a reason to look
+   further, not a verdict.
+4. **Beat error 0.27–0.35 ms**: within the training course's 0.0–0.5 ms.
 5. **A once-a-minute change**: amplitude repeats every 60 s, 5–10° peak to
    peak, in six of the twelve readings (and at a third of a minute in
    three more), and the rate does too in two of them. The fourth wheel turns once a minute. This is already a two-hour
@@ -330,7 +343,7 @@ listing. Say plainly what that can and can't support.
   card's clock was calibrated (without a clock log or a stored
   correction it wasn't, and a buyer's timegrapher may read a few s/d
   differently), and that it is one position.
-- **A once-a-minute wobble** (`cycle_wheel`) belongs in the listing as
+- **A once-a-minute wobble** (a regular change at the fourth wheel's turn) belongs in the listing as
   measured, with its size: "amplitude varies by about 18° once a minute,
   dial up". Tell the seller what it means for a buyer: something worth a
   watchmaker's look at the next service, not a fault that stops the watch.

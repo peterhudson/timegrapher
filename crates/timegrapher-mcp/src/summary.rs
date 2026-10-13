@@ -82,7 +82,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     }
     if schema.starts_with("timegrapher.analyze/") {
         if doc["watch_heard"] == false {
-            lines.push("No watch was heard, so there are no readings.".to_string());
+            lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
             let rate = doc["rate_corrected_s_per_day"]
                 .as_f64()
@@ -100,7 +100,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
                 name += &format!(" after {h} h");
             }
             let said = if m["watch_heard"] == false {
-                "no watch heard".to_string()
+                "no regular beat found".to_string()
             } else {
                 readings(m, m["rate_s_per_day"].as_f64()).unwrap_or_default()
             };
@@ -112,7 +112,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     } else {
         return None;
     }
-    // A sentence the lead already says (no watch heard) is not repeated.
+    // A sentence the lead already says (no regular beat found) is not repeated.
     let limits: Vec<String> = crate::caveats::notes(doc)
         .into_iter()
         .filter(|l| !lines.contains(l))
@@ -139,7 +139,7 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
         _ => String::new(),
     };
     if c["watch_heard"] == false {
-        lines.push(format!("The check{window} heard no watch."));
+        lines.push(format!("The check{window} found no regular beat."));
     } else {
         let mut parts = Vec::new();
         if let Some(r) = c["rate_s_per_day"].as_f64() {
@@ -177,7 +177,9 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
         lines.push(if n == 0 {
             "No beats were clipped.".to_string()
         } else {
-            format!("{n} beats ({pct:.1}%) were clipped.")
+            let beats = if n == 1 { "beat" } else { "beats" };
+            let were = if n == 1 { "was" } else { "were" };
+            format!("{n} {beats} ({pct:.1}%) {were} clipped.")
         });
     }
     lines.push(
@@ -335,7 +337,7 @@ mod tests {
             "caveats": [{ "code": "no_watch" }] });
         assert!(lead(&doc, &Map::new())
             .unwrap()
-            .starts_with("No watch was heard"));
+            .starts_with("No regular beat found"));
         assert!(lead(&json!({ "schema": "timegrapher.doctor/1" }), &Map::new()).is_none());
     }
 }
