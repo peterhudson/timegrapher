@@ -110,11 +110,13 @@ more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
 been moved or have drifted meanwhile. The panes that average (the Paper Strip's
-overlays, the Tick Tock Profile, the three charts and the three
+Rate Line, guides and overlays, the Tick Tock Profile, the three charts and the three
 distributions) follow Readings' Average Over unless set otherwise: each has
 its own **Average Over** in its toolbar (the charts' in their tab bar),
 "As Readings" by default or one of the presets, and a pane with its own
-time names it in its tab ("Rate · 30 s"). The big amplitude is the average of the two
+time names it in its tab ("Rate · 30 s"). A pane's own time sets everything
+in it that Average Over would. Changing Readings' Average Over puts every
+pane back on it, dropping their own times. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
 median of its 2 s windows, roughly how far it could be off from their
 scatter alone. It is precision, not accuracy: a wrong lift angle moves
@@ -191,7 +193,7 @@ regular beat (with its timing scatter), clipping, or under 10 s of
 beats. The figures are `session`'s for the same stretches. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
-**Isochronism.** A tab beside Steadiness, from the same run of tests: the
+**Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the
 first half hour against the half hour 24 hours later (or the session's last),
@@ -399,19 +401,21 @@ share them.
 
 **Steadiness.** How the rate, the amplitude and the beat error (from the
 unlock) each change over the session, from the same tests as
-`timegrapher series` (see [series.md](series.md)): a tab beside the Tick
-Tock Profile, with its switch in the Steadiness card. Each series shows
-the sentence `series` writes, saying what was detected (a cycle, two
-levels, a step, a trend, correlation between readings, or none of these),
-with no verdict word or colour, and under it the statistics: readings,
-median, standard deviation, the scatter from one reading to the next, the
-lag-1 correlation and Ljung–Box p-value, and the trend and period when
-found. **Rate**, **Amplitude** and **Beat Error**, in the Steadiness
-toolbar, choose which series are shown; at least one stays on. Under Each
-Series, in the same toolbar,
-chooses what is drawn under every series:
-**Readings** (the readings in time order, with the stretches of constant
-level the change finder found and, for two states, the two levels dashed),
+`timegrapher series` (see [series.md](series.md)). Each view is a pane of
+its own, so two can sit side by side; their icons sit together under
+**Steadiness** in the icon bar (and in a Steadiness menu under View), and
+they start as tabs beside the Tick Tock Profile, with only Readings Over
+Time shown. Each series shows the sentence `series` writes, saying what
+was detected (a cycle, two levels, a step, a trend, correlation between
+readings, or none of these), with no verdict word or colour, and under it
+the statistics: readings, median, standard deviation, the scatter from one
+reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
+trend and period when found. **Rate**, **Amplitude** and **Beat Error**,
+in each pane's toolbar, choose which series that pane shows; at least one
+stays on. The views:
+**Readings Over Time** (the readings in time order, with the stretches of
+constant level the change finder found and, for two states, the two
+levels dashed; scaled to the readings with lone wild ones left out),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the escape, fourth and centre
 wheels' periods marked, and the strongest component labelled), **Cycle**
@@ -419,13 +423,17 @@ wheels' periods marked, and the strongest component labelled), **Cycle**
 the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
 (log-log, against the dashed line independent readings follow, labelled
-where it ends, with the averaging time of least scatter labelled) and **CUSUM** (with the ±1.36
-lines dashed and the largest excursion labelled). The tests need 5 minutes
+where it ends, with the averaging time of least scatter labelled),
+**CUSUM** (with the ±1.36 lines dashed and the largest excursion
+labelled) and **FFT** (the plain amplitude spectrum of each series, like
+Witschi's: the size of the sine wave at each period, log-log, in the
+series' own units, the rate's in milliseconds of beat timing, with the
+wheels' periods marked and the tallest point labelled). The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
 or the whole file once it is opened. Rows stack and fill the pane when it is
 tall enough, sit side by side when it is wide and short, and scroll
-otherwise. A line at the top says in plain words what the chosen view
+otherwise. A line at the top says in plain words what the view
 shows. The plots don't pan, zoom or show values under the pointer.
 
 **Remembered settings.** The app keeps its views between runs: the strip's

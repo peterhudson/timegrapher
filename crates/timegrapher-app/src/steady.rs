@@ -34,8 +34,11 @@ const MAX_DRAWN: usize = 3000;
 const MIN_ROW: f32 = 120.0;
 const MIN_COLUMN: f32 = 260.0;
 
-/// What the plot under each series shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+/// What a Steadiness pane draws under each series: each view is a pane of
+/// its own.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub enum View {
     #[default]
     Readings,
@@ -44,19 +47,22 @@ pub enum View {
     Autocorrelation,
     Allan,
     Cusum,
+    Fft,
 }
 
 impl View {
-    const ALL: [View; 6] = [
+    #[cfg(test)]
+    const ALL: [View; 7] = [
         View::Readings,
         View::Periods,
         View::Cycle,
         View::Autocorrelation,
         View::Allan,
         View::Cusum,
+        View::Fft,
     ];
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             View::Readings => "Readings",
             View::Periods => "Periods",
@@ -64,10 +70,11 @@ impl View {
             View::Autocorrelation => "Autocorrelation",
             View::Allan => "Allan Deviation",
             View::Cusum => "CUSUM",
+            View::Fft => "FFT",
         }
     }
 
-    fn hint(self) -> &'static str {
+    pub fn hint(self) -> &'static str {
         match self {
             View::Readings => {
                 "Every reading in time order, with the stretches of constant level the \
@@ -96,6 +103,12 @@ impl View {
                 "The running sum of each reading's distance from the mean: independent \
                  readings stay inside the dashed lines; a step in the level bends it into a \
                  V or a tent, with the corner at the step"
+            }
+            View::Fft => {
+                "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
+                 of the sine wave at each period, in the series' own units (the rate's in \
+                 milliseconds of beat timing), with the wheels' periods marked. Both axes \
+                 are logarithmic"
             }
         }
     }
@@ -431,16 +444,6 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
         }
     }
     marks
-}
-
-/// The picker for what the pane draws under each series, for the
-/// Steadiness toolbar. True when the view changed.
-pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
-    let choices: Vec<(View, &str, &str)> = View::ALL
-        .iter()
-        .map(|v| (*v, v.label(), v.hint()))
-        .collect();
-    theme::choice_list(ui, view, &choices)
 }
 
 /// The series the pane can show, in the order the switches list them.
@@ -968,6 +971,100 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                     }
                 });
         }
+        View::Fft => {
+            let name = match k {
+                SeriesKind::Rate => "rate",
+                SeriesKind::Amplitude => "amplitude",
+                _ => "beat_error",
+            };
+            let Some(sp) = s
+                .report
+                .spectra
+                .iter()
+                .find(|x| x.series == name && !x.period_s.is_empty())
+            else {
+                return note(ui, "The spectrum needs a longer session.");
+            };
+            let pts: Vec<[f64; 2]> = sp
+                .period_s
+                .iter()
+                .zip(&sp.amplitude)
+                .filter(|(p, a)| **p > 0.0 && **a > 0.0 && a.is_finite())
+                .map(|(p, a)| [p.log10(), a.log10()])
+                .collect();
+            if pts.len() < 2 {
+                return note(ui, "The spectrum needs a longer session.");
+            }
+            let (x_lo, x_hi) = pts
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                    (lo.min(p[0]), hi.max(p[0]))
+                });
+            let (y_lo, y_hi) = pts
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                    (lo.min(p[1]), hi.max(p[1]))
+                });
+            // Room above the tallest line for the wheels' names.
+            let top = y_hi + (y_hi - y_lo).max(0.5) * 0.25;
+            let unit = match sp.unit {
+                "deg" => "°",
+                _ => " ms",
+            };
+            let size = move |v: f64| {
+                let d = if v >= 10.0 {
+                    0
+                } else if v >= 1.0 {
+                    1
+                } else if v >= 0.1 {
+                    2
+                } else {
+                    3
+                };
+                format!("{v:.d$}{unit}")
+            };
+            let peak = pts
+                .iter()
+                .copied()
+                .max_by(|a, b| a[1].total_cmp(&b[1]))
+                .unwrap_or([0.0, 0.0]);
+            base.x_grid_spacer(log_grid)
+                .x_axis_formatter(|m, r| log_label(m, r, secs))
+                .y_grid_spacer(log_grid)
+                .y_axis_formatter(move |m, r| log_label(m, r, size))
+                .default_x_bounds(x_lo, x_hi)
+                .default_y_bounds(y_lo, top)
+                .show(ui, |p| {
+                    for w in &s.wheels {
+                        let x = w.period_s.log10();
+                        if x > x_lo && x < x_hi {
+                            p.vline(VLine::new(w.name.clone(), x).color(weak).width(1.0_f32));
+                            p.text(
+                                Text::new("wheel", PlotPoint::new(x, top), wheel_title(&w.name))
+                                    .color(pal.text_secondary)
+                                    .anchor(egui::Align2::LEFT_TOP),
+                            );
+                        }
+                    }
+                    p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
+                    p.points(
+                        Points::new("tallest", vec![peak])
+                            .color(colour)
+                            .radius(3.5_f32),
+                    );
+                    mark_label(
+                        p,
+                        peak,
+                        format!(
+                            "tallest at {}: {}",
+                            secs(10f64.powf(peak[0])),
+                            size(10f64.powf(peak[1]))
+                        ),
+                        pal.text,
+                        false,
+                    );
+                });
+        }
     }
 }
 
@@ -1142,8 +1239,7 @@ mod tests {
 
         let ctx = egui::Context::default();
         theme::install(&ctx);
-        for view in View::ALL {
-            let mut v = view;
+        for v in View::ALL {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1153,7 +1249,6 @@ mod tests {
             };
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    view_list(ui, &mut v);
                     let mut shown = [true, false, true];
                     series_switches(ui, &mut shown);
                     draw(ui, Some(&s), "test", v, &shown);

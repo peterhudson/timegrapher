@@ -32,9 +32,11 @@ pub struct Settings {
     pub sound: profiles::Options,
     pub folded: Vec<String>,
     pub theme: ThemePreference,
-    pub steady_view: steady::View,
-    /// The Steadiness series shown: rate, amplitude, beat error.
+    /// The series the one Steadiness pane showed, before each view was a
+    /// pane of its own: read for the panes not set yet.
     pub steady_series: [bool; 3],
+    /// The series each Steadiness pane shows: rate, amplitude, beat error.
+    pub steady_shown: Vec<(steady::View, [bool; 3])>,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// Calibres the watchmaker entered by hand, as earlier versions kept
@@ -90,8 +92,8 @@ impl Default for Settings {
             sound: profiles::Options::default(),
             folded: Vec::new(),
             theme: ThemePreference::System,
-            steady_view: steady::View::default(),
             steady_series: [true; 3],
+            steady_shown: Vec::new(),
             scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),

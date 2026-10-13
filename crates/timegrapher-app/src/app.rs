@@ -150,19 +150,27 @@ pub enum Pane {
     RateHistogram,
     AmplitudeHistogram,
     BeatErrorHistogram,
-    Steadiness,
+    /// The Steadiness views, each a pane of its own. Layouts saved when
+    /// they were one pane name it Steadiness.
+    #[serde(alias = "Steadiness")]
+    SteadyReadings,
+    SteadyPeriods,
+    SteadyCycle,
+    SteadyAutocorrelation,
+    SteadyAllan,
+    SteadyCusum,
+    SteadyFft,
     Scope,
     Isochronism,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 12] = [
+    const ALL: [Pane; 18] = [
         Pane::Watch,
         Pane::Strip,
         Pane::Sound,
         Pane::Scope,
-        Pane::Steadiness,
         Pane::Isochronism,
         Pane::Rate,
         Pane::Amplitude,
@@ -170,6 +178,23 @@ impl Pane {
         Pane::RateHistogram,
         Pane::AmplitudeHistogram,
         Pane::BeatErrorHistogram,
+        Pane::SteadyReadings,
+        Pane::SteadyPeriods,
+        Pane::SteadyCycle,
+        Pane::SteadyAutocorrelation,
+        Pane::SteadyAllan,
+        Pane::SteadyCusum,
+        Pane::SteadyFft,
+    ];
+    /// The Steadiness views, in the order the icon bar groups them.
+    const STEADY: [Pane; 7] = [
+        Pane::SteadyReadings,
+        Pane::SteadyPeriods,
+        Pane::SteadyCycle,
+        Pane::SteadyAutocorrelation,
+        Pane::SteadyAllan,
+        Pane::SteadyCusum,
+        Pane::SteadyFft,
     ];
     const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
     /// The panes that average the beats, each over Readings' Average Over
@@ -201,7 +226,13 @@ impl Pane {
             Pane::RateHistogram => "Rate Distribution",
             Pane::AmplitudeHistogram => "Amplitude Distribution",
             Pane::BeatErrorHistogram => "Beat Error Distribution",
-            Pane::Steadiness => "Steadiness",
+            Pane::SteadyReadings => "Readings Over Time",
+            Pane::SteadyPeriods => "Periods",
+            Pane::SteadyCycle => "Cycle",
+            Pane::SteadyAutocorrelation => "Autocorrelation",
+            Pane::SteadyAllan => "Allan Deviation",
+            Pane::SteadyCusum => "CUSUM",
+            Pane::SteadyFft => "FFT",
             Pane::Scope => "Scope",
             Pane::Isochronism => "Isochronism",
         }
@@ -230,10 +261,17 @@ impl Pane {
             Pane::BeatErrorHistogram => {
                 "The beat error readings, from the unlock, on probability paper"
             }
-            Pane::Steadiness => {
+            Pane::SteadyReadings => {
                 "Whether the rate, amplitude and beat error each hold steady over the \
-                 session, or carry a cycle, two states, a step, a drift or wander"
+                 session, or carry a cycle, two states, a step, a drift or wander, with every \
+                 reading in time order"
             }
+            Pane::SteadyPeriods
+            | Pane::SteadyCycle
+            | Pane::SteadyAutocorrelation
+            | Pane::SteadyAllan
+            | Pane::SteadyCusum
+            | Pane::SteadyFft => self.steady_view().map_or("", steady::View::hint),
             Pane::Scope => {
                 "The sound of the latest beats as it came in, at 20, 200 or 400 ms, the \
                  latest few drawn over each other"
@@ -243,6 +281,23 @@ impl Pane {
                  first half hour against 24 hours later"
             }
         }
+    }
+}
+
+impl Pane {
+    /// What a Steadiness pane draws under each series.
+    fn steady_view(self) -> Option<steady::View> {
+        use steady::View;
+        Some(match self {
+            Pane::SteadyReadings => View::Readings,
+            Pane::SteadyPeriods => View::Periods,
+            Pane::SteadyCycle => View::Cycle,
+            Pane::SteadyAutocorrelation => View::Autocorrelation,
+            Pane::SteadyAllan => View::Allan,
+            Pane::SteadyCusum => View::Cusum,
+            Pane::SteadyFft => View::Fft,
+            _ => return None,
+        })
     }
 }
 
@@ -258,7 +313,13 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::Strip => (Icon::Strip, pal.text_secondary),
         Pane::Sound => (Icon::Profile, pal.text_secondary),
         Pane::Scope => (Icon::Scope, pal.text_secondary),
-        Pane::Steadiness => (Icon::Steadiness, pal.text_secondary),
+        Pane::SteadyReadings => (Icon::Steadiness, pal.text_secondary),
+        Pane::SteadyPeriods => (Icon::Periods, pal.text_secondary),
+        Pane::SteadyCycle => (Icon::Cycle, pal.text_secondary),
+        Pane::SteadyAutocorrelation => (Icon::Autocorrelation, pal.text_secondary),
+        Pane::SteadyAllan => (Icon::Allan, pal.text_secondary),
+        Pane::SteadyCusum => (Icon::Cusum, pal.text_secondary),
+        Pane::SteadyFft => (Icon::Fft, pal.text_secondary),
         Pane::Isochronism => (Icon::Isochronism, pal.text_secondary),
         Pane::Rate => (Icon::Chart, pal.trace_rate),
         Pane::Amplitude => (Icon::Chart, pal.trace_amplitude),
@@ -300,13 +361,15 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let sound = tabbed(Pane::Sound);
     let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
     let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
-    // The steadiness tests share the profile's place, as a second tab.
-    let steadiness = tiles.insert_pane(Pane::Steadiness);
+    // The steadiness views share the profile's place, as more tabs.
     let scope = tiles.insert_pane(Pane::Scope);
+    let steady: Vec<TileId> = Pane::STEADY.map(|p| tiles.insert_pane(p)).to_vec();
     let isochronism = tiles.insert_pane(Pane::Isochronism);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
-        c.add_child(steadiness);
+        for v in steady {
+            c.add_child(v);
+        }
         c.add_child(isochronism);
     }
     let dir = if horizontal {
@@ -342,7 +405,10 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         WATCH_SHARE,
     ));
     let mut tree = Tree::new("panes", root, tiles);
-    for p in Pane::HISTOGRAMS {
+    for p in Pane::HISTOGRAMS
+        .into_iter()
+        .chain(Pane::STEADY.into_iter().skip(1))
+    {
         set_pane_visible(&mut tree.tiles, p, false);
     }
     tree
@@ -510,6 +576,9 @@ struct ChartLine {
     style: LineStyle,
     /// The swatch beside its value under the pointer.
     key: Color32,
+    /// A colour drawn solid under the dashed line, showing in its gaps:
+    /// Tick's and Tock's amplitude dash purple with blue or orange.
+    under: Option<Color32>,
     /// The reading itself, drawn heavier than the lines beside it.
     main: bool,
 }
@@ -681,10 +750,8 @@ pub struct TimegrapherApp {
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
     hist_readings: bool,
-    /// What the Steadiness pane draws under each series.
-    steady_view: steady::View,
-    /// The Steadiness series shown: rate, amplitude, beat error.
-    steady_series: [bool; 3],
+    /// The series each Steadiness pane shows: rate, amplitude, beat error.
+    steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
@@ -792,8 +859,8 @@ impl TimegrapherApp {
             sound: self.sound_opts,
             folded: self.folded.iter().cloned().collect(),
             theme: self.theme,
-            steady_view: self.steady_view,
-            steady_series: self.steady_series,
+            steady_series: [true; 3],
+            steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
             // Kept in the user calibre file now.
@@ -825,8 +892,8 @@ impl TimegrapherApp {
             sound,
             folded,
             theme,
-            steady_view,
             steady_series,
+            steady_shown,
             scope,
             panes,
             custom_calibres,
@@ -837,10 +904,16 @@ impl TimegrapherApp {
             check_updates,
         } = s;
         self.check_at_start = check_updates;
+        // Readings' time first: setting it drops every pane's own.
+        if AVERAGES.contains(&average_s) {
+            self.set_average(average_s);
+        }
         self.pane_average = pane_average
             .into_iter()
             .filter(|(p, s)| Pane::AVERAGING.contains(p) && AVERAGES.contains(s))
+            .filter(|&(_, s)| s != self.average_s)
             .collect();
+        self.sync_trends();
         self.cal.migrate(custom_calibres);
         self.cal.recent = recent_calibres;
         self.cal.recent.truncate(calibre_ui::RECENT);
@@ -851,9 +924,6 @@ impl TimegrapherApp {
             !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
         }) {
             self.device = Some(d);
-        }
-        if AVERAGES.contains(&average_s) {
-            self.set_average(average_s);
         }
         let mut strip = strip;
         strip.set_half_width(strip.half_width_ms);
@@ -870,16 +940,32 @@ impl TimegrapherApp {
         self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
-        self.steady_view = steady_view;
-        // At least one series stays shown.
-        self.steady_series = if steady_series.contains(&true) {
-            steady_series
-        } else {
-            [true; 3]
-        };
+        // Each pane's series, at least one shown; a pane not set yet takes
+        // the choice the one Steadiness pane had.
+        let every = steady_series;
+        self.steady_series = steady_shown
+            .into_iter()
+            .chain(
+                Pane::STEADY
+                    .iter()
+                    .filter_map(|p| Some((p.steady_view()?, every))),
+            )
+            .filter(|(_, s)| s.contains(&true))
+            .fold(Default::default(), |mut m, (v, s)| {
+                m.entry(v).or_insert(s);
+                m
+            });
         self.scope_view = scope;
         self.panes = match panes.map(|mut p| {
-            add_missing(&mut p, Pane::Steadiness);
+            add_missing(&mut p, Pane::SteadyReadings);
+            // The views that were choices in the one Steadiness pane join
+            // it hidden, each to be shown from its icon.
+            for v in Pane::STEADY.into_iter().skip(1) {
+                if p.tiles.find_pane(&v).is_none() {
+                    add_missing(&mut p, v);
+                    set_pane_visible(&mut p.tiles, v, false);
+                }
+            }
             add_missing(&mut p, Pane::Scope);
             add_missing(&mut p, Pane::Isochronism);
             add_watch(&mut p);
@@ -950,8 +1036,7 @@ impl TimegrapherApp {
             span_of_strip: false,
             hist_span_of_strip: false,
             hist_cumulative: false,
-            steady_view: steady::View::default(),
-            steady_series: [true; 3],
+            steady_series: Default::default(),
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -1023,8 +1108,11 @@ impl TimegrapherApp {
 
     /// A new averaging time: the readings over the whole session are worked
     /// out again, and the tick and tock sound follows it.
+    /// A new Average Over for Readings, which every pane follows again:
+    /// a pane's own time is dropped.
     fn set_average(&mut self, seconds: f64) {
         self.average_s = seconds;
+        self.pane_average.clear();
         let span = self.sound_span();
         if let Some(l) = self.live.as_mut() {
             l.set_profile_span(span);
@@ -2068,24 +2156,29 @@ impl TimegrapherApp {
     }
 
     fn reading(&self) -> Option<LiveReading> {
+        self.reading_over(self.average_s)
+    }
+
+    /// The reading at the moment shown, averaged over `average` seconds.
+    fn reading_over(&self, average: f64) -> Option<LiveReading> {
         let live = self.live.as_ref()?;
         // Stopped inside a settle: the last readings of the position before
         // the move, rather than nothing.
         if let Some(at) = self.stopped_in_settle() {
-            return Some(live.reading_at(at, self.average_s));
+            return Some(live.reading_at(at, average));
         }
         // Nothing is read while the watch settles after a move.
         if self.settling_left().is_some() {
             return None;
         }
         Some(if self.view_end.is_some() {
-            live.reading_at(self.end_s(), self.average_s)
+            live.reading_at(self.end_s(), average)
         } else if !self.running() {
             // Stopped: the last window with a watch heard, so the silence
             // after it is taken off the stand doesn't change the readings.
-            live.reading_at(self.end_s().min(self.last_heard_s()), self.average_s)
+            live.reading_at(self.end_s().min(self.last_heard_s()), average)
         } else {
-            live.reading(self.average_s)
+            live.reading(average)
         })
     }
 
@@ -2551,8 +2644,10 @@ impl TimegrapherApp {
             Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
                 scope::settings(ui, &mut self.scope_view)
             }),
-            Pane::Steadiness => {
-                theme::pane_toolbar(ui, title, help::STEADINESS, |ui| self.steady_settings(ui))
+            p if p.steady_view().is_some() => {
+                theme::pane_toolbar(ui, title, help::STEADINESS, |ui| {
+                    self.steady_settings(ui, p)
+                })
             }
             Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |_| {}),
             p if Pane::HISTOGRAMS.contains(&p) => {
@@ -2598,16 +2693,12 @@ impl TimegrapherApp {
         }
     }
 
-    fn steady_settings(&mut self, ui: &mut egui::Ui) {
-        theme::row(
-            ui,
-            "Under Each Series",
-            Some("What is drawn under each series' sentence"),
-            |ui| {
-                steady::view_list(ui, &mut self.steady_view);
-            },
-        );
-        steady::series_switches(ui, &mut self.steady_series);
+    /// A Steadiness pane's Rate, Amplitude and Beat Error switches.
+    fn steady_settings(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        let Some(view) = pane.steady_view() else {
+            return;
+        };
+        steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
     }
 
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
@@ -2731,7 +2822,7 @@ impl TimegrapherApp {
         }
     }
 
-    fn steady_pane(&mut self, ui: &mut egui::Ui) {
+    fn steady_pane(&mut self, ui: &mut egui::Ui, view: steady::View) {
         let dur = self.update_steady(ui.ctx());
         let upto = self.steady.as_ref().map(|s| s.upto_s);
         let working = self.steady_job.is_some();
@@ -2750,8 +2841,8 @@ impl TimegrapherApp {
             ui,
             self.steady.as_ref(),
             &status,
-            self.steady_view,
-            &self.steady_series,
+            view,
+            &self.steady_series.get(&view).copied().unwrap_or([true; 3]),
         );
     }
 
@@ -3367,7 +3458,7 @@ impl TimegrapherApp {
     fn view_menu(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(&mut self.show_readings, "Readings")
             .on_hover_text("The rate, amplitude and beat error cards");
-        for pane in Pane::ALL {
+        let mut pane_box = |ui: &mut egui::Ui, pane: Pane| {
             let mut on = pane_visible(&self.panes.tiles, pane);
             if ui
                 .checkbox(&mut on, pane.title())
@@ -3376,7 +3467,17 @@ impl TimegrapherApp {
             {
                 set_pane_visible(&mut self.panes.tiles, pane, on);
             }
+        };
+        for pane in Pane::ALL {
+            if !Pane::STEADY.contains(&pane) {
+                pane_box(ui, pane);
+            }
         }
+        ui.menu_button("Steadiness", |ui| {
+            for pane in Pane::STEADY {
+                pane_box(ui, pane);
+            }
+        });
         ui.separator();
         if ui
             .button("Reset Panes")
@@ -3498,14 +3599,52 @@ impl TimegrapherApp {
         {
             self.show_readings = !self.show_readings;
         }
-        for pane in Pane::ALL {
-            let on = pane_visible(&self.panes.tiles, pane);
-            let (icon, color) = pane_icon(pane, pal);
-            if theme::icon_toggle(ui, icon, on, color)
-                .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
-                .clicked()
-            {
-                set_pane_visible(&mut self.panes.tiles, pane, !on);
+        // The panes that stand alone, then the charts, the distributions and
+        // the Steadiness views, each group under its name.
+        let alone: Vec<Pane> = Pane::ALL
+            .into_iter()
+            .filter(|p| {
+                !Pane::CHARTS.contains(p)
+                    && !Pane::HISTOGRAMS.contains(p)
+                    && !Pane::STEADY.contains(p)
+            })
+            .collect();
+        let groups: [(&str, &str, &[Pane]); 4] = [
+            ("", "", &alone),
+            (
+                "Charts",
+                "Each reading over the session, as a line",
+                &Pane::CHARTS,
+            ),
+            (
+                "Distributions",
+                "How often each value of a reading came up",
+                &Pane::HISTOGRAMS,
+            ),
+            (
+                "Steadiness",
+                "How the rate, amplitude and beat error each change over the session, from \
+                 the same tests as `timegrapher series`: each view a pane of its own, so two \
+                 can sit side by side",
+                &Pane::STEADY,
+            ),
+        ];
+        for (name, hint, panes) in groups {
+            if !name.is_empty() {
+                ui.add_space(6.0);
+                ui.separator();
+                ui.label(RichText::new(name).small().color(pal.text_tertiary))
+                    .on_hover_text(hint);
+            }
+            for &pane in panes {
+                let on = pane_visible(&self.panes.tiles, pane);
+                let (icon, color) = pane_icon(pane, pal);
+                if theme::icon_toggle(ui, icon, on, color)
+                    .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
+                    .clicked()
+                {
+                    set_pane_visible(&mut self.panes.tiles, pane, !on);
+                }
             }
         }
     }
@@ -4974,9 +5113,10 @@ impl TimegrapherApp {
         });
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
+        // The strip's own Average Over, as its overlays use.
         let rate_line = self
             .rate_line
-            .then(|| self.reading())
+            .then(|| self.reading_over(self.average_for(Pane::Strip)))
             .flatten()
             .and_then(|r| {
                 Some(strip::RateLine {
@@ -5705,6 +5845,7 @@ impl TimegrapherApp {
                     color: pal.trace_rate,
                     style: solid,
                     key: pal.trace_rate,
+                    under: None,
                     main: true,
                 }],
                 " s/day",
@@ -5718,22 +5859,25 @@ impl TimegrapherApp {
                         color: pal.trace_amplitude,
                         style: solid,
                         key: pal.trace_amplitude,
+                        under: None,
                         main: true,
                     },
                     ChartLine {
                         name: "Amplitude from Tick".into(),
                         pts: pick(|p| p.amplitude_a),
                         color: pal.trace_amplitude,
-                        style: LineStyle::dashed_dense(),
+                        style: LineStyle::Dashed { length: 6.0 },
                         key: pal.tick,
+                        under: Some(pal.tick),
                         main: false,
                     },
                     ChartLine {
                         name: "Amplitude from Tock".into(),
                         pts: pick(|p| p.amplitude_b),
                         color: pal.trace_amplitude,
-                        style: LineStyle::dotted_dense(),
+                        style: LineStyle::Dashed { length: 6.0 },
                         key: pal.tock,
+                        under: Some(pal.tock),
                         main: false,
                     },
                 ],
@@ -5748,6 +5892,7 @@ impl TimegrapherApp {
                         color: pal.trace_beat_error,
                         style: solid,
                         key: pal.trace_beat_error,
+                        under: None,
                         main: true,
                     },
                     ChartLine {
@@ -5756,6 +5901,7 @@ impl TimegrapherApp {
                         color: pal.trace_beat_error.gamma_multiply(0.6),
                         style: LineStyle::dashed_dense(),
                         key: pal.trace_beat_error.gamma_multiply(0.6),
+                        under: None,
                         main: false,
                     },
                 ],
@@ -5774,6 +5920,11 @@ impl TimegrapherApp {
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
             .custom_x_axes(vec![egui_plot::AxisHints::new_x().formatter(|m, r| {
+                // Nothing before the session starts: a time there read as a
+                // second "0:00".
+                if m.value < -1e-6 {
+                    return String::new();
+                }
                 // A long time ("1:30:00") at the right end would be cut.
                 let t = strip::fmt_time(m.value);
                 let frac = if t.len() > 5 { 0.03 } else { 0.0 };
@@ -5841,6 +5992,13 @@ impl TimegrapherApp {
             }
             for l in series {
                 let w = if l.main { 1.8_f32 } else { 1.2_f32 };
+                if let Some(c) = l.under {
+                    p.line(
+                        Line::new(format!("{} gaps", l.name), l.pts.clone())
+                            .color(c)
+                            .width(w),
+                    );
+                }
                 p.line(
                     Line::new(l.name, l.pts)
                         .color(l.color)
@@ -6031,16 +6189,21 @@ fn position_in_name(path: &Path) -> Option<Position> {
 
 /// The names in a chart's key and their colours, when it has more than one
 /// line.
-fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32)> {
+/// A second colour is drawn as a dash of the two, as the line is.
+fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
     match pane {
         Pane::Amplitude => vec![
-            ("Average Amplitude", pal.trace_amplitude),
-            ("From Tick", pal.tick),
-            ("From Tock", pal.tock),
+            ("Average Amplitude", pal.trace_amplitude, None),
+            ("From Tick", pal.trace_amplitude, Some(pal.tick)),
+            ("From Tock", pal.trace_amplitude, Some(pal.tock)),
         ],
         Pane::BeatError => vec![
-            ("From the Unlock", pal.trace_beat_error),
-            ("From the Drop", pal.trace_beat_error.gamma_multiply(0.6)),
+            ("From the Unlock", pal.trace_beat_error, None),
+            (
+                "From the Drop",
+                pal.trace_beat_error.gamma_multiply(0.6),
+                None,
+            ),
         ],
         _ => Vec::new(),
     }
@@ -6130,7 +6293,9 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 Pane::Watch => self.app.watch_pane(ui),
                 Pane::Strip => self.app.strip_pane(ui),
                 Pane::Sound => self.app.sound_pane(ui),
-                Pane::Steadiness => self.app.steady_pane(ui),
+                p if p.steady_view().is_some() => self
+                    .app
+                    .steady_pane(ui, p.steady_view().unwrap_or_default()),
                 Pane::Isochronism => self.app.isochronism_pane(ui),
                 Pane::Scope => self.app.scope_pane(ui),
                 p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
@@ -6244,7 +6409,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         let font = egui::TextStyle::Small.resolve(ui.style());
         let needed: f32 = key
             .iter()
-            .map(|(name, _)| {
+            .map(|(name, _, _)| {
                 ui.fonts_mut(|f| {
                     f.layout_no_wrap(name.to_string(), font.clone(), pal.text_secondary)
                 })
@@ -6255,10 +6420,13 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         if needed + 80.0 > ui.available_width() {
             return;
         }
-        for (name, color) in key.into_iter().rev() {
+        for (name, color, gaps) in key.into_iter().rev() {
             ui.add_space(6.0);
             ui.label(RichText::new(name).small().color(pal.text_secondary));
-            theme::dot(ui, color);
+            match gaps {
+                Some(g) => theme::dash(ui, color, g),
+                None => theme::dot(ui, color),
+            };
         }
     }
 
@@ -6700,8 +6868,9 @@ type ScopeKey = (i64, u64, scope::Zoom, u64);
 
 /// What a pane's Average Over does.
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
-     As Readings follows Average Over in the Readings card, so changing that moves this \
-     pane too; a time of its own stays put and is named on the pane's tab.";
+     As Readings follows Average Over in the Readings card. A time of its own sets \
+     everything in this pane that Average Over sets, and is named on the pane's tab, until \
+     Average Over in the Readings card is changed: then every pane follows that again.";
 
 /// Everything Average Over sets, and what it leaves alone.
 /// The speeds Replay offers, times the recording's own.
@@ -6717,8 +6886,8 @@ fn speed_text(x: f32) -> String {
 
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
      the three readings and their ±; every point on the Rate, \
-     Amplitude and Beat Error charts; the Amplitude, Rate and Beat Error lines drawn over \
-     the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
+     Amplitude and Beat Error charts; the Paper Strip's Rate Line and the Amplitude, Rate \
+     and Beat Error lines drawn over it; the Distributions when Values is Readings; and the Tick Tock Profile, \
      the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
      Scope. It doesn't change Steadiness and Isochronism (always 10 s rate and 2 s \
      amplitude readings) or the Positions Test (a minute a position).";
@@ -7916,7 +8085,7 @@ mod tests {
         // and gains the pane as a tab beside the profile.
         let mut before = app.settings();
         let mut tree = app.panes.clone();
-        let id = tree.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let id = tree.tiles.find_pane(&Pane::SteadyReadings).unwrap();
         let tabs = tree.tiles.parent_of(id).unwrap();
         if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(tabs) {
             c.remove_child(id);
@@ -7928,7 +8097,7 @@ mod tests {
         assert!(layout_is_whole(&again.panes));
         assert!(again.strip.horizontal, "the saved arrangement was kept");
         let sound = again.panes.tiles.find_pane(&Pane::Sound).unwrap();
-        let steady = again.panes.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let steady = again.panes.tiles.find_pane(&Pane::SteadyReadings).unwrap();
         assert_eq!(
             again.panes.tiles.parent_of(sound),
             again.panes.tiles.parent_of(steady)
@@ -7980,7 +8149,7 @@ mod tests {
     fn moving_steadiness_out_leaves_the_profile_showing() {
         let app = synthetic(40.0, 0.0);
         let mut tree = app.panes.clone();
-        let steady = tree.tiles.find_pane(&Pane::Steadiness).unwrap();
+        let steady = tree.tiles.find_pane(&Pane::SteadyReadings).unwrap();
         let sound = tree.tiles.find_pane(&Pane::Sound).unwrap();
         let tabs = tree.tiles.parent_of(steady).unwrap();
         // What a drag leaves behind: Steadiness active in the profile's
@@ -8025,7 +8194,8 @@ mod tests {
     }
 
     /// A pane follows Readings' Average Over until given a time of its
-    /// own, which then stays put and keeps its own readings.
+    /// own, which keeps its own readings until Readings' Average Over is
+    /// changed: then every pane follows it again.
     #[test]
     fn a_pane_follows_readings_unless_set() {
         let mut app = synthetic(40.0, 0.0);
@@ -8036,37 +8206,54 @@ mod tests {
         let own = app.trend_for(30.0);
         assert!(!own.is_empty());
         assert!(own.last().unwrap().t > 30.0);
-        app.set_average(5.0);
-        assert_eq!(app.average_for(Pane::Rate), 30.0);
-        assert_eq!(app.average_for(Pane::Amplitude), 5.0);
-        assert!(!app.trend_for(30.0).is_empty());
         // Back to following: its own readings are dropped.
         app.set_pane_average(Pane::Rate, None);
-        assert_eq!(app.average_for(Pane::Rate), 5.0);
+        assert_eq!(app.average_for(Pane::Rate), 10.0);
         assert!(app.other_trends.is_empty());
+        // A new time for Readings takes over every pane's own.
+        app.set_pane_average(Pane::Rate, Some(30.0));
+        app.set_pane_average(Pane::Strip, Some(60.0));
+        app.set_average(5.0);
+        assert_eq!(app.average_for(Pane::Rate), 5.0);
+        assert_eq!(app.average_for(Pane::Strip), 5.0);
+        assert_eq!(app.average_for(Pane::Amplitude), 5.0);
+        assert!(app.pane_average.is_empty() && app.other_trends.is_empty());
         // Picking Readings' own time is the same as following it.
         app.set_pane_average(Pane::Rate, Some(5.0));
         assert!(app.pane_average.is_empty());
     }
 
-    /// The per-pane times and the Steadiness series come back next time,
-    /// with every series off read as all on.
+    /// The per-pane times and each Steadiness pane's series come back next
+    /// time, with every series off read as all on, and the one choice an
+    /// older app kept for its single Steadiness pane given to every view.
     #[test]
     fn pane_times_and_series_are_kept() {
+        use steady::View;
         let mut app = synthetic(5.0, 0.0);
         app.set_pane_average(Pane::Strip, Some(60.0));
-        app.steady_series = [false, true, false];
+        app.steady_series.insert(View::Fft, [false, true, false]);
         let s = app.settings();
         let mut back = TimegrapherApp::with_devices(Vec::new(), None, false);
         back.apply_settings(s.clone());
         assert_eq!(back.average_for(Pane::Strip), 60.0);
-        assert_eq!(back.steady_series, [false, true, false]);
+        assert_eq!(back.steady_series[&View::Fft], [false, true, false]);
+        assert_eq!(back.steady_series[&View::Cycle], [true; 3]);
         let mut none = s;
-        none.steady_series = [false; 3];
+        none.steady_shown = vec![(View::Fft, [false; 3])];
         none.pane_average = vec![(Pane::Watch, 30.0), (Pane::Rate, 7.0)];
         back.apply_settings(none);
-        assert_eq!(back.steady_series, [true; 3]);
+        assert_eq!(back.steady_series[&View::Fft], [true; 3]);
         assert!(back.pane_average.is_empty());
+        let mut older = app.settings();
+        older.steady_shown.clear();
+        older.steady_series = [true, false, false];
+        back.apply_settings(older);
+        for p in Pane::STEADY {
+            assert_eq!(
+                back.steady_series[&p.steady_view().unwrap()],
+                [true, false, false]
+            );
+        }
     }
 
     #[test]
