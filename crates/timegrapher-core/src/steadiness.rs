@@ -1161,7 +1161,7 @@ fn cycle(
     let d = longterm::detrend(g, 1800.0);
     let mut cands: Vec<(f64, CycleSource)> = Vec::new();
     if let Some(t) = &s.two_state {
-        if t.verdict == twostate::Verdict::Regular {
+        if t.repeating_levels() {
             if let Some(p) = t.period_s {
                 cands.push((refine(&d, p, 0.05), CycleSource::TwoState));
             }
@@ -1295,11 +1295,13 @@ fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
 }
 
 fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
-    use twostate::Verdict as T;
-    match s.two_state.as_ref().map(|t| t.verdict) {
-        Some(T::TwoStates) => return Lead::TwoStates,
-        Some(T::Measurement) => return Lead::Measurement,
-        _ => {}
+    if let Some(t) = &s.two_state {
+        if t.switching_levels() {
+            return Lead::TwoStates;
+        }
+        if t.one_side_or_unlock() {
+            return Lead::Measurement;
+        }
     }
     if s.cycle.is_some() {
         return Lead::Periodic;

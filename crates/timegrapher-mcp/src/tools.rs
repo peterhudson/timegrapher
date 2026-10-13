@@ -190,10 +190,12 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "check_steadiness",
         title: "Check Steadiness",
-        description: "Is the watch steady over a long recording (an hour or more)? Gives a \
-            verdict per series (rate, amplitude, beat error): steady, periodic, two \
-            states, measurement, shifting mean, drifting, wandering or too short, with \
-            the evidence, the wheel a periodic change points at, and findings with advice.",
+        description: "How the rate, amplitude and beat error move over a long recording \
+            (an hour or more). Gives each series' headline (what was detected: a cycle, \
+            two levels, level changes, a trend, or none) with its statistics: \
+            autocorrelation, Allan deviation, the period and its size, the wheel whose \
+            turn matches a cycle, level changes and an amplitude spectrum, and findings \
+            with their evidence. Facts only: the reading of them is the caller's.",
         command: &["series", "--views"],
         params: &[
             RECORDINGS,
@@ -318,10 +320,10 @@ pub const TOOLS: &[ToolSpec] = &[
         name: "record_position",
         title: "Record a Position",
         description: "Record the watch on the microphone in one position into a test \
-            folder, then check that a watch was heard. A clean take is added to the \
-            folder's session.toml, ready for run_session; when no watch is heard or the \
-            sound is bad, `verdict` says so and nothing is added. This uses the \
-            microphone: before every call, tell the person which position to put the \
+            folder, with a quick check of the take. Every take is added to the folder's \
+            session.toml, ready for run_session; the check states the facts about its \
+            sound (`watch_heard` and the timing scatter, and the beats clipped). This \
+            uses the microphone: before every call, tell the person which position to put the \
             watch in (DU dial up, DD dial down, CU crown up, CD crown down, CL crown left, \
             CR crown right), that it should be wound and settled, and to keep the room \
             quiet; call only when they say it is ready. It takes as long as `seconds`.",
