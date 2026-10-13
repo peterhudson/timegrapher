@@ -449,9 +449,10 @@ enum Calibre<'a> {
 
 /// What the table says about a calibre, for its entry in the menu.
 fn calibre_hint(c: &calibres::Calibre) -> String {
-    let mut t = format!("{} bph", c.bph);
+    let mut t = c.bph.map_or(String::new(), |b| format!("{b} bph"));
     if let Some(l) = c.lift_angle_deg {
-        t += &format!(", lift angle {}°", fields::plain(l));
+        let sep = if t.is_empty() { "" } else { ", " };
+        t += &format!("{sep}lift angle {}°", fields::plain(l));
     }
     for w in &c.wheels {
         t += &format!("\n{}: {} s", w.name, (PERIOD.show)(w.period_s));
@@ -3539,8 +3540,11 @@ impl TimegrapherApp {
                             picked = Some(String::new());
                             ui.close();
                         }
-                        let mut table: Vec<&calibres::Calibre> =
-                            calibres::all().iter().filter(|c| matches(c)).collect();
+                        // Until something is typed, only the common calibres.
+                        let mut table: Vec<&calibres::Calibre> = calibres::all()
+                            .iter()
+                            .filter(|c| matches(c) && (c.common || !typed.trim().is_empty()))
+                            .collect();
                         if table.is_empty() {
                             ui.label(
                                 RichText::new(
@@ -3613,11 +3617,11 @@ impl TimegrapherApp {
         match self.calibre_choice() {
             Calibre::Table(c) => {
                 let heard = self.live.as_ref().and_then(|l| l.bph());
-                if let Some(b) = heard.filter(|&b| b != c.bph) {
+                if let Some((b, cb)) = heard.zip(c.bph).filter(|&(b, cb)| b != cb) {
                     ui.label(
                         RichText::new(format!(
-                            "The {} beats at {} bph, but this watch beats at {b}.",
-                            c.calibre, c.bph
+                            "The {} beats at {cb} bph, but this watch beats at {b}.",
+                            c.calibre
                         ))
                         .small()
                         .color(pal.text_secondary),

@@ -203,7 +203,7 @@ impl<'a> Entry<'a> {
 
     pub fn bph(&self) -> Option<u32> {
         match self {
-            Entry::Table(c) => Some(c.bph),
+            Entry::Table(c) => c.bph,
             Entry::Custom(c) => c.bph,
         }
     }

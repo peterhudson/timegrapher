@@ -7,7 +7,7 @@ use crate::long::Train;
 use crate::output;
 use serde_json::json;
 use timegrapher_core::calibre_store::{self, Catalog, Entry, Origin, UserCalibres};
-use timegrapher_core::calibres::Calibre;
+use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::periodicity::{standard_wheels, Component, Wheel};
 
 /// Lift angle when neither `--lift` nor the calibre gives one, degrees.
@@ -39,7 +39,7 @@ pub fn resolve(
     .calibre()?;
     let lift = lift_deg.or(c.and_then(|c| c.lift_angle_deg));
     Ok(Resolved {
-        bph: bph.or(c.map(|c| c.bph)),
+        bph: bph.or(c.and_then(|c| c.bph)),
         lift_deg: lift.unwrap_or(DEFAULT_LIFT_DEG),
         lift_known: lift.is_some(),
         escape_teeth: escape_teeth
@@ -90,8 +90,17 @@ pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), S
             format!("'{n}' is not in the table; `timegrapher calibres --search {n}` looks wider")
         })?],
         (None, Some(q)) => cat.search(q),
-        (None, None) => cat.search(""),
+        // With neither, the common calibres and the user's own.
+        (None, None) => cat
+            .search("")
+            .into_iter()
+            .filter(|e| match e {
+                Entry::Table(c) => c.common,
+                Entry::Custom(_) => true,
+            })
+            .collect(),
     };
+    let everything = calibres::all().len();
     if json {
         let table: Vec<&Calibre> = list
             .iter()
@@ -107,7 +116,12 @@ pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), S
                 Entry::Table(_) => None,
             })
             .collect();
-        let mut body = json!({ "calibres": table, "custom": custom });
+        let mut body = json!({
+            "calibres": table,
+            "custom": custom,
+            "listed": if name.is_none() && search.is_none() { "common" } else { "matching" },
+            "table_size": everything,
+        });
         if name.is_some() {
             body["slots"] = json!(cat.slots(list[0]));
         }
@@ -161,6 +175,13 @@ pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), S
             e.escape_teeth().map(|t| t.to_string()).unwrap_or_else(dash),
             known,
             also
+        );
+    }
+    if name.is_none() && search.is_none() {
+        println!(
+            "\nThe {} common calibres of the {everything} in the table, and yours. \
+`timegrapher calibres --search WORDS` finds any of them, by number, maker or other name.",
+            list.len() - user.custom.len()
         );
     }
     println!(
@@ -238,13 +259,12 @@ fn print_one(cat: &Catalog, e: Entry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use timegrapher_core::calibres;
 
     #[test]
     fn flags_win_over_the_calibre_and_the_calibre_over_defaults() {
         let r = resolve(Some("ETA 2824-2"), None, None, None).unwrap();
         let c = calibres::find("ETA 2824-2").unwrap();
-        assert_eq!(r.bph, Some(c.bph));
+        assert_eq!(r.bph, c.bph);
         assert_eq!(r.lift_deg, c.lift_angle_deg.unwrap_or(DEFAULT_LIFT_DEG));
         assert_eq!(
             r.escape_teeth,

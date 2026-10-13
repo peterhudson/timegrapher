@@ -1,7 +1,8 @@
-# Train-wheel periods of common calibres
+# Calibres: lift angles and train-wheel periods
 
-`train-wheels.json` lists common mechanical calibres with the time each
-wheel of the going train takes to turn once. A fault on a wheel (a bent
+`train-wheels.json` lists mechanical calibres with their beat rate and
+lift angle and, where known, the time each wheel of the going train
+takes to turn once. A fault on a wheel (a bent
 tooth, an eccentric wheel, a rubbing seconds hand) repeats once per turn,
 so a periodic change in rate or amplitude can be named once these periods
 are known. The table is read by `timegrapher_core::calibres`.
@@ -20,13 +21,13 @@ A JSON array, one object per calibre:
 | `maker` | Maker, or "(clone)" for a copy |
 | `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
 | `common` | `true` for common and modern calibres, the short list the app offers first; uncommon and vintage ones (most of the imported list) leave it out and appear when the list is expanded or searched |
-| `bph` | Beats per hour |
+| `bph` | Beats per hour, where a source gives it |
 | `escape_teeth` | Escape wheel teeth, only where there is evidence |
 | `lift_angle_deg` | Lift angle, only where a source gives one |
 | `seconds` | Where the seconds hand sits and how it is driven |
 | `wheels` | `name` (lower case), `period_s` (one full turn, seconds), and where known `teeth`, `pinion` (leaves on the same arbor) and `basis` (how the period is known); empty when no wheel's period is known |
 | `sources` | Where each figure came from |
-| `confidence` | The best basis in the entry: "derived from tooth counts", "measured" (from this project's recordings), or "derived from the beat rate" |
+| `confidence` | The best basis in the entry: "derived from tooth counts", "measured" (from this project's recordings), "derived from the beat rate", or "published list" (an imported row, below) |
 | `notes` | What is inferred, where sources disagree, what is missing |
 
 ## Makers' other names
@@ -34,10 +35,49 @@ A JSON array, one object per calibre:
 `makers.json` lists, for a `maker` as the table writes it, whether it is
 one of the big makers listed first (`common`), and the other
 names people search by: abbreviations ("AP" for Audemars Piguet, "DD" for
-Dandong), older names, and the families a maker's calibres are sold
-under ("Valjoux" and "Unitas" for ETA). Each carries its source. The
+Dandong), older names, and the short marks calibres carry ("AS" for
+A. Schild, "FHF" for Fontainemelon). Each carries its source; for the
+imported makers that is the list that writes the maker that way. The
 clone prefixes (DD, SH, JH, VR, PTS) appear in calibre names and parts
 listings but in no neutral reference list.
+
+## The imported lift-angle lists
+
+Most rows (`confidence` "published list") come from three public lists
+of lift angles, imported on 2026-10-13:
+
+- the lift-angle spreadsheet linked from the Watch Repair Talk forum
+  (https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg),
+  with maker, calibre, size, beat rate and lift angle;
+- WatchGuy's list (https://watchguy.co.uk/cgi-bin/lift_angles), maker,
+  calibre and lift angle;
+- Watchmaking Tools' list
+  (https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/),
+  maker, calibre and lift angle.
+
+None of them states a licence. Each row names the list or lists it came
+from and the row as the list wrote it. The figures are as published and
+were not checked against the movements; the checked entries above them
+keep their own sources.
+
+How the rows were merged:
+
+- One row per maker, calibre, beat rate and lift angle. Where the lists
+  give a calibre two beat rates or two lift angles, it gets a row for
+  each, named with the figures, e.g. "ETA 2824 (21,600 vph, 53°)",
+  because unnamed variants exist and a list can be wrong; the notes say
+  what the other rows give.
+- Where a list agrees with a checked entry, its source is added to that
+  entry. Where it disagrees, the checked entry stays as it is and the
+  list's figures become a row of their own.
+- A balance-wheel period is derived from the beat rate when there is
+  one. No other wheel periods come from the lists.
+- Left out: rows with neither a lift angle nor a beat rate, rows with
+  no calibre name, electronic movements, pin-lever makers (Roskopf,
+  Timex), and beat rates under 3,600 or over 72,000 vph. A beat rate
+  under 100 vph in the spreadsheet is read as a typing slip and left
+  out of the row, with a note. Calibre names the spreadsheet turned into
+  dates ("13-Mar") are read back as numbers ("13.3").
 
 ## What users add
 

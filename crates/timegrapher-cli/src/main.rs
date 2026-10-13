@@ -1058,8 +1058,10 @@ fn run_analyze(
     } else {
         if let Some(c) = calibre {
             println!(
-                "Calibre      {}: {} bph, lift {}°, as set unless a flag said otherwise",
-                c.calibre, c.bph, cfg.amplitude.lift_deg
+                "Calibre      {}: {}lift {}°, as set unless a flag said otherwise",
+                c.calibre,
+                c.bph.map_or(String::new(), |b| format!("{b} bph, ")),
+                cfg.amplitude.lift_deg
             );
         }
         print_summary(&a, clock.as_ref());

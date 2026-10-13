@@ -34,7 +34,9 @@ pub struct Calibre {
     /// expanded or searched.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub common: bool,
-    pub bph: u32,
+    /// Beats per hour, where a source gives it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bph: Option<u32>,
     /// Escape wheel teeth, when known.
     #[serde(default)]
     pub escape_teeth: Option<u32>,
@@ -228,7 +230,15 @@ mod tests {
     #[test]
     fn periods_agree_with_the_beat_rate_and_the_teeth() {
         for c in all() {
-            let beat = 3600.0 / c.bph as f64;
+            let Some(bph) = c.bph else {
+                assert!(
+                    c.wheels.is_empty(),
+                    "{} has wheels and no beat rate",
+                    c.calibre
+                );
+                continue;
+            };
+            let beat = 3600.0 / bph as f64;
             let by_name = |n: &str| c.wheels.iter().find(|w| w.name == n);
             for w in &c.wheels {
                 assert_eq!(w.name, w.name.to_lowercase(), "{}", c.calibre);
@@ -276,7 +286,7 @@ mod tests {
     #[test]
     fn finds_by_name_family_and_session_names() {
         let c = find("ETA 2824-2").expect("ETA 2824-2");
-        assert_eq!(c.bph, 28800);
+        assert_eq!(c.bph, Some(28800));
         assert_eq!(find("eta2824-2").map(|c| &c.calibre), Some(&c.calibre));
         assert_eq!(find("2824-2").map(|c| &c.calibre), Some(&c.calibre));
         assert!(find("3235").is_some());
