@@ -6,8 +6,8 @@
 //! newest beats are at the top. A watch on rate draws a vertical line; one
 //! that gains leans right as it rises (/), one that loses leans left (\).
 //! Tick and tock (the even and odd beats) draw two lines whose gap is the beat error.
-//! A line that runs off one side comes back on the other, as on a
-//! Witschi diagram, so the strip's width sets the zoom. The strip can also
+//! A line that runs off one side comes back on the other, so the strip's
+//! width sets the zoom. The strip can also
 //! lie on its side, time running left to right with the newest beats on the
 //! right and early beats towards the top.
 

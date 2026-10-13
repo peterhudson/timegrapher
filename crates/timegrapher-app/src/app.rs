@@ -24,7 +24,6 @@ use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::calibres;
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
-use timegrapher_core::diagnose::{HOT_PEAK_DBFS, TARGET_PEAK_DBFS};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
 use timegrapher_core::mixer::{GainState, InputGain};
@@ -36,6 +35,8 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
+/// Plain marks on the level meter, for reference only.
+const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
 use timegrapher_core::recorder::{Recorder, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
@@ -394,7 +395,7 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
     (99.9, "99.9%"),
 ];
 
-/// Averaging times offered for the readings, seconds (Witschi's choices).
+/// Averaging times offered for the readings, seconds.
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
 /// beat at 28,800 bph, the widest view in which tick and tock can't wrap
@@ -540,7 +541,6 @@ pub struct TimegrapherApp {
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
-    faults: crate::faults::FaultCheck,
     /// The Positions Test, while it runs and until its results are closed.
     guided: Option<guided::Test>,
     /// Look for a newer release each time the app starts.
@@ -596,7 +596,7 @@ pub struct TimegrapherApp {
     /// Amplitude and beat error histograms count the readings rather than
     /// each 2 seconds of beats.
     hist_readings: bool,
-    /// What the Steadiness pane draws under each verdict.
+    /// What the Steadiness pane draws under each series.
     steady_view: steady::View,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
@@ -803,7 +803,6 @@ impl TimegrapherApp {
             crash_shown: false,
             report: ReportDialog::default(),
             updates: Default::default(),
-            faults: Default::default(),
             guided: None,
             check_at_start: true,
             check_pending: false,
@@ -943,7 +942,6 @@ impl TimegrapherApp {
         self.clipped_at = None;
         self.message = None;
         self.sound_history.clear();
-        self.faults.clear();
         self.guided = None;
         self.sound_at = None;
         self.sound_job = None;
@@ -1093,7 +1091,6 @@ impl TimegrapherApp {
         self.live = None;
         self.trend.clear();
         self.sound_history.clear();
-        self.faults.clear();
         self.guided = None;
         self.source_label.clear();
         self.message = None;
@@ -1677,11 +1674,7 @@ impl TimegrapherApp {
         if let Some(cap) = &self.capture {
             let quiet = self.audio_at.unwrap_or(self.opened_at).elapsed();
             if !cap.is_file && quiet.as_secs_f64() > 3.0 && failure.is_none() {
-                failure = Some(
-                    "No sound is arriving from this input. Choose another one, or the \
-                     system default."
-                        .to_string(),
-                );
+                failure = Some("No sound is arriving from this input.".to_string());
                 ended = true;
             }
         }
@@ -2109,9 +2102,9 @@ impl TimegrapherApp {
                 if self.input == Input::Microphone {
                     ui.add_space(8.0);
                     self.meter(ui, 120.0, 6.0).on_hover_text(
-                        "The loudest sample in the last half second. Aim for the ticks \
-                         to reach the light mark (-10 dBFS) and stay short of the red one \
-                         (-6 dBFS). Set the gain with Input Level under Microphone.",
+                        "The loudest sample in the last half second, with plain marks at \
+                         -10 and -6 dBFS for reference; red when the sound clips. Input \
+                         Level under Microphone sets the gain.",
                     );
                     let (txt, color) = self.level_text(ui);
                     if self.running() {
@@ -2394,7 +2387,7 @@ impl TimegrapherApp {
     fn steady_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.label(
-            RichText::new("Under Each Verdict")
+            RichText::new("Under Each Series")
                 .small()
                 .color(pal.text_secondary),
         );
@@ -3152,23 +3145,20 @@ impl TimegrapherApp {
             .is_some_and(|t| t.elapsed().as_secs_f64() < 3.0)
     }
 
-    /// The input level in words and the colour to show it in.
+    /// The input level in words and the colour to show it in: red only
+    /// while the sound clips.
     fn level_text(&self, ui: &egui::Ui) -> (String, Color32) {
         let pal = theme::pal(ui);
         let peak = self.level.peak_dbfs.max(-99.0);
         if self.clipping() {
             (format!("peak {peak:.0} dBFS, clipping"), pal.bad)
-        } else if peak > HOT_PEAK_DBFS {
-            (format!("peak {peak:.0} dBFS, too hot"), pal.warn)
-        } else if peak < -40.0 {
-            (format!("peak {peak:.0} dBFS, very quiet"), pal.warn)
         } else {
             (format!("peak {peak:.0} dBFS"), pal.text_secondary)
         }
     }
 
-    /// The level meter: a bar to the latest peak, in green, amber or red,
-    /// with marks at the target and at the hot limit.
+    /// The level meter: a bar to the latest peak, red while the sound
+    /// clips, with plain reference marks at -10 and -6 dBFS.
     fn meter(&self, ui: &mut egui::Ui, width: f32, height: f32) -> egui::Response {
         let pal = theme::pal(ui);
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
@@ -3180,26 +3170,21 @@ impl TimegrapherApp {
             let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
             let color = if self.clipping() {
                 pal.bad
-            } else if !(-40.0..=HOT_PEAK_DBFS).contains(&peak) {
-                pal.warn
             } else {
-                pal.good
+                pal.text_secondary
             };
             let mut fill = rect;
             fill.set_width((rect.width() * frac).max(height));
             p.rect_filled(fill, r, color);
         }
-        for (db, c) in [
-            (TARGET_PEAK_DBFS, pal.text_secondary),
-            (HOT_PEAK_DBFS, pal.bad),
-        ] {
+        for db in REFERENCE_DBFS {
             let x = rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
             p.line_segment(
                 [
                     egui::pos2(x, rect.top() - 2.0),
                     egui::pos2(x, rect.bottom() + 2.0),
                 ],
-                egui::Stroke::new(1.5_f32, c),
+                egui::Stroke::new(1.5_f32, pal.text_tertiary),
             );
         }
         resp
@@ -3253,32 +3238,24 @@ impl TimegrapherApp {
                         }
                     }
                 });
-                // Automatic gain only ever spoils the readings, so there is
-                // nothing to choose: it shows only when it is on, with the way
-                // to turn it off.
+                // Automatic gain shows only when it is on, with the way to
+                // turn it off.
                 if st.agc == Some(true) {
-                    let pal = theme::pal(ui);
-                    theme::card()
-                        .fill(pal.warn.gamma_multiply(0.15))
-                        .inner_margin(egui::Margin::same(8))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(
-                                        "The microphone's automatic gain is on. It turns the \
-                                         level up between ticks, so they clip and the \
-                                         amplitude and level readings go wrong.",
-                                    )
-                                    .small(),
-                                )
-                                .wrap(),
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Automatic gain: on").small().color(pal.text))
+                            .on_hover_text(
+                                "The microphone sets its own level as the sound changes, \
+                                 raising it between ticks.",
                             );
-                            if ui.button("Turn It Off").clicked() {
-                                self.gain_error = g.set_agc(false).err();
-                                self.read_gain();
-                            }
-                        });
+                        if ui
+                            .button("Turn It Off")
+                            .on_hover_text("Turn the microphone's automatic gain off")
+                            .clicked()
+                        {
+                            self.gain_error = g.set_agc(false).err();
+                            self.read_gain();
+                        }
+                    });
                 }
             }
             _ => {
@@ -3298,9 +3275,9 @@ impl TimegrapherApp {
                 });
             }
         }
-        let level_hint = "Loudest sample in the last half second; the light mark is the \
-                          -10 dBFS target, the red one -6 dBFS, the most that leaves room \
-                          for a louder watch.";
+        let level_hint = "Loudest sample in the last half second, with plain marks at \
+                          -10 and -6 dBFS for reference. The bar turns red when the \
+                          sound clips.";
         theme::row(ui, "Peak", Some(level_hint), |ui| {
             let w = ui.available_width();
             self.meter(ui, w, 8.0).on_hover_text(level_hint);
@@ -3502,7 +3479,7 @@ impl TimegrapherApp {
                             c.calibre, c.bph
                         ))
                         .small()
-                        .color(pal.warn),
+                        .color(pal.text_secondary),
                     );
                 }
             }
@@ -3512,12 +3489,13 @@ impl TimegrapherApp {
                     ui.add(
                         egui::Label::new(
                             RichText::new(format!(
-                                "No calibre: the lift angle is the common {DEFAULT_LIFT_DEG}°, \
-                                 and amplitude depends on it. Pick the calibre, or type its \
-                                 lift angle below."
+                                "No calibre: the lift angle is the default \
+                                 {DEFAULT_LIFT_DEG}°, and every amplitude is worked out from \
+                                 it. A calibre picked above, or a lift angle typed below, \
+                                 replaces it."
                             ))
                             .small()
-                            .color(pal.warn),
+                            .color(pal.text_secondary),
                         )
                         .wrap(),
                     );
@@ -3663,6 +3641,7 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a note saying so.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
+        let unheard_line = r.as_ref().map(no_regular_beat).unwrap_or_default();
         let r = r.as_ref().filter(|_| heard);
         let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
         // Each reading's ±, as an analysis of the recording gives them
@@ -3670,6 +3649,7 @@ impl TimegrapherApp {
         let pm = r.and_then(|r| r.rate_error_s_per_day);
         let be_pm = r.and_then(|r| r.beat_error_unlock_error_ms);
         let lift_now = self.lift_deg;
+        let beats = r.map_or(0, |r| r.beats_used);
         // Over the whole take, once it is stopped: the mean and spread of
         // the readings beside the last window's figure.
         let whole_line = |ui: &mut egui::Ui, mean: String, sd: String, span: f64| {
@@ -3684,21 +3664,16 @@ impl TimegrapherApp {
             .on_hover_text(
                 "The big figure is the last stretch of Average Over. This is every reading \
                  of the take in this position with a watch heard, settling left out: their \
-                 mean, and their spread as a standard deviation. A steady watch has a small \
-                 spread.",
+                 mean, and their spread as a standard deviation.",
             );
         };
         let unheard = |ui: &mut egui::Ui| {
             ui.label(
-                RichText::new("No watch heard")
+                RichText::new(&unheard_line)
                     .small()
                     .color(pal.text_secondary),
             )
-            .on_hover_text(
-                "The beats found are scattered like noise, not spaced like a watch's ticks. \
-                 Check that the watch is on the stand and running and that the right \
-                 microphone is chosen.",
-            );
+            .on_hover_text(help::NO_REGULAR_BEAT);
         };
         // The cards share one height, the tallest's on the last frame, so a
         // card with an extra line doesn't leave the row ragged.
@@ -3759,7 +3734,7 @@ impl TimegrapherApp {
                 &mut cols[0],
                 "Rate",
                 help::RATE,
-                reading_limits("Rate", caveats, lift_now),
+                reading_limits("Rate", caveats, lift_now, beats),
                 &|ui| {
                     let unit = match pm {
                         Some(e) if e < 0.05 => "seconds per day".to_string(),
@@ -3862,7 +3837,7 @@ impl TimegrapherApp {
                 &mut cols[1],
                 "Amplitude",
                 help::AMPLITUDE,
-                reading_limits("Amplitude", caveats, lift_now),
+                reading_limits("Amplitude", caveats, lift_now, beats),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a
                     // decimal would claim more than the beats can say.
@@ -3911,7 +3886,7 @@ impl TimegrapherApp {
                 &mut cols[2],
                 "Beat Error",
                 help::BEAT_ERROR,
-                reading_limits("Beat Error", caveats, lift_now),
+                reading_limits("Beat Error", caveats, lift_now, beats),
                 &|ui| {
                     let unit = match be_pm.filter(|_| unlock.is_some()) {
                         Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
@@ -4068,25 +4043,11 @@ impl TimegrapherApp {
         }
         if self.running() {
             if let Some(s) = self.reading().and_then(|r| r.snr) {
-                let (word, color) = if s >= 10.0 {
-                    ("good", pal.good)
-                } else if s >= 5.0 {
-                    ("fair: rate reliable", pal.warn)
-                } else if s >= 3.0 {
-                    ("poor: only the rate", pal.bad)
-                } else {
-                    ("no watch heard", pal.bad)
-                };
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    theme::dot(ui, color);
-                    ui.label(
-                        RichText::new(format!("signal {s:.0}×, {word}"))
-                            .small()
-                            .color(pal.text_secondary),
-                    );
-                })
-                .response
+                ui.label(
+                    RichText::new(format!("signal {s:.0}×"))
+                        .small()
+                        .color(pal.text_secondary),
+                )
                 .on_hover_text(help::SIGNAL);
             }
         }
@@ -4193,6 +4154,10 @@ impl TimegrapherApp {
 
     fn no_watch(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        let line = self.reading().map_or_else(
+            || "No regular beat found".to_string(),
+            |r| no_regular_beat(&r),
+        );
         ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
         ui.vertical_centered(|ui| {
             let w = 520.0_f32.min(ui.available_width());
@@ -4201,18 +4166,13 @@ impl TimegrapherApp {
                     ui.set_width(w - 28.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 8.0;
-                        ui.label(
-                            RichText::new("No watch heard. Is it on the microphone?")
-                                .font(theme::semibold(17.0)),
-                        );
+                        ui.label(RichText::new(&line).font(theme::semibold(17.0)))
+                            .on_hover_text(help::NO_REGULAR_BEAT);
                         ui.add(
                             egui::Label::new(
                                 RichText::new(
-                                    "The sound so far has no beats spaced like a watch's \
-                                     ticks. Check that the watch is running and resting on \
-                                     the microphone, that the right input is chosen at the \
-                                     top, and that the level meter moves with each tick. The \
-                                     readings and charts appear as soon as a watch is heard.",
+                                    "The sound so far has no beats at regular intervals. The \
+                                     readings and charts appear once a regular beat is found.",
                                 )
                                 .small()
                                 .color(pal.text_secondary),
@@ -4462,47 +4422,6 @@ impl TimegrapherApp {
         self.guided = Some(test);
     }
 
-    /// Possible faults from the shape of the last minute's Tick and Tock,
-    /// when any are seen. Checks the recording in the background as the
-    /// session goes on or the moment shown moves.
-    fn faults_banner(&mut self, ui: &mut egui::Ui) {
-        self.faults.poll();
-        let end = self.end_s();
-        if self.faults.due(end, self.running()) {
-            let files = if self.session.mic() {
-                self.session.recorder.as_mut().map(|r| {
-                    let _ = r.flush();
-                    r.segment_paths()
-                })
-            } else {
-                recordings_in(&PathBuf::from(self.file_path.trim())).ok()
-            };
-            if let Some(files) = files.filter(|f| !f.is_empty()) {
-                let bph = self.reading().and_then(|r| r.bph).or(self.bph);
-                self.faults.start(ui.ctx(), files, end, bph, self.lift_deg);
-            }
-        }
-        let found = self.faults.at(end).to_vec();
-        if found.is_empty() {
-            return;
-        }
-        let pal = theme::pal(ui);
-        banner(ui, pal.warn, |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(theme::caption("Possible Faults").color(pal.text));
-            theme::help(ui, "Possible Faults", help::FAULTS);
-            ui.add_space(8.0);
-            for (i, f) in found.iter().enumerate() {
-                if i > 0 {
-                    ui.label(RichText::new("·").color(pal.text_secondary));
-                }
-                ui.label(RichText::new(crate::faults::line(f)).color(pal.text))
-                    .on_hover_text(crate::faults::hint(f));
-            }
-        });
-        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
-    }
-
     /// A newer release is published: its version and a button to its page.
     fn update_banner(&mut self, ui: &mut egui::Ui) {
         let Some(r) = self.updates.notice.clone() else {
@@ -4640,26 +4559,23 @@ impl TimegrapherApp {
         }
     }
 
-    /// A warning over the readings while the sound they come from clips.
+    /// A line over the readings while the sound they come from clips.
     fn clipping_banner(&self, ui: &mut egui::Ui) {
-        let Some(r) = self.reading().filter(|r| r.clipping_warns()) else {
+        let Some(r) = self.reading().filter(|r| r.clipped_beats > 0) else {
             return;
         };
         let pal = theme::pal(ui);
         let pct = r.clipped_fraction.unwrap_or(0.0) * 100.0;
-        let what = if self.session.mic() {
-            "Lower Input Level in the Microphone card."
+        // Under 1%, a whole number would read "0%".
+        let share = if pct < 0.5 {
+            "under 1".to_string()
         } else {
-            "Record with the input level lower."
+            format!("{pct:.0}")
         };
         let resp = banner(ui, pal.warn, |ui| {
             ui.add(
                 egui::Label::new(
-                    RichText::new(format!(
-                        "Clipping on {pct:.0}% of beats. {what} Amplitude and Beat Error read \
-                         wrong while the sound clips; Rate is unaffected."
-                    ))
-                    .color(pal.text),
+                    RichText::new(format!("Clipping on {share}% of beats.")).color(pal.text),
                 )
                 .wrap(),
             );
@@ -4704,7 +4620,6 @@ impl TimegrapherApp {
         if self.show_readings {
             self.readouts(ui);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
-            self.faults_banner(ui);
         }
 
         // Looking back through a finished or analysed recording, however
@@ -6360,8 +6275,7 @@ const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted
      the Paper Strip; the Distributions when Values is Readings; and the Tick Tock Profile, \
      the typical beat over the same time up to 60 s, with the Unlock and Drop marks on the \
      Scope. It doesn't change Steadiness and Isochronism (always 10 s rate and 2 s \
-     amplitude readings), Possible Faults (the last minute) or the Positions Test (a minute \
-     a position).";
+     amplitude readings) or the Positions Test (a minute a position).";
 
 /// How many beats' traces the Scope keeps: the most it draws, both sides.
 const SCOPE_KEPT: usize = 40;
@@ -6393,7 +6307,25 @@ fn plain_error(m: &str) -> String {
 /// What limits a reading, as facts: a short form for the card's caption
 /// and a sentence for its hover. Nothing graded: the ± beside the figure
 /// says how far it could be off; these say what the ± can't show.
-fn reading_limits(title: &str, caveats: &[Caveat], lift_deg: f64) -> Vec<(String, String)> {
+/// "No regular beat found", with the timing scatter that decided it when
+/// there is one: the beats' median jitter in ms and as a share of a beat.
+fn no_regular_beat(r: &LiveReading) -> String {
+    match (r.jitter_us, r.bph) {
+        (Some(j), Some(bph)) => format!(
+            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
+            j / 1000.0,
+            j / (3.6e9 / bph.max(1) as f64) * 100.0
+        ),
+        _ => "No regular beat found".to_string(),
+    }
+}
+
+fn reading_limits(
+    title: &str,
+    caveats: &[Caveat],
+    lift_deg: f64,
+    beats: usize,
+) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for c in caveats {
         let fact = match (c, title) {
@@ -6405,34 +6337,40 @@ fn reading_limits(title: &str, caveats: &[Caveat], lift_deg: f64) -> Vec<(String
                     timegrapher_core::measure::SHORT_SPAN_S
                 ),
             )),
-            (Caveat::BeatsMissing { fraction }, _) => Some((
-                format!("{:.0}% of beats found", fraction * 100.0),
-                format!(
-                    "{:.0}% of the beats the beat rate expects were found.",
-                    fraction * 100.0
-                ),
-            )),
+            (Caveat::BeatsMissing { fraction }, _) => {
+                let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
+                let short = if beats > 0 {
+                    format!("{beats} of {expected} expected beats found")
+                } else {
+                    format!("{:.0}% of expected beats found", fraction * 100.0)
+                };
+                Some((
+                    short,
+                    format!(
+                        "{:.0}% of the beats the beat rate expects in this stretch were found.",
+                        fraction * 100.0
+                    ),
+                ))
+            }
             (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
-                format!("{:.0}% clipped", fraction * 100.0),
+                format!("{:.0}% of beats clipped", fraction * 100.0),
                 format!(
                     "{:.0}% of the beats have a clipped sample, which moves the timing of \
-                     the sounds inside a beat. Turn Input Level down under Microphone.",
+                     the sounds inside a beat.",
                     fraction * 100.0
                 ),
             )),
             (Caveat::LiftUnknown, "Amplitude") => Some((
-                format!("lift {lift_deg:.0}° assumed"),
+                format!("lift angle {lift_deg:.0}°, the default (calibre not set)"),
                 format!(
-                    "The lift angle is the default {lift_deg:.0}°, not the calibre's. Every \
-                     amplitude moves with it: pick the Calibre under Watch, or type its lift \
-                     angle."
+                    "The lift angle is the default {lift_deg:.0}°, not one set for the \
+                     calibre. Every amplitude is worked out from it."
                 ),
             )),
             (Caveat::ClockUnknown, "Rate") => Some((
-                "clock not measured".to_string(),
+                "input clock not measured".to_string(),
                 "This input's clock hasn't been measured, so the rate includes the sound \
-                 card's own error, often a second or two a day \
-                 (`timegrapher clock measure --save`)."
+                 card's own clock error."
                     .to_string(),
             )),
             (Caveat::SetRateDisagrees { heard }, _) => Some((
@@ -6471,14 +6409,30 @@ mod tests {
             Caveat::LiftUnknown,
             Caveat::ClockUnknown,
         ];
-        let amp = reading_limits("Amplitude", &caveats, 52.0);
+        let amp = reading_limits("Amplitude", &caveats, 52.0, 30);
         let short: Vec<&str> = amp.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "lift 52° assumed"]);
-        let rate = reading_limits("Rate", &caveats, 52.0);
+        assert_eq!(
+            short,
+            [
+                "4 s of beats",
+                "lift angle 52°, the default (calibre not set)"
+            ]
+        );
+        let rate = reading_limits("Rate", &caveats, 52.0, 30);
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "clock not measured"]);
+        assert_eq!(short, ["4 s of beats", "input clock not measured"]);
+        let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
+        assert_eq!(missing[0].0, "90 of 100 expected beats found");
         for (_, long) in amp.iter().chain(&rate) {
-            for word in ["Confidence", "Low", "High", "Medium", "trust"] {
+            for word in [
+                "Confidence",
+                "Low",
+                "High",
+                "Medium",
+                "trust",
+                "pick",
+                "Turn",
+            ] {
                 assert!(!long.contains(word), "{long}");
             }
         }
