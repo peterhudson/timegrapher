@@ -663,7 +663,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             base.x_grid_spacer(log_grid)
                 .x_axis_formatter(|m, r| log_label(m, r, secs))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
-                .y_axis_formatter(|m, _| format!("{:.0}", m.value))
+                .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(0.0, top)
                 .show(ui, |p| {
@@ -1051,15 +1051,29 @@ fn log_label(
     }
 }
 
-/// The 1st to 99th percentile of the points' values, padded a little.
+/// The 1st to 99th percentile of the points' values, padded a little,
+/// leaving out lone wild values (a knock, a dropped beat) so that two of
+/// them don't flatten the rest: those beyond three interquartile ranges
+/// of the middle half, unless they are more than 3% of the values (then
+/// they are part of what the watch does, as in the steadiness test).
 fn spread(pts: &[[f64; 2]]) -> Option<(f64, f64)> {
     if pts.len() < 2 {
         return None;
     }
     let mut v: Vec<f64> = pts.iter().map(|p| p[1]).collect();
     v.sort_by(f64::total_cmp);
-    let q = |f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
-    let (lo, hi) = (q(0.01), q(0.99));
+    let q = |v: &[f64], f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
+    let (q1, q3) = (q(&v, 0.25), q(&v, 0.75));
+    let fence = 3.0 * (q3 - q1);
+    let kept: Vec<f64> = v
+        .iter()
+        .copied()
+        .filter(|&x| x >= q1 - fence && x <= q3 + fence)
+        .collect();
+    if kept.len() >= 2 && (v.len() - kept.len()) as f64 <= 0.03 * v.len() as f64 {
+        v = kept;
+    }
+    let (lo, hi) = (q(&v, 0.01), q(&v, 0.99));
     let pad = ((hi - lo) * 0.12).max(1e-3);
     Some((lo - pad, hi + pad))
 }
@@ -1147,5 +1161,23 @@ mod tests {
             });
             assert!(!out.shapes.is_empty());
         }
+    }
+
+    /// Two wild readings among a hundred steady ones don't set the scale.
+    #[test]
+    fn a_few_wild_readings_leave_the_scale_alone() {
+        let mut pts: Vec<[f64; 2]> = (0..116)
+            .map(|i| [i as f64, 10.0 + (i % 7) as f64 * 0.5])
+            .collect();
+        pts[60][1] = 1200.0;
+        pts[62][1] = 1140.0;
+        let (lo, hi) = spread(&pts).unwrap();
+        assert!(lo > 8.0 && hi < 16.0, "{lo} to {hi}");
+        // Two states, a third of the readings each way, keep both.
+        let two: Vec<[f64; 2]> = (0..90)
+            .map(|i| [i as f64, if i % 3 == 0 { 30.0 } else { 10.0 }])
+            .collect();
+        let (lo, hi) = spread(&two).unwrap();
+        assert!(lo < 10.0 && hi > 30.0, "{lo} to {hi}");
     }
 }

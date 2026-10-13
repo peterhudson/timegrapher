@@ -37,8 +37,8 @@ type Profiles = [Option<TickProfile>; 2];
 const SOUND_EVERY_S: f64 = 2.0;
 /// The hints on Time Span's two choices.
 const SPAN_SESSION_HINT: &str = "Everything since the session started, growing as it goes";
-const SPAN_STRIP_HINT: &str = "The same stretch of time as the paper strip, so the charts line \
-     up with it and move with it";
+const SPAN_STRIP_HINT: &str = "Only the paper strip's length, ending where the strip does: the \
+     newest readings, moving along with the strip";
 /// Plain marks on the level meter, for reference only.
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
@@ -669,9 +669,11 @@ pub struct TimegrapherApp {
     rate_guides: bool,
     /// Amplitude, rate and beat error drawn over the strip.
     overlays: [bool; 3],
-    /// The charts and histograms cover only the strip's length, ending
-    /// where the strip does, instead of the whole session.
+    /// The charts cover only the strip's length, ending where the strip
+    /// does, instead of the whole session.
     span_of_strip: bool,
+    /// The same for the distributions, set on their own.
+    hist_span_of_strip: bool,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
     /// Amplitude and beat error histograms count the readings rather than
@@ -712,6 +714,9 @@ pub struct TimegrapherApp {
     /// beats: set by the button, applied by every chart on the next frame.
     charts_to_live: bool,
     charts_to_live_now: bool,
+    /// The averaging time each chart last drew with: a new one rescales
+    /// its values, which spread wider or narrower with it.
+    chart_average_drawn: std::collections::HashMap<Pane, f64>,
     /// `None` follows the newest beat; otherwise the time at the newest
     /// edge of the strip.
     view_end: Option<f64>,
@@ -779,6 +784,7 @@ impl TimegrapherApp {
             overlays: self.overlays,
             follow: self.follow,
             span_of_strip: self.span_of_strip,
+            hist_span_of_strip: self.hist_span_of_strip,
             hist_cumulative: self.hist_cumulative,
             hist_readings: self.hist_readings,
             sound: self.sound_opts,
@@ -811,6 +817,7 @@ impl TimegrapherApp {
             overlays,
             follow,
             span_of_strip,
+            hist_span_of_strip,
             hist_cumulative,
             hist_readings,
             sound,
@@ -855,6 +862,7 @@ impl TimegrapherApp {
         self.overlays = overlays;
         self.follow = follow;
         self.span_of_strip = span_of_strip;
+        self.hist_span_of_strip = hist_span_of_strip;
         self.hist_cumulative = hist_cumulative;
         self.hist_readings = hist_readings;
         self.sound_opts = sound;
@@ -938,6 +946,7 @@ impl TimegrapherApp {
             rate_guides: true,
             overlays: [true, false, false],
             span_of_strip: false,
+            hist_span_of_strip: false,
             hist_cumulative: false,
             steady_view: steady::View::default(),
             steady_series: [true; 3],
@@ -959,6 +968,7 @@ impl TimegrapherApp {
             show_readings: true,
             charts_to_live: false,
             charts_to_live_now: false,
+            chart_average_drawn: Default::default(),
             capture: None,
             live: None,
             source_label: String::new(),
@@ -2822,17 +2832,17 @@ impl TimegrapherApp {
         );
     }
 
-    /// Whether the charts and histograms cover the whole session or the
-    /// strip's length.
+    /// Whether the distributions cover the whole session or the strip's
+    /// length.
     fn span_setting(&mut self, ui: &mut egui::Ui) {
         theme::row(
             ui,
             "Time Span",
-            Some("How much of the session the charts and distributions cover"),
+            Some("How much of the session the distributions cover"),
             |ui| {
                 theme::segmented(
                     ui,
-                    &mut self.span_of_strip,
+                    &mut self.hist_span_of_strip,
                     &[
                         (false, "Session", SPAN_SESSION_HINT),
                         (true, "Strip", SPAN_STRIP_HINT),
@@ -5391,13 +5401,21 @@ impl TimegrapherApp {
         }
     }
 
-    /// The stretch of time the charts and histograms cover: the strip's
-    /// length, ending where the strip does, or `None` for the whole session.
+    /// The stretch of time the charts cover: the strip's length, ending
+    /// where the strip does, or `None` for the whole session.
     fn chart_window(&self) -> Option<(f64, f64)> {
-        self.span_of_strip.then(|| {
-            let end = self.end_s();
-            (end - self.strip.span_s, end)
-        })
+        self.span_of_strip.then(|| self.strip_window())
+    }
+
+    /// The stretch of time the distributions cover, as for the charts but
+    /// set on its own.
+    fn hist_window(&self) -> Option<(f64, f64)> {
+        self.hist_span_of_strip.then(|| self.strip_window())
+    }
+
+    fn strip_window(&self) -> (f64, f64) {
+        let end = self.end_s();
+        (end - self.strip.span_s, end)
     }
 
     /// How often each value of a reading came up, over the session or the
@@ -5405,7 +5423,7 @@ impl TimegrapherApp {
     fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
-        let window = self.chart_window();
+        let window = self.hist_window();
         // Only the position the watch is in now: values from another
         // position are a different measurement.
         let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b) && self.in_position(t);
@@ -5508,8 +5526,13 @@ impl TimegrapherApp {
         };
         let peaks = h.peaks(0.05);
         let f = |v: f64| format!("{v:.decimals$}{unit}");
+        // Over what stretch, so a short window isn't taken for the session.
+        let over = match window {
+            Some((a, b)) => format!(" in the last {}", fields::duration(b - a)),
+            None => " in the session".to_string(),
+        };
         let mut line = format!(
-            "{} {per} · median {} · middle 80% {} to {}",
+            "{} {per}{over} · median {} · middle 80% {} to {}",
             h.n,
             f(h.median),
             f(h.p10),
@@ -5780,14 +5803,20 @@ impl TimegrapherApp {
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
         let lookup = series.clone();
         let to_live = self.charts_to_live_now;
+        // A new averaging time spreads the values wider or narrower, so the
+        // scale follows it, keeping the time shown.
+        let rescale = self
+            .chart_average_drawn
+            .insert(pane, average)
+            .is_some_and(|was| was != average);
         let resp = plot.show(ui, |p| {
             if let Some((a, b)) = window {
                 p.set_plot_bounds_x(a..=b);
-                if let (Some((lo, hi)), true) = (y_range, to_live) {
-                    p.set_plot_bounds_y(lo..=hi);
-                }
             } else if to_live {
                 p.set_auto_bounds([true, true]);
+            }
+            if let (Some((lo, hi)), true) = (y_range, rescale || (to_live && window.is_some())) {
+                p.set_plot_bounds_y(lo..=hi);
             }
             if p.response().hovered() && window.is_none() {
                 let s = p.ctx().input(|i| i.smooth_scroll_delta);
