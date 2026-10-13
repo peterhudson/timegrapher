@@ -1,7 +1,7 @@
-//! The Steadiness pane: whether the rate, the amplitude and the beat error
-//! each hold steady over the session, from the same tests as
-//! `timegrapher series` (core `steadiness`), with the views behind each
-//! verdict.
+//! The Steadiness pane: how the rate, the amplitude and the beat error
+//! each change over the session, from the same tests as
+//! `timegrapher series` (core `steadiness`): what was detected, its
+//! statistics and the views behind them.
 //!
 //! The tests need the readings in time order over minutes to hours, so
 //! they run over the whole session in the background, again every minute
@@ -34,7 +34,7 @@ const MAX_DRAWN: usize = 3000;
 const MIN_ROW: f32 = 120.0;
 const MIN_COLUMN: f32 = 260.0;
 
-/// What the plot under each verdict shows.
+/// What the plot under each series shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum View {
     #[default]
@@ -281,56 +281,49 @@ pub fn compute_with(
     }
 }
 
-/// The verdict as a name in Title Case, what it means, and its colour.
-fn verdict_text(v: Verdict, pal: &theme::Palette) -> (&'static str, &'static str, Color32) {
-    match v {
-        Verdict::Steady => (
-            "Steady",
-            "Independent readings about one level: what a healthy watch on a quiet bench gives",
-            pal.good,
-        ),
-        Verdict::Periodic => (
-            "Periodic",
-            "The readings repeat on a cycle, named after the wheel whose turn it matches: \
-             something in the train changes once a turn",
-            pal.warn,
-        ),
-        Verdict::TwoStates => (
-            "Two States",
-            "The readings switch between two levels, as when a part rubs some of the time",
-            pal.warn,
-        ),
-        Verdict::Measurement => (
-            "Measurement",
-            "Two levels that come from the unlock mark hopping between two edges of the \
-             sound, not from the watch: a problem with the measurement, so don't read it as \
-             a fault",
-            pal.text_secondary,
-        ),
-        Verdict::ShiftingMean => (
-            "Shifting Mean",
-            "The level steps once or more and stays at the new level, as after a knock or \
-             when the watch was moved",
-            pal.warn,
-        ),
-        Verdict::Drifting => (
-            "Drifting",
-            "The level slides or curves slowly, as the amplitude does when the mainspring \
-             runs down",
-            pal.warn,
-        ),
-        Verdict::Wandering => (
-            "Wandering",
-            "Each reading remembers the last ones, with no cycle, steps or trend to explain \
-             it: slow, irregular wander",
-            pal.warn,
-        ),
-        Verdict::TooShort => (
-            "Too Short",
-            "Too few readings to say; the tests need about 5 minutes of beats",
-            pal.text_tertiary,
-        ),
+/// The statistics behind a series' headline, on one line: readings,
+/// median, spread, scatter from one reading to the next, lag-1
+/// correlation and Ljung–Box p, and the trend, period and cycle when
+/// found.
+fn stats_line(c: &SeriesCheck) -> String {
+    let u = c.unit;
+    // A true minus sign, as in the readings.
+    let n = |v: f64| format!("{v:.2}").replace('-', "−");
+    let signed = |v: f64| format!("{v:+.2}").replace('-', "−");
+    let mut parts = vec![format!("{} readings", c.readings)];
+    if c.outliers > 0 {
+        parts.push(format!(
+            "{} left out as more than 6 σ from their 5-minute level",
+            c.outliers
+        ));
     }
+    if let Some(m) = c.median {
+        parts.push(format!("median {} {u}", n(m)));
+    }
+    if let Some(sd) = c.sd {
+        parts.push(format!("SD {} {u}", n(sd)));
+    }
+    if let Some(st) = c.short_term_sd {
+        parts.push(format!("±{} {u} reading to reading", n(st)));
+    }
+    if let Some(a) = &c.autocorrelation {
+        let lag1 = a.lag_s.iter().zip(&a.r).find(|(l, _)| **l > 0.0);
+        if let Some((_, r1)) = lag1 {
+            parts.push(format!("lag-1 r {}", n(*r1)));
+        }
+        parts.push(format!("Ljung–Box p {:.3}", a.p_value));
+    }
+    if let Some(t) = &c.trend {
+        parts.push(format!("trend {} {u}/h", signed(t.per_hour)));
+    }
+    if let Some(p) = &c.period {
+        parts.push(format!(
+            "period {:.0} s, peak to peak {} {u}",
+            p.period_s,
+            n(p.peak_to_peak)
+        ));
+    }
+    parts.join(" · ")
 }
 
 fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
@@ -438,7 +431,7 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
     marks
 }
 
-/// The picker for what the pane draws under each verdict, for the
+/// The picker for what the pane draws under each series, for the
 /// Steadiness section of the sidebar. True when the view changed.
 pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
     let choices: Vec<(View, &str, &str)> = View::ALL
@@ -449,7 +442,7 @@ pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
 }
 
 /// Draw the pane: a note on what was tested, then a row for each series
-/// with its verdict, its one-line reason and the chosen view behind it.
+/// with what was detected, its statistics and the chosen view behind it.
 pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View) {
     let pal = theme::pal(ui);
     if !status.is_empty() {
@@ -507,23 +500,9 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
 
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View) {
     let pal = theme::pal(ui);
-    let (word, meaning, colour) = verdict_text(c.verdict, pal);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            theme::dot(ui, colour);
-            ui.label(
-                RichText::new(word)
-                    .font(theme::semibold(12.5))
-                    .color(pal.text),
-            );
-        })
-        .response
-        .on_hover_text(meaning);
-    });
-    // The reason, on up to two lines; all of it on hover.
+    ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
+    // What was detected, on up to two lines; all of it on hover, with the
+    // statistics behind it.
     let font = egui::TextStyle::Small.resolve(ui.style());
     let mut job = egui::text::LayoutJob::single_section(
         c.headline.clone(),
@@ -538,8 +517,9 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
     let galley = ui.fonts_mut(|f| f.layout_job(job));
     let one_line = galley.rows.len() < 2;
     let line_h = galley.size().y;
+    let stats = stats_line(c);
     ui.add(egui::Label::new(galley))
-        .on_hover_text(c.headline.clone());
+        .on_hover_text(format!("{}\n\n{stats}", c.headline));
     // Always two lines' room, so the plots line up.
     if one_line {
         ui.add_space(line_h);
@@ -547,6 +527,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
     if c.verdict == Verdict::TooShort {
         return;
     }
+    ui.add(egui::Label::new(RichText::new(&stats).small().color(pal.text_tertiary)).truncate())
+        .on_hover_text(&stats);
     let k = c.series;
     let colour = series_colour(k, pal);
     let weak = pal.text_tertiary;
@@ -598,16 +580,14 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                         }
                     }
                 }
-                if matches!(c.verdict, Verdict::TwoStates | Verdict::Measurement) {
-                    if let Some(ts) = &c.two_state {
-                        for v in [ts.low, ts.high] {
-                            p.hline(
-                                HLine::new("state", v)
-                                    .color(pal.text)
-                                    .style(dashed)
-                                    .width(1.0_f32),
-                            );
-                        }
+                if let Some(ts) = &c.two_state {
+                    for v in [ts.low, ts.high] {
+                        p.hline(
+                            HLine::new("state", v)
+                                .color(pal.text)
+                                .style(dashed)
+                                .width(1.0_f32),
+                        );
                     }
                 }
             });

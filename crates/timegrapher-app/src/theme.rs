@@ -36,7 +36,6 @@ pub struct Palette {
     pub on_accent: Color32,
     pub tick: Color32,
     pub tock: Color32,
-    pub good: Color32,
     pub warn: Color32,
     pub bad: Color32,
     /// The marks on the tick tock profile.
@@ -75,7 +74,6 @@ const fn from_core(p: &core_palette::Palette) -> Palette {
         on_accent: c(p.on_accent),
         tick: c(p.tick),
         tock: c(p.tock),
-        good: c(p.good),
         warn: c(p.warn),
         bad: c(p.bad),
         unlock: c(p.unlock),
