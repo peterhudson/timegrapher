@@ -705,6 +705,21 @@ pub fn dot(ui: &mut Ui, color: Color32) -> Response {
     resp
 }
 
+/// A short dashed line of two colours, for a key beside a line drawn
+/// that way.
+pub fn dash(ui: &mut Ui, a: Color32, b: Color32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(16.0, 14.0), Sense::hover());
+    let y = rect.center().y;
+    for i in 0..4 {
+        let x = rect.left() + i as f32 * 4.0;
+        ui.painter().line_segment(
+            [egui::pos2(x, y), egui::pos2(x + 4.0, y)],
+            Stroke::new(2.0_f32, if i % 2 == 0 { a } else { b }),
+        );
+    }
+    resp
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

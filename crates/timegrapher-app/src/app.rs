@@ -576,6 +576,9 @@ struct ChartLine {
     style: LineStyle,
     /// The swatch beside its value under the pointer.
     key: Color32,
+    /// A colour drawn solid under the dashed line, showing in its gaps:
+    /// Tick's and Tock's amplitude dash purple with blue or orange.
+    under: Option<Color32>,
     /// The reading itself, drawn heavier than the lines beside it.
     main: bool,
 }
@@ -5842,6 +5845,7 @@ impl TimegrapherApp {
                     color: pal.trace_rate,
                     style: solid,
                     key: pal.trace_rate,
+                    under: None,
                     main: true,
                 }],
                 " s/day",
@@ -5855,22 +5859,25 @@ impl TimegrapherApp {
                         color: pal.trace_amplitude,
                         style: solid,
                         key: pal.trace_amplitude,
+                        under: None,
                         main: true,
                     },
                     ChartLine {
                         name: "Amplitude from Tick".into(),
                         pts: pick(|p| p.amplitude_a),
                         color: pal.trace_amplitude,
-                        style: LineStyle::dashed_dense(),
+                        style: LineStyle::Dashed { length: 6.0 },
                         key: pal.tick,
+                        under: Some(pal.tick),
                         main: false,
                     },
                     ChartLine {
                         name: "Amplitude from Tock".into(),
                         pts: pick(|p| p.amplitude_b),
                         color: pal.trace_amplitude,
-                        style: LineStyle::dotted_dense(),
+                        style: LineStyle::Dashed { length: 6.0 },
                         key: pal.tock,
+                        under: Some(pal.tock),
                         main: false,
                     },
                 ],
@@ -5885,6 +5892,7 @@ impl TimegrapherApp {
                         color: pal.trace_beat_error,
                         style: solid,
                         key: pal.trace_beat_error,
+                        under: None,
                         main: true,
                     },
                     ChartLine {
@@ -5893,6 +5901,7 @@ impl TimegrapherApp {
                         color: pal.trace_beat_error.gamma_multiply(0.6),
                         style: LineStyle::dashed_dense(),
                         key: pal.trace_beat_error.gamma_multiply(0.6),
+                        under: None,
                         main: false,
                     },
                 ],
@@ -5911,6 +5920,11 @@ impl TimegrapherApp {
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
             .custom_x_axes(vec![egui_plot::AxisHints::new_x().formatter(|m, r| {
+                // Nothing before the session starts: a time there read as a
+                // second "0:00".
+                if m.value < -1e-6 {
+                    return String::new();
+                }
                 // A long time ("1:30:00") at the right end would be cut.
                 let t = strip::fmt_time(m.value);
                 let frac = if t.len() > 5 { 0.03 } else { 0.0 };
@@ -5978,6 +5992,13 @@ impl TimegrapherApp {
             }
             for l in series {
                 let w = if l.main { 1.8_f32 } else { 1.2_f32 };
+                if let Some(c) = l.under {
+                    p.line(
+                        Line::new(format!("{} gaps", l.name), l.pts.clone())
+                            .color(c)
+                            .width(w),
+                    );
+                }
                 p.line(
                     Line::new(l.name, l.pts)
                         .color(l.color)
@@ -6168,16 +6189,21 @@ fn position_in_name(path: &Path) -> Option<Position> {
 
 /// The names in a chart's key and their colours, when it has more than one
 /// line.
-fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32)> {
+/// A second colour is drawn as a dash of the two, as the line is.
+fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
     match pane {
         Pane::Amplitude => vec![
-            ("Average Amplitude", pal.trace_amplitude),
-            ("From Tick", pal.tick),
-            ("From Tock", pal.tock),
+            ("Average Amplitude", pal.trace_amplitude, None),
+            ("From Tick", pal.trace_amplitude, Some(pal.tick)),
+            ("From Tock", pal.trace_amplitude, Some(pal.tock)),
         ],
         Pane::BeatError => vec![
-            ("From the Unlock", pal.trace_beat_error),
-            ("From the Drop", pal.trace_beat_error.gamma_multiply(0.6)),
+            ("From the Unlock", pal.trace_beat_error, None),
+            (
+                "From the Drop",
+                pal.trace_beat_error.gamma_multiply(0.6),
+                None,
+            ),
         ],
         _ => Vec::new(),
     }
@@ -6383,7 +6409,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         let font = egui::TextStyle::Small.resolve(ui.style());
         let needed: f32 = key
             .iter()
-            .map(|(name, _)| {
+            .map(|(name, _, _)| {
                 ui.fonts_mut(|f| {
                     f.layout_no_wrap(name.to_string(), font.clone(), pal.text_secondary)
                 })
@@ -6394,10 +6420,13 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         if needed + 80.0 > ui.available_width() {
             return;
         }
-        for (name, color) in key.into_iter().rev() {
+        for (name, color, gaps) in key.into_iter().rev() {
             ui.add_space(6.0);
             ui.label(RichText::new(name).small().color(pal.text_secondary));
-            theme::dot(ui, color);
+            match gaps {
+                Some(g) => theme::dash(ui, color, g),
+                None => theme::dot(ui, color),
+            };
         }
     }
 
