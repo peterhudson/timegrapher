@@ -89,9 +89,10 @@ Wheel periods and calibres the user adds in the app are kept in
 `calibres.json` in the settings folder (the one `TIMEGRAPHER_CONFIG_DIR`
 overrides) and read over the table: `calibres NAME` lists every wheel
 with its period and whether it comes from the table, the user, or is
-still unknown. They stay on the computer; the app's Share action opens a
-pre-filled GitHub issue for the person to send, and nothing is sent on
-its own.
+still unknown. They stay on the computer and nothing is sent on its own.
+The core builds a pre-filled GitHub issue address from them
+(`calibre_store::Catalog::contribution_url`) for the person to open and
+send themselves.
 
 `analyze --calibre NAME` sets the beat rate, the lift angle and the
 escape wheel teeth from the table (52° and 15 teeth where it gives
