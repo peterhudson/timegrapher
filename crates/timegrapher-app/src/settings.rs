@@ -36,9 +36,15 @@ pub struct Settings {
     pub steady_series: [bool; 3],
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
-    /// Calibres the watchmaker entered by hand, for movements the built-in
-    /// table doesn't have.
+    /// Calibres the watchmaker entered by hand, as earlier versions kept
+    /// them: read once and moved to the user calibre file, never written.
     pub custom_calibres: Vec<CustomCalibre>,
+    /// Calibres picked lately, the latest first.
+    pub recent_calibres: Vec<String>,
+    /// Calibres put on the Calibre menu's short list, and the shipped
+    /// short list's ones taken off it.
+    pub short_added: Vec<String>,
+    pub short_removed: Vec<String>,
     /// Panes averaged over their own time rather than Readings' Average
     /// Over.
     pub pane_average: Vec<(Pane, f64)>,
@@ -46,7 +52,7 @@ pub struct Settings {
     pub check_updates: bool,
 }
 
-/// A calibre's train, typed in once and picked again later.
+/// A calibre's train as earlier versions kept it in the settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomCalibre {
     pub name: String,
@@ -59,26 +65,6 @@ pub struct CustomWheel {
     pub name: String,
     /// One full turn, seconds.
     pub period_s: f64,
-}
-
-impl CustomCalibre {
-    /// A new entry with the wheels whose periods most trains share: a
-    /// 28,800 bph Swiss lever's 20-tooth escape wheel, and the fourth and
-    /// centre wheels that carry the seconds and minute hands.
-    pub fn new(name: String) -> Self {
-        let w = |name: &str, period_s: f64| CustomWheel {
-            name: name.into(),
-            period_s,
-        };
-        CustomCalibre {
-            name,
-            wheels: vec![
-                w("escape wheel", 5.0),
-                w("fourth wheel", 60.0),
-                w("centre wheel", 3600.0),
-            ],
-        }
-    }
 }
 
 impl Default for Settings {
@@ -107,6 +93,9 @@ impl Default for Settings {
             scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),
+            recent_calibres: Vec::new(),
+            short_added: Vec::new(),
+            short_removed: Vec::new(),
             pane_average: Vec::new(),
             check_updates: true,
         }

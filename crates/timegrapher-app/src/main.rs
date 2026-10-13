@@ -17,6 +17,7 @@
 
 mod app;
 mod applog;
+mod calibre_ui;
 mod desktop;
 mod fields;
 mod guided;
