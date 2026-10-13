@@ -1,14 +1,14 @@
 # Truth: Robin (pre-sale collector)
 
 `~/Recordings/aquanaut_DU_1.flac`, `_2`, `_3` = corpus `patek324_DU_30min`
-files -01, -02, -03. Dandong clone of Patek 324, 28,800 bph. The corpus
+files take_part01-001, -002 and -003. Dandong clone of Patek 324, 28,800 bph. The corpus
 uses lift 52° and notes the lift angle for this movement is not settled.
 
 | File | Amplitude @52° | Amplitude @55° | Rate (s/d) | Beat error (ms) |
 |---|---|---|---|---|
-| -01 | 238° | 252° | −5.01 | 0.41 |
-| -02 | 244° | 258° | −5.19 | 0.39 |
-| -03 | 246° | 260° | −4.78 | 0.43 |
+| take_part01-001 | 238° | 252° | −5.01 | 0.41 |
+| take_part01-002 | 244° | 258° | −5.19 | 0.39 |
+| take_part01-003 | 246° | 260° | −4.78 | 0.43 |
 | Whole | 242° | 256° | −4.98 | 0.41 |
 
 Rates are on the sound-card clock. The program's clock-corrected rate on

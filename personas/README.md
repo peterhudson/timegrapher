@@ -57,7 +57,7 @@ From a cloud session with this repository checked out:
 
 ```sh
 python3 personas/harness/round.py setup --build v0.1.0 --work ~/persona-round
-python3 personas/harness/round.py run --out /mnt/project-files/testing/YYYY-MM-DD --work ~/persona-round
+python3 personas/harness/round.py run --out ~/persona-reports/YYYY-MM-DD --work ~/persona-round
 ```
 
 `setup` installs the system packages it needs, downloads the build's Linux

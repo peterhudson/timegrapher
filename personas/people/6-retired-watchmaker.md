@@ -3,7 +3,7 @@ id = "retired-watchmaker"
 name = "Brunner"
 surface = "app"
 language = "English"
-stand = { DU = "ym42_DU_2h/ym42_DU_48000-01.flac", DD = "ym42_DD_30min/ym42_DD_48000-01.flac", CU = "ym42_CU_8h/ym42_CU_48000-01.flac", CD = "ym42_CD_90min/ym42_CD_part01-01.flac", CL = "ym42_CL_90min/ym42_CL_part01-01.flac", CR = "ym42_CR_long/ym42_CR_part01-01.flac" }
+stand = { DU = "ym42_DU_2h/take_part01-001.flac", DD = "ym42_DD_30min/take_part01-001.flac", CU = "ym42_CU_8h/take_part01-001.flac", CD = "ym42_CD_90min/take_part01-001.flac", CL = "ym42_CL_90min/take_part01-001.flac", CR = "ym42_CR_long/take_part01-001.flac" }
 files = { "Recordings/reverso_2h" = "reverso21600_DU_2h/*" }
 reviewer = true
 +++
