@@ -9,7 +9,7 @@
 
 use crate::audio;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -96,46 +96,81 @@ impl Level {
 /// Replay a WAV or FLAC file at its own speed, as if the watch were on the
 /// microphone; [`Capture::set_speed`] plays it faster or slower.
 pub fn replay_file(path: &Path) -> Result<Capture, String> {
-    let info = audio::info(path).map_err(|e| e.to_string())?;
+    let label = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string());
+    replay_files(&[path.to_path_buf()], label)
+}
+
+/// Replay several files one after the other as one recording, as a take
+/// saved in parts was heard: they must share a sample rate.
+pub fn replay_files(paths: &[PathBuf], label: String) -> Result<Capture, String> {
+    let first = paths.first().ok_or("No recordings to replay")?;
+    // Each error names its file when there are several.
+    let named = |p: &Path, e: String| match paths.len() {
+        1 => e,
+        _ => format!("{}: {e}", p.display()),
+    };
+    let info = audio::info(first).map_err(|e| named(first, e.to_string()))?;
     let fs = info.sample_rate;
+    for p in &paths[1..] {
+        let i = audio::info(p).map_err(|e| named(p, e.to_string()))?;
+        if i.sample_rate != fs {
+            return Err(format!(
+                "{} is at {} Hz but {} is at {fs} Hz",
+                p.display(),
+                i.sample_rate,
+                first.display()
+            ));
+        }
+    }
     let (tx, rx) = channel();
     let stop = Arc::new(AtomicBool::new(false));
     let stop2 = stop.clone();
     let speed = Arc::new(AtomicU32::new(1.0f32.to_bits()));
     let speed2 = speed.clone();
-    let p = path.to_path_buf();
+    let several = paths.len() > 1;
+    let paths = paths.to_vec();
     std::thread::spawn(move || {
         let start = Instant::now();
         // When the sound sent so far is due, at the speed each block went
         // out at.
         let mut due = Duration::ZERO;
-        let r = audio::stream(&p, (fs / 50).max(1) as usize, |b| {
-            if stop2.load(Ordering::Relaxed) {
+        for p in &paths {
+            let r = audio::stream(p, (fs / 50).max(1) as usize, |b| {
+                if stop2.load(Ordering::Relaxed) {
+                    return;
+                }
+                let x = f32::from_bits(speed2.load(Ordering::Relaxed)) as f64;
+                due += Duration::from_secs_f64(b.len() as f64 / fs as f64 / x);
+                let _ = tx.send(Event::Audio(Block {
+                    samples: b.to_vec(),
+                    at: SystemTime::now(),
+                }));
+                if let Some(wait) = due.checked_sub(start.elapsed()) {
+                    std::thread::sleep(wait);
+                }
+            });
+            if let Err(e) = r {
+                let _ = tx.send(Event::Error(if several {
+                    format!("{}: {e}", p.display())
+                } else {
+                    e.to_string()
+                }));
                 return;
             }
-            let x = f32::from_bits(speed2.load(Ordering::Relaxed)) as f64;
-            due += Duration::from_secs_f64(b.len() as f64 / fs as f64 / x);
-            let _ = tx.send(Event::Audio(Block {
-                samples: b.to_vec(),
-                at: SystemTime::now(),
-            }));
-            if let Some(wait) = due.checked_sub(start.elapsed()) {
-                std::thread::sleep(wait);
+            if stop2.load(Ordering::Relaxed) {
+                break;
             }
-        });
-        let _ = tx.send(match r {
-            Ok(_) => Event::End,
-            Err(e) => Event::Error(e.to_string()),
-        });
+        }
+        let _ = tx.send(Event::End);
     });
     Ok(Capture {
         rx,
         sample_rate: fs,
         bits: (info.bytes_per_frame.max(2) * 8).min(24) as u16,
-        label: path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string()),
+        label,
         is_file: true,
         stop,
         speed,
@@ -784,6 +819,42 @@ mod tests {
         assert_eq!(samples, 16_000);
         assert!(took < 1.0, "2 s at 8x took {took:.2} s");
         assert!(took > 0.15, "2 s at 8x took only {took:.2} s");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A take saved in parts replays as one recording, the parts in the
+    /// order given; parts at different sample rates are refused.
+    #[test]
+    fn parts_replay_in_order() {
+        let dir = std::env::temp_dir().join(format!("tg-replay-parts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = |name: &str, value: f32, rate: u32| {
+            let f = dir.join(name);
+            let audio = audio::Audio {
+                samples: vec![value; 4000],
+                sample_rate: rate,
+            };
+            audio::write_wav(&f, &audio).unwrap();
+            f
+        };
+        let a = part("take_part01-001.wav", 0.25, 8000);
+        let b = part("take_part01-002.wav", -0.5, 8000);
+        let c = replay_files(&[a.clone(), b], "take".into()).unwrap();
+        assert_eq!(c.label, "take");
+        c.set_speed(100.0);
+        let mut got = Vec::new();
+        loop {
+            match c.rx.recv_timeout(Duration::from_secs(5)).unwrap() {
+                Event::Audio(b) => got.extend(b.samples),
+                Event::End => break,
+                Event::Error(e) => panic!("{e}"),
+            }
+        }
+        assert_eq!(got.len(), 8000);
+        assert!((got[100] - 0.25).abs() < 1e-3 && (got[7900] + 0.5).abs() < 1e-3);
+        let odd = part("take_part01-003.wav", 0.0, 11025);
+        let e = replay_files(&[a, odd], "take".into()).err().unwrap();
+        assert!(e.contains("11025 Hz"), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

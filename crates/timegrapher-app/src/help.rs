@@ -42,7 +42,7 @@ pub const RECORDING: &[&str] = &[
     "Open… analyses a WAV or FLAC recording all at once, which is how to look back \
      through a take; Open Folder… does the same for a take saved as segments.",
     "Replay plays the recording through as if the watch were on the microphone, at the \
-     Replay Speed set below it. Analyse All goes back to the whole recording analysed \
+     Replay Speed set below it; a folder plays its files one after the other. Analyse All goes back to the whole recording analysed \
      at once.",
 ];
 
@@ -66,7 +66,8 @@ pub const READINGS: &[&str] = &[
      Rate, Amplitude and Beat Error charts and the lines drawn over the Paper Strip, \
      the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
      beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
-     Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
+     Each of those panes can take a time of its own instead, in its toolbar's Average \
+     Over, and then names it on its tab. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
      the Positions Test a minute a position, whatever it is set to.",
     "The tick is simply the first beat heard: the sound can't tell which pallet stone \
      made which beat.",
@@ -234,6 +235,8 @@ pub const STEADINESS: &[&str] = &[
      it are the statistics: readings, median, standard deviation, the scatter from one \
      reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
      trend and period when found.",
+    "Rate, Amplitude and Beat Error, in the Steadiness toolbar, choose which series \
+     are shown; at least one stays on.",
     "Under Each Series, in the Steadiness toolbar, picks what is \
      drawn under each series. Readings: every \
      reading in time order (10 s rate readings, 2 s amplitude and beat error \
@@ -260,8 +263,11 @@ pub const SCOPE: &[&str] = &[
      strip.",
     "Span: 20 ms shows one sound in detail, from before the unlock to after the drop, \
      with the Tick above the Tock and the unlock and drop marks from the Tick Tock \
-     Profile. 200 ms shows the whole beat and the quiet after it, the Tick above the \
-     Tock. 400 ms shows a Tick, the Tock after it and the next Tick in one row.",
+     Profile. 5 and 10 ms show the drop closer still, and 50 ms the sound and what rings \
+     on after it, with the same marks. One Beat runs from just before one beat to just \
+     before the next, at the watch's beat rate. 200 ms shows the whole beat and the \
+     quiet after it, the Tick above the Tock. 400 ms shows a Tick, the Tock after it and \
+     the next Tick in one row.",
     "Beats: how many of the latest beats are drawn over each other, the older ones \
      fainter. One beat shows exactly what was heard; several show how much the beats \
      vary, which the Tick Tock Profile averages away.",

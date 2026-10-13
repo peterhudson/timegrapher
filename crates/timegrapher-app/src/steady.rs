@@ -443,9 +443,42 @@ pub fn view_list(ui: &mut egui::Ui, view: &mut View) -> bool {
     theme::choice_list(ui, view, &choices)
 }
 
+/// The series the pane can show, in the order the switches list them.
+pub const SERIES: [SeriesKind; 3] = [
+    SeriesKind::Rate,
+    SeriesKind::Amplitude,
+    SeriesKind::BeatError,
+];
+
+/// The switches for which series the pane shows, for its toolbar. At
+/// least one stays on.
+pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
+    for (i, k) in SERIES.into_iter().enumerate() {
+        let others = shown.iter().enumerate().any(|(j, &on)| j != i && on);
+        let mut on = shown[i];
+        if theme::toggle(ui, title(k), &mut on)
+            .on_hover_text(format!(
+                "Show the {} series. Turning the others off gives this one the whole pane.",
+                title(k).to_lowercase()
+            ))
+            .changed()
+            && (on || others)
+        {
+            shown[i] = on;
+        }
+    }
+}
+
 /// Draw the pane: a note on what was tested, then a row for each series
-/// with what was detected, its statistics and the chosen view behind it.
-pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View) {
+/// shown with what was detected, its statistics and the chosen view behind
+/// it.
+pub fn draw(
+    ui: &mut egui::Ui,
+    s: Option<&Steadiness>,
+    status: &str,
+    view: View,
+    shown: &[bool; 3],
+) {
     let pal = theme::pal(ui);
     if !status.is_empty() {
         ui.label(RichText::new(status).small().color(pal.text_secondary));
@@ -457,7 +490,19 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
     let hint = format!("{}: {}.", view.label(), view.hint());
     ui.add(egui::Label::new(RichText::new(&hint).small().color(pal.text_tertiary)).truncate())
         .on_hover_text(hint);
-    let n = s.report.series.len().max(1);
+    let series: Vec<(usize, &SeriesCheck)> = s
+        .report
+        .series
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            SERIES
+                .iter()
+                .position(|&k| k == c.series)
+                .is_none_or(|j| shown[j])
+        })
+        .collect();
+    let n = series.len().max(1);
     let gap = 10.0;
     let (w, h) = (ui.available_width(), ui.available_height());
     // Each gap also takes the layout's spacing either side of it.
@@ -474,12 +519,12 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
             .auto_shrink([false, false])
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .show(ui, |ui| {
-                for (i, c) in s.report.series.iter().enumerate() {
+                for (k, &(i, c)) in series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
                         row(ui, s, i, c, view);
                     });
-                    if i + 1 < n {
+                    if k + 1 < n {
                         ui.add_space(gap);
                     }
                 }
@@ -489,7 +534,7 @@ pub fn draw(ui: &mut egui::Ui, s: Option<&Steadiness>, status: &str, view: View)
         let col_w = fits(n, w);
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = gap;
-            for (i, c) in s.report.series.iter().enumerate() {
+            for &(i, c) in &series {
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
@@ -1095,7 +1140,9 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     view_list(ui, &mut v);
-                    draw(ui, Some(&s), "test", v);
+                    let mut shown = [true, false, true];
+                    series_switches(ui, &mut shown);
+                    draw(ui, Some(&s), "test", v, &shown);
                 });
             });
             assert!(!out.shapes.is_empty());

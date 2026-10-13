@@ -1,7 +1,10 @@
 //! The Scope pane: the sound of the latest beats as it came in, at the
-//! three spans a Witschi scope offers. 20 ms shows one sound in detail,
-//! from the unlock to the drop. 200 ms shows the whole beat and the quiet
-//! after it. 400 ms shows the tick, the tock and the next tick in a row.
+//! three spans a Witschi scope offers and a few more. 20 ms shows one
+//! sound in detail, from the unlock to the drop; 5 and 10 ms the drop
+//! closer still, 50 ms the sound and what rings on after it. One Beat
+//! runs from just before one beat to just before the next, at the
+//! watch's beat rate. 200 ms shows the whole beat and the quiet after it.
+//! 400 ms shows the tick, the tock and the next tick in a row.
 //! The latest beats are drawn over each other, the newest strongest, so a
 //! sound that changes from beat to beat shows as a blur.
 
@@ -13,35 +16,53 @@ use timegrapher_core::filter::highpass4;
 /// How much of each beat is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Zoom {
+    Ms5,
+    Ms10,
     Ms20,
+    Ms50,
+    /// One beat period at the watch's beat rate.
+    Beat,
     Ms200,
     Ms400,
 }
 
 impl Zoom {
     /// The window around a beat's reference point (the drop), seconds:
-    /// before it and after it.
-    pub fn window(self) -> (f64, f64) {
+    /// before it and after it. `beat_s` is the time between beats, which
+    /// only One Beat uses.
+    pub fn window(self, beat_s: f64) -> (f64, f64) {
         match self {
+            Zoom::Ms5 => (0.0035, 0.0015),
+            Zoom::Ms10 => (0.008, 0.002),
             // The unlock comes up to about 12 ms before the drop.
             Zoom::Ms20 => (0.014, 0.006),
+            Zoom::Ms50 => (0.015, 0.035),
+            Zoom::Beat => (0.015, beat_s.max(0.05) - 0.015),
             Zoom::Ms200 => (0.020, 0.180),
             Zoom::Ms400 => (0.020, 0.380),
         }
     }
 
-    pub fn span_ms(self) -> f64 {
-        let (a, b) = self.window();
+    pub fn span_ms(self, beat_s: f64) -> f64 {
+        let (a, b) = self.window(beat_s);
         (a + b) * 1000.0
     }
 
-    /// Grid step, milliseconds.
-    fn step_ms(self) -> f64 {
-        match self {
-            Zoom::Ms20 => 2.0,
-            Zoom::Ms200 => 20.0,
-            Zoom::Ms400 => 50.0,
+    /// Grid step, milliseconds: about ten lines across.
+    fn step_ms(self, beat_s: f64) -> f64 {
+        match self.span_ms(beat_s) {
+            s if s <= 6.0 => 0.5,
+            s if s <= 12.0 => 1.0,
+            s if s <= 25.0 => 2.0,
+            s if s <= 60.0 => 5.0,
+            s if s <= 250.0 => 20.0,
+            _ => 50.0,
         }
+    }
+
+    /// Short enough for the profile's Unlock and Drop marks to read.
+    pub fn marks(self) -> bool {
+        matches!(self, Zoom::Ms5 | Zoom::Ms10 | Zoom::Ms20 | Zoom::Ms50)
     }
 
     /// Ticks and tocks each in a row of their own, or one row that runs
@@ -71,8 +92,15 @@ impl Default for View {
 
 /// The beats a row draws, oldest first: the latest `ring` whose whole
 /// window ends before `end` (on one side when `even` is given).
-pub fn pick(beats: &[Beat], zoom: Zoom, ring: usize, end: f64, even: Option<bool>) -> Vec<Beat> {
-    let (_, after) = zoom.window();
+pub fn pick(
+    beats: &[Beat],
+    zoom: Zoom,
+    beat_s: f64,
+    ring: usize,
+    end: f64,
+    even: Option<bool>,
+) -> Vec<Beat> {
+    let (_, after) = zoom.window(beat_s);
     let mut out: Vec<Beat> = beats
         .iter()
         .rev()
@@ -87,8 +115,15 @@ pub fn pick(beats: &[Beat], zoom: Zoom, ring: usize, end: f64, even: Option<bool
 
 /// One beat's sound, high-passed so hum and rumble don't hide it, from the
 /// start of its window: `audio` starts at `audio_t0` seconds.
-pub fn trace(audio: &[f32], fs: f64, audio_t0: f64, beat: &Beat, zoom: Zoom) -> Option<Vec<f32>> {
-    let (before, after) = zoom.window();
+pub fn trace(
+    audio: &[f32],
+    fs: f64,
+    audio_t0: f64,
+    beat: &Beat,
+    zoom: Zoom,
+    beat_s: f64,
+) -> Option<Vec<f32>> {
+    let (before, after) = zoom.window(beat_s);
     // A little more first, for the filter to settle on.
     let lead = 0.010;
     let i0 = ((beat.time - before - lead - audio_t0) * fs).round();
@@ -107,12 +142,12 @@ pub struct Row {
     pub traces: Vec<Vec<f32>>,
     pub color: Color32,
     /// Where the profile found the unlock and the drop, ms from the
-    /// reference point, for the 20 ms span.
+    /// reference point, for the spans up to 50 ms.
     pub marks: Vec<(f64, Color32, &'static str)>,
 }
 
 /// Draw the rows one above the other, sharing a time axis.
-pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, fs: f64) {
+pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
     let pal = theme::pal(ui);
     let avail = ui.available_size();
     let axis_h = 18.0;
@@ -122,11 +157,11 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, fs: f64) {
         rect.min + Vec2::new(44.0, 0.0),
         rect.max - Vec2::new(4.0, axis_h),
     );
-    let (before, _) = zoom.window();
-    let span = zoom.span_ms();
+    let (before, _) = zoom.window(beat_s);
+    let span = zoom.span_ms(beat_s);
     let x_of = |ms: f64| plot.left() + ((ms + before * 1000.0) / span) as f32 * plot.width();
     // Grid and the time axis, in ms from the drop.
-    let step = zoom.step_ms();
+    let step = zoom.step_ms(beat_s);
     let mut ms = -(before * 1000.0 / step).floor() * step + 0.0;
     while ms <= span - before * 1000.0 + 1e-9 {
         let x = x_of(ms);
@@ -139,7 +174,11 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, fs: f64) {
             painter.text(
                 egui::pos2(x, plot.bottom() + 3.0),
                 egui::Align2::CENTER_TOP,
-                format!("{:.0}", ms + 0.0),
+                if step < 1.0 {
+                    format!("{:.1}", ms + 0.0)
+                } else {
+                    format!("{:.0}", ms + 0.0)
+                },
                 egui::FontId::proportional(11.0),
                 pal.text_tertiary,
             );
@@ -258,9 +297,24 @@ pub fn settings(ui: &mut egui::Ui, view: &mut View) {
             &mut view.zoom,
             &[
                 (
+                    Zoom::Ms5,
+                    "5",
+                    "The drop up close, 3.5 ms before it to 1.5 ms after, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms10,
+                    "10",
+                    "The drop and the sound just before it, ticks above tocks",
+                ),
+                (
                     Zoom::Ms20,
                     "20",
                     "One sound in detail, from the unlock to the drop, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms50,
+                    "50",
+                    "One sound and what rings on after it, ticks above tocks",
                 ),
                 (
                     Zoom::Ms200,
@@ -275,6 +329,16 @@ pub fn settings(ui: &mut egui::Ui, view: &mut View) {
             ],
         );
         ui.label(RichText::new("ms").size(12.5));
+        theme::segmented(
+            ui,
+            &mut view.zoom,
+            &[(
+                Zoom::Beat,
+                "One Beat",
+                "From just before one beat to just before the next, at the watch's beat rate, \
+                 ticks above tocks",
+            )],
+        );
     });
     theme::row(
         ui,
@@ -311,9 +375,9 @@ mod tests {
     fn picks_the_latest_whole_beats_on_one_side() {
         let beats: Vec<Beat> = (0..20).map(|i| beat(i, 0.125 * i as f64)).collect();
         // A beat at 2.375 s needs until 2.381 s for its 20 ms window.
-        let p = pick(&beats, Zoom::Ms20, 3, 2.38, Some(true));
+        let p = pick(&beats, Zoom::Ms20, 0.125, 3, 2.38, Some(true));
         assert_eq!(p.iter().map(|b| b.index).collect::<Vec<_>>(), [14, 16, 18]);
-        let p = pick(&beats, Zoom::Ms400, 2, 2.38, None);
+        let p = pick(&beats, Zoom::Ms400, 0.125, 2, 2.38, None);
         assert_eq!(p.iter().map(|b| b.index).collect::<Vec<_>>(), [15, 16]);
     }
 
@@ -321,9 +385,30 @@ mod tests {
     fn a_trace_starts_at_its_window() {
         let fs = 48000.0;
         let audio: Vec<f32> = (0..48000).map(|i| ((i as f32) * 0.3).sin()).collect();
-        let t = trace(&audio, fs, 0.0, &beat(0, 0.5), Zoom::Ms20).unwrap();
+        let t = trace(&audio, fs, 0.0, &beat(0, 0.5), Zoom::Ms20, 0.125).unwrap();
         assert_eq!(t.len(), (0.020 * fs) as usize);
-        assert!(trace(&audio, fs, 0.0, &beat(0, 0.005), Zoom::Ms20).is_none());
-        assert!(trace(&audio, fs, 0.0, &beat(0, 0.99), Zoom::Ms200).is_none());
+        let t = trace(&audio, fs, 0.0, &beat(0, 0.5), Zoom::Ms5, 0.125).unwrap();
+        assert_eq!(t.len(), (0.005 * fs) as usize);
+        assert!(trace(&audio, fs, 0.0, &beat(0, 0.005), Zoom::Ms20, 0.125).is_none());
+        assert!(trace(&audio, fs, 0.0, &beat(0, 0.99), Zoom::Ms200, 0.125).is_none());
+    }
+
+    #[test]
+    fn one_beat_spans_the_beat_period() {
+        // 28,800 bph beats every 125 ms, 18,000 bph every 200 ms.
+        assert!((Zoom::Beat.span_ms(0.125) - 125.0).abs() < 1e-9);
+        assert!((Zoom::Beat.span_ms(0.2) - 200.0).abs() < 1e-9);
+        for z in [
+            Zoom::Ms5,
+            Zoom::Ms10,
+            Zoom::Ms20,
+            Zoom::Ms50,
+            Zoom::Ms200,
+            Zoom::Ms400,
+        ] {
+            assert_eq!(z.span_ms(0.125), z.span_ms(0.2));
+        }
+        assert!((Zoom::Ms5.span_ms(0.125) - 5.0).abs() < 1e-9);
+        assert_eq!(Zoom::Ms5.step_ms(0.125), 0.5);
     }
 }

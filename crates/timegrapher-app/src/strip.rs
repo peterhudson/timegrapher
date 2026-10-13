@@ -249,9 +249,10 @@ pub struct Extras<'a> {
     /// Stretches of the session in one position to mark: start, end and
     /// the position's name. Empty while the watch stayed put.
     pub bands: &'a [(f64, f64, &'a str)],
-    /// The settling after each move: start and end. Its beats are drawn
-    /// faintly and the ticker says "Settling" over it.
-    pub settles: &'a [(f64, f64)],
+    /// Stretches the readings leave out: start, end and what the ticker
+    /// says over it ("Settling" after a move, "Not Measured" in a
+    /// Positions Test). Their beats are drawn faintly.
+    pub settles: &'a [(f64, f64, &'a str)],
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -322,13 +323,14 @@ pub fn paint_bands(
 /// The position ticker in `lane`, beside the plotting area: each stretch's
 /// position named over and over along it, a short rule between repeats,
 /// so the position shows wherever the strip is scrolled, even with both
-/// its ends out of sight; "Settling" over the settling after each move.
+/// its ends out of sight; over each stretch left out ("Settling" after a
+/// move), what it is.
 /// The names start from the stretch's own start, so they move with it.
 pub fn paint_ticker(
     painter: &egui::Painter,
     lane: Rect,
     bands: &[(f64, f64, &str)],
-    settles: &[(f64, f64)],
+    settles: &[(f64, f64, &str)],
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
     vis: &egui::Visuals,
@@ -345,12 +347,15 @@ pub fn paint_ticker(
     let mut parts: Vec<(f64, f64, &str, usize, bool)> = Vec::new();
     for (i, &(a, b, name)) in bands.iter().enumerate() {
         let mut from = a;
-        for &(s0, s1) in settles.iter().filter(|s| s.0 >= a && s.0 < b) {
+        for &(s0, s1, why) in settles.iter().filter(|s| s.0 >= a && s.0 < b) {
+            let s0 = s0.max(from);
             if s0 > from {
                 parts.push((from, s0, name, i, false));
             }
-            parts.push((s0, s1.min(b), "Settling", i, true));
-            from = s1.min(b);
+            if s1.min(b) > s0 {
+                parts.push((s0, s1.min(b), why, i, true));
+            }
+            from = from.max(s1.min(b));
         }
         if from < b {
             parts.push((from, b, name, i, false));

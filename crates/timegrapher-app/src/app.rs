@@ -135,7 +135,9 @@ enum Input {
 
 /// The panes below the readings. Tick shape and the periodicity (FFT)
 /// views will join these.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum Pane {
     Watch,
     Strip,
@@ -168,6 +170,18 @@ impl Pane {
         Pane::BeatErrorHistogram,
     ];
     const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
+    /// The panes that average the beats, each over Readings' Average Over
+    /// or a time of its own.
+    const AVERAGING: [Pane; 8] = [
+        Pane::Strip,
+        Pane::Sound,
+        Pane::Rate,
+        Pane::Amplitude,
+        Pane::BeatError,
+        Pane::RateHistogram,
+        Pane::AmplitudeHistogram,
+        Pane::BeatErrorHistogram,
+    ];
     const HISTOGRAMS: [Pane; 3] = [
         Pane::RateHistogram,
         Pane::AmplitudeHistogram,
@@ -526,6 +540,25 @@ struct ChartLine {
     main: bool,
 }
 
+/// The key a run of readings is kept under: its averaging time in ms.
+fn trend_key(seconds: f64) -> u64 {
+    (seconds * 1000.0).round() as u64
+}
+
+/// The readings over the whole of what `live` holds, averaged over
+/// `seconds`, at up to [`TREND_POINTS`] times.
+fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
+    let end = live.duration_s();
+    let step = (end / TREND_POINTS).max(0.5);
+    let mut out = Vec::new();
+    let mut t = step;
+    while t <= end + 1e-9 {
+        out.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
+        t += step;
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrendPoint {
     t: f64,
@@ -573,6 +606,8 @@ struct Batch {
     stretches: Vec<(f64, Position)>,
     /// The settling before each position's readings, from the same file.
     settles: Vec<(f64, f64)>,
+    /// Where the files' order disagrees with when they were written.
+    order_note: Option<String>,
 }
 
 impl Drop for Batch {
@@ -609,6 +644,9 @@ pub struct TimegrapherApp {
     updates: crate::update::Updates,
     /// The Positions Test, while it runs and until its results are closed.
     guided: Option<guided::Test>,
+    /// The time the Positions Test didn't use, marked on the strip; kept
+    /// after the test ends, until a new session.
+    guided_unused: Vec<(f64, f64, &'static str)>,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -623,6 +661,12 @@ pub struct TimegrapherApp {
     /// of `custom_calibres`, or empty when not set.
     calibre: String,
     custom_calibres: Vec<CustomCalibre>,
+    /// Panes that average over their own time rather than Readings'
+    /// Average Over, and that time in seconds.
+    pane_average: std::collections::BTreeMap<Pane, f64>,
+    /// The readings over the session at each averaging time a pane uses
+    /// other than Readings' (whose are `trend`), by milliseconds.
+    other_trends: std::collections::BTreeMap<u64, Vec<TrendPoint>>,
     /// Where the last Save put the session, if it has been saved.
     /// The folder Save offers first.
     save_dir: String,
@@ -664,6 +708,8 @@ pub struct TimegrapherApp {
     hist_readings: bool,
     /// What the Steadiness pane draws under each series.
     steady_view: steady::View,
+    /// The Steadiness series shown: rate, amplitude, beat error.
+    steady_series: [bool; 3],
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
@@ -767,9 +813,11 @@ impl TimegrapherApp {
             folded: self.folded.iter().cloned().collect(),
             theme: self.theme,
             steady_view: self.steady_view,
+            steady_series: self.steady_series,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
             custom_calibres: self.custom_calibres.clone(),
+            pane_average: self.pane_average.iter().map(|(&p, &s)| (p, s)).collect(),
             check_updates: self.check_at_start,
         }
     }
@@ -793,12 +841,18 @@ impl TimegrapherApp {
             folded,
             theme,
             steady_view,
+            steady_series,
             scope,
             panes,
             custom_calibres,
+            pane_average,
             check_updates,
         } = s;
         self.check_at_start = check_updates;
+        self.pane_average = pane_average
+            .into_iter()
+            .filter(|(p, s)| Pane::AVERAGING.contains(p) && AVERAGES.contains(s))
+            .collect();
         self.custom_calibres = custom_calibres;
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
@@ -824,6 +878,12 @@ impl TimegrapherApp {
         self.folded = folded.into_iter().collect();
         self.theme = theme;
         self.steady_view = steady_view;
+        // At least one series stays shown.
+        self.steady_series = if steady_series.contains(&true) {
+            steady_series
+        } else {
+            [true; 3]
+        };
         self.scope_view = scope;
         self.panes = match panes.map(|mut p| {
             add_missing(&mut p, Pane::Steadiness);
@@ -868,12 +928,15 @@ impl TimegrapherApp {
             report: ReportDialog::default(),
             updates: Default::default(),
             guided: None,
+            guided_unused: Vec::new(),
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
             watch: String::new(),
             calibre: String::new(),
             custom_calibres: Vec::new(),
+            pane_average: Default::default(),
+            other_trends: Default::default(),
             confirm: None,
             opened_path: String::new(),
             mic_setup: None,
@@ -895,6 +958,7 @@ impl TimegrapherApp {
             span_of_strip: false,
             hist_cumulative: false,
             steady_view: steady::View::default(),
+            steady_series: [true; 3],
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -960,7 +1024,7 @@ impl TimegrapherApp {
     /// so it describes the same beats as the readings, up to the engine's
     /// limit.
     fn sound_span(&self) -> f64 {
-        self.average_s.clamp(0.5, MAX_PROFILE_S)
+        self.average_for(Pane::Sound).clamp(0.5, MAX_PROFILE_S)
     }
 
     /// A new averaging time: the readings over the whole session are worked
@@ -974,6 +1038,70 @@ impl TimegrapherApp {
         // The sound kept so far covered the old span.
         self.sound_at = None;
         self.rebuild_trend();
+    }
+
+    /// The time a pane averages over: its own, or Readings' Average Over.
+    fn average_for(&self, pane: Pane) -> f64 {
+        self.pane_average
+            .get(&pane)
+            .copied()
+            .unwrap_or(self.average_s)
+    }
+
+    /// Give a pane its own averaging time, or `None` to follow Readings'.
+    fn set_pane_average(&mut self, pane: Pane, seconds: Option<f64>) {
+        match seconds {
+            Some(s) if s != self.average_s => self.pane_average.insert(pane, s),
+            _ => self.pane_average.remove(&pane),
+        };
+        if pane == Pane::Sound {
+            let span = self.sound_span();
+            if let Some(l) = self.live.as_mut() {
+                l.set_profile_span(span);
+            }
+            self.sound_at = None;
+        }
+        self.sync_trends();
+    }
+
+    /// The readings over the session at an averaging time.
+    fn trend_for(&self, seconds: f64) -> &[TrendPoint] {
+        if seconds == self.average_s {
+            return &self.trend;
+        }
+        self.other_trends
+            .get(&trend_key(seconds))
+            .map_or(&[][..], Vec::as_slice)
+    }
+
+    /// Keep a run of readings for each averaging time a pane uses, and no
+    /// others: a new one is worked out over the session so far.
+    fn sync_trends(&mut self) {
+        let wanted: std::collections::BTreeSet<u64> = self
+            .pane_average
+            .values()
+            .filter(|&&s| s != self.average_s)
+            .map(|&s| trend_key(s))
+            .collect();
+        self.other_trends.retain(|k, _| wanted.contains(k));
+        for k in wanted {
+            if !self.other_trends.contains_key(&k) {
+                let pts = self
+                    .live
+                    .as_ref()
+                    .map_or_else(Vec::new, |l| trend_over(l, k as f64 / 1000.0));
+                self.other_trends.insert(k, pts);
+            }
+        }
+    }
+
+    /// Clear every run of readings, for a new session or a change that
+    /// makes them all out of date; new readings fill them again.
+    fn clear_trends(&mut self) {
+        self.trend.clear();
+        for t in self.other_trends.values_mut() {
+            t.clear();
+        }
     }
 
     fn info(&self, device: &str, sample_rate: u32, bits: u16) -> SessionInfo {
@@ -1000,13 +1128,14 @@ impl TimegrapherApp {
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
         self.source_label = label;
         self.anchor = None;
-        self.trend.clear();
+        self.clear_trends();
         self.view_end = None;
         self.level = Level::default();
         self.clipped_at = None;
         self.message = None;
         self.sound_history.clear();
         self.guided = None;
+        self.guided_unused.clear();
         self.sound_at = None;
         self.sound_job = None;
         self.steady = None;
@@ -1153,9 +1282,10 @@ impl TimegrapherApp {
         self.session.discard_recording();
         self.session.clear();
         self.live = None;
-        self.trend.clear();
+        self.clear_trends();
         self.sound_history.clear();
         self.guided = None;
+        self.guided_unused.clear();
         self.source_label.clear();
         self.message = None;
     }
@@ -1439,11 +1569,49 @@ impl TimegrapherApp {
         }
     }
 
+    /// Play a recording through as if live. A folder plays its files one
+    /// after the other in the order it is analysed in, with the watch from
+    /// its session file when it has one.
     fn start_replay(&mut self, path: &Path) {
         self.stop();
-        match capture::replay_file(path) {
+        let inner = match take_folder(path) {
+            Ok(p) => p,
+            Err(e) => return self.open_failed(e),
+        };
+        let path = inner.as_path();
+        let files = match recordings_in(path) {
+            Ok(f) => f,
+            Err(e) => return self.open_failed(e),
+        };
+        let started = if path.is_dir() {
+            let label = match files.len() {
+                1 => format!("{} (1 file)", capture_label(path)),
+                n => format!("{} ({n} files)", capture_label(path)),
+            };
+            capture::replay_files(&files, label)
+        } else {
+            capture::replay_file(path)
+        };
+        match started {
             Ok(c) => {
-                self.fresh_setup(path, std::slice::from_ref(&path.to_path_buf()));
+                match read_manifest(path) {
+                    Ok(Some((m, entries))) if path.is_dir() => {
+                        self.keep_mic_setup();
+                        self.set_watch_setup(WatchSetup::default());
+                        self.open_note = None;
+                        self.apply_manifest(&m, &entries);
+                    }
+                    _ => self.fresh_setup(path, &files),
+                }
+                if let Some(n) = order_warning(&files) {
+                    self.open_note = Some(match self.open_note.take() {
+                        Some(o) => format!("{o} {n}"),
+                        None => n,
+                    });
+                }
+                if self.file_path.trim() != path.display().to_string() {
+                    self.file_path = path.display().to_string();
+                }
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
                 self.opened_path = path.display().to_string();
@@ -1563,6 +1731,7 @@ impl TimegrapherApp {
             Ok(f) => f,
             Err(e) => return self.open_failed(e),
         };
+        let order_note = order_warning(&files);
         let mut info = match timegrapher_core::audio::info(&files[0]) {
             Ok(i) => i,
             Err(e) => return self.open_failed(format!("Can't read {}: {e}", files[0].display())),
@@ -1599,6 +1768,12 @@ impl TimegrapherApp {
                 Default::default()
             }
         };
+        if let Some(n) = &order_note {
+            self.open_note = Some(match self.open_note.take() {
+                Some(o) => format!("{o} {n}"),
+                None => n.clone(),
+            });
+        }
         let label = if path.is_dir() {
             match files.len() {
                 1 => format!("{} (1 file)", capture_label(path)),
@@ -1652,6 +1827,7 @@ impl TimegrapherApp {
             last,
             stretches,
             settles,
+            order_note,
         });
     }
 
@@ -1717,6 +1893,10 @@ impl TimegrapherApp {
                             }
                             let r = live.reading(self.average_s);
                             self.trend.push(TrendPoint::of(r.time_s, &r));
+                            for (&k, t) in self.other_trends.iter_mut() {
+                                let o = live.reading(k as f64 / 1000.0);
+                                t.push(TrendPoint::of(o.time_s, &o));
+                            }
                             let p = live.tick_profiles();
                             let due = self
                                 .sound_history
@@ -1856,16 +2036,12 @@ impl TimegrapherApp {
     /// Work the charts out again over the whole session, for a new
     /// averaging time or lift angle.
     fn rebuild_trend(&mut self) {
-        self.trend.clear();
-        let Some(live) = &self.live else { return };
-        let end = live.duration_s();
-        let step = (end / TREND_POINTS).max(0.5);
-        let mut t = step;
-        while t <= end + 1e-9 {
-            self.trend
-                .push(TrendPoint::of(t, &live.reading_at(t, self.average_s)));
-            t += step;
-        }
+        self.other_trends.clear();
+        self.trend = self
+            .live
+            .as_ref()
+            .map_or_else(Vec::new, |l| trend_over(l, self.average_s));
+        self.sync_trends();
     }
 
     fn latest_s(&self) -> f64 {
@@ -2315,14 +2491,12 @@ impl TimegrapherApp {
                 }
             } else {
                 if ui
-                    .add_enabled(path.is_file(), theme::secondary(ui, "Replay"))
+                    .add_enabled(path.exists(), theme::secondary(ui, "Replay"))
                     .on_hover_text(
                         "Play the recording through as if live, from the start, at the \
-                         speed set beside it",
+                         speed set beside it. A folder plays its files one after the other.",
                     )
-                    .on_disabled_hover_text(
-                        "Open a recording first. A folder is analysed all at once.",
-                    )
+                    .on_disabled_hover_text("Open a recording or a folder first")
                     .clicked()
                 {
                     self.open_recording(&path, true, true);
@@ -2411,12 +2585,14 @@ impl TimegrapherApp {
     fn pane_tools(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
         let title = pane.title();
         match pane {
-            Pane::Strip => {
-                theme::pane_toolbar(ui, title, help::STRIP, |ui| self.strip_settings(ui))
-            }
-            Pane::Sound => {
-                theme::pane_toolbar(ui, title, help::PROFILE, |ui| self.profile_settings(ui))
-            }
+            Pane::Strip => theme::pane_toolbar(ui, title, help::STRIP, |ui| {
+                self.strip_settings(ui);
+                self.pane_average_setting(ui, Pane::Strip);
+            }),
+            Pane::Sound => theme::pane_toolbar(ui, title, help::PROFILE, |ui| {
+                self.profile_settings(ui);
+                self.pane_average_setting(ui, Pane::Sound);
+            }),
             Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
                 scope::settings(ui, &mut self.scope_view)
             }),
@@ -2428,11 +2604,43 @@ impl TimegrapherApp {
                 theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                     self.span_setting(ui);
                     self.histogram_settings(ui);
+                    self.pane_average_setting(ui, p);
                 })
             }
             _ => return false,
         }
         true
+    }
+
+    /// Average Over for one pane: Readings' time, or one of its own.
+    fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        theme::row(ui, "Average Over", Some(PANE_AVERAGE_HINT), |ui| {
+            self.pane_average_choice(ui, pane);
+        });
+    }
+
+    /// The list behind a pane's Average Over: As Readings, or a time of
+    /// its own.
+    fn pane_average_choice(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        let own = self.pane_average.get(&pane).copied();
+        let readings = fields::duration(self.average_s);
+        let mut choice = own;
+        egui::ComboBox::from_id_salt(("pane average", pane))
+            .selected_text(match own {
+                Some(s) => fields::duration(s),
+                None => format!("As Readings ({readings})"),
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut choice, None, format!("As Readings ({readings})"));
+                for a in AVERAGES {
+                    ui.selectable_value(&mut choice, Some(a), fields::duration(a));
+                }
+            })
+            .response
+            .on_hover_text(PANE_AVERAGE_HINT);
+        if choice != own {
+            self.set_pane_average(pane, choice);
+        }
     }
 
     fn steady_settings(&mut self, ui: &mut egui::Ui) {
@@ -2444,6 +2652,7 @@ impl TimegrapherApp {
                 steady::view_list(ui, &mut self.steady_view);
             },
         );
+        steady::series_switches(ui, &mut self.steady_series);
     }
 
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
@@ -2582,7 +2791,13 @@ impl TimegrapherApp {
             None if working => String::new(),
             None => self.steady_wait(dur),
         };
-        steady::draw(ui, self.steady.as_ref(), &status, self.steady_view);
+        steady::draw(
+            ui,
+            self.steady.as_ref(),
+            &status,
+            self.steady_view,
+            &self.steady_series,
+        );
     }
 
     fn histogram_settings(&mut self, ui: &mut egui::Ui) {
@@ -2699,7 +2914,7 @@ impl TimegrapherApp {
                 l.set_bph(bph);
             }
             self.anchor = None;
-            self.trend.clear();
+            self.clear_trends();
         }
 
         let mut lift = self.lift_deg;
@@ -2801,6 +3016,24 @@ impl TimegrapherApp {
     /// Seconds of settling still to come at the time on show.
     fn settling_left(&self) -> Option<f64> {
         self.session.settling_left(self.end_s())
+    }
+
+    /// The stretches the strip draws faintly, each with what the ticker
+    /// says over it: the settling after each move, and during and after a
+    /// Positions Test the time it didn't use, in place of the moves'
+    /// settling it covers.
+    fn strip_settles(&self) -> Vec<(f64, f64, &'static str)> {
+        let test = &self.guided_unused;
+        let mut out: Vec<(f64, f64, &'static str)> = self
+            .session
+            .settles()
+            .into_iter()
+            .filter(|s| !test.iter().any(|t| s.0 < t.1 && t.0 < s.1))
+            .map(|(a, b)| (a, b, "Settling"))
+            .chain(test.iter().copied())
+            .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        out
     }
 
     /// When stopped (and not looking back) inside the settle after a
@@ -2994,7 +3227,7 @@ impl TimegrapherApp {
                     l.restart();
                 }
                 self.anchor = None;
-                self.trend.clear();
+                self.clear_trends();
             }
         });
     }
@@ -3141,14 +3374,19 @@ impl TimegrapherApp {
             ui.close();
             self.save_recording();
         }
-        let mic_data = self.session.mic() && self.live.is_some();
+        // Anything shown, from the microphone or a recording, can be
+        // cleared once nothing is running.
         if ui
             .add_enabled(
-                mic_data && !self.running(),
+                self.live.is_some() && !self.running(),
                 egui::Button::new("New Session"),
             )
             .on_hover_text("Clear everything and start again with the next watch or position")
-            .on_disabled_hover_text("Stop listening first")
+            .on_disabled_hover_text(if self.running() {
+                "Stop listening or replaying first"
+            } else {
+                "Nothing to clear yet: listen to a watch or open a recording first"
+            })
             .clicked()
         {
             ui.close();
@@ -4532,12 +4770,15 @@ impl TimegrapherApp {
         if b.files > 1 {
             ui.label(
                 RichText::new(format!(
-                    "{} files joined in name order, {} to {}.",
+                    "{} files joined in order, {} to {}.",
                     b.files, b.first, b.last
                 ))
                 .small()
                 .color(pal.text_tertiary),
             );
+        }
+        if let Some(n) = &b.order_note {
+            ui.label(RichText::new(n).small().color(pal.warn));
         }
         if ui
             .add(theme::secondary(ui, "Cancel"))
@@ -4567,6 +4808,7 @@ impl TimegrapherApp {
             self.set_position(guided::ORDER[0]);
         }
         self.guided = Some(guided::Test::new());
+        self.guided_unused.clear();
     }
 
     /// After a break in the sound while listening: was the watch moved?
@@ -4647,9 +4889,14 @@ impl TimegrapherApp {
             },
             Some(guided::Action::Redo) => test.redo(now),
             Some(guided::Action::Results) => test.show_results = true,
-            Some(guided::Action::Stop) => return,
+            Some(guided::Action::Stop) => {
+                test.stop(now);
+                self.guided_unused = test.unused(now);
+                return;
+            }
             None => {}
         }
+        self.guided_unused = test.unused(now);
         if matches!(
             phase,
             guided::Phase::Settling(_) | guided::Phase::Measuring(_)
@@ -4960,8 +5207,9 @@ impl TimegrapherApp {
             });
         let pal = theme::pal(ui);
         let from = end - self.strip.span_s - 5.0;
+        let trend = self.trend_for(self.average_for(Pane::Strip));
         let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
-            self.trend
+            trend
                 .iter()
                 .filter(|p| p.t >= from && p.t <= end)
                 .filter_map(|p| f(p).map(|v| [p.t, v]))
@@ -4999,7 +5247,7 @@ impl TimegrapherApp {
             });
         }
         let bands = self.position_bands();
-        let settles = self.session.settles();
+        let settles = self.strip_settles();
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
@@ -5112,6 +5360,8 @@ impl TimegrapherApp {
             return;
         };
         let end = self.end_s();
+        // One Beat follows the watch's beat rate, 28,800 bph until known.
+        let beat_s = 3600.0 / f64::from(live.bph().unwrap_or(28_800).max(1));
         let split = view.zoom.split();
         let specs: Vec<(&'static str, bool, Color32)> = if split {
             vec![("Tick", true, pal.tick), ("Tock", false, pal.tock)]
@@ -5120,15 +5370,19 @@ impl TimegrapherApp {
         };
         let picks: Vec<Vec<timegrapher_core::beats::Beat>> = specs
             .iter()
-            .map(|&(_, even, _)| scope::pick(live.beats(), view.zoom, view.ring, end, Some(even)))
+            .map(|&(_, even, _)| {
+                scope::pick(live.beats(), view.zoom, beat_s, view.ring, end, Some(even))
+            })
             .collect();
         // The marks from the profile nearest the moment shown, as the
         // Tick Tock Profile shows them.
         let fs = live.sample_rate() as f64;
-        let (before, after) = view.zoom.window();
+        let (before, after) = view.zoom.window(beat_s);
         // Each beat from the traces already drawn, else from the sound the
         // engine still holds; only the rest need reading from the recording.
-        let key = |b: &timegrapher_core::beats::Beat| (b.index, b.time.to_bits(), view.zoom);
+        let key = |b: &timegrapher_core::beats::Beat| {
+            (b.index, b.time.to_bits(), view.zoom, beat_s.to_bits())
+        };
         let mut known: std::collections::HashMap<ScopeKey, Vec<f32>> = Default::default();
         for b in picks.iter().flatten() {
             let k = key(b);
@@ -5139,7 +5393,7 @@ impl TimegrapherApp {
             let (a, z) = (b.time - before - 0.015, b.time + after + 0.005);
             if let Some(t) = live
                 .sound(a, z - a)
-                .and_then(|x| scope::trace(x, fs, a, b, view.zoom))
+                .and_then(|x| scope::trace(x, fs, a, b, view.zoom, beat_s))
             {
                 self.scope_traces.push_back((k, t.clone()));
                 known.insert(k, t);
@@ -5209,12 +5463,12 @@ impl TimegrapherApp {
                     .filter_map(|b| {
                         known.get(&key(b)).cloned().or_else(|| {
                             let (x, t0, rate) = audio.as_ref()?;
-                            scope::trace(x, *rate, *t0, b, view.zoom)
+                            scope::trace(x, *rate, *t0, b, view.zoom, beat_s)
                         })
                     })
                     .collect();
                 let mut marks = Vec::new();
-                if view.zoom == scope::Zoom::Ms20 {
+                if view.zoom.marks() {
                     if let Some(p) = &profiles[usize::from(!even)] {
                         if let Some(u) = p.unlock_ms {
                             marks.push((u, pal.unlock, "Unlock"));
@@ -5236,7 +5490,7 @@ impl TimegrapherApp {
             ui.label(RichText::new(n).small().color(pal.text_tertiary));
         }
         let rate = audio.as_ref().map_or(fs, |a| a.2);
-        scope::draw(ui, &rows, view.zoom, rate);
+        scope::draw(ui, &rows, view.zoom, beat_s, rate);
     }
 
     fn poll_scope_job(&mut self) {
@@ -5406,10 +5660,11 @@ impl TimegrapherApp {
         // One reading per averaging time: a new reading comes every half
         // second, and the ones between share most of their beats, so counting
         // them all would stack up repeats and look surer than it is.
-        let every = self.average_s;
+        let every = self.average_for(pane);
+        let trend = self.trend_for(every);
         let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
             let mut last = f64::NEG_INFINITY;
-            self.trend
+            trend
                 .iter()
                 .filter(|p| inside(p.t))
                 .filter_map(|p| Some((p.t, f(p)?)))
@@ -5633,8 +5888,10 @@ impl TimegrapherApp {
     fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
         let pal = theme::pal(ui);
         let weak = pal.text_tertiary;
+        let average = self.average_for(pane);
+        let trend = self.trend_for(average);
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
-            self.trend
+            trend
                 .iter()
                 .filter_map(|p| f(p).map(|v| [p.t, v]))
                 .collect()
@@ -5649,7 +5906,7 @@ impl TimegrapherApp {
                 vec![ChartLine {
                     name: format!(
                         "Rate in seconds per day, {} average",
-                        fields::duration(self.average_s)
+                        fields::duration(average)
                     ),
                     pts: pick(|p| p.rate),
                     color: pal.trace_rate,
@@ -6097,10 +6354,13 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         UiResponse::None
     }
 
+    /// A pane averaging over a time of its own names it.
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
-        RichText::new(pane.title())
-            .font(theme::semibold(12.5))
-            .into()
+        let title = match self.app.pane_average.get(pane) {
+            Some(&s) => format!("{} · {}", pane.title(), fields::duration(s)),
+            None => pane.title().to_string(),
+        };
+        RichText::new(title).font(theme::semibold(12.5)).into()
     }
 
     fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile_id: TileId) -> bool {
@@ -6187,9 +6447,29 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 "Show the same stretch of time as the paper strip, so the charts line up with \
                  it and move with it. Off, the charts show the whole session.",
             );
+            ui.add_space(6.0);
+            self.app.pane_average_choice(ui, *pane);
+            ui.label(RichText::new("Average Over").size(12.5))
+                .on_hover_text(PANE_AVERAGE_HINT);
             ui.add_space(8.0);
         }
-        for (name, color) in chart_key(*pane, pal).into_iter().rev() {
+        // The key only when all of it fits beside the tab's title.
+        let key = chart_key(*pane, pal);
+        let font = egui::TextStyle::Small.resolve(ui.style());
+        let needed: f32 = key
+            .iter()
+            .map(|(name, _)| {
+                ui.fonts_mut(|f| {
+                    f.layout_no_wrap(name.to_string(), font.clone(), pal.text_secondary)
+                })
+                .size()
+                .x + 26.0
+            })
+            .sum();
+        if needed + 80.0 > ui.available_width() {
+            return;
+        }
+        for (name, color) in key.into_iter().rev() {
             ui.add_space(6.0);
             ui.label(RichText::new(name).small().color(pal.text_secondary));
             theme::dot(ui, color);
@@ -6303,11 +6583,14 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
 /// How the files in a folder are put together, said where a folder is
 /// opened. The command line's `long` and `series` read folders the same way.
 const FOLDER_RULE: &str = "A recording this app saved (its own folder, or the folder you saved it \
-     into), or a folder of WAV or FLAC segments of one long run, joined end to end in file-name \
-     order (audio-001.wav, audio-002.wav, …).";
+     into), or a folder of WAV or FLAC segments of one long run, joined end to end in the order \
+     its session.toml lists them, else in file-name order with numbers counted (part2 before \
+     part10).";
 
 /// The recordings to analyse for `path`: the file itself, or a folder's
-/// WAV and FLAC files in name order (the segments of one long recording).
+/// WAV and FLAC files (the segments of one long recording) in the order
+/// its session file lists them, then any it doesn't list in natural name
+/// order.
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Ok(vec![path.to_path_buf()]);
@@ -6328,8 +6611,97 @@ fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
             path.display()
         ));
     }
-    files.sort();
+    files.sort_by(|a, b| natural_order(&file_name(a), &file_name(b)));
+    if let Some(listed) = listed_order(path) {
+        let rank = |f: &PathBuf| listed.iter().position(|l| l == &file_name(f));
+        // A stable sort keeps the unlisted ones in name order, after.
+        files.sort_by_key(|f| rank(f).unwrap_or(usize::MAX));
+    }
     Ok(files)
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Names compared with each run of digits read as a number, so part2
+/// comes before part10, and otherwise ignoring case.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    fn chunks(s: &str) -> Vec<(bool, String)> {
+        let mut out: Vec<(bool, String)> = Vec::new();
+        for c in s.chars() {
+            let digit = c.is_ascii_digit();
+            match out.last_mut() {
+                Some((d, run)) if *d == digit => run.push(c),
+                _ => out.push((digit, c.to_string())),
+            }
+        }
+        out
+    }
+    let (ca, cb) = (chunks(a), chunks(b));
+    for ((da, ra), (db, rb)) in ca.iter().zip(&cb) {
+        let o = match (da, db) {
+            (true, true) => {
+                let (ta, tb) = (ra.trim_start_matches('0'), rb.trim_start_matches('0'));
+                ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb))
+            }
+            _ => ra.to_lowercase().cmp(&rb.to_lowercase()),
+        };
+        if o.is_ne() {
+            return o;
+        }
+    }
+    ca.len().cmp(&cb.len()).then_with(|| a.cmp(b))
+}
+
+/// The files a folder's session file lists as recordings, in its order:
+/// none when it has no session file or lists the folder as a whole.
+fn listed_order(dir: &Path) -> Option<Vec<String>> {
+    let text = std::fs::read_to_string(dir.join(MANIFEST)).ok()?;
+    let m: Manifest = toml::from_str(&text).ok()?;
+    let mut names: Vec<String> = Vec::new();
+    for e in &m.recordings {
+        let f = dir.join(&e.file);
+        if f.is_file() && f.parent().is_some_and(|p| p == dir) {
+            let n = file_name(&f);
+            if !names.contains(&n) {
+                names.push(n);
+            }
+        }
+    }
+    (!names.is_empty()).then_some(names)
+}
+
+/// Where the order the files are joined in disagrees with when they were
+/// written: a file whose modification time is earlier than the one before
+/// it by more than that file's own length. Said so the order can be
+/// checked, not changed.
+fn order_warning(files: &[PathBuf]) -> Option<String> {
+    let when = |f: &PathBuf| std::fs::metadata(f).and_then(|m| m.modified()).ok();
+    let length = |f: &PathBuf| {
+        timegrapher_core::audio::info(f)
+            .ok()
+            .and_then(|i| i.frames.map(|n| n as f64 / i.sample_rate.max(1) as f64))
+    };
+    for pair in files.windows(2) {
+        let (Some(a), Some(b)) = (when(&pair[0]), when(&pair[1])) else {
+            continue;
+        };
+        let Ok(back) = a.duration_since(b) else {
+            continue;
+        };
+        if back.as_secs_f64() > length(&pair[0]).unwrap_or(0.0) {
+            return Some(format!(
+                "{} was written before {}, which comes ahead of it: check the order the files \
+                 are joined in.",
+                file_name(&pair[1]),
+                file_name(&pair[0])
+            ));
+        }
+    }
+    None
 }
 
 /// The folder to open for `path`: itself when it holds sound (or isn't a
@@ -6538,7 +6910,12 @@ fn banner(
 
 /// A beat on the Scope: its index, its time's bits (so a new session's
 /// beat of the same index is another) and the span drawn.
-type ScopeKey = (i64, u64, scope::Zoom);
+type ScopeKey = (i64, u64, scope::Zoom, u64);
+
+/// What a pane's Average Over does.
+const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
+     As Readings follows Average Over beside the Readings caption, so changing that moves this \
+     pane too; a time of its own stays put and is named on the pane's tab.";
 
 /// Everything Average Over sets, and what it leaves alone.
 /// The speeds Replay offers, times the recording's own.
@@ -7027,6 +7404,57 @@ mod tests {
         std::fs::create_dir_all(&empty).unwrap();
         assert!(recordings_in(&empty).is_err());
         assert!(take_folder(&empty).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Numbers in names count as numbers; a session file's list comes
+    /// first; files written out of the joining order are pointed out.
+    #[test]
+    fn folder_files_join_in_the_agreed_order() {
+        use std::cmp::Ordering::Less;
+        assert_eq!(natural_order("part2.wav", "part10.wav"), Less);
+        assert_eq!(natural_order("take_part01-009", "take_part01-010"), Less);
+        assert_eq!(natural_order("take_part01-099", "take_part02-001"), Less);
+        assert_eq!(natural_order("A.wav", "b.wav"), Less);
+
+        let dir = std::env::temp_dir().join(format!("tg-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = |name: &str| {
+            let a = timegrapher_core::audio::Audio {
+                samples: vec![0.0; 8000],
+                sample_rate: 8000,
+            };
+            timegrapher_core::audio::write_wav(&dir.join(name), &a).unwrap();
+        };
+        for n in ["b-1.wav", "a-2.wav", "a-10.wav", "a-1.wav"] {
+            part(n);
+        }
+        let names = |d: &Path| -> Vec<String> {
+            recordings_in(d)
+                .unwrap()
+                .iter()
+                .map(|f| file_name(f))
+                .collect()
+        };
+        assert_eq!(names(&dir), ["a-1.wav", "a-2.wav", "a-10.wav", "b-1.wav"]);
+        // Written within a second of each other, one second long each.
+        assert_eq!(order_warning(&recordings_in(&dir).unwrap()), None);
+        std::fs::write(
+            dir.join(MANIFEST),
+            "[[recording]]\nfile = \"b-1.wav\"\n\n[[recording]]\nfile = \"a-2.wav\"\n",
+        )
+        .unwrap();
+        assert_eq!(names(&dir), ["b-1.wav", "a-2.wav", "a-1.wav", "a-10.wav"]);
+        // a-2 written an hour before b-1, which is joined ahead of it.
+        let f = std::fs::File::options()
+            .write(true)
+            .open(dir.join("a-2.wav"))
+            .unwrap();
+        f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+            .unwrap();
+        let w = order_warning(&recordings_in(&dir).unwrap()).unwrap();
+        assert!(w.starts_with("a-2.wav was written before b-1.wav"), "{w}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7813,6 +8241,51 @@ mod tests {
         let (a, b) = app.chart_window().unwrap();
         assert!((b - app.end_s()).abs() < 1e-9);
         assert!((b - a - app.strip.span_s).abs() < 1e-9);
+    }
+
+    /// A pane follows Readings' Average Over until given a time of its
+    /// own, which then stays put and keeps its own readings.
+    #[test]
+    fn a_pane_follows_readings_unless_set() {
+        let mut app = synthetic(40.0, 0.0);
+        assert_eq!(app.average_for(Pane::Rate), 10.0);
+        app.set_pane_average(Pane::Rate, Some(30.0));
+        assert_eq!(app.average_for(Pane::Rate), 30.0);
+        assert_eq!(app.average_for(Pane::Amplitude), 10.0);
+        let own = app.trend_for(30.0);
+        assert!(!own.is_empty());
+        assert!(own.last().unwrap().t > 30.0);
+        app.set_average(5.0);
+        assert_eq!(app.average_for(Pane::Rate), 30.0);
+        assert_eq!(app.average_for(Pane::Amplitude), 5.0);
+        assert!(!app.trend_for(30.0).is_empty());
+        // Back to following: its own readings are dropped.
+        app.set_pane_average(Pane::Rate, None);
+        assert_eq!(app.average_for(Pane::Rate), 5.0);
+        assert!(app.other_trends.is_empty());
+        // Picking Readings' own time is the same as following it.
+        app.set_pane_average(Pane::Rate, Some(5.0));
+        assert!(app.pane_average.is_empty());
+    }
+
+    /// The per-pane times and the Steadiness series come back next time,
+    /// with every series off read as all on.
+    #[test]
+    fn pane_times_and_series_are_kept() {
+        let mut app = synthetic(5.0, 0.0);
+        app.set_pane_average(Pane::Strip, Some(60.0));
+        app.steady_series = [false, true, false];
+        let s = app.settings();
+        let mut back = TimegrapherApp::with_devices(Vec::new(), None, false);
+        back.apply_settings(s.clone());
+        assert_eq!(back.average_for(Pane::Strip), 60.0);
+        assert_eq!(back.steady_series, [false, true, false]);
+        let mut none = s;
+        none.steady_series = [false; 3];
+        none.pane_average = vec![(Pane::Watch, 30.0), (Pane::Rate, 7.0)];
+        back.apply_settings(none);
+        assert_eq!(back.steady_series, [true; 3]);
+        assert!(back.pane_average.is_empty());
     }
 
     #[test]

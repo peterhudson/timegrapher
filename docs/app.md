@@ -43,7 +43,8 @@ being analysed, and **Analyse All**) and **Replay Speed**. Below, under
 recording, by **Open…**, **Open Folder…**, a path typed into the box and
 Enter, or the command line, analyses it all at once, which is how a
 watchmaker looks back through a take; **Replay** plays a file through as if
-live, at **Replay Speed** (from half to 16 times its own speed, changeable
+live (a folder's files one after the other, in the order it is analysed
+in, with the watch from its session file), at **Replay Speed** (from half to 16 times its own speed, changeable
 while it plays; the readings are the same at any speed), and **Analyse
 All**, shown during a replay and after it, goes back to the whole
 recording analysed at once without opening it again, keeping the settings
@@ -87,11 +88,15 @@ the Watch pane or the File menu, a folder typed into the path box, or `timegraph
 A saved take opens from its own folder or from the folder it was saved
 into, when that holds just the one take; with several, the message names
 them so one can be picked.
-Its WAV and FLAC files are joined end to end in file-name order, as
-`timegrapher long` and `series` read a folder: name segments so that they
-sort in time order (`audio-001.wav`, `audio-002.wav`, … or a time stamp
-with leading zeros); the files' dates are not used. A folder can't be
-replayed in real time. A 16-hour night takes some minutes to analyse; the
+Its WAV and FLAC files are joined end to end in the order its
+`session.toml` lists them as `[[recording]]` entries, with any it doesn't
+list after them; without such a list, in natural name order, where a run
+of digits counts as a number (`part2` before `part10`, `take_part01-099`
+before `take_part02-001`). The files' dates never change the order, but
+when a file was written earlier than the one joined ahead of it by more
+than that file's own length, the window says so, so a wrongly named file
+can be spotted. **Replay** plays a folder's files one after the other in
+the same order. A 16-hour night takes some minutes to analyse; the
 window shows the hours done, the time left and the files in order, and
 Steadiness then covers the whole night.
 
@@ -104,7 +109,12 @@ Average Over, beside the Readings caption). Early in a session, or after a pause
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
 180 s"); they never fit across a pause or gap, since the watch may have
-been moved or have drifted meanwhile. The big amplitude is the average of the two
+been moved or have drifted meanwhile. The panes that average (the Paper Strip's
+overlays, the Tick Tock Profile, the three charts and the three
+distributions) follow Readings' Average Over unless set otherwise: each has
+its own **Average Over** in its toolbar (the charts' in their tab bar),
+"As Readings" by default or one of the presets, and a pane with its own
+time names it in its tab ("Rate · 30 s"). The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
 median of its 2 s windows, roughly how far it could be off from their
 scatter alone. It is precision, not accuracy: a wrong lift angle moves
@@ -159,7 +169,14 @@ while the watch settles (20 s) and is measured (60 s), times the project
 chose. It then says which position to turn the watch to; press the
 button naming it (**Start CL Measurement**) once it is there. **Measure
 DD Again**, naming the position just measured (or the one under way),
-repeats it, after a knock for instance, and **Stop** ends the test. Each position is a
+repeats it, after a knock for instance, and **Stop** ends the test.
+Only the 60 s measured in each position count. The strip's position
+ticker says so over the rest, with its beats drawn faintly:
+**Settling** over each 20 s settle, and **Not Measured** over the time
+after a measurement while the watch is being turned, over a measurement
+given up for Measure Again, and over the part of a position measured
+when the test was stopped. The marks stay after the test until a new
+session. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
 session`. After the sixth, **Finish** reads the six measured stretches
@@ -268,7 +285,12 @@ same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not
 tab beside the Tick Tock Profile, set in its toolbar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
-after, with the profile's Unlock and Drop marks. **200 ms** shows one
+after, with the profile's Unlock and Drop marks. **5 ms** (3.5 ms before
+the drop to 1.5 ms after) and **10 ms** (8 ms before to 2 ms after) show
+the drop closer still, and **50 ms** (15 ms before to 35 ms after) the
+sound and what rings on after it, all with the same marks. **One Beat**
+runs from 15 ms before one beat to 15 ms before the next, at the
+watch's beat rate (125 ms at 28,800 bph, 200 ms at 18,000). **200 ms** shows one
 row each from 20 ms before the beat to 180 ms after, so the next beat
 shows too. **400 ms** shows every beat in one grey row, three or four
 beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
@@ -384,7 +406,9 @@ levels, a step, a trend, correlation between readings, or none of these),
 with no verdict word or colour, and under it the statistics: readings,
 median, standard deviation, the scatter from one reading to the next, the
 lag-1 correlation and Ljung–Box p-value, and the trend and period when
-found. Under Each Series, in the Steadiness toolbar,
+found. **Rate**, **Amplitude** and **Beat Error**, in the Steadiness
+toolbar, choose which series are shown; at least one stays on. Under Each
+Series, in the same toolbar,
 chooses what is drawn under every series:
 **Readings** (the readings in time order, with the stretches of constant
 level the change finder found and, for two states, the two levels dashed),
