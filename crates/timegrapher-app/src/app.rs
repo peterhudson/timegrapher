@@ -1261,6 +1261,28 @@ impl TimegrapherApp {
                 ..Default::default()
             })
             .collect();
+        // A Positions Test's own stretches (after its 20 s settling, for
+        // its 60 s), so `timegrapher session` reads the seconds its table
+        // showed.
+        let test: Vec<RecordingEntry> = self
+            .guided
+            .as_ref()
+            .map_or(&[][..], |t| t.stretches())
+            .iter()
+            .filter_map(|&(pos, from, to)| {
+                Some(RecordingEntry {
+                    file: ".".into(),
+                    position: Some(pos.code().to_string()),
+                    clock: Some("clock.csv".into()),
+                    start_s: Some(self.session.audio_of(from)?),
+                    end_s: Some(self.session.audio_of(to)?),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        if !test.is_empty() {
+            m.recordings = test;
+        }
         m
     }
 
@@ -2726,7 +2748,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// The position picked: a new stretch, noted in the recording.
     /// While listening, a break of more than [`MOVE_GAP_S`] in the beats
     /// with no position change in it may be the watch being moved: ask.
     fn watch_for_moves(&mut self) {
@@ -2749,6 +2770,7 @@ impl TimegrapherApp {
         }
     }
 
+    /// The position picked: a new stretch, noted in the recording.
     fn change_position(&mut self, pos: Position) {
         self.move_prompt = None;
         self.set_position(pos);
@@ -4349,7 +4371,6 @@ impl TimegrapherApp {
         self.guided = Some(guided::Test::new());
     }
 
-    /// The Positions Test's banner, and what its buttons ask for.
     /// After a break in the sound while listening: was the watch moved?
     /// The position buttons mark it; it goes by itself a minute later.
     fn move_banner(&mut self, ui: &mut egui::Ui) {
@@ -4402,6 +4423,7 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
+    /// The Positions Test's banner, and what its buttons ask for.
     fn guided_banner(&mut self, ui: &mut egui::Ui) {
         let Some(mut test) = self.guided.take() else {
             return;
@@ -5744,8 +5766,6 @@ fn calibre_matches(typed: &str, c: &calibres::Calibre) -> bool {
     want.is_empty() || squash(&format!("{}{}", c.maker, c.calibre)).contains(&want)
 }
 
-/// The position a recording's file or folder name carries, as a word of
-/// its own: `reverso_DU_01.flac` is dial up.
 /// The Watch settings a take is read with.
 #[derive(Clone, Debug, PartialEq)]
 struct WatchSetup {
@@ -5768,6 +5788,8 @@ impl Default for WatchSetup {
     }
 }
 
+/// The position a recording's file or folder name carries, as a word of
+/// its own: `reverso_DU_01.flac` is dial up.
 fn position_in_name(path: &Path) -> Option<Position> {
     let name = path.file_stem()?.to_str()?;
     let words: Vec<&str> = name
@@ -6811,9 +6833,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Record, save, carry on, pause, change position, resume, save again
-    /// and reopen: sound after a save still counts as unsaved, Save Again
-    /// keeps it, and the saved take keeps the position it started in.
     /// Opening a recording over a stopped microphone session with unsaved
     /// sound asks first and keeps the sound; Recording chosen sets the
     /// session aside instead of showing it as a recording.
@@ -6892,6 +6911,9 @@ mod tests {
         assert_eq!(p("du_then_dd.flac"), None);
     }
 
+    /// Record, save, carry on, pause, change position, resume, save again
+    /// and reopen: sound after a save still counts as unsaved, Save Again
+    /// keeps it, and the saved take keeps the position it started in.
     #[test]
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
@@ -7071,6 +7093,54 @@ mod tests {
         frames(&mut app, &ctx, 2);
         app.relayout(false);
         frames(&mut app, &ctx, 2);
+    }
+
+    /// A take saved during a Positions Test lists the test's own measured
+    /// stretches, so `timegrapher session` reads the seconds the table did.
+    #[test]
+    fn a_positions_test_take_lists_its_measured_stretches() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = synthetic(5.0, 0.0);
+        app.session.listen();
+        let info = app.info("test", 48000, 16);
+        app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 80.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let r = app.session.recorder.as_mut().unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: audio.samples,
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        let mut test = guided::Test::new();
+        test.tick(0.0);
+        test.tick(guided::SETTLE_S + guided::MEASURE_S);
+        let next = test.advance(80.0).expect("a second position");
+        app.session.move_to(80.0, Position::DialUp, next).unwrap();
+        test.tick(80.0);
+        test.tick(80.0 + guided::SETTLE_S + guided::MEASURE_S);
+        app.guided = Some(test);
+        let m = app.take_manifest();
+        let got: Vec<_> = m
+            .recordings
+            .iter()
+            .map(|e| (e.position.clone().unwrap(), e.start_s, e.end_s))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("DU".to_string(), Some(20.0), Some(80.0)),
+                ("DD".to_string(), Some(100.0), Some(160.0)),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A saved take carries a session file with the watch, its calibre,
