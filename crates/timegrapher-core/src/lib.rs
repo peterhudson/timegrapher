@@ -19,7 +19,6 @@ pub mod diagnose;
 pub mod distribution;
 pub mod dsp;
 pub mod excerpt;
-pub mod faults;
 pub mod filter;
 pub mod histogram;
 pub mod live;
