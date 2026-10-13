@@ -901,10 +901,16 @@ impl TimegrapherApp {
             check_updates,
         } = s;
         self.check_at_start = check_updates;
+        // Readings' time first: setting it drops every pane's own.
+        if AVERAGES.contains(&average_s) {
+            self.set_average(average_s);
+        }
         self.pane_average = pane_average
             .into_iter()
             .filter(|(p, s)| Pane::AVERAGING.contains(p) && AVERAGES.contains(s))
+            .filter(|&(_, s)| s != self.average_s)
             .collect();
+        self.sync_trends();
         self.cal.migrate(custom_calibres);
         self.cal.recent = recent_calibres;
         self.cal.recent.truncate(calibre_ui::RECENT);
@@ -915,9 +921,6 @@ impl TimegrapherApp {
             !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
         }) {
             self.device = Some(d);
-        }
-        if AVERAGES.contains(&average_s) {
-            self.set_average(average_s);
         }
         let mut strip = strip;
         strip.set_half_width(strip.half_width_ms);
