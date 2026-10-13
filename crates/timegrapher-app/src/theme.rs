@@ -593,87 +593,6 @@ fn segmented_body<T: PartialEq + Copy>(
     changed
 }
 
-/// A list of choices one above another, the picked one highlighted, like a
-/// source list: for more choices than a segmented control holds. True when
-/// the choice changed.
-pub fn choice_list<T: PartialEq + Copy>(
-    ui: &mut Ui,
-    value: &mut T,
-    choices: &[(T, &str, &str)],
-) -> bool {
-    let p = pal(ui);
-    if in_toolbar(ui) {
-        // In a pane's toolbar the list folds into a menu.
-        let mut changed = false;
-        let current = choices.iter().find(|c| c.0 == *value).map_or("", |c| c.1);
-        egui::ComboBox::from_id_salt(ui.next_auto_id())
-            .selected_text(RichText::new(current).size(12.5))
-            .show_ui(ui, |ui| {
-                for &(v, label, hint) in choices {
-                    let r = ui.selectable_label(*value == v, label);
-                    let r = if hint.is_empty() {
-                        r
-                    } else {
-                        r.on_hover_text(hint)
-                    };
-                    if r.clicked() && *value != v {
-                        *value = v;
-                        changed = true;
-                    }
-                }
-            });
-        return changed;
-    }
-    let mut changed = false;
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 2.0;
-        for &(v, label, hint) in choices {
-            let selected = *value == v;
-            let (rect, resp) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::click());
-            let fill = if selected {
-                p.raised
-            } else if resp.hovered() {
-                p.control_hover
-            } else {
-                Color32::TRANSPARENT
-            };
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), fill);
-            let text = if selected {
-                (semibold(12.5), p.text)
-            } else {
-                (FontId::proportional(12.5), p.text_secondary)
-            };
-            ui.painter().text(
-                rect.left_center() + Vec2::new(10.0, 0.0),
-                egui::Align2::LEFT_CENTER,
-                label,
-                text.0,
-                text.1,
-            );
-            resp.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::WidgetType::SelectableLabel,
-                    ui.is_enabled(),
-                    selected,
-                    label,
-                )
-            });
-            let resp = if hint.is_empty() {
-                resp
-            } else {
-                resp.on_hover_text(hint)
-            };
-            if resp.clicked() && !selected {
-                *value = v;
-                changed = true;
-            }
-        }
-    });
-    changed
-}
-
 /// The button for the one thing to do next: filled with the accent colour.
 pub fn primary(ui: &Ui, text: &str) -> egui::Button<'static> {
     let p = pal(ui);
@@ -930,6 +849,12 @@ pub enum Icon {
     Profile,
     Scope,
     Steadiness,
+    Periods,
+    Cycle,
+    Autocorrelation,
+    Allan,
+    Cusum,
+    Fft,
     Isochronism,
     Chart,
     Distribution,
@@ -1038,6 +963,82 @@ pub fn draw_icon(painter: &egui::Painter, r: egui::Rect, icon: Icon, c: Color32)
                 (0.9, 0.38),
                 (1.0, 0.3),
             ]);
+        }
+        // A low floor with two peaks standing out of it.
+        Icon::Periods => line(&[
+            (0.0, 0.85),
+            (0.15, 0.8),
+            (0.25, 0.85),
+            (0.32, 0.2),
+            (0.39, 0.85),
+            (0.55, 0.8),
+            (0.66, 0.85),
+            (0.72, 0.5),
+            (0.78, 0.85),
+            (1.0, 0.82),
+        ]),
+        // One cycle's shape with the cycles' dots about it.
+        Icon::Cycle => {
+            let pts: Vec<(f32, f32)> = (0..=16)
+                .map(|i| {
+                    let t = i as f32 / 16.0;
+                    (t, 0.5 - 0.3 * (t * std::f32::consts::TAU).sin())
+                })
+                .collect();
+            line(&pts);
+            for (x, y) in [
+                (0.1, 0.25),
+                (0.3, 0.12),
+                (0.45, 0.6),
+                (0.7, 0.9),
+                (0.9, 0.62),
+            ] {
+                painter.circle_filled(at(x, y), 1.2, c);
+            }
+        }
+        // Stems from a baseline, dying away.
+        Icon::Autocorrelation => {
+            line(&[(0.0, 0.6), (1.0, 0.6)]);
+            for (i, h) in [0.5_f32, 0.3, -0.15, 0.12, -0.08, 0.05]
+                .into_iter()
+                .enumerate()
+            {
+                let x = 0.05 + i as f32 * 0.18;
+                line(&[(x, 0.6), (x, 0.6 - h)]);
+            }
+        }
+        // Falling, then turning up again.
+        Icon::Allan => {
+            let pts: Vec<(f32, f32)> = (0..=12)
+                .map(|i| {
+                    let t = i as f32 / 12.0;
+                    (t, 0.2 + 1.9 * (t - 0.6).powi(2))
+                })
+                .collect();
+            line(&pts);
+            for t in [0.0_f32, 0.3, 0.6, 0.9] {
+                painter.circle_filled(at(t, 0.2 + 1.9 * (t - 0.6).powi(2)), 1.3, c);
+            }
+        }
+        // A tent: the running sum rises to the step and falls after it.
+        Icon::Cusum => line(&[
+            (0.0, 0.8),
+            (0.15, 0.65),
+            (0.3, 0.5),
+            (0.5, 0.2),
+            (0.65, 0.4),
+            (0.8, 0.6),
+            (1.0, 0.85),
+        ]),
+        // Bars of a spectrum, one standing tall.
+        Icon::Fft => {
+            for (i, h) in [0.2_f32, 0.3, 0.85, 0.25, 0.4, 0.15, 0.2]
+                .into_iter()
+                .enumerate()
+            {
+                let x = 0.04 + i as f32 * 0.15;
+                line(&[(x, 0.92), (x, 0.92 - h)]);
+            }
         }
         // Rate against amplitude: a curve that turns.
         Icon::Isochronism => {

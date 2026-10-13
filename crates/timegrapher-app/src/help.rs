@@ -63,11 +63,13 @@ pub const READINGS: &[&str] = &[
      the rate. They never reach back across a pause, since the watch may have been \
      moved or handled.",
     "Average Over reaches further than the readings. It also sets every point on the \
-     Rate, Amplitude and Beat Error charts and the lines drawn over the Paper Strip, \
+     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
+     Paper Strip, \
      the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
      beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
      Each of those panes can take a time of its own instead, in its toolbar's Average \
-     Over, and then names it on its tab. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
+     Over, and then names it on its tab, until Average Over here is changed: that puts \
+     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
      the Positions Test a minute a position, whatever it is set to.",
     "The tick is simply the first beat heard: the sound can't tell which pallet stone \
      made which beat.",
@@ -236,20 +238,21 @@ pub const STEADINESS: &[&str] = &[
      it are the statistics: readings, median, standard deviation, the scatter from one \
      reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
      trend and period when found.",
-    "Rate, Amplitude and Beat Error, in the Steadiness toolbar, choose which series \
-     are shown; at least one stays on.",
-    "Under Each Series, in the Steadiness toolbar, picks what is \
-     drawn under each series. Readings: every \
-     reading in time order (10 s rate readings, 2 s amplitude and beat error \
-     readings), with the stretches of constant level and the two state levels. \
-     Periods: how strongly the readings repeat at each period, with the 1% \
-     false-alarm line dashed and the wheels' periods marked. Cycle: the readings \
+    "Each view is a pane of its own, with its icon under Steadiness at the top, so two \
+     can sit side by side. Rate, Amplitude and Beat Error, in each pane's toolbar, \
+     choose which series that pane shows; at least one stays on.",
+    "Readings Over Time: every reading in time order (10 s rate readings, 2 s \
+     amplitude and beat error readings), with the stretches of constant level and the \
+     two state levels. Periods: how strongly the readings repeat at each period, with \
+     the 1% false-alarm line dashed and the wheels' periods marked. Cycle: the readings \
      folded at the cycle found. Autocorrelation: how much a reading resembles the one \
      a lag later, with the band independent readings stay inside. Allan Deviation: the \
      scatter of averages against the dashed line independent readings follow, on \
      logarithmic axes; the lowest point is the averaging time that gives the most \
      repeatable reading. CUSUM: the running sum of distances from the mean, which \
-     stays inside the dashed lines unless the level changes.",
+     stays inside the dashed lines unless the level changes. FFT: the size of the sine \
+     wave at each period, like Witschi's FFT, in the series' own units (the rate's in \
+     milliseconds of beat timing), with the wheels' periods marked.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
      in the background, again every minute while it grows; for a recording, they \
