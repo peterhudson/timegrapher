@@ -141,6 +141,8 @@ also remain new. `--write-baseline` accepts successful recording-label changes
 (including changed intervals) and numerical movement after review. It refuses
 to write when required sessions or readings are missing or unreadable, preserving
 the existing baseline.
+An absent baseline can be created; an existing baseline that cannot be read or
+parsed is an error and is not replaced.
 
 ## In CI
 

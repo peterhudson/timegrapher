@@ -93,3 +93,37 @@ fn missing_required_session_fails_but_an_explicit_exclusion_does_not() {
     assert_eq!(doc["missing_sessions"], json!([]));
     assert_eq!(doc["not_run"], json!(["removed"]));
 }
+
+#[test]
+fn an_unreadable_existing_baseline_is_not_replaced() {
+    let f = Fixture::new("invalid-utf8", json!({}));
+    std::fs::create_dir_all(f.0.join("takes")).unwrap();
+    std::fs::write(f.0.join("corpus.json"), "{\"takes\": []}").unwrap();
+    let baseline = f.0.join("baseline.json");
+    let original = b"existing baseline with invalid UTF-8: \xff";
+    std::fs::write(&baseline, original).unwrap();
+    let out = f
+        .command()
+        .args(["--smoke", "--write-baseline"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("baseline.json"));
+    assert_eq!(std::fs::read(&baseline).unwrap(), original);
+
+    // Holdout still ignores a baseline read error and never rewrites it.
+    let out = f.command().arg("--holdout").output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(std::fs::read(&baseline).unwrap(), original);
+
+    // The same run can create a genuinely absent baseline.
+    std::fs::remove_file(&baseline).unwrap();
+    let out = f
+        .command()
+        .args(["--smoke", "--write-baseline"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let created: Value = serde_json::from_slice(&std::fs::read(&baseline).unwrap()).unwrap();
+    assert_eq!(created["schema"], "timegrapher.regress-baseline/1");
+}

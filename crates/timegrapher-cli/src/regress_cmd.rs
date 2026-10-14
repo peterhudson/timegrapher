@@ -588,12 +588,17 @@ pub fn run(o: &Options) -> Result<bool, String> {
             Some(b)
         }
         // Holdout takes are judged against tg alone.
-        Err(_) if o.write_baseline || o.holdout => None,
+        Err(_) if o.holdout => None,
+        // Only an absent baseline may be created. Other read errors must not
+        // discard required or unselected entries from an existing baseline.
+        Err(e) if o.write_baseline && e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
-            return Err(format!(
-                "{}: {e} (write one with --write-baseline)",
-                bpath.display()
-            ))
+            let hint = if e.kind() == std::io::ErrorKind::NotFound {
+                " (write one with --write-baseline)"
+            } else {
+                " (existing baseline could not be read; not replaced)"
+            };
+            return Err(format!("{}: {e}{hint}", bpath.display()));
         }
     };
     // Holdout takes are read by --holdout and nothing else.
