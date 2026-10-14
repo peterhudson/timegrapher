@@ -1,8 +1,13 @@
+# Kept the same as the entry the app writes from Help > Add to Applications
+# Menu (crates/timegrapher-app/src/desktop.rs), apart from Exec. Under Wayland
+# the desktop finds the window's icon through StartupWMClass, which matches
+# the app id "timegrapher".
 [Desktop Entry]
 Type=Application
 Name=Timegrapher
 Comment=Measure a mechanical watch's rate, amplitude and beat error from a microphone
 Exec=timegrapher-app %f
 Icon=timegrapher
+StartupWMClass=timegrapher
 Categories=Utility;Science;
 Terminal=false
