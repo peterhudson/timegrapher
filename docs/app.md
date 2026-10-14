@@ -346,8 +346,9 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 unlock and from the drop) over time. Each reading keeps its colour across
 the app (rate red, amplitude purple, beat error yellow), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
-dashed and from the tocks dotted, beat error from the drop dashed, with a
-blue or orange swatch for Tick and Tock in the box at the pointer. A chart
+dashes purple over blue and from the tocks purple over orange, and beat
+error from the drop is a fainter dashed yellow; the key and the box at the
+pointer draw them the same way. A chart
 with more than one line has its key at the right of its tab bar, where it
 covers nothing. Each chart labels its vertical scale at two marks or more,
 in small text, however short the chart; a long time at the right end of
@@ -543,23 +544,26 @@ been published yet"). The request carries no account or identifier.
   says nothing about it.
 - **Calibre.** Not Set, a calibre from the list (`timegrapher_core::calibres`,
   some 4,500 of them, each with its sources), or one of your own.
-  - **The menu.** Closed, it offers Not Set, the calibres picked lately
-    (**Recent**), the **Short List** by maker, **Your Calibres**, and **New
-    Custom Calibre…**. **Show All Calibres** opens every calibre by maker,
-    the common and modern makers first, then the uncommon and vintage ones,
-    each maker folded until opened.
+  - **The menu.** It offers Not Set, the calibres picked lately
+    (**Recent**), the **Short List** by maker and **Your Calibres**, with
+    **Manage Calibres…** at its foot and as a button under it.
+  - **Manage Calibres.** A window over the app with every calibre in a
+    list down the left, by maker (the common and modern makers first, your
+    own calibres at the top), and the one selected in full on the right.
+    **All**, **Short List** and **Yours** choose what the list shows.
+    Typing in its search box searches the whole list. Every word must
+    match a calibre's number, one of its other names, or its maker under
+    any of the maker's names ("dd 3235", "sw200", "seagull st19"), and the
+    best matches come first. **Use for This Watch** sets the selected
+    calibre under Watch. **New Custom Calibre…** adds one, named as typed
+    in the search box. **Done**, Escape or a click outside closes it.
   - **The short list.** It starts as the list's common and modern
-    calibres. A tickbox beside every calibre, wherever it shows, puts it on
+    calibres. In Manage Calibres a tickbox beside every calibre puts it on
     the short list or takes it off, and **Tick All** and **Untick All**
-    under a maker do a whole maker at once: untick the clones, say, or keep
-    just one maker's calibres. **Reset the Short List** goes back to the
-    one the app comes with. The short list and the recent picks are kept
-    with the app's settings.
-  - **Search.** Typing searches the whole list, your own calibres among
-    it. Every word must match a calibre's number, one of its other names,
-    or its maker under any of the maker's names ("dd 3235", "sw200",
-    "seagull st19"). The best matches come first, up to 150 of them.
-    **New Custom Calibre "…"** adds one by the name typed.
+    beside a maker do a whole maker at once: untick the clones, say, or
+    keep just one maker's calibres. **Reset the Short List** goes back to
+    the one the app comes with. The short list and the recent picks are
+    kept with the app's settings.
   - **What a pick does.** It fills in the calibre's lift angle, where the
     list gives one, and names the cycles Steadiness finds after its own
     wheels. If the watch beats at another rate than the calibre, a line
@@ -568,7 +572,7 @@ been published yet"). The request carries no account or identifier.
   - **The panel.** Under the menu, a line gives the maker, beat rate, lift
     angle and escape wheel, or says which of them the list doesn't give.
     **Wheels and Sources**, folded until opened, lists each wheel's time
-    for one turn:
+    for one turn, as Manage Calibres does for the calibre selected there:
     - The six every lever movement has (balance, escape, fourth, third
       and centre wheels, and the barrel) come first, then any other the
       list names.
@@ -585,8 +589,8 @@ been published yet"). The request carries no account or identifier.
   - **Share with the Project….** It opens a GitHub issue in the browser,
     filled in with what you added to the calibre, to look over and send.
     Nothing is sent from the app.
-  - **A custom calibre.** Its panel also has its name, maker, beat rate
-    and lift angle, and **Delete Calibre**.
+  - **A custom calibre.** Its panel, and Manage Calibres, also have its
+    name, maker, beat rate and lift angle, and **Delete Calibre**.
   - **What isn't kept.** The pick itself, like the lift angle, is about
     the watch on the stand and isn't kept. Not Set names cycles after the
     wheels most calibres at the beat rate share.

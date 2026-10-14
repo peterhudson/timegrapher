@@ -1,7 +1,8 @@
-//! The Calibre menu under Watch and the panel beneath it. The menu offers
-//! the calibres picked lately and the common ones, every calibre by maker
-//! behind Show All Calibres, and a search over names, other names and
-//! makers. The panel shows what is known about the calibre picked: its
+//! The Calibre menu under Watch, the panel beneath it and Manage
+//! Calibres. The menu offers the calibres picked lately, the short list
+//! and the watchmaker's own. Manage Calibres lists every calibre by maker
+//! with a search over names, other names and makers, a tickbox for the
+//! short list on each, and the one selected in full. The panel shows what is known about the calibre picked: its
 //! beat rate and lift angle, each wheel's turn with where the figure comes
 //! from, and the table's sources. Wheels nobody has given are left blank
 //! for the watchmaker to fill in; those figures, and calibres the table
@@ -13,7 +14,7 @@
 use crate::fields;
 use crate::settings;
 use crate::theme;
-use eframe::egui::{self, RichText};
+use eframe::egui::{self, RichText, Vec2};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use timegrapher_core::calibre_store::{
@@ -24,8 +25,6 @@ use timegrapher_core::periodicity::Wheel;
 
 /// How many calibres picked lately the menu offers.
 pub const RECENT: usize = 6;
-/// How many search results the menu lists before asking for more letters.
-const SHOWN: usize = 150;
 
 /// The user's calibres and the menu's own state.
 pub struct Calibres {
@@ -39,13 +38,64 @@ pub struct Calibres {
     /// own ones they took off it.
     pub short_added: Vec<String>,
     pub short_removed: Vec<String>,
+    /// Manage Calibres: open, the calibre selected in it, its search and
+    /// which calibres its list shows.
+    pub manager_open: bool,
+    selected: Option<String>,
     search: String,
-    show_all: bool,
+    filter: Filter,
     /// Name and period typed for a wheel the slots don't list.
     extra: (String, String),
     /// Why the user's calibres couldn't be read or written, if so.
     pub problem: Option<String>,
 }
+
+/// Which calibres Manage Calibres lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Filter {
+    All,
+    Short,
+    Yours,
+}
+
+/// A line in Manage Calibres' list: a maker's heading (with Tick All and
+/// Untick All when true), or a calibre by name (with its maker in front
+/// when true, in search results).
+#[derive(Debug, Clone, PartialEq)]
+enum Row {
+    Maker(String, bool),
+    Calibre(String, bool),
+}
+
+/// What Manage Calibres did that the app acts on.
+#[derive(Debug, Default)]
+pub struct Managed {
+    /// A calibre to use for the watch.
+    pub picked: Option<String>,
+    /// What changed for the calibre selected, named `name` before it.
+    pub change: Change,
+    pub name: String,
+}
+
+const MANAGE_HINT: &str = "Every calibre in a list to search, with its tickbox for your short \
+     list, and the one you select in full: its wheels, sources and notes, what you added, and \
+     your own calibres to edit";
+
+const MANAGE_HELP: &[&str] = &[
+    "Every calibre the app knows, by maker, with the ones you added. Search by a calibre's \
+     number, one of its other names, or its maker under any of the maker's names. All, Short \
+     List and Yours choose which calibres the list shows.",
+    "The tickbox beside a calibre puts it on your short list, which the Calibre menu offers; \
+     Tick All and Untick All beside a maker do the same for all of that maker's calibres. The \
+     list starts as the common and modern calibres; Reset the Short List goes back to them.",
+    "The calibre selected shows in full: maker, beat rate, lift angle and escape wheel, each \
+     wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
+     wheel's period you know into a blank and it is kept for this calibre, marked yours; Share \
+     with the Project opens a GitHub issue with what you added, to send from your browser. Use \
+     for This Watch sets it under Watch.",
+    "New Custom Calibre adds one the list doesn't have, named as typed in the search box; its \
+     name, maker, beat rate and lift angle are edited here.",
+];
 
 /// What the panel changed that the app acts on.
 #[derive(Debug, Default, PartialEq)]
@@ -83,8 +133,10 @@ impl Calibres {
             recent: Vec::new(),
             short_added: Vec::new(),
             short_removed: Vec::new(),
+            manager_open: false,
+            selected: None,
             search: String::new(),
-            show_all: false,
+            filter: Filter::All,
             extra: (String::new(), String::new()),
             problem: None,
         }
@@ -233,108 +285,34 @@ impl Calibres {
         name
     }
 
-    /// The Calibre menu: what was picked ("" for Not Set), if anything.
+    /// The Calibre menu, short: Not Set, the recent picks, the short list
+    /// and the user's own calibres, with Manage Calibres… at its foot for
+    /// the rest. What was picked ("" for Not Set), if anything.
     pub fn picker(&mut self, ui: &mut egui::Ui, current: &str) -> Option<String> {
         let pal = theme::pal(ui);
         let shown = match self.find(current) {
             Some(e) => e.name().to_string(),
             None => "Not Set".to_string(),
         };
-        let mut picked: Option<String> = None;
-        let mut new_custom: Option<String> = None;
-        let mut typed = std::mem::take(&mut self.search);
-        let mut show_all = self.show_all;
-        let mut set_short: Vec<(String, bool)> = Vec::new();
-        let mut reset = false;
-        egui::ComboBox::from_id_salt("calibre")
-            .width(ui.available_width())
-            .height(460.0)
-            .truncate()
-            // Typing in the search box mustn't close the menu; a pick
-            // closes it below.
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .selected_text(shown)
-            .show_ui(ui, |ui| {
-                let search = ui
-                    .add(
-                        egui::TextEdit::singleline(&mut typed)
-                            .hint_text("Search calibres, makers and other names")
-                            .desired_width(f32::INFINITY),
-                    )
-                    .on_hover_text(
-                        "Every word must match: a calibre's number, one of its other names, or \
-                     its maker under any of the maker's names (\"dd 3235\", \"sw200\", \
-                     \"seagull st19\")",
-                    );
-                if !search.has_focus() && typed.is_empty() {
-                    search.request_focus();
-                }
-                let toggles: std::cell::RefCell<Vec<(String, bool)>> = Default::default();
-                let chosen: std::cell::RefCell<Option<String>> = Default::default();
-                // A calibre's line: its tickbox for the short list (table
-                // calibres only) and its name, which picks it.
-                let line = |ui: &mut egui::Ui, e: Entry<'_>, text: String| {
-                    ui.horizontal(|ui| {
-                        if let Entry::Table(c) = e {
-                            let mut on = self.in_short(c);
-                            if ui
-                                .checkbox(&mut on, "")
-                                .on_hover_text(if on {
-                                    "On your short list: untick to keep it only in the full list"
-                                } else {
-                                    "Tick to put it on your short list, offered first"
-                                })
-                                .changed()
-                            {
-                                toggles.borrow_mut().push((c.calibre.clone(), on));
-                            }
-                        }
-                        let picked_now = ui
+        let picked: std::cell::RefCell<Option<String>> = Default::default();
+        let mut manage = false;
+        let catalog = Catalog::new(&self.user);
+        {
+            egui::ComboBox::from_id_salt("calibre")
+                .width(ui.available_width())
+                .height(ui.ctx().content_rect().height() * 0.7)
+                .truncate()
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    let line = |ui: &mut egui::Ui, e: Entry<'_>, text: String| {
+                        if ui
                             .selectable_label(e.name() == current, text)
                             .on_hover_text(hint(e))
-                            .clicked();
-                        if picked_now {
-                            *chosen.borrow_mut() = Some(e.name().to_string());
-                            ui.close();
+                            .clicked()
+                        {
+                            *picked.borrow_mut() = Some(e.name().to_string());
                         }
-                    });
-                };
-                let catalog = Catalog::new(&self.user);
-                if !typed.trim().is_empty() {
-                    let hits = catalog.search(&typed);
-                    if hits.is_empty() {
-                        ui.label(
-                            RichText::new("No calibre matches.")
-                                .small()
-                                .color(pal.text_tertiary),
-                        );
-                    }
-                    for &e in hits.iter().take(SHOWN) {
-                        line(ui, e, label(e));
-                    }
-                    if hits.len() > SHOWN {
-                        ui.label(
-                            RichText::new(format!(
-                                "{} more: type more of the name to narrow the list",
-                                hits.len() - SHOWN
-                            ))
-                            .small()
-                            .color(pal.text_tertiary),
-                        );
-                    }
-                    ui.separator();
-                    if ui
-                        .selectable_label(false, format!("New Custom Calibre “{}”…", typed.trim()))
-                        .on_hover_text(
-                            "Add a calibre by this name, with the wheels' periods you type; \
-                             it is kept for next time",
-                        )
-                        .clicked()
-                    {
-                        new_custom = Some(typed.clone());
-                        ui.close();
-                    }
-                } else {
+                    };
                     if ui
                         .selectable_label(current.is_empty(), "Not Set")
                         .on_hover_text(
@@ -343,8 +321,7 @@ impl Calibres {
                         )
                         .clicked()
                     {
-                        picked = Some(String::new());
-                        ui.close();
+                        *picked.borrow_mut() = Some(String::new());
                     }
                     let recent: Vec<Entry<'_>> =
                         self.recent.iter().filter_map(|r| catalog.find(r)).collect();
@@ -371,7 +348,7 @@ impl Calibres {
                     if !any {
                         ui.label(
                             RichText::new(
-                                "Empty: tick calibres in Show All Calibres to put them here.",
+                                "Empty: tick calibres in Manage Calibres to put them here.",
                             )
                             .small()
                             .color(pal.text_tertiary),
@@ -385,112 +362,38 @@ impl Calibres {
                     }
                     ui.separator();
                     if ui
-                        .selectable_label(false, "New Custom Calibre…")
-                        .on_hover_text(
-                            "Add a calibre the list doesn't have, with the wheels' periods you \
-                             type; it is kept for next time",
-                        )
+                        .selectable_label(false, "Manage Calibres…")
+                        .on_hover_text(MANAGE_HINT)
                         .clicked()
                     {
-                        new_custom = Some(String::new());
-                        ui.close();
+                        manage = true;
                     }
-                    let all = calibres::all().len();
-                    if ui
-                        .selectable_label(
-                            show_all,
-                            if show_all {
-                                "Hide the Full List".to_string()
-                            } else {
-                                format!("Show All Calibres ({all})…")
-                            },
-                        )
-                        .on_hover_text(
-                            "Every calibre in the list by maker, the common and modern makers \
-                             first, then the uncommon and vintage ones. Tick a calibre to put \
-                             it on your short list.",
-                        )
-                        .clicked()
-                    {
-                        show_all = !show_all;
-                    }
-                    if show_all {
-                        let mut vintage = false;
-                        for (maker, common, list) in by_maker() {
-                            if !common && !vintage {
-                                vintage = true;
-                                heading(ui, "Uncommon and Vintage");
-                            }
-                            let ticked = list.iter().filter(|c| self.in_short(c)).count();
-                            let title = match ticked {
-                                0 => format!("{maker} ({})", list.len()),
-                                t => format!("{maker} ({}, {t} on the short list)", list.len()),
-                            };
-                            egui::CollapsingHeader::new(title)
-                                .id_salt(("maker", *maker))
-                                .show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        if ui
-                                            .small_button("Tick All")
-                                            .on_hover_text(format!(
-                                                "Put every {maker} calibre on your short list"
-                                            ))
-                                            .clicked()
-                                        {
-                                            toggles.borrow_mut().extend(
-                                                list.iter().map(|c| (c.calibre.clone(), true)),
-                                            );
-                                        }
-                                        if ui
-                                            .small_button("Untick All")
-                                            .on_hover_text(format!(
-                                                "Take every {maker} calibre off your short list"
-                                            ))
-                                            .clicked()
-                                        {
-                                            toggles.borrow_mut().extend(
-                                                list.iter().map(|c| (c.calibre.clone(), false)),
-                                            );
-                                        }
-                                    });
-                                    for c in list {
-                                        line(ui, Entry::Table(c), c.calibre.clone());
-                                    }
-                                });
-                        }
-                    }
-                    if !self.short_is_default()
-                        && ui
-                            .selectable_label(false, "Reset the Short List")
-                            .on_hover_text(
-                                "Back to the common and modern calibres the app comes with",
-                            )
-                            .clicked()
-                    {
-                        reset = true;
-                    }
-                }
-                set_short = toggles.into_inner();
-                if let Some(c) = chosen.into_inner() {
-                    picked = Some(c);
-                }
-            });
-        self.search = typed;
-        self.show_all = show_all;
-        for (name, on) in set_short {
-            self.set_short(&name, on);
+                });
         }
-        if reset {
-            self.short_added.clear();
-            self.short_removed.clear();
+        if manage {
+            self.open_manager(current);
         }
-        if let Some(t) = new_custom {
-            picked = Some(self.new_custom(&t));
-        }
-        if picked.is_some() {
-            self.search.clear();
-        }
-        picked
+        picked.into_inner()
+    }
+
+    /// Manage Calibres… under the menu, lined up with it.
+    pub fn manage_button(&mut self, ui: &mut egui::Ui, current: &str) {
+        ui.horizontal(|ui| {
+            ui.add_space(theme::LABEL_W);
+            if ui
+                .small_button("Manage Calibres…")
+                .on_hover_text(MANAGE_HINT)
+                .clicked()
+            {
+                self.open_manager(current);
+            }
+        });
+    }
+
+    /// Open Manage Calibres on `current`, or on nothing.
+    pub fn open_manager(&mut self, current: &str) {
+        self.manager_open = true;
+        self.selected = self.find(current).map(|e| e.name().to_string());
     }
 
     /// What is known about the calibre `current`, under the menu: a
@@ -506,15 +409,11 @@ impl Calibres {
         let name = e.name().to_string();
         let custom = e.is_custom();
         ui.label(RichText::new(summary(e)).small().color(pal.text_secondary));
-        let catalog = Catalog::new(&self.user);
-        let slots = catalog.slots(e);
-        let blanks = slots.iter().filter(|s| s.period_s.is_none()).count();
-        let share = catalog.contribution_url(e, version);
-        let table = match e {
-            Entry::Table(c) => Some(c),
-            Entry::Custom(_) => None,
-        };
-        let mut edits: Vec<(String, Option<f64>)> = Vec::new();
+        let blanks = Catalog::new(&self.user)
+            .slots(e)
+            .iter()
+            .filter(|s| s.period_s.is_none())
+            .count();
         let header = if blanks > 0 {
             format!("Wheels and Sources ({blanks} not known)")
         } else {
@@ -523,135 +422,12 @@ impl Calibres {
         egui::CollapsingHeader::new(header)
             .id_salt("calibre panel")
             .show(ui, |ui| {
-                ui.label(
-                    RichText::new(
-                        "Each wheel's time for one full turn. A blank one isn't known: type \
-                         its period if you know it, and it is kept for this calibre.",
-                    )
-                    .small()
-                    .color(pal.text_tertiary),
-                );
-                for s in &slots {
-                    let tip = match s.origin {
-                        Origin::Shipped => format!(
-                            "From the list: {}",
-                            s.basis.clone().unwrap_or_else(|| "no basis given".into())
-                        ),
-                        Origin::User => match s.shipped_period_s {
-                            Some(p) => format!("Yours; the list says {} s", (PERIOD.show)(p)),
-                            None => match &s.basis {
-                                Some(b) => format!("Yours: {b}"),
-                                None => "Yours, typed in".into(),
-                            },
-                        },
-                        Origin::Unknown => {
-                            "Nobody has given this wheel's period yet: type it if you know it"
-                                .into()
-                        }
-                    };
-                    let id = format!("calibre-{name}-{}", s.name);
-                    theme::row(ui, &title_case(&s.name), Some(&tip), |ui| {
-                        if let Some(v) = period_field(ui, &id, s.period_s, &tip) {
-                            edits.push((s.name.clone(), v));
-                        }
-                        ui.label("s");
-                        if s.origin == Origin::User {
-                            ui.label(RichText::new("yours").small().color(pal.text_tertiary));
-                            if ui
-                                .small_button("Clear")
-                                .on_hover_text(if s.shipped_period_s.is_some() {
-                                    "Go back to the list's period"
-                                } else {
-                                    "Forget the period typed in"
-                                })
-                                .clicked()
-                            {
-                                edits.push((s.name.clone(), None));
-                            }
-                        }
-                    });
-                }
-                // Another wheel by name, such as an intermediate wheel.
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.extra.0)
-                            .hint_text("Another wheel")
-                            .desired_width(theme::LABEL_W - 16.0),
-                    );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.extra.1)
-                            .hint_text("period")
-                            .desired_width(50.0),
-                    );
-                    ui.label("s");
-                    let period = fields::parse_number(&self.extra.1).filter(|p| *p > 0.0);
-                    if ui
-                        .add_enabled(
-                            period.is_some() && !self.extra.0.trim().is_empty(),
-                            egui::Button::new("Add"),
-                        )
-                        .on_hover_text("Add a wheel the list above doesn't name, with its period")
-                        .clicked()
-                    {
-                        if let Some(p) = period {
-                            edits.push((self.extra.0.trim().to_lowercase(), Some(p)));
-                            self.extra = (String::new(), String::new());
-                        }
-                    }
-                });
-                if let Some(c) = table {
-                    if !c.sources.is_empty() {
-                        ui.add_space(4.0);
-                        ui.label(theme::caption("Sources"));
-                        for s in &c.sources {
-                            source_line(ui, s);
-                        }
-                    }
-                    ui.label(
-                        RichText::new(format!("How the figures are known: {}.", c.confidence))
-                            .small()
-                            .color(pal.text_tertiary),
-                    );
-                    if let Some(n) = &c.notes {
-                        ui.add(
-                            egui::Label::new(RichText::new(n).small().color(pal.text_tertiary))
-                                .wrap(),
-                        );
-                    }
-                }
-                ui.add_space(4.0);
-                if ui
-                    .add_enabled(
-                        share.is_some(),
-                        egui::Button::new("Share with the Project…"),
-                    )
-                    .on_hover_text(
-                        "Open a GitHub issue in your browser, filled in with what you added to \
-                         this calibre, to look over and send. Nothing is sent from the app.",
-                    )
-                    .on_disabled_hover_text(
-                        "Nothing to share yet: type a wheel's period above, or add a custom \
-                         calibre",
-                    )
-                    .clicked()
-                {
-                    if let Some(url) = &share {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                    }
-                }
+                change.wheels = self.wheels_and_sources(ui, &name, version, "pane");
             });
         if custom {
-            change = self.custom_editor(ui, &name);
-        }
-        if !edits.is_empty() {
-            for (wheel, v) in edits {
-                match v {
-                    Some(p) => self.user.set_wheel(&name, &wheel, p, None),
-                    None => self.user.clear_wheel(&name, &wheel),
-                }
-            }
-            self.save();
-            change.wheels = true;
+            let wheels = change.wheels;
+            change = self.custom_editor(ui, &name, "pane");
+            change.wheels |= wheels;
         }
         if let Some(p) = &self.problem {
             ui.label(RichText::new(p).small().color(pal.bad));
@@ -659,9 +435,520 @@ impl Calibres {
         change
     }
 
+    /// Each wheel's turn with where it comes from, blanks to fill in,
+    /// another wheel by name, the table's sources and notes, and the way to
+    /// share what was added. `place` keeps the boxes apart from the same
+    /// calibre's shown elsewhere. True when a wheel's period changed.
+    fn wheels_and_sources(
+        &mut self,
+        ui: &mut egui::Ui,
+        name: &str,
+        version: &str,
+        place: &str,
+    ) -> bool {
+        let pal = theme::pal(ui);
+        let Some(e) = self.find(name) else {
+            return false;
+        };
+        let catalog = Catalog::new(&self.user);
+        let slots = catalog.slots(e);
+        let share = catalog.contribution_url(e, version);
+        let table = match e {
+            Entry::Table(c) => Some(c),
+            Entry::Custom(_) => None,
+        };
+        let mut edits: Vec<(String, Option<f64>)> = Vec::new();
+        ui.label(
+            RichText::new(
+                "Each wheel's time for one full turn. A blank one isn't known: type \
+                 its period if you know it, and it is kept for this calibre.",
+            )
+            .small()
+            .color(pal.text_tertiary),
+        );
+        for s in &slots {
+            let tip = match s.origin {
+                Origin::Shipped => format!(
+                    "From the list: {}",
+                    s.basis.clone().unwrap_or_else(|| "no basis given".into())
+                ),
+                Origin::User => match s.shipped_period_s {
+                    Some(p) => format!("Yours; the list says {} s", (PERIOD.show)(p)),
+                    None => match &s.basis {
+                        Some(b) => format!("Yours: {b}"),
+                        None => "Yours, typed in".into(),
+                    },
+                },
+                Origin::Unknown => {
+                    "Nobody has given this wheel's period yet: type it if you know it".into()
+                }
+            };
+            let id = format!("calibre-{place}-{name}-{}", s.name);
+            theme::row(ui, &title_case(&s.name), Some(&tip), |ui| {
+                if let Some(v) = period_field(ui, &id, s.period_s, &tip) {
+                    edits.push((s.name.clone(), v));
+                }
+                ui.label("s");
+                if s.origin == Origin::User {
+                    ui.label(RichText::new("yours").small().color(pal.text_tertiary));
+                    if ui
+                        .small_button("Clear")
+                        .on_hover_text(if s.shipped_period_s.is_some() {
+                            "Go back to the list's period"
+                        } else {
+                            "Forget the period typed in"
+                        })
+                        .clicked()
+                    {
+                        edits.push((s.name.clone(), None));
+                    }
+                }
+            });
+        }
+        // Another wheel by name, such as an intermediate wheel.
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.extra.0)
+                    .id_salt(("another wheel", place))
+                    .hint_text("Another wheel")
+                    .desired_width(theme::LABEL_W - 16.0),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.extra.1)
+                    .id_salt(("another period", place))
+                    .hint_text("period")
+                    .desired_width(50.0),
+            );
+            ui.label("s");
+            let period = fields::parse_number(&self.extra.1).filter(|p| *p > 0.0);
+            if ui
+                .add_enabled(
+                    period.is_some() && !self.extra.0.trim().is_empty(),
+                    egui::Button::new("Add"),
+                )
+                .on_hover_text("Add a wheel the list above doesn't name, with its period")
+                .clicked()
+            {
+                if let Some(p) = period {
+                    edits.push((self.extra.0.trim().to_lowercase(), Some(p)));
+                    self.extra = (String::new(), String::new());
+                }
+            }
+        });
+        if let Some(c) = table {
+            if !c.sources.is_empty() {
+                ui.add_space(4.0);
+                ui.label(theme::caption("Sources"));
+                for s in &c.sources {
+                    source_line(ui, s);
+                }
+            }
+            ui.label(
+                RichText::new(format!("How the figures are known: {}.", c.confidence))
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+            if let Some(n) = &c.notes {
+                ui.add(egui::Label::new(RichText::new(n).small().color(pal.text_tertiary)).wrap());
+            }
+        }
+        ui.add_space(4.0);
+        if ui
+            .add_enabled(
+                share.is_some(),
+                egui::Button::new("Share with the Project…"),
+            )
+            .on_hover_text(
+                "Open a GitHub issue in your browser, filled in with what you added to \
+                 this calibre, to look over and send. Nothing is sent from the app.",
+            )
+            .on_disabled_hover_text(
+                "Nothing to share yet: type a wheel's period above, or add a custom calibre",
+            )
+            .clicked()
+        {
+            if let Some(url) = &share {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            }
+        }
+        if edits.is_empty() {
+            return false;
+        }
+        for (wheel, v) in edits {
+            match v {
+                Some(p) => self.user.set_wheel(name, &wheel, p, None),
+                None => self.user.clear_wheel(name, &wheel),
+            }
+        }
+        self.save();
+        true
+    }
+
+    /// Manage Calibres, when open: every calibre in a list to search, with
+    /// each one's short-list tickbox, and the one selected in full beside
+    /// it. Returns a calibre to use for the watch, and what changed for the
+    /// one selected, with its name before the change.
+    pub fn manager(&mut self, ctx: &egui::Context, current: &str, version: &str) -> Managed {
+        let mut out = Managed::default();
+        if !self.manager_open {
+            return out;
+        }
+        let screen = ctx.content_rect();
+        let size = Vec2::new(
+            (screen.width() - 48.0).clamp(320.0, 1100.0),
+            (screen.height() - 64.0).clamp(240.0, 760.0),
+        );
+        let modal = egui::Modal::new(egui::Id::new("manage calibres")).show(ctx, |ui| {
+            ui.set_width(size.x);
+            ui.set_height(size.y);
+            self.manager_body(ui, current, version, &mut out);
+        });
+        if modal.should_close() {
+            self.manager_open = false;
+        }
+        out
+    }
+
+    fn manager_body(&mut self, ui: &mut egui::Ui, current: &str, version: &str, out: &mut Managed) {
+        let pal = theme::pal(ui);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Manage Calibres").strong().size(16.0));
+            theme::help(ui, "Manage Calibres", MANAGE_HELP);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(theme::primary(ui, "Done"))
+                    .on_hover_text("Close Manage Calibres")
+                    .clicked()
+                {
+                    self.manager_open = false;
+                }
+                if ui
+                    .button("New Custom Calibre…")
+                    .on_hover_text(
+                        "Add a calibre the list doesn't have, named as typed in the search \
+                         box, with the wheels' periods you type; it is kept for next time",
+                    )
+                    .clicked()
+                {
+                    let name = self.new_custom(&self.search.clone());
+                    self.selected = Some(name);
+                    self.search.clear();
+                    self.filter = Filter::Yours;
+                }
+                if ui
+                    .add_enabled(
+                        !self.short_is_default(),
+                        egui::Button::new("Reset the Short List"),
+                    )
+                    .on_hover_text("Back to the common and modern calibres the app comes with")
+                    .clicked()
+                {
+                    self.short_added.clear();
+                    self.short_removed.clear();
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.search)
+                    .id_salt("manage search")
+                    .hint_text("Search calibres, makers and other names")
+                    .desired_width(320.0),
+            )
+            .on_hover_text(
+                "Every word must match: a calibre's number, one of its other names, or its \
+                 maker under any of the maker's names (\"dd 3235\", \"sw200\", \"seagull st19\")",
+            );
+            let short = calibres::all().iter().filter(|c| self.in_short(c)).count();
+            let all = calibres::all().len() + self.user.custom.len();
+            theme::segmented(
+                ui,
+                &mut self.filter,
+                &[
+                    (
+                        Filter::All,
+                        &format!("All ({all})"),
+                        "Every calibre, by maker",
+                    ),
+                    (
+                        Filter::Short,
+                        &format!("Short List ({short})"),
+                        "The calibres the Calibre menu offers",
+                    ),
+                    (
+                        Filter::Yours,
+                        &format!("Yours ({})", self.user.custom.len()),
+                        "The calibres you added",
+                    ),
+                ],
+            );
+        });
+        ui.add_space(6.0);
+        let rows = self.rows();
+        let list_w = (ui.available_width() * 0.38).clamp(260.0, 420.0);
+        let mut toggles: Vec<(String, bool)> = Vec::new();
+        let mut select: Option<String> = None;
+        ui.horizontal_top(|ui| {
+            let h = ui.available_height();
+            let down = egui::Layout::top_down(egui::Align::Min);
+            ui.allocate_ui_with_layout(Vec2::new(list_w, h), down, |ui| {
+                ui.set_min_size(Vec2::new(list_w, h));
+                theme::card().fill(pal.card).show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    if rows.is_empty() {
+                        ui.label(
+                            RichText::new(match self.filter {
+                                Filter::Yours if self.search.trim().is_empty() => {
+                                    "None yet: New Custom Calibre… adds one."
+                                }
+                                Filter::Short if self.search.trim().is_empty() => {
+                                    "Empty: tick calibres under All to put them here."
+                                }
+                                _ => "No calibre matches.",
+                            })
+                            .small()
+                            .color(pal.text_tertiary),
+                        );
+                    }
+                    let row_h = 22.0;
+                    egui::ScrollArea::vertical()
+                        .id_salt("manage list")
+                        .auto_shrink([false, false])
+                        .show_rows(ui, row_h, rows.len(), |ui, range| {
+                            for row in &rows[range] {
+                                let w = ui.available_width();
+                                ui.allocate_ui_with_layout(Vec2::new(w, row_h), down, |ui| {
+                                    if let Some(n) = self.list_row(ui, row, current, &mut toggles) {
+                                        select = Some(n);
+                                    }
+                                });
+                            }
+                        });
+                });
+            });
+            ui.add_space(8.0);
+            let rest = Vec2::new(ui.available_width(), h);
+            ui.allocate_ui_with_layout(rest, down, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("manage details")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.details(ui, current, version, out));
+            });
+        });
+        for (name, on) in toggles {
+            self.set_short(&name, on);
+        }
+        if select.is_some() {
+            self.selected = select;
+        }
+    }
+
+    /// The list's lines under the filter and the search.
+    fn rows(&self) -> Vec<Row> {
+        let typed = self.search.trim();
+        let catalog = Catalog::new(&self.user);
+        let wanted = |e: &Entry<'_>| match (self.filter, e) {
+            (Filter::All, _) => true,
+            (Filter::Short, Entry::Table(c)) => self.in_short(c),
+            (Filter::Short, Entry::Custom(_)) => false,
+            (Filter::Yours, e) => e.is_custom(),
+        };
+        if !typed.is_empty() {
+            return catalog
+                .search(typed)
+                .into_iter()
+                .filter(wanted)
+                .map(|e| Row::Calibre(e.name().to_string(), true))
+                .collect();
+        }
+        let mut rows = Vec::new();
+        if self.filter != Filter::Short {
+            if !self.user.custom.is_empty() {
+                rows.push(Row::Maker("Your Calibres".into(), false));
+                rows.extend(
+                    self.user
+                        .custom
+                        .iter()
+                        .map(|c| Row::Calibre(c.name.clone(), false)),
+                );
+            }
+            if self.filter == Filter::Yours {
+                return rows;
+            }
+        }
+        for (maker, _, list) in by_maker() {
+            let shown: Vec<&&Calibre> = list
+                .iter()
+                .filter(|c| self.filter == Filter::All || self.in_short(c))
+                .collect();
+            if shown.is_empty() {
+                continue;
+            }
+            rows.push(Row::Maker(maker.to_string(), self.filter == Filter::All));
+            rows.extend(
+                shown
+                    .into_iter()
+                    .map(|c| Row::Calibre(c.calibre.clone(), false)),
+            );
+        }
+        rows
+    }
+
+    /// One line of the list; the calibre clicked, if any.
+    fn list_row(
+        &self,
+        ui: &mut egui::Ui,
+        row: &Row,
+        current: &str,
+        toggles: &mut Vec<(String, bool)>,
+    ) -> Option<String> {
+        let mut clicked = None;
+        let pal = theme::pal(ui);
+        match row {
+            Row::Maker(maker, ticks) => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(maker).strong().color(pal.text_secondary));
+                    if !*ticks {
+                        return;
+                    }
+                    let list = by_maker()
+                        .iter()
+                        .find(|m| m.0 == maker)
+                        .map_or(&[][..], |m| &m.2[..]);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .small_button("Untick All")
+                            .on_hover_text(format!(
+                                "Take every {maker} calibre off your short list"
+                            ))
+                            .clicked()
+                        {
+                            toggles.extend(list.iter().map(|c| (c.calibre.clone(), false)));
+                        }
+                        if ui
+                            .small_button("Tick All")
+                            .on_hover_text(format!("Put every {maker} calibre on your short list"))
+                            .clicked()
+                        {
+                            toggles.extend(list.iter().map(|c| (c.calibre.clone(), true)));
+                        }
+                    });
+                });
+            }
+            Row::Calibre(name, with_maker) => {
+                let e = self.find(name)?;
+                ui.horizontal(|ui| {
+                    match e {
+                        Entry::Table(c) => {
+                            let mut on = self.in_short(c);
+                            if ui
+                                .checkbox(&mut on, "")
+                                .on_hover_text(if on {
+                                    "On your short list: untick to keep it only in the full list"
+                                } else {
+                                    "Tick to put it on your short list, offered in the Calibre menu"
+                                })
+                                .changed()
+                            {
+                                toggles.push((c.calibre.clone(), on));
+                            }
+                        }
+                        // Lined up with the tickboxes.
+                        Entry::Custom(_) => ui.add_space(ui.spacing().icon_width + 4.0),
+                    }
+                    let mut text = e.name().to_string();
+                    if *with_maker {
+                        if let Some(m) = e.maker() {
+                            text = format!("{m} {text}");
+                        }
+                    }
+                    if e.name() == current {
+                        text += "  (this watch)";
+                    }
+                    let selected = self.selected.as_deref() == Some(e.name());
+                    let r = ui.selectable_label(selected, text).on_hover_text(hint(e));
+                    if r.clicked() {
+                        clicked = Some(e.name().to_string());
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let facts = [
+                            e.bph().map(|b| format!("{b}")),
+                            e.lift_angle_deg().map(|l| format!("{}°", fields::plain(l))),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                        ui.label(RichText::new(facts).small().color(pal.text_tertiary));
+                    });
+                });
+            }
+        }
+        clicked
+    }
+
+    /// The calibre selected in Manage Calibres, in full.
+    fn details(&mut self, ui: &mut egui::Ui, current: &str, version: &str, out: &mut Managed) {
+        let pal = theme::pal(ui);
+        let Some(name) = self.selected.clone().filter(|n| self.find(n).is_some()) else {
+            ui.label(
+                RichText::new(
+                    "Select a calibre in the list to see its wheels, sources and notes, add \
+                     what you know, or use it for this watch.",
+                )
+                .color(pal.text_secondary),
+            );
+            return;
+        };
+        let Some(e) = self.find(&name) else { return };
+        let custom = e.is_custom();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(label(e)).strong().size(15.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let here = name == current;
+                if ui
+                    .add_enabled(!here, theme::primary(ui, "Use for This Watch"))
+                    .on_hover_text("Set this calibre under Watch, with its lift angle and wheels")
+                    .on_disabled_hover_text("This watch's calibre already")
+                    .clicked()
+                {
+                    out.picked = Some(name.clone());
+                }
+            });
+        });
+        ui.label(RichText::new(summary(e)).small().color(pal.text_secondary));
+        if let Entry::Table(c) = e {
+            if !c.family.is_empty() {
+                ui.label(
+                    RichText::new(format!("Also known as {}", c.family.join(", ")))
+                        .small()
+                        .color(pal.text_tertiary),
+                );
+            }
+        }
+        ui.add_space(6.0);
+        if custom {
+            out.change = self.custom_editor(ui, &name, "manager");
+            ui.add_space(6.0);
+        }
+        if !out.change.deleted {
+            out.change.wheels |= self.wheels_and_sources(ui, &name, version, "manager");
+        }
+        if out.change.deleted {
+            self.selected = None;
+        } else if let Some(n) = &out.change.renamed {
+            self.selected = Some(n.clone());
+        }
+        out.name = name;
+        if let Some(p) = &self.problem {
+            ui.label(RichText::new(p).small().color(pal.bad));
+        }
+    }
+
     /// A custom calibre's name, maker, beat rate and lift angle, and the
     /// way to delete it.
-    fn custom_editor(&mut self, ui: &mut egui::Ui, name: &str) -> Change {
+    fn custom_editor(&mut self, ui: &mut egui::Ui, name: &str, place: &str) -> Change {
         let mut change = Change::default();
         let Some(i) = self.user.custom.iter().position(|c| c.name == name) else {
             return change;
@@ -673,7 +960,11 @@ impl Calibres {
             "Calibre Name",
             Some("What the calibre is called in the menu"),
             |ui| {
-                ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(f32::INFINITY));
+                ui.add(
+                    egui::TextEdit::singleline(&mut c.name)
+                        .id_salt(("custom name", place))
+                        .desired_width(f32::INFINITY),
+                );
             },
         );
         let mut maker = c.maker.clone().unwrap_or_default();
@@ -682,7 +973,11 @@ impl Calibres {
             "Maker",
             Some("Who made the movement, to search by"),
             |ui| {
-                ui.add(egui::TextEdit::singleline(&mut maker).desired_width(f32::INFINITY));
+                ui.add(
+                    egui::TextEdit::singleline(&mut maker)
+                        .id_salt(("custom maker", place))
+                        .desired_width(f32::INFINITY),
+                );
             },
         );
         c.maker = (!maker.trim().is_empty()).then(|| maker.trim().to_string());
@@ -694,7 +989,7 @@ impl Calibres {
                 let mut b = c.bph.map_or(0.0, f64::from);
                 if fields::entry(
                     ui,
-                    &format!("custom-bph-{i}"),
+                    &format!("custom-bph-{place}-{i}"),
                     &mut b,
                     0.0..=72000.0,
                     &BPH,
@@ -713,7 +1008,7 @@ impl Calibres {
                 let mut l = c.lift_angle_deg.unwrap_or(0.0);
                 if fields::entry(
                     ui,
-                    &format!("custom-lift-{i}"),
+                    &format!("custom-lift-{place}-{i}"),
                     &mut l,
                     0.0..=90.0,
                     &LIFT,
@@ -1068,9 +1363,39 @@ mod tests {
     }
 
     #[test]
-    fn a_blank_period_box_reads_typed_numbers() {
+    fn titles_and_summaries_read_plainly() {
         assert_eq!(title_case("escape wheel"), "Escape Wheel");
         let e = Entry::Table(&calibres::all()[0]);
         assert!(summary(e).contains("bph") || summary(e).contains("beat rate not given"));
+    }
+
+    /// Manage Calibres' list: All has every calibre under its maker, the
+    /// short list only the ticked ones, Yours only the user's, and a search
+    /// keeps to the filter.
+    #[test]
+    fn the_manager_lists_by_filter_and_search() {
+        let mut cal = Calibres::in_memory();
+        let calibre = |r: &Row| match r {
+            Row::Calibre(n, _) => Some(n.clone()),
+            Row::Maker(..) => None,
+        };
+        let all: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
+        assert_eq!(all.len(), calibres::all().len());
+        assert!(matches!(cal.rows()[0], Row::Maker(..)));
+        cal.filter = Filter::Short;
+        let short: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
+        let common = calibres::all().iter().filter(|c| cal.in_short(c)).count();
+        assert_eq!(short.len(), common);
+        assert!(short.len() < all.len());
+        let mine = cal.new_custom("Bench Special");
+        cal.filter = Filter::Yours;
+        let yours: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
+        assert_eq!(yours, vec![mine.clone()]);
+        cal.search = "bench".into();
+        assert_eq!(cal.rows(), vec![Row::Calibre(mine, true)]);
+        cal.search = "3235".into();
+        assert!(cal.rows().is_empty(), "a listed calibre isn't one of yours");
+        cal.filter = Filter::All;
+        assert!(!cal.rows().is_empty());
     }
 }
