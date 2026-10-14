@@ -135,11 +135,7 @@ impl Recorder {
     pub fn start(parent: &Path, info: SessionInfo) -> io::Result<Recorder> {
         let now = SystemTime::now();
         let started_utc = utc(now);
-        let stamp: String = started_utc[..19]
-            .chars()
-            .map(|c| if c == ':' { '-' } else { c })
-            .collect();
-        let mut name = stamp;
+        let mut name = stamp_of(&started_utc);
         let watch = safe_name(&info.watch);
         if !watch.is_empty() {
             name = format!("{name}_{watch}");
@@ -390,23 +386,22 @@ impl Recorder {
         }
     }
 
-    /// The name for a copy: the take's own, but a take that has moved
-    /// through positions ends in `_positions`, not the one it began in.
-    fn copy_name(&self) -> io::Result<std::ffi::OsString> {
-        let name = self
-            .dir
-            .file_name()
-            .ok_or_else(|| io::Error::other("no folder name"))?;
-        let moved = self.notes.iter().any(|n| n.text.starts_with("position "));
-        let suffix = format!("_{}", safe_name(&self.first_position));
-        Ok(match name.to_str().and_then(|n| n.strip_suffix(&suffix)) {
-            Some(stem) if moved => format!("{stem}_positions").into(),
-            _ => name.to_os_string(),
-        })
+    /// The name for a copy: the start time, then the watch's name and the
+    /// calibre when they are known by the time of the copy. No position:
+    /// session.json and session.toml say where the watch was and when.
+    fn copy_name(&self, calibre: &str) -> std::ffi::OsString {
+        let mut name = stamp_of(&self.started_utc);
+        for part in [safe_name(&self.info.watch), safe_name(calibre)] {
+            if !part.is_empty() {
+                name = format!("{name}_{part}");
+            }
+        }
+        name.into()
     }
 
-    /// Copy the recording so far into a new folder of the same name under
-    /// `parent`, keeping on recording here. `result` is saved with the
+    /// Copy the recording so far into a new folder under `parent`, named
+    /// after the start time, the watch and `calibre` (either left out when
+    /// empty), keeping on recording here. `result` is saved with the
     /// settings as the readings at the time of the copy. Returns the copy.
     ///
     /// Saved again into the same place, only what changed is written: an
@@ -416,6 +411,7 @@ impl Recorder {
     pub fn save_copy(
         &mut self,
         parent: &Path,
+        calibre: &str,
         result: Option<&serde_json::Value>,
     ) -> io::Result<PathBuf> {
         if let Some(w) = self.writer.as_mut() {
@@ -425,7 +421,7 @@ impl Recorder {
         self.write_session(Some(utc(SystemTime::now())), result)?;
         let name = match &self.saved_name {
             Some(n) => n.clone(),
-            None => self.copy_name()?,
+            None => self.copy_name(calibre),
         };
         self.saved_name = Some(name.clone());
         let dest = parent.join(&name);
@@ -470,6 +466,14 @@ impl Recorder {
         self.write_session(Some(utc(SystemTime::now())), result.as_ref())?;
         Ok(self.dir)
     }
+}
+
+/// `2026-10-08T21-04-05` for a folder name, from a [`utc`] time.
+fn stamp_of(utc: &str) -> String {
+    utc[..19]
+        .chars()
+        .map(|c| if c == ':' { '-' } else { c })
+        .collect()
 }
 
 fn safe_name(s: &str) -> String {
@@ -572,10 +576,11 @@ mod tests {
         fs::remove_dir_all(&parent).unwrap();
     }
 
-    /// A take that moved through positions is saved under `_positions`,
-    /// not the position it began in, and saved again in the same place.
+    /// A copy is named after the start time, the watch and the calibre as
+    /// they are when it is saved, with no position however the watch
+    /// moved, and is saved again in the same place.
     #[test]
-    fn a_moved_take_is_saved_as_positions() {
+    fn a_copy_is_named_after_the_watch_and_calibre() {
         let base = std::env::temp_dir().join(format!("tg-moved-{}", std::process::id()));
         let info = SessionInfo {
             watch: "Test Watch".into(),
@@ -594,11 +599,21 @@ mod tests {
         };
         r.write(&block).unwrap();
         r.note("position DD").unwrap();
-        let first = r.save_copy(&base.join("saved"), None).unwrap();
+        let mut info = r.info().clone();
+        info.watch = "Sea Dweller".into();
+        info.position = "DD".into();
+        r.set_info(info).unwrap();
+        let first = r
+            .save_copy(&base.join("saved"), "ETA 2824-2", None)
+            .unwrap();
         let name = first.file_name().unwrap().to_str().unwrap().to_string();
-        assert!(name.ends_with("_Test_Watch_positions"), "{name}");
+        assert!(name.ends_with("_Sea_Dweller_ETA_2824-2"), "{name}");
+        assert_eq!(name.len(), "2026-10-08T21-04-05".len() + 23, "{name}");
         r.note("position CL").unwrap();
-        assert_eq!(r.save_copy(&base.join("saved"), None).unwrap(), first);
+        assert_eq!(
+            r.save_copy(&base.join("saved"), "Other", None).unwrap(),
+            first
+        );
         std::fs::remove_dir_all(&base).ok();
     }
 
@@ -630,7 +645,7 @@ mod tests {
         for k in 63..65 {
             r.write(&block(k)).unwrap();
         }
-        let copy = r.save_copy(&base.join("saved"), None).unwrap();
+        let copy = r.save_copy(&base.join("saved"), "", None).unwrap();
         // Saved again: the file closed by the pause is not copied again
         // (a mark put in the saved copy stays), the open one is.
         let first = copy.join("audio-001.wav");
@@ -639,7 +654,7 @@ mod tests {
         bytes[last] ^= 1;
         fs::write(&first, &bytes).unwrap();
         r.write(&block(65)).unwrap();
-        assert_eq!(r.save_copy(&base.join("saved"), None).unwrap(), copy);
+        assert_eq!(r.save_copy(&base.join("saved"), "", None).unwrap(), copy);
         assert_eq!(fs::read(&first).unwrap(), bytes);
         bytes[last] ^= 1;
         fs::write(&first, &bytes).unwrap();

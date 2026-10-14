@@ -169,15 +169,20 @@ Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
 while the watch settles (20 s) and is measured (60 s), times the project
 chose. It then says which position to turn the watch to; press the
-button naming it (**Start CL Measurement**) once it is there. **Measure
-DD Again**, naming the position just measured (or the one under way),
-repeats it, after a knock for instance, and **Stop** ends the test.
-Only the 60 s measured in each position count. The strip's position
-ticker says so over the rest, with its beats drawn faintly:
-**Settling** over each 20 s settle, and **Not Measured** over the time
+button naming it (**Start CL Measurement**) once it is there. **Restart
+DD Measurement**, naming the position just measured (or the one under
+way), settles and measures it again, after a knock for instance, and
+**Stop** ends the test. Only the 60 s measured in each position count.
+From the moment the test starts, the strip, its position ticker and the
+charts mark the test's phases, Dial Up included, each in its own grey:
+**Before Test** over the sound before the test began (left plain, with a
+line where the test begins), **Settling** over each 20 s settle (a light
+shade), each position's measured 60 s (the darkest shade, named by the
+position), and **Not Used for Positions Test** (hatched) over the time
 after a measurement while the watch is being turned, over a measurement
-given up for Measure Again, and over the part of a position measured
-when the test was stopped. The marks stay after the test until a new
+given up for a restart, and over the part of a position measured when
+the test was stopped. Beats outside the measured stretches are drawn
+faintly. The marks stay after the test until a new test or a new
 session. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
@@ -190,7 +195,10 @@ Mean row, the largest difference between the rates (D), and vertical
 less horizontal for rate and amplitude (DVH). Under
 them, a plain line for each condition found in a position's sound: no
 regular beat (with its timing scatter), clipping, or under 10 s of
-beats. The figures are `session`'s for the same stretches. It gives no verdict and no
+beats. The figures are `session`'s for the same stretches. **Save as
+CSV…** saves the table, the means, the differences and those lines as a
+CSV file a spreadsheet opens, and **Copy** puts the same on the
+clipboard with tabs between the columns. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
@@ -659,8 +667,7 @@ next watch or position. Everything heard is kept as it comes in, so
 folder and copies the session into a folder of its own inside it.
 **Save Again** (Ctrl+S) later brings that copy up to date without asking
 again, and **Save As…** (Ctrl+Shift+S) copies the session to a new folder
-of your choosing, which Save Again then keeps up to date. Once the take has had a position change, the copy's
-folder name ends in `_positions` rather than the first position. Sound that hasn't been saved is never thrown away
+of your choosing, which Save Again then keeps up to date. Sound that hasn't been saved is never thrown away
 without asking: New session, opening or replaying a recording, and
 closing the window ask whether to save it first. The microphone's own
 settings are kept aside while recordings are open and come back with
@@ -668,9 +675,12 @@ settings are kept aside while recordings are open and come back with
 session too; stopped during a move's settling time, the rate card gives
 the reading from before the move and says so.
 
-Each saved recording is a folder named after the start time, the watch
-and the position, so it can be analysed again later with a newer engine,
-holding:
+Each saved recording is a folder named after the start time, then the
+watch's name and the calibre when they are set by the first save
+(`2026-10-08T21-30-00_Yacht-Master_Rolex_3235`, or just the time), so it
+can be analysed again later with a newer engine. The positions aren't in
+the name: `session.json` and `session.toml` say where the watch was and
+when. It holds:
 
 | File | Contents |
 | --- | --- |
@@ -693,8 +703,8 @@ The folder reads straight into the long-run analysis, calibrated against
 the system clock:
 
 ```sh
-timegrapher long "2026-10-08T21-30-00_Yacht-Master_DU/" \
-  --clock "2026-10-08T21-30-00_Yacht-Master_DU/clock.csv"
+timegrapher long "2026-10-08T21-30-00_Yacht-Master_Rolex_3235/" \
+  --clock "2026-10-08T21-30-00_Yacht-Master_Rolex_3235/clock.csv"
 ```
 
 The WAV header is brought up to date every 10 s, so a recording survives
