@@ -2380,6 +2380,7 @@ impl TimegrapherApp {
                 }
                 if ui
                     .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .on_hover_text("Close without starting the test")
                     .clicked()
                 {
                     choice = Some(2);
@@ -2410,7 +2411,7 @@ impl TimegrapherApp {
     fn load_full_wind(&mut self) -> Option<guided::FullWind> {
         let mut d = rfd::FileDialog::new()
             .set_title("Load the Full-Wind Positions Test's Results")
-            .add_filter("Positions Test results", &["json"]);
+            .add_filter("Positions Test Results", &["json"]);
         let start = self
             .session
             .saved_to()

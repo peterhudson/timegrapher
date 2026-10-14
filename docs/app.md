@@ -211,16 +211,16 @@ banner names the hours since the full-wind test began. Its results window
 adds a Full Wind Against N Hours table: each position's rate and
 amplitude at full wind and now, and the change, then the largest change
 in rate with crown right left out (Im, as NIHS 93-10 takes it) and the
-change in the mean rate (Ie), all from core `session::evaluate` as
+size of the change in the mean rate (Ie), all from core `session::evaluate` as
 `timegrapher session` reads the two together. Saved, its CSV and Copy
 include that table, and the session file marks its stretches with
 `wind_h`, the hours since full wind.
 
-`positions-test.json` (format `timegrapher-positions-test/1`; later
+`positions-test.json` (format `timegrapher.positions-test/1`; later
 versions add keys) holds `format`, `began_utc` and `began_unix` (when the
 test began), `watch` and `calibre` (as set then, or empty), and
 `positions`: one entry per position in the order measured, with
-`position` (CH, CB, 9H, 6H, 3H or 12H), `rate_s_per_day`,
+`position` (DU, DD, CD, CL, CU or CR, as in `session.toml`), `rate_s_per_day`,
 `amplitude_deg` and `beat_error_ms` (a size), each null when not
 measured.
 

@@ -21,7 +21,7 @@ use timegrapher_core::stream::BeatLog;
 /// hours later.
 pub const RESULTS_FILE: &str = "positions-test.json";
 /// The file's `format`, versioned: a later version adds keys.
-pub const RESULTS_FORMAT: &str = "timegrapher-positions-test/1";
+pub const RESULTS_FORMAT: &str = "timegrapher.positions-test/1";
 
 /// A finished test just after winding, as saved for the 24 hour half.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -41,8 +41,8 @@ pub struct FullWind {
 /// One position's figures from the full-wind test.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeptRow {
-    /// The position's code as `timegrapher session` reads it: CH, CB,
-    /// 9H, 6H, 3H, 12H.
+    /// The position's code as the app writes it in session.toml and
+    /// session.json: DU, DD, CD, CL, CU, CR.
     pub position: String,
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
@@ -195,7 +195,7 @@ impl Test {
             positions: readings
                 .iter()
                 .map(|r| KeptRow {
-                    position: r.position.code().to_string(),
+                    position: r.position.common().to_string(),
                     rate_s_per_day: r.measurement.rate_s_per_day,
                     amplitude_deg: r.measurement.amplitude_deg,
                     beat_error_ms: r.measurement.beat_error(),
@@ -615,8 +615,8 @@ pub struct Comparison {
     /// The largest change in rate over the positions, crown right (12H)
     /// left out (Im), s/d.
     pub im: Option<f64>,
-    /// The change in the mean rate over the positions measured in both
-    /// (Ie), s/d.
+    /// The size of the change in the mean rate over the positions
+    /// measured in both (Ie), s/d.
     pub ie: Option<f64>,
 }
 
@@ -783,7 +783,10 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         "Largest change in rate, crown right left out (Im), s/d".into(),
         num(c.im),
     ]);
-    cells.push(vec!["Change in the mean rate (Ie), s/d".into(), num(c.ie)]);
+    cells.push(vec![
+        "Change in the mean rate, a size (Ie), s/d".into(),
+        num(c.ie),
+    ]);
     let field = |s: &str| {
         if s.contains(sep) || s.contains('"') {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -817,7 +820,7 @@ fn save_results(k: &FullWind, dir: &std::path::Path) -> Option<String> {
     let mut d = rfd::FileDialog::new()
         .set_title("Save the Results for the Test 24 Hours Later")
         .set_file_name(format!("positions-test-{stamp}Z.json"))
-        .add_filter("Positions Test results", &["json"]);
+        .add_filter("Positions Test Results", &["json"]);
     if dir.is_dir() {
         d = d.set_directory(dir);
     }
@@ -1027,15 +1030,15 @@ pub fn results(
                 ui.label(
                     RichText::new(format!(
                         "Largest change in rate, crown right left out: {} s/d. Change in \
-                         the mean rate: {} s/d.",
+                         the mean rate, as a size: {} s/d.",
                         signed(c.im),
-                        signed(c.ie)
+                        plain(c.ie, 1)
                     ))
                     .color(pal.text),
                 )
                 .on_hover_text(
                     "Im: the largest change over the positions without crown right (12H), \
-                     as NIHS 93-10 takes it. Ie: the mean rate's change over the positions \
+                     as NIHS 93-10 takes it. Ie: the size of the mean rate's change over the positions \
                      measured both times.",
                 );
             }
@@ -1166,7 +1169,7 @@ mod tests {
         // there, and 20° lower.
         let full = t.kept("Test Watch", "ETA 2824-2").unwrap();
         assert_eq!(full.positions.len(), 6);
-        assert_eq!(full.positions[5].position, "12H");
+        assert_eq!(full.positions[5].position, "CR");
         // Saved and read back as it was.
         let full = FullWind::from_json(&full.to_json()).unwrap();
         assert_eq!(full.calibre, "ETA 2824-2");
