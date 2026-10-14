@@ -1033,9 +1033,13 @@ function steadinessCard(doc) {
 // The current view's switch, as in the app's toolbar: Log Scale for
 // Periods, Timing for the FFT.
 function steadySwitch() {
-  const sw = steadyView === "periods" ? ["log", "Log Scale", periodsLog]
-    : steadyView === "spectrum" ? ["timing", "Timing", fftTiming] : null;
-  return sw ? `<div class="seg" role="group" aria-label="Scale"><button data-switch="${sw[0]}" aria-pressed="${sw[2]}">${sw[1]}</button></div>` : "";
+  // Each with the app's hover hint.
+  const sw = steadyView === "periods"
+    ? ["log", "Log Scale", periodsLog, "Draw the scores on a log scale, so a small peak beside a tall one still shows"]
+    : steadyView === "spectrum"
+      ? ["timing", "Timing", fftTiming, "Draw rate as the beat timing's spectrum, in ms, at every period, rather than the swing it makes in 10 s rate readings, in s/d"]
+      : null;
+  return sw ? `<div class="seg" role="group" aria-label="Scale"><button data-switch="${sw[0]}" aria-pressed="${sw[2]}" title="${esc(sw[3])}">${sw[1]}</button></div>` : "";
 }
 
 function wireSteadiness(root) {
