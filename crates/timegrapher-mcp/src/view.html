@@ -650,7 +650,12 @@ const STEADY_VIEWS = [
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
+  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size of the sine wave at each period, in the series' own units (the rate's in milliseconds of beat timing), with the wheels' periods marked. Both axes are logarithmic"],
 ];
+// A series' amplitude spectrum from the document's spectra[], if any.
+function spectrumOf(doc, s) {
+  return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
+}
 const SERIES = {
   rate: ["Rate", "--rate", " s/d"],
   amplitude: ["Amplitude", "--amplitude", "°"],
@@ -869,6 +874,35 @@ function steadyPlot(s, view, doc) {
         corner: Number.isFinite(a.p_value) ? { text: `Ljung–Box p = ${pText(a.p_value)}`, top: true } : null,
       });
     }
+    case "spectrum": {
+      const sp = spectrumOf(doc, s);
+      if (!sp) return steadyNote("The spectrum needs a longer session.");
+      const pts = sp.period_s.map((t, i) => [t, sp.amplitude[i]])
+        .filter(([t, a]) => t > 0 && a > 0 && Number.isFinite(a))
+        .map(([t, a]) => [Math.log10(t), Math.log10(a)]);
+      if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
+      const x = [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
+      const yLo = Math.min(...pts.map((q) => q[1])), yHi = Math.max(...pts.map((q) => q[1]));
+      // Room above the tallest line for the wheels' names, as in the app.
+      const y = [yLo, yHi + Math.max(yHi - yLo, 0.5) * 0.25];
+      const u = sp.unit === "deg" ? "°" : " ms";
+      const size = (v) => sig(v) + u;
+      const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+      const vlines = wheels.filter((w) => w.period_s > 0).map((w) => {
+        const wx = Math.log10(w.period_s);
+        const twin = wheels.some((o) => o !== w && o.name === w.name && o.period_s > w.period_s);
+        return { x: wx, color: "--text3", label: wheelTitle(w.name), left: twin };
+      }).filter((l) => l.x > x[0] && l.x < x[1]);
+      const peak = pts.reduce((a, q) => (q[1] > a[1] ? q : a), pts[0]);
+      return xyChart({
+        title: "FFT", x, y,
+        xTicks: (p, q) => logTicks(p, q, secs),
+        yTicks: (p, q) => logTicks(p, q, size),
+        vlines, lines: [{ pts, color, width: 1.5 }],
+        marks: [{ x: peak[0], y: peak[1], color }],
+        notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}` }],
+      });
+    }
     case "allan": {
       const a = s.allan;
       if (!a || !a.tau_s) return steadyNote("Too few readings for the Allan deviation.");
@@ -940,7 +974,7 @@ function steadyStats(s) {
 function steadinessCard(doc) {
   const series = doc.series || [];
   if (!series.length) return "";
-  const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold };
+  const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold, spectrum: (s) => spectrumOf(doc, s) };
   const offered = STEADY_VIEWS.filter(([key]) => !has[key] || series.some(has[key]));
   if (!offered.some(([k]) => k === steadyView)) steadyView = offered[0][0];
   // A series too short for the tests has no autocorrelation: no plot.
@@ -1068,6 +1102,7 @@ function seriesView(doc, extra) {
     doc = JSON.parse(JSON.stringify(doc));
     (doc.series || []).forEach((s, i) => { if (extra.views && extra.views[i]) s.views = extra.views[i]; });
     if (extra.period_span) doc.period_span = extra.period_span;
+    if (extra.spectra) doc.spectra = extra.spectra;
     const all = (doc.distributions && doc.distributions.overall) || [];
     all.forEach((e, i) => { if (extra.points && extra.points[i]) e.points = extra.points[i]; });
   }

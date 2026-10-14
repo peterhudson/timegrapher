@@ -165,8 +165,9 @@ the timegrapher app draws them:
   get the latest reading in the progress messages instead, for example
   "Recording CD: 72 of 120 s · +4.1 s/day · 268° · 0.3 ms".
 - `check_steadiness`: the app's Steadiness pane (each series' headline,
-  as `series` words it, and its statistics, over its Readings, Periods, Cycle, Autocorrelation, Allan Deviation or
-  CUSUM view, picked with the buttons above it), the readings on
+  as `series` words it, and its statistics, over its Readings, Periods,
+  Cycle, Autocorrelation, Allan Deviation, CUSUM or FFT view, picked with
+  the buttons above it), the readings on
   probability paper as the app's Distribution panes draw them (one steady
   state falls on the dashed straight line, two states bend it). The chart
   data rides beside the result, so the model reads the headlines and not the
