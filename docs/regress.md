@@ -95,7 +95,20 @@ closer to tg always passes, so does crossing tg at the same distance.
 | Beats found | 0.05%, at least 3 | the baseline: fewer beats fail |
 
 A reading also fails when it loses a value it had, or cannot be read at
-all, or when its median amplitude is over 330° and so raises `session`'s
+all (including a new reading without a baseline). A required baseline session
+that is missing, or a trailing baseline reading removed from a session, fails
+the run too. Takes deliberately excluded by `--take`, and holdout takes excluded
+from a development run, are not required in that run.
+
+Each existing recording's current label must match its baseline label exactly.
+Explicit `start_s`/`end_s` intervals appear in labels rounded to whole seconds.
+A changed label fails the run instead of accepting the recording as new.
+Changes within the same rounded interval remain indistinguishable in this check;
+it does not establish exact interval, audio-sample or settings identity.
+The JSON reports these checks as `unreadable`, `missing_sessions`,
+`missing_readings` and `recording_mismatches`, independently of numerical rows.
+
+A reading also fails when its median amplitude is over 330° and so raises `session`'s
 amplitude check (docs/sessions.md): no take in the corpus does, and one
 that starts to is a sign the engine reads amplitude high. The JSON lists
 such readings in `amplitude_high`, as `take #reading`. The beat error from the drop has no tg counterpart: when it moves by
@@ -123,7 +136,11 @@ timegrapher regress timegrapher-corpus --fetch --baseline regress/baseline.json 
 `--take NAME` (repeatable) runs, or rewrites, only the takes whose folder
 name contains NAME; the others stay as they were in the baseline. A new take
 with no baseline entry shows as new and passes until the baseline is
-rewritten with it.
+rewritten with it, provided it can be read. Appended readable recording entries
+also remain new. `--write-baseline` accepts successful recording-label changes
+(including changed intervals) and numerical movement after review. It refuses
+to write when required sessions or readings are missing or unreadable, preserving
+the existing baseline.
 
 ## In CI
 
@@ -131,8 +148,8 @@ The `regress` job in `.github/workflows/ci.yml` checks out the public
 corpus and runs `regress corpus --fetch --smoke --quiet`. It needs no
 secret, so pull requests from forks get the check too. The audio is cached
 between runs and keyed on `corpus.json`, so a run downloads only what
-changed. A take in the baseline that the corpus has no `session.toml` for
-yet is listed as not run, which does not fail the check.
+changed. A required baseline take with no `session.toml` fails the check.
+The `not_run` list also includes deliberately unselected takes; those do not fail.
 
 The holdout takes are read only by `.github/workflows/holdout.yml`, a job
 started by hand from the Actions tab (`workflow_dispatch`) at a milestone.

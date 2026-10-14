@@ -417,7 +417,8 @@ enum Command {
     /// Check the engine against tg on stored takes: every reading of every
     /// session file under ROOT is measured again and compared with its tg
     /// reference and a baseline. Exit code 3 when a value moved away from
-    /// tg by more than its margin, or a reading lost beats or a value.
+    /// tg by more than its margin, a reading lost beats or a value, required
+    /// evidence is missing/unreadable, or an existing recording label changed.
     Regress {
         /// A folder of takes, each with a session.toml whose readings carry
         /// tg's numbers (e.g. a clone of the recordings repo).
@@ -425,7 +426,8 @@ enum Command {
         /// Baseline file (default: regress-baseline.json in ROOT).
         #[arg(long)]
         baseline: Option<PathBuf>,
-        /// Write the baseline from this run (accepting it) instead of failing.
+        /// Accept successful measurements and label changes into the baseline.
+        /// Required missing or unreadable evidence still prevents writing.
         #[arg(long)]
         write_baseline: bool,
         /// Only the takes whose folder name contains this (repeatable).
