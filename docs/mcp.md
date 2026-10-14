@@ -167,7 +167,9 @@ the timegrapher app draws them:
 - `check_steadiness`: the app's Steadiness pane (each series' headline,
   as `series` words it, and its statistics, over its Readings, Periods,
   Cycle, Autocorrelation, Allan Deviation, CUSUM or FFT view, picked with
-  the buttons above it), the readings on
+  the buttons above it; Periods has a Log Scale switch, and the FFT draws
+  the rate as the swing it makes in the rate readings, peak to peak in
+  s/d, or with Timing as the beat timing in ms), the readings on
   probability paper as the app's Distribution panes draw them (one steady
   state falls on the dashed straight line, two states bend it). The chart
   data rides beside the result, so the model reads the headlines and not the
