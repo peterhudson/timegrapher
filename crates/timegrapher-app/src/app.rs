@@ -1409,7 +1409,8 @@ impl TimegrapherApp {
         self.capture = None;
         if self.session.mic() {
             applog::info("microphone stopped and released");
-            if let Ok(Err(e)) = self.session.pause() {
+            let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+            if let Ok(Err(e)) = self.session.pause(now) {
                 self.error(format!("Couldn't close the kept sound at the pause: {e}"));
             }
         }
@@ -2017,7 +2018,8 @@ impl TimegrapherApp {
             self.session.state(),
             session::State::Replaying | session::State::Analysing
         ) {
-            let _ = self.session.stop();
+            let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+            let _ = self.session.stop(now);
         }
         self.capture = None;
         self.batch = None;
@@ -8264,6 +8266,51 @@ mod tests {
         frames(&mut app, &ctx, 2);
     }
 
+    /// Guided elapsed-time endpoints use the recorder timeline even when
+    /// the watch never changes position and a pause spans an endpoint.
+    #[test]
+    fn positions_test_manifest_maps_paused_elapsed_time_to_recorded_sound() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-pause-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.session.listen();
+        let info = app.info("test", 100, 16);
+        app.session.recorder = Some(Recorder::start(&base, info).unwrap());
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 60 * 100],
+                at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(60),
+            })
+            .unwrap();
+        app.session.pause(60.0).unwrap().unwrap();
+        app.session.resume("test").unwrap();
+        app.session.resumed_at(120.0);
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 10 * 100],
+                at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(130),
+            })
+            .unwrap();
+        for (measure, end) in [(60.0, 60.0), (110.0, 70.0)] {
+            let mut test = guided::Test::new().timed(20.0, measure);
+            test.tick(0.0);
+            test.tick(130.0);
+            app.guided = Some(test);
+            let m = app.take_manifest();
+            assert_eq!(m.recordings.len(), 1);
+            assert_eq!(m.recordings[0].position.as_deref(), Some("DU"));
+            assert_eq!(m.recordings[0].start_s, Some(20.0));
+            assert_eq!(m.recordings[0].end_s, Some(end));
+        }
+        app.session.discard_recording();
+    }
+
     /// A take saved during a Positions Test lists the test's own measured
     /// stretches, so `timegrapher session` reads the seconds the table did.
     #[test]
@@ -8295,6 +8342,15 @@ mod tests {
         app.session.move_to(80.0, Position::DialUp, next).unwrap();
         test.tick(80.0);
         test.tick(80.0 + guided::SETTLE_S + guided::MEASURE_S);
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 80 * 48000],
+                at: std::time::SystemTime::now() + std::time::Duration::from_secs(80),
+            })
+            .unwrap();
         app.guided = Some(test);
         let m = app.take_manifest();
         let got: Vec<_> = m

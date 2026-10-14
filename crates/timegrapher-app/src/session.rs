@@ -2,12 +2,12 @@
 //! in, the settling after each move, and what has been saved. The app asks
 //! the session to act and draws what it says; the stretches, the settling,
 //! the unsaved sound and the saved take's position ranges are all worked
-//! out from one list of events, so they can't drift apart.
+//! out from its events and recording timeline.
 //!
 //! Event times are the session's seconds, the clock the strip and the
 //! charts run on (it counts pauses). A move also keeps the seconds of
-//! saved sound at that moment, which leave pauses out, for the take's
-//! `session.toml`.
+//! saved sound at that moment. Pause and resume anchors map elapsed
+//! seconds to saved sound, which leaves pauses out, for `session.toml`.
 //!
 //! What each state allows ([`Session::allows`]):
 //!
@@ -91,6 +91,13 @@ impl std::fmt::Display for Refused {
     }
 }
 
+/// An elapsed-time boundary, anchored to the actual recorded sample count.
+struct AudioAnchor {
+    at_s: f64,
+    audio_s: f64,
+    advancing: bool,
+}
+
 #[derive(Default)]
 pub struct Session {
     state: State,
@@ -101,6 +108,7 @@ pub struct Session {
     /// The end of the settling under way, when the readings start afresh.
     settle_to: Option<f64>,
     events: Vec<Event>,
+    audio_timeline: Vec<AudioAnchor>,
 }
 
 impl Session {
@@ -111,6 +119,7 @@ impl Session {
         self.settle_pending = false;
         self.settle_to = None;
         self.events.clear();
+        self.audio_timeline.clear();
     }
 
     pub fn state(&self) -> State {
@@ -174,10 +183,10 @@ impl Session {
 
     /// Stop what is under way: a microphone session pauses, a replay or
     /// an analysis stops where it is.
-    pub fn stop(&mut self) -> Result<io::Result<()>, Refused> {
+    pub fn stop(&mut self, now: f64) -> Result<io::Result<()>, Refused> {
         self.check(Action::Stop)?;
         match self.state {
-            State::Listening => return self.pause(),
+            State::Listening => return self.pause(now),
             State::Replaying => self.state = State::ReplayStopped,
             _ => self.state = State::Idle,
         }
@@ -186,8 +195,9 @@ impl Session {
 
     /// Paused now (the microphone let go). The inner error is the
     /// recorder's, when it couldn't close the stretch.
-    pub fn pause(&mut self) -> Result<io::Result<()>, Refused> {
+    pub fn pause(&mut self, now: f64) -> Result<io::Result<()>, Refused> {
         self.check(Action::Pause)?;
+        self.anchor_audio(now, false);
         self.state = State::Paused {
             since: Instant::now(),
         };
@@ -210,11 +220,27 @@ impl Session {
     }
 
     /// After [`Session::resume`] has moved the session's clock on to `now`:
-    /// start a settling that a move while paused left waiting.
+    /// anchor the recording timeline and start any settling left waiting.
     pub fn resumed_at(&mut self, now: f64) {
+        self.anchor_audio(now, true);
         if self.settle_pending {
             self.start_settle(now);
         }
+    }
+
+    fn anchor_audio(&mut self, at_s: f64, advancing: bool) {
+        let Some(r) = self.recorder.as_ref() else {
+            return;
+        };
+        // A zero-length pause/resume has one boundary; the latest state wins.
+        if self.audio_timeline.last().is_some_and(|a| a.at_s == at_s) {
+            self.audio_timeline.pop();
+        }
+        self.audio_timeline.push(AudioAnchor {
+            at_s,
+            audio_s: r.duration_s(),
+            advancing,
+        });
     }
 
     /// For a test: as if in `state`.
@@ -455,27 +481,20 @@ impl Session {
             }
         }
         self.events.retain(|e| !matches!(e, Event::Saved { .. }));
+        self.audio_timeline.clear();
     }
 
-    /// `t` seconds of the session as seconds of the kept sound, from the
-    /// last position change at or before it (the sound leaves out the
-    /// pauses the session's clock counts).
+    /// `t` elapsed seconds as seconds of kept sound. Time stands still in
+    /// the sound during a pause, independently of any position changes.
+    /// Endpoints beyond the sound kept so far are bounded by its duration.
     pub fn audio_of(&self, t: f64) -> Option<f64> {
-        self.recorder.as_ref()?;
-        let (at, a) = self
-            .events
-            .iter()
-            .filter_map(|e| match e {
-                Event::Position {
-                    at_s,
-                    audio_s: Some(a),
-                    ..
-                } if *at_s <= t + 1e-9 => Some((*at_s, *a)),
-                _ => None,
-            })
-            .next_back()
-            .unwrap_or((0.0, 0.0));
-        Some(a + (t - at))
+        let r = self.recorder.as_ref()?;
+        let audio_s = match self.audio_timeline.iter().rev().find(|a| a.at_s <= t) {
+            Some(a) if a.advancing => a.audio_s + (t - a.at_s),
+            Some(a) => a.audio_s,
+            None => t,
+        };
+        Some(audio_s.clamp(0.0, r.duration_s()))
     }
 
     /// The saved take's positions in its sound's own seconds (which leave
@@ -486,30 +505,44 @@ impl Session {
         let Some(r) = self.recorder.as_ref() else {
             return Vec::new();
         };
-        let mut stretches: Vec<(f64, String)> = vec![(0.0, r.first_position().to_string())];
+        let mut stretches = vec![(0.0, 0.0, r.first_position().to_string())];
         for e in &self.events {
             if let Event::Position {
+                at_s,
                 audio_s: Some(a),
                 pos,
-                ..
             } = e
             {
                 let code = pos.code().to_string();
-                if stretches.last().is_some_and(|s| s.0 >= *a) {
+                if stretches.last().is_some_and(|s| s.1 >= *a) {
                     stretches.pop();
                 }
-                if stretches.last().is_none_or(|s| s.1 != code) {
-                    stretches.push((*a, code));
+                if stretches.last().is_none_or(|s| s.2 != code) {
+                    stretches.push((*at_s, *a, code));
                 }
             }
         }
         let one = stretches.len() == 1;
         (0..stretches.len())
             .map(|i| {
-                let end = stretches.get(i + 1).map(|s| s.0);
-                let settle = if i == 0 { 0.0 } else { SETTLE_S };
-                let start = (stretches[i].0 + settle).min(end.unwrap_or(f64::INFINITY));
-                ((!one).then_some(start), end, stretches[i].1.clone())
+                let (at, audio, code) = &stretches[i];
+                let next = stretches.get(i + 1);
+                let end = next.map(|s| s.1);
+                let start = if i == 0 {
+                    *audio
+                } else {
+                    let until = next.map_or(f64::INFINITY, |s| s.0);
+                    // The settling that began this position may start at
+                    // Resume, or finish during a pause. Map its real end.
+                    let settled = self
+                        .settles()
+                        .iter()
+                        .find(|s| s.0 >= *at && s.0 < until)
+                        .map_or(*at, |s| s.1);
+                    self.audio_of(settled).expect("recorder present")
+                }
+                .min(end.unwrap_or(r.duration_s()));
+                ((!one).then_some(start), end, code.clone())
             })
             .collect()
     }
@@ -518,6 +551,187 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // These are recorder/timeline tests only: no capture device or DSP.
+    fn recording(name: &str) -> Session {
+        let dir = std::env::temp_dir().join(format!("tg-session-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let info = timegrapher_core::recorder::SessionInfo {
+            watch: "test".into(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: None,
+            device: "test".into(),
+            sample_rate: 100,
+            bits: 16,
+            software: "test".into(),
+        };
+        let mut s = Session::default();
+        s.listen();
+        s.recorder = Some(Recorder::start(&dir, info).unwrap());
+        s
+    }
+
+    fn record(s: &mut Session, seconds: usize, elapsed_end: u64) {
+        s.recorder
+            .as_mut()
+            .unwrap()
+            .write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; seconds * 100],
+                at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(elapsed_end),
+            })
+            .unwrap();
+    }
+
+    fn resume_at(s: &mut Session, now: f64) {
+        s.resume("test").unwrap();
+        s.resumed_at(now);
+    }
+
+    #[test]
+    fn audio_time_leaves_out_pauses_without_position_changes() {
+        let mut s = recording("pause");
+        record(&mut s, 60, 60);
+        s.pause(60.0).unwrap().unwrap();
+        assert_eq!(s.audio_of(90.0), Some(60.0));
+        resume_at(&mut s, 120.0);
+        assert_eq!(s.audio_of(130.0), Some(60.0), "no new sound yet");
+        record(&mut s, 10, 130);
+        for (elapsed, audio) in [
+            (-1.0, 0.0),
+            (0.0, 0.0),
+            (59.5, 59.5),
+            (60.0, 60.0),
+            (90.0, 60.0),
+            (120.0, 60.0),
+            (125.0, 65.0),
+            (130.0, 70.0),
+            (200.0, 70.0),
+        ] {
+            assert_eq!(s.audio_of(elapsed), Some(audio), "elapsed {elapsed}");
+        }
+        assert_eq!(s.take_ranges(), [(None, None, "DU".into())]);
+        s.discard_recording();
+        assert_eq!(s.audio_of(130.0), None);
+    }
+
+    #[test]
+    fn repeated_pauses_and_zero_length_boundaries_keep_audio_time() {
+        let mut s = recording("repeated");
+        record(&mut s, 60, 60);
+        s.pause(60.0).unwrap().unwrap();
+        resume_at(&mut s, 120.0);
+        record(&mut s, 10, 130);
+        s.pause(130.0).unwrap().unwrap();
+        resume_at(&mut s, 150.0);
+        // Pause again before a single new frame arrives.
+        s.pause(150.0).unwrap().unwrap();
+        resume_at(&mut s, 160.0);
+        record(&mut s, 10, 170);
+        s.pause(170.0).unwrap().unwrap();
+        resume_at(&mut s, 170.0);
+        record(&mut s, 10, 180);
+        for (elapsed, audio) in [
+            (60.0, 60.0),
+            (120.0, 60.0),
+            (130.0, 70.0),
+            (140.0, 70.0),
+            (150.0, 70.0),
+            (155.0, 70.0),
+            (160.0, 70.0),
+            (165.0, 75.0),
+            (170.0, 80.0),
+            (175.0, 85.0),
+            (180.0, 90.0),
+        ] {
+            assert_eq!(s.audio_of(elapsed), Some(audio), "elapsed {elapsed}");
+        }
+        s.clear();
+        assert_eq!(s.audio_of(80.0), Some(80.0), "new session forgets pauses");
+        s.discard_recording();
+    }
+
+    #[test]
+    fn position_settling_ends_in_elapsed_time_even_across_a_pause() {
+        for moved_at in [55, 60] {
+            let mut s = recording(&format!("settle-{moved_at}"));
+            record(&mut s, moved_at, moved_at as u64);
+            s.move_to(moved_at as f64, Position::DialUp, Position::DialDown)
+                .unwrap();
+            if moved_at < 60 {
+                record(&mut s, 60 - moved_at, 60);
+            }
+            s.pause(60.0).unwrap().unwrap();
+            resume_at(&mut s, 120.0);
+            record(&mut s, 10, 130);
+            assert_eq!(
+                s.take_ranges(),
+                [
+                    (Some(0.0), Some(moved_at as f64), "DU".into()),
+                    (Some(60.0), None, "DD".into()),
+                ],
+                "moved at {moved_at}"
+            );
+            s.discard_recording();
+        }
+    }
+
+    #[test]
+    fn uninterrupted_position_ranges_keep_their_settling_and_undo_behavior() {
+        let mut s = recording("uninterrupted");
+        record(&mut s, 30, 30);
+        s.move_to(30.0, Position::DialUp, Position::DialDown)
+            .unwrap();
+        record(&mut s, 30, 60);
+        s.move_to(60.0, Position::DialDown, Position::CrownUp)
+            .unwrap();
+        s.move_to(60.0, Position::CrownUp, Position::DialDown)
+            .unwrap();
+        record(&mut s, 30, 90);
+        assert_eq!(
+            s.take_ranges(),
+            [
+                (Some(0.0), Some(30.0), "DU".into()),
+                (Some(40.0), None, "DD".into()),
+            ]
+        );
+        s.discard_recording();
+    }
+
+    #[test]
+    fn position_moved_while_paused_settles_from_resume() {
+        let mut s = recording("paused-move");
+        record(&mut s, 60, 60);
+        s.pause(60.0).unwrap().unwrap();
+        s.move_to(60.0, Position::DialUp, Position::CrownUp)
+            .unwrap();
+        s.move_to(60.0, Position::CrownUp, Position::DialDown)
+            .unwrap();
+        assert_eq!(
+            s.take_ranges(),
+            [
+                (Some(0.0), Some(60.0), "DU".into()),
+                (Some(60.0), None, "DD".into()),
+            ]
+        );
+        resume_at(&mut s, 120.0);
+        record(&mut s, 5, 125);
+        assert_eq!(
+            s.take_ranges()[1].0,
+            Some(65.0),
+            "unfinished settling is bounded by kept sound"
+        );
+        record(&mut s, 15, 140);
+        assert_eq!(s.settles(), [(120.0, 130.0)]);
+        assert_eq!(
+            s.take_ranges(),
+            [
+                (Some(0.0), Some(60.0), "DU".into()),
+                (Some(70.0), None, "DD".into()),
+            ]
+        );
+        s.discard_recording();
+    }
 
     /// The events give the stretches, the settling and the spans; a move
     /// back before any beats undoes the move; a move while paused settles
@@ -555,7 +769,7 @@ mod tests {
         // Paused, moved: the settling waits for Resume.
         let mut p = Session::default();
         p.listen();
-        p.pause().unwrap().unwrap();
+        p.pause(20.0).unwrap().unwrap();
         p.move_to(20.0, Position::DialUp, Position::CrownLeft)
             .unwrap();
         assert!(p.settles().is_empty());
@@ -608,11 +822,11 @@ mod tests {
                 s.set_state(st);
                 assert_eq!(s.allows(a), allowed(st, a), "{a:?} in {st:?}");
                 let done = match a {
-                    Action::Pause => s.pause().map(|_| ()),
+                    Action::Pause => s.pause(5.0).map(|_| ()),
                     Action::Resume => s.resume("test").map(|_| ()),
                     Action::Move => s.move_to(5.0, Position::DialUp, Position::DialDown),
                     Action::Save => continue,
-                    Action::Stop => s.stop().map(|_| ()),
+                    Action::Stop => s.stop(5.0).map(|_| ()),
                 };
                 assert_eq!(done.is_ok(), allowed(st, a), "{a:?} in {st:?}");
                 if done.is_err() {
@@ -623,15 +837,15 @@ mod tests {
         // Where each one leads.
         let mut s = Session::default();
         s.listen();
-        s.stop().unwrap().unwrap();
+        s.stop(5.0).unwrap().unwrap();
         assert!(s.paused() && s.mic());
         s.resume("test").unwrap();
         assert_eq!(s.state(), State::Listening);
         s.replay();
-        s.stop().unwrap().unwrap();
+        s.stop(5.0).unwrap().unwrap();
         assert_eq!(s.state(), State::ReplayStopped);
         s.analyse();
-        s.stop().unwrap().unwrap();
+        s.stop(5.0).unwrap().unwrap();
         assert_eq!(s.state(), State::Idle);
     }
 }
