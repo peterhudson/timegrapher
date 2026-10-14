@@ -16,6 +16,70 @@ use timegrapher_core::clock::ClockFit;
 use timegrapher_core::session::{self, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
+/// The file a finished test just after winding is saved to, from the
+/// results window or beside a saved take, for the same six positions 24
+/// hours later.
+pub const RESULTS_FILE: &str = "positions-test.json";
+/// The file's `format`, versioned: a later version adds keys.
+pub const RESULTS_FORMAT: &str = "timegrapher.positions-test/1";
+
+/// A finished test just after winding, as saved for the 24 hour half.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FullWind {
+    /// [`RESULTS_FORMAT`].
+    pub format: String,
+    /// When the test began: `2026-10-08T21:04:05.123Z`, and Unix seconds.
+    pub began_utc: String,
+    pub began_unix: f64,
+    /// The watch's name and the calibre as they were then, or empty.
+    pub watch: String,
+    pub calibre: String,
+    /// Each position, in the order measured.
+    pub positions: Vec<KeptRow>,
+}
+
+/// One position's figures from the full-wind test.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeptRow {
+    /// The position's code as the app writes it in session.toml and
+    /// session.json: DU, DD, CD, CL, CU, CR.
+    pub position: String,
+    pub rate_s_per_day: Option<f64>,
+    pub amplitude_deg: Option<f64>,
+    /// A size, from the unlock where found, ms.
+    pub beat_error_ms: Option<f64>,
+}
+
+fn unix_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
+}
+
+impl FullWind {
+    /// Hours since this test began, at `now_unix`.
+    pub fn hours_ago(&self, now_unix: f64) -> f64 {
+        (now_unix - self.began_unix) / 3600.0
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default() + "\n"
+    }
+
+    /// Read a file saved by [`FullWind::to_json`], or say why not.
+    pub fn from_json(text: &str) -> Result<FullWind, String> {
+        let f: FullWind =
+            serde_json::from_str(text).map_err(|e| format!("not a saved Positions Test ({e})"))?;
+        if f.format != RESULTS_FORMAT {
+            return Err(format!("a format this app doesn't read ({})", f.format));
+        }
+        if f.positions.is_empty() {
+            return Err("no positions in it".into());
+        }
+        Ok(f)
+    }
+}
+
 /// Seconds the watch is left to settle after it is turned, and then
 /// measured: the project's choice. A minute brings the rate's ± near half
 /// a second a day.
@@ -78,6 +142,11 @@ pub struct Test {
     /// The six readings, once the last position is measured.
     pub readings: Option<Vec<Reading>>,
     pub show_results: bool,
+    /// When the test was started, Unix seconds.
+    began_unix: f64,
+    /// For the 24 hour half: the full-wind test it follows, and the hours
+    /// since that one began, to a tenth (the readings' `wind_h`).
+    pub full: Option<(FullWind, f64)>,
 }
 
 impl Test {
@@ -90,7 +159,49 @@ impl Test {
             unused: Vec::new(),
             readings: None,
             show_results: false,
+            began_unix: unix_now(),
+            full: None,
         }
+    }
+
+    /// The same six positions again, after the full-wind test `full`,
+    /// with the watch neither wound nor worn since.
+    pub fn after(full: FullWind) -> Self {
+        let mut t = Test::new();
+        let h = (full.hours_ago(t.began_unix) * 10.0).round() / 10.0;
+        t.full = Some((full, h.max(0.1)));
+        t
+    }
+
+    /// Hours since the watch was fully wound: none for a full-wind test.
+    pub fn wind_h(&self) -> Option<f64> {
+        self.full.as_ref().map(|f| f.1)
+    }
+
+    /// The finished full-wind test, to keep for the 24 hour half: None
+    /// for a 24 hour half or an unfinished test.
+    pub fn kept(&self, watch: &str, calibre: &str) -> Option<FullWind> {
+        if self.full.is_some() {
+            return None;
+        }
+        let readings = self.readings.as_ref()?;
+        let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(self.began_unix);
+        Some(FullWind {
+            format: RESULTS_FORMAT.into(),
+            began_utc: timegrapher_core::recorder::utc(at),
+            began_unix: self.began_unix,
+            watch: watch.trim().to_string(),
+            calibre: calibre.to_string(),
+            positions: readings
+                .iter()
+                .map(|r| KeptRow {
+                    position: r.position.common().to_string(),
+                    rate_s_per_day: r.measurement.rate_s_per_day,
+                    amplitude_deg: r.measurement.amplitude_deg,
+                    beat_error_ms: r.measurement.beat_error(),
+                })
+                .collect(),
+        })
     }
 
     pub fn position(&self) -> Position {
@@ -229,7 +340,7 @@ impl Test {
                 Some(Reading {
                     label: p.name().into(),
                     position,
-                    wind_h: None,
+                    wind_h: self.wind_h(),
                     date: None,
                     notes: None,
                     duration_s: to - from,
@@ -243,6 +354,16 @@ impl Test {
             .collect();
         self.readings = Some(readings);
         self.show_results = true;
+    }
+}
+
+/// The banner's title for the position under way: "Dial Up (1 of 6)", and
+/// in the 24 hour half "Dial Up (1 of 6, 24.1 h After Full Wind)".
+fn step_title(test: &Test) -> String {
+    let (name, n, of) = (test.position().name(), test.step + 1, ORDER.len());
+    match test.wind_h() {
+        Some(h) => format!("{name} ({n} of {of}, {h:.1} h After Full Wind)"),
+        None => format!("{name} ({n} of {of})"),
     }
 }
 
@@ -260,22 +381,12 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
         ui.horizontal(|ui| {
             let (title, detail, frac) = match phase {
                 Phase::Settling(left) => (
-                    format!(
-                        "{} ({} of {})",
-                        test.position().name(),
-                        test.step + 1,
-                        ORDER.len()
-                    ),
+                    step_title(test),
                     format!("Letting the watch settle, {left:.0} s"),
                     ((SETTLE_S - left) / (SETTLE_S + MEASURE_S)) as f32,
                 ),
                 Phase::Measuring(done) => (
-                    format!(
-                        "{} ({} of {})",
-                        test.position().name(),
-                        test.step + 1,
-                        ORDER.len()
-                    ),
+                    step_title(test),
                     format!("Measuring, {done:.0} of {MEASURE_S:.0} s"),
                     ((SETTLE_S + done) / (SETTLE_S + MEASURE_S)) as f32,
                 ),
@@ -284,7 +395,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                         format!("Turn the watch to {}", p.name()),
                         format!(
                             "then press Start {} Measurement. Nothing until then is measured; \
-                             the strip marks it Not Measured.",
+                             the strip marks it Not Used for Positions Test.",
                             p.code()
                         ),
                         1.0,
@@ -492,6 +603,84 @@ pub fn table(readings: &[Reading]) -> Table {
     }
 }
 
+/// The full-wind test against the 24 hour half, with the figures
+/// `timegrapher session` gives for the two states of wind.
+pub struct Comparison {
+    /// Hours between the two tests' starts.
+    pub hours: f64,
+    /// Each position measured in both: its label, then rate at full wind,
+    /// rate after `hours` and the change (s/d), then the same for
+    /// amplitude (degrees).
+    pub rows: Vec<(String, [Option<f64>; 6])>,
+    /// The largest change in rate over the positions, crown right (12H)
+    /// left out (Im), s/d.
+    pub im: Option<f64>,
+    /// The size of the change in the mean rate over the positions
+    /// measured in both (Ie), s/d.
+    pub ie: Option<f64>,
+}
+
+/// Full wind (`full`) against the 24 hour half's `readings`, `hours`
+/// later, read by core `session::evaluate` as `session` reads a file with
+/// both. The kept figures stand in for the full-wind measurements.
+pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<Comparison> {
+    let template = readings.first()?;
+    let mut all: Vec<Reading> = full
+        .positions
+        .iter()
+        .filter_map(|k| {
+            let position = session::Position::parse(&k.position)?;
+            let mut measurement = template.measurement.clone();
+            measurement.rate_s_per_day = k.rate_s_per_day;
+            measurement.amplitude_deg = k.amplitude_deg;
+            measurement.beat_error_unlock_ms = k.beat_error_ms;
+            measurement.beat_error_ms = k.beat_error_ms;
+            Some(Reading {
+                label: position_label(position),
+                position,
+                wind_h: Some(0.0),
+                measurement,
+                ..template.clone()
+            })
+        })
+        .collect();
+    all.extend(readings.iter().map(|r| Reading {
+        wind_h: Some(hours),
+        ..r.clone()
+    }));
+    let report = session::evaluate(&all);
+    let (first, last) = (report.states.first()?, report.states.last()?);
+    if report.states.len() < 2 {
+        return None;
+    }
+    let rows = readings
+        .iter()
+        .filter_map(|r| {
+            let p = r.position;
+            let a = first.positions.iter().find(|v| v.position == p)?;
+            let b = last.positions.iter().find(|v| v.position == p)?;
+            let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
+            Some((
+                position_label(p),
+                [
+                    a.rate_s_per_day,
+                    b.rate_s_per_day,
+                    change(a.rate_s_per_day, b.rate_s_per_day),
+                    a.amplitude_deg,
+                    b.amplitude_deg,
+                    change(a.amplitude_deg, b.amplitude_deg),
+                ],
+            ))
+        })
+        .collect();
+    Some(Comparison {
+        hours,
+        rows,
+        im: report.im,
+        ie: report.ie,
+    })
+}
+
 /// A position as the app names it: "Crown Up (CU, 3H)", the hobby
 /// code with the Swiss laboratory name beside it, or "Dial Up (DU)".
 fn position_label(p: session::Position) -> String {
@@ -567,9 +756,84 @@ pub fn table_text(t: &Table, sep: char) -> String {
     out
 }
 
+/// The comparison as [`table_text`] writes the table: a header, a row
+/// for each position, then Im and Ie.
+pub fn comparison_text(c: &Comparison, sep: char) -> String {
+    let h = format!("{:.1} h", c.hours);
+    let mut cells = vec![vec![
+        "Position".to_string(),
+        "Rate at Full Wind, s/d".into(),
+        format!("Rate at {h}, s/d"),
+        "Rate Change, s/d".into(),
+        "Amplitude at Full Wind, °".into(),
+        format!("Amplitude at {h}, °"),
+        "Amplitude Change, °".into(),
+    ]];
+    for (label, v) in &c.rows {
+        let mut row = vec![label.clone()];
+        for (i, x) in v.iter().enumerate() {
+            let d = if i < 3 { 1 } else { 0 };
+            row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
+        }
+        cells.push(row);
+    }
+    cells.push(Vec::new());
+    let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.1}"));
+    cells.push(vec![
+        "Largest change in rate, crown right left out (Im), s/d".into(),
+        num(c.im),
+    ]);
+    cells.push(vec![
+        "Change in the mean rate, a size (Ie), s/d".into(),
+        num(c.ie),
+    ]);
+    let field = |s: &str| {
+        if s.contains(sep) || s.contains('"') {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    cells
+        .iter()
+        .map(|r| {
+            let mut l = r
+                .iter()
+                .map(|c| field(c))
+                .collect::<Vec<_>>()
+                .join(&sep.to_string());
+            l.push('\n');
+            l
+        })
+        .collect()
+}
+
+/// Ask where to save the full-wind results for the 24 hour half, starting
+/// in `dir`, and save them. Says what happened, or None when cancelled.
+fn save_results(k: &FullWind, dir: &std::path::Path) -> Option<String> {
+    let stamp: String = k
+        .began_utc
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == 'T')
+        .take(15)
+        .collect();
+    let mut d = rfd::FileDialog::new()
+        .set_title("Save the Results for the Test 24 Hours Later")
+        .set_file_name(format!("positions-test-{stamp}Z.json"))
+        .add_filter("Positions Test Results", &["json"]);
+    if dir.is_dir() {
+        d = d.set_directory(dir);
+    }
+    let path = d.save_file()?;
+    Some(match std::fs::write(&path, k.to_json()) {
+        Ok(()) => format!("Saved the Positions Test's results to {}", path.display()),
+        Err(e) => format!("Couldn't save the results to {}: {e}", path.display()),
+    })
+}
+
 /// Ask where to save the table as a CSV file, starting in `dir`, and save
 /// it there. Says what happened, or None when the dialog was cancelled.
-fn save_csv(t: &Table, dir: &std::path::Path) -> Option<String> {
+fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
     let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
         .chars()
         .filter(|c| c.is_ascii_digit() || *c == 'T')
@@ -583,7 +847,7 @@ fn save_csv(t: &Table, dir: &std::path::Path) -> Option<String> {
         d = d.set_directory(dir);
     }
     let path = d.save_file()?;
-    Some(match std::fs::write(&path, table_text(t, ',')) {
+    Some(match std::fs::write(&path, text) {
         Ok(()) => format!("Saved the Positions Test to {}", path.display()),
         Err(e) => format!(
             "Couldn't save the Positions Test to {}: {e}",
@@ -597,11 +861,30 @@ fn save_csv(t: &Table, dir: &std::path::Path) -> Option<String> {
 /// session` reads them, and buttons to save it as a CSV file (the dialog
 /// starting in `dir`) or copy it. No verdict: the figures are for the
 /// watchmaker to judge. Returns a line saying what a button did.
-pub fn results(ctx: &egui::Context, test: &mut Test, dir: &std::path::Path) -> Option<String> {
+pub fn results(
+    ctx: &egui::Context,
+    test: &mut Test,
+    dir: &std::path::Path,
+    watch: &str,
+    calibre: &str,
+) -> Option<String> {
     let readings = test.readings.as_ref()?;
     let mut open = test.show_results;
     let mut said = None;
     let t = table(readings);
+    let full_wind = test.full.is_none();
+    let c = test
+        .full
+        .as_ref()
+        .and_then(|(f, h)| comparison(f, *h, readings));
+    let text = |sep: char| {
+        let mut out = table_text(&t, sep);
+        if let Some(c) = &c {
+            out.push('\n');
+            out += &comparison_text(c, sep);
+        }
+        out
+    };
     egui::Window::new("Positions Test")
         .open(&mut open)
         .collapsible(false)
@@ -680,6 +963,85 @@ pub fn results(ctx: &egui::Context, test: &mut Test, dir: &std::path::Path) -> O
             for n in &t.notes {
                 ui.label(RichText::new(n).color(pal.text));
             }
+            if let Some(c) = &c {
+                ui.add_space(12.0);
+                ui.label(
+                    RichText::new(format!("Full Wind Against {:.1} Hours", c.hours))
+                        .strong()
+                        .color(pal.text),
+                )
+                .on_hover_text(
+                    "The full-wind test loaded at the start, against this one, run without \
+                     winding or wearing the watch in between",
+                );
+                ui.add_space(4.0);
+                egui::Grid::new("full-wind")
+                    .num_columns(7)
+                    .spacing(Vec2::new(18.0, 6.0))
+                    .show(ui, |ui| {
+                        let h = format!("{:.1} h", c.hours);
+                        ui.label(theme::caption("Position").color(pal.text_secondary));
+                        for (head, hint) in [
+                            (
+                                "Rate, Full".to_string(),
+                                "Rate at full wind, s/d".to_string(),
+                            ),
+                            (
+                                format!("Rate, {h}"),
+                                format!("Rate {h} after full wind, s/d"),
+                            ),
+                            (
+                                "Change".to_string(),
+                                "The later rate less the full-wind one, s/d".to_string(),
+                            ),
+                            (
+                                "Amplitude, Full".to_string(),
+                                "Amplitude at full wind, degrees".to_string(),
+                            ),
+                            (
+                                format!("Amplitude, {h}"),
+                                format!("Amplitude {h} after full wind, degrees"),
+                            ),
+                            (
+                                "Change".to_string(),
+                                "The later amplitude less the full-wind one, degrees".to_string(),
+                            ),
+                        ] {
+                            ui.label(theme::caption(&head).color(pal.text_secondary))
+                                .on_hover_text(hint);
+                        }
+                        ui.end_row();
+                        for (label, v) in &c.rows {
+                            ui.label(label);
+                            right(ui, signed(v[0]), false);
+                            right(ui, signed(v[1]), false);
+                            right(ui, signed(v[2]), true);
+                            right(ui, plain(v[3], 0), false);
+                            right(ui, plain(v[4], 0), false);
+                            right(
+                                ui,
+                                v[5].map_or_else(dash, |x| format!("{x:+.0}").replace('-', "−")),
+                                true,
+                            );
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(format!(
+                        "Largest change in rate, crown right left out: {} s/d. Change in \
+                         the mean rate, as a size: {} s/d.",
+                        signed(c.im),
+                        plain(c.ie, 1)
+                    ))
+                    .color(pal.text),
+                )
+                .on_hover_text(
+                    "Im: the largest change over the positions without crown right (12H), \
+                     as NIHS 93-10 takes it. Ie: the size of the mean rate's change over the positions \
+                     measured both times.",
+                );
+            }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
@@ -690,7 +1052,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test, dir: &std::path::Path) -> O
                     )
                     .clicked()
                 {
-                    said = save_csv(&t, dir);
+                    said = save_csv(&text(','), dir);
                 }
                 if ui
                     .button("Copy")
@@ -700,10 +1062,37 @@ pub fn results(ctx: &egui::Context, test: &mut Test, dir: &std::path::Path) -> O
                     )
                     .clicked()
                 {
-                    ui.ctx().copy_text(table_text(&t, '\t'));
+                    ui.ctx().copy_text(text('\t'));
                     said = Some("Copied the Positions Test table".to_string());
                 }
+                if let Some(k) = test.kept(watch, calibre) {
+                    if ui
+                        .button("Save Results for 24 Hours…")
+                        .on_hover_text(format!(
+                            "Save these results to load when you run the test again 24 hours \
+                             after winding. Saving the session keeps them too, as {RESULTS_FILE} \
+                             in its folder."
+                        ))
+                        .clicked()
+                    {
+                        said = save_results(&k, dir);
+                    }
+                }
             });
+            if full_wind {
+                ui.add_space(8.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "For the same test 24 hours after winding, save these results \
+                             (or the session), leave the watch unwound and off the wrist, then \
+                             start the Positions Test again and load them.",
+                        )
+                        .color(pal.text_secondary),
+                    )
+                    .wrap(),
+                );
+            }
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(
@@ -774,6 +1163,55 @@ mod tests {
         assert_eq!(tbl.rows[4].0, "Crown Up (CU, 3H)");
         let spread: f64 = tbl.rows.iter().filter_map(|r| r.2).sum();
         assert!(spread.abs() < 1e-9, "differences from the mean sum to zero");
+
+        // Kept as the full-wind test, then the same watch 24 hours on,
+        // 2 s/d faster in every position but crown right, 8 s/d faster
+        // there, and 20° lower.
+        let full = t.kept("Test Watch", "ETA 2824-2").unwrap();
+        assert_eq!(full.positions.len(), 6);
+        assert_eq!(full.positions[5].position, "CR");
+        // Saved and read back as it was.
+        let full = FullWind::from_json(&full.to_json()).unwrap();
+        assert_eq!(full.calibre, "ETA 2824-2");
+        assert!(FullWind::from_json("{}").is_err());
+        let later: Vec<Reading> = readings
+            .iter()
+            .map(|r| {
+                let mut r = r.clone();
+                let m = &mut r.measurement;
+                let up = if r.position == session::Position::H12 {
+                    8.0
+                } else {
+                    2.0
+                };
+                m.rate_s_per_day = m.rate_s_per_day.map(|x| x + up);
+                m.amplitude_deg = m.amplitude_deg.map(|x| x - 20.0);
+                r
+            })
+            .collect();
+        let c = comparison(&full, 24.0, &later).unwrap();
+        assert_eq!(c.rows.len(), 6);
+        for (label, v) in &c.rows {
+            let up = if label.starts_with("Crown Right") {
+                8.0
+            } else {
+                2.0
+            };
+            assert!((v[2].unwrap() - up).abs() < 1e-9, "{label}: {v:?}");
+            assert!((v[5].unwrap() + 20.0).abs() < 1e-9, "{label}: {v:?}");
+        }
+        assert!((c.im.unwrap() - 2.0).abs() < 1e-9, "crown right left out");
+        assert!(
+            (c.ie.unwrap() - 3.0).abs() < 1e-9,
+            "the mean of the changes"
+        );
+        let csv = comparison_text(&c, ',');
+        assert!(csv.starts_with("Position,\"Rate at Full Wind, s/d\",\"Rate at 24.0 h, s/d\""));
+        // A 24 hour half is not kept in place of the full-wind one.
+        let mut half = Test::after(full);
+        assert!(half.wind_h().unwrap() > 0.0);
+        half.readings = Some(later);
+        assert!(half.kept("Test Watch", "").is_none());
     }
 
     #[test]
