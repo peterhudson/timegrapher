@@ -1,11 +1,14 @@
 name: CI
 
+# Markdown alone skips CI, except the watchmaker skill: the MCP server
+# compiles it in (guidance.rs) and its tests read it. Later patterns
+# override earlier ones.
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
+    paths: ["**", "!**.md", "skills/watchmaker/**"]
   pull_request:
-    paths-ignore: ["**.md"]
+    paths: ["**", "!**.md", "skills/watchmaker/**"]
   workflow_dispatch:
 
 # A newer push to a PR cancels that PR's run still in progress; runs on main

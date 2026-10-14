@@ -140,9 +140,10 @@ error's within 0.1 ms, and a side has at least 5 windows measured.
 | Sound after the drop on one side | `tail_ratio`, Tick against Tock | One side 3 or more times the other, and the louder at least 0.1. Case and holder ringing lengthen both sides (up to 0.33 on the ETA 2824 in its holder), so only a one-sided tail counts; the corpus reaches a ratio of about 1.7. | A grazing balance wheel or hairspring |
 | Beat error drifting through the take | `beat_error_first_quarter_ms` against `beat_error_last_quarter_ms` (at least 8 windows in each, `beat_error_quarter_windows`) | A change of 1 ms or more. The corpus reaches 0.44 ms (the Yacht-Master crown right); a beat error that wanders without a trend, as the Yacht-Master dial down does over 1.5 ms, is not counted. The program read it as a hairspring rubbing. | |
 
-The program's session report also noted two shapes: sound 1 as loud as
-the drop (the `ratio13` rule above), and extra sounds around the beat
-(`extra_pre` and `extra_post`, `windows_with_extra_pre`), which Witschi's
+`session` lists two shapes as findings, with no judgement: sound 1 as
+loud as the drop (`shape_unlock_loud`, the `ratio13` rule above), and
+extra sounds around the beat (`shape_extra_sounds`; `extra_pre` and
+`extra_post`, `windows_with_extra_pre`), which Witschi's
 *Testing methods for mechanical watches* (2025, "Fault Detection") links to the safety pin (dart) touching the roller, too little
 impulse-pin clearance, and the impulse pin knocking the fork horn.
 

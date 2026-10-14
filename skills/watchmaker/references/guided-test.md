@@ -243,7 +243,8 @@ the same test.
 Then repeat step 4 into the same folder with `--wind-h 24` on every
 take; `record` marks each take with it in the session file.
 
-`session` then gives the isochronism per position, Im, Ie and N. What
+`session` then gives the isochronism per position, Im and Ie (it
+doesn't compute N). What
 they mean is in [reading-the-numbers.md](reading-the-numbers.md#isochronism-full-wind-against-24-hours).
 
 ## 7. A long run (only if something points at it)

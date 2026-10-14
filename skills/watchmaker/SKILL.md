@@ -282,8 +282,8 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
   catching") that the program didn't find and this skill doesn't source.
   A wander or wave the program didn't name as a finding is not a finding.
   Don't credit a figure to anyone a source here doesn't name: the
-  program's own thresholds (200° amplitude, 2 ms beat error) are "the
-  program's threshold", not a standard; don't say who else uses a
+  project's rules of thumb (200° amplitude, 2 ms beat error) are "the
+  project's rule of thumb", not a standard; don't say who else uses a
   default, or give a range for "ordinary" watches. Quote readings exactly
   as the output gives them, and never present a figure that isn't in it
   as a reading (a lift-angle correction you work out is fine, said as
@@ -316,8 +316,9 @@ fails. When that happens, help the person report it, so the people who make
 the program can reproduce it.
 
 1. **Rule out the set-up first**, as always: `clipping` in the output, the
-   lift angle and beat rate, auto gain, a loose clamp. A `series` verdict of
-   `measurement` points at the tool, not the watch. Re-test once with the
+   lift angle and beat rate, auto gain, a loose clamp. A `series` finding
+   `measurement_split`, or `unlock_hopping` true, points at the tool
+   before the watch. Re-test once with the
    set-up fixed. If the problem goes away, there is nothing to report.
 2. **Make the report**: `timegrapher report RECORDING --at S --lift N
    --note "..."`. Use the recording that shows the problem: a file, or the
@@ -379,7 +380,7 @@ and if one decides your verdict, say so.
 
 Lead with the verdict in one line, and how sure it is, without waiting
 to be asked: give each figure's ± (`se`) and, over positions or a run,
-its spread, rather than the grade words alone. Then the two or three
+its spread. Then the two or three
 numbers that decided it, what each means, and what you'd do next. Use the person's
 words, not jargon; when you must use a term (amplitude, beat error, lift
 angle, calibre, clipping, auto gain) say what it is the first time, and

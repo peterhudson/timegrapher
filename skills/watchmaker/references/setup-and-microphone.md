@@ -129,7 +129,8 @@ is the project's rule of thumb, from its own added-noise tests of
 2026-10-09 (not yet published), not a property of the microphone. Under
 10×, press the watch more firmly against the pickup or raise the input
 level a little; look for mains chargers near the mic, fans, or a hand on
-the stand; `--notch` takes out steady tones.
+the stand. `doctor` has no notch; the measuring commands (`analyze`,
+`shape`, `profile`, `long`, `series`) take `--notch` for steady tones.
 
 | Signal | What the project's tests found could be trusted |
 | --- | --- |

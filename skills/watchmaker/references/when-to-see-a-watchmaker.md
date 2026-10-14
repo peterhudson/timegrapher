@@ -288,8 +288,8 @@ Stop wearing it and take it in; carrying on can turn a service into a
 repair.
 
 - It stops, or stops in some positions.
-- Amplitude far below the report's 200° fault threshold on a modern
-  watch, fully wound.
+- Amplitude far below 200° on a modern watch, fully wound (the
+  project's rule of thumb).
 - Signs of knocking: amplitude over about 330° with a jumping or doubled
   trace, or a double tick you can hear.
 - A sudden change after a knock or drop.
