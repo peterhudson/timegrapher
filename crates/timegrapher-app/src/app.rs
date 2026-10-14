@@ -6333,9 +6333,6 @@ fn position_in_name(path: &Path) -> Option<Position> {
     }
 }
 
-/// The names in a chart's key and their colours, when it has more than one
-/// line.
-/// A second colour is drawn as a dash of the two, as the line is.
 /// A chart's time label at `t` seconds, in view `r`.
 fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     // Nothing before the session starts: a time there read as a second
@@ -6349,6 +6346,9 @@ fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     theme::clear_of_right_edge(label, t, r, frac)
 }
 
+/// The names in a chart's key and their colours, when it has more than one
+/// line.
+/// A second colour is drawn as a dash of the two, as the line is.
 fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
     match pane {
         Pane::Amplitude => vec![
@@ -8353,9 +8353,6 @@ mod tests {
         assert!((b - a - app.strip.span_s).abs() < 1e-9);
     }
 
-    /// A pane follows Readings' Average Over until given a time of its
-    /// own, which keeps its own readings until Readings' Average Over is
-    /// changed: then every pane follows it again.
     #[test]
     fn tick_and_tock_amplitude_dash_over_their_own_colours() {
         let pal = theme::palette(true);
@@ -8402,6 +8399,9 @@ mod tests {
         assert!(app.clock_measured().is_some());
     }
 
+    /// A pane follows Readings' Average Over until given a time of its
+    /// own, which keeps its own readings until Readings' Average Over is
+    /// changed: then every pane follows it again.
     #[test]
     fn a_pane_follows_readings_unless_set() {
         let mut app = synthetic(40.0, 0.0);
