@@ -14,8 +14,8 @@ by amplitude alone:
 
 Then give one of four verdicts, plainly, at the top of your answer:
 **fine**, **keep an eye on it**, **service soon**, **stop wearing it**.
-When the measurement can't carry a verdict (no watch heard, a caveat that
-makes every grade poor) or there is only one position, say **no verdict
+When the measurement can't carry a verdict (no regular beat found, a beat
+rate the recording disagrees with, or too short a span) or there is only one position, say **no verdict
 yet** instead: what the reading does show, and the test that would
 settle it (usually the six positions in
 [guided-test.md](guided-test.md)). A clear fault in one position (it
@@ -288,8 +288,8 @@ Stop wearing it and take it in; carrying on can turn a service into a
 repair.
 
 - It stops, or stops in some positions.
-- Amplitude far below the report's 200° fault threshold on a modern
-  watch, fully wound.
+- Amplitude far below 200° on a modern watch, fully wound (the
+  project's rule of thumb).
 - Signs of knocking: amplitude over about 330° with a jumping or doubled
   trace, or a double tick you can hear.
 - A sudden change after a knock or drop.

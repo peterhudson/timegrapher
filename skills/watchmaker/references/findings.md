@@ -8,11 +8,13 @@ Each rule carries its source: a maker, a certifier or Witschi where one
 publishes the figure, or **the project's rule of thumb**, with the
 evidence it rests on. Say which when a rule decides your answer.
 
-Older builds also print grade words (`good`, `fair`, `poor`), a
-`verdict`, findings with a `severity` and `advice`, and named faults in
-`faults[]`. They came from the same thresholds as the rules below. Read
-the numbers behind them with this page, and never repeat a grade word or
-a fault name to the person as if it were a verdict.
+Builds before schema version 2 also printed grade words (`good`,
+`fair`, `poor`), a `verdict`, findings with a `severity` and `advice`,
+and named faults in `faults[]`, from the same thresholds as the rules
+below. If you meet them, read the numbers behind them with this page,
+and never repeat a grade word or a fault name to the person as if it
+were a verdict. docs/agent-interface.md's row for each command lists
+the fields of the current version.
 
 ## Read the output in this order
 
@@ -46,7 +48,7 @@ recordings 2% leaves a factor of three either side.
 
 `session` states it for the position as a note, `no_regular_beat`:
 "No regular beat found (timing scatter X ms, Y% of a beat)", with no
-readings beside it (older builds name it `no_watch_heard`).
+readings beside it.
 
 When no regular beat is found, every reading describes noise. The program
 withholds them; don't work any out. `bph` and `beats_found` may still be
@@ -70,9 +72,9 @@ judgement, and say what limits it.
 | --- | --- | --- | --- |
 | The ± of each reading | `confidence.rate.se`, `.amplitude.se`, `.beat_error.se` (one standard error from the spread between 2 s windows, in the reading's unit) | Tight: within 0.5 s/d, 2° or 0.05 ms. Usable: within 2 s/d, 5° or 0.1 ms. Wider: don't judge on it. The tight band sits a little above what the project's regression check counts as a real change (0.3 s/d, 1.5°, 0.03 ms; docs/regress.md). | Quote the ± with the figure ("about 250°, give or take 2°"). A wide ± on amplitude next to a tight one on rate is common on a weak signal: the rate can still be used. |
 | The signal | `doctor`'s and the app's `signal_x`: how many times louder the typical beat is than the background between beats | 10× and up: every reading. 5 to 10×: the rate; amplitude and beat error may be off on some watches. 3 to 5×: the rate only. Under 3×: no watch (pure noise reads about 2×). The project's rule of thumb, from its own added-noise tests of 2026-10-09 (not yet published). | Below 10×: press the watch more firmly against the pickup, check the cable, raise the level a little (ask first). The signal measures loudness, not the shape of the tick: a holder that smears the sound can read 10× and still mislead (`profile` shows it). |
-| Clipping | `clipping.beat_fraction` (`analyze`), the `clipped` caveat's `fraction` | Over 1% of beats with a clipped sample: amplitude and beat error may be off; the rate is not (the program's warning line; docs/sessions.md). | Hold neither amplitude nor beat error to a tolerance. Lower the input level (`doctor`, ask first) and record again. |
+| Clipping | `clipping.beat_fraction` (`analyze`), the `clipped` caveat's `fraction` | Over 1% of beats with a clipped sample: amplitude and beat error may be off; the rate is not (`session` lists it as a `clipping` finding; docs/sessions.md). | Hold neither amplitude nor beat error to a tolerance. Lower the input level (`doctor`, ask first) and record again. |
 | Beats found | `beats_found` against duration × bph ÷ 3600; the `beats_missing` caveat | Under 95% of the beats expected: every reading is less sure. | First the beat rate (run `analyze` again without `--bph`), then the level and the clamp. A forced wrong beat rate finds a fraction of the beats and gives a meaningless amplitude. |
-| Span | `short_span` caveat (`span_s`); a `session` reading's measured time | Under 10 s of beats: quote no reading. In a session, the program counts under 40 s measured in a position as short (the project's rule of thumb). For comparison, Witschi's training course (p. 53) sets about 15 s to stabilise and at least 20 s to measure per position; Sellita's SW200-1 sheet 20 s and 40 s; Seiko's NH35 and 6R35 guides at least 20 s each. | Record that position again: `record` takes 2 minutes. |
+| Span | `short_span` caveat (`span_s`); a `session` reading's measured time | Under 10 s of beats: quote no reading. In a session, the program lists under 40 s measured in a position as `measurement_short`, after Witschi's testing methods D40e ("≥40 s measurement time", about p. 34). For comparison, Witschi's training course (p. 53) sets about 15 s to stabilise and at least 20 s to measure per position; Sellita's SW200-1 sheet 20 s and 40 s; Seiko's NH35 and 6R35 guides at least 20 s each. | Record that position again: `record` takes 2 minutes. |
 | Breaks | `breaks` (`count`; `audio_s`, `gap_s` on long runs) | A fact, not a fault: rate and beat error are fitted on each side of a break apart. | Say the take was paused, if it matters. |
 | Timing scatter | `jitter_us` against the beat period | 2% of the beat or more: no regular beat (above). Below that, compare it between takes of the same watch: a jump with nothing else changed points at the set-up. | |
 | Lift angle | `lift_deg`; the `lift_unknown` caveat | No calibre or lift angle given: the amplitude rests on the 52° default. | Find the calibre's lift angle before quoting amplitude: ask what the watch is; pass `--calibre` or `--lift` ([reading-the-numbers.md](reading-the-numbers.md#lift-angle)). |
@@ -139,7 +141,6 @@ the program gives for each:
 | `agc_suspected` | The background rises between ticks. | A rise of over 3 dB through the gap: automatic gain turning down on each tick and back up in the gaps. | Turn the input's automatic gain off, so every tick is measured at the same gain (ask first). Levels mean little while it acts. |
 | `no_ticks` | Few beats. | Fewer than half the expected beats, or a signal under 3×. | Is the watch running and clamped firmly against the microphone? Is this the right input? Is the beat rate right (give `--bph`)? |
 | `too_quiet` | A quiet input. | Peak below −30 dBFS. | Raise the input level so ticks peak near −10 dBFS, the level the program aims for: well above the card's own noise, with headroom for a louder watch (ask first). |
-| `noisy` | The signal ratio (older builds only; it is the signal band again). | As the signal row above. | As the signal row above. |
 
 `suggested_gain_change_db` says how far to move the level. Details and
 per-OS fixes: [setup-and-microphone.md](setup-and-microphone.md).
@@ -164,7 +165,7 @@ the characteristic values docs/sessions.md defines:
   12H, as NIHS 93-10 does), Ie (the change in X).
 
 Judge them with these rules. "Fully wound" means within about 2 hours of
-a full wind (the program's own window for its tolerance check).
+a full wind (the project's rule of thumb).
 
 | What to look at | Rule, and its source | What it points at, and what to say |
 | --- | --- | --- |
@@ -179,7 +180,7 @@ a full wind (the program's own window for its tolerance check).
 | Beat error | Witschi: 0.0–0.5 ms acceptable. ETA 2824-2: 0.8 ms (Standard, Elaboré) or 0.6 ms (Top) dial up fully wound. 2 ms or more is the project's rule of thumb for "large". | An adjustment, not wear. At 2 ms or more the watch may be slow to restart if it runs down; a watchmaker can usually put it in beat without a full service, and before regulating (Witschi, above). |
 | Rate unsteady within a position | The 10 s rates spread (5th to 95th percentile) over 20 s/d: the project's rule of thumb. | First a loose clamp, knocks, the room; record again. If it repeats on a clean recording, a long run with `series` says what kind. Witschi's training course: an irregular rate usually comes with insufficient amplitude (an overhaul); large but regular rate variations are "defects in the gear train". |
 | A regular change tied to a wheel | Above the 1% false-alarm level and matching a wheel's turn (docs/sessions.md). | Offer a long run in that position (`series`, then `long`) before naming the wheel. Witschi's training course puts large but regular rate variations down to the gear train; the period says which wheel to tell the watchmaker about. A change at a whole fraction of a wheel's turn comes from a short, sharp change once per turn. One tied to no listed wheel may be another wheel or pinion, or a disturbance near the microphone. |
-| Quality factor N | Witschi's *Testing methods for mechanical watches* (2025, doc. D40e, about p. 29; the page is approximate) gives N = 0.15·\|Imax\| + 0.1·Pmax + C, with C = 0.6 in its worked example. In the project's notation Imax is Im and Pmax is D; docs/sessions.md uses C = 0.6. Witschi's 2010 training course doesn't have it. | Don't judge on it: no source here says what N is good. |
+| Quality factor N | Witschi's *Testing methods for mechanical watches* (2025, doc. D40e, about p. 29; the page is approximate) gives N = 0.15·\|Imax\| + 0.1·Pmax + C, with C = 0.6 in its worked example. In `session`'s notation Imax is Im and Pmax is D; the program doesn't compute N. Witschi's 2010 training course doesn't have it. | Don't judge on it: no source here says what N is good. |
 
 Which positions differ tells you where to look (more in
 [diagnosis.md](diagnosis.md#what-the-positions-tell-you)): dial up
@@ -208,10 +209,14 @@ With the 24-hour half, read the isochronism yourself:
 
 ## `series` and `long`: is it steady?
 
-`series` gives, for each of rate, amplitude and beat error, the
-statistics behind steadiness. Read them, not a verdict word. The tests
-and their limits are documented in docs/series.md; the 1% level and the
-others below are the program's.
+`series` gives, for each of rate, amplitude and beat error, a
+`headline` stating what its tests detected, with their statistics, and
+the tests themselves. It gives no verdict: the judging is yours, with
+the table below. The tests and their limits are documented in
+docs/series.md; the 1% level and the others below are the program's
+detection limits, and the readings of them are the project's rules of
+thumb. `findings[]` (`code`, `series`, `title`, `evidence`) lists one
+entry per series where structure was detected.
 
 | Statistic | What it shows | How to read it |
 | --- | --- | --- |
@@ -219,8 +224,8 @@ others below are the program's.
 | `changes` (stretches of constant mean) and the CUSUM | A step that stays | A CUSUM inside ±1.36 is one level. A step: was the watch touched, the room changed, the stand knocked, at that time? If not, a watch that changes its rate in steps wants a look. |
 | `trend` (straight and curved, the share explained) | A slow slide | Amplitude falls as the mainspring lets down: tens of degrees over a day is expected; a fast fall in a few hours points at a weak or dirty mainspring or barrel. For the rate, compare readings at the same state of wind, and see `rate_amplitude`. |
 | `autocorrelation` (Ljung–Box p, the largest short-lag correlation) and `allan` (the excess over the white line, `best_tau_s`) | Readings that remember the last ones | A Ljung–Box p under 0.01 with a correlation of 0.15 or more, or an Allan curve lifting well above the white line: short readings can mislead. Average for longer (`best_tau_s`) before judging. Usually the room or the support; re-run before concluding. |
-| `two_state` (levels, `delta_bic`, `separation`, `switches`, `regularity`, `one_sided`, `unlock_jump`) | Switching between two levels | Two levels are real when ΔBIC is 10 or more, the levels are 2 or more SDs apart, each holds at least 10% of the time, and they switch at least 4 times (the program's limits). If only one side's unlock edges move (`one_sided`), or the unlock beat error jumps three times more than the drop's (`unlock_jump`), it is the unlock mark hopping between two points of the sound: the measurement, not the watch; read the beat error from the drop and the amplitude with care. If Tick and Tock move together, the watch really runs at two levels, often touching something part of the time: a hairspring coil rubbing, the balance rubbing the cock or the pallet bridge, a hand or the rotor catching. A watchmaker's question, in that position. |
-| `rate_amplitude` (slope s/d per degree, r, p) | The rate following the amplitude | A p under 0.01 with \|r\| 0.3 or more is the program's line for "moves with". On a run-down, the whole-take slope is the movement's isochronism: a strong link is a regulation and hairspring question for a watchmaker. |
+| `two_state` (levels, `delta_bic`, `separation`, `switches`, `regularity`, `one_sided`, `unlock_jump`), and `unlock_hopping` | Switching between two levels | Two levels are real when ΔBIC is 10 or more, the levels are 2 or more SDs apart, each holds at least 10% of the time, and they switch at least 4 times (the program's limits). If only one side's unlock edges move (`one_sided`), or the unlock beat error jumps three times more than the drop's (`unlock_jump`), it is the unlock mark hopping between two points of the sound (`unlock_hopping` true; the headline says which side's windows fall in two clusters): the measurement, not the watch; read the beat error from the drop and the amplitude with care. If Tick and Tock move together, the watch really runs at two levels, often touching something part of the time: a hairspring coil rubbing, the balance rubbing the cock or the pallet bridge, a hand or the rotor catching. A watchmaker's question, in that position. |
+| `rate_amplitude` (slope s/d per degree, `r`, `p_value`, `effective_readings`, and `take_r`, `take_s_per_day_per_deg` for the whole take) | The rate following the amplitude | Always given, with no threshold. A p under 0.01 with \|r\| 0.3 or more is the project's rule of thumb for "the rate moves with the amplitude". On a run-down, the whole-take slope is the movement's isochronism: a strong link is a regulation and hairspring question for a watchmaker. |
 | Too few readings | | Record longer. |
 
 More in [long-runs.md](long-runs.md). In `long`'s HTML report, a fault

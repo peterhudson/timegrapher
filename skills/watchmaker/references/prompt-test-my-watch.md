@@ -19,7 +19,7 @@ sure you are. Call the two sides of the beat Tick and Tock.
    Take the lift angle from the table, never from memory; without one,
    use 52°, say so, and give the range the likely lift angles would give.
 2. **Microphone.** Watch clamped dial up. Run `doctor` and read its
-   levels, not any verdict or grade word: go on when a regular beat is
+   levels: go on when a regular beat is
    found, nothing clips and the ticks stand well clear of the noise
    (findings.md has the levels). If they won't lift further, go on and
    say amplitude and beat error are less sure. Propose any fix and ask
@@ -36,11 +36,10 @@ sure you are. Call the two sides of the beat Tick and Tock.
    into one session folder. Tell them when it starts and when it ends.
    If a take has no regular beat or clipped ticks, fix the cause and
    record that position again before moving on.
-6. **Read** the session's numbers, not any grade, finding code or fault
-   name a build prints: first whether the measurement is sound, then the
+6. **Read** the session's numbers: first whether the measurement is sound, then the
    positions and the characteristic values, held against the tolerance
    set that fits the watch (the maker's figures where they exist; say
-   which set). `shape` each take and read it against tick-shape.md's
+   which set). `analyze` each take and read its `shape` block against tick-shape.md's
    rules: worth checking on the bench, never a diagnosis, and only when
    they repeat across positions. Judge with the time since service and
    the wear, never on one number.
