@@ -8070,9 +8070,10 @@ mod tests {
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let mut app = synthetic(5.0, 0.0);
-        app.session.listen();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.bph = Some(28800);
+        app.reset_session(48000, "test".into());
+        app.session.listen();
         let audio = generate(
             &SynthConfig {
                 duration_s: 90.0,
@@ -8082,41 +8083,60 @@ mod tests {
             |_| 0.0,
         );
         let third = audio.samples.len() / 3;
-        let block = |i: usize| timegrapher_core::capture::Block {
-            samples: audio.samples[i * third..(i + 1) * third].to_vec(),
-            at: std::time::SystemTime::now(),
+        let began = std::time::SystemTime::now();
+        let feed = |app: &mut TimegrapherApp, i: usize| {
+            let block = timegrapher_core::capture::Block {
+                samples: audio.samples[i * third..(i + 1) * third].to_vec(),
+                // Blocks arrive at their final frame, with a 60 s pause
+                // between the second and third blocks.
+                at: began + std::time::Duration::from_secs([30, 60, 150][i]),
+            };
+            app.session
+                .recorder
+                .as_mut()
+                .unwrap()
+                .write(&block)
+                .unwrap();
+            // Like poll(), send the same sound to the recorder and the
+            // live analyser so their clocks agree before each transition.
+            for samples in block.samples.chunks(960) {
+                app.live.as_mut().unwrap().push(samples);
+            }
         };
         let info = app.info("test", 48000, 16);
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
-        app.session
-            .recorder
-            .as_mut()
-            .unwrap()
-            .write(&block(0))
-            .unwrap();
+        feed(&mut app, 0);
         app.save_into(&base.join("saved"));
         assert_eq!(app.unsaved_s(), 0.0);
         // Carrying on after the save: that sound isn't saved yet.
-        app.session
-            .recorder
-            .as_mut()
-            .unwrap()
-            .write(&block(1))
-            .unwrap();
+        feed(&mut app, 1);
         assert!((app.unsaved_s() - 30.0).abs() < 0.1, "{}", app.unsaved_s());
-        // Paused, moved to dial down, resumed.
-        app.session.set_state(session::State::Paused {
-            since: Instant::now(),
-        });
-        app.session.recorder.as_mut().unwrap().pause().unwrap();
+        // Paused, moved to dial down, resumed through the same session
+        // lifecycle as pause()/resume_microphone(), without opening a mic.
+        let paused_at = app.live.as_ref().unwrap().duration_s();
+        assert_eq!(paused_at, 60.0);
+        assert_eq!(app.session.recorder.as_ref().unwrap().duration_s(), 60.0);
+        app.session.pause(paused_at).unwrap().unwrap();
         app.change_position(Position::DialDown);
-        app.session.set_state(session::State::Listening);
-        app.session
-            .recorder
-            .as_mut()
-            .unwrap()
-            .write(&block(2))
-            .unwrap();
+        assert!(
+            app.session.settles().is_empty(),
+            "settling waits for Resume"
+        );
+        app.session.resume("test").unwrap();
+        // Inject a deterministic elapsed pause instead of waiting for the
+        // wall-clock duration returned by resume().
+        let live = app.live.as_mut().unwrap();
+        live.skip(60.0);
+        app.session.resumed_at(live.duration_s());
+        assert_eq!(app.session.settles(), [(120.0, 120.0 + SETTLE_S)]);
+        for t in [60.0, 90.0, 120.0] {
+            assert_eq!(app.session.audio_of(t), Some(60.0));
+        }
+        feed(&mut app, 2);
+        assert_eq!(app.live.as_ref().unwrap().duration_s(), 150.0);
+        assert_eq!(app.session.recorder.as_ref().unwrap().duration_s(), 90.0);
+        assert_eq!(app.session.audio_of(120.0 + SETTLE_S), Some(70.0));
+        assert_eq!(app.session.audio_of(150.0), Some(90.0));
         assert!((app.unsaved_s() - 60.0).abs() < 0.1, "{}", app.unsaved_s());
         app.save_into(&base.join("saved"));
         assert_eq!(app.unsaved_s(), 0.0);
@@ -8146,6 +8166,9 @@ mod tests {
                 .unwrap();
         assert_eq!(session["breaks"].as_array().map(Vec::len), Some(1));
         assert_eq!(session["breaks"][0]["segment"], "audio-002.wav");
+        assert_eq!(session["breaks"][0]["audio_s"], 60.0);
+        assert_eq!(session["breaks"][0]["gap_s"], 60.0);
+        assert_eq!(session["duration_s"], 90.0);
         // Reopened, all 90 s are there in both positions.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
         again.start_batch(&saved);
