@@ -39,6 +39,41 @@ const SOUND_EVERY_S: f64 = 2.0;
 const SPAN_SESSION_HINT: &str = "Everything since the session started, growing as it goes";
 const SPAN_STRIP_HINT: &str = "Only the paper strip's length, ending where the strip does: the \
      newest readings, moving along with the strip";
+/// What the reading cards asked for.
+struct Readouts {
+    /// A new Average Over.
+    average: Option<f64>,
+    /// Keep the input's clock as timed.
+    keep_clock: bool,
+}
+
+/// Seconds of listening before the input's clock, timed against the
+/// computer's, is offered to keep: the twenty minutes `timegrapher clock
+/// measure` takes by default. It is timed again each minute after.
+const CLOCK_MEASURE_S: f64 = 1200.0;
+
+/// The microphone's clock, timed against the computer's while listening.
+struct ClockTrack {
+    /// The input's name, as the clock file keeps it.
+    device: String,
+    tracker: timegrapher_core::clock::ClockTracker,
+    /// Audio seconds at which to fit again.
+    next_s: f64,
+    /// The latest fit, from [`CLOCK_MEASURE_S`] of audio on.
+    fit: Option<timegrapher_core::clock::ClockFit>,
+}
+
+impl ClockTrack {
+    /// Count a block of audio that arrived at `at`, fitting once a minute.
+    fn push(&mut self, samples: usize, at: std::time::SystemTime) {
+        self.tracker.push(samples, at);
+        if self.tracker.audio_s() >= self.next_s {
+            self.next_s = self.tracker.audio_s() + 60.0;
+            self.fit = self.tracker.fit();
+        }
+    }
+}
+
 /// The Rate caveat for an input whose clock hasn't been measured.
 const CLOCK_UNKNOWN: &str = "input clock not measured";
 /// Plain marks on the level meter, for reference only.
@@ -812,6 +847,9 @@ pub struct TimegrapherApp {
     /// The stored clock error of the input this session listens to, if one
     /// was measured (`timegrapher clock measure --save`).
     clock: Option<clockstore::DeviceClock>,
+    /// The microphone's clock timed against the computer's as its audio
+    /// arrives: offered to keep once it has run long enough.
+    clock_track: Option<ClockTrack>,
     gain_error: Option<String>,
     message: Option<(String, bool)>,
     /// The tick and tock sound: how it is drawn, what it was every few
@@ -1070,6 +1108,7 @@ impl TimegrapherApp {
             gain_read_at: Instant::now(),
             gain_device: None,
             clock: None,
+            clock_track: None,
             gain_error: None,
             message: None,
             sound_opts: profiles::Options::default(),
@@ -1277,6 +1316,12 @@ impl TimegrapherApp {
                 self.clock = clockstore::ClockStore::load()
                     .ok()
                     .and_then(|s| s.get(&c.label).cloned());
+                self.clock_track = Some(ClockTrack {
+                    device: c.label.clone(),
+                    tracker: timegrapher_core::clock::ClockTracker::new(c.sample_rate),
+                    next_s: CLOCK_MEASURE_S,
+                    fit: None,
+                });
                 // Every session is kept as it goes, so it can be saved at any
                 // point; it is thrown away with a new session unless saved.
                 let info = self.info(&c.label, c.sample_rate, c.bits);
@@ -1931,6 +1976,9 @@ impl TimegrapherApp {
                 match cap.rx.try_recv() {
                     Ok(Event::Audio(b)) => {
                         self.audio_at = Some(Instant::now());
+                        if let Some(t) = self.clock_track.as_mut() {
+                            t.push(b.samples.len(), b.at);
+                        }
                         let l = Level::of(&b.samples);
                         if self.level_at.elapsed().as_secs_f64() > 0.5
                             || l.peak_dbfs > self.level.peak_dbfs
@@ -3946,7 +3994,7 @@ impl TimegrapherApp {
     /// The reading cards across the top: Readings with its Average Over,
     /// then Rate, Amplitude, Beat Error and Beat Rate, all one width.
     /// Returns a new Average Over when one was picked.
-    fn readouts(&self, ui: &mut egui::Ui) -> Option<f64> {
+    fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
         let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str| {
@@ -4077,6 +4125,8 @@ impl TimegrapherApp {
             })
             .collect();
         let picked = std::cell::Cell::new(None);
+        let keep_clock = std::cell::Cell::new(false);
+        let measured = self.clock_measured().filter(|_| self.clock.is_none());
         card(
             &mut cols[0],
             "Readings",
@@ -4202,6 +4252,40 @@ impl TimegrapherApp {
                             _ => "a value typed in",
                         }
                     ));
+                }
+                if let Some(f) = measured {
+                    // Timed long enough while listening: offered, never kept
+                    // unasked.
+                    ui.horizontal(|ui| {
+                        let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
+                        ui.label(
+                            RichText::new(format!(
+                                "input clock timed: {:.1} ppm {slow}",
+                                f.ppm.abs()
+                            ))
+                            .small()
+                            .color(pal.text_secondary),
+                        )
+                        .on_hover_text(format!(
+                            "Timed against the computer's clock over {} of listening, this \
+                             input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
+                             day on every rate. Keep it to show the corrected rate as True \
+                             Clock from now on; the command line and the MCP server use it \
+                             too. It is only right if the computer's clock is kept by \
+                             internet time.",
+                            strip::fmt_time(f.span_s),
+                            f.ppm.abs(),
+                            f.ppm_sd,
+                            f.rate_error_s_per_day
+                        ));
+                        if ui
+                            .small_button("Keep")
+                            .on_hover_text("Keep this input's clock error and correct its rates")
+                            .clicked()
+                        {
+                            keep_clock.set(true);
+                        }
+                    });
                 }
                 if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
                     whole_line(
@@ -4352,7 +4436,50 @@ impl TimegrapherApp {
                 .data_mut(|d| d.insert_temp(height_id, tallest.get()));
             ui.ctx().request_repaint();
         }
-        picked.get()
+        Readouts {
+            average: picked.get(),
+            keep_clock: keep_clock.get(),
+        }
+    }
+
+    /// The microphone's clock as timed so far, once it has run
+    /// [`CLOCK_MEASURE_S`] of audio and is known to half a ppm.
+    fn clock_measured(&self) -> Option<&timegrapher_core::clock::ClockFit> {
+        self.clock_track
+            .as_ref()?
+            .fit
+            .as_ref()
+            .filter(|f| f.ppm_sd.is_finite() && f.ppm_sd < 0.5)
+    }
+
+    /// Keep the microphone's clock as timed: corrected rates from now on,
+    /// for the command line and the MCP server too.
+    fn keep_clock(&mut self) {
+        let (Some(fit), Some(t)) = (self.clock_measured(), self.clock_track.as_ref()) else {
+            return;
+        };
+        let d = clockstore::DeviceClock::from_fit(
+            &t.device,
+            fit,
+            timegrapher_core::recorder::utc(std::time::SystemTime::now()),
+            "measure",
+        );
+        let saved = clockstore::ClockStore::load().and_then(|mut s| {
+            s.set(d.clone());
+            s.save()
+        });
+        match saved {
+            Ok(p) => {
+                self.info_msg(format!(
+                    "Kept this input's clock, {:.1} ppm {}, in {}",
+                    d.ppm.abs(),
+                    if d.ppm >= 0.0 { "slow" } else { "fast" },
+                    p.display()
+                ));
+                self.clock = Some(d);
+            }
+            Err(e) => self.error(format!("The input's clock couldn't be kept: {e}")),
+        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -5042,8 +5169,12 @@ impl TimegrapherApp {
         }
         if self.show_readings {
             self.clipping_banner(ui);
-            if let Some(avg) = self.readouts(ui) {
+            let out = self.readouts(ui);
+            if let Some(avg) = out.average {
                 self.set_average(avg);
+            }
+            if out.keep_clock {
+                self.keep_clock();
             }
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
         }
@@ -6202,9 +6333,6 @@ fn position_in_name(path: &Path) -> Option<Position> {
     }
 }
 
-/// The names in a chart's key and their colours, when it has more than one
-/// line.
-/// A second colour is drawn as a dash of the two, as the line is.
 /// A chart's time label at `t` seconds, in view `r`.
 fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     // Nothing before the session starts: a time there read as a second
@@ -6218,6 +6346,9 @@ fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     theme::clear_of_right_edge(label, t, r, frac)
 }
 
+/// The names in a chart's key and their colours, when it has more than one
+/// line.
+/// A second colour is drawn as a dash of the two, as the line is.
 fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
     match pane {
         Pane::Amplitude => vec![
@@ -8222,9 +8353,6 @@ mod tests {
         assert!((b - a - app.strip.span_s).abs() < 1e-9);
     }
 
-    /// A pane follows Readings' Average Over until given a time of its
-    /// own, which keeps its own readings until Readings' Average Over is
-    /// changed: then every pane follows it again.
     #[test]
     fn tick_and_tock_amplitude_dash_over_their_own_colours() {
         let pal = theme::palette(true);
@@ -8242,6 +8370,38 @@ mod tests {
         assert_eq!(chart_time_label(120.0, &r), "2:00");
     }
 
+    #[test]
+    fn the_input_clock_is_offered_after_twenty_minutes() {
+        // A card 20 ppm slow: 48,000 frames arrive every 1.00002 s of
+        // the computer's time, in blocks of a tenth of a second.
+        let mut t = ClockTrack {
+            device: "Test Mic".into(),
+            tracker: timegrapher_core::clock::ClockTracker::new(48_000),
+            next_s: CLOCK_MEASURE_S,
+            fit: None,
+        };
+        use std::time::Duration;
+        let start = std::time::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let mut audio = 0.0;
+        while audio < CLOCK_MEASURE_S - 1.0 {
+            audio += 0.1;
+            t.push(4_800, start + Duration::from_secs_f64(audio * 1.000_02));
+        }
+        assert!(t.fit.is_none(), "nothing offered before 20 minutes");
+        while audio < CLOCK_MEASURE_S + 1.0 {
+            audio += 0.1;
+            t.push(4_800, start + Duration::from_secs_f64(audio * 1.000_02));
+        }
+        let f = t.fit.as_ref().expect("timed at 20 minutes");
+        assert!((f.ppm - 20.0).abs() < 0.5, "{} ppm", f.ppm);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.clock_track = Some(t);
+        assert!(app.clock_measured().is_some());
+    }
+
+    /// A pane follows Readings' Average Over until given a time of its
+    /// own, which keeps its own readings until Readings' Average Over is
+    /// changed: then every pane follows it again.
     #[test]
     fn a_pane_follows_readings_unless_set() {
         let mut app = synthetic(40.0, 0.0);

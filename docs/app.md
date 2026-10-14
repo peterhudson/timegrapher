@@ -205,9 +205,13 @@ Steadiness and Isochronism tabs say so; during a Positions Test they say
 that the test never stays that long in one position. Both scroll with a
 bar always showing when the pane is too short for every row.
 
-**True Clock.** When the microphone's own clock error has been measured
-and stored (`timegrapher clock measure --save`, or `clock from-log --save`
-after a take with a clock log; see `clock` in
+**True Clock.** While it listens, the app times the microphone's clock
+against the computer's. After 20 minutes of listening, if no error is
+kept for that input yet, the Rate card shows the error it timed with a
+**Keep** button; the timing is only right when the computer's clock is
+kept by internet time (NTP). When the microphone's own clock error has
+been kept (by **Keep**, `timegrapher clock measure --save`, or `clock
+from-log --save` after a take with a clock log; see `clock` in
 [the agent interface](agent-interface.md#clock)), a
 line under the rate gives the rate corrected onto true time, labelled
 True Clock. A sound card's crystal runs a steady 10 to 50 ppm off, which
