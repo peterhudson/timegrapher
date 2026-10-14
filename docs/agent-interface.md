@@ -39,10 +39,11 @@ Every document starts with the same three fields:
 
 `schema` is `timegrapher.<kind>/<version>`. Within a version, fields are only
 added, never renamed or removed; a change that would break a reader bumps the
-version. `analyze` and `doctor` are at version 2: it removed their grades,
-verdicts, named faults and advice (the software reports what it measured
-and detected; the [watchmaker skill](../skills/watchmaker/SKILL.md)
-interprets it). Other kinds are at version 1. `input.files[].recording` appears when the recording has a
+version. `analyze`, `doctor`, `record`, `series`, `session` and
+`regress-holdout` are at version 2: it removed their grades, verdicts,
+named faults and advice (the software reports what it measured and
+detected; the [watchmaker skill](../skills/watchmaker/SKILL.md) interprets
+it), and `record/2` keeps every take. Other kinds are at version 1. `input.files[].recording` appears when the recording has a
 provenance sidecar (`take.wav.json`, written by `doctor --save`), carrying
 the device, its configuration and the mixer settings at the time.
 
@@ -151,11 +152,16 @@ for how long, and prints `done: the watch can be moved` when the watch may
 be turned. An agent runs it once per position, after telling the person
 which way to turn the watch, and never on its own initiative.
 
-Each run makes one take folder in FOLDER, the same as the desktop app
-saves (`audio-001.wav`, `clock.csv`, `session.json`, and a `session.toml`
-the app opens it with; a take paused and resumed in the app also has a
-`breaks` list in `session.json`, described in [app.md](app.md)), named after the start time, the watch and the
-position. The take is analysed at once. Whether a regular beat is found
+Each run makes one take folder in FOLDER holding the same files as a
+recording the desktop app saves (`audio-001.wav`, `clock.csv`,
+`session.json`, and a `session.toml` the app opens it with; a take paused
+and resumed in the app also has a `breaks` list in `session.json`,
+described in [app.md](app.md)). `record` names the folder after the start
+time, the watch (when given) and the position, as in
+`2026-10-08T21-30-00_Yacht-Master_DU`. The app names its saved copy after
+the start time, then the watch's name and the calibre when they are set,
+with no position (`2026-10-08T21-30-00_Yacht-Master_Rolex_3235`). The take
+is analysed at once. Whether a regular beat is found
 (`watch_heard`, with the timing scatter behind it) and clipping are
 measured over the whole take, so a short take still gets them.
 The readings come from the stretch `session` will read: the check skips
