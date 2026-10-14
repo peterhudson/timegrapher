@@ -207,8 +207,9 @@ bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
 against the computer's. After 20 minutes of listening, if no error is
-kept for that input yet, the Rate card shows the error it timed with a
-**Keep** button; the timing is only right when the computer's clock is
+kept for that input yet and the timing is known to half a ppm, the Rate
+card shows the error it timed with a **Keep** button (a busy computer
+delivers sound less evenly, so the offer can come later); the timing is only right when the computer's clock is
 kept by internet time (NTP). When the microphone's own clock error has
 been kept (by **Keep**, `timegrapher clock measure --save`, or `clock
 from-log --save` after a take with a clock log; see `clock` in
