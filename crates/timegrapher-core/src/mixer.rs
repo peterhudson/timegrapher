@@ -1,8 +1,10 @@
-//! The microphone's input level, and what to change on the computer to fix
-//! a microphone problem.
+//! The sound card's input controls: their levels and switches as the
+//! computer reports them, and for each condition the signal check detected,
+//! the setting that governs it.
 //!
-//! On Linux we read the ALSA mixer with `amixer` and propose exact
-//! commands; on macOS and Windows we say which setting to change. Nothing
+//! On Linux the ALSA mixer is read with `amixer`, and each entry in
+//! `fixes[]` carries the `amixer` command that sets that control; on macOS
+//! and Windows the entry names the setting. Nothing
 //! here changes a setting unless `apply` is called (the CLI calls it only
 //! when the person passed `--apply`) or an [`InputGain`] is set (the app
 //! does that when the person moves its input-level control).
@@ -499,7 +501,7 @@ impl InputGain {
     }
 }
 
-/// `wpctl get-volume` prints "Volume: 0.62", with " [MUTED]" when muted.
+/// `wpctl get-volume` prints `Volume: 0.62`, with ` [MUTED]` when muted.
 pub fn parse_wpctl_volume(text: &str) -> Option<f64> {
     let v = text.split("Volume:").nth(1)?.split_whitespace().next()?;
     let v: f64 = v.parse().ok()?;

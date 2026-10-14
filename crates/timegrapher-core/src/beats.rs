@@ -505,7 +505,7 @@ pub const JUMP_CONTEXT: usize = 2 * JUMP_SPAN + 2;
 /// Positions `p` in `beats` where the timing of both sides steps by more
 /// than [`JUMP_S`], and by about the same: where listening stopped and
 /// started again, so the watch's phase moved on. Each side's step is the
-/// median offset of its next [`JUMP_SPAN`] beats from where the typical
+/// median offset of its next `JUMP_SPAN` beats from where the typical
 /// intervals put them, against that of its last five; a stray beat moves
 /// neither median. A tracker moving from one sound of a beat to another
 /// (a few milliseconds, on one side) is not a jump: the other side stays.
