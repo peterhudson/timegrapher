@@ -424,7 +424,9 @@ constant level the change finder found and, for two states, the two
 levels dashed; scaled to the readings with lone wild ones left out),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the escape, fourth and centre
-wheels' periods marked, and the strongest component labelled), **Cycle**
+wheels' periods marked, and the strongest component labelled; **Log
+Scale** in its toolbar draws the scores on a log scale, so a small peak
+beside a tall one still shows), **Cycle**
 (the readings folded at the cycle the tests found: every cycle as dots and
 the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
@@ -433,8 +435,15 @@ where it ends, with the averaging time of least scatter labelled),
 **CUSUM** (with the ±1.36 lines dashed and the largest excursion
 labelled) and **FFT** (the plain amplitude spectrum of each series, like
 Witschi's: the size of the sine wave at each period, log-log, in the
-series' own units, the rate's in milliseconds of beat timing, with the
-wheels' periods marked and the tallest point labelled). The tests need 5 minutes
+series' own units, the rate's as the swing peak to peak it makes in 10 s
+rate readings, in s/d, from 20 s up, worked out from the beat timing's
+spectrum (a timing sine of *a* ms at period *P* swings the rate by
+2·*a*·2π/*P*·86.4 s/d, of which a 10 s reading keeps sin *x*/*x*, *x* =
+π·10/*P*); **Timing** in its toolbar draws rate as the beat timing's own
+spectrum, in ms, at every period; the wheels' periods are marked and the
+tallest point labelled). In Periods and FFT each wheel's
+period is a bold line and half of it, twice a turn as an off-centre wheel
+shows, a fainter dashed line marked ×2; the grid behind is pale. The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
 or the whole file once it is opened. Rows stack and fill the pane when it is
