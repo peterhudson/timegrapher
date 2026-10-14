@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn a_recordings_caveats_become_sentences() {
         let doc = json!({
-            "schema": "timegrapher.analyze/1",
+            "schema": "timegrapher.analyze/2",
             "input": { "settings": { "lift_deg": 52.0 } },
             "caveats": [
                 { "code": "short_span", "span_s": 5.7 },
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn no_regular_beat_gives_the_timing_scatter() {
-        let doc = json!({ "schema": "timegrapher.analyze/1", "bph": 28800, "jitter_us": 8600.0,
+        let doc = json!({ "schema": "timegrapher.analyze/2", "bph": 28800, "jitter_us": 8600.0,
             "watch_heard": false, "caveats": [{ "code": "no_watch" }] });
         assert_eq!(
             notes(&doc),
@@ -284,6 +284,6 @@ mod tests {
 
     #[test]
     fn other_documents_have_none() {
-        assert!(limits(&json!({ "schema": "timegrapher.series/1" })).is_empty());
+        assert!(limits(&json!({ "schema": "timegrapher.series/2" })).is_empty());
     }
 }
