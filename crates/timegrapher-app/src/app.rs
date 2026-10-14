@@ -725,6 +725,9 @@ pub struct TimegrapherApp {
     /// The time the Positions Test didn't use, marked on the strip; kept
     /// after the test ends, until a new session.
     guided_unused: Vec<(f64, f64, &'static str)>,
+    /// The stretches the Positions Test measured, the one under way
+    /// included, kept like `guided_unused`.
+    guided_measured: Vec<(f64, f64)>,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -1056,6 +1059,7 @@ impl TimegrapherApp {
             updates: Default::default(),
             guided: None,
             guided_unused: Vec::new(),
+            guided_measured: Vec::new(),
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -1269,6 +1273,7 @@ impl TimegrapherApp {
         self.sound_history.clear();
         self.guided = None;
         self.guided_unused.clear();
+        self.guided_measured.clear();
         self.sound_at = None;
         self.sound_job = None;
         self.steady = None;
@@ -1425,6 +1430,7 @@ impl TimegrapherApp {
         self.sound_history.clear();
         self.guided = None;
         self.guided_unused.clear();
+        self.guided_measured.clear();
         self.source_label.clear();
         self.message = None;
     }
@@ -3186,9 +3192,25 @@ impl TimegrapherApp {
     }
 
     /// The stretches to mark on the strip and the charts, once there is
-    /// more than one: start, end and the position's name.
+    /// more than one or a Positions Test has begun: start, end and the
+    /// position's name.
     fn position_bands(&self) -> Vec<(f64, f64, &'static str)> {
-        self.session.position_bands(self.position)
+        let bands = self.session.position_bands(self.position);
+        if bands.is_empty() && self.in_test() {
+            return self
+                .session
+                .position_spans(self.position)
+                .into_iter()
+                .map(|(a, b, p)| (a.max(0.0), b, p.label()))
+                .collect();
+        }
+        bands
+    }
+
+    /// Whether the strip and charts mark a Positions Test's phases: from
+    /// its start until the next test or a new session.
+    fn in_test(&self) -> bool {
+        !self.guided_unused.is_empty() || !self.guided_measured.is_empty()
     }
 
     fn microphone_settings(&mut self, ui: &mut egui::Ui) {
@@ -4906,6 +4928,7 @@ impl TimegrapherApp {
         }
         self.guided = Some(guided::Test::new());
         self.guided_unused.clear();
+        self.guided_measured.clear();
     }
 
     /// After a break in the sound while listening: was the watch moved?
@@ -4989,11 +5012,13 @@ impl TimegrapherApp {
             Some(guided::Action::Stop) => {
                 test.stop(now);
                 self.guided_unused = test.unused(now);
+                self.guided_measured = test.measured(now);
                 return;
             }
             None => {}
         }
         self.guided_unused = test.unused(now);
+        self.guided_measured = test.measured(now);
         if matches!(
             phase,
             guided::Phase::Settling(_) | guided::Phase::Measuring(_)
@@ -5360,6 +5385,7 @@ impl TimegrapherApp {
             gutter: GUTTER,
             bands: &bands,
             settles: &settles,
+            measured: &self.guided_measured,
         };
         let Some(live) = &self.live else { return };
         let input = strip::draw_strip(
@@ -6200,13 +6226,27 @@ impl TimegrapherApp {
         let painter = ui.painter_at(frame);
         let t = resp.transform;
         paint_y_labels(ui, &t, unit);
+        let at = |x| egui::pos2(t.position_from_point_x(x), frame.top());
+        let test = self.in_test();
+        if test {
+            strip::paint_phases(
+                &painter,
+                frame,
+                &self.strip_settles(),
+                &self.guided_measured,
+                at,
+                true,
+                ui.visuals(),
+            );
+        }
         strip::paint_bands(
             &painter,
             frame,
             &self.position_bands(),
-            |x| egui::pos2(t.position_from_point_x(x), frame.top()),
+            at,
             true,
             true,
+            !test,
             ui.visuals(),
         );
         if hover.is_some() {
@@ -6976,7 +7016,14 @@ impl eframe::App for TimegrapherApp {
         self.panels(ctx);
         self.confirm_dialog(ctx);
         if let Some(t) = self.guided.as_mut() {
-            guided::results(ctx, t);
+            let dir = self
+                .session
+                .saved_to()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+                .unwrap_or_else(|| PathBuf::from(&self.save_dir));
+            if let Some(m) = guided::results(ctx, t, &dir) {
+                self.info_msg(m);
+            }
         }
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
@@ -7805,6 +7852,25 @@ mod tests {
             [(0.0, Position::DialUp), (60.0, Position::DialDown)]
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Positions Test begun with the watch already dial up: the strip
+    /// marks Dial Up from the start, with the time before the test named,
+    /// though the watch never moved.
+    #[test]
+    fn a_positions_test_is_marked_from_its_first_position() {
+        let mut app = synthetic(20.0, 0.0);
+        assert!(app.position_bands().is_empty(), "one position, no test");
+        let mut test = guided::Test::new();
+        test.tick(5.0);
+        app.guided_unused = test.unused(10.0);
+        app.guided_measured = test.measured(10.0);
+        let bands = app.position_bands();
+        assert_eq!(bands.len(), 1);
+        assert_eq!(bands[0].2, "Dial Up (DU)");
+        let settles = app.strip_settles();
+        assert_eq!(settles[0], (0.0, 5.0, guided::BEFORE_TEST));
+        assert_eq!(settles[1], (5.0, 10.0, guided::SETTLING));
     }
 
     /// A new position keeps the strip's beats and marks the stretch; the

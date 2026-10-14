@@ -250,15 +250,23 @@ pub struct Extras<'a> {
     /// the position's name. Empty while the watch stayed put.
     pub bands: &'a [(f64, f64, &'a str)],
     /// Stretches the readings leave out: start, end and what the ticker
-    /// says over it ("Settling" after a move, "Not Measured" in a
-    /// Positions Test). Their beats are drawn faintly.
+    /// says over it ("Settling" after a move; in a Positions Test also
+    /// "Not Used for Positions Test" and "Before Test"). Their beats are
+    /// drawn faintly.
     pub settles: &'a [(f64, f64, &'a str)],
+    /// The stretches a Positions Test measures, the one under way
+    /// included. Not empty once a test has begun: the strip then shades
+    /// by the test's phases in place of every other position.
+    pub measured: &'a [(f64, f64)],
 }
 
 /// Mark each stretch of the session in one position across the plotting
-/// area `r`: every other stretch faintly shaded, a line where each new one
-/// begins, and (with `names`) the position's name at its start. `at`
-/// places a time on the time axis; `horizontal` when time runs across.
+/// area `r`: every other stretch faintly shaded (unless `shade` is off, as
+/// in a Positions Test, which [`paint_phases`] shades), a line where each
+/// new one begins, and (with `names`) the position's name at its start.
+/// `at` places a time on the time axis; `horizontal` when time runs
+/// across.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_bands(
     painter: &egui::Painter,
     r: Rect,
@@ -266,10 +274,11 @@ pub fn paint_bands(
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
     names: bool,
+    shade: bool,
     vis: &egui::Visuals,
 ) {
     let text = vis.weak_text_color();
-    let shade = text.gamma_multiply(0.07);
+    let fill = text.gamma_multiply(SETTLING_SHADE);
     let edge = Stroke::new(1.0_f32, text.gamma_multiply(0.6));
     let font = FontId::proportional(11.0);
     let along = |p: Pos2| if horizontal { p.x } else { p.y };
@@ -289,8 +298,8 @@ pub fn paint_bands(
         } else {
             Rect::from_x_y_ranges(r.x_range(), s0..=s1)
         };
-        if i % 2 == 1 {
-            painter.rect_filled(band, 0.0, shade);
+        if shade && i % 2 == 1 {
+            painter.rect_filled(band, 0.0, fill);
         }
         let start_seen = pa >= lo && pa <= hi;
         if i > 0 && start_seen {
@@ -326,11 +335,13 @@ pub fn paint_bands(
 /// its ends out of sight; over each stretch left out ("Settling" after a
 /// move), what it is.
 /// The names start from the stretch's own start, so they move with it.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_ticker(
     painter: &egui::Painter,
     lane: Rect,
     bands: &[(f64, f64, &str)],
     settles: &[(f64, f64, &str)],
+    measured: &[(f64, f64)],
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
     vis: &egui::Visuals,
@@ -374,9 +385,31 @@ pub fn paint_ticker(
         } else {
             Rect::from_x_y_ranges(lane.x_range(), s0..=s1)
         };
-        // Every other position a shade darker, as on the plot.
-        let shade = if i % 2 == 1 { 0.16 } else { 0.07 };
-        painter.rect_filled(seg.shrink(0.5), 2.0, text.gamma_multiply(shade));
+        // In a Positions Test each phase its own shade, as on the plot;
+        // otherwise every other position a shade darker.
+        let phase = if measured.is_empty() {
+            None
+        } else if settling {
+            Some(name)
+        } else {
+            let mid = (a + b.min(1e12)) / 2.0;
+            measured
+                .iter()
+                .any(|m| mid > m.0 && mid < m.1)
+                .then_some(MEASURED)
+        };
+        let seg = seg.shrink(0.5);
+        match phase {
+            None => {
+                let shade = if i % 2 == 1 {
+                    MEASURED_SHADE
+                } else {
+                    SETTLING_SHADE
+                };
+                painter.rect_filled(seg, 2.0, text.gamma_multiply(shade));
+            }
+            Some(p) => paint_phase(&painter, seg, p, vis),
+        }
         // Settling a little fainter than the names, but not so faint that
         // the thin "l"s drop out at this size ("Setting").
         let color = if settling {
@@ -430,6 +463,95 @@ pub fn paint_ticker(
                 } else {
                     painter.hline(lane.shrink(4.0).x_range(), mid, rule);
                 }
+            }
+        }
+    }
+}
+
+/// How dark the shade over a measured stretch is, and over a settling (and
+/// the lighter of two positions when no test is under way), as fractions
+/// of the faint text colour.
+const MEASURED_SHADE: f32 = 0.16;
+const SETTLING_SHADE: f32 = 0.07;
+/// The phase name [`paint_phase`] takes for a measured stretch.
+const MEASURED: &str = "Measured";
+
+/// Shade `rect` for one phase of a Positions Test: a measured stretch
+/// darkest, a settling lighter, time not used hatched, and the time before
+/// the test left plain.
+fn paint_phase(painter: &egui::Painter, rect: Rect, phase: &str, vis: &egui::Visuals) {
+    let text = vis.weak_text_color();
+    match phase {
+        MEASURED => {
+            painter.rect_filled(rect, 0.0, text.gamma_multiply(MEASURED_SHADE));
+        }
+        crate::guided::NOT_USED => {
+            let p = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
+            let stroke = Stroke::new(1.0_f32, text.gamma_multiply(0.22));
+            let pitch = 7.0;
+            let h = rect.height();
+            let mut x = rect.left() - h;
+            while x < rect.right() {
+                p.line_segment(
+                    [Pos2::new(x, rect.bottom()), Pos2::new(x + h, rect.top())],
+                    stroke,
+                );
+                x += pitch;
+            }
+        }
+        crate::guided::BEFORE_TEST => {}
+        _ => {
+            painter.rect_filled(rect, 0.0, text.gamma_multiply(SETTLING_SHADE));
+        }
+    }
+}
+
+/// Shade the plotting area `r` by a Positions Test's phases: each measured
+/// stretch, and each stretch in `settles` by what it is, with a line where
+/// the test began.
+pub fn paint_phases(
+    painter: &egui::Painter,
+    r: Rect,
+    settles: &[(f64, f64, &str)],
+    measured: &[(f64, f64)],
+    at: impl Fn(f64) -> Pos2,
+    horizontal: bool,
+    vis: &egui::Visuals,
+) {
+    let along = |p: Pos2| if horizontal { p.x } else { p.y };
+    let (lo, hi) = if horizontal {
+        (r.left(), r.right())
+    } else {
+        (r.top(), r.bottom())
+    };
+    let span = |a: f64, b: f64| {
+        let (pa, pb) = (along(at(a)), along(at(b.min(1e12))));
+        let (s0, s1) = (pa.min(pb).max(lo), pa.max(pb).min(hi));
+        (s1 > s0).then(|| {
+            if horizontal {
+                Rect::from_x_y_ranges(s0..=s1, r.y_range())
+            } else {
+                Rect::from_x_y_ranges(r.x_range(), s0..=s1)
+            }
+        })
+    };
+    let phases = measured
+        .iter()
+        .map(|&(a, b)| (a, b, MEASURED))
+        .chain(settles.iter().copied());
+    for (a, b, phase) in phases {
+        if let Some(rect) = span(a, b) {
+            paint_phase(painter, rect, phase, vis);
+        }
+    }
+    let edge = Stroke::new(1.0_f32, vis.weak_text_color().gamma_multiply(0.6));
+    for &(_, b, _) in settles.iter().filter(|s| s.2 == crate::guided::BEFORE_TEST) {
+        let p = along(at(b));
+        if p >= lo && p <= hi {
+            if horizontal {
+                painter.vline(p, r.y_range(), edge);
+            } else {
+                painter.hline(r.x_range(), p, edge);
             }
         }
     }
@@ -619,6 +741,18 @@ pub fn draw_strip(
         painter.text(at, align, fmt_time(t), font.clone(), text);
         t -= tstep;
     }
+    let test = !extras.measured.is_empty();
+    if test {
+        paint_phases(
+            &painter,
+            r,
+            extras.settles,
+            extras.measured,
+            |t| g.pos(0.0, t),
+            view.horizontal,
+            &vis,
+        );
+    }
     paint_bands(
         &painter,
         r,
@@ -626,6 +760,7 @@ pub fn draw_strip(
         |t| g.pos(0.0, t),
         view.horizontal,
         false,
+        !test,
         &vis,
     );
     if !extras.bands.is_empty() {
@@ -634,6 +769,7 @@ pub fn draw_strip(
             lane,
             extras.bands,
             extras.settles,
+            extras.measured,
             |t| g.pos(0.0, t),
             view.horizontal,
             &vis,

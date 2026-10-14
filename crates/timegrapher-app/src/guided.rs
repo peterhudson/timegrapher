@@ -44,6 +44,14 @@ pub enum Phase {
     Finished,
 }
 
+/// What the strip says over the time the test didn't use: the settling
+/// in each position, the rest of the time in a position that wasn't
+/// measured (waiting to be turned, a measurement started again), and the
+/// time before the test began.
+pub const SETTLING: &str = "Settling";
+pub const NOT_USED: &str = "Not Used for Positions Test";
+pub const BEFORE_TEST: &str = "Before Test";
+
 /// What the banner's buttons asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Action {
@@ -58,10 +66,13 @@ pub struct Test {
     /// When the watch was put in this step's position, seconds of the
     /// session's sound; set on the first frame that has a session.
     start: Option<f64>,
+    /// When the test began, seconds of the session's sound: the first
+    /// position's first start.
+    began: Option<f64>,
     /// The measured stretch of each position done so far.
     spans: Vec<(Position, f64, f64)>,
     /// The time the test didn't use, from the steps before this one:
-    /// start, end and why ("Settling", or "Not Measured" while the watch
+    /// start, end and why ([`SETTLING`], or [`NOT_USED`] while the watch
     /// waited to be turned or a measurement was started again).
     unused: Vec<(f64, f64, &'static str)>,
     /// The six readings, once the last position is measured.
@@ -74,6 +85,7 @@ impl Test {
         Test {
             step: 0,
             start: None,
+            began: None,
             spans: Vec::new(),
             unused: Vec::new(),
             readings: None,
@@ -102,6 +114,7 @@ impl Test {
             return Phase::Finished;
         }
         let start = *self.start.get_or_insert(now);
+        self.began.get_or_insert(start);
         let t = now - start;
         if t < SETTLE_S {
             return Phase::Settling(SETTLE_S - t);
@@ -136,12 +149,18 @@ impl Test {
         self.start = Some(now);
     }
 
-    /// The time the test doesn't use, up to `now`: each settling, and
-    /// what came between a measurement's end (or a measurement given up)
-    /// and the next start. The strip marks it so the sound outside the
-    /// measured stretches reads as left out.
+    /// The time the test doesn't use, up to `now`: the time before it
+    /// began, each settling, and what came between a measurement's end (or
+    /// a measurement given up) and the next start. The strip marks it so
+    /// the sound outside the measured stretches reads as left out.
     pub fn unused(&self, now: f64) -> Vec<(f64, f64, &'static str)> {
-        let mut out = self.unused.clone();
+        let mut out: Vec<_> = self
+            .began
+            .filter(|&b| b > 0.0)
+            .map(|b| (0.0, b, BEFORE_TEST))
+            .into_iter()
+            .collect();
+        out.extend(self.unused.iter().copied());
         // Once finished, the last step was closed as the test ended.
         if let (Some(s), None) = (self.start, &self.readings) {
             out.extend(Self::step_unused(s, now, false));
@@ -156,12 +175,12 @@ impl Test {
             return out;
         }
         let settled = start + SETTLE_S;
-        out.push((start, now.min(settled), "Settling"));
+        out.push((start, now.min(settled), SETTLING));
         let end = settled + MEASURE_S;
         if given_up && now > settled {
-            out.push((settled, now, "Not Measured"));
+            out.push((settled, now, NOT_USED));
         } else if now > end {
-            out.push((end, now, "Not Measured"));
+            out.push((end, now, NOT_USED));
         }
         out
     }
@@ -180,8 +199,21 @@ impl Test {
         }
     }
 
+    /// The stretches the test measures, up to `now`: each position done,
+    /// and the one under way as far as it has got.
+    pub fn measured(&self, now: f64) -> Vec<(f64, f64)> {
+        let mut out: Vec<(f64, f64)> = self.spans.iter().map(|&(_, a, b)| (a, b)).collect();
+        if let (Some(s), None, true) = (self.start, &self.readings, self.spans.len() <= self.step) {
+            let from = s + SETTLE_S;
+            if now > from {
+                out.push((from, now.min(from + MEASURE_S)));
+            }
+        }
+        out
+    }
+
     #[cfg(test)]
-    fn measured(&self) -> usize {
+    fn measured_count(&self) -> usize {
         self.spans.len()
     }
 
@@ -307,7 +339,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                             action = Some(Action::Next);
                         }
                         if ui
-                            .button(format!("Measure {} Again", test.position().code()))
+                            .button(format!("Restart {} Measurement", test.position().code()))
                             .on_hover_text(format!(
                                 "The {} measurement was disturbed (a knock, a noise): put the \
                                  watch back {} and settle and measure it again",
@@ -326,7 +358,7 @@ pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     }
                     _ => {
                         if ui
-                            .button(format!("Measure {} Again", test.position().code()))
+                            .button(format!("Restart {} Measurement", test.position().code()))
                             .on_hover_text(format!(
                                 "Settle and measure {} again from now, as after a knock",
                                 test.position().name()
@@ -470,15 +502,105 @@ fn position_label(p: session::Position) -> String {
     }
 }
 
+/// The table as text a spreadsheet takes: a header, a row for each
+/// position, the means, then the largest difference, the vertical less
+/// horizontal figures and any conditions, one a line. Fields are split by
+/// `sep` (a comma for a CSV file, a tab for the clipboard) and quoted when
+/// they hold it; numbers use a plain minus sign.
+pub fn table_text(t: &Table, sep: char) -> String {
+    let field = |s: &str| {
+        if s.contains(sep) || s.contains('"') {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| format!("{x:.d$}"));
+    let line = |cells: &[String]| {
+        let mut l = cells
+            .iter()
+            .map(|c| field(c))
+            .collect::<Vec<_>>()
+            .join(&sep.to_string());
+        l.push('\n');
+        l
+    };
+    let mut out = line(&[
+        "Position".into(),
+        "Rate, s/d".into(),
+        "From Mean, s/d".into(),
+        "Amplitude, °".into(),
+        "Beat Error, ms".into(),
+    ]);
+    for (label, rate, from_mean, amp, be) in &t.rows {
+        out += &line(&[
+            label.clone(),
+            num(*rate, 1),
+            num(*from_mean, 1),
+            num(*amp, 0),
+            num(*be, 2),
+        ]);
+    }
+    out += &line(&[
+        "Mean".into(),
+        num(t.mean_rate, 1),
+        String::new(),
+        num(t.mean_amplitude, 0),
+        num(t.mean_beat_error, 2),
+    ]);
+    out.push('\n');
+    out += &line(&[
+        "Largest difference between rates, s/d".into(),
+        num(t.largest_difference, 1),
+    ]);
+    out += &line(&[
+        "Vertical less horizontal rate, s/d".into(),
+        num(t.dvh_rate, 1),
+    ]);
+    out += &line(&[
+        "Vertical less horizontal amplitude, °".into(),
+        num(t.dvh_amplitude, 0),
+    ]);
+    for n in &t.notes {
+        out += &line(std::slice::from_ref(n));
+    }
+    out
+}
+
+/// Ask where to save the table as a CSV file, starting in `dir`, and save
+/// it there. Says what happened, or None when the dialog was cancelled.
+fn save_csv(t: &Table, dir: &std::path::Path) -> Option<String> {
+    let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == 'T')
+        .take(15)
+        .collect();
+    let mut d = rfd::FileDialog::new()
+        .set_title("Save the Positions Test as CSV")
+        .set_file_name(format!("positions-test-{stamp}Z.csv"))
+        .add_filter("CSV", &["csv"]);
+    if dir.is_dir() {
+        d = d.set_directory(dir);
+    }
+    let path = d.save_file()?;
+    Some(match std::fs::write(&path, table_text(t, ',')) {
+        Ok(()) => format!("Saved the Positions Test to {}", path.display()),
+        Err(e) => format!(
+            "Couldn't save the Positions Test to {}: {e}",
+            path.display()
+        ),
+    })
+}
+
 /// The results: a table of each position's rate, its difference from the
 /// mean, amplitude and beat error, with the means, as `timegrapher
-/// session` reads them. No verdict: the figures are for the watchmaker to
-/// judge.
-pub fn results(ctx: &egui::Context, test: &mut Test) {
-    let Some(readings) = &test.readings else {
-        return;
-    };
+/// session` reads them, and buttons to save it as a CSV file (the dialog
+/// starting in `dir`) or copy it. No verdict: the figures are for the
+/// watchmaker to judge. Returns a line saying what a button did.
+pub fn results(ctx: &egui::Context, test: &mut Test, dir: &std::path::Path) -> Option<String> {
+    let readings = test.readings.as_ref()?;
     let mut open = test.show_results;
+    let mut said = None;
     let t = table(readings);
     egui::Window::new("Positions Test")
         .open(&mut open)
@@ -559,6 +681,30 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
                 ui.label(RichText::new(n).color(pal.text));
             }
             ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Save as CSV…")
+                    .on_hover_text(
+                        "Save the table, the means and the differences as a CSV file a \
+                         spreadsheet opens",
+                    )
+                    .clicked()
+                {
+                    said = save_csv(&t, dir);
+                }
+                if ui
+                    .button("Copy")
+                    .on_hover_text(
+                        "Copy the table with tabs between the columns, to paste into a \
+                         spreadsheet or a message",
+                    )
+                    .clicked()
+                {
+                    ui.ctx().copy_text(table_text(&t, '\t'));
+                    said = Some("Copied the Positions Test table".to_string());
+                }
+            });
+            ui.add_space(8.0);
             ui.add(
                 egui::Label::new(
                     RichText::new(format!(
@@ -574,6 +720,7 @@ pub fn results(ctx: &egui::Context, test: &mut Test) {
             );
         });
     test.show_results = open;
+    said
 }
 
 #[cfg(test)]
@@ -636,19 +783,19 @@ mod tests {
         assert_eq!(t.tick(100.0 + SETTLE_S + 10.0), Phase::Measuring(10.0));
         let end = 100.0 + SETTLE_S + MEASURE_S;
         assert_eq!(t.tick(end), Phase::Turn);
-        assert_eq!(t.measured(), 1);
+        assert_eq!(t.measured_count(), 1);
         assert_eq!(t.next_position(), Some(Position::DialDown));
         // Measured again: the first stretch is dropped and made afresh.
         t.redo(end);
-        assert_eq!(t.measured(), 0);
+        assert_eq!(t.measured_count(), 0);
         assert_eq!(t.tick(end + SETTLE_S + MEASURE_S), Phase::Turn);
-        assert_eq!(t.measured(), 1);
+        assert_eq!(t.measured_count(), 1);
         for (i, &p) in ORDER.iter().enumerate().skip(1) {
             let now = 1000.0 * i as f64;
             assert_eq!(t.advance(now), Some(p));
             assert_eq!(t.tick(now + SETTLE_S + MEASURE_S), Phase::Turn);
         }
-        assert_eq!(t.measured(), 6);
+        assert_eq!(t.measured_count(), 6);
         assert_eq!(t.next_position(), None);
     }
 
@@ -659,14 +806,14 @@ mod tests {
         let (sm, m) = (SETTLE_S, MEASURE_S);
         let mut t = Test::new();
         t.tick(0.0);
-        assert_eq!(t.unused(5.0), [(0.0, 5.0, "Settling")]);
-        assert_eq!(t.unused(sm + 1.0), [(0.0, sm, "Settling")]);
+        assert_eq!(t.unused(5.0), [(0.0, 5.0, SETTLING)]);
+        assert_eq!(t.unused(sm + 1.0), [(0.0, sm, SETTLING)]);
         // Measured, then 30 s turning the watch before the next start.
         let end = sm + m;
         t.tick(end);
         assert_eq!(
             t.unused(end + 30.0),
-            [(0.0, sm, "Settling"), (end, end + 30.0, "Not Measured")]
+            [(0.0, sm, SETTLING), (end, end + 30.0, NOT_USED)]
         );
         t.advance(end + 30.0);
         let s2 = end + 30.0;
@@ -677,15 +824,82 @@ mod tests {
         assert_eq!(
             &u[2..],
             [
-                (s2, s2 + sm, "Settling"),
-                (s2 + sm, s3, "Not Measured"),
-                (s3, s3 + 1.0, "Settling")
+                (s2, s2 + sm, SETTLING),
+                (s2 + sm, s3, NOT_USED),
+                (s3, s3 + 1.0, SETTLING)
             ]
         );
         // Stopped while measuring: none of it was used.
         t.stop(s3 + sm + 5.0);
         let u = t.unused(s3 + 100.0);
-        assert_eq!(u.last(), Some(&(s3 + sm, s3 + sm + 5.0, "Not Measured")));
+        assert_eq!(u.last(), Some(&(s3 + sm, s3 + sm + 5.0, NOT_USED)));
         assert_eq!(t.stretches().len(), 1);
+    }
+
+    /// A test begun ten minutes into the sound: the time before it is
+    /// named, and the first position is measured from its own settle, the
+    /// stretch under way included as far as it has got.
+    #[test]
+    fn the_time_before_the_test_and_the_measuring_are_marked() {
+        let (sm, m) = (SETTLE_S, MEASURE_S);
+        let mut t = Test::new();
+        t.tick(600.0);
+        assert_eq!(t.unused(601.0)[0], (0.0, 600.0, BEFORE_TEST));
+        assert!(t.measured(610.0).is_empty());
+        assert_eq!(
+            t.measured(600.0 + sm + 5.0),
+            [(600.0 + sm, 600.0 + sm + 5.0)]
+        );
+        // Started again: Before Test stays where the test began.
+        t.redo(600.0 + sm + 10.0);
+        assert_eq!(t.unused(700.0)[0], (0.0, 600.0, BEFORE_TEST));
+        let s = 600.0 + sm + 10.0;
+        t.tick(s + sm + m);
+        assert_eq!(t.measured(s + sm + m + 30.0), [(s + sm, s + sm + m)]);
+    }
+
+    /// The table saved and copied: a label holding the comma is quoted in
+    /// the CSV and not with tabs, a missing figure is an empty field, and
+    /// the minus sign is a plain one.
+    #[test]
+    fn the_table_is_written_for_a_spreadsheet() {
+        let t = Table {
+            rows: vec![
+                (
+                    "Dial Up (DU)".into(),
+                    Some(-3.25),
+                    Some(-1.0),
+                    Some(281.0),
+                    Some(0.4),
+                ),
+                ("Crown Up (CU, 3H)".into(), None, None, Some(250.0), None),
+            ],
+            mean_rate: Some(-2.25),
+            mean_amplitude: Some(265.5),
+            mean_beat_error: Some(0.4),
+            largest_difference: None,
+            dvh_rate: None,
+            dvh_amplitude: Some(-31.0),
+            notes: vec!["Crown Up (CU, 3H): no regular beat found".into()],
+        };
+        let csv = table_text(&t, ',');
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(
+            lines[0],
+            "Position,\"Rate, s/d\",\"From Mean, s/d\",\"Amplitude, °\",\"Beat Error, ms\""
+        );
+        assert_eq!(lines[1], "Dial Up (DU),-3.2,-1.0,281,0.40");
+        assert_eq!(lines[2], "\"Crown Up (CU, 3H)\",,,250,");
+        assert_eq!(lines[3], "Mean,-2.2,,266,0.40");
+        assert_eq!(lines[4], "");
+        assert_eq!(lines[7], "\"Vertical less horizontal amplitude, °\",-31");
+        assert_eq!(lines[8], "\"Crown Up (CU, 3H): no regular beat found\"");
+        let tsv = table_text(&t, '\t');
+        assert!(tsv
+            .lines()
+            .nth(2)
+            .unwrap()
+            .starts_with("Crown Up (CU, 3H)\t\t"));
+        assert!(!csv.contains('−') && !tsv.contains('"'));
     }
 }

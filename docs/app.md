@@ -169,15 +169,20 @@ Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
 A banner over the readings names the position and shows a progress bar
 while the watch settles (20 s) and is measured (60 s), times the project
 chose. It then says which position to turn the watch to; press the
-button naming it (**Start CL Measurement**) once it is there. **Measure
-DD Again**, naming the position just measured (or the one under way),
-repeats it, after a knock for instance, and **Stop** ends the test.
-Only the 60 s measured in each position count. The strip's position
-ticker says so over the rest, with its beats drawn faintly:
-**Settling** over each 20 s settle, and **Not Measured** over the time
+button naming it (**Start CL Measurement**) once it is there. **Restart
+DD Measurement**, naming the position just measured (or the one under
+way), settles and measures it again, after a knock for instance, and
+**Stop** ends the test. Only the 60 s measured in each position count.
+From the moment the test starts, the strip, its position ticker and the
+charts mark the test's phases, Dial Up included, each in its own grey:
+**Before Test** over the sound before the test began (left plain, with a
+line where the test begins), **Settling** over each 20 s settle (a light
+shade), each position's measured 60 s (the darkest shade, named by the
+position), and **Not Used for Positions Test** (hatched) over the time
 after a measurement while the watch is being turned, over a measurement
-given up for Measure Again, and over the part of a position measured
-when the test was stopped. The marks stay after the test until a new
+given up for a restart, and over the part of a position measured when
+the test was stopped. Beats outside the measured stretches are drawn
+faintly. The marks stay after the test until a new test or a new
 session. Each position is a
 stretch of the one session, as any change of position is, so the strip
 and charts mark them and a saved session keeps them for `timegrapher
@@ -190,7 +195,10 @@ Mean row, the largest difference between the rates (D), and vertical
 less horizontal for rate and amplitude (DVH). Under
 them, a plain line for each condition found in a position's sound: no
 regular beat (with its timing scatter), clipping, or under 10 s of
-beats. The figures are `session`'s for the same stretches. It gives no verdict and no
+beats. The figures are `session`'s for the same stretches. **Save as
+CSV…** saves the table, the means, the differences and those lines as a
+CSV file a spreadsheet opens, and **Copy** puts the same on the
+clipboard with tabs between the columns. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
