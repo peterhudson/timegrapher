@@ -50,6 +50,7 @@ svg { display: block; max-width: 100%; height: auto; }
 svg text { fill: var(--text2); font-size: 11px; font-variant-numeric: tabular-nums; }
 svg .plot { fill: var(--card); stroke: var(--separator); stroke-width: 1; }
 svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg.faint .grid { stroke-opacity: 0.55; }
 svg .zero { stroke: var(--text3); stroke-width: 1; }
 svg .cursor { stroke: var(--text3); stroke-width: 1; }
 .chart { position: relative; }
@@ -188,7 +189,7 @@ const CHAR_W = 6.6;
 const TIME_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
   3600, 7200, 10800, 21600, 43200, 86400, 172800];
 // The app's line styles.
-const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5" };
+const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4" };
 
 // Charts are drawn at the width they are shown, so their text stays at its size.
 function chartWidth() {
@@ -650,8 +651,18 @@ const STEADY_VIEWS = [
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
-  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size of the sine wave at each period, in the series' own units (the rate's in milliseconds of beat timing), with the wheels' periods marked. Both axes are logarithmic"],
+  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size of the sine wave at each period, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
 ];
+// steady::reading_swing: the peak-to-peak swing, s/d, that a beat-timing
+// sine `amp` ms in size with period `period` s makes in rate readings each
+// averaged over `reading` s: the timing's slope, 2π·amp/period ms per
+// second, is 86.4 s/d for each ms per second, and averaging over a reading
+// keeps sin(x)/x of it, x = π·reading/period.
+function readingSwing(amp, period, reading) {
+  const x = Math.PI * reading / period;
+  const kept = x === 0 ? 1 : Math.abs(Math.sin(x) / x);
+  return 2 * amp * 2 * Math.PI / period * 86.4 * kept;
+}
 // A series' amplitude spectrum from the document's spectra[], if any.
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
@@ -662,6 +673,9 @@ const SERIES = {
   beat_error: ["Beat Error", "--beat-error", " ms"],
 };
 let steadyView = null;
+// The views' two-way switches, as in the app's toolbar: Periods on a log
+// scale, and the FFT's rate as the beat timing in ms.
+let periodsLog = false, fftTiming = false;
 
 // steady::secs: "45 s", "12 min", "2.5 h".
 function secs(t) {
@@ -684,15 +698,15 @@ function stepText(v, step, unit) {
   if (Math.abs(v) < step * 1e-6) v = 0;
   return v.toFixed(d) + (unit || "");
 }
-// steady::log_grid and log_label: every decade, with 2 and 5 inside each
-// (labelled only when less than two decades show) when fewer than three show.
+// steady::log_grid and log_label: every decade, with 2 and 5 inside each,
+// drawn and labelled when fewer than three decades show.
 function logTicks(lo, hi, fmt) {
   const fine = hi - lo < 3, ticks = [];
   for (let k = Math.floor(lo) - 1; k <= Math.ceil(hi); k++) {
     for (const m of [1, 2, 5]) {
       if (!fine && m !== 1) continue;
       const v = k + Math.log10(m);
-      if (v >= lo - 1e-9 && v <= hi + 1e-9) ticks.push([v, m === 1 || hi - lo < 2 ? fmt(Math.pow(10, v)) : ""]);
+      if (v >= lo - 1e-9 && v <= hi + 1e-9) ticks.push([v, fmt(Math.pow(10, v))]);
     }
   }
   return ticks;
@@ -705,7 +719,7 @@ function linTicks(lo, hi, px, minPx, fmt, ladder) {
 // A plot as the steadiness views draw theirs: an x and a y scale with their
 // own tick labels, and lines, dots, rules and notes, all inside the plot.
 //   x, y: [lo, hi]; xTicks(lo, hi, plotW), yTicks(lo, hi, plotH): [[v, label]]
-//   hlines: [{y, color, dash}]; vlines: [{x, color, label, left}]
+//   hlines: [{y, color, dash}]; vlines: [{x, color, width, dash, label, ink, left}]
 //   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
 //   notes: [{x, y, text, above}] beside a point; corner: {text, top}
 function xyChart(o) {
@@ -738,14 +752,14 @@ function xyChart(o) {
   // a name with no room inside the plot, or over another, is left off.
   const taken = [];
   for (const v of o.vlines || []) {
-    inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})" stroke-width="1"/>`;
+    inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})" stroke-width="${v.width || 1}"${dash(v.dash)}/>`;
     if (!v.label) continue;
     const w = v.label.length * CHAR_W;
     let a = v.left ? sx(v.x) - 3 - w : sx(v.x) + 3;
     if (a < L + 2 || a + w > L + plotW - 2) a = v.left ? sx(v.x) + 3 : sx(v.x) - 3 - w;
     if (a < L + 2 || a + w > L + plotW - 2 || taken.some(([p, q]) => a < q + 4 && a + w > p - 4)) continue;
     taken.push([a, a + w]);
-    inside += `<text x="${a}" y="${T + 12}">${esc(v.label)}</text>`;
+    inside += `<text x="${a}" y="${T + 12}"${v.ink ? ` style="fill:var(${v.ink})"` : ""}>${esc(v.label)}</text>`;
   }
   for (const d of o.dots || []) {
     inside += `<g fill="var(${d.color})">${d.pts.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
@@ -772,7 +786,27 @@ function xyChart(o) {
     inside += `<text x="${L + plotW - 6}" y="${o.corner.top ? T + 13 : T + plotH - 6}" text-anchor="end">${esc(o.corner.text)}</text>`;
   }
   g += `<g clip-path="url(#${area.id})">${inside}</g>`;
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
+  return `<div class="chart"><svg${o.faint ? ` class="faint"` : ""} viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
+}
+
+// steady::wheel_marks: a bold rule and name at each wheel's period, and a
+// fainter dashed one at half of it ("×2"), where a wheel that is off
+// centre shows twice a turn, unless another wheel turns there. The
+// shorter of two wheels of one name is labelled on its left.
+function wheelMarks(doc, span) {
+  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+  const inside = (x) => x > span[0] && x < span[1];
+  const out = [];
+  wheels.forEach((w, k) => {
+    if (!(w.period_s > 0)) return;
+    const twin = wheels.some((o, j) => j !== k && o.name === w.name && o.period_s > w.period_s);
+    const x = Math.log10(w.period_s);
+    if (inside(x)) out.push({ x, color: "--text2", width: 2, label: wheelTitle(w.name), ink: "--text", left: twin });
+    const half = w.period_s / 2, x2 = Math.log10(half);
+    const taken = wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03);
+    if (inside(x2) && !taken && !twin) out.push({ x: x2, color: "--text3", width: 1.25, dash: "wheel", label: `${wheelTitle(w.name)} ×2` });
+  });
+  return out;
 }
 
 function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
@@ -802,16 +836,16 @@ function steadyPlot(s, view, doc) {
     case "periods": {
       const p = v.search;
       if (!p || !p.period_s || !p.period_s.length) return steadyNote("The period search needs a longer session.");
-      const pts = p.period_s.map((t, i) => [t > 0 ? Math.log10(t) : NaN, p.score[i]]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
-      const span = doc.period_span || [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
+      const raw = p.period_s.map((t, i) => [t > 0 ? Math.log10(t) : NaN, p.score[i]]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+      const span = doc.period_span || [Math.min(...raw.map((q) => q[0])), Math.max(...raw.map((q) => q[0]))];
       if (!(span[1] > span[0])) return steadyNote("The period search needs a longer session.");
-      const top = Math.max(p.threshold, ...pts.map((q) => q[1])) * 1.15;
-      const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
-      const vlines = wheels.filter((w) => w.period_s > 0).map((w) => {
-        const x = Math.log10(w.period_s);
-        const twin = wheels.some((o) => o !== w && o.name === w.name && o.period_s > w.period_s);
-        return { x, color: "--text3", label: wheelTitle(w.name), left: twin };
-      }).filter((l) => l.x > span[0] && l.x < span[1]);
+      // On a log scale the scores are drawn as log10, down to a thousandth
+      // of the tallest (a score of 0 sits on that floor).
+      const tallest = Math.max(p.threshold, ...raw.map((q) => q[1]));
+      const floor = tallest * 1e-3;
+      const yOf = (v) => (periodsLog ? Math.log10(Math.max(v, floor)) : v);
+      const pts = raw.map(([x, y]) => [x, yOf(y)]);
+      const y = periodsLog ? [Math.log10(floor), Math.log10(tallest) + 0.45] : [0, tallest * 1.15];
       const marks = [], notes = [];
       if (s.period && s.period.period_s > 0) {
         const x = Math.log10(s.period.period_s);
@@ -820,10 +854,10 @@ function steadyPlot(s, view, doc) {
         notes.push({ x, y: near[1], text: secs(s.period.period_s) + (s.period.wheel ? `, ${wheelTitle(s.period.wheel)}` : "") });
       }
       return xyChart({
-        title: "Periods", x: span, y: [0, top],
+        title: "Periods", x: span, y, faint: true,
         xTicks: (a, b) => logTicks(a, b, secs),
-        yTicks: (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
-        vlines, hlines: [{ y: p.threshold, color: "--text2", dash: "loose" }],
+        yTicks: periodsLog ? (a, b) => logTicks(a, b, sig) : (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
+        vlines: wheelMarks(doc, span), hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
         lines: [{ pts, color, width: 1.5 }], marks, notes,
       });
     }
@@ -877,7 +911,14 @@ function steadyPlot(s, view, doc) {
     case "spectrum": {
       const sp = spectrumOf(doc, s);
       if (!sp) return steadyNote("The spectrum needs a longer session.");
+      // Rate's spectrum is of the beat timing, in ms: drawn, unless Timing
+      // asks for that, as the swing it makes in the rate readings, peak to
+      // peak in s/d, over the periods those readings can show.
+      const asRate = sp.series === "rate" && sp.unit === "ms" && !fftTiming;
+      const reading = (doc.config && doc.config.rate_reading_s) || 10;
       const pts = sp.period_s.map((t, i) => [t, sp.amplitude[i]])
+        .filter(([t]) => !asRate || t >= 2 * reading)
+        .map(([t, a]) => [t, asRate ? readingSwing(a, t, reading) : a])
         .filter(([t, a]) => t > 0 && a > 0 && Number.isFinite(a))
         .map(([t, a]) => [Math.log10(t), Math.log10(a)]);
       if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
@@ -885,22 +926,17 @@ function steadyPlot(s, view, doc) {
       const yLo = Math.min(...pts.map((q) => q[1])), yHi = Math.max(...pts.map((q) => q[1]));
       // Room above the tallest line for the wheels' names, as in the app.
       const y = [yLo, yHi + Math.max(yHi - yLo, 0.5) * 0.25];
-      const u = sp.unit === "deg" ? "°" : " ms";
-      const size = (v) => sig(v) + u;
-      const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
-      const vlines = wheels.filter((w) => w.period_s > 0).map((w) => {
-        const wx = Math.log10(w.period_s);
-        const twin = wheels.some((o) => o !== w && o.name === w.name && o.period_s > w.period_s);
-        return { x: wx, color: "--text3", label: wheelTitle(w.name), left: twin };
-      }).filter((l) => l.x > x[0] && l.x < x[1]);
+      const u = asRate ? " s/d" : sp.unit === "deg" ? "°" : " ms";
+      // steady.rs's size: decimals by magnitude.
+      const size = (v) => v.toFixed(v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3) + u;
       const peak = pts.reduce((a, q) => (q[1] > a[1] ? q : a), pts[0]);
       return xyChart({
-        title: "FFT", x, y,
+        title: "FFT", x, y, faint: true,
         xTicks: (p, q) => logTicks(p, q, secs),
         yTicks: (p, q) => logTicks(p, q, size),
-        vlines, lines: [{ pts, color, width: 1.5 }],
+        vlines: wheelMarks(doc, x), lines: [{ pts, color, width: 1.5 }],
         marks: [{ x: peak[0], y: peak[1], color }],
-        notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}` }],
+        notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
     }
     case "allan": {
@@ -991,12 +1027,27 @@ function steadinessCard(doc) {
   }).join("");
   return `<div class="card"><h2>Steadiness</h2><p class="hint">How the rate, amplitude and beat error each move over the session: what was detected in each (a cycle, two levels, level changes, a trend, or none), with the statistics behind it</p>
     ${drawn ? `<div class="seg" role="group" aria-label="View">${offered.map(([key, label]) => `<button data-steady="${key}" aria-pressed="${key === steadyView}">${esc(label)}</button>`).join("")}</div>
-    <p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
+    ${steadySwitch()}<p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
+}
+
+// The current view's switch, as in the app's toolbar: Log Scale for
+// Periods, Timing for the FFT.
+function steadySwitch() {
+  const sw = steadyView === "periods" ? ["log", "Log Scale", periodsLog]
+    : steadyView === "spectrum" ? ["timing", "Timing", fftTiming] : null;
+  return sw ? `<div class="seg" role="group" aria-label="Scale"><button data-switch="${sw[0]}" aria-pressed="${sw[2]}">${sw[1]}</button></div>` : "";
 }
 
 function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-steady]")) {
     b.addEventListener("click", () => { steadyView = b.dataset.steady; redraw(); });
+  }
+  for (const b of root.querySelectorAll("button[data-switch]")) {
+    b.addEventListener("click", () => {
+      if (b.dataset.switch === "log") periodsLog = !periodsLog;
+      else fftTiming = !fftTiming;
+      redraw();
+    });
   }
 }
 
