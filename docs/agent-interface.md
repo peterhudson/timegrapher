@@ -164,7 +164,8 @@ with no position (`2026-10-08T21-30-00_Yacht-Master_Rolex_3235`). An app
 copy saved after a finished Positions Test run just after winding also
 holds `positions-test.json` (format `timegrapher.positions-test/1`), that
 test's results for the same test 24 hours later; `record` never writes
-it, and its keys are in [app.md](app.md). The take
+it. Its keys, among them the watch, calibre, beat rate, lift angle and
+the test's settling and measuring times, are in [app.md](app.md). The take
 is analysed at once. Whether a regular beat is found
 (`watch_heard`, with the timing scatter behind it) and clipping are
 measured over the whole take, so a short take still gets them.

@@ -1,9 +1,9 @@
 //! The Positions Test: the app leads the watchmaker through the six
 //! positions in the app's order, waits for the watch to settle in each,
-//! measures it, and then shows the six in a table with the figures
-//! `timegrapher session` reads for the same stretches: each rate, its
-//! difference from the mean, amplitude and beat error, and the means. No
-//! verdict is given.
+//! measures it, and fills in a table in its own pane as it goes, with the
+//! figures `timegrapher session` reads for the same stretches: each rate,
+//! its difference from the mean, amplitude and beat error, and the means.
+//! No verdict is given.
 //!
 //! Each position is a stretch of the one listening session, so the strip,
 //! the charts and a saved session keep the positions as any change of
@@ -17,7 +17,7 @@ use timegrapher_core::session::{self, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
 /// The file a finished test just after winding is saved to, from the
-/// results window or beside a saved take, for the same six positions 24
+/// pane or beside a saved take, for the same six positions 24
 /// hours later.
 pub const RESULTS_FILE: &str = "positions-test.json";
 /// The file's `format`, versioned: a later version adds keys.
@@ -34,6 +34,17 @@ pub struct FullWind {
     /// The watch's name and the calibre as they were then, or empty.
     pub watch: String,
     pub calibre: String,
+    /// The beat rate and lift angle the test was read at, and its
+    /// settling and measuring times in seconds: absent from files saved
+    /// before they were kept.
+    #[serde(default)]
+    pub bph: Option<u32>,
+    #[serde(default)]
+    pub lift_angle_deg: Option<f64>,
+    #[serde(default)]
+    pub settle_s: Option<f64>,
+    #[serde(default)]
+    pub measure_s: Option<f64>,
     /// Each position, in the order measured.
     pub positions: Vec<KeptRow>,
 }
@@ -81,10 +92,23 @@ impl FullWind {
 }
 
 /// Seconds the watch is left to settle after it is turned, and then
-/// measured: the project's choice. A minute brings the rate's ± near half
-/// a second a day.
+/// measured, unless set otherwise in the pane: the project's choice. A
+/// minute brings the rate's ± near half a second a day.
 pub const SETTLE_S: f64 = 20.0;
 pub const MEASURE_S: f64 = 60.0;
+/// The times the pane lets be set, seconds.
+pub const SETTLE_RANGE: std::ops::RangeInclusive<f64> = 5.0..=600.0;
+pub const MEASURE_RANGE: std::ops::RangeInclusive<f64> = 20.0..=3600.0;
+
+/// The watch and how it was read, for the saved and copied results.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct About {
+    /// The watch's name and the calibre, or empty when not set.
+    pub watch: String,
+    pub calibre: String,
+    pub bph: Option<u32>,
+    pub lift_angle_deg: f64,
+}
 
 /// The app's order: the two horizontals, then crown down, left, up, right.
 pub const ORDER: [Position; 6] = [
@@ -105,6 +129,9 @@ pub enum Phase {
     Measuring(f64),
     /// Measured; waiting for the watch to be turned to the next position.
     Turn,
+    /// Paused by the watchmaker: this position is settled and measured
+    /// again from the start on Resume.
+    Paused,
     Finished,
 }
 
@@ -116,13 +143,16 @@ pub const SETTLING: &str = "Settling";
 pub const NOT_USED: &str = "Not Used for Positions Test";
 pub const BEFORE_TEST: &str = "Before Test";
 
-/// What the banner's buttons asked for.
+/// What the pane's buttons asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Action {
     Next,
     Redo,
+    Pause,
+    Resume,
     Stop,
-    Results,
+    /// Set aside the earlier results loaded for the 24 hour half.
+    ClearEarlier,
 }
 
 pub struct Test {
@@ -139,9 +169,15 @@ pub struct Test {
     /// start, end and why ([`SETTLING`], or [`NOT_USED`] while the watch
     /// waited to be turned or a measurement was started again).
     unused: Vec<(f64, f64, &'static str)>,
+    /// Each position's reading as soon as it is measured, in order.
+    done: Vec<Reading>,
     /// The six readings, once the last position is measured.
     pub readings: Option<Vec<Reading>>,
-    pub show_results: bool,
+    /// Seconds of settling and of measuring in each position.
+    pub settle_s: f64,
+    pub measure_s: f64,
+    /// Paused at this second of the session's sound.
+    paused: Option<f64>,
     /// When the test was started, Unix seconds.
     began_unix: f64,
     /// For the 24 hour half: the full-wind test it follows, and the hours
@@ -157,11 +193,21 @@ impl Test {
             began: None,
             spans: Vec::new(),
             unused: Vec::new(),
+            done: Vec::new(),
             readings: None,
-            show_results: false,
+            settle_s: SETTLE_S,
+            measure_s: MEASURE_S,
+            paused: None,
             began_unix: unix_now(),
             full: None,
         }
+    }
+
+    /// The same test with its own settling and measuring times, seconds.
+    pub fn timed(mut self, settle_s: f64, measure_s: f64) -> Self {
+        self.settle_s = settle_s;
+        self.measure_s = measure_s;
+        self
     }
 
     /// The same six positions again, after the full-wind test `full`,
@@ -180,18 +226,21 @@ impl Test {
 
     /// The finished full-wind test, to keep for the 24 hour half: None
     /// for a 24 hour half or an unfinished test.
-    pub fn kept(&self, watch: &str, calibre: &str) -> Option<FullWind> {
+    pub fn kept(&self, about: &About) -> Option<FullWind> {
         if self.full.is_some() {
             return None;
         }
         let readings = self.readings.as_ref()?;
-        let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(self.began_unix);
         Some(FullWind {
             format: RESULTS_FORMAT.into(),
-            began_utc: timegrapher_core::recorder::utc(at),
+            began_utc: self.began_utc(),
             began_unix: self.began_unix,
-            watch: watch.trim().to_string(),
-            calibre: calibre.to_string(),
+            watch: about.watch.trim().to_string(),
+            calibre: about.calibre.clone(),
+            bph: about.bph,
+            lift_angle_deg: Some(about.lift_angle_deg),
+            settle_s: Some(self.settle_s),
+            measure_s: Some(self.measure_s),
             positions: readings
                 .iter()
                 .map(|r| KeptRow {
@@ -202,6 +251,13 @@ impl Test {
                 })
                 .collect(),
         })
+    }
+
+    /// When the test began: `2026-10-08T21:04:05.123Z`.
+    pub fn began_utc(&self) -> String {
+        timegrapher_core::recorder::utc(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(self.began_unix),
+        )
     }
 
     pub fn position(&self) -> Position {
@@ -224,20 +280,68 @@ impl Test {
         if self.readings.is_some() {
             return Phase::Finished;
         }
+        if self.paused.is_some() {
+            return Phase::Paused;
+        }
+        let (settle, measure) = (self.settle_s, self.measure_s);
         let start = *self.start.get_or_insert(now);
         self.began.get_or_insert(start);
         let t = now - start;
-        if t < SETTLE_S {
-            return Phase::Settling(SETTLE_S - t);
+        if t < settle {
+            return Phase::Settling(settle - t);
         }
-        if t < SETTLE_S + MEASURE_S {
-            return Phase::Measuring(t - SETTLE_S);
+        if t < settle + measure {
+            return Phase::Measuring(t - settle);
         }
         if self.spans.len() <= self.step {
-            let from = start + SETTLE_S;
-            self.spans.push((self.position(), from, from + MEASURE_S));
+            let from = start + settle;
+            self.spans.push((self.position(), from, from + measure));
         }
         Phase::Turn
+    }
+
+    /// Stop settling or measuring this position at `now`, until Resume.
+    pub fn pause(&mut self, now: f64) {
+        if self.paused.is_some() || self.readings.is_some() {
+            return;
+        }
+        self.close_step(now, true);
+        self.spans.truncate(self.step);
+        self.done.truncate(self.step);
+        self.start = None;
+        self.paused = Some(now);
+    }
+
+    /// Settle and measure this position again, from `now`.
+    pub fn resume(&mut self, now: f64) {
+        if let Some(p) = self.paused.take() {
+            if now > p {
+                self.unused.push((p, now, NOT_USED));
+            }
+            self.start = Some(now);
+        }
+    }
+
+    /// Whether a position's stretch is measured but not yet read.
+    pub fn needs_reading(&self) -> bool {
+        self.done.len() < self.spans.len()
+    }
+
+    /// Read each position measured since the last call, so the pane's
+    /// table fills in as the test goes.
+    pub fn read_new(&mut self, log: &BeatLog, clock: Option<&ClockFit>) {
+        while self.done.len() < self.spans.len() {
+            let (p, from, to) = self.spans[self.done.len()];
+            match self.reading(p, from, to, log, clock) {
+                Some(r) => self.done.push(r),
+                None => break,
+            }
+        }
+    }
+
+    /// The readings so far: each position measured, in order.
+    pub fn readings_so_far(&self) -> &[Reading] {
+        self.readings.as_deref().unwrap_or(&self.done)
     }
 
     /// On to the next position, from `now`. Returns it, or None after the
@@ -255,8 +359,12 @@ impl Test {
 
     /// Measure this position again from `now`.
     pub fn redo(&mut self, now: f64) {
+        if self.paused.is_some() {
+            return self.resume(now);
+        }
         self.close_step(now, true);
         self.spans.truncate(self.step);
+        self.done.truncate(self.step);
         self.start = Some(now);
     }
 
@@ -274,20 +382,23 @@ impl Test {
         out.extend(self.unused.iter().copied());
         // Once finished, the last step was closed as the test ended.
         if let (Some(s), None) = (self.start, &self.readings) {
-            out.extend(Self::step_unused(s, now, false));
+            out.extend(self.step_unused(s, now, false));
+        }
+        if let Some(p) = self.paused.filter(|&p| now > p) {
+            out.push((p, now, NOT_USED));
         }
         out
     }
 
     /// One attempt at a position, started at `start`, seen at `now`.
-    fn step_unused(start: f64, now: f64, given_up: bool) -> Vec<(f64, f64, &'static str)> {
+    fn step_unused(&self, start: f64, now: f64, given_up: bool) -> Vec<(f64, f64, &'static str)> {
         let mut out = Vec::new();
         if now <= start {
             return out;
         }
-        let settled = start + SETTLE_S;
+        let settled = start + self.settle_s;
         out.push((start, now.min(settled), SETTLING));
-        let end = settled + MEASURE_S;
+        let end = settled + self.measure_s;
         if given_up && now > settled {
             out.push((settled, now, NOT_USED));
         } else if now > end {
@@ -300,13 +411,17 @@ impl Test {
     /// measured so far isn't used either.
     pub fn stop(&mut self, now: f64) {
         self.close_step(now, true);
+        if let Some(p) = self.paused.take().filter(|&p| now > p) {
+            self.unused.push((p, now, NOT_USED));
+        }
         self.start = None;
     }
 
     /// Keep this attempt's unused time, at `now` as it ends.
     fn close_step(&mut self, now: f64, given_up: bool) {
         if let Some(s) = self.start {
-            self.unused.extend(Self::step_unused(s, now, given_up));
+            let u = self.step_unused(s, now, given_up);
+            self.unused.extend(u);
         }
     }
 
@@ -315,9 +430,9 @@ impl Test {
     pub fn measured(&self, now: f64) -> Vec<(f64, f64)> {
         let mut out: Vec<(f64, f64)> = self.spans.iter().map(|&(_, a, b)| (a, b)).collect();
         if let (Some(s), None, true) = (self.start, &self.readings, self.spans.len() <= self.step) {
-            let from = s + SETTLE_S;
+            let from = s + self.settle_s;
             if now > from {
-                out.push((from, now.min(from + MEASURE_S)));
+                out.push((from, now.min(from + self.measure_s)));
             }
         }
         out
@@ -334,31 +449,40 @@ impl Test {
         let readings = self
             .spans
             .iter()
-            .filter_map(|&(p, from, to)| {
-                let position = session::Position::parse(p.code())?;
-                let measurement: Measurement = session::measure(log, clock, from, to);
-                Some(Reading {
-                    label: p.name().into(),
-                    position,
-                    wind_h: self.wind_h(),
-                    date: None,
-                    notes: None,
-                    duration_s: to - from,
-                    bph: log.bph,
-                    measurement,
-                    cycles: Vec::new(),
-                    shape: None,
-                    reference: None,
-                })
-            })
+            .filter_map(|&(p, from, to)| self.reading(p, from, to, log, clock))
             .collect();
         self.readings = Some(readings);
-        self.show_results = true;
+    }
+
+    /// One position's stretch of the session, `from` to `to` seconds.
+    fn reading(
+        &self,
+        p: Position,
+        from: f64,
+        to: f64,
+        log: &BeatLog,
+        clock: Option<&ClockFit>,
+    ) -> Option<Reading> {
+        let position = session::Position::parse(p.code())?;
+        let measurement: Measurement = session::measure(log, clock, from, to);
+        Some(Reading {
+            label: p.name().into(),
+            position,
+            wind_h: self.wind_h(),
+            date: None,
+            notes: None,
+            duration_s: to - from,
+            bph: log.bph,
+            measurement,
+            cycles: Vec::new(),
+            shape: None,
+            reference: None,
+        })
     }
 }
 
-/// The banner's title for the position under way: "Dial Up (1 of 6)", and
-/// in the 24 hour half "Dial Up (1 of 6, 24.1 h After Full Wind)".
+/// The title for the position under way: "Dial Up (1 of 6)", and in the
+/// 24 hour half "Dial Up (1 of 6, 24.1 h After Full Wind)".
 fn step_title(test: &Test) -> String {
     let (name, n, of) = (test.position().name(), test.step + 1, ORDER.len());
     match test.wind_h() {
@@ -367,129 +491,545 @@ fn step_title(test: &Test) -> String {
     }
 }
 
-/// The banner over the readings while the test runs: the position, a
+/// The banner at the top of the pane while the test runs: the position, a
 /// progress bar for its settling and measuring, and what to do next.
-pub fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
+fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
-    let fill = pal.accent;
+    let (settle, measure) = (test.settle_s, test.measure_s);
     let frame = theme::card()
-        .fill(fill.gamma_multiply(0.14))
+        .fill(pal.accent.gamma_multiply(0.14))
         .inner_margin(egui::Margin::symmetric(14, 10));
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
-            let (title, detail, frac) = match phase {
-                Phase::Settling(left) => (
-                    step_title(test),
-                    format!("Letting the watch settle, {left:.0} s"),
-                    ((SETTLE_S - left) / (SETTLE_S + MEASURE_S)) as f32,
+        let (title, detail, frac) = match phase {
+            Phase::Settling(left) => (
+                step_title(test),
+                format!("Letting the watch settle, {left:.0} s"),
+                ((settle - left) / (settle + measure)) as f32,
+            ),
+            Phase::Measuring(done) => (
+                step_title(test),
+                format!("Measuring, {done:.0} of {measure:.0} s"),
+                ((settle + done) / (settle + measure)) as f32,
+            ),
+            Phase::Paused => (
+                step_title(test),
+                format!(
+                    "Paused. Resume settles and measures {} again from the start; until \
+                     then the strip marks the time Not Used for Positions Test.",
+                    test.position().name()
                 ),
-                Phase::Measuring(done) => (
-                    step_title(test),
-                    format!("Measuring, {done:.0} of {MEASURE_S:.0} s"),
-                    ((SETTLE_S + done) / (SETTLE_S + MEASURE_S)) as f32,
+                0.0,
+            ),
+            Phase::Turn => match test.next_position() {
+                Some(p) => (
+                    format!("Turn the watch to {}", p.name()),
+                    format!(
+                        "then press Start {} Measurement. Nothing until then is measured; \
+                         the strip marks it Not Used for Positions Test.",
+                        p.code()
+                    ),
+                    1.0,
                 ),
-                Phase::Turn => match test.next_position() {
-                    Some(p) => (
-                        format!("Turn the watch to {}", p.name()),
-                        format!(
-                            "then press Start {} Measurement. Nothing until then is measured; \
-                             the strip marks it Not Used for Positions Test.",
-                            p.code()
+                None => (
+                    "All six positions measured".to_string(),
+                    "press Finish to read them together".to_string(),
+                    1.0,
+                ),
+            },
+            Phase::Finished => ("Positions Test done".to_string(), String::new(), 1.0),
+        };
+        ui.label(
+            RichText::new(title)
+                .font(theme::semibold(15.0))
+                .color(pal.text),
+        );
+        ui.add(egui::Label::new(RichText::new(detail).small().color(pal.text_secondary)).wrap());
+        ui.add_space(4.0);
+        ui.add(
+            egui::ProgressBar::new(frac.clamp(0.0, 1.0))
+                .desired_height(6.0)
+                .fill(pal.accent),
+        );
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            let code = test.position().code();
+            let name = test.position().name();
+            match phase {
+                Phase::Turn => {
+                    let (next, next_hint) = match test.next_position() {
+                        Some(p) => (
+                            format!("Start {} Measurement", p.code()),
+                            format!(
+                                "Press once the watch is {}: it settles for {settle:.0} s, \
+                                 then {} is measured for {measure:.0} s",
+                                p.name().to_lowercase(),
+                                p.name()
+                            ),
                         ),
-                        1.0,
-                    ),
-                    None => (
-                        "All six positions measured".to_string(),
-                        "press Finish to see the results".to_string(),
-                        1.0,
-                    ),
-                },
-                Phase::Finished => ("Positions Test done".to_string(), String::new(), 1.0),
-            };
-            ui.vertical(|ui| {
-                ui.label(theme::caption("Positions Test").color(pal.text_secondary));
-                ui.label(
-                    RichText::new(title)
-                        .font(theme::semibold(15.0))
-                        .color(pal.text),
-                );
-                ui.label(RichText::new(detail).small().color(pal.text_secondary));
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("Stop").frame_when_inactive(false))
-                    .on_hover_text("End the test. The session and its positions stay.")
-                    .clicked()
-                {
-                    action = Some(Action::Stop);
-                }
-                match phase {
-                    Phase::Turn => {
-                        let (next, next_hint) = match test.next_position() {
-                            Some(p) => (
-                                format!("Start {} Measurement", p.code()),
-                                format!(
-                                    "Press once the watch is {}: it settles for {SETTLE_S:.0} s, \
-                                     then {} is measured for {MEASURE_S:.0} s",
-                                    p.name().to_lowercase(),
-                                    p.name()
-                                ),
-                            ),
-                            None => (
-                                "Finish".to_string(),
-                                "Read the six positions together".to_string(),
-                            ),
-                        };
-                        if ui
-                            .add(theme::primary(ui, &next))
-                            .on_hover_text(next_hint)
-                            .clicked()
-                        {
-                            action = Some(Action::Next);
-                        }
-                        if ui
-                            .button(format!("Restart {} Measurement", test.position().code()))
-                            .on_hover_text(format!(
-                                "The {} measurement was disturbed (a knock, a noise): put the \
-                                 watch back {} and settle and measure it again",
-                                test.position().name(),
-                                test.position().name().to_lowercase()
-                            ))
-                            .clicked()
-                        {
-                            action = Some(Action::Redo);
-                        }
+                        None => (
+                            "Finish".to_string(),
+                            "Read the six positions together".to_string(),
+                        ),
+                    };
+                    if ui
+                        .add(theme::primary(ui, &next))
+                        .on_hover_text(next_hint)
+                        .clicked()
+                    {
+                        action = Some(Action::Next);
                     }
-                    Phase::Finished => {
-                        if ui.add(theme::primary(ui, "Show Results")).clicked() {
-                            action = Some(Action::Results);
-                        }
-                    }
-                    _ => {
-                        if ui
-                            .button(format!("Restart {} Measurement", test.position().code()))
-                            .on_hover_text(format!(
-                                "Settle and measure {} again from now, as after a knock",
-                                test.position().name()
-                            ))
-                            .clicked()
-                        {
-                            action = Some(Action::Redo);
-                        }
+                    if ui
+                        .button(format!("Restart {code} Measurement"))
+                        .on_hover_text(format!(
+                            "The {name} measurement was disturbed (a knock, a noise): put the \
+                             watch back {} and settle and measure it again",
+                            name.to_lowercase()
+                        ))
+                        .clicked()
+                    {
+                        action = Some(Action::Redo);
                     }
                 }
-                ui.add_space(12.0);
-                ui.add(
-                    egui::ProgressBar::new(frac.clamp(0.0, 1.0))
-                        .desired_width(160.0)
-                        .desired_height(8.0)
-                        .fill(pal.accent),
-                );
-            });
+                Phase::Paused => {
+                    if ui
+                        .add(theme::primary(ui, "Resume"))
+                        .on_hover_text(format!(
+                            "Settle and measure {name} again from now, with the watch {}",
+                            name.to_lowercase()
+                        ))
+                        .clicked()
+                    {
+                        action = Some(Action::Resume);
+                    }
+                }
+                Phase::Settling(_) | Phase::Measuring(_) => {
+                    if ui
+                        .button("Pause")
+                        .on_hover_text(format!(
+                            "Hold the test here, to deal with the watch or the room. What \
+                             {name} measured so far isn't used: Resume settles and measures it \
+                             again from the start."
+                        ))
+                        .clicked()
+                    {
+                        action = Some(Action::Pause);
+                    }
+                    if ui
+                        .button(format!("Restart {code} Measurement"))
+                        .on_hover_text(format!(
+                            "Settle and measure {name} again from now, as after a knock"
+                        ))
+                        .clicked()
+                    {
+                        action = Some(Action::Redo);
+                    }
+                }
+                Phase::Finished => {}
+            }
+            if ui
+                .button("Stop")
+                .on_hover_text(
+                    "End the test without finishing it. The session and its positions stay; \
+                     the table is cleared.",
+                )
+                .clicked()
+            {
+                action = Some(Action::Stop);
+            }
         });
     });
+    action
+}
+
+/// The figures as the pane writes them: a signed figure with a true minus
+/// sign, a plain one, or a dash when missing.
+fn signed(v: Option<f64>, d: usize) -> String {
+    v.map_or_else(
+        || "—".to_string(),
+        |x| format!("{x:+.d$}").replace('-', "−"),
+    )
+}
+
+fn plain(v: Option<f64>, d: usize) -> String {
+    v.map_or_else(|| "—".to_string(), |x| format!("{x:.d$}"))
+}
+
+/// A table's title, in the pane's own type.
+fn heading(ui: &mut egui::Ui, text: &str, hint: &str) {
+    let pal = theme::pal(ui);
+    ui.label(RichText::new(text).strong().color(pal.text))
+        .on_hover_text(hint);
+}
+
+/// A figure at the right of a cell of its own width, so the tables'
+/// columns line up and their stripes end with the last column.
+fn right(ui: &mut egui::Ui, text: String, strong: bool, color: egui::Color32) {
+    right_in(ui, FIGURE_W, text, strong, color);
+}
+
+/// [`right`] in a cell `w` wide.
+fn right_in(ui: &mut egui::Ui, w: f32, text: String, strong: bool, color: egui::Color32) {
+    let size = Vec2::new(w, ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(size);
+            let t = RichText::new(text).color(color);
+            ui.label(if strong { t.strong() } else { t });
+        },
+    );
+}
+
+/// The position column's heading, at the left, as wide as the longest
+/// name.
+fn position_head(ui: &mut egui::Ui) {
+    let pal = theme::pal(ui);
+    let size = Vec2::new(LABEL_W, ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(size);
+            ui.label(theme::caption("Position").color(pal.text_secondary));
+        },
+    );
+}
+
+/// A figure column's heading, at the right like its figures.
+fn column_head(ui: &mut egui::Ui, w: f32, text: &str, hint: &str) {
+    let pal = theme::pal(ui);
+    let size = Vec2::new(w, ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(size);
+            ui.label(theme::caption(text).color(pal.text_secondary))
+                .on_hover_text(hint);
+        },
+    );
+}
+
+/// The width of a figure's column, and of the position names'.
+const FIGURE_W: f32 = 88.0;
+/// The comparison's figure columns, whose headings are longer.
+const WIDE_W: f32 = 100.0;
+const LABEL_W: f32 = 150.0;
+
+/// One test's table: a row for each of the six positions, in order. The
+/// first `t.rows.len()` hold figures; `status` names what the next row is
+/// doing (settling, measuring) while the test runs. Then the means, the
+/// largest difference, vertical less horizontal and any conditions.
+fn table_grid(ui: &mut egui::Ui, id: &str, t: &Table, status: Option<String>) {
+    let pal = theme::pal(ui);
+    egui::Grid::new(id)
+        .num_columns(5)
+        .spacing(Vec2::new(16.0, 5.0))
+        .min_col_width(LABEL_W.min(FIGURE_W))
+        .striped(true)
+        .show(ui, |ui| {
+            position_head(ui);
+            for (h, hint) in [
+                ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
+                (
+                    "From Mean, s/d",
+                    "This position's rate less the mean of the positions measured",
+                ),
+                (
+                    "Amplitude, °",
+                    "The balance's swing, from the lift angle set",
+                ),
+                ("Beat Error, ms", "From the unlock, as a size"),
+            ] {
+                column_head(ui, FIGURE_W, h, hint);
+            }
+            ui.end_row();
+            let mut status = status;
+            for (i, p) in ORDER.iter().enumerate() {
+                match t.rows.get(i) {
+                    Some((label, rate, from_mean, amp, be)) => {
+                        ui.label(RichText::new(label).color(pal.text));
+                        right(ui, signed(*rate, 1), false, pal.text);
+                        right(ui, signed(*from_mean, 1), false, pal.text);
+                        right(ui, plain(*amp, 0), false, pal.text);
+                        right(ui, plain(*be, 2), false, pal.text);
+                    }
+                    None => {
+                        let label = position_label(
+                            session::Position::parse(p.code()).unwrap_or(session::Position::CH),
+                        );
+                        match status.take() {
+                            Some(s) => {
+                                ui.label(RichText::new(label).strong().color(pal.text));
+                                right(ui, s, false, pal.accent);
+                            }
+                            None => {
+                                ui.label(RichText::new(label).color(pal.text_tertiary));
+                                ui.label("");
+                            }
+                        }
+                        for _ in 0..3 {
+                            ui.label("");
+                        }
+                    }
+                }
+                ui.end_row();
+            }
+            if !t.rows.is_empty() {
+                ui.label(RichText::new("Mean").strong().color(pal.text));
+                right(ui, signed(t.mean_rate, 1), true, pal.text);
+                ui.label("");
+                right(ui, plain(t.mean_amplitude, 0), true, pal.text);
+                right(ui, plain(t.mean_beat_error, 2), true, pal.text);
+                ui.end_row();
+            }
+        });
+    if t.rows.len() >= 2 {
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(format!(
+                "Largest difference between the positions' rates: {} s/d.",
+                plain(t.largest_difference, 1)
+            ))
+            .color(pal.text),
+        )
+        .on_hover_text("D: the fastest position's rate less the slowest's");
+    }
+    if t.dvh_rate.is_some() || t.dvh_amplitude.is_some() {
+        ui.label(
+            RichText::new(format!(
+                "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
+                signed(t.dvh_rate, 1),
+                signed(t.dvh_amplitude, 0)
+            ))
+            .color(pal.text),
+        )
+        .on_hover_text(
+            "DVH: the vertical positions' mean less the horizontal ones', for rate and for \
+             amplitude",
+        );
+    }
+    for n in &t.notes {
+        ui.label(RichText::new(n).color(pal.text));
+    }
+}
+
+/// The two tests side by side: each position's rate and amplitude at full
+/// wind and after, and the change, then Im and Ie.
+fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
+    let pal = theme::pal(ui);
+    let h = format!("{:.1} h", c.hours);
+    egui::Grid::new("full-wind")
+        .num_columns(7)
+        .spacing(Vec2::new(16.0, 5.0))
+        .min_col_width(LABEL_W.min(FIGURE_W))
+        .striped(true)
+        .show(ui, |ui| {
+            position_head(ui);
+            for (head, hint) in [
+                (
+                    "Rate, Full".to_string(),
+                    "Rate at full wind, s/d".to_string(),
+                ),
+                (
+                    format!("Rate, {h}"),
+                    format!("Rate {h} after full wind, s/d"),
+                ),
+                (
+                    "Change".to_string(),
+                    "The later rate less the full-wind one, s/d".to_string(),
+                ),
+                (
+                    "Amplitude, Full".to_string(),
+                    "Amplitude at full wind, degrees".to_string(),
+                ),
+                (
+                    format!("Amplitude, {h}"),
+                    format!("Amplitude {h} after full wind, degrees"),
+                ),
+                (
+                    "Change".to_string(),
+                    "The later amplitude less the full-wind one, degrees".to_string(),
+                ),
+            ] {
+                column_head(ui, WIDE_W, &head, &hint);
+            }
+            ui.end_row();
+            for (label, v) in &c.rows {
+                ui.label(RichText::new(label).color(pal.text));
+                right_in(ui, WIDE_W, signed(v[0], 1), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[1], 1), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[2], 1), true, pal.text);
+                right_in(ui, WIDE_W, plain(v[3], 0), false, pal.text);
+                right_in(ui, WIDE_W, plain(v[4], 0), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[5], 0), true, pal.text);
+                ui.end_row();
+            }
+        });
+    ui.add_space(4.0);
+    ui.label(
+        RichText::new(format!(
+            "Largest change in rate, crown right left out: {} s/d. Change in the mean rate, as \
+             a size: {} s/d.",
+            signed(c.im, 1),
+            plain(c.ie, 1)
+        ))
+        .color(pal.text),
+    )
+    .on_hover_text(
+        "Im: the largest change over the positions without crown right (12H), as NIHS 93-10 \
+         takes it. Ie: the size of the mean rate's change over the positions measured both \
+         times.",
+    );
+}
+
+/// When a saved test began, as the pane names it: "2026-10-08 21:04 UTC".
+fn began_text(utc: &str) -> String {
+    match (utc.get(..10), utc.get(11..16)) {
+        (Some(d), Some(t)) => format!("{d} {t} UTC"),
+        _ => utc.to_string(),
+    }
+}
+
+/// The earlier test's watch, calibre and time, on one line.
+fn earlier_line(full: &FullWind) -> String {
+    let mut parts = vec![began_text(&full.began_utc)];
+    for s in [&full.watch, &full.calibre] {
+        if !s.trim().is_empty() {
+            parts.push(s.trim().to_string());
+        }
+    }
+    parts.join(" · ")
+}
+
+/// The pane's body under its toolbar: the banner while the test runs,
+/// the table filling in as each position is measured, and with earlier
+/// results loaded, those results and both tests side by side. Returns
+/// what a button asked for.
+pub fn pane(
+    ui: &mut egui::Ui,
+    test: Option<&Test>,
+    phase: Option<Phase>,
+    earlier: Option<&FullWind>,
+    settle_s: f64,
+    measure_s: f64,
+) -> Option<Action> {
+    let pal = theme::pal(ui);
+    let mut action = None;
+    egui::ScrollArea::both()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            if let (Some(t), Some(ph)) = (test, phase) {
+                if ph != Phase::Finished {
+                    action = banner(ui, t, ph);
+                    ui.add_space(6.0);
+                }
+            }
+            if let Some(t) = test {
+                let title = match t.wind_h() {
+                    Some(h) => format!("This Test, {h:.1} h After Full Wind"),
+                    None => "This Test".to_string(),
+                };
+                heading(
+                    ui,
+                    &title,
+                    "Each position's figures as soon as it is measured, read the same way as \
+                     `timegrapher session` reads them",
+                );
+                // A word in the row under way; the banner has the seconds.
+                let status = match phase {
+                    Some(Phase::Settling(_)) => Some("Settling…".to_string()),
+                    Some(Phase::Measuring(_)) => Some("Measuring…".to_string()),
+                    Some(Phase::Paused) => Some("Paused".to_string()),
+                    Some(Phase::Turn) if t.needs_reading() => Some("Reading…".to_string()),
+                    _ => None,
+                };
+                table_grid(ui, "positions", &table(t.readings_so_far()), status);
+            }
+            let c = test.and_then(|t| {
+                let (f, h) = t.full.as_ref()?;
+                comparison(f, *h, t.readings_so_far())
+            });
+            if let Some(c) = &c {
+                ui.add_space(10.0);
+                heading(
+                    ui,
+                    &format!("Full Wind Against {:.1} Hours", c.hours),
+                    "The full-wind test loaded at the start, against this one, run without \
+                     winding or wearing the watch in between",
+                );
+                comparison_grid(ui, c);
+            }
+            if let Some(full) = earlier {
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    heading(
+                        ui,
+                        "Full Wind",
+                        "The results loaded from the test just after winding, to set the next \
+                         test against",
+                    );
+                    ui.label(RichText::new(earlier_line(full)).color(pal.text_secondary));
+                    let running = phase.is_some_and(|p| p != Phase::Finished);
+                    if !running
+                        && ui
+                            .add(egui::Button::new("Remove").frame_when_inactive(false))
+                            .on_hover_text(
+                                "Set these results aside: the next test is then a full-wind \
+                                 one",
+                            )
+                            .clicked()
+                    {
+                        action = Some(Action::ClearEarlier);
+                    }
+                });
+                table_grid(ui, "earlier", &kept_table(full), None);
+            }
+            ui.add_space(10.0);
+            let about = match (test, earlier) {
+                (None, None) => format!(
+                    "Start Test leads you through the six positions, one after another: it \
+                     says which position to turn the watch to, lets it settle {settle_s:.0} s, \
+                     measures it for {measure_s:.0} s, and fills in the table as it goes. Run \
+                     it just after winding and save its results; 24 hours later, without \
+                     winding or wearing the watch in between, load them with Load Full-Wind \
+                     Results… and run it again to see both side by side."
+                ),
+                (None, Some(_)) => "Start Test runs the six positions again and sets them \
+                     against these results."
+                    .to_string(),
+                (Some(t), _) if t.readings.is_some() && t.full.is_none() => {
+                    "For the same test 24 hours after winding, save these results with Save \
+                     Results for 24 Hours… (or save the session, which keeps them), leave the \
+                     watch unwound and off the wrist, then load them and start the test again."
+                        .to_string()
+                }
+                _ => String::new(),
+            };
+            if !about.is_empty() {
+                ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
+            }
+            if let Some(t) = test {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "Each position settles {:.0} s and is measured for {:.0} s. Beat \
+                             error is a size: which beat is longer depends on the beat the \
+                             analysis locked on first. Save the session to keep the positions \
+                             with the sound; `timegrapher session` reads it the same way.",
+                            t.settle_s, t.measure_s
+                        ))
+                        .small()
+                        .color(pal.text_tertiary),
+                    )
+                    .wrap(),
+                );
+            }
+        });
     action
 }
 
@@ -551,55 +1091,87 @@ fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
     (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
 }
 
+/// One position's figures for a table: rate, amplitude and beat error
+/// (a size).
+type Figures = (session::Position, Option<f64>, Option<f64>, Option<f64>);
+
 /// The table from the readings, with the figures `timegrapher session`
 /// prints for the same stretches and its position names.
 pub fn table(readings: &[Reading]) -> Table {
-    let mean_rate = mean(readings.iter().map(|r| r.measurement.rate_s_per_day));
-    let rates: Vec<f64> = readings
+    let figures: Vec<Figures> = readings
         .iter()
-        .filter_map(|r| r.measurement.rate_s_per_day)
+        .map(|r| {
+            let m = &r.measurement;
+            (
+                r.position,
+                m.rate_s_per_day,
+                m.amplitude_deg,
+                m.beat_error(),
+            )
+        })
         .collect();
+    let notes = readings
+        .iter()
+        .flat_map(|r| conditions(&position_label(r.position), r.bph, &r.measurement))
+        .collect();
+    table_of(&figures, notes)
+}
+
+/// The table of an earlier test's saved results.
+pub fn kept_table(full: &FullWind) -> Table {
+    let figures: Vec<Figures> = full
+        .positions
+        .iter()
+        .filter_map(|k| {
+            Some((
+                session::Position::parse(&k.position)?,
+                k.rate_s_per_day,
+                k.amplitude_deg,
+                k.beat_error_ms,
+            ))
+        })
+        .collect();
+    table_of(&figures, Vec::new())
+}
+
+fn table_of(figures: &[Figures], notes: Vec<String>) -> Table {
+    let mean_rate = mean(figures.iter().map(|f| f.1));
+    let rates: Vec<f64> = figures.iter().filter_map(|f| f.1).collect();
     let largest_difference = (rates.len() >= 2).then(|| {
         rates.iter().copied().fold(f64::MIN, f64::max)
             - rates.iter().copied().fold(f64::MAX, f64::min)
     });
     // Vertical less horizontal, as `session` takes it.
-    let side = |vertical: bool, f: fn(&Measurement) -> Option<f64>| {
+    let side = |vertical: bool, f: fn(&Figures) -> Option<f64>| {
         mean(
-            readings
+            figures
                 .iter()
-                .filter(|r| r.position.is_vertical() == vertical)
-                .map(|r| f(&r.measurement)),
+                .filter(|x| x.0.is_vertical() == vertical)
+                .map(f),
         )
     };
     let dvh =
-        |f: fn(&Measurement) -> Option<f64>| side(true, f).zip(side(false, f)).map(|(v, h)| v - h);
-    let dvh_rate = dvh(|m| m.rate_s_per_day);
-    let dvh_amplitude = dvh(|m| m.amplitude_deg);
+        |f: fn(&Figures) -> Option<f64>| side(true, f).zip(side(false, f)).map(|(v, h)| v - h);
     Table {
-        rows: readings
+        rows: figures
             .iter()
-            .map(|r| {
-                let m = &r.measurement;
+            .map(|&(p, rate, amp, be)| {
                 (
-                    position_label(r.position),
-                    m.rate_s_per_day,
-                    m.rate_s_per_day.zip(mean_rate).map(|(x, x0)| x - x0),
-                    m.amplitude_deg,
-                    m.beat_error(),
+                    position_label(p),
+                    rate,
+                    rate.zip(mean_rate).map(|(x, x0)| x - x0),
+                    amp,
+                    be,
                 )
             })
             .collect(),
         mean_rate,
-        mean_amplitude: mean(readings.iter().map(|r| r.measurement.amplitude_deg)),
-        mean_beat_error: mean(readings.iter().map(|r| r.measurement.beat_error())),
+        mean_amplitude: mean(figures.iter().map(|f| f.2)),
+        mean_beat_error: mean(figures.iter().map(|f| f.3)),
         largest_difference,
-        dvh_rate,
-        dvh_amplitude,
-        notes: readings
-            .iter()
-            .flat_map(|r| conditions(&position_label(r.position), r.bph, &r.measurement))
-            .collect(),
+        dvh_rate: dvh(|f| f.1),
+        dvh_amplitude: dvh(|f| f.2),
+        notes,
     }
 }
 
@@ -808,9 +1380,52 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         .collect()
 }
 
+/// The test as text a spreadsheet takes: the watch and how it was read,
+/// the table, and in the 24 hour half both tests side by side, fields
+/// split by `sep` as [`table_text`] splits them.
+pub fn export_text(test: &Test, about: &About, sep: char) -> String {
+    let field = |s: &str| {
+        if s.contains(sep) || s.contains('"') {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    let mut out = String::new();
+    let mut line = |k: &str, v: String| {
+        out += &format!("{}{sep}{}\n", field(k), field(&v));
+    };
+    line("Watch", about.watch.trim().to_string());
+    line("Calibre", about.calibre.clone());
+    line(
+        "Beat Rate, bph",
+        about.bph.map_or_else(String::new, |b| b.to_string()),
+    );
+    line("Lift Angle, °", format!("{:.0}", about.lift_angle_deg));
+    line("Test Began, UTC", test.began_utc());
+    if let Some((full, h)) = &test.full {
+        line("Full-Wind Test Began, UTC", full.began_utc.clone());
+        line("Hours After Full Wind", format!("{h:.1}"));
+    }
+    line("Settling, s", format!("{:.0}", test.settle_s));
+    line("Measured, s", format!("{:.0}", test.measure_s));
+    out.push('\n');
+    let readings = test.readings_so_far();
+    out += &table_text(&table(readings), sep);
+    if let Some(c) = test
+        .full
+        .as_ref()
+        .and_then(|(f, h)| comparison(f, *h, readings))
+    {
+        out.push('\n');
+        out += &comparison_text(&c, sep);
+    }
+    out
+}
+
 /// Ask where to save the full-wind results for the 24 hour half, starting
 /// in `dir`, and save them. Says what happened, or None when cancelled.
-fn save_results(k: &FullWind, dir: &std::path::Path) -> Option<String> {
+pub fn save_results(k: &FullWind, dir: &std::path::Path) -> Option<String> {
     let stamp: String = k
         .began_utc
         .chars()
@@ -831,9 +1446,9 @@ fn save_results(k: &FullWind, dir: &std::path::Path) -> Option<String> {
     })
 }
 
-/// Ask where to save the table as a CSV file, starting in `dir`, and save
+/// Ask where to save the test as a CSV file, starting in `dir`, and save
 /// it there. Says what happened, or None when the dialog was cancelled.
-fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
+pub fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
     let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
         .chars()
         .filter(|c| c.is_ascii_digit() || *c == 'T')
@@ -854,262 +1469,6 @@ fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
             path.display()
         ),
     })
-}
-
-/// The results: a table of each position's rate, its difference from the
-/// mean, amplitude and beat error, with the means, as `timegrapher
-/// session` reads them, and buttons to save it as a CSV file (the dialog
-/// starting in `dir`) or copy it. No verdict: the figures are for the
-/// watchmaker to judge. Returns a line saying what a button did.
-pub fn results(
-    ctx: &egui::Context,
-    test: &mut Test,
-    dir: &std::path::Path,
-    watch: &str,
-    calibre: &str,
-) -> Option<String> {
-    let readings = test.readings.as_ref()?;
-    let mut open = test.show_results;
-    let mut said = None;
-    let t = table(readings);
-    let full_wind = test.full.is_none();
-    let c = test
-        .full
-        .as_ref()
-        .and_then(|(f, h)| comparison(f, *h, readings));
-    let text = |sep: char| {
-        let mut out = table_text(&t, sep);
-        if let Some(c) = &c {
-            out.push('\n');
-            out += &comparison_text(c, sep);
-        }
-        out
-    };
-    egui::Window::new("Positions Test")
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(true)
-        .default_width(560.0)
-        .show(ctx, |ui| {
-            let pal = theme::pal(ui);
-            let dash = || "—".to_string();
-            let signed =
-                |v: Option<f64>| v.map_or_else(dash, |x| format!("{x:+.1}").replace('-', "−"));
-            let plain = |v: Option<f64>, d: usize| v.map_or_else(dash, |x| format!("{x:.d$}"));
-            let right = |ui: &mut egui::Ui, text: String, strong: bool| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let t = RichText::new(text).color(pal.text);
-                    ui.label(if strong { t.strong() } else { t });
-                });
-            };
-            egui::Grid::new("positions")
-                .num_columns(5)
-                .spacing(Vec2::new(24.0, 6.0))
-                .show(ui, |ui| {
-                    ui.label(theme::caption("Position").color(pal.text_secondary));
-                    for (h, hint) in [
-                        ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
-                        (
-                            "From Mean, s/d",
-                            "This position's rate less the mean of all six",
-                        ),
-                        (
-                            "Amplitude, °",
-                            "The balance's swing, from the lift angle set",
-                        ),
-                        ("Beat Error, ms", "From the unlock, as a size"),
-                    ] {
-                        ui.label(theme::caption(h).color(pal.text_secondary))
-                            .on_hover_text(hint);
-                    }
-                    ui.end_row();
-                    for (label, rate, from_mean, amp, be) in &t.rows {
-                        ui.label(label);
-                        right(ui, signed(*rate), false);
-                        right(ui, signed(*from_mean), false);
-                        right(ui, plain(*amp, 0), false);
-                        right(ui, plain(*be, 2), false);
-                        ui.end_row();
-                    }
-                    ui.label(RichText::new("Mean").strong());
-                    right(ui, signed(t.mean_rate), true);
-                    right(ui, String::new(), false);
-                    right(ui, plain(t.mean_amplitude, 0), true);
-                    right(ui, plain(t.mean_beat_error, 2), true);
-                    ui.end_row();
-                });
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new(format!(
-                    "Largest difference between the positions' rates: {} s/d.",
-                    plain(t.largest_difference, 1)
-                ))
-                .color(pal.text),
-            )
-            .on_hover_text("D: the fastest position's rate less the slowest's");
-            ui.label(
-                RichText::new(format!(
-                    "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
-                    signed(t.dvh_rate),
-                    t.dvh_amplitude
-                        .map_or_else(dash, |x| format!("{x:+.0}").replace('-', "−"))
-                ))
-                .color(pal.text),
-            )
-            .on_hover_text(
-                "DVH: the vertical positions' mean less the horizontal ones', \
-                 for rate and for amplitude",
-            );
-            for n in &t.notes {
-                ui.label(RichText::new(n).color(pal.text));
-            }
-            if let Some(c) = &c {
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new(format!("Full Wind Against {:.1} Hours", c.hours))
-                        .strong()
-                        .color(pal.text),
-                )
-                .on_hover_text(
-                    "The full-wind test loaded at the start, against this one, run without \
-                     winding or wearing the watch in between",
-                );
-                ui.add_space(4.0);
-                egui::Grid::new("full-wind")
-                    .num_columns(7)
-                    .spacing(Vec2::new(18.0, 6.0))
-                    .show(ui, |ui| {
-                        let h = format!("{:.1} h", c.hours);
-                        ui.label(theme::caption("Position").color(pal.text_secondary));
-                        for (head, hint) in [
-                            (
-                                "Rate, Full".to_string(),
-                                "Rate at full wind, s/d".to_string(),
-                            ),
-                            (
-                                format!("Rate, {h}"),
-                                format!("Rate {h} after full wind, s/d"),
-                            ),
-                            (
-                                "Change".to_string(),
-                                "The later rate less the full-wind one, s/d".to_string(),
-                            ),
-                            (
-                                "Amplitude, Full".to_string(),
-                                "Amplitude at full wind, degrees".to_string(),
-                            ),
-                            (
-                                format!("Amplitude, {h}"),
-                                format!("Amplitude {h} after full wind, degrees"),
-                            ),
-                            (
-                                "Change".to_string(),
-                                "The later amplitude less the full-wind one, degrees".to_string(),
-                            ),
-                        ] {
-                            ui.label(theme::caption(&head).color(pal.text_secondary))
-                                .on_hover_text(hint);
-                        }
-                        ui.end_row();
-                        for (label, v) in &c.rows {
-                            ui.label(label);
-                            right(ui, signed(v[0]), false);
-                            right(ui, signed(v[1]), false);
-                            right(ui, signed(v[2]), true);
-                            right(ui, plain(v[3], 0), false);
-                            right(ui, plain(v[4], 0), false);
-                            right(
-                                ui,
-                                v[5].map_or_else(dash, |x| format!("{x:+.0}").replace('-', "−")),
-                                true,
-                            );
-                            ui.end_row();
-                        }
-                    });
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new(format!(
-                        "Largest change in rate, crown right left out: {} s/d. Change in \
-                         the mean rate, as a size: {} s/d.",
-                        signed(c.im),
-                        plain(c.ie, 1)
-                    ))
-                    .color(pal.text),
-                )
-                .on_hover_text(
-                    "Im: the largest change over the positions without crown right (12H), \
-                     as NIHS 93-10 takes it. Ie: the size of the mean rate's change over the positions \
-                     measured both times.",
-                );
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui
-                    .button("Save as CSV…")
-                    .on_hover_text(
-                        "Save the table, the means and the differences as a CSV file a \
-                         spreadsheet opens",
-                    )
-                    .clicked()
-                {
-                    said = save_csv(&text(','), dir);
-                }
-                if ui
-                    .button("Copy")
-                    .on_hover_text(
-                        "Copy the table with tabs between the columns, to paste into a \
-                         spreadsheet or a message",
-                    )
-                    .clicked()
-                {
-                    ui.ctx().copy_text(text('\t'));
-                    said = Some("Copied the Positions Test table".to_string());
-                }
-                if let Some(k) = test.kept(watch, calibre) {
-                    if ui
-                        .button("Save Results for 24 Hours…")
-                        .on_hover_text(format!(
-                            "Save these results to load when you run the test again 24 hours \
-                             after winding. Saving the session keeps them too, as {RESULTS_FILE} \
-                             in its folder."
-                        ))
-                        .clicked()
-                    {
-                        said = save_results(&k, dir);
-                    }
-                }
-            });
-            if full_wind {
-                ui.add_space(8.0);
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(
-                            "For the same test 24 hours after winding, save these results \
-                             (or the session), leave the watch unwound and off the wrist, then \
-                             start the Positions Test again and load them.",
-                        )
-                        .color(pal.text_secondary),
-                    )
-                    .wrap(),
-                );
-            }
-            ui.add_space(8.0);
-            ui.add(
-                egui::Label::new(
-                    RichText::new(format!(
-                        "Each position settled {SETTLE_S:.0} s and was measured for \
-                         {MEASURE_S:.0} s. Beat error is a size: which beat is longer depends on \
-                         the beat the analysis locked on first. Save the session to keep the \
-                         positions with the sound; `timegrapher session` reads it the same way."
-                    ))
-                    .small()
-                    .color(pal.text_tertiary),
-                )
-                .wrap(),
-            );
-        });
-    test.show_results = open;
-    said
 }
 
 #[cfg(test)]
@@ -1140,9 +1499,18 @@ mod tests {
         t.tick(0.0);
         for i in 1..=6 {
             assert_eq!(t.tick(each * i as f64), Phase::Turn);
+            // Each position is read as soon as it is measured.
+            assert!(t.needs_reading());
+            t.read_new(&log, None);
+            assert_eq!(t.readings_so_far().len(), i);
             t.advance(each * i as f64);
         }
+        let so_far = t.readings_so_far().to_vec();
         t.finish(&log, None);
+        let rates_of = |v: &[Reading]| -> Vec<Option<f64>> {
+            v.iter().map(|r| r.measurement.rate_s_per_day).collect()
+        };
+        assert_eq!(rates_of(t.readings.as_deref().unwrap()), rates_of(&so_far));
         let readings = t.readings.as_ref().unwrap();
         assert_eq!(readings.len(), 6);
         for (r, want) in readings.iter().zip(rates) {
@@ -1167,13 +1535,39 @@ mod tests {
         // Kept as the full-wind test, then the same watch 24 hours on,
         // 2 s/d faster in every position but crown right, 8 s/d faster
         // there, and 20° lower.
-        let full = t.kept("Test Watch", "ETA 2824-2").unwrap();
+        let about = About {
+            watch: "Test Watch".into(),
+            calibre: "ETA 2824-2".into(),
+            bph: Some(28800),
+            lift_angle_deg: 52.0,
+        };
+        let full = t.kept(&about).unwrap();
         assert_eq!(full.positions.len(), 6);
         assert_eq!(full.positions[5].position, "CR");
-        // Saved and read back as it was.
+        // Saved and read back as it was, with how it was read.
         let full = FullWind::from_json(&full.to_json()).unwrap();
         assert_eq!(full.calibre, "ETA 2824-2");
+        assert_eq!(
+            (full.bph, full.lift_angle_deg, full.settle_s, full.measure_s),
+            (Some(28800), Some(52.0), Some(SETTLE_S), Some(MEASURE_S))
+        );
         assert!(FullWind::from_json("{}").is_err());
+        // A file saved before those were kept still reads.
+        let mut old: serde_json::Value = serde_json::from_str(&full.to_json()).unwrap();
+        for k in ["bph", "lift_angle_deg", "settle_s", "measure_s"] {
+            old.as_object_mut().unwrap().remove(k);
+        }
+        let old = FullWind::from_json(&old.to_string()).unwrap();
+        assert_eq!((old.bph, old.settle_s), (None, None));
+        // The text saved and copied names the watch and its calibre first.
+        let csv = export_text(&t, &about, ',');
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines[0], "Watch,Test Watch");
+        assert_eq!(lines[1], "Calibre,ETA 2824-2");
+        assert_eq!(lines[2], "\"Beat Rate, bph\",28800");
+        assert_eq!(lines[3], "\"Lift Angle, °\",52");
+        assert!(lines[4].starts_with("\"Test Began, UTC\",20"));
+        assert!(csv.contains("\nPosition,\"Rate, s/d\""));
         let later: Vec<Reading> = readings
             .iter()
             .map(|r| {
@@ -1211,7 +1605,11 @@ mod tests {
         let mut half = Test::after(full);
         assert!(half.wind_h().unwrap() > 0.0);
         half.readings = Some(later);
-        assert!(half.kept("Test Watch", "").is_none());
+        assert!(half.kept(&about).is_none());
+        // Its text carries the comparison and the hours since full wind.
+        let csv = export_text(&half, &about, ',');
+        assert!(csv.contains("Hours After Full Wind,"));
+        assert!(csv.contains("\"Rate at Full Wind, s/d\""));
     }
 
     #[test]
@@ -1235,6 +1633,48 @@ mod tests {
         }
         assert_eq!(t.measured_count(), 6);
         assert_eq!(t.next_position(), None);
+    }
+
+    /// A test with its own times settles and measures for them.
+    #[test]
+    fn the_times_in_each_position_can_be_set() {
+        let mut t = Test::new().timed(45.0, 120.0);
+        assert_eq!(t.tick(0.0), Phase::Settling(45.0));
+        assert_eq!(t.tick(50.0), Phase::Measuring(5.0));
+        assert_eq!(t.tick(165.0), Phase::Turn);
+        assert_eq!(t.stretches(), [(Position::DialUp, 45.0, 165.0)]);
+        assert_eq!(
+            t.unused(170.0),
+            [(0.0, 45.0, SETTLING), (165.0, 170.0, NOT_USED)]
+        );
+    }
+
+    /// Paused part way through measuring: what was measured is left out,
+    /// the pause is Not Used, and Resume settles and measures afresh.
+    #[test]
+    fn a_pause_starts_the_position_again_on_resume() {
+        let (sm, m) = (SETTLE_S, MEASURE_S);
+        let mut t = Test::new();
+        t.tick(0.0);
+        t.pause(sm + 10.0);
+        assert_eq!(t.tick(500.0), Phase::Paused);
+        assert!(t.measured(500.0).is_empty());
+        assert_eq!(
+            t.unused(100.0),
+            [
+                (0.0, sm, SETTLING),
+                (sm, sm + 10.0, NOT_USED),
+                (sm + 10.0, 100.0, NOT_USED)
+            ]
+        );
+        t.resume(100.0);
+        assert_eq!(t.tick(100.0), Phase::Settling(sm));
+        assert_eq!(t.tick(100.0 + sm + m), Phase::Turn);
+        assert_eq!(
+            t.stretches(),
+            [(Position::DialUp, 100.0 + sm, 100.0 + sm + m)]
+        );
+        assert_eq!(t.unused(100.0 + sm + m)[2], (sm + 10.0, 100.0, NOT_USED));
     }
 
     /// The time the test leaves out: each settling, the wait for the next
