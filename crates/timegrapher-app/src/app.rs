@@ -1474,11 +1474,13 @@ impl TimegrapherApp {
     fn save_into(&mut self, parent: &Path) {
         let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
         let manifest = self.take_manifest();
+        // The watch's name as it is now, for session.json and the folder.
+        self.note_settings();
         let Some(r) = self.session.recorder.as_mut() else {
             return;
         };
         let secs = r.duration_s();
-        match r.save_copy(parent, result.as_ref()) {
+        match r.save_copy(parent, &self.calibre, result.as_ref()) {
             Ok(dir) => {
                 let text = toml::to_string_pretty(&manifest).map_err(|e| e.to_string());
                 if let Err(e) = text
@@ -4924,7 +4926,7 @@ impl TimegrapherApp {
             return;
         }
         if self.position != guided::ORDER[0] {
-            self.set_position(guided::ORDER[0]);
+            self.change_position(guided::ORDER[0]);
         }
         self.guided = Some(guided::Test::new());
         self.guided_unused.clear();
@@ -4997,7 +4999,9 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
         match action {
             Some(guided::Action::Next) => match test.advance(now) {
-                Some(p) => self.set_position(p),
+                // Noted in the take like a position picked by hand, so its
+                // session.json follows the test.
+                Some(p) => self.change_position(p),
                 None => {
                     if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
                         let clock = self.clock.as_ref().and_then(|c| {
