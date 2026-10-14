@@ -92,12 +92,14 @@ pub const RATE: &[&str] = &[
     "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. The app times the card's clock against \
-     the computer's while it listens, and after 20 minutes offers the result under the \
-     rate with a Keep button; that is only right if the computer's clock is kept by \
-     internet time. Once the error is kept (by Keep, `timegrapher clock measure --save`, \
-     or `clock from-log --save` after a recording with a clock log), the app shows the corrected rate under the big figure. Until \
-     then the rate is read on the card's clock alone, as tg reads it. The big \
-     figure stays on the card's clock, the same clock tg and an analysis of the \
+     the computer's while it listens. After 20 minutes, once the timing is known to \
+     half a part per million, it offers the result under the rate with a Keep button; a \
+     busy computer delivers sound less evenly, so the offer can come later. The result \
+     is only right if the computer's clock is kept by internet time. Once the error is \
+     kept (by Keep, `timegrapher clock measure --save`, or `clock from-log --save` \
+     after a recording with a clock log), the app shows the corrected rate under the \
+     big figure. Until then the rate is read on the card's clock alone, as tg reads \
+     it. The big figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
     "The ± is how far the figure could be off from the scatter of 10-second rates over \
      the run so far: a property of the measurement, not of the watch. \
