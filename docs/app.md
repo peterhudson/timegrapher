@@ -198,7 +198,8 @@ regular beat (with its timing scatter), clipping, or under 10 s of
 beats. The figures are `session`'s for the same stretches. **Save as
 CSV…** saves the table, the means, the differences and those lines as a
 CSV file a spreadsheet opens, and **Copy** puts the same on the
-clipboard with tabs between the columns.
+clipboard with tabs between the columns. It gives no verdict and no
+pass or fail: the figures are for the watchmaker to judge.
 
 **Full wind against 24 hours.** Positions Test… first asks whether this
 is 24 hours after an earlier test. **No, Just Wound** starts it. Its
@@ -221,8 +222,7 @@ test began), `watch` and `calibre` (as set then, or empty), and
 `positions`: one entry per position in the order measured, with
 `position` (CH, CB, 9H, 6H, 3H or 12H), `rate_s_per_day`,
 `amplitude_deg` and `beat_error_ms` (a size), each null when not
-measured. It gives no verdict and no
-pass or fail: the figures are for the watchmaker to judge.
+measured.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the

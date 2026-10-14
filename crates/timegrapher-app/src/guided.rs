@@ -968,7 +968,7 @@ pub fn results(
                         .color(pal.text),
                 )
                 .on_hover_text(
-                    "The full-wind test the app kept, against this one, run without \
+                    "The full-wind test loaded at the start, against this one, run without \
                      winding or wearing the watch in between",
                 );
                 ui.add_space(4.0);

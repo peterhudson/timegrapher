@@ -2332,7 +2332,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// The question before throwing away unsaved sound.
     /// Before a Positions Test: is it the 24 hour half of an earlier one?
     /// If so, its saved results are loaded to set this one against.
     fn guided_ask_dialog(&mut self, ctx: &egui::Context) {
@@ -2433,6 +2432,7 @@ impl TimegrapherApp {
         }
     }
 
+    /// The question before throwing away unsaved sound.
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(what) = self.confirm.clone() else {
             return;
