@@ -70,7 +70,7 @@ pub const READINGS: &[&str] = &[
      Each of those panes can take a time of its own instead, in its toolbar's Average \
      Over, and then names it on its tab, until Average Over here is changed: that puts \
      every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
-     the Positions Test a minute a position, whatever it is set to.",
+     the Positions Test the time set in its pane, whatever it is set to.",
     "The tick is simply the first beat heard: the sound can't tell which pallet stone \
      made which beat.",
 ];
@@ -287,6 +287,33 @@ pub const SCOPE: &[&str] = &[
     "Beats: how many of the latest beats are drawn over each other, the older ones \
      fainter. One beat shows exactly what was heard; several show how much the beats \
      vary, which the Tick Tock Profile averages away.",
+];
+
+pub const POSITIONS_TEST: &[&str] = &[
+    "Start Test leads the watch through the six positions in turn: dial up, dial down, \
+     crown down, crown left, crown up and crown right. In each, the watch settles for \
+     the time under Settle (20 s unless set otherwise), then is measured for the time \
+     under Measure (60 s unless set otherwise); the banner says which position comes \
+     next, and Start Measurement goes on once the watch is turned. The table fills in \
+     as each position is measured, with the figures `timegrapher session` gives for the \
+     same stretches: each rate, its difference from the mean, amplitude and beat error, \
+     then the means, the largest difference between the rates and vertical less \
+     horizontal.",
+    "Pause holds the test: what the position measured so far isn't used, and Resume \
+     settles and measures it again from the start. Restart Measurement does the same at \
+     once, as after a knock. Stop ends the test; the session and its positions stay. \
+     The Paper Strip marks Before Test, Settling, each measured stretch and the time Not \
+     Used for Positions Test.",
+    "For the test 24 hours after winding: run it just after winding and keep its results \
+     with Save Results for 24 Hours… (saving the session keeps them too, as \
+     positions-test.json). 24 hours later, without winding or wearing the watch in \
+     between, Load Full-Wind Results… and start the test: the pane shows the earlier \
+     results, this test's, and both side by side with the change in each position, the \
+     largest change in rate with crown right left out (Im) and the change in the mean \
+     rate (Ie).",
+    "Save as CSV… and Copy write the watch's name, its calibre, beat rate and lift angle, \
+     when the test began and its times, then the table, and in the 24 hour half both \
+     tests side by side. Copy puts tabs between the columns, for a spreadsheet.",
 ];
 
 pub const ISOCHRONISM: &[&str] = &[

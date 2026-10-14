@@ -197,12 +197,14 @@ pub enum Pane {
     SteadyFft,
     Scope,
     Isochronism,
+    PositionsTest,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 18] = [
+    const ALL: [Pane; 19] = [
         Pane::Watch,
+        Pane::PositionsTest,
         Pane::Strip,
         Pane::Sound,
         Pane::Scope,
@@ -270,6 +272,7 @@ impl Pane {
             Pane::SteadyFft => "FFT",
             Pane::Scope => "Scope",
             Pane::Isochronism => "Isochronism",
+            Pane::PositionsTest => "Positions Test",
         }
     }
 
@@ -315,6 +318,11 @@ impl Pane {
                 "How the rate moves with the amplitude as the mainspring lets down, and the \
                  first half hour against 24 hours later"
             }
+            Pane::PositionsTest => {
+                "The six positions one after another, settled and measured in turn, with \
+                 their table filling in as it goes, and the test 24 hours after winding \
+                 against the one just after"
+            }
         }
     }
 }
@@ -356,6 +364,7 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::SteadyCusum => (Icon::Cusum, pal.text_secondary),
         Pane::SteadyFft => (Icon::Fft, pal.text_secondary),
         Pane::Isochronism => (Icon::Isochronism, pal.text_secondary),
+        Pane::PositionsTest => (Icon::Positions, pal.text_secondary),
         Pane::Rate => (Icon::Chart, pal.trace_rate),
         Pane::Amplitude => (Icon::Chart, pal.trace_amplitude),
         Pane::BeatError => (Icon::Chart, pal.trace_beat_error),
@@ -400,12 +409,14 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let scope = tiles.insert_pane(Pane::Scope);
     let steady: Vec<TileId> = Pane::STEADY.map(|p| tiles.insert_pane(p)).to_vec();
     let isochronism = tiles.insert_pane(Pane::Isochronism);
+    let positions = tiles.insert_pane(Pane::PositionsTest);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
         for v in steady {
             c.add_child(v);
         }
         c.add_child(isochronism);
+        c.add_child(positions);
     }
     let dir = if horizontal {
         LinearDir::Horizontal
@@ -482,7 +493,8 @@ fn repair_tabs(tree: &mut Tree<Pane>) {
     }
 }
 
-/// A layout saved before a pane existed (Steadiness, Scope), with it added
+/// A layout saved before a pane existed (Steadiness, Scope, Positions
+/// Test), with it added
 /// as a tab beside the profile (or at the top, if the profile is not in
 /// tabs).
 fn add_missing(tree: &mut Tree<Pane>, pane: Pane) {
@@ -720,7 +732,8 @@ pub struct TimegrapherApp {
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
-    /// The Positions Test, while it runs and until its results are closed.
+    /// The Positions Test, while it runs and once finished, until a new
+    /// test or a new session.
     guided: Option<guided::Test>,
     /// The time the Positions Test didn't use, marked on the strip; kept
     /// after the test ends, until a new session.
@@ -728,9 +741,13 @@ pub struct TimegrapherApp {
     /// The stretches the Positions Test measured, the one under way
     /// included, kept like `guided_unused`.
     guided_measured: Vec<(f64, f64)>,
-    /// Asking whether a Positions Test about to start follows an earlier
-    /// one by 24 hours.
-    guided_ask: bool,
+    /// The full-wind test's results, loaded for the next test to run as
+    /// its 24 hour half.
+    guided_earlier: Option<guided::FullWind>,
+    /// Seconds of settling and of measuring in each position, for the
+    /// next test.
+    guided_settle_s: f64,
+    guided_measure_s: f64,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -911,6 +928,8 @@ impl TimegrapherApp {
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
             periods_log: self.periods_log,
             fft_timing: self.fft_timing,
+            positions_settle_s: self.guided_settle_s,
+            positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
             // Kept in the user calibre file now.
@@ -946,6 +965,8 @@ impl TimegrapherApp {
             steady_shown,
             periods_log,
             fft_timing,
+            positions_settle_s,
+            positions_measure_s,
             scope,
             panes,
             custom_calibres,
@@ -994,6 +1015,10 @@ impl TimegrapherApp {
         self.theme = theme;
         self.periods_log = periods_log;
         self.fft_timing = fft_timing;
+        self.guided_settle_s =
+            positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
+        self.guided_measure_s =
+            positions_measure_s.clamp(*guided::MEASURE_RANGE.start(), *guided::MEASURE_RANGE.end());
         // Each pane's series, at least one shown; a pane not set yet takes
         // the choice the one Steadiness pane had.
         let every = steady_series;
@@ -1022,6 +1047,7 @@ impl TimegrapherApp {
             }
             add_missing(&mut p, Pane::Scope);
             add_missing(&mut p, Pane::Isochronism);
+            add_missing(&mut p, Pane::PositionsTest);
             add_watch(&mut p);
             p
         }) {
@@ -1063,7 +1089,9 @@ impl TimegrapherApp {
             guided: None,
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
-            guided_ask: false,
+            guided_earlier: None,
+            guided_settle_s: guided::SETTLE_S,
+            guided_measure_s: guided::MEASURE_S,
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -1480,10 +1508,8 @@ impl TimegrapherApp {
         let manifest = self.take_manifest();
         // A finished full-wind Positions Test's results, for its 24 hour
         // half.
-        let kept = self
-            .guided
-            .as_ref()
-            .and_then(|t| t.kept(&self.watch, &self.calibre));
+        let about = self.guided_about();
+        let kept = self.guided.as_ref().and_then(|t| t.kept(&about));
         // The watch's name as it is now, for session.json and the folder.
         self.note_settings();
         let Some(r) = self.session.recorder.as_mut() else {
@@ -1625,9 +1651,9 @@ impl TimegrapherApp {
                 ..Default::default()
             })
             .collect();
-        // A Positions Test's own stretches (after its 20 s settling, for
-        // its 60 s), so `timegrapher session` reads the seconds its table
-        // showed.
+        // A Positions Test's own stretches (after its settling, for its
+        // measuring time), so `timegrapher session` reads the seconds its
+        // table showed.
         let wind_h = self.guided.as_ref().and_then(|t| t.wind_h());
         let test: Vec<RecordingEntry> = self
             .guided
@@ -2332,80 +2358,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// Before a Positions Test: is it the 24 hour half of an earlier one?
-    /// If so, its saved results are loaded to set this one against.
-    fn guided_ask_dialog(&mut self, ctx: &egui::Context) {
-        if !self.guided_ask {
-            return;
-        }
-        let mut choice = None;
-        let modal = egui::Modal::new(egui::Id::new("positions test")).show(ctx, |ui| {
-            ui.set_width(400.0);
-            ui.label(
-                RichText::new("Is this 24 hours after an earlier Positions Test?")
-                    .font(theme::semibold(15.0)),
-            );
-            ui.add_space(4.0);
-            ui.add(
-                egui::Label::new(format!(
-                    "Run the test just after winding, then save its results from the \
-                     results window (or save the session, which keeps them as {}). 24 \
-                     hours later, without winding or wearing the watch in between, run it \
-                     again and load those results: the table then shows both tests side \
-                     by side.",
-                    guided::RESULTS_FILE
-                ))
-                .wrap(),
-            );
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui
-                    .add(theme::primary(ui, "No, Just Wound"))
-                    .on_hover_text("Start the test now, with the watch just wound")
-                    .clicked()
-                {
-                    choice = Some(0);
-                }
-                if ui
-                    .add(egui::Button::new("Yes, Load Results…").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(format!(
-                        "Pick the results saved from the full-wind test ({} in a saved \
-                         session's folder, or the file saved from its results window), then \
-                         start",
-                        guided::RESULTS_FILE
-                    ))
-                    .clicked()
-                {
-                    choice = Some(1);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text("Close without starting the test")
-                    .clicked()
-                {
-                    choice = Some(2);
-                }
-            });
-        });
-        if modal.should_close() {
-            choice = choice.or(Some(2));
-        }
-        match choice {
-            Some(0) => {
-                self.guided_ask = false;
-                self.start_guided(None);
-            }
-            Some(1) => {
-                if let Some(full) = self.load_full_wind() {
-                    self.guided_ask = false;
-                    self.start_guided(Some(full));
-                }
-            }
-            Some(_) => self.guided_ask = false,
-            None => {}
-        }
-    }
-
     /// Ask for the full-wind test's saved results and read them; None if
     /// the dialog was cancelled or the file can't be read (which says so).
     fn load_full_wind(&mut self) -> Option<guided::FullWind> {
@@ -2647,24 +2599,6 @@ impl TimegrapherApp {
                     self.new_session();
                 }
             }
-            let about = format!(
-                "Measure the watch in all six positions, one after another: the app says \
-                 which position to turn it to, lets it settle {:.0} s, measures it for \
-                 {:.0} s, and reads the six together at the end.",
-                guided::SETTLE_S,
-                guided::MEASURE_S
-            );
-            if self.guided.is_none()
-                && ui
-                    .add(egui::Button::new("Positions Test…").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(format!(
-                        "{about} Run it just after winding, save its results, and run it \
-                         again 24 hours later against them."
-                    ))
-                    .clicked()
-            {
-                self.guided_ask = true;
-            }
         });
         if self.session.allows(Action::Save) {
             let saved = self.session.saved_to().is_some();
@@ -2843,6 +2777,9 @@ impl TimegrapherApp {
                 })
             }
             Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |_| {}),
+            Pane::PositionsTest => theme::pane_toolbar(ui, title, help::POSITIONS_TEST, |ui| {
+                self.positions_settings(ui)
+            }),
             p if Pane::HISTOGRAMS.contains(&p) => {
                 theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                     self.span_setting(ui);
@@ -5054,12 +4991,14 @@ impl TimegrapherApp {
         if self.position != guided::ORDER[0] {
             self.change_position(guided::ORDER[0]);
         }
-        self.guided = Some(match half {
+        let test = match half {
             Some(full) => guided::Test::after(full),
             None => guided::Test::new(),
-        });
+        };
+        self.guided = Some(test.timed(self.guided_settle_s, self.guided_measure_s));
         self.guided_unused.clear();
         self.guided_measured.clear();
+        self.reveal_pane(Pane::PositionsTest);
     }
 
     /// After a break in the sound while listening: was the watch moved?
@@ -5114,20 +5053,223 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
-    /// The Positions Test's banner, and what its buttons ask for.
-    fn guided_banner(&mut self, ui: &mut egui::Ui) {
-        let Some(mut test) = self.guided.take() else {
+    /// Move the Positions Test on with the sound, whether its pane shows
+    /// or not: read each position as it is measured, and keep what the
+    /// strip marks.
+    fn guided_tick(&mut self, ctx: &egui::Context) {
+        let Some(test) = self.guided.as_mut() else {
             return;
         };
         let Some(now) = self.live.as_ref().map(|l| l.duration_s()) else {
-            self.guided = Some(test);
             return;
         };
         let phase = test.tick(now);
-        let action = guided::banner(ui, &test, phase);
-        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
+        if test.needs_reading() {
+            if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+                let clock = self
+                    .clock
+                    .as_ref()
+                    .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
+                test.read_new(&log, clock.as_ref());
+            }
+        }
+        self.guided_unused = test.unused(now);
+        self.guided_measured = test.measured(now);
+        if matches!(
+            phase,
+            guided::Phase::Settling(_) | guided::Phase::Measuring(_) | guided::Phase::Paused
+        ) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
+    }
+
+    /// The watch and how it is read, for the test's saved and copied
+    /// results.
+    fn guided_about(&self) -> guided::About {
+        guided::About {
+            watch: self.watch.trim().to_string(),
+            calibre: self.calibre.clone(),
+            bph: self.bph.or(self.live.as_ref().and_then(|l| l.bph())),
+            lift_angle_deg: self.lift_deg,
+        }
+    }
+
+    /// Whether a Positions Test is under way, not yet finished.
+    fn guided_running(&self) -> bool {
+        self.guided.as_ref().is_some_and(|t| t.readings.is_none())
+    }
+
+    /// Where the test's files are offered first: beside the saved take,
+    /// or the folder Save offers.
+    fn guided_dir(&self) -> PathBuf {
+        self.session
+            .saved_to()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from(&self.save_dir))
+    }
+
+    /// The Positions Test pane's toolbar: start the test, load the
+    /// full-wind results for the 24 hour half, the times in each
+    /// position, and saving or copying the results.
+    fn positions_settings(&mut self, ui: &mut egui::Ui) {
+        let running = self.guided_running();
+        let (settle, measure) = (self.guided_settle_s, self.guided_measure_s);
+        let start_hint = match &self.guided_earlier {
+            Some(_) => format!(
+                "Run the six positions again, {settle:.0} s settling and {measure:.0} s measuring \
+                 in each, against the full-wind results loaded, starting dial up. Listens to \
+                 the microphone first if it isn't already."
+            ),
+            None => format!(
+                "Lead the watch through the six positions, starting dial up: each settles \
+                 {settle:.0} s and is measured for {measure:.0} s, and the table fills in as it \
+                 goes. Listens to the microphone first if it isn't already."
+            ),
+        };
+        let label = if self.guided.is_some() && !running {
+            "Start a New Test"
+        } else {
+            "Start Test"
+        };
+        // While it runs, the banner below carries the test's buttons.
+        if !running {
+            if ui
+                .add(theme::primary(ui, label))
+                .on_hover_text(start_hint)
+                .clicked()
+            {
+                let earlier = self.guided_earlier.clone();
+                self.start_guided(earlier);
+            }
+            if ui
+                .button("Load Full-Wind Results…")
+                .on_hover_text(format!(
+                    "For the test 24 hours after winding: load the results saved from the test \
+                     just after it ({} in a saved session's folder, or the file Save Results for \
+                     24 Hours… wrote). The next test is then set against them.",
+                    guided::RESULTS_FILE
+                ))
+                .clicked()
+            {
+                if let Some(full) = self.load_full_wind() {
+                    self.guided_earlier = Some(full);
+                }
+            }
+            ui.separator();
+        }
+        ui.add_enabled_ui(!running, |ui| {
+            theme::row(
+                ui,
+                "Settle",
+                Some("Seconds the watch is left to settle after each turn before it is measured"),
+                |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut self.guided_settle_s)
+                            .range(guided::SETTLE_RANGE)
+                            .speed(1.0)
+                            .max_decimals(0)
+                            .suffix(" s"),
+                    );
+                },
+            );
+            theme::row(
+                ui,
+                "Measure",
+                Some(
+                    "Seconds each position is measured for. Longer brings the rate's ± down; a \
+                     minute gives about half a second a day.",
+                ),
+                |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut self.guided_measure_s)
+                            .range(guided::MEASURE_RANGE)
+                            .speed(1.0)
+                            .max_decimals(0)
+                            .suffix(" s"),
+                    );
+                },
+            );
+        });
+        let has = self
+            .guided
+            .as_ref()
+            .is_some_and(|t| !t.readings_so_far().is_empty());
+        ui.separator();
+        let about = self.guided_about();
+        if ui
+            .add_enabled(has, egui::Button::new("Save as CSV…"))
+            .on_hover_text(
+                "Save the watch, its calibre, the table, the means and the differences as a \
+                 CSV file a spreadsheet opens",
+            )
+            .on_disabled_hover_text("Nothing measured yet")
+            .clicked()
+        {
+            if let Some(t) = &self.guided {
+                let text = guided::export_text(t, &about, ',');
+                if let Some(m) = guided::save_csv(&text, &self.guided_dir()) {
+                    self.info_msg(m);
+                }
+            }
+        }
+        if ui
+            .add_enabled(has, egui::Button::new("Copy"))
+            .on_hover_text(
+                "Copy the watch, its calibre and the table with tabs between the columns, to \
+                 paste into a spreadsheet or a message",
+            )
+            .on_disabled_hover_text("Nothing measured yet")
+            .clicked()
+        {
+            if let Some(t) = &self.guided {
+                ui.ctx().copy_text(guided::export_text(t, &about, '\t'));
+                self.info_msg("Copied the Positions Test table".to_string());
+            }
+        }
+        if let Some(k) = self.guided.as_ref().and_then(|t| t.kept(&about)) {
+            if ui
+                .button("Save Results for 24 Hours…")
+                .on_hover_text(format!(
+                    "Save these results to load when you run the test again 24 hours after \
+                     winding. Saving the session keeps them too, as {} in its folder.",
+                    guided::RESULTS_FILE
+                ))
+                .clicked()
+            {
+                if let Some(m) = guided::save_results(&k, &self.guided_dir()) {
+                    self.info_msg(m);
+                }
+            }
+        }
+    }
+
+    /// The Positions Test pane: the banner and the tables, and what its
+    /// buttons ask for.
+    fn positions_pane(&mut self, ui: &mut egui::Ui) {
+        let now = self.live.as_ref().map(|l| l.duration_s());
+        let phase = match (self.guided.as_mut(), now) {
+            (Some(t), Some(now)) => Some(t.tick(now)),
+            _ => None,
+        };
+        let action = guided::pane(
+            ui,
+            self.guided.as_ref(),
+            phase,
+            self.guided_earlier.as_ref(),
+            self.guided_settle_s,
+            self.guided_measure_s,
+        );
+        let Some(action) = action else { return };
+        if action == guided::Action::ClearEarlier {
+            self.guided_earlier = None;
+            return;
+        }
+        let Some(now) = now else { return };
+        let Some(mut test) = self.guided.take() else {
+            return;
+        };
         match action {
-            Some(guided::Action::Next) => match test.advance(now) {
+            guided::Action::Next => match test.advance(now) {
                 // Noted in the take like a position picked by hand, so its
                 // session.json follows the test.
                 Some(p) => self.change_position(p),
@@ -5140,26 +5282,35 @@ impl TimegrapherApp {
                     }
                 }
             },
-            Some(guided::Action::Redo) => test.redo(now),
-            Some(guided::Action::Results) => test.show_results = true,
-            Some(guided::Action::Stop) => {
+            guided::Action::Redo => test.redo(now),
+            guided::Action::Pause => test.pause(now),
+            guided::Action::Resume => test.resume(now),
+            guided::Action::ClearEarlier => {}
+            guided::Action::Stop => {
                 test.stop(now);
                 self.guided_unused = test.unused(now);
                 self.guided_measured = test.measured(now);
                 return;
             }
-            None => {}
         }
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);
-        if matches!(
-            phase,
-            guided::Phase::Settling(_) | guided::Phase::Measuring(_)
-        ) {
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(250));
-        }
         self.guided = Some(test);
+    }
+
+    /// Show a pane and bring its tab to the front.
+    fn reveal_pane(&mut self, pane: Pane) {
+        set_pane_visible(&mut self.panes.tiles, pane, true);
+        let Some(id) = self.panes.tiles.find_pane(&pane) else {
+            return;
+        };
+        if let Some(parent) = self.panes.tiles.parent_of(id) {
+            if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) =
+                self.panes.tiles.get_mut(parent)
+            {
+                t.set_active(id);
+            }
+        }
     }
 
     /// A newer release is published: its version and a button to its page.
@@ -5348,7 +5499,6 @@ impl TimegrapherApp {
             self.beside_watch(ui, Self::empty_state);
             return;
         }
-        self.guided_banner(ui);
         self.move_banner(ui);
         if self.no_watch_yet() {
             self.beside_watch(ui, Self::no_watch);
@@ -5418,24 +5568,60 @@ impl TimegrapherApp {
     }
 
     /// Before there is anything to show: the Watch pane at the left, as
-    /// it sits once there is, unless it is hidden, and `rest` beside it.
+    /// it sits once there is, unless it is hidden, the Positions Test pane
+    /// above the rest when it is shown, so a test can start from it, and
+    /// `rest` beside them.
     fn beside_watch(&mut self, ui: &mut egui::Ui, rest: fn(&mut Self, &mut egui::Ui)) {
-        if !pane_visible(&self.panes.tiles, Pane::Watch) {
+        let watch = pane_visible(&self.panes.tiles, Pane::Watch);
+        let test = pane_visible(&self.panes.tiles, Pane::PositionsTest);
+        if !watch && !test {
             rest(self, ui);
             return;
         }
         let full = ui.available_rect_before_wrap();
-        let w = (full.width() * WATCH_SHARE).clamp(260.0, 360.0);
-        let left = egui::Rect::from_min_size(full.min, Vec2::new(w, full.height()));
-        let right =
-            egui::Rect::from_min_max(egui::pos2(left.right() + theme::GAP, full.top()), full.max);
         let pal = theme::pal(ui);
-        ui.painter()
-            .rect_filled(left, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
-        ui.scope_builder(
-            egui::UiBuilder::new().max_rect(left.shrink2(Vec2::new(8.0, 6.0))),
-            |ui| self.watch_pane(ui),
-        );
+        let card = |ui: &egui::Ui, r: egui::Rect| {
+            ui.painter()
+                .rect_filled(r, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
+            r.shrink2(Vec2::new(8.0, 6.0))
+        };
+        let mut right = full;
+        if watch {
+            let w = (full.width() * WATCH_SHARE).clamp(260.0, 360.0);
+            let left = egui::Rect::from_min_size(full.min, Vec2::new(w, full.height()));
+            right = egui::Rect::from_min_max(
+                egui::pos2(left.right() + theme::GAP, full.top()),
+                full.max,
+            );
+            let inner = card(ui, left);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                self.watch_pane(ui)
+            });
+        }
+        if test {
+            // Room for its toolbar and a few lines until a test has a table.
+            let h = if self.guided.is_some() || self.guided_earlier.is_some() {
+                (right.height() * 0.6).max(240.0)
+            } else {
+                170.0
+            }
+            .min(right.height());
+            let top = egui::Rect::from_min_size(right.min, Vec2::new(right.width(), h));
+            let inner = card(ui, top);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                if self.pane_tools(ui, Pane::PositionsTest) {
+                    ui.add_space(4.0);
+                }
+                self.positions_pane(ui);
+            });
+            right = egui::Rect::from_min_max(
+                egui::pos2(
+                    right.left(),
+                    (top.bottom() + theme::GAP).min(right.bottom()),
+                ),
+                right.max,
+            );
+        }
         ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| rest(self, ui));
         ui.allocate_rect(full, egui::Sense::hover());
     }
@@ -6658,6 +6844,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                     .app
                     .steady_pane(ui, p.steady_view().unwrap_or_default()),
                 Pane::Isochronism => self.app.isochronism_pane(ui),
+                Pane::PositionsTest => self.app.positions_pane(ui),
                 Pane::Scope => self.app.scope_pane(ui),
                 p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
                 p => self.app.chart(ui, *p),
@@ -7146,19 +7333,9 @@ impl eframe::App for TimegrapherApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Confirm::Quit);
         }
+        self.guided_tick(ctx);
         self.panels(ctx);
         self.confirm_dialog(ctx);
-        self.guided_ask_dialog(ctx);
-        if let Some(t) = self.guided.as_mut() {
-            let dir = self
-                .session
-                .saved_to()
-                .and_then(|p| p.parent().map(Path::to_path_buf))
-                .unwrap_or_else(|| PathBuf::from(&self.save_dir));
-            if let Some(m) = guided::results(ctx, t, &dir, &self.watch, &self.calibre) {
-                self.info_msg(m);
-            }
-        }
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
         }
@@ -8153,6 +8330,10 @@ mod tests {
             began_unix: now - 24.0 * 3600.0,
             watch: String::new(),
             calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
             positions: Vec::new(),
         };
         let mut half = guided::Test::after(full);

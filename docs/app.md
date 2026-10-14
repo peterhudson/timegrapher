@@ -34,7 +34,7 @@ from and what to do with it, then the watch itself. It is a pane like the
 others: drag it by its tab, or hide it and bring it back from its icon or
 the View menu. At its top, **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
-**Resume**), **New Session** when stopped, **Positions Test…**, **Save…**
+**Resume**), **New Session** when stopped, **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
 peak meter and Show Every Input. For a recording: **Open…**, **Open
 Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
@@ -163,66 +163,86 @@ had a regular beat after its first few seconds, the cards and charts give
 way to one card saying the same; they appear once a regular beat is
 found.
 
-**Positions Test.** Positions Test… beside the microphone buttons leads
-through the six positions in the app's order: Dial Up, Dial Down, Crown
-Down, Crown Left, Crown Up, Crown Right. It starts listening if need be.
-A banner over the readings names the position and shows a progress bar
-while the watch settles (20 s) and is measured (60 s), times the project
-chose. It then says which position to turn the watch to; press the
-button naming it (**Start CL Measurement**) once it is there. **Restart
-DD Measurement**, naming the position just measured (or the one under
-way), settles and measures it again, after a knock for instance, and
-**Stop** ends the test. Only the 60 s measured in each position count.
-From the moment the test starts, the strip, its position ticker and the
-charts mark the test's phases, Dial Up included, each in its own grey:
-**Before Test** over the sound before the test began (left plain, with a
-line where the test begins), **Settling** over each 20 s settle (a light
-shade), each position's measured 60 s (the darkest shade, named by the
-position), and **Not Used for Positions Test** (hatched) over the time
-after a measurement while the watch is being turned, over a measurement
-given up for a restart, and over the part of a position measured when
-the test was stopped. Beats outside the measured stretches are drawn
-faintly. The marks stay after the test until a new test or a new
-session. Each position is a
-stretch of the one session, as any change of position is, so the strip
-and charts mark them and a saved session keeps them for `timegrapher
-session`. After the sixth, **Finish** reads the six measured stretches
-with core `session::measure`, as `session` does (rate on the input's
-measured clock when there is one), and a window shows them as a table:
-each position by name ("Crown Up (CU, 3H)"), its rate, its rate
-less the mean of the six, its amplitude and its beat error (a size), a
-Mean row, the largest difference between the rates (D), and vertical
-less horizontal for rate and amplitude (DVH). Under
-them, a plain line for each condition found in a position's sound: no
-regular beat (with its timing scatter), clipping, or under 10 s of
-beats. The figures are `session`'s for the same stretches. **Save as
-CSV…** saves the table, the means, the differences and those lines as a
-CSV file a spreadsheet opens, and **Copy** puts the same on the
-clipboard with tabs between the columns. It gives no verdict and no
-pass or fail: the figures are for the watchmaker to judge.
+**Positions Test.** The Positions Test pane, a tab beside the Tick
+Tock Profile to begin with (its icon is a watch dial up and two on their
+sides), leads through the six positions in the app's order: Dial Up,
+Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
+has **Start Test** (**Start a New Test** once one has finished), **Load
+Full-Wind Results…**, **Settle** and **Measure** (the seconds the watch
+settles after each turn and is then measured: 20 s and 60 s unless set
+otherwise, kept between runs, 5 to 600 s and 20 to 3600 s), and **Save
+as CSV…**, **Copy** and, after a test just after winding, **Save
+Results for 24 Hours…**. While the pane is shown with nothing listened
+to yet, it sits above the welcome card, so a test can start from it.
+Start Test starts listening if need be and brings the pane to the front.
+A banner at the top of the pane names the position and shows a progress
+bar while the watch settles and is measured. It then says which position
+to turn the watch to; press the button naming it (**Start CL
+Measurement**) once it is there. **Restart DD Measurement**, naming the
+position just measured (or the one under way), settles and measures it
+again, after a knock for instance; **Pause** holds the test, leaving out
+what the position measured so far, and **Resume** settles and measures it
+again from the start; **Stop** ends the test and clears its table. Only
+the measured seconds in each position count. From the moment the test
+starts, the strip, its position ticker and the charts mark the test's
+phases, Dial Up included, each in its own grey: **Before Test** over the
+sound before the test began (left plain, with a line where the test
+begins), **Settling** over each settle (a light shade), each position's
+measured stretch (the darkest shade, named by the position), and **Not
+Used for Positions Test** (hatched) over the time after a measurement
+while the watch is being turned, over a measurement given up for a
+restart or a pause, over the pause itself, and over the part of a
+position measured when the test was stopped. Beats outside the measured
+stretches are drawn faintly. The marks stay after the test until a new
+test or a new session. Each position is a stretch of the one session, as
+any change of position is, so the strip and charts mark them and a saved
+session keeps them for `timegrapher session`.
 
-**Full wind against 24 hours.** Positions Test… first asks whether this
-is 24 hours after an earlier test. **No, Just Wound** starts it. Its
-results window then has **Save Results for 24 Hours…**, and saving the
-session keeps the same results as `positions-test.json` in its folder.
-24 hours after winding, with the watch neither wound nor worn since,
-**Yes, Load Results…** picks either file and starts the test again; the
-banner names the hours since the full-wind test began. Its results window
-adds a Full Wind Against N Hours table: each position's rate and
-amplitude at full wind and now, and the change, then the largest change
-in rate with crown right left out (Im, as NIHS 93-10 takes it) and the
-size of the change in the mean rate (Ie), all from core `session::evaluate` as
-`timegrapher session` reads the two together. Saved, its CSV and Copy
-include that table, and the session file marks its stretches with
+Under the banner, the table fills in as each position is measured, read
+with core `session::measure` as `session` does (rate on the input's
+measured clock when there is one): each position by name ("Crown Up
+(CU, 3H)"), its rate, its rate less the mean of the positions measured,
+its amplitude and its beat error (a size); the position under way says
+how far its settling or measuring has got. Then a Mean row, the largest
+difference between the rates (D), vertical less horizontal for rate and
+amplitude (DVH), and a plain line for each condition found in a
+position's sound: no regular beat (with its timing scatter), clipping,
+or under 10 s of beats. After the sixth, **Finish** reads the six
+together. The figures are `session`'s for the same stretches. **Save as
+CSV…** saves the watch's name, its calibre, beat rate and lift angle,
+when the test began and its settling and measuring times, then the
+table, the means, the differences and those lines, as a CSV file a
+spreadsheet opens; **Copy** puts the same on the clipboard with tabs
+between the columns. It gives no verdict and no pass or fail: the
+figures are for the watchmaker to judge.
+
+**Full wind against 24 hours.** After a test run just after winding,
+**Save Results for 24 Hours…** saves its results, and saving the session
+keeps the same results as `positions-test.json` in its folder. 24 hours
+after winding, with the watch neither wound nor worn since, **Load
+Full-Wind Results…** picks either file: the pane shows those results as
+a Full Wind table with when that test began, the watch and the calibre,
+and **Remove** sets them aside. Start Test then runs the six again
+against them, and the banner names the hours since the full-wind test
+began. As it goes, the pane adds a Full Wind Against N Hours table: each
+position's rate and amplitude at full wind and now, and the change, then
+the largest change in rate with crown right left out (Im, as NIHS 93-10
+takes it) and the size of the change in the mean rate (Ie), all from
+core `session::evaluate` as `timegrapher session` reads the two
+together. Its CSV and Copy add the full-wind test's start, the hours
+since and that table, and the session file marks its stretches with
 `wind_h`, the hours since full wind.
 
 `positions-test.json` (format `timegrapher.positions-test/1`; later
 versions add keys) holds `format`, `began_utc` and `began_unix` (when the
-test began), `watch` and `calibre` (as set then, or empty), and
-`positions`: one entry per position in the order measured, with
-`position` (DU, DD, CD, CL, CU or CR, as in `session.toml`), `rate_s_per_day`,
-`amplitude_deg` and `beat_error_ms` (a size), each null when not
-measured.
+test began), `watch` and `calibre` (as set then, or empty), `bph` and
+`lift_angle_deg` (the beat rate and lift angle it was read at, `bph`
+null when not known), `settle_s` and `measure_s` (the test's settling and
+measuring in each position, seconds), and `positions`: one entry per
+position in the order measured, with `position` (DU, DD, CD, CL, CU or
+CR, as in `session.toml`), `rate_s_per_day`, `amplitude_deg` and
+`beat_error_ms` (a size), each null when not measured. Files saved before
+`bph`, `lift_angle_deg`, `settle_s` and `measure_s` were kept still load.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
@@ -710,7 +730,7 @@ when. It holds:
 | `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a pause starts a new file |
 | `clock.csv` | System time against frames captured, every 10 s, and on both sides of each pause; frames run on across a pause, with no line made up for the gap |
 | `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has been paused) `breaks`: one entry per resume with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
-| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after its 20 s settling and for its 60 s, so `timegrapher session` reads the seconds its table did, with `wind_h` in the 24 hour half) |
+| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after each settling and for its measuring time, so `timegrapher session` reads the seconds its table did, with `wind_h` in the 24 hour half) |
 | `positions-test.json` | Only for a finished Positions Test run just after winding: its results, to load for the test 24 hours later (the format is under Full wind against 24 hours) |
 
 Opening a recording or folder that has a `session.toml` beside it (or in

@@ -41,6 +41,10 @@ pub struct Settings {
     pub periods_log: bool,
     /// The FFT pane's rate as the beat timing's spectrum, in ms.
     pub fft_timing: bool,
+    /// The Positions Test's settling and measuring in each position,
+    /// seconds.
+    pub positions_settle_s: f64,
+    pub positions_measure_s: f64,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// Calibres the watchmaker entered by hand, as earlier versions kept
@@ -100,6 +104,8 @@ impl Default for Settings {
             steady_shown: Vec::new(),
             periods_log: false,
             fft_timing: false,
+            positions_settle_s: crate::guided::SETTLE_S,
+            positions_measure_s: crate::guided::MEASURE_S,
             scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),

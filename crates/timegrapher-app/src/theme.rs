@@ -871,6 +871,7 @@ pub enum Icon {
     Cusum,
     Fft,
     Isochronism,
+    Positions,
     Chart,
     Distribution,
 }
@@ -1066,6 +1067,20 @@ pub fn draw_icon(painter: &egui::Painter, r: egui::Rect, icon: Icon, c: Color32)
             line(&pts);
             for t in [0.15_f32, 0.4, 0.65, 0.9] {
                 painter.circle_filled(at(t, 0.25 + 2.2 * (t - 0.55).powi(2)), 1.4, c);
+            }
+        }
+        // A watch turned through its positions: the case seen dial up, and
+        // two more, edge on, on their sides.
+        Icon::Positions => {
+            painter.circle_stroke(at(0.27, 0.5), 0.24 * r.width(), s);
+            line(&[(0.27, 0.5), (0.27, 0.34)]);
+            for x in [0.66_f32, 0.9] {
+                painter.rect_stroke(
+                    egui::Rect::from_min_max(at(x - 0.07, 0.24), at(x + 0.07, 0.76)),
+                    1.5,
+                    s,
+                    egui::StrokeKind::Inside,
+                );
             }
         }
         // A line over time.
