@@ -198,7 +198,30 @@ regular beat (with its timing scatter), clipping, or under 10 s of
 beats. The figures are `session`'s for the same stretches. **Save as
 CSV…** saves the table, the means, the differences and those lines as a
 CSV file a spreadsheet opens, and **Copy** puts the same on the
-clipboard with tabs between the columns. It gives no verdict and no
+clipboard with tabs between the columns.
+
+**Full wind against 24 hours.** Positions Test… first asks whether this
+is 24 hours after an earlier test. **No, Just Wound** starts it. Its
+results window then has **Save Results for 24 Hours…**, and saving the
+session keeps the same results as `positions-test.json` in its folder.
+24 hours after winding, with the watch neither wound nor worn since,
+**Yes, Load Results…** picks either file and starts the test again; the
+banner names the hours since the full-wind test began. Its results window
+adds a Full Wind Against N Hours table: each position's rate and
+amplitude at full wind and now, and the change, then the largest change
+in rate with crown right left out (Im, as NIHS 93-10 takes it) and the
+change in the mean rate (Ie), all from core `session::evaluate` as
+`timegrapher session` reads the two together. Saved, its CSV and Copy
+include that table, and the session file marks its stretches with
+`wind_h`, the hours since full wind.
+
+`positions-test.json` (format `timegrapher-positions-test/1`; later
+versions add keys) holds `format`, `began_utc` and `began_unix` (when the
+test began), `watch` and `calibre` (as set then, or empty), and
+`positions`: one entry per position in the order measured, with
+`position` (CH, CB, 9H, 6H, 3H or 12H), `rate_s_per_day`,
+`amplitude_deg` and `beat_error_ms` (a size), each null when not
+measured. It gives no verdict and no
 pass or fail: the figures are for the watchmaker to judge.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
@@ -687,7 +710,8 @@ when. It holds:
 | `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a pause starts a new file |
 | `clock.csv` | System time against frames captured, every 10 s, and on both sides of each pause; frames run on across a pause, with no line made up for the gap |
 | `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has been paused) `breaks`: one entry per resume with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
-| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after its 20 s settling and for its 60 s, so `timegrapher session` reads the seconds its table did) |
+| `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after its 20 s settling and for its 60 s, so `timegrapher session` reads the seconds its table did, with `wind_h` in the 24 hour half) |
+| `positions-test.json` | Only for a finished Positions Test run just after winding: its results, to load for the test 24 hours later (the format is under Full wind against 24 hours) |
 
 Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins

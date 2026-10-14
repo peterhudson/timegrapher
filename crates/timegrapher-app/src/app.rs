@@ -728,6 +728,9 @@ pub struct TimegrapherApp {
     /// The stretches the Positions Test measured, the one under way
     /// included, kept like `guided_unused`.
     guided_measured: Vec<(f64, f64)>,
+    /// Asking whether a Positions Test about to start follows an earlier
+    /// one by 24 hours.
+    guided_ask: bool,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
     /// The check at start is still to be made (on the first frame, which
@@ -1060,6 +1063,7 @@ impl TimegrapherApp {
             guided: None,
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
+            guided_ask: false,
             check_at_start: true,
             check_pending: false,
             average_s: 10.0,
@@ -1474,6 +1478,12 @@ impl TimegrapherApp {
     fn save_into(&mut self, parent: &Path) {
         let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
         let manifest = self.take_manifest();
+        // A finished full-wind Positions Test's results, for its 24 hour
+        // half.
+        let kept = self
+            .guided
+            .as_ref()
+            .and_then(|t| t.kept(&self.watch, &self.calibre));
         // The watch's name as it is now, for session.json and the folder.
         self.note_settings();
         let Some(r) = self.session.recorder.as_mut() else {
@@ -1487,6 +1497,14 @@ impl TimegrapherApp {
                     .and_then(|t| std::fs::write(dir.join(MANIFEST), t).map_err(|e| e.to_string()))
                 {
                     self.error(format!("Saved the sound, but not its {MANIFEST}: {e}"));
+                }
+                if let Some(k) = &kept {
+                    if let Err(e) = std::fs::write(dir.join(guided::RESULTS_FILE), k.to_json()) {
+                        self.error(format!(
+                            "Saved the sound, but not the Positions Test's {}: {e}",
+                            guided::RESULTS_FILE
+                        ));
+                    }
                 }
                 self.info_msg(format!(
                     "Saved {} of sound in {}",
@@ -1610,6 +1628,7 @@ impl TimegrapherApp {
         // A Positions Test's own stretches (after its 20 s settling, for
         // its 60 s), so `timegrapher session` reads the seconds its table
         // showed.
+        let wind_h = self.guided.as_ref().and_then(|t| t.wind_h());
         let test: Vec<RecordingEntry> = self
             .guided
             .as_ref()
@@ -1619,6 +1638,7 @@ impl TimegrapherApp {
                 Some(RecordingEntry {
                     file: ".".into(),
                     position: Some(pos.code().to_string()),
+                    wind_h,
                     clock: Some("clock.csv".into()),
                     start_s: Some(self.session.audio_of(from)?),
                     end_s: Some(self.session.audio_of(to)?),
@@ -2313,6 +2333,106 @@ impl TimegrapherApp {
     }
 
     /// The question before throwing away unsaved sound.
+    /// Before a Positions Test: is it the 24 hour half of an earlier one?
+    /// If so, its saved results are loaded to set this one against.
+    fn guided_ask_dialog(&mut self, ctx: &egui::Context) {
+        if !self.guided_ask {
+            return;
+        }
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("positions test")).show(ctx, |ui| {
+            ui.set_width(400.0);
+            ui.label(
+                RichText::new("Is this 24 hours after an earlier Positions Test?")
+                    .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.add(
+                egui::Label::new(format!(
+                    "Run the test just after winding, then save its results from the \
+                     results window (or save the session, which keeps them as {}). 24 \
+                     hours later, without winding or wearing the watch in between, run it \
+                     again and load those results: the table then shows both tests side \
+                     by side.",
+                    guided::RESULTS_FILE
+                ))
+                .wrap(),
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(theme::primary(ui, "No, Just Wound"))
+                    .on_hover_text("Start the test now, with the watch just wound")
+                    .clicked()
+                {
+                    choice = Some(0);
+                }
+                if ui
+                    .add(egui::Button::new("Yes, Load Results…").min_size(Vec2::new(0.0, 26.0)))
+                    .on_hover_text(format!(
+                        "Pick the results saved from the full-wind test ({} in a saved \
+                         session's folder, or the file saved from its results window), then \
+                         start",
+                        guided::RESULTS_FILE
+                    ))
+                    .clicked()
+                {
+                    choice = Some(1);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(2);
+                }
+            });
+        });
+        if modal.should_close() {
+            choice = choice.or(Some(2));
+        }
+        match choice {
+            Some(0) => {
+                self.guided_ask = false;
+                self.start_guided(None);
+            }
+            Some(1) => {
+                if let Some(full) = self.load_full_wind() {
+                    self.guided_ask = false;
+                    self.start_guided(Some(full));
+                }
+            }
+            Some(_) => self.guided_ask = false,
+            None => {}
+        }
+    }
+
+    /// Ask for the full-wind test's saved results and read them; None if
+    /// the dialog was cancelled or the file can't be read (which says so).
+    fn load_full_wind(&mut self) -> Option<guided::FullWind> {
+        let mut d = rfd::FileDialog::new()
+            .set_title("Load the Full-Wind Positions Test's Results")
+            .add_filter("Positions Test results", &["json"]);
+        let start = self
+            .session
+            .saved_to()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from(&self.save_dir));
+        if start.is_dir() {
+            d = d.set_directory(&start);
+        }
+        let path = d.pick_file()?;
+        let read = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|t| guided::FullWind::from_json(&t));
+        match read {
+            Ok(f) => Some(f),
+            Err(e) => {
+                self.error(format!("Couldn't load {}: {e}", path.display()));
+                None
+            }
+        }
+    }
+
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(what) = self.confirm.clone() else {
             return;
@@ -2526,19 +2646,23 @@ impl TimegrapherApp {
                     self.new_session();
                 }
             }
+            let about = format!(
+                "Measure the watch in all six positions, one after another: the app says \
+                 which position to turn it to, lets it settle {:.0} s, measures it for \
+                 {:.0} s, and reads the six together at the end.",
+                guided::SETTLE_S,
+                guided::MEASURE_S
+            );
             if self.guided.is_none()
                 && ui
                     .add(egui::Button::new("Positions Test…").min_size(Vec2::new(0.0, 26.0)))
                     .on_hover_text(format!(
-                        "Measure the watch in all six positions, one after another: the app \
-                         says which position to turn it to, lets it settle {:.0} s, measures \
-                         it for {:.0} s, and reads the six together at the end.",
-                        guided::SETTLE_S,
-                        guided::MEASURE_S
+                        "{about} Run it just after winding, save its results, and run it \
+                         again 24 hours later against them."
                     ))
                     .clicked()
             {
-                self.start_guided();
+                self.guided_ask = true;
             }
         });
         if self.session.allows(Action::Save) {
@@ -4913,8 +5037,9 @@ impl TimegrapherApp {
     }
 
     /// Begin the Positions Test, listening first if need be, with the
-    /// watch dial up.
-    fn start_guided(&mut self) {
+    /// watch dial up: just after winding, or as the 24 hour half after the
+    /// full-wind test `half`.
+    fn start_guided(&mut self, half: Option<guided::FullWind>) {
         if !self.running() {
             if self.can_resume() {
                 self.resume_microphone();
@@ -4928,7 +5053,10 @@ impl TimegrapherApp {
         if self.position != guided::ORDER[0] {
             self.change_position(guided::ORDER[0]);
         }
-        self.guided = Some(guided::Test::new());
+        self.guided = Some(match half {
+            Some(full) => guided::Test::after(full),
+            None => guided::Test::new(),
+        });
         self.guided_unused.clear();
         self.guided_measured.clear();
     }
@@ -7019,13 +7147,14 @@ impl eframe::App for TimegrapherApp {
         }
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        self.guided_ask_dialog(ctx);
         if let Some(t) = self.guided.as_mut() {
             let dir = self
                 .session
                 .saved_to()
                 .and_then(|p| p.parent().map(Path::to_path_buf))
                 .unwrap_or_else(|| PathBuf::from(&self.save_dir));
-            if let Some(m) = guided::results(ctx, t, &dir) {
+            if let Some(m) = guided::results(ctx, t, &dir, &self.watch, &self.calibre) {
                 self.info_msg(m);
             }
         }
@@ -8002,6 +8131,36 @@ mod tests {
                 ("DD".to_string(), Some(100.0), Some(160.0)),
             ]
         );
+        assert!(m.recordings.iter().all(|e| e.wind_h.is_none()), "full wind");
+        // Finished, the session's folder keeps its results for the 24
+        // hour half.
+        app.guided.as_mut().unwrap().readings = Some(Vec::new());
+        app.save_into(&base.join("saved"));
+        let dir = app.session.saved_to().unwrap().to_path_buf();
+        let kept: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(guided::RESULTS_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(kept["format"], guided::RESULTS_FORMAT);
+        // The 24 hour half's stretches carry the hours since full wind.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.into(),
+            began_utc: String::new(),
+            began_unix: now - 24.0 * 3600.0,
+            watch: String::new(),
+            calibre: String::new(),
+            positions: Vec::new(),
+        };
+        let mut half = guided::Test::after(full);
+        half.tick(0.0);
+        half.tick(guided::SETTLE_S + guided::MEASURE_S);
+        app.guided = Some(half);
+        let m = app.take_manifest();
+        assert_eq!(m.recordings.len(), 1);
+        assert_eq!(m.recordings[0].wind_h, Some(24.0));
         let _ = std::fs::remove_dir_all(&base);
     }
 
