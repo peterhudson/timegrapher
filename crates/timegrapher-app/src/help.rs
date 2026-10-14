@@ -248,15 +248,23 @@ pub const STEADINESS: &[&str] = &[
     "Readings Over Time: every reading in time order (10 s rate readings, 2 s \
      amplitude and beat error readings), with the stretches of constant level and the \
      two state levels. Periods: how strongly the readings repeat at each period, with \
-     the 1% false-alarm line dashed and the wheels' periods marked. Cycle: the readings \
+     the 1% false-alarm line dashed and the wheels' periods marked; Log Scale in its \
+     toolbar draws the scores on a log scale, so a small peak beside a tall one shows. \
+     Cycle: the readings \
      folded at the cycle found. Autocorrelation: how much a reading resembles the one \
      a lag later, with the band independent readings stay inside. Allan Deviation: the \
      scatter of averages against the dashed line independent readings follow, on \
      logarithmic axes; the lowest point is the averaging time that gives the most \
      repeatable reading. CUSUM: the running sum of distances from the mean, which \
      stays inside the dashed lines unless the level changes. FFT: the size of the sine \
-     wave at each period, like Witschi's FFT, in the series' own units (the rate's in \
-     milliseconds of beat timing), with the wheels' periods marked.",
+     wave at each period, like Witschi's FFT, in the series' own units, the rate's as \
+     the swing peak to peak it makes in 10 s rate readings, in s/d, from 20 s up (from \
+     the beat timing: a timing sine of a ms at period P swings the rate by \
+     2 × a × 2π / P × 86.4 s/d, of which a 10 s reading keeps sin(x)/x, x = π × 10 / P). \
+     Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
+     period instead. In both, each wheel's period is a bold line, and half of \
+     it, twice a turn as an off-centre wheel shows, is a fainter dashed line marked \
+     ×2.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
      in the background, again every minute while it grows; for a recording, they \

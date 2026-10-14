@@ -787,6 +787,10 @@ pub struct TimegrapherApp {
     hist_readings: bool,
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
+    /// The Periods pane's scores on a log scale.
+    periods_log: bool,
+    /// The FFT pane's rate as the beat timing's spectrum, in ms.
+    fft_timing: bool,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
@@ -899,6 +903,8 @@ impl TimegrapherApp {
             theme: self.theme,
             steady_series: [true; 3],
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
+            periods_log: self.periods_log,
+            fft_timing: self.fft_timing,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
             // Kept in the user calibre file now.
@@ -932,6 +938,8 @@ impl TimegrapherApp {
             theme,
             steady_series,
             steady_shown,
+            periods_log,
+            fft_timing,
             scope,
             panes,
             custom_calibres,
@@ -978,6 +986,8 @@ impl TimegrapherApp {
         self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
+        self.periods_log = periods_log;
+        self.fft_timing = fft_timing;
         // Each pane's series, at least one shown; a pane not set yet takes
         // the choice the one Steadiness pane had.
         let every = steady_series;
@@ -1075,6 +1085,8 @@ impl TimegrapherApp {
             hist_span_of_strip: false,
             hist_cumulative: false,
             steady_series: Default::default(),
+            periods_log: false,
+            fft_timing: false,
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -2747,6 +2759,19 @@ impl TimegrapherApp {
             return;
         };
         steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
+        if view == steady::View::Periods {
+            ui.separator();
+            theme::toggle(ui, "Log Scale", &mut self.periods_log).on_hover_text(
+                "Draw the scores on a log scale, so a small peak beside a tall one still shows",
+            );
+        }
+        if view == steady::View::Fft {
+            ui.separator();
+            theme::toggle(ui, "Timing", &mut self.fft_timing).on_hover_text(
+                "Draw rate as the beat timing's spectrum, in ms, at every period, rather than \
+                 the swing it makes in 10 s rate readings, in s/d",
+            );
+        }
     }
 
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
@@ -2891,6 +2916,10 @@ impl TimegrapherApp {
             &status,
             view,
             &self.steady_series.get(&view).copied().unwrap_or([true; 3]),
+            steady::Opts {
+                periods_log: self.periods_log,
+                fft_timing: self.fft_timing,
+            },
         );
     }
 

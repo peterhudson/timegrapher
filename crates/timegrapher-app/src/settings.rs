@@ -37,6 +37,10 @@ pub struct Settings {
     pub steady_series: [bool; 3],
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     pub steady_shown: Vec<(steady::View, [bool; 3])>,
+    /// The Periods pane's scores on a log scale.
+    pub periods_log: bool,
+    /// The FFT pane's rate as the beat timing's spectrum, in ms.
+    pub fft_timing: bool,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// Calibres the watchmaker entered by hand, as earlier versions kept
@@ -94,6 +98,8 @@ impl Default for Settings {
             theme: ThemePreference::System,
             steady_series: [true; 3],
             steady_shown: Vec::new(),
+            periods_log: false,
+            fft_timing: false,
             scope: scope::View::default(),
             panes: None,
             custom_calibres: Vec::new(),

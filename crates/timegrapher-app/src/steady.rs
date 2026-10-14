@@ -106,9 +106,10 @@ impl View {
             }
             View::Fft => {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
-                 of the sine wave at each period, in the series' own units (the rate's in \
-                 milliseconds of beat timing), with the wheels' periods marked. Both axes \
-                 are logarithmic"
+                 of the sine wave at each period, the rate's as the swing peak to peak it \
+                 makes in 10 s rate readings (or the beat timing's, in ms, with Timing), \
+                 with the wheels' periods marked and twice a turn dashed. Both axes are \
+                 logarithmic"
             }
         }
     }
@@ -481,6 +482,7 @@ pub fn draw(
     status: &str,
     view: View,
     shown: &[bool; 3],
+    opts: Opts,
 ) {
     let pal = theme::pal(ui);
     if !status.is_empty() {
@@ -525,7 +527,7 @@ pub fn draw(
                 for (k, &(i, c)) in series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
-                        row(ui, s, i, c, view);
+                        row(ui, s, i, c, view, opts);
                     });
                     if k + 1 < n {
                         ui.add_space(gap);
@@ -541,14 +543,15 @@ pub fn draw(
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
-                    ui.vertical(|ui| row(ui, s, i, c, view));
+                    ui.vertical(|ui| row(ui, s, i, c, view, opts));
                 });
             }
         });
     }
 }
 
-fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View) {
+fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
+    let log_y = opts.periods_log;
     let pal = theme::pal(ui);
     ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
     // What was detected, on up to two lines; all of it on hover, with the
@@ -585,6 +588,9 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
     let weak = pal.text_tertiary;
     let id = ("steadiness", i, view);
     let base = Plot::new(id)
+        // Grid lines reach full strength only this far apart, so at the
+        // usual spacing they are faint.
+        .grid_spacing(8.0..=1200.0)
         .allow_scroll(false)
         .allow_zoom(false)
         .allow_drag(false)
@@ -662,69 +668,60 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             if x_lo.partial_cmp(&x_hi) != Some(std::cmp::Ordering::Less) {
                 return note(ui, "The period search needs a longer session.");
             }
-            let top = pts.iter().map(|p| p[1]).fold(search.threshold, f64::max) * 1.15;
-            base.x_grid_spacer(log_grid)
+            // On a log scale the scores are drawn as log10, down to a
+            // thousandth of the tallest (a score of 0 sits on that floor).
+            let tallest = pts.iter().map(|p| p[1]).fold(search.threshold, f64::max);
+            let floor = tallest * 1e-3;
+            let y_of = move |v: f64| if log_y { v.max(floor).log10() } else { v };
+            let pts: Vec<[f64; 2]> = pts.iter().map(|q| [q[0], y_of(q[1])]).collect();
+            let (y_lo, top) = if log_y {
+                // Room above the tallest for the wheels' names.
+                (floor.log10(), tallest.log10() + 0.45)
+            } else {
+                (0.0, tallest * 1.15)
+            };
+            let threshold = y_of(search.threshold);
+            let mut plot = base
+                .x_grid_spacer(log_grid)
                 .x_axis_formatter(|m, r| log_label(m, r, secs))
-                .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
-                .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(x_lo, x_hi)
-                .default_y_bounds(0.0, top)
-                .show(ui, |p| {
-                    for (k, w) in s.wheels.iter().enumerate() {
-                        let x = w.period_s.log10();
-                        if x > x_lo && x < x_hi {
-                            p.vline(VLine::new(w.name.clone(), x).color(weak).width(1.0_f32));
-                            // Two candidates of one name (the escape wheel at 15
-                            // and at 20 teeth): the shorter one is labelled on its
-                            // left, so the two names don't overlap.
-                            let shorter_twin = s
-                                .wheels
-                                .iter()
-                                .skip(k + 1)
-                                .any(|o| o.name == w.name && o.period_s > w.period_s)
-                                || s.wheels[..k]
-                                    .iter()
-                                    .any(|o| o.name == w.name && o.period_s > w.period_s);
-                            p.text(
-                                Text::new(
-                                    "wheel",
-                                    PlotPoint::new(x, top * 0.97),
-                                    wheel_title(&w.name),
-                                )
-                                .color(pal.text_secondary)
-                                .anchor(if shorter_twin {
-                                    egui::Align2::RIGHT_TOP
-                                } else {
-                                    egui::Align2::LEFT_TOP
-                                }),
-                            );
-                        }
-                    }
-                    p.hline(
-                        HLine::new("threshold", search.threshold)
-                            .color(pal.text_secondary)
-                            .style(dashed)
-                            .width(1.0_f32),
+                .default_y_bounds(y_lo, top);
+            plot = if log_y {
+                plot.y_grid_spacer(log_grid)
+                    .y_axis_formatter(|m, r| log_label(m, r, sig))
+            } else {
+                plot.y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
+                    .y_axis_formatter(|m, _| plain(m.value, m.step_size))
+            };
+            // The names stay clear of the tallest peak's label.
+            let label_y = if log_y { top } else { top * 0.97 };
+            plot.show(ui, |p| {
+                wheel_marks(p, &s.wheels, (x_lo, x_hi), label_y, pal);
+                p.hline(
+                    HLine::new("threshold", threshold)
+                        .color(pal.text_secondary)
+                        .style(dashed)
+                        .width(1.0_f32),
+                );
+                p.line(Line::new("score", pts.clone()).color(colour).width(1.5_f32));
+                if let Some(per) = &c.period {
+                    let x = per.period_s.log10();
+                    let y = pts
+                        .iter()
+                        .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
+                        .map_or(0.0, |q| q[1]);
+                    p.points(
+                        Points::new("peak", vec![[x, y]])
+                            .color(colour)
+                            .radius(3.5_f32),
                     );
-                    p.line(Line::new("score", pts.clone()).color(colour).width(1.5_f32));
-                    if let Some(per) = &c.period {
-                        let x = per.period_s.log10();
-                        let y = pts
-                            .iter()
-                            .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
-                            .map_or(0.0, |q| q[1]);
-                        p.points(
-                            Points::new("peak", vec![[x, y]])
-                                .color(colour)
-                                .radius(3.5_f32),
-                        );
-                        let mut t = secs(per.period_s);
-                        if let Some(w) = &per.wheel {
-                            t += &format!(", {}", wheel_title(w));
-                        }
-                        mark_label(p, [x, y], t, pal.text, false);
+                    let mut t = secs(per.period_s);
+                    if let Some(w) = &per.wheel {
+                        t += &format!(", {}", wheel_title(w));
                     }
-                });
+                    mark_label(p, [x, y], t, pal.text, false);
+                }
+            });
         }
         View::Cycle => {
             let Some(f) = &s.folds[i] else {
@@ -985,11 +982,27 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             else {
                 return note(ui, "The spectrum needs a longer session.");
             };
+            // Rate's spectrum is of the beat timing, in ms: drawn unless
+            // asked as the swing it makes in the rate readings, peak to
+            // peak in s/d, over the periods those readings can show.
+            let as_rate = sp.series == "rate" && sp.unit == "ms" && !opts.fft_timing;
+            let reading_s = Config::default().rate_reading_s;
             let pts: Vec<[f64; 2]> = sp
                 .period_s
                 .iter()
                 .zip(&sp.amplitude)
-                .filter(|(p, a)| **p > 0.0 && **a > 0.0 && a.is_finite())
+                .filter(|(&p, _)| !as_rate || p >= 2.0 * reading_s)
+                .map(|(&p, &a)| {
+                    (
+                        p,
+                        if as_rate {
+                            reading_swing(a, p, reading_s)
+                        } else {
+                            a
+                        },
+                    )
+                })
+                .filter(|(p, a)| *p > 0.0 && *a > 0.0 && a.is_finite())
                 .map(|(p, a)| [p.log10(), a.log10()])
                 .collect();
             if pts.len() < 2 {
@@ -1008,6 +1021,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
             // Room above the tallest line for the wheels' names.
             let top = y_hi + (y_hi - y_lo).max(0.5) * 0.25;
             let unit = match sp.unit {
+                _ if as_rate => " s/d",
                 "deg" => "°",
                 _ => " ms",
             };
@@ -1035,17 +1049,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top)
                 .show(ui, |p| {
-                    for w in &s.wheels {
-                        let x = w.period_s.log10();
-                        if x > x_lo && x < x_hi {
-                            p.vline(VLine::new(w.name.clone(), x).color(weak).width(1.0_f32));
-                            p.text(
-                                Text::new("wheel", PlotPoint::new(x, top), wheel_title(&w.name))
-                                    .color(pal.text_secondary)
-                                    .anchor(egui::Align2::LEFT_TOP),
-                            );
-                        }
-                    }
+                    wheel_marks(p, &s.wheels, (x_lo, x_hi), top, pal);
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
                     p.points(
                         Points::new("tallest", vec![peak])
@@ -1056,14 +1060,99 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View)
                         p,
                         peak,
                         format!(
-                            "tallest at {}: {}",
+                            "tallest at {}: {}{}",
                             secs(10f64.powf(peak[0])),
-                            size(10f64.powf(peak[1]))
+                            size(10f64.powf(peak[1])),
+                            if as_rate { " peak to peak" } else { "" }
                         ),
                         pal.text,
                         false,
                     );
                 });
+        }
+    }
+}
+
+/// The peak-to-peak swing, s/d, that a beat-timing sine `amp_ms` in size
+/// with period `period_s` makes in rate readings each averaged over
+/// `reading_s`: the timing's slope, `2π·amp/period` ms per second, is
+/// 86.4 s/d for each ms per second, and averaging over a reading keeps
+/// `sin(x)/x` of it, `x = π·reading/period`.
+fn reading_swing(amp_ms: f64, period_s: f64, reading_s: f64) -> f64 {
+    let x = std::f64::consts::PI * reading_s / period_s;
+    let kept = if x == 0.0 { 1.0 } else { (x.sin() / x).abs() };
+    2.0 * amp_ms * std::f64::consts::TAU / period_s * 86.4 * kept
+}
+
+/// How the views draw what they can draw two ways.
+#[derive(Clone, Copy, Default)]
+pub struct Opts {
+    /// Periods: the scores on a log scale.
+    pub periods_log: bool,
+    /// FFT: rate as the beat timing's spectrum in ms, not its swing in
+    /// the rate readings.
+    pub fft_timing: bool,
+}
+
+/// The wheels' turns on a log10 period axis spanning `span`: a bold line
+/// and name at each wheel's period, and a fainter dashed one at half of
+/// it ("×2"), where a wheel that is off centre shows twice a turn. Names
+/// sit at height `label_y`.
+fn wheel_marks(
+    p: &mut egui_plot::PlotUi<'_>,
+    wheels: &[Wheel],
+    (x_lo, x_hi): (f64, f64),
+    label_y: f64,
+    pal: &theme::Palette,
+) {
+    let inside = |x: f64| x > x_lo && x < x_hi;
+    for (k, w) in wheels.iter().enumerate() {
+        // Two candidates of one name (the escape wheel at 15 and at 20
+        // teeth): the shorter one is labelled on its left, so the two
+        // names don't overlap.
+        let shorter_twin = wheels
+            .iter()
+            .enumerate()
+            .any(|(j, o)| j != k && o.name == w.name && o.period_s > w.period_s);
+        let x = w.period_s.log10();
+        if inside(x) {
+            p.vline(
+                VLine::new(w.name.clone(), x)
+                    .color(pal.text_secondary)
+                    .width(2.0_f32),
+            );
+            p.text(
+                Text::new("wheel", PlotPoint::new(x, label_y), wheel_title(&w.name))
+                    .color(pal.text)
+                    .anchor(if shorter_twin {
+                        egui::Align2::RIGHT_TOP
+                    } else {
+                        egui::Align2::LEFT_TOP
+                    }),
+            );
+        }
+        // Twice a turn, unless another wheel turns there.
+        let half = w.period_s / 2.0;
+        let x2 = half.log10();
+        let taken = wheels
+            .iter()
+            .any(|o| (o.period_s / half - 1.0).abs() < 0.03);
+        if inside(x2) && !taken && !shorter_twin {
+            p.vline(
+                VLine::new(format!("{} ×2", w.name), x2)
+                    .color(pal.text_tertiary)
+                    .style(LineStyle::Dashed { length: 4.0 })
+                    .width(1.25_f32),
+            );
+            p.text(
+                Text::new(
+                    "wheel ×2",
+                    PlotPoint::new(x2, label_y),
+                    format!("{} ×2", wheel_title(&w.name)),
+                )
+                .color(pal.text_secondary)
+                .anchor(egui::Align2::LEFT_TOP),
+            );
         }
     }
 }
@@ -1188,6 +1277,17 @@ mod tests {
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    #[test]
+    fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {
+        // 0.157 ms of timing at 46 s is 3.7 s/d peak to peak in the rate
+        // itself; a 10 s reading keeps sin(x)/x of it, x = π·10/46.
+        let x = std::f64::consts::PI * 10.0 / 46.0;
+        let swing = reading_swing(0.157, 46.0, 10.0);
+        assert!((swing - 3.70 * x.sin() / x).abs() < 0.02, "{swing}");
+        // A wave as long as a reading averages away.
+        assert!(reading_swing(1.0, 10.0, 10.0) < 1e-9);
+    }
+
     /// A watch whose rate swings once a minute (a fourth wheel fault) is
     /// found periodic, and every view draws.
     #[test]
@@ -1251,7 +1351,7 @@ mod tests {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let mut shown = [true, false, true];
                     series_switches(ui, &mut shown);
-                    draw(ui, Some(&s), "test", v, &shown);
+                    draw(ui, Some(&s), "test", v, &shown, Opts::default());
                 });
             });
             assert!(!out.shapes.is_empty());
