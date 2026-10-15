@@ -12,6 +12,14 @@ use serde_json::{json, Map, Value};
 /// Seconds between notifications.
 const EVERY_S: u64 = 2;
 
+/// Abort even when the request future is dropped during service shutdown.
+pub struct Report(tokio::task::JoinHandle<()>);
+impl Drop for Report {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Starts reporting the seconds recorded so far, with the latest readings
 /// from the live file when there is one, if the chat app asked; abort the
 /// handle when the recording ends.
@@ -19,7 +27,7 @@ pub fn report(
     context: &RequestContext<RoleServer>,
     args: &Map<String, Value>,
     live: Option<PathBuf>,
-) -> Option<tokio::task::JoinHandle<()>> {
+) -> Option<Report> {
     let token = context.meta.get_progress_token()?;
     let peer = context.peer.clone();
     let total = args.get("seconds").and_then(Value::as_f64).unwrap_or(120.0);
@@ -28,7 +36,7 @@ pub fn report(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    Some(tokio::spawn(async move {
+    Some(Report(tokio::spawn(async move {
         let start = Instant::now();
         loop {
             tokio::time::sleep(Duration::from_secs(EVERY_S)).await;
@@ -55,5 +63,19 @@ pub fn report(
                 return;
             }
         }
-    }))
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn dropping_report_aborts_its_detached_task() {
+        let task = tokio::spawn(std::future::pending::<()>());
+        let aborted = task.abort_handle();
+        let report = Report(task);
+        drop(report);
+        tokio::task::yield_now().await;
+        assert!(aborted.is_finished());
+    }
 }

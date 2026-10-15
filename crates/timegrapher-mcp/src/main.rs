@@ -6,6 +6,7 @@
 mod caveats;
 mod cli;
 mod guidance;
+mod lifecycle;
 mod live;
 mod progress;
 mod summary;
@@ -24,7 +25,10 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Map, Value};
 
-struct Server;
+struct Server {
+    policy: cli::Policy,
+    closed: tokio::sync::watch::Receiver<bool>,
+}
 
 /// The MCP types are built from their wire form, which is what the spec
 /// documents and what a reader of this file can check against it.
@@ -65,6 +69,8 @@ async fn call(
     name: &str,
     args: &Map<String, Value>,
     context: &RequestContext<RoleServer>,
+    policy: &cli::Policy,
+    closed: tokio::sync::watch::Receiver<bool>,
 ) -> Result<CallToolResult, ErrorData> {
     let Some(tool) = tools::find(name) else {
         return Err(ErrorData::invalid_params(
@@ -75,6 +81,15 @@ async fn call(
     let mut line = match tools::command_line(tool, args) {
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
+    };
+    let deadline = match policy.budget(name, args).and_then(cli::deadline) {
+        Ok(deadline) => deadline,
+        Err(e) => return Ok(tool_error(e)),
+    };
+    let scope = cli::Scope {
+        context,
+        closed,
+        deadline,
     };
     // A recording the chat app retries with the same take_id is answered
     // from the take already made; two calls never share the microphone.
@@ -116,16 +131,11 @@ async fn call(
     let progress = (tool.name == "record_position")
         .then(|| progress::report(context, args, feed.as_ref().map(|f| f.path().to_path_buf())))
         .flatten();
-    let out = tokio::select! {
-        out = cli::run(&line) => out,
-        () = context.ct.cancelled() => Err("cancelled".to_string()),
-    };
-    if let Some(p) = progress {
-        p.abort();
-    }
+    let out = scope.run(&line, None).await;
+    drop(progress);
     let out = match out {
         Ok(out) => out,
-        Err(e) => return Ok(tool_error(e)),
+        Err(e) => return Ok(tool_error(e.to_string())),
     };
     // JSON may describe a partial result or diagnostics from a failed
     // command. Its presence never turns an unsuccessful exit into success.
@@ -183,8 +193,18 @@ async fn call(
     });
     if recording_view {
         let recording = line.last().cloned().unwrap_or_default();
-        let charts = views::analyze_charts(&doc, &extras, &recording).await;
+        let (charts, warning) =
+            match views::analyze_charts(&doc, &extras, &recording, &scope, policy.profile).await {
+                Ok(charts) => charts,
+                Err(e) => return Ok(tool_error(e.to_string())),
+            };
         result["_meta"] = json!({ views::META_KEY: charts });
+        if let Some(warning) = warning {
+            result["content"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({ "type": "text", "text": warning }));
+        }
     }
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
@@ -234,7 +254,15 @@ impl ServerHandler for Server {
         if request.name == live::TOOL {
             return Ok(complete::<CallToolResult>(live::status())?.into());
         }
-        Ok(call(&request.name, &args, &context).await?.into())
+        Ok(call(
+            &request.name,
+            &args,
+            &context,
+            &self.policy,
+            self.closed.clone(),
+        )
+        .await?
+        .into())
     }
 
     async fn list_resources(
@@ -329,12 +357,30 @@ fn main() -> std::process::ExitCode {
         println!("timegrapher-mcp {}", env!("CARGO_PKG_VERSION"));
         return std::process::ExitCode::SUCCESS;
     }
+    let policy = match cli::Policy::load() {
+        Ok(policy) => policy,
+        Err(e) => {
+            eprintln!("timegrapher-mcp: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
     let served = runtime.block_on(async {
-        let service = Server.serve(rmcp::transport::stdio()).await?;
+        let (closed, receiver) = tokio::sync::watch::channel(false);
+        let (input, output) = rmcp::transport::stdio();
+        let transport = (
+            lifecycle::Transport::new(input, closed.clone()),
+            lifecycle::Transport::new(output, closed),
+        );
+        let service = Server {
+            policy,
+            closed: receiver,
+        }
+        .serve(transport)
+        .await?;
         service.waiting().await?;
         Ok::<_, Box<dyn std::error::Error>>(())
     });

@@ -142,6 +142,35 @@ failure as an error. Defaults remain 120 seconds for recording, 5 seconds for
 a microphone check and 20 minutes for clock measurement. These acquisition
 rules do not change analysis offsets or spans.
 
+CLI children have wall-clock execution deadlines. Offline tools allow six hours
+by default, independently of the recording's duration. Acquisition allows the
+requested length (120 seconds for `record_position`, 5 for `check_microphone`
+when omitted) plus 120 seconds for setup and processing. The optional Tick/Tock
+profile allows 60 seconds, capped by the original call's remaining budget.
+Configure these limits in the MCP server's environment before starting it:
+
+| Variable | Default seconds | Applies to |
+| --- | ---: | --- |
+| `TIMEGRAPHER_MCP_PROCESSING_TIMEOUT_SECONDS` | 21600 | Offline tool execution |
+| `TIMEGRAPHER_MCP_ACQUISITION_GRACE_SECONDS` | 120 | Additional acquisition setup/processing time |
+| `TIMEGRAPHER_MCP_PROFILE_TIMEOUT_SECONDS` | 60 | Auxiliary Tick/Tock profile ceiling |
+
+Values must be finite, positive and representable; invalid configuration prevents
+server startup with a named error. Increase the processing budget for slower
+machines or longer analyses. These are execution safeguards, not limits on audio
+length or measurement settings. A deadline stops and reaps the direct CLI child
+before returning an error. Cancellation or stdio disconnect stops either child;
+request progress and temporary live files are cleaned up. A five-second cleanup
+ceiling reports a fatal error if the operating system cannot reap the child.
+This does not supervise arbitrary descendant processes launched by a substituted
+CLI.
+
+An auxiliary profile timeout, unsuccessful exit or malformed JSON output preserves the
+completed primary analysis and adds a factual warning, with no profile attached.
+Cancellation/disconnect or failed child cleanup stops the entire call. Failed or
+cancelled recording calls are not saved in the server's successful-retry cache;
+a partially written recording on disk is not rolled back by this process guard.
+
 The embedded chart view sends the MCP Apps `ui/initialize` request with
 `appInfo`, and announces readiness and its size only after a successful host
 response. Rejection or a transport-send failure during initialization shows a connection-unavailable
