@@ -319,3 +319,9 @@ positions to a plain answer, with the watch you name added at the end.
 - **No tools in the chat app**: check the path in the config file, and that
   you quit and reopened the app. Running `timegrapher-mcp --version` in a
   terminal shows whether the program starts at all.
+
+FFT charts show available/total input-grid sample counts and qualify missing-data
+peak heights. The structured result retains compact `spectrum_support` when large
+spectrum arrays move to chart metadata; its text lead carries the same qualification.
+These counts describe the FFT grid, not acoustic coverage or percentage of beats
+heard. Legacy spectra without counts state that support was not recorded.
