@@ -314,3 +314,36 @@ the ALSA development package, `libasound2-dev`). `cargo build
 - `schema KIND`: print a JSON Schema for each document.
 - An MCP server, if live streaming to an agent or use from chat-only apps
   turns out to need it; it would wrap the same core.
+
+## Explicit scalar input domains
+
+Before command execution, explicit analysis/acquisition arguments are checked for
+mathematical and representation constraints, without adding empirical watch ranges:
+
+- `--bph`: a positive `u32` (1 through 4294967295), for `analyze`, `shape`,
+  `profile`, `long`, `series`, `doctor`, `record`, `session`, `synth` and `report`.
+- `--lift`: finite and positive, for `analyze`, `shape`, `profile`, `long`,
+  `series`, `record`, `session` and `report`. There is no added upper operating limit.
+- `--escape-teeth`: a positive `u32`, for `analyze`, `long` and `series`.
+- `--card-ppm` (`analyze`, `long`) and the positional ppm in `clock set`:
+  finite, with `1 + ppm × 10⁻⁶ > 0`, so the clock scale advances time and
+  the correction denominator is positive. Zero and admissible negative ppm
+  remain valid; this does not establish calibration accuracy.
+
+CLI validation happens during argument parsing, before audio/device access,
+output creation or storing a correction. MCP validates exposed measurement BPH
+and lift arguments before invoking the CLI; its schema declares the same domains.
+Defaults, explicit 52° lift and zero correction keep their existing meanings.
+Passing these domain checks does not guarantee every subsequent numerical
+operation is representable for extreme inputs or that a watch uses those settings.
+
+This is an explicit-argument contract. It does not validate settings loaded from
+session manifests, custom calibre catalogues, clock stores, or internal library
+configurations; their validation is separate work. Filter parameters and other
+numeric arguments are not covered by these checks. Acquisition duration checks
+remain as documented separately.
+
+`report --bph/--lift` also use these domains: the report forwards these settings
+to its analysis subprocesses, rather than storing them only as historical metadata.
+The checks apply consistently even with `--no-audio` or without a recording.
+MCP `make_report_bundle` applies the same BPH/lift rules before child spawn.

@@ -394,3 +394,51 @@ fn child_exit_status_controls_success_even_with_json() {
         assert!(client.request("tools/list", json!({}))["tools"].is_array());
     }
 }
+
+#[test]
+fn numeric_inputs_are_rejected_before_any_cli_child_is_spawned() {
+    let dir = Scratch(std::env::temp_dir().join(format!("tg-mcp-numeric-{}", std::process::id())));
+    std::fs::create_dir_all(&dir.0).unwrap();
+    let cli = dir.0.join("cli");
+    std::fs::write(
+        &cli,
+        r#"#!/bin/sh
+folder=$(dirname "$0")
+printf '%s\n' "$@" > "$folder/spawned"
+printf '%s\n' '{"schema":"timegrapher.analyze/2","watch_heard":false}'
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let marker = dir.0.join("spawned");
+    let mut client = Client::start(&cli, &dir.0.join("config"));
+    for (field, value) in [
+        ("lift_deg", json!(0)),
+        ("lift_deg", json!(-1)),
+        ("bph", json!(u32::MAX as u64 + 1)),
+        ("bph", json!(0)),
+    ] {
+        let mut args = json!({"recording":dir.0.join("not-read.wav").to_string_lossy()});
+        args[field] = value;
+        let result = client.request(
+            "tools/call",
+            json!({"name":"analyze_recording","arguments":args}),
+        );
+        assert!(
+            !marker.exists(),
+            "invalid {field} reached the actual CLI child: {result}"
+        );
+        assert_eq!(result["isError"], true, "{result}");
+    }
+    // Positive control proves the double is reachable and marker detection works.
+    let result = client.request(
+        "tools/call",
+        json!({"name":"analyze_recording","arguments":{
+        "recording":dir.0.join("not-read.wav").to_string_lossy(),"lift_deg":52,"bph":28800}}),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    assert!(marker.is_file());
+    let args = std::fs::read_to_string(marker).unwrap();
+    assert!(args.contains("--lift=52"));
+    assert!(args.contains("--bph=28800"));
+}

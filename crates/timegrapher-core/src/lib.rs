@@ -22,6 +22,7 @@ pub mod dsp;
 pub mod excerpt;
 pub mod filter;
 pub mod histogram;
+pub mod input_domain;
 pub mod live;
 pub mod longrun;
 pub mod longterm;

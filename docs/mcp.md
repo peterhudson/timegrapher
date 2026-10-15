@@ -332,3 +332,11 @@ peak heights. The structured result retains compact `spectrum_support` when larg
 spectrum arrays move to chart metadata; its text lead carries the same qualification.
 These counts describe the FFT grid, not acoustic coverage or percentage of beats
 heard. Legacy spectra without counts state that support was not recorded.
+
+Explicit measurement BPH must be a positive integer representable by the CLI's
+`u32`; measurement lift must be finite and positive. Invalid values are rejected
+before a CLI child is started. This adds no empirical operating ranges or new
+defaults. `make_report_bundle` uses these domains too, because its settings are forwarded
+to analysis subprocesses. These checks do not validate settings loaded
+inside the CLI from manifests, catalogues or clock stores; see the explicit scalar
+input inventory in [agent-interface.md](agent-interface.md#explicit-scalar-input-domains).
