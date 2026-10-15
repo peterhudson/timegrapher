@@ -1473,6 +1473,48 @@ impl TimegrapherApp {
         self.session.unsaved_s()
     }
 
+    /// Memory-only saved-edit inputs. Continuing audio must not make a short
+    /// tail look like a settings edit by extending a clipped position range.
+    fn save_metadata(&self) -> session::Metadata {
+        let guided_ranges = self
+            .guided
+            .as_ref()
+            .map_or_else(Vec::new, |t| t.stretches().to_vec());
+        let guided_wind_h = (!guided_ranges.is_empty())
+            .then(|| self.guided.as_ref().and_then(|t| t.wind_h()))
+            .flatten();
+        let mut about = self.guided_about();
+        // Auto detection may evolve with sound. Track the selected setting,
+        // while save_into still writes the effective BPH as before.
+        about.bph = self.bph;
+        session::Metadata {
+            // session.json retains the raw name; manifest/results trim theirs.
+            watch: self.watch.clone(),
+            calibre: self.calibre.clone(),
+            position: self.position.code().into(),
+            bph: self.bph,
+            lift_deg: self.lift_deg,
+            wheels: self
+                .cal
+                .custom_wheels(&self.calibre)
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
+            guided_ranges,
+            guided_wind_h,
+            full_wind: self.guided.as_ref().and_then(|t| t.kept(&about)),
+        }
+    }
+
+    fn metadata_unsaved(&self) -> bool {
+        self.session.saved_to().is_some() && self.session.metadata_changed(&self.save_metadata())
+    }
+
+    /// Keep the existing sound threshold; metadata edits have no duration.
+    fn needs_save_confirmation(&self) -> bool {
+        self.unsaved_s() > 5.0 || self.metadata_unsaved()
+    }
+
     /// Save Again: the sound so far into the take saved before, with no
     /// question; the first time, Save… asks where.
     fn save_again(&mut self) {
@@ -1505,6 +1547,7 @@ impl TimegrapherApp {
     }
 
     fn save_into(&mut self, parent: &Path) {
+        let metadata = self.session.metadata_snapshot(self.save_metadata());
         // Prepare all required metadata before starting the saved-copy update.
         let prepared = (|| -> Result<_, String> {
             let result = self
@@ -1548,7 +1591,7 @@ impl TimegrapherApp {
                     dir.display()
                 ));
                 self.save_dir = parent.display().to_string();
-                self.session.mark_saved(secs, dir);
+                self.session.mark_saved(secs, dir, metadata);
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
         }
@@ -1744,7 +1787,7 @@ impl TimegrapherApp {
     /// sound from a microphone session is not thrown away without asking
     /// first.
     fn open_recording(&mut self, path: &Path, replay: bool, ask: bool) {
-        if ask && self.session.mic() && self.unsaved_s() > 5.0 {
+        if ask && self.session.mic() && self.needs_save_confirmation() {
             self.confirm = Some(Confirm::Open {
                 path: path.to_path_buf(),
                 replay,
@@ -2403,6 +2446,7 @@ impl TimegrapherApp {
         };
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
+        let metadata = self.metadata_unsaved();
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_width(360.0);
             ui.label(
@@ -2414,9 +2458,13 @@ impl TimegrapherApp {
                 .font(theme::semibold(15.0)),
             );
             ui.add_space(4.0);
-            ui.label(format!(
-                "This session's {unsaved} of sound hasn't been saved and will be thrown away."
-            ));
+            ui.label(if metadata && self.unsaved_s() <= 0.0 {
+                "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
+            } else if metadata {
+                format!("This session's {unsaved} of sound and changes to its settings or position history haven't been saved and will be thrown away.")
+            } else {
+                format!("This session's {unsaved} of sound hasn't been saved and will be thrown away.")
+            });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.add(theme::primary(ui, "Save…")).clicked() {
@@ -2444,7 +2492,7 @@ impl TimegrapherApp {
             Some(0) => {
                 // Saved before: the rest goes to the same copy.
                 self.save_again();
-                if self.unsaved_s() > 5.0 {
+                if self.needs_save_confirmation() {
                     return; // the folder dialog was cancelled, or saving failed
                 }
             }
@@ -2604,7 +2652,7 @@ impl TimegrapherApp {
                     )
                     .clicked()
             {
-                if self.unsaved_s() > 5.0 {
+                if self.needs_save_confirmation() {
                     self.confirm = Some(Confirm::NewSession);
                 } else {
                     self.new_session();
@@ -3194,7 +3242,10 @@ impl TimegrapherApp {
         self.move_prompt = None;
         self.set_position(pos);
         if let Some(r) = self.session.recorder.as_mut() {
+            // note appends in memory before writing scratch metadata, so the
+            // edit remains unsaved even if that scratch write fails.
             let _ = r.note(&format!("position {}", pos.code()));
+            self.session.note_metadata_change();
         }
         self.note_settings();
     }
@@ -3610,7 +3661,7 @@ impl TimegrapherApp {
             .clicked()
         {
             ui.close();
-            if self.unsaved_s() > 5.0 {
+            if self.needs_save_confirmation() {
                 self.confirm = Some(Confirm::NewSession);
             } else {
                 self.new_session();
@@ -4730,6 +4781,11 @@ impl TimegrapherApp {
                             "{} of sound, the last {} not saved",
                             strip::fmt_time(r.duration_s()),
                             strip::fmt_time(since)
+                        )
+                    } else if self.metadata_unsaved() {
+                        format!(
+                            "{} of sound, settings not saved",
+                            strip::fmt_time(r.duration_s())
                         )
                     } else {
                         format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
@@ -7331,7 +7387,7 @@ impl eframe::App for TimegrapherApp {
         if let Some(p) = dropped.into_iter().next() {
             self.input = Input::File;
             self.file_path = p.display().to_string();
-            self.start_batch(&p);
+            self.open_recording(&p, false, true);
         }
 
         self.poll();
@@ -7339,7 +7395,7 @@ impl eframe::App for TimegrapherApp {
         // Closing the window with unsaved sound asks first.
         if ctx.input(|i| i.viewport().close_requested())
             && !self.may_close
-            && self.unsaved_s() > 5.0
+            && self.needs_save_confirmation()
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Confirm::Quit);
@@ -8007,6 +8063,132 @@ mod tests {
             .filter(|e| e.file_type().unwrap().is_file())
             .map(|e| (e.file_name(), std::fs::read(e.path()).unwrap()))
             .collect()
+    }
+
+    #[test]
+    fn saved_metadata_edits_warn_without_new_sound_and_reverts_are_clean() {
+        let (mut app, base) = save_failure_fixture("metadata-edits");
+        app.watch = "original".into();
+        app.save_into(&base.join("saved"));
+        app.session
+            .pause(app.live.as_ref().unwrap().duration_s())
+            .unwrap()
+            .unwrap();
+        assert!(!app.needs_save_confirmation());
+        let original = app.save_metadata();
+        app.watch = "renamed".into();
+        assert!(app.metadata_unsaved());
+        assert!(app.needs_save_confirmation());
+        assert_eq!(app.unsaved_s(), 0.0);
+        app.open_recording(&base.join("other.wav"), false, true);
+        assert!(matches!(app.confirm, Some(Confirm::Open { .. })));
+        assert!(app.session.recorder.is_some());
+        app.confirm = None;
+        app.watch = original.watch.clone();
+        assert!(!app.needs_save_confirmation());
+        app.bph = Some(21600);
+        assert!(app.metadata_unsaved());
+        app.bph = original.bph;
+        app.set_lift(original.lift_deg + 1.0);
+        assert!(app.metadata_unsaved());
+        app.set_lift(original.lift_deg);
+        app.calibre = "another calibre".into();
+        assert!(app.metadata_unsaved());
+        app.calibre = original.calibre.clone();
+        app.hist_cumulative = !app.hist_cumulative;
+        app.hist_span_of_strip = !app.hist_span_of_strip;
+        assert!(
+            !app.metadata_unsaved(),
+            "view preferences are not saved take edits"
+        );
+        app.change_position(Position::DialDown);
+        app.change_position(Position::DialUp);
+        assert!(
+            app.metadata_unsaved(),
+            "returning to DU retains appended position notes"
+        );
+        app.save_again();
+        assert!(!app.needs_save_confirmation());
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn short_audio_tail_does_not_become_an_unsaved_metadata_warning() {
+        let (mut app, base) = save_failure_fixture("metadata-audio");
+        app.change_position(Position::DialDown);
+        app.save_into(&base.join("saved"));
+        let ranges = app.take_manifest().recordings;
+        append_save_test_second(&mut app, 2);
+        assert_eq!(app.unsaved_s(), 1.0);
+        assert_ne!(
+            app.take_manifest().recordings.last().unwrap().start_s,
+            ranges.last().unwrap().start_s
+        );
+        assert!(!app.metadata_unsaved());
+        assert!(!app.needs_save_confirmation());
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_metadata_only_save_retains_dirty_state_and_the_saved_bytes() {
+        let (mut app, base) = save_failure_fixture("metadata-failure");
+        let parent = base.join("saved");
+        app.save_into(&parent);
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        app.session
+            .pause(app.live.as_ref().unwrap().duration_s())
+            .unwrap()
+            .unwrap();
+        app.watch = "Updated watch".into();
+        let previous = std::fs::read(dest.join(MANIFEST)).unwrap();
+        std::fs::remove_file(dest.join(MANIFEST)).unwrap();
+        std::fs::create_dir(dest.join(MANIFEST)).unwrap();
+        let before = saved_file_bytes(&dest);
+        app.save_again();
+        assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
+        assert!(app.metadata_unsaved());
+        assert!(
+            app.needs_save_confirmation(),
+            "the confirmation must not continue after failure"
+        );
+        assert_eq!(app.unsaved_s(), 0.0);
+        assert_eq!(app.session.saved_to(), Some(dest.as_path()));
+        assert_eq!(saved_file_bytes(&dest), before);
+        std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
+        std::fs::write(dest.join(MANIFEST), previous).unwrap();
+        app.save_again();
+        assert!(!app.needs_save_confirmation());
+        let manifest: Manifest =
+            toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(manifest.watch.as_deref(), Some("Updated watch"));
+        let info: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dest.join("session.json")).unwrap()).unwrap();
+        assert_eq!(info["watch"], "Updated watch");
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn completed_guided_metadata_is_unsaved_until_the_required_file_succeeds() {
+        let (mut app, base) = save_failure_fixture("metadata-guided");
+        let parent = base.join("saved");
+        app.save_into(&parent);
+        let mut test = guided::Test::new();
+        test.readings = Some(Vec::new());
+        app.guided = Some(test);
+        assert!(app.metadata_unsaved());
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
+        app.save_again();
+        assert!(app.metadata_unsaved());
+        std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
+        app.save_again();
+        assert!(!app.metadata_unsaved());
+        assert!(dest.join(guided::RESULTS_FILE).is_file());
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

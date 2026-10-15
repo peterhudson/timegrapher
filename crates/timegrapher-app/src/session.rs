@@ -47,6 +47,29 @@ pub enum Event {
     Saved { through_s: f64, to: PathBuf },
 }
 
+/// User-controlled inputs to saved metadata. Audio-derived duration, detected
+/// Auto BPH and headline readings are deliberately absent: this tracks edits,
+/// not byte equality with a snapshot taken before more sound arrived.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Metadata {
+    pub watch: String,
+    pub calibre: String,
+    pub position: String,
+    pub bph: Option<u32>,
+    pub lift_deg: f64,
+    pub wheels: std::collections::BTreeMap<String, f64>,
+    pub guided_ranges: Vec<(Position, f64, f64)>,
+    pub guided_wind_h: Option<f64>,
+    pub full_wind: Option<crate::guided::FullWind>,
+}
+
+/// The metadata inputs captured before a save transaction begins.
+pub struct MetadataSnapshot {
+    key: Metadata,
+    events: Vec<Event>,
+    notes_revision: u64,
+}
+
 /// Where a session is in its life.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum State {
@@ -109,6 +132,8 @@ pub struct Session {
     settle_to: Option<f64>,
     events: Vec<Event>,
     audio_timeline: Vec<AudioAnchor>,
+    saved_metadata: Option<MetadataSnapshot>,
+    notes_revision: u64,
 }
 
 impl Session {
@@ -120,6 +145,8 @@ impl Session {
         self.settle_to = None;
         self.events.clear();
         self.audio_timeline.clear();
+        self.saved_metadata = None;
+        self.notes_revision = 0;
     }
 
     pub fn state(&self) -> State {
@@ -461,8 +488,39 @@ impl Session {
             .unwrap_or(0.0)
     }
 
-    pub fn mark_saved(&mut self, through_s: f64, to: PathBuf) {
+    /// A position note is append-only even if the user moves back before any
+    /// more audio arrives, leaving the current position/ranges unchanged.
+    pub fn note_metadata_change(&mut self) {
+        self.notes_revision += 1;
+    }
+
+    pub fn metadata_snapshot(&self, key: Metadata) -> MetadataSnapshot {
+        MetadataSnapshot {
+            key,
+            events: self.metadata_events().cloned().collect(),
+            notes_revision: self.notes_revision,
+        }
+    }
+
+    fn metadata_events(&self) -> impl Iterator<Item = &Event> {
+        self.events
+            .iter()
+            .filter(|e| !matches!(e, Event::Saved { .. }))
+    }
+
+    /// Edits since a successful save, independently of the sound's duration.
+    pub fn metadata_changed(&self, key: &Metadata) -> bool {
+        self.recorder.is_some()
+            && self.saved_metadata.as_ref().is_some_and(|saved| {
+                saved.key != *key
+                    || saved.notes_revision != self.notes_revision
+                    || !self.metadata_events().eq(saved.events.iter())
+            })
+    }
+
+    pub fn mark_saved(&mut self, through_s: f64, to: PathBuf, metadata: MetadataSnapshot) {
         self.events.push(Event::Saved { through_s, to });
+        self.saved_metadata = Some(metadata);
     }
 
     /// Kept sound not in the last saved copy, seconds.
@@ -482,6 +540,8 @@ impl Session {
         }
         self.events.retain(|e| !matches!(e, Event::Saved { .. }));
         self.audio_timeline.clear();
+        self.saved_metadata = None;
+        self.notes_revision = 0;
     }
 
     /// `t` elapsed seconds as seconds of kept sound. Time stands still in
@@ -586,6 +646,107 @@ mod tests {
     fn resume_at(s: &mut Session, now: f64) {
         s.resume("test").unwrap();
         s.resumed_at(now);
+    }
+
+    #[test]
+    fn metadata_edits_reverts_and_audio_have_independent_saved_state() {
+        let mut s = recording("metadata");
+        record(&mut s, 6, 6);
+        let original = Metadata {
+            watch: "first".into(),
+            ..Default::default()
+        };
+        assert!(!s.metadata_changed(&original), "no prior saved metadata");
+        s.mark_saved(6.0, "saved".into(), s.metadata_snapshot(original.clone()));
+        assert!(!s.metadata_changed(&original));
+        let edited = Metadata {
+            watch: "edited".into(),
+            ..original.clone()
+        };
+        assert!(s.metadata_changed(&edited));
+        assert_eq!(s.unsaved_s(), 0.0);
+        assert!(
+            !s.metadata_changed(&original),
+            "reverting the edit restores saved meaning"
+        );
+        record(&mut s, 1, 7);
+        assert_eq!(s.unsaved_s(), 1.0);
+        assert!(
+            !s.metadata_changed(&original),
+            "audio alone is not a metadata edit"
+        );
+
+        let captured = s.metadata_snapshot(edited.clone());
+        // Preparing a save does not commit it: a failure would leave this dirty.
+        assert!(s.metadata_changed(&edited));
+        s.note_metadata_change();
+        s.mark_saved(7.0, "saved".into(), captured);
+        assert!(
+            s.metadata_changed(&edited),
+            "an edit after the captured snapshot remains dirty"
+        );
+        s.mark_saved(7.0, "saved".into(), s.metadata_snapshot(edited.clone()));
+        assert!(!s.metadata_changed(&edited));
+        s.clear();
+        assert!(!s.metadata_changed(&original));
+        s.discard_recording();
+    }
+
+    #[test]
+    fn extending_a_clipped_settling_range_is_not_a_metadata_edit() {
+        let mut s = recording("metadata-settling");
+        record(&mut s, 6, 6);
+        s.move_to(6.0, Position::DialUp, Position::DialDown)
+            .unwrap();
+        record(&mut s, 1, 7);
+        let key = Metadata::default();
+        s.mark_saved(7.0, "saved".into(), s.metadata_snapshot(key.clone()));
+        let before = s.take_ranges();
+        record(&mut s, 1, 8);
+        assert_ne!(
+            s.take_ranges(),
+            before,
+            "the saved range's clipped endpoint advances"
+        );
+        assert_eq!(s.unsaved_s(), 1.0);
+        assert!(!s.metadata_changed(&key));
+        s.pause(8.0).unwrap().unwrap();
+        s.move_to(8.0, Position::DialDown, Position::CrownUp)
+            .unwrap();
+        assert!(
+            s.metadata_changed(&key),
+            "a real position event is different"
+        );
+        s.discard_recording();
+        assert!(!s.metadata_changed(&key));
+    }
+
+    #[test]
+    fn resuming_a_saved_pending_move_adds_unsaved_settling_metadata() {
+        for moved in [false, true] {
+            let mut s = recording(if moved {
+                "metadata-resume-move"
+            } else {
+                "metadata-resume"
+            });
+            record(&mut s, 6, 6);
+            s.pause(6.0).unwrap().unwrap();
+            if moved {
+                s.move_to(6.0, Position::DialUp, Position::DialDown)
+                    .unwrap();
+            }
+            let key = Metadata::default();
+            s.mark_saved(6.0, "saved".into(), s.metadata_snapshot(key.clone()));
+            assert!(!s.metadata_changed(&key));
+            resume_at(&mut s, 12.0);
+            assert_eq!(s.unsaved_s(), 0.0);
+            // Resume without a move only changes the audio clock. A pending
+            // move starts a new settling interval, which is new metadata even
+            // before another sample arrives, unlike a clipped endpoint growing.
+            assert_eq!(s.metadata_changed(&key), moved);
+            assert_eq!(s.settles().len(), usize::from(moved));
+            s.discard_recording();
+        }
     }
 
     #[test]
