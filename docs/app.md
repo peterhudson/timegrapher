@@ -53,6 +53,10 @@ where the desktop passes drops to the app (Windows, macOS and X11; not
 Wayland). Clicking a group's name, such as Watch, folds it away to its
 caption, and clicking it again opens it.
 
+When viewing a recording analysed as a whole, known jumps in its beat log also
+bound each reading. Saved position and settling boundaries add to those cuts;
+they do not replace them. Earlier and later pieces remain available to inspect.
+
 When a replay has matching saved position history, its position bands and
 settling intervals are restored in recorded-audio time. Readings do not span a
 saved move or settling end. Choosing a position filters that history rather
