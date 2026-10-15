@@ -1261,10 +1261,7 @@ impl TimegrapherApp {
         self.other_trends.retain(|k, _| wanted.contains(k));
         for k in wanted {
             if !self.other_trends.contains_key(&k) {
-                let pts = self
-                    .live
-                    .as_ref()
-                    .map_or_else(Vec::new, |l| trend_over(l, k as f64 / 1000.0));
+                let pts = self.context_trend(k as f64 / 1000.0);
                 self.other_trends.insert(k, pts);
             }
         }
@@ -1847,15 +1844,18 @@ impl TimegrapherApp {
         };
         match started {
             Ok(c) => {
-                match read_manifest(path) {
-                    Ok(Some((m, entries))) if path.is_dir() => {
+                let (stretches, settles) = match read_manifest(path) {
+                    Ok(Some((m, entries))) => {
                         self.keep_mic_setup();
                         self.set_watch_setup(WatchSetup::default());
                         self.open_note = None;
-                        self.apply_manifest(&m, &entries);
+                        self.apply_manifest(&m, &entries)
                     }
-                    _ => self.fresh_setup(path, &files),
-                }
+                    _ => {
+                        self.fresh_setup(path, &files);
+                        Default::default()
+                    }
+                };
                 if let Some(n) = order_warning(&files) {
                     self.open_note = Some(match self.open_note.take() {
                         Some(o) => format!("{o} {n}"),
@@ -1867,6 +1867,12 @@ impl TimegrapherApp {
                 }
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
+                self.session.load(&stretches, &settles);
+                if let (Some(live), Some(breaks)) =
+                    (self.live.as_mut(), self.session.replay_breaks())
+                {
+                    live.set_breaks(breaks);
+                }
                 self.opened_path = path.display().to_string();
                 c.set_speed(self.replay_speed);
                 self.capture = Some(c);
@@ -2176,6 +2182,9 @@ impl TimegrapherApp {
                                 None => {}
                             }
                             let r = live.reading(self.average_s);
+                            if !self.session.replay_reading_allowed(r.time_s) {
+                                continue;
+                            }
                             self.trend.push(TrendPoint::of(r.time_s, &r));
                             for (&k, t) in self.other_trends.iter_mut() {
                                 let o = live.reading(k as f64 / 1000.0);
@@ -2333,11 +2342,30 @@ impl TimegrapherApp {
     /// averaging time or lift angle.
     fn rebuild_trend(&mut self) {
         self.other_trends.clear();
-        self.trend = self
+        self.trend = self.context_trend(self.average_s);
+        self.sync_trends();
+    }
+
+    fn context_trend(&self, seconds: f64) -> Vec<TrendPoint> {
+        let mut points = self
             .live
             .as_ref()
-            .map_or_else(Vec::new, |l| trend_over(l, self.average_s));
-        self.sync_trends();
+            .map_or_else(Vec::new, |l| trend_over(l, seconds));
+        points.retain(|p| self.session.replay_reading_allowed(p.t));
+        points
+    }
+
+    /// Clear the readings, retaining a replay's saved boundaries. Restart
+    /// forgets all live breaks, but cannot erase the recording's history.
+    fn clear_readings(&mut self) {
+        if let Some(live) = self.live.as_mut() {
+            live.restart();
+            if let Some(breaks) = self.session.replay_breaks() {
+                live.set_breaks(breaks);
+            }
+        }
+        self.anchor = None;
+        self.clear_trends();
     }
 
     fn latest_s(&self) -> f64 {
@@ -2401,7 +2429,7 @@ impl TimegrapherApp {
         if self.settling_left().is_some() {
             return None;
         }
-        Some(if self.view_end.is_some() {
+        let reading = if self.view_end.is_some() {
             live.reading_at(self.end_s(), average)
         } else if !self.running() {
             // Stopped: the last window with a watch heard, so the silence
@@ -2409,7 +2437,10 @@ impl TimegrapherApp {
             live.reading_at(self.end_s().min(self.last_heard_s()), average)
         } else {
             live.reading(average)
-        })
+        };
+        self.session
+            .replay_reading_allowed(reading.time_s)
+            .then_some(reading)
     }
 
     /// Put the beats just before the strip's newest edge on the centre line.
@@ -3567,11 +3598,7 @@ impl TimegrapherApp {
                 .on_disabled_hover_text("Starts the readings again while listening")
                 .clicked()
             {
-                if let Some(l) = self.live.as_mut() {
-                    l.restart();
-                }
-                self.anchor = None;
-                self.clear_trends();
+                self.clear_readings();
             }
         });
     }
@@ -9289,6 +9316,224 @@ mod tests {
         app.input = Input::Microphone;
         frames(&mut app, &ctx, 2);
         assert!(!app.devices_listed);
+    }
+
+    fn replay_context_fixture(name: &str, single: bool) -> (PathBuf, PathBuf) {
+        let dir =
+            std::env::temp_dir().join(format!("tg-replay-context-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = timegrapher_core::audio::Audio {
+            sample_rate: 100,
+            samples: vec![0.0; if single { 9000 } else { 4500 }],
+        };
+        let first = dir.join("audio-001.wav");
+        timegrapher_core::audio::write_wav(&first, &audio).unwrap();
+        if !single {
+            timegrapher_core::audio::write_wav(&dir.join("audio-002.wav"), &audio).unwrap();
+        }
+        let file = if single { "audio-001.wav" } else { "." };
+        std::fs::write(
+            dir.join(MANIFEST),
+            format!(
+                "watch = 'Replay Watch'\nbph = 28800\nlift = 49.0\n\n\
+             [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 0.0\nend_s = 30.0\n\n\
+             [[recording]]\nfile = '{file}'\nposition = 'DD'\nstart_s = 40.0\nend_s = 60.0\n\n\
+             [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 70.0\n"
+            ),
+        )
+        .unwrap();
+        let path = if single { first } else { dir.clone() };
+        (dir, path)
+    }
+
+    // Drain the real replay source without analyzing it. End follows file close,
+    // so later directory cleanup cannot race the reader on Windows.
+    fn drain_replay_source(app: &TimegrapherApp) -> usize {
+        let c = app.capture.as_ref().unwrap();
+        let mut samples = 0;
+        let started = Instant::now();
+        loop {
+            assert!(
+                started.elapsed().as_secs() < 10,
+                "replay source did not end"
+            );
+            match c
+                .rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap()
+            {
+                Event::Audio(b) => samples += b.samples.len(),
+                Event::End => return samples,
+                Event::Error(e) => panic!("{e}"),
+            }
+        }
+    }
+
+    #[test]
+    fn replay_restores_saved_history_and_clear_and_selection_preserve_it() {
+        let (dir, path) = replay_context_fixture("folder", false);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.replay_speed = 100.0;
+        app.start_replay(&path);
+        assert_eq!(
+            drain_replay_source(&app),
+            9000,
+            "both segments, in recorded-audio time"
+        );
+        let positions = [
+            (0.0, Position::DialUp),
+            (30.0, Position::DialDown),
+            (60.0, Position::DialUp),
+        ];
+        let settles = [(30.0, 40.0), (60.0, 70.0)];
+        let breaks = [30.0, 40.0, 60.0, 70.0];
+        assert_eq!(app.session.stretches(), positions);
+        assert_eq!(app.session.settles(), settles);
+        assert_eq!(app.live.as_ref().unwrap().breaks(), breaks);
+        assert_eq!(
+            (app.watch.as_str(), app.lift_deg, app.bph),
+            ("Replay Watch", 49.0, Some(28800))
+        );
+        app.change_position(Position::DialDown);
+        assert_eq!(app.position, Position::DialDown);
+        assert_eq!(app.session.stretches(), positions);
+        assert_eq!(app.session.settles(), settles);
+        assert_eq!(app.live.as_ref().unwrap().breaks(), breaks);
+        app.clear_readings();
+        assert_eq!(app.live.as_ref().unwrap().breaks(), breaks);
+        app.stop();
+        assert!(app.session.has_replay_context());
+        // A segment alone does not match the folder's '.' entries.
+        app.start_replay(&dir.join("audio-001.wav"));
+        assert_eq!(drain_replay_source(&app), 4500);
+        assert!(!app.session.has_replay_context());
+        assert!(app.session.stretches().is_empty());
+        assert!(app.session.settles().is_empty());
+        assert!(app.live.as_ref().unwrap().breaks().is_empty());
+        app.change_position(Position::DialDown);
+        assert!(
+            !app.session.stretches().is_empty(),
+            "plain replay keeps manual moves"
+        );
+        app.start_replay(&path);
+        assert_eq!(drain_replay_source(&app), 9000);
+        assert_eq!(app.session.stretches(), positions);
+        assert_eq!(app.live.as_ref().unwrap().breaks(), breaks);
+        app.new_session();
+        assert!(!app.session.has_replay_context());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn replay_uses_the_same_matching_file_manifest_as_whole_take_analysis() {
+        let (dir, path) = replay_context_fixture("file", true);
+        let mut batch = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let (manifest, entries) = read_manifest(&path).unwrap().unwrap();
+        let (positions, settles) = batch.apply_manifest(&manifest, &entries);
+        let mut replay = TimegrapherApp::with_devices(Vec::new(), None, false);
+        replay.replay_speed = 100.0;
+        replay.start_replay(&path);
+        assert_eq!(drain_replay_source(&replay), 9000);
+        assert_eq!(replay.session.stretches(), positions);
+        assert_eq!(replay.session.settles(), settles);
+        assert_eq!(replay.watch, batch.watch);
+        assert_eq!((replay.lift_deg, replay.bph), (batch.lift_deg, batch.bph));
+        replay.stop();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn replay_poll_does_not_publish_readings_inside_saved_settling() {
+        let base =
+            std::env::temp_dir().join(format!("tg-replay-settle-poll-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let mut app = synthetic(12.0, 0.0);
+        app.session.replay();
+        app.session.load(
+            &[(0.0, Position::DialUp), (8.0, Position::DialDown)],
+            &[(8.0, 14.0)],
+        );
+        app.live
+            .as_mut()
+            .unwrap()
+            .set_breaks(app.session.replay_breaks().unwrap());
+        app.clear_trends();
+        app.other_trends.insert(trend_key(5.0), Vec::new());
+        let tx = queued_capture(&mut app, &base);
+        app.capture.as_mut().unwrap().is_file = true;
+        tx.send(Event::Audio(timegrapher_core::capture::Block {
+            samples: vec![0.0; 24000],
+            at: std::time::SystemTime::now(),
+        }))
+        .unwrap();
+        app.poll();
+        let at = app.live.as_ref().unwrap().reading(app.average_s).time_s;
+        assert!(
+            at > 8.0 && at <= 14.0,
+            "fixture must read within the saved settle: {at}"
+        );
+        assert!(app.trend.is_empty());
+        assert!(app.other_trends.values().all(Vec::is_empty));
+        assert!(app.reading().is_none());
+        assert_eq!(app.live.as_ref().unwrap().breaks(), &[8.0, 14.0]);
+        app.stop();
+        drop(tx);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn replay_readouts_and_rebuilt_trends_respect_imported_settling() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 90.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..720)
+                .map(|i| timegrapher_core::beats::Beat {
+                    index: i,
+                    time: i as f64 / 8.0,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+        };
+        app.live = Some(LiveAnalyzer::from_log(log, app.live_config()));
+        app.session.replay();
+        app.session.load(
+            &[(0.0, Position::DialUp), (30.0, Position::DialDown)],
+            &[(30.0, 40.0)],
+        );
+        app.live
+            .as_mut()
+            .unwrap()
+            .set_breaks(app.session.replay_breaks().unwrap());
+        app.pane_average.insert(Pane::Rate, 5.0);
+        app.rebuild_trend();
+        assert!(!app.trend.is_empty());
+        assert!(!app.other_trends[&trend_key(5.0)].is_empty());
+        assert!(app.trend.iter().all(|p| p.t <= 30.0 || p.t > 40.0));
+        assert!(app
+            .other_trends
+            .values()
+            .flatten()
+            .all(|p| p.t <= 30.0 || p.t > 40.0));
+        app.view_end = Some(35.0);
+        assert!(app.reading().is_none());
+        app.view_end = Some(41.0);
+        let after = app.reading().unwrap();
+        assert!(
+            after.span_s <= 1.0,
+            "no fit crosses the settling end: {}",
+            after.span_s
+        );
+        // Endpoint convention is inherited unchanged: settling_at is (from,to].
+        app.view_end = Some(40.0);
+        assert!(app.reading().is_none());
     }
 
     #[test]

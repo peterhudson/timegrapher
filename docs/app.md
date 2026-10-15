@@ -53,6 +53,12 @@ where the desktop passes drops to the app (Windows, macOS and X11; not
 Wayland). Clicking a group's name, such as Watch, folds it away to its
 caption, and clicking it again opens it.
 
+When a replay has matching saved position history, its position bands and
+settling intervals are restored in recorded-audio time. Readings do not span a
+saved move or settling end. Choosing a position filters that history rather
+than adding a new move; **Clear** clears readings but keeps the saved boundaries.
+A plain recording without matching position history still allows manual moves.
+
 Every other pane's own settings sit in a toolbar across the top of the
 pane, with the pane's **?** at its right; a toolbar too narrow for its
 settings carries them onto a second line. The charts carry theirs in the

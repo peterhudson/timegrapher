@@ -162,6 +162,8 @@ pub struct Session {
     saved_metadata: Option<MetadataSnapshot>,
     notes_revision: u64,
     recording_fault: Option<RecordingFault>,
+    /// Loaded history is immutable while replaying; position choices filter it.
+    imported_context: bool,
 }
 
 impl Session {
@@ -174,6 +176,7 @@ impl Session {
             self.recording_fault = None;
         }
         self.state = State::Idle;
+        self.imported_context = false;
         self.settle_pending = false;
         self.settle_to = None;
         self.events.clear();
@@ -197,7 +200,10 @@ impl Session {
         match action {
             Action::Pause => self.state == Listening,
             Action::Resume => matches!(self.state, Paused { .. }),
-            Action::Move => matches!(self.state, Listening | Paused { .. } | Replaying),
+            Action::Move => {
+                matches!(self.state, Listening | Paused { .. } | Replaying)
+                    && !self.has_replay_context()
+            }
             Action::Save => {
                 matches!(self.state, Listening | Paused { .. }) && self.recorder.is_some()
             }
@@ -438,6 +444,9 @@ impl Session {
     /// The positions and settling a take's session file gives, for a
     /// recording opened.
     pub fn load(&mut self, stretches: &[(f64, Position)], settles: &[(f64, f64)]) {
+        self.imported_context = !stretches.is_empty() || !settles.is_empty();
+        self.settle_pending = false;
+        self.settle_to = None;
         self.events.retain(|e| matches!(e, Event::Saved { .. }));
         for &(at_s, pos) in stretches {
             self.events.push(Event::Position {
@@ -449,6 +458,35 @@ impl Session {
         for &(from_s, to_s) in settles {
             self.events.push(Event::Settle { from_s, to_s });
         }
+    }
+
+    /// A replay's positions came from its manifest, rather than manual moves.
+    pub fn has_replay_context(&self) -> bool {
+        self.imported_context && matches!(self.state, State::Replaying | State::ReplayStopped)
+    }
+
+    /// Saved moves and settling ends bound readings in audio time, including
+    /// boundaries the replay has not reached yet. Never create a live move.
+    pub fn replay_breaks(&self) -> Option<Vec<f64>> {
+        if !self.has_replay_context() {
+            return None;
+        }
+        let mut breaks: Vec<f64> = self
+            .stretches()
+            .iter()
+            .skip(1)
+            .map(|s| s.0)
+            .chain(self.settles().iter().map(|s| s.1))
+            .collect();
+        breaks.sort_by(f64::total_cmp);
+        breaks.dedup();
+        Some(breaks)
+    }
+
+    /// Imported settling intervals apply to the reading's timestamp, which
+    /// can lag received audio. Other session modes keep their existing policy.
+    pub fn replay_reading_allowed(&self, at_s: f64) -> bool {
+        !self.has_replay_context() || !self.settling_at(at_s)
     }
 
     /// Each stretch in one position: start, end and position, with `now`
@@ -717,6 +755,68 @@ mod tests {
     fn resume_at(s: &mut Session, now: f64) {
         s.resume("test").unwrap();
         s.resumed_at(now);
+    }
+
+    #[test]
+    fn imported_replay_history_is_immutable_and_uses_saved_settling_times() {
+        let mut s = Session::default();
+        s.replay();
+        let positions = [
+            (0.0, Position::DialUp),
+            (30.0, Position::DialDown),
+            (60.0, Position::DialUp),
+        ];
+        s.load(&positions, &[(30.0, 40.0), (60.0, 70.0), (60.0, 70.0)]);
+        assert!(s.has_replay_context());
+        assert_eq!(s.replay_breaks(), Some(vec![30.0, 40.0, 60.0, 70.0]));
+        assert!(s
+            .move_to(10.0, Position::DialUp, Position::CrownUp)
+            .is_err());
+        assert_eq!(s.stretches(), positions);
+        assert_eq!(
+            s.settling_now(35.0),
+            None,
+            "imported settling is not a live timer"
+        );
+        for (time, allowed) in [
+            (30.0, true),
+            (30.001, false),
+            (40.0, false),
+            (40.001, true),
+            (60.001, false),
+            (70.001, true),
+        ] {
+            assert_eq!(s.replay_reading_allowed(time), allowed, "{time}");
+        }
+        s.stop(45.0).unwrap().unwrap();
+        assert!(s.has_replay_context());
+        assert!(!s.replay_reading_allowed(35.0));
+        s.clear();
+        s.replay();
+        assert!(!s.has_replay_context());
+        s.move_to(10.0, Position::DialUp, Position::DialDown)
+            .unwrap();
+        assert!(
+            !s.has_replay_context(),
+            "manual replay history is not imported"
+        );
+        assert_eq!(s.settling_now(15.0), Some(true));
+        s.load(&[], &[]);
+        assert_eq!(s.settling_now(15.0), None);
+        assert_eq!(s.replay_breaks(), None);
+    }
+
+    #[test]
+    fn a_single_imported_position_is_still_a_replay_filter() {
+        let mut s = Session::default();
+        s.replay();
+        s.load(&[(0.0, Position::DialDown)], &[]);
+        assert!(s.has_replay_context());
+        assert_eq!(s.replay_breaks(), Some(vec![]));
+        assert!(!s.allows(Action::Move));
+        assert!(s.replay_reading_allowed(20.0));
+        s.analysed();
+        assert!(!s.has_replay_context(), "whole-take policy is unchanged");
     }
 
     #[test]
