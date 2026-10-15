@@ -45,6 +45,17 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+A `reference` can describe tg on the same file or a bench instrument. Its
+`source` is descriptive text; it does not declare a machine-readable clock
+basis. The HTML report labels the measured rate as sound-card-clock or clock
+corrected and retains the supplied reference value. For clock-corrected readings,
+it omits the rate Difference rather than subtracting rates whose clock bases
+may differ. This also applies to an explicit zero-ppm correction. Uncorrected
+readings retain the existing difference; check the reference source for a
+matching basis. A rate chart containing any clock-corrected reading omits its
+reference-rate overlay, with an explanatory note; the table keeps all reference
+values. Amplitude comparisons and the calibrated headline rate are unchanged.
+
 A recording on a corpus holdout take may also carry
 `fault = { id = "...", side = "Tick", source = "bench: ..." }`, the fault a
 watchmaker confirmed; `session` reads past it, and `regress --holdout`
