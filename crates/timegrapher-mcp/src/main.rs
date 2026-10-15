@@ -127,7 +127,9 @@ async fn call(
         Ok(out) => out,
         Err(e) => return Ok(tool_error(e)),
     };
-    let Some(doc) = out.json else {
+    // JSON may describe a partial result or diagnostics from a failed
+    // command. Its presence never turns an unsuccessful exit into success.
+    if out.exit_code != Some(0) || out.json.is_none() {
         let code = out
             .exit_code
             .map_or("no exit code".to_string(), |c| format!("exit code {c}"));
@@ -136,11 +138,24 @@ async fn call(
         } else {
             out.stderr
         };
-        return Ok(tool_error(format!(
-            "timegrapher {} failed ({code}): {said}",
-            line[0]
-        )));
-    };
+        let mut result = json!({
+            "content": [{ "type": "text", "text": format!(
+                "timegrapher {} failed ({code}): {said}", line[0]
+            ) }],
+            "isError": true,
+        });
+        if let Some(doc) = out.json {
+            result["content"].as_array_mut().unwrap().push(json!({
+                "type": "text",
+                "text": serde_json::to_string(&doc).unwrap_or_default(),
+            }));
+            result["structuredContent"] = doc;
+        }
+        return complete(result);
+    }
+    let doc = out
+        .json
+        .expect("successful command with JSON checked above");
     // What only the charts draw stays out of what the model reads.
     let mut doc = doc;
     let series_charts =
