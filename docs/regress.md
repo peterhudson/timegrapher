@@ -147,11 +147,41 @@ parsed is an error and is not replaced.
 ## In CI
 
 The `regress` job in `.github/workflows/ci.yml` checks out the public
-corpus and runs `regress corpus --fetch --smoke --quiet`. It needs no
+corpus at the full commit in its `CORPUS_REVISION` setting, currently
+`224b6032b831e120277e8e58ded4449b57706794`. It verifies the checkout's actual
+commit and records that commit, the engine revision and `corpus.json`'s SHA-256
+in the job log and summary before fetching audio. New corpus commits therefore
+do not silently change an existing engine revision's CI inputs.
+
+The job runs `regress corpus --fetch --smoke --baseline regress/baseline.json --quiet`. It needs no
 secret, so pull requests from forks get the check too. The audio is cached
 between runs and keyed on `corpus.json`, so a run downloads only what
 changed. A required baseline take with no `session.toml` fails the check.
 The `not_run` list also includes deliberately unselected takes; those do not fail.
+
+## Updating CI's corpus revision
+
+1. Compare the pinned corpus commit with the proposed full commit in a separate
+   checkout. Review audio hashes and ordering, take folders, session/recording
+   additions or removals, intervals, settings and reference sources/values. A
+   metadata-only change can alter the comparison even when audio is unchanged.
+2. In the engine pull request, set `CORPUS_REVISION` to the reviewed corpus commit
+   and record the old/new commits, manifest hashes and reason for the update.
+   Coordinate any required baseline session or reading removals in that same
+   pull request: migrate or retire only reviewed entries, retaining their original
+   values and explanation in version history. Missing sessions/readings now fail
+   regression; `--write-baseline` cannot silently retire them. Do not narrow CI
+   with `--take`. Never automatically regenerate baseline values or change
+   numerical margins just to make CI pass.
+3. Review intentional label/interval or numerical changes using the baseline
+   procedure above. Preserve historical results and accepted offsets; corpus
+   updates do not justify changing numerical margins. New readable recordings
+   remain reported as new until their reviewed baseline entries are added.
+4. Require the pull request's corpus regression to pass on its current engine
+   head and confirm the logged corpus commit and manifest hash match the review.
+   The cache remains keyed by the manifest: old cache entries are pruned against
+   it, and `--fetch` checks each selected audio file's SHA-256 before reuse.
+   A cache hit supplies audio bytes, not acceptance of new scientific results.
 
 The holdout takes are read only by `.github/workflows/holdout.yml`, a job
 started by hand from the Actions tab (`workflow_dispatch`) at a milestone.

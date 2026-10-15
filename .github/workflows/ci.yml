@@ -42,6 +42,9 @@ jobs:
   # releases, checked by SHA-256 and cached between runs.
   regress:
     runs-on: ubuntu-latest
+    env:
+      # Reviewed with the engine baseline; update through docs/regress.md.
+      CORPUS_REVISION: 224b6032b831e120277e8e58ded4449b57706794
     steps:
       - uses: actions/checkout@v4
       # Metadata in git, audio in releases: no secret, so this also runs on
@@ -50,9 +53,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: peterhudson/timegrapher-corpus
+          ref: ${{ env.CORPUS_REVISION }}
           path: corpus
           fetch-depth: 1
           persist-credentials: false
+      - name: Record corpus inputs
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib, subprocess
+          actual = subprocess.check_output(["git", "-C", "corpus", "rev-parse", "HEAD"], text=True).strip()
+          if actual != os.environ["CORPUS_REVISION"]:
+              raise SystemExit(f"corpus checkout {actual} differs from the reviewed revision")
+          manifest = hashlib.sha256(pathlib.Path("corpus/corpus.json").read_bytes()).hexdigest()
+          report = (f"Engine revision: `{os.environ['GITHUB_SHA']}`\n\n"
+                    f"Corpus revision: `{actual}`\n\n"
+                    f"corpus.json SHA-256: `{manifest}`\n\n")
+          print(report, end="")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(report)
+          PY
       - name: Corpus audio cache
         uses: actions/cache@v4
         with:
