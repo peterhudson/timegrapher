@@ -1505,34 +1505,43 @@ impl TimegrapherApp {
     }
 
     fn save_into(&mut self, parent: &Path) {
-        let result = self.reading().and_then(|r| serde_json::to_value(r).ok());
-        let manifest = self.take_manifest();
-        // A finished full-wind Positions Test's results, for its 24 hour
-        // half.
-        let about = self.guided_about();
-        let kept = self.guided.as_ref().and_then(|t| t.kept(&about));
+        // Prepare all required metadata before starting the saved-copy update.
+        let prepared = (|| -> Result<_, String> {
+            let result = self
+                .reading()
+                .map(serde_json::to_value)
+                .transpose()
+                .map_err(|e| format!("Couldn't prepare the saved reading: {e}"))?;
+            let manifest = toml::to_string_pretty(&self.take_manifest())
+                .map_err(|e| format!("Couldn't prepare {MANIFEST}: {e}"))?;
+            let about = self.guided_about();
+            let kept = self
+                .guided
+                .as_ref()
+                .and_then(|t| t.kept(&about))
+                .map(|k| serde_json::to_string_pretty(&k).map(|s| s + "\n"))
+                .transpose()
+                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            Ok((result, manifest, kept))
+        })();
+        let (result, manifest, kept) = match prepared {
+            Ok(p) => p,
+            Err(e) => return self.error(e),
+        };
         // The watch's name as it is now, for session.json and the folder.
         self.note_settings();
         let Some(r) = self.session.recorder.as_mut() else {
             return;
         };
         let secs = r.duration_s();
-        match r.save_copy(parent, &self.calibre, result.as_ref()) {
+        let mut files = vec![(MANIFEST, manifest.as_bytes())];
+        if let Some(k) = &kept {
+            files.push((guided::RESULTS_FILE, k.as_bytes()));
+        }
+        // With no new full-wind result (including a 24-hour half), preserve
+        // the earlier result file for comparison, as Save Again always has.
+        match r.save_copy_with_files(parent, &self.calibre, result.as_ref(), &files) {
             Ok(dir) => {
-                let text = toml::to_string_pretty(&manifest).map_err(|e| e.to_string());
-                if let Err(e) = text
-                    .and_then(|t| std::fs::write(dir.join(MANIFEST), t).map_err(|e| e.to_string()))
-                {
-                    self.error(format!("Saved the sound, but not its {MANIFEST}: {e}"));
-                }
-                if let Some(k) = &kept {
-                    if let Err(e) = std::fs::write(dir.join(guided::RESULTS_FILE), k.to_json()) {
-                        self.error(format!(
-                            "Saved the sound, but not the Positions Test's {}: {e}",
-                            guided::RESULTS_FILE
-                        ));
-                    }
-                }
                 self.info_msg(format!(
                     "Saved {} of sound in {}",
                     strip::fmt_time(secs),
@@ -7960,6 +7969,159 @@ mod tests {
         let w = order_warning(&recordings_in(&dir).unwrap()).unwrap();
         assert!(w.starts_with("a-2.wav was written before b-1.wav"), "{w}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn save_failure_fixture(name: &str) -> (TimegrapherApp, PathBuf) {
+        let base =
+            std::env::temp_dir().join(format!("tg-app-save-failure-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.reset_session(48000, "test".into());
+        app.session.listen();
+        app.session.recorder =
+            Some(Recorder::start(&base.join("live"), app.info("test", 48000, 16)).unwrap());
+        append_save_test_second(&mut app, 1);
+        (app, base)
+    }
+
+    fn append_save_test_second(app: &mut TimegrapherApp, at: u64) {
+        let block = timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000],
+            at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(at),
+        };
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&block)
+            .unwrap();
+        for samples in block.samples.chunks(960) {
+            app.live.as_mut().unwrap().push(samples);
+        }
+    }
+
+    fn saved_file_bytes(dir: &Path) -> std::collections::BTreeMap<std::ffi::OsString, Vec<u8>> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| e.file_type().unwrap().is_file())
+            .map(|e| (e.file_name(), std::fs::read(e.path()).unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn successful_save_keeps_the_callers_path_for_messages_and_save_again() {
+        let (mut app, base) = save_failure_fixture("caller-path");
+        let parent = base.join("saved").join("..").join("saved");
+        app.save_into(&parent);
+        let dest = app.session.saved_to().unwrap();
+        assert_eq!(dest.parent().unwrap().as_os_str(), parent.as_os_str());
+        assert_eq!(
+            app.message.as_ref(),
+            Some(&(
+                format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(1.0),
+                    dest.display()
+                ),
+                false
+            ))
+        );
+        assert_eq!(app.save_dir, parent.display().to_string());
+        assert!(dest.join(MANIFEST).is_file());
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_required_manifest_does_not_report_or_mark_a_successful_save() {
+        let (mut app, base) = save_failure_fixture("manifest");
+        let parent = base.join("saved");
+        // Prepare the destination name without marking an app save. A directory
+        // at the required file path deterministically rejects the file write.
+        let dest = app
+            .session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .save_copy(&parent, "", None)
+            .unwrap();
+        std::fs::create_dir(dest.join(MANIFEST)).unwrap();
+        let before = saved_file_bytes(&dest);
+        app.save_into(&parent);
+        assert!(app
+            .message
+            .as_ref()
+            .is_some_and(|(m, error)| *error && m.contains(MANIFEST)));
+        assert_eq!(app.session.saved_to(), None);
+        assert_eq!(app.unsaved_s(), 1.0);
+        assert_eq!(saved_file_bytes(&dest), before);
+        std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
+        app.save_into(&parent);
+        assert_eq!(app.session.saved_to(), Some(dest.as_path()));
+        assert_eq!(app.unsaved_s(), 0.0);
+        let manifest: Manifest =
+            toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(manifest.recordings.len(), 1);
+        app.session.discard_recording();
+        assert_eq!(
+            timegrapher_core::audio::load(&dest.join("audio-001.wav"))
+                .unwrap()
+                .samples
+                .len(),
+            48000
+        );
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_required_guided_result_preserves_the_previous_save_and_unsaved_sound() {
+        let (mut app, base) = save_failure_fixture("guided");
+        let parent = base.join("saved");
+        app.save_into(&parent);
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        let before = saved_file_bytes(&dest);
+        append_save_test_second(&mut app, 2);
+        // Only the finished-state marker is needed here: this test covers
+        // required result persistence, not the measurement of guided positions.
+        let mut test = guided::Test::new();
+        test.readings = Some(Vec::new());
+        app.guided = Some(test);
+        std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
+        app.save_into(&parent);
+        assert!(app
+            .message
+            .as_ref()
+            .is_some_and(|(m, error)| *error && m.contains(guided::RESULTS_FILE)));
+        assert_eq!(app.session.saved_to(), Some(dest.as_path()));
+        assert_eq!(app.unsaved_s(), 1.0);
+        assert_eq!(saved_file_bytes(&dest), before);
+        std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
+        app.save_into(&parent);
+        assert_eq!(app.unsaved_s(), 0.0);
+        let kept = std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&kept).unwrap();
+        assert_eq!(json["format"], guided::RESULTS_FORMAT);
+        // A later unfinished test (like a 24-hour half) supplies no new full-wind
+        // result. Preserve the earlier result as a separate comparison artifact.
+        app.guided = Some(guided::Test::new());
+        app.save_into(&parent);
+        assert_eq!(
+            std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap(),
+            kept
+        );
+        app.session.discard_recording();
+        assert_eq!(
+            timegrapher_core::audio::load(&dest.join("audio-001.wav"))
+                .unwrap()
+                .samples
+                .len(),
+            96000
+        );
+        let manifest: Manifest =
+            toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(manifest.recordings.len(), 1);
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     /// A microphone session's sound is kept as it goes, can be saved at

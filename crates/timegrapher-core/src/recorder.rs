@@ -337,6 +337,17 @@ impl Recorder {
         ended: Option<String>,
         result: Option<&serde_json::Value>,
     ) -> io::Result<()> {
+        fs::write(
+            self.dir.join("session.json"),
+            self.session_text(ended, result)?,
+        )
+    }
+
+    fn session_text(
+        &self,
+        ended: Option<String>,
+        result: Option<&serde_json::Value>,
+    ) -> io::Result<String> {
         let f = SessionFile {
             info: &self.info,
             started_utc: &self.started_utc,
@@ -347,8 +358,7 @@ impl Recorder {
             breaks: &self.breaks,
             result,
         };
-        let text = serde_json::to_string_pretty(&f).map_err(io::Error::other)?;
-        fs::write(self.dir.join("session.json"), text)
+        serde_json::to_string_pretty(&f).map_err(io::Error::other)
     }
 
     /// Note a pause in listening. The clock log gets a line for the last
@@ -414,45 +424,130 @@ impl Recorder {
         calibre: &str,
         result: Option<&serde_json::Value>,
     ) -> io::Result<PathBuf> {
-        if let Some(w) = self.writer.as_mut() {
-            w.flush().map_err(io_err)?;
+        self.save_copy_with_files(parent, calibre, result, &[])
+    }
+
+    /// Save the sound and required companion files as one recoverable update.
+    /// Names must be single file names, distinct from the recorder's own files.
+    /// All changed files are staged before replacing the previous copy. An I/O
+    /// failure during installation rolls back earlier replacements; if rollback
+    /// itself fails, the error names the retained recovery directory.
+    /// This is not a process-crash or power-loss atomicity guarantee.
+    pub fn save_copy_with_files(
+        &mut self,
+        parent: &Path,
+        calibre: &str,
+        result: Option<&serde_json::Value>,
+        required_files: &[(&str, &[u8])],
+    ) -> io::Result<PathBuf> {
+        self.save_copy_using(parent, calibre, result, required_files, |_, _| Ok(()))
+    }
+
+    fn save_copy_using(
+        &mut self,
+        parent: &Path,
+        calibre: &str,
+        result: Option<&serde_json::Value>,
+        required_files: &[(&str, &[u8])],
+        mut before: impl FnMut(SaveStep, &Path) -> io::Result<()>,
+    ) -> io::Result<PathBuf> {
+        let mut names = std::collections::BTreeSet::new();
+        for &(name, _) in required_files {
+            let mut parts = Path::new(name).components();
+            if !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+                || parts.next().is_some()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                || matches!(
+                    name.to_ascii_lowercase().as_str(),
+                    "session.json" | "clock.csv"
+                )
+                || name.to_ascii_lowercase().starts_with("audio-")
+                || self.dir.join(name).exists()
+                || !names.insert(name.to_ascii_lowercase())
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid or reserved companion file name: {name}"),
+                ));
+            }
         }
-        self.clock.flush()?;
-        self.write_session(Some(utc(SystemTime::now())), result)?;
-        let name = match &self.saved_name {
-            Some(n) => n.clone(),
-            None => self.copy_name(calibre),
-        };
-        self.saved_name = Some(name.clone());
+        let name = self
+            .saved_name
+            .clone()
+            .unwrap_or_else(|| self.copy_name(calibre));
+        fs::create_dir_all(parent)?;
+        // Resolve identities only for the overlap check. Keep the caller's
+        // spelling for filesystem work and paths returned or shown to them.
+        let canonical_parent = fs::canonicalize(parent)?;
         let dest = parent.join(&name);
-        if dest == self.dir {
-            return Ok(dest);
+        let source = fs::canonicalize(&self.dir)?;
+        let resolved = if dest.exists() {
+            fs::canonicalize(&dest)?
+        } else {
+            canonical_parent.join(&name)
+        };
+        if resolved.starts_with(&source) || source.starts_with(&resolved) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the saved copy must be separate from the live recording folder",
+            ));
         }
-        fs::create_dir_all(&dest)?;
-        let open = self
-            .writer
-            .as_ref()
-            .and_then(|_| self.segments.last())
-            .map(|n| n.as_str());
+        self.flush()?;
+        let session = self.session_text(Some(utc(SystemTime::now())), result)?;
+        let mut update = SaveUpdate::new(parent, &dest)?;
+        let open = self.writer.as_ref().and_then(|_| self.segments.last());
+        // Enumerate required sources explicitly: a missing segment must not
+        // disappear from read_dir and turn an incomplete take into a success.
+        let mut sources: std::collections::BTreeSet<PathBuf> =
+            self.segment_paths().into_iter().collect();
+        sources.insert(self.dir.join("clock.csv"));
         for e in fs::read_dir(&self.dir)? {
             let e = e?;
-            if !e.file_type()?.is_file() {
-                continue;
+            if e.file_type()?.is_file() && e.file_name() != "session.json" {
+                sources.insert(e.path());
             }
-            let name = e.file_name();
-            let to = dest.join(&name);
-            let closed = name
-                .to_str()
-                .is_some_and(|n| self.segments.iter().any(|s| s == n) && Some(n) != open);
-            let there =
-                fs::metadata(&to).is_ok_and(|m| m.len() == e.metadata().map_or(0, |m| m.len()));
+        }
+        for source in sources {
+            let metadata = fs::symlink_metadata(&source)?;
+            if !metadata.is_file() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{} is not a regular file", source.display()),
+                ));
+            }
+            let file = source.file_name().expect("recording file");
+            let to = dest.join(file);
+            let closed = file.to_str().is_some_and(|n| {
+                self.segments.iter().any(|s| s == n) && open.map_or(true, |s| s != n)
+            });
+            let there = match fs::symlink_metadata(&to) {
+                Ok(m) if !m.is_file() => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!("{} is not a regular file", to.display()),
+                    ))
+                }
+                Ok(m) => m.len() == metadata.len(),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+                Err(e) => return Err(e),
+            };
             if closed && there {
                 continue;
             }
-            fs::copy(e.path(), to)?;
+            let staged = update.staged.join(file);
+            before(SaveStep::Stage, &to)?;
+            fs::copy(&source, &staged)?;
         }
-        // Back to an open session here.
-        self.write_session(None, None)?;
+        for (file, bytes) in std::iter::once(("session.json", session.as_bytes()))
+            .chain(required_files.iter().copied())
+        {
+            before(SaveStep::Stage, &dest.join(file))?;
+            fs::write(update.staged.join(file), bytes)?;
+        }
+        update.install(&mut before)?;
+        self.saved_name = Some(name);
         Ok(dest)
     }
 
@@ -465,6 +560,132 @@ impl Recorder {
         self.clock.flush()?;
         self.write_session(Some(utc(SystemTime::now())), result.as_ref())?;
         Ok(self.dir)
+    }
+}
+
+/// Narrow fault-injection points for the save transaction's filesystem work.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SaveStep {
+    Stage,
+    Install,
+    Restore,
+}
+
+struct SaveUpdate {
+    root: PathBuf,
+    staged: PathBuf,
+    backup: PathBuf,
+    dest: PathBuf,
+    retain: bool,
+}
+
+impl SaveUpdate {
+    fn new(parent: &Path, dest: &Path) -> io::Result<Self> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let root = loop {
+            let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root = parent.join(format!(".timegrapher-save-{}-{id}", std::process::id()));
+            match fs::create_dir(&root) {
+                Ok(()) => break root,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        };
+        let update = Self {
+            staged: root.join("staged"),
+            backup: root.join("backup"),
+            root,
+            dest: dest.to_path_buf(),
+            retain: false,
+        };
+        fs::create_dir(&update.staged)?;
+        fs::create_dir(&update.backup)?;
+        Ok(update)
+    }
+
+    fn install(
+        &mut self,
+        before: &mut impl FnMut(SaveStep, &Path) -> io::Result<()>,
+    ) -> io::Result<()> {
+        let mut files: Vec<_> = fs::read_dir(&self.staged)?
+            .map(|e| e.map(|e| e.file_name()))
+            .collect::<io::Result<_>>()?;
+        files.sort();
+        // Reject directory/symlink collisions before touching the previous copy.
+        for file in &files {
+            match fs::symlink_metadata(self.dest.join(file)) {
+                Ok(m) if !m.is_file() => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!("{} is not a regular file", self.dest.join(file).display()),
+                    ))
+                }
+                Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+                _ => {}
+            }
+        }
+        let created = match fs::create_dir(&self.dest) {
+            Ok(()) => true,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && self.dest.is_dir() => false,
+            Err(e) => return Err(e),
+        };
+        let mut changed = Vec::new();
+        let result = (|| {
+            for file in files {
+                let to = self.dest.join(&file);
+                let backup = self.backup.join(&file);
+                let had_old = match fs::rename(&to, &backup) {
+                    Ok(()) => true,
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+                    Err(e) => return Err(e),
+                };
+                changed.push((file.clone(), had_old));
+                before(SaveStep::Install, &to)?;
+                fs::rename(self.staged.join(&file), to)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            let mut rollback_error = None;
+            for (file, had_old) in changed.into_iter().rev() {
+                let to = self.dest.join(&file);
+                let restored = (|| {
+                    before(SaveStep::Restore, &to)?;
+                    match fs::remove_file(&to) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(e),
+                    }
+                    if had_old {
+                        fs::rename(self.backup.join(&file), &to)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = restored {
+                    rollback_error = Some(e);
+                }
+            }
+            if created {
+                let _ = fs::remove_dir(&self.dest);
+            }
+            if let Some(rollback) = rollback_error {
+                self.retain = true;
+                return Err(io::Error::other(format!(
+                    "{error}; rollback failed: {rollback}; recovery files retained in {}",
+                    self.root.display()
+                )));
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
+impl Drop for SaveUpdate {
+    fn drop(&mut self) {
+        if !self.retain {
+            let _ = fs::remove_dir_all(&self.root);
+        }
     }
 }
 
@@ -574,6 +795,394 @@ mod tests {
             .to_string_lossy()
             .ends_with("_Test_3235_DU"));
         fs::remove_dir_all(&parent).unwrap();
+    }
+
+    fn save_fixture(name: &str) -> (Recorder, PathBuf) {
+        let base = std::env::temp_dir().join(format!("tg-save-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let info = SessionInfo {
+            watch: "Save test".into(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: None,
+            device: "test".into(),
+            sample_rate: 8000,
+            bits: 16,
+            software: "test".into(),
+        };
+        let mut r = Recorder::start(&base.join("live"), info).unwrap();
+        append_second(&mut r, 1);
+        (r, base)
+    }
+
+    fn append_second(r: &mut Recorder, second: u64) {
+        r.write(&Block {
+            samples: vec![0.1; 8000],
+            at: UNIX_EPOCH + Duration::from_secs(second),
+        })
+        .unwrap();
+    }
+
+    fn saved_bytes(dir: &Path) -> std::collections::BTreeMap<std::ffi::OsString, Vec<u8>> {
+        fs::read_dir(dir)
+            .unwrap()
+            .map(|e| {
+                let e = e.unwrap();
+                (e.file_name(), fs::read(e.path()).unwrap())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn failed_staging_and_installation_preserve_the_previous_copy_and_retry() {
+        let files: &[(&str, &[u8])] = &[
+            ("session.toml", b"old manifest"),
+            ("positions-test.json", b"old results"),
+        ];
+        for step in [SaveStep::Stage, SaveStep::Install] {
+            for failed_file in [
+                "audio-001.wav",
+                "clock.csv",
+                "session.json",
+                "session.toml",
+                "positions-test.json",
+            ] {
+                let (mut r, base) = save_fixture(&format!("{step:?}-{failed_file}"));
+                let parent = base.join("saved");
+                let dest = r.save_copy_with_files(&parent, "", None, files).unwrap();
+                fs::write(dest.join("owners-note.txt"), "keep this").unwrap();
+                let old = saved_bytes(&dest);
+                append_second(&mut r, 2);
+                let newer: &[(&str, &[u8])] = &[
+                    ("session.toml", b"new manifest"),
+                    ("positions-test.json", b"new results"),
+                ];
+                let error = r
+                    .save_copy_using(&parent, "", None, newer, |at, path| {
+                        if at == step && path.file_name().unwrap() == failed_file {
+                            Err(io::Error::other("injected save failure"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .unwrap_err();
+                assert!(error.to_string().contains("injected save failure"));
+                assert_eq!(saved_bytes(&dest), old, "{step:?} at {failed_file}");
+                assert_eq!(
+                    fs::read_dir(&parent).unwrap().count(),
+                    1,
+                    "no abandoned staging"
+                );
+                let live: serde_json::Value = serde_json::from_str(
+                    &fs::read_to_string(r.dir().join("session.json")).unwrap(),
+                )
+                .unwrap();
+                assert!(live["ended_utc"].is_null(), "live metadata stays open");
+                assert_eq!(
+                    r.save_copy_with_files(&parent, "", None, newer).unwrap(),
+                    dest
+                );
+                assert_eq!(
+                    fs::read(dest.join("session.toml")).unwrap(),
+                    b"new manifest"
+                );
+                assert_eq!(
+                    fs::read(dest.join("positions-test.json")).unwrap(),
+                    b"new results"
+                );
+                assert_eq!(
+                    fs::read(dest.join("owners-note.txt")).unwrap(),
+                    b"keep this"
+                );
+                let wav = hound::WavReader::open(dest.join("audio-001.wav")).unwrap();
+                assert_eq!(wav.duration(), 16000);
+                drop(wav);
+                drop(r);
+                fs::remove_dir_all(base).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn a_missing_recorded_segment_prevents_an_incomplete_copy() {
+        let (mut r, base) = save_fixture("missing-segment");
+        r.pause().unwrap();
+        r.resume("test");
+        append_second(&mut r, 62);
+        let first = r.dir().join("audio-001.wav");
+        let bytes = fs::read(&first).unwrap();
+        // The first segment is closed, so this fault is portable to Windows.
+        fs::remove_file(&first).unwrap();
+        let parent = base.join("saved");
+        assert!(r.save_copy(&parent, "", None).is_err());
+        assert!(r.saved_name.is_none());
+        assert_eq!(fs::read_dir(&parent).unwrap().count(), 0);
+        fs::write(&first, &bytes).unwrap();
+        let dest = r.save_copy(&parent, "", None).unwrap();
+        assert_eq!(fs::read(dest.join("audio-001.wav")).unwrap(), bytes);
+        assert_eq!(
+            hound::WavReader::open(dest.join("audio-002.wav"))
+                .unwrap()
+                .duration(),
+            8000
+        );
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_first_save_does_not_claim_a_copy_name_or_leave_a_partial_take() {
+        let (mut r, base) = save_fixture("first");
+        let parent = base.join("saved");
+        let result = r.save_copy_using(&parent, "First", None, &[], |step, path| {
+            if step == SaveStep::Install && path.file_name().unwrap() == "session.json" {
+                Err(io::Error::other("injected first save failure"))
+            } else {
+                Ok(())
+            }
+        });
+        assert!(result.is_err());
+        assert!(r.saved_name.is_none());
+        assert_eq!(fs::read_dir(&parent).unwrap().count(), 0);
+        let dest = r.save_copy(&parent, "Retry", None).unwrap();
+        assert!(dest
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .ends_with("_Retry"));
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_rollback_keeps_recovery_files_and_reports_their_location() {
+        let (mut r, base) = save_fixture("rollback");
+        let parent = base.join("saved").join("..").join("saved");
+        let dest = r.save_copy(&parent, "", None).unwrap();
+        let old_audio = fs::read(dest.join("audio-001.wav")).unwrap();
+        append_second(&mut r, 2);
+        let error = r
+            .save_copy_using(&parent, "", None, &[], |step, path| {
+                if (step == SaveStep::Install && path.file_name().unwrap() == "clock.csv")
+                    || (step == SaveStep::Restore && path.file_name().unwrap() == "audio-001.wav")
+                {
+                    Err(io::Error::other("injected failure"))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+        let recovery = fs::read_dir(&parent)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(".timegrapher-save-")
+            })
+            .unwrap();
+        let message = error.to_string();
+        assert!(message.contains("rollback failed"));
+        let reported = PathBuf::from(
+            message
+                .split_once("; recovery files retained in ")
+                .expect("the error must give the complete recovery path")
+                .1,
+        );
+        assert!(
+            reported.is_dir(),
+            "reported recovery path is unusable: {message}"
+        );
+        // Windows' temp path can use RUNNER~1 while canonical paths use
+        // runneradmin. Check identity, then read the exact reported location.
+        assert_eq!(
+            fs::canonicalize(&reported).unwrap(),
+            fs::canonicalize(&recovery).unwrap(),
+            "{message}; discovered recovery: {}",
+            recovery.display()
+        );
+        assert_eq!(
+            fs::canonicalize(reported.parent().unwrap()).unwrap(),
+            fs::canonicalize(&parent).unwrap(),
+            "{message}; expected save parent: {}",
+            parent.display()
+        );
+        assert_eq!(
+            fs::read(reported.join("backup/audio-001.wav")).unwrap(),
+            old_audio
+        );
+        assert_eq!(
+            reported.parent().unwrap().as_os_str(),
+            parent.as_os_str(),
+            "the recovery error must retain the caller's path spelling: {message}"
+        );
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn saved_copy_retains_the_callers_relative_path() {
+        let (mut r, base) = save_fixture("caller-path");
+        // No process-wide current-directory change: exercise a relative caller
+        // path even when the platform's temp directory already is canonical.
+        let relative = PathBuf::from(format!("tg-save-relative-{}", std::process::id()));
+        let parent = relative.join("saved").join("..").join("saved");
+        let dest = r.save_copy(&parent, "", None).unwrap();
+        assert_eq!(
+            dest.as_os_str(),
+            parent.join(r.saved_name.as_ref().unwrap()).as_os_str()
+        );
+        assert!(dest.join("session.json").is_file());
+        append_second(&mut r, 2);
+        let again = r
+            .save_copy_using(&parent, "", None, &[], |_, path| {
+                assert_eq!(path.parent().unwrap().as_os_str(), dest.as_os_str());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(again.as_os_str(), dest.as_os_str());
+
+        // Canonical identity checks must still work for relative paths. The
+        // descendant destination does not yet exist; the ancestor does.
+        let mut local = Recorder::start(&relative.join("live"), r.info.clone()).unwrap();
+        let nested = local.dir().join("nested");
+        assert!(!nested.join(local.copy_name("")).exists());
+        assert!(local.save_copy(&nested, "", None).is_err());
+        local.saved_name = Some(local.dir().file_name().unwrap().to_os_string());
+        assert!(local.save_copy(&relative.join("live"), "", None).is_err());
+        local.saved_name = Some("live".into());
+        assert!(local.save_copy(&relative, "", None).is_err());
+        append_second(&mut local, 1);
+        assert_eq!(local.duration_s(), 1.0);
+        drop(local);
+        drop(r);
+        fs::remove_dir_all(relative).unwrap();
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_parents_retain_spelling_without_bypassing_alias_checks() {
+        let (mut r, base) = save_fixture("parent-alias");
+        let real = base.join("saved");
+        fs::create_dir(&real).unwrap();
+        let alias = base.join("saved-alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let dest = r.save_copy(&alias, "", None).unwrap();
+        assert_eq!(dest.parent().unwrap().as_os_str(), alias.as_os_str());
+        assert_eq!(
+            fs::canonicalize(&dest).unwrap(),
+            fs::canonicalize(real.join(dest.file_name().unwrap())).unwrap()
+        );
+        let live_alias = base.join("live-alias");
+        std::os::unix::fs::symlink(r.dir(), &live_alias).unwrap();
+        assert!(!live_alias.join(r.saved_name.as_ref().unwrap()).exists());
+        let before = fs::read(r.dir().join("session.json")).unwrap();
+        assert!(r.save_copy(&live_alias, "", None).is_err());
+        assert_eq!(fs::read(r.dir().join("session.json")).unwrap(), before);
+        append_second(&mut r, 2);
+        assert_eq!(r.duration_s(), 2.0);
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn companion_names_cannot_replace_recorder_files_or_escape_the_take() {
+        let (mut r, base) = save_fixture("names");
+        for name in [
+            "../outside",
+            "folder/file",
+            "folder\\file",
+            "/absolute",
+            "session.json",
+            "SESSION.JSON",
+            "clock.csv",
+            "audio-999.wav",
+            "file:stream",
+        ] {
+            assert!(
+                r.save_copy_with_files(&base.join("saved"), "", None, &[(name, b"bad")])
+                    .is_err(),
+                "{name}"
+            );
+        }
+        assert!(r
+            .save_copy_with_files(
+                &base.join("saved"),
+                "",
+                None,
+                &[("session.toml", b"one"), ("SESSION.TOML", b"two")]
+            )
+            .is_err());
+        assert!(r.saved_name.is_none());
+        assert!(!base.join("saved").exists());
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn a_copy_cannot_alias_the_live_recording() {
+        let (mut r, base) = save_fixture("alias");
+        r.saved_name = Some(r.dir().file_name().unwrap().to_os_string());
+        let before = fs::read(r.dir().join("session.json")).unwrap();
+        let source_parent = r.dir().parent().unwrap().to_path_buf();
+        assert_eq!(source_parent.join(r.saved_name.as_ref().unwrap()), r.dir());
+        assert!(r.save_copy(&source_parent, "", None).is_err());
+        let nested = r.dir().join("nested");
+        assert!(r.save_copy(&nested, "", None).is_err());
+        assert_eq!(fs::read(r.dir().join("session.json")).unwrap(), before);
+        append_second(&mut r, 2);
+        assert_eq!(r.duration_s(), 2.0);
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_destination_cannot_alias_live_files() {
+        let (mut r, base) = save_fixture("symlink-alias");
+        let parent = base.join("saved");
+        fs::create_dir_all(&parent).unwrap();
+        let name = r.copy_name("");
+        std::os::unix::fs::symlink(r.dir(), parent.join(name)).unwrap();
+        let before = fs::read(r.dir().join("session.json")).unwrap();
+        assert!(r.save_copy(&parent, "", None).is_err());
+        assert_eq!(fs::read(r.dir().join("session.json")).unwrap(), before);
+        append_second(&mut r, 2);
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_closed_saved_segment_cannot_link_back_to_live_audio() {
+        let (mut r, base) = save_fixture("closed-symlink");
+        r.pause().unwrap();
+        r.resume("test");
+        append_second(&mut r, 62);
+        let parent = base.join("saved");
+        let dest = r.save_copy(&parent, "", None).unwrap();
+        let first = dest.join("audio-001.wav");
+        let original = fs::read(&first).unwrap();
+        fs::remove_file(&first).unwrap();
+        std::os::unix::fs::symlink(r.dir().join("audio-001.wav"), &first).unwrap();
+        let metadata = fs::read(dest.join("session.json")).unwrap();
+        append_second(&mut r, 63);
+        assert!(r.save_copy(&parent, "", None).is_err());
+        assert_eq!(fs::read(dest.join("session.json")).unwrap(), metadata);
+        // Repair the unsafe destination and retry; discarding scratch must
+        // leave a self-contained saved take, not dangling links.
+        fs::remove_file(&first).unwrap();
+        fs::write(&first, &original).unwrap();
+        r.save_copy(&parent, "", None).unwrap();
+        let scratch = r.dir().to_path_buf();
+        drop(r);
+        fs::remove_dir_all(scratch).unwrap();
+        assert_eq!(fs::read(&first).unwrap(), original);
+        assert!(hound::WavReader::open(dest.join("audio-002.wav")).is_ok());
+        fs::remove_dir_all(base).unwrap();
     }
 
     /// A copy is named after the start time, the watch and the calibre as
