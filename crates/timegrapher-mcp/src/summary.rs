@@ -24,6 +24,29 @@ fn signed(v: f64, digits: usize) -> String {
     format!("{v:+.digits$}")
 }
 
+/// The CLI's preferred correction wins over its USB estimate; both stay
+/// beside the original card-clock reading in the document.
+fn analyze_rate(doc: &Value) -> Option<(f64, String)> {
+    if let Some(rate) = doc["clock"]["rate_s_per_day"].as_f64() {
+        let source = doc["clock"]["from"]
+            .as_str()
+            .unwrap_or("correction supplied by the CLI");
+        Some((
+            rate,
+            format!("corrected for the sound card's clock ({source})"),
+        ))
+    } else if let Some(rate) = doc["rate_corrected_s_per_day"].as_f64() {
+        Some((
+            rate,
+            "corrected using the recording's USB clock lines".into(),
+        ))
+    } else {
+        doc["overall"]["rate_s_per_day"]
+            .as_f64()
+            .map(|rate| (rate, "on the sound card's clock".into()))
+    }
+}
+
 /// One reading: rate, amplitude and beat error (as a size), each with its
 /// standard error where the document gives one.
 fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
@@ -87,11 +110,12 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         if doc["watch_heard"] == false {
             lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
-            let rate = doc["rate_corrected_s_per_day"]
-                .as_f64()
-                .or(doc["overall"]["rate_s_per_day"].as_f64());
-            if let Some(r) = readings(doc, rate) {
+            let selected = analyze_rate(doc);
+            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0)) {
                 lines.push(format!("Readings: {r}."));
+            }
+            if let Some((_, basis)) = selected {
+                lines.push(format!("Rate basis: {basis}."));
             }
         }
     } else if schema.starts_with("timegrapher.session/") {
@@ -315,6 +339,28 @@ fn characteristic_values(s: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn analyze_lead_honors_the_clis_selected_clock_basis() {
+        let cases: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/analysis_rates.json")).unwrap();
+        for case in cases.as_array().unwrap() {
+            let doc = case["doc"].clone();
+            let before = doc.clone();
+            let lead = lead(&doc, &Map::new()).unwrap();
+            assert!(
+                lead.starts_with(case["expected_lead"].as_str().unwrap()),
+                "{}: {lead}",
+                case["name"]
+            );
+            assert!(
+                lead.contains(case["expected_basis"].as_str().unwrap()),
+                "{}: {lead}",
+                case["name"]
+            );
+            assert_eq!(doc, before, "summary must not replace raw or USB readings");
+        }
+    }
 
     #[test]
     fn a_recording_leads_with_its_readings() {

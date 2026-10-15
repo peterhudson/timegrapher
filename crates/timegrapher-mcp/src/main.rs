@@ -183,7 +183,7 @@ async fn call(
     });
     if recording_view {
         let recording = line.last().cloned().unwrap_or_default();
-        let charts = views::analyze_charts(&doc, args, &extras, &recording).await;
+        let charts = views::analyze_charts(&doc, &extras, &recording).await;
         result["_meta"] = json!({ views::META_KEY: charts });
     }
     if let Some(charts) = series_charts {
