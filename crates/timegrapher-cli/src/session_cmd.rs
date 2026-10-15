@@ -169,14 +169,7 @@ pub(crate) fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), St
         }
     });
     if let Some(f) = file {
-        let text = fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-        let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?;
-        if m.recordings.is_empty() {
-            return Err(format!("{}: no [[recording]] entries", f.display()));
-        }
-        let base = f
-            .parent()
-            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        let (m, base, _) = load_manifest_file(&f)?;
         return Ok((m, base));
     }
     // No session file: every recording, with its position from its name.
@@ -199,6 +192,19 @@ pub(crate) fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), St
         },
         base,
     ))
+}
+
+/// Identity is computed from the exact UTF-8 bytes parsed, not a later reread.
+pub(crate) fn load_manifest_file(f: &Path) -> Result<(Manifest, PathBuf, String), String> {
+    let text = fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
+    let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?;
+    if m.recordings.is_empty() {
+        return Err(format!("{}: no [[recording]] entries", f.display()));
+    }
+    let base = f
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+    Ok((m, base, crate::archive::sha256_hex(text.as_bytes())))
 }
 
 pub(crate) fn position_of(e: &RecordingEntry) -> Result<Position, String> {
@@ -292,12 +298,13 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     Ok(())
 }
 
-fn read_clock(path: &Path, first: &Path) -> Result<ClockFit, String> {
+fn read_clock(path: &Path, first: &Path) -> Result<(ClockFit, String), String> {
     let info = audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", path.display()))
+    let fit = ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
 }
 
 /// Up to `len_s` seconds of audio from `from_s`, across segment files.
@@ -394,6 +401,24 @@ fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
+    read_one_inner(e, c, false).map(|(reading, _)| reading)
+}
+
+/// Baseline writers request context from this same resolution/analysis pass.
+pub(crate) fn read_one_with_context(
+    e: &RecordingEntry,
+    c: &Ctx,
+) -> Result<(Reading, crate::regress_provenance::ReadContext), String> {
+    let (reading, context) = read_one_inner(e, c, true)?;
+    let context = context.ok_or_else(|| "missing baseline provenance context".to_string())?;
+    Ok((reading, context))
+}
+
+fn read_one_inner(
+    e: &RecordingEntry,
+    c: &Ctx,
+    capture: bool,
+) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), String> {
     let position = position_of(e)?;
     let path = c.base.join(&e.file);
     let files = expand_dirs(std::slice::from_ref(&path))?;
@@ -408,10 +433,13 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
     let mut log =
         stream::analyze_files(&paths, &cfg, |_| {}).map_err(|err| format!("{}: {err}", e.file))?;
-    let clock = match (&e.clock, c.m.card_ppm) {
-        (Some(p), _) => Some(read_clock(&c.base.join(p), &files[0])?),
-        (None, Some(ppm)) => session::fixed_clock(ppm, log.duration_s),
-        (None, None) => None,
+    let (clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
+        (Some(p), _) => {
+            let (fit, digest) = read_clock(&c.base.join(p), &files[0])?;
+            (Some(fit), Some(digest))
+        }
+        (None, Some(ppm)) => (session::fixed_clock(ppm, log.duration_s), None),
+        (None, None) => (None, None),
     };
     let breaks = breaks::with_jumps(
         breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
@@ -493,19 +521,42 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     } else {
         e.file.clone()
     };
-    Ok(Reading {
-        label,
-        position,
-        wind_h: e.wind_h,
-        date: e.date.clone(),
-        notes: e.notes.clone(),
-        duration_s: stop - start,
-        bph: log.bph,
-        measurement,
-        cycles,
-        shape,
-        reference: e.reference.clone(),
-    })
+    let context = if capture {
+        Some(crate::regress_provenance::ReadContext::capture(
+            &files,
+            c.base,
+            &cfg,
+            serde_json::json!({
+                "selected_start_s": start, "selected_end_s": stop,
+                "measured_start_s": settle, "measured_end_s": end,
+                "audio_duration_s": log.duration_s, "sample_rate": log.sample_rate,
+                "detected_bph": log.bph, "resolved_lift_known": lift_known(c, cal),
+                "clock_input": e.clock, "clock_input_sha256": clock_input_sha256,
+                "card_ppm": c.m.card_ppm,
+                "clock_fit_reported_summary": clock,
+                "applied_breaks": breaks,
+                "no_shape": c.o.no_shape, "no_cycles": c.o.no_cycles,
+            }),
+        )?)
+    } else {
+        None
+    };
+    Ok((
+        Reading {
+            label,
+            position,
+            wind_h: e.wind_h,
+            date: e.date.clone(),
+            notes: e.notes.clone(),
+            duration_s: stop - start,
+            bph: log.bph,
+            measurement,
+            cycles,
+            shape,
+            reference: e.reference.clone(),
+        },
+        context,
+    ))
 }
 
 /// Everything the report and `summary.json` show.

@@ -90,6 +90,9 @@ pub struct Values {
     /// Signed, from the drop; tg has no counterpart.
     pub beat_error_ms: Option<f64>,
     pub beats: usize,
+    /// None means historical origin unknown; the document writer is not its origin.
+    #[serde(default)]
+    pub provenance: Option<crate::regress_provenance::EntryProvenance>,
 }
 
 impl Values {
@@ -102,6 +105,7 @@ impl Values {
             beat_error_unlock_ms: m.beat_error_unlock_ms,
             beat_error_ms: m.beat_error_ms,
             beats: m.beats,
+            provenance: None,
         }
     }
 }
@@ -109,10 +113,21 @@ impl Values {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Baseline {
     pub schema: String,
-    /// The software that wrote it.
+    /// The document writer; individual entries can have different or unknown origins.
     pub software: serde_json::Value,
     /// Readings of each take, keyed by its session file relative to the root.
     pub takes: BTreeMap<String, Vec<Values>>,
+}
+
+/// Selected successful entries replace only their own takes, including origin.
+fn updated_baseline(old: Option<Baseline>, fresh: BTreeMap<String, Vec<Values>>) -> Baseline {
+    let mut takes = old.map(|b| b.takes).unwrap_or_default();
+    takes.extend(fresh);
+    Baseline {
+        schema: BASELINE_SCHEMA.into(),
+        software: crate::output::software(),
+        takes,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -329,7 +344,16 @@ fn session_opts() -> session_cmd::Options {
 }
 
 /// A take's session file and what each of its readings measured.
-type Measured = (Manifest, Vec<Result<Reading, String>>);
+struct MeasuredReading {
+    reading: Reading,
+    provenance: Option<crate::regress_provenance::EntryProvenance>,
+}
+type Measured = (Manifest, Vec<Result<MeasuredReading, String>>);
+
+struct ProvenanceRun<'a> {
+    corpus: Option<(&'a Path, &'a crate::corpus::Corpus)>,
+    verified: &'a [crate::corpus::VerifiedFile],
+}
 
 /// Measure every reading of every take, `jobs` at a time.
 fn measure_all(
@@ -337,22 +361,23 @@ fn measure_all(
     sessions: &[String],
     jobs: usize,
     quiet: bool,
+    provenance: Option<&ProvenanceRun<'_>>,
 ) -> Result<Vec<Measured>, String> {
     let opts = session_opts();
     let mut loaded = Vec::new();
     for s in sessions {
-        let (m, base) = session_cmd::load_manifest(&[root.join(s)])?;
+        let (m, base, digest) = session_cmd::load_manifest_file(&root.join(s))?;
         for e in &m.recordings {
             session_cmd::position_of(e).map_err(|err| format!("{s}: {err}"))?;
         }
-        loaded.push((m, base));
+        loaded.push((m, base, digest));
     }
     let work: Vec<(usize, usize)> = loaded
         .iter()
         .enumerate()
-        .flat_map(|(t, (m, _))| (0..m.recordings.len()).map(move |i| (t, i)))
+        .flat_map(|(t, (m, _, _))| (0..m.recordings.len()).map(move |i| (t, i)))
         .collect();
-    let results: Mutex<BTreeMap<(usize, usize), Result<Reading, String>>> =
+    let results: Mutex<BTreeMap<(usize, usize), Result<MeasuredReading, String>>> =
         Mutex::new(BTreeMap::new());
     let next = AtomicUsize::new(0);
     std::thread::scope(|scope| {
@@ -360,7 +385,7 @@ fn measure_all(
             scope.spawn(|| loop {
                 let k = next.fetch_add(1, Ordering::Relaxed);
                 let Some(&(t, i)) = work.get(k) else { break };
-                let (m, base) = &loaded[t];
+                let (m, base, digest) = &loaded[t];
                 let ctx = Ctx {
                     m,
                     base,
@@ -368,7 +393,26 @@ fn measure_all(
                     tty: false,
                     quiet,
                 };
-                let r = session_cmd::read_one(&m.recordings[i], &ctx);
+                let r = if let Some(p) = provenance {
+                    session_cmd::read_one_with_context(&m.recordings[i], &ctx).map(
+                        |(reading, context)| MeasuredReading {
+                            reading,
+                            provenance: Some(context.finish(
+                                &sessions[t],
+                                digest,
+                                i + 1,
+                                &m.recordings[i],
+                                p.corpus,
+                                p.verified,
+                            )),
+                        },
+                    )
+                } else {
+                    session_cmd::read_one(&m.recordings[i], &ctx).map(|reading| MeasuredReading {
+                        reading,
+                        provenance: None,
+                    })
+                };
                 results.lock().unwrap().insert((t, i), r);
             });
         }
@@ -377,7 +421,7 @@ fn measure_all(
     Ok(loaded
         .into_iter()
         .enumerate()
-        .map(|(t, (m, _))| {
+        .map(|(t, (m, _, _))| {
             let rs = (0..m.recordings.len())
                 .map(|i| results.remove(&(t, i)).unwrap())
                 .collect();
@@ -551,15 +595,17 @@ pub fn run(o: &Options) -> Result<bool, String> {
     if o.reveal && !o.holdout {
         return Err("--reveal goes with --holdout".into());
     }
-    if let (Some(c), true) = (&corpus, o.fetch) {
+    let verified = if let (Some(c), true) = (&corpus, o.fetch) {
         crate::corpus::fetch(&o.root, c, &o.takes, o.smoke, o.holdout, o.quiet).map_err(|e| {
             if o.holdout {
                 "the audio of a holdout take could not be fetched".to_string()
             } else {
                 e
             }
-        })?;
-    }
+        })?
+    } else {
+        Vec::new()
+    };
     let holdout_ids: std::collections::BTreeSet<String> = corpus
         .as_ref()
         .map(|c| {
@@ -618,7 +664,17 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let jobs = o.jobs.unwrap_or_else(|| {
         std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
     });
-    let measured = measure_all(root, &sessions, jobs, o.quiet)?;
+    let provenance = ProvenanceRun {
+        corpus: corpus.as_ref().map(|c| (o.root.as_path(), c)),
+        verified: &verified,
+    };
+    let measured = measure_all(
+        root,
+        &sessions,
+        jobs,
+        o.quiet,
+        o.write_baseline.then_some(&provenance),
+    )?;
 
     let mut rows = Vec::new();
     let mut worst = Vec::new();
@@ -643,13 +699,16 @@ pub fn run(o: &Options) -> Result<bool, String> {
         for (i, (e, r)) in m.recordings.iter().zip(rs).enumerate() {
             readings += 1;
             let now = match r {
-                Ok(r) => {
+                Ok(result) => {
+                    let r = &result.reading;
                     let m = &r.measurement;
                     let unlock_found = !m.unlock_coverage.is_some_and(|c| c < UNLOCK_FOUND_SHARE);
                     if unlock_found && m.amplitude_deg.is_some_and(|a| a > AMPLITUDE_HIGH_DEG) {
                         amplitude_high.push(format!("{take} #{}", i + 1));
                     }
-                    Some(Values::of(r))
+                    let mut values = Values::of(r);
+                    values.provenance = result.provenance.clone();
+                    Some(values)
                 }
                 Err(err) => {
                     if o.quiet {
@@ -737,13 +796,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
         if outcome.integrity.incomplete() {
             return Err("required sessions or readings are missing or unreadable, so no baseline was written".into());
         }
-        let mut takes = old.map(|b| b.takes).unwrap_or_default();
-        takes.extend(fresh);
-        let b = Baseline {
-            schema: BASELINE_SCHEMA.to_string(),
-            software: crate::output::software(),
-            takes,
-        };
+        let b = updated_baseline(old, fresh);
         let text = serde_json::to_string_pretty(&b).map_err(|e| e.to_string())? + "\n";
         fs::write(&bpath, text).map_err(|e| format!("{}: {e}", bpath.display()))?;
     }
@@ -867,7 +920,7 @@ fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String
     let jobs = o.jobs.unwrap_or_else(|| {
         std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
     });
-    let measured = measure_all(root, sessions, jobs, true)?;
+    let measured = measure_all(root, sessions, jobs, true, None)?;
     let mg = HOLDOUT_MARGINS;
     let mut readings = Vec::new();
     let mut unreadable = 0;
@@ -877,6 +930,7 @@ fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String
                 unreadable += 1;
                 continue;
             };
+            let r = &r.reading;
             let me = &r.measurement;
             let tg = e.reference.clone().unwrap_or_default();
             let named = e.fault.as_ref();
@@ -1158,7 +1212,56 @@ mod tests {
             beat_error_unlock_ms: Some(be),
             beat_error_ms: Some(be),
             beats,
+            provenance: None,
         }
+    }
+
+    #[test]
+    fn old_entries_are_unknown_and_partial_updates_preserve_origin_and_numbers() {
+        let legacy = r#"{"label":"legacy","rate_s_per_day":1.23456789012345,"amplitude_deg":270.123456789,"beat_error_unlock_ms":-0.123456789,"beat_error_ms":0.23456789,"beats":12345}"#;
+        let unknown: Values = serde_json::from_str(legacy).unwrap();
+        assert!(unknown.provenance.is_none());
+        let mut retained = unknown.clone();
+        retained.provenance = Some(crate::regress_provenance::EntryProvenance {
+            schema: "timegrapher.regress-entry-provenance/1".into(),
+            software: serde_json::json!({"git_hash":"original-entry-engine"}),
+            manifest: serde_json::json!({"sha256":"old-manifest"}),
+            inputs: vec![],
+            settings: serde_json::json!({}),
+            measurement_context: serde_json::json!({}),
+            comparator: serde_json::json!({}),
+            additional_fields: BTreeMap::from([(
+                "future_annotation".into(),
+                serde_json::json!({"preserve":"exact"}),
+            )]),
+        });
+        let old = Baseline {
+            schema: BASELINE_SCHEMA.into(),
+            software: serde_json::json!({"git_hash":"different-document-writer"}),
+            takes: BTreeMap::from([
+                ("unknown".into(), vec![unknown.clone()]),
+                ("retained".into(), vec![retained.clone()]),
+                ("selected".into(), vec![unknown.clone()]),
+            ]),
+        };
+        let fresh = v(3.0, 250.0, 0.1, 999);
+        let result = updated_baseline(
+            Some(old),
+            BTreeMap::from([("selected".into(), vec![fresh.clone()])]),
+        );
+        let encoded = serde_json::to_string(&result).unwrap();
+        let result: Baseline = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(result.takes["unknown"], [unknown.clone()]);
+        assert_eq!(result.takes["retained"], [retained]);
+        assert_eq!(result.takes["selected"], [fresh]);
+        assert_eq!(
+            result.takes["unknown"][0].rate_s_per_day.unwrap().to_bits(),
+            unknown.rate_s_per_day.unwrap().to_bits()
+        );
+        assert_eq!(
+            serde_json::to_value(&result.takes["unknown"][0]).unwrap()["provenance"],
+            serde_json::Value::Null
+        );
     }
 
     fn tg(rate: f64, amp: f64, be: f64) -> Reference {
