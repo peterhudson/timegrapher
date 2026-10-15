@@ -1,4 +1,4 @@
-//! Subprocess failure semantics over MCP stdio, without building the CLI or
+//! Subprocess contracts over MCP stdio, without building the CLI or
 //! opening sound input. The deterministic CLI doubles use the Unix shell.
 #![cfg(unix)]
 
@@ -92,6 +92,132 @@ struct Scratch(PathBuf);
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn analysis_double(dir: &Path, doc: &Value) -> PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("analyze.json"), doc.to_string()).unwrap();
+    std::fs::write(
+        dir.join("profile.json"),
+        r#"{"schema":"timegrapher.profile/1","profile_seen":true}"#,
+    )
+    .unwrap();
+    let cli = dir.join("cli");
+    std::fs::write(
+        &cli,
+        r#"#!/bin/sh
+folder=$(dirname "$0")
+case "$1" in
+analyze) cat "$folder/analyze.json" ;;
+profile)
+    printf '%s\n' "$@" > "$folder/profile.args"
+    cat "$folder/profile.json"
+    ;;
+*) exit 1 ;;
+esac
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+    cli
+}
+
+#[test]
+fn analyze_result_and_lead_keep_the_clis_authoritative_clock() {
+    let dir = Scratch(std::env::temp_dir().join(format!(
+        "timegrapher-mcp-clock-contract-{}",
+        std::process::id()
+    )));
+    let cases: Value = serde_json::from_str(include_str!("fixtures/analysis_rates.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let mut doc = case["doc"].clone();
+        doc["duration_s"] = json!(60);
+        doc["bph"] = json!(21600);
+        doc["input"] = json!({ "settings": { "lift_deg": 52 } });
+        let cli = analysis_double(&dir.0.join(name), &doc);
+        let mut client = Client::start(&cli, &dir.0.join("config"));
+        let result = client.request(
+            "tools/call",
+            json!({ "name": "analyze_recording", "arguments": {
+                "recording": dir.0.join("unused.wav").to_string_lossy() } }),
+        );
+        assert_ne!(result["isError"], true, "{name}: {result}");
+        assert_eq!(
+            result["structuredContent"], doc,
+            "{name}: raw/USB data changed"
+        );
+        let lead = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            lead.starts_with(case["expected_lead"].as_str().unwrap()),
+            "{name}: {lead}"
+        );
+        assert!(
+            lead.contains(case["expected_basis"].as_str().unwrap()),
+            "{name}: {lead}"
+        );
+    }
+}
+
+#[test]
+fn auxiliary_profile_uses_effective_analysis_settings() {
+    let dir = Scratch(std::env::temp_dir().join(format!(
+        "timegrapher-mcp-profile-contract-{}",
+        std::process::id()
+    )));
+    for (name, args, lift, bph) in [
+        ("calibre", json!({ "calibre": "ETA 6497-2" }), 44, 21600),
+        (
+            "override",
+            json!({ "calibre": "ETA 6497-2", "lift_deg": 50, "bph": 18000 }),
+            50,
+            18000,
+        ),
+        ("default", json!({}), 52, 28800),
+        ("top-level-lift", json!({}), 53, 21600),
+    ] {
+        let mut doc = json!({
+            "schema": "timegrapher.analyze/2", "watch_heard": true,
+            "duration_s": 60, "bph": bph, "lift_deg": lift,
+            "overall": { "rate_s_per_day": 6 },
+            "input": { "settings": { "lift_deg": lift } },
+        });
+        if name == "top-level-lift" {
+            doc["input"]["settings"]
+                .as_object_mut()
+                .unwrap()
+                .remove("lift_deg");
+        }
+        let cli = analysis_double(&dir.0.join(name), &doc);
+        let mut client = Client::start(&cli, &dir.0.join("config"));
+        let mut args = args;
+        args["recording"] = json!(dir.0.join("unused.wav").to_string_lossy());
+        let result = client.request(
+            "tools/call",
+            json!({ "name": "analyze_recording", "arguments": args }),
+        );
+        assert_ne!(result["isError"], true, "{name}: {result}");
+        assert_eq!(result["structuredContent"], doc);
+        assert_eq!(
+            result["_meta"]["timegrapher/charts"]["profile"]["profile_seen"],
+            true
+        );
+        let child_args = std::fs::read_to_string(dir.0.join(name).join("profile.args")).unwrap();
+        let child_args: Vec<_> = child_args.lines().collect();
+        assert!(
+            child_args.contains(&format!("--lift={lift}").as_str()),
+            "{name}: {child_args:?}"
+        );
+        assert!(
+            child_args.contains(&format!("--bph={bph}").as_str()),
+            "{name}: {child_args:?}"
+        );
+        assert!(
+            child_args.contains(&"--at=25"),
+            "profile keeps the selected middle interval"
+        );
+        assert!(child_args.contains(&"--span=10"));
     }
 }
 

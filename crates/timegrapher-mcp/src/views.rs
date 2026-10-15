@@ -251,12 +251,7 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
 /// What the Recording view needs beyond `analyze`'s document: the strip
 /// from the windows file, and the Tick and Tock profiles over ten seconds
 /// in the middle of the recording.
-pub async fn analyze_charts(
-    doc: &Value,
-    args: &Map<String, Value>,
-    extras: &[String],
-    recording: &str,
-) -> Value {
+pub async fn analyze_charts(doc: &Value, extras: &[String], recording: &str) -> Value {
     let mut out = Map::new();
     let duration = doc["duration_s"].as_f64().unwrap_or(0.0);
     if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--windows=")) {
@@ -277,7 +272,10 @@ pub async fn analyze_charts(
         if let Some(bph) = doc["bph"].as_u64() {
             line.push(format!("--bph={bph}"));
         }
-        if let Some(lift) = args.get("lift_deg").and_then(Value::as_f64) {
+        if let Some(lift) = doc["input"]["settings"]["lift_deg"]
+            .as_f64()
+            .or(doc["lift_deg"].as_f64())
+        {
             line.push(format!("--lift={lift}"));
         }
         line.push("--".into());

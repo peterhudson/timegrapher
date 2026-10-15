@@ -37,6 +37,15 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --release
 
+  mcp-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - run: node --test crates/timegrapher-mcp/tests/recording_view.test.cjs
+
   # The engine against tg on the public corpus's takes (docs/regress.md),
   # plus its smoke takes. The audio is downloaded from the corpus's
   # releases, checked by SHA-256 and cached between runs.
