@@ -117,29 +117,39 @@ jobs:
           check/*/timegrapher --version
           check/*/timegrapher-app --help
           check/*/timegrapher-mcp --version
+          python3 packaging/artifact_smoke.py check/timegrapher-* --label linux-tar
           APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage cli --version
           APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage --help
+          mkdir appimage-check
+          (cd appimage-check && ../dist/*.AppImage --appimage-extract >/dev/null)
+          python3 packaging/artifact_smoke.py appimage-check/squashfs-root/usr/bin --label linux-appimage
       - name: Check the files (macOS)
         if: matrix.platform == 'macos'
         run: |
           hdiutil attach dist/*.dmg -mountpoint "$RUNNER_TEMP/dmg" -nobrowse
+          trap 'hdiutil detach "$RUNNER_TEMP/dmg" || true' EXIT
           app="$RUNNER_TEMP/dmg/Timegrapher.app"
           lipo -archs "$app/Contents/MacOS/timegrapher-app"
           codesign --verify --verbose "$app"
           "$app/Contents/MacOS/timegrapher" --version
           "$app/Contents/MacOS/timegrapher-app" --help
+          python3 packaging/artifact_smoke.py "$app/Contents/MacOS" --label macos-dmg
           hdiutil detach "$RUNNER_TEMP/dmg"
+          trap - EXIT
           mkdir check && tar -C check -xzf dist/*-cli.tar.gz
           check/*/timegrapher --version
           check/*/timegrapher-mcp --version
-          # The Claude Desktop bundle, once the MCP crate packs one.
-          for b in dist/*.mcpb; do
-            [ -e "$b" ] || continue
+          python3 packaging/artifact_smoke.py check/timegrapher-* --label macos-tar
+          # The MCP bundle is a required release file on this platform.
+          bundles=(dist/*.mcpb)
+          [ "${#bundles[@]}" -eq 1 ] && [ -f "${bundles[0]}" ]
+          for b in "${bundles[@]}"; do
             mkdir mcpb && unzip -q "$b" -d mcpb
             python3 -c "import json,sys; json.load(open('mcpb/manifest.json'))"
             lipo -archs mcpb/server/timegrapher-mcp
             mcpb/server/timegrapher-mcp --version
             mcpb/server/timegrapher --version
+            python3 packaging/artifact_smoke.py mcpb/server --label macos-mcpb
           done
       - name: Check the files (Windows)
         if: matrix.platform == 'windows'
@@ -148,12 +158,15 @@ jobs:
           check/*/timegrapher.exe --version
           check/*/timegrapher-app.exe --help
           check/*/timegrapher-mcp.exe --version
-          for b in dist/*.mcpb; do
-            [ -e "$b" ] || continue
+          python packaging/artifact_smoke.py check/timegrapher-* --label windows-zip
+          bundles=(dist/*.mcpb)
+          [ "${#bundles[@]}" -eq 1 ] && [ -f "${bundles[0]}" ]
+          for b in "${bundles[@]}"; do
             7z x -bso0 -omcpb "$b"
             python -c "import json; json.load(open('mcpb/manifest.json'))"
             mcpb/server/timegrapher-mcp.exe --version
             mcpb/server/timegrapher.exe --version
+            python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
           done
 
       - uses: actions/upload-artifact@v4
