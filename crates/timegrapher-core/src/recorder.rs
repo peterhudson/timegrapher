@@ -982,6 +982,20 @@ mod tests {
             })
             .unwrap();
         assert!(error.to_string().contains("rollback failed"));
+        eprintln!("save parent: {:?}", parent);
+        eprintln!("canonical save parent: {:?}", fs::canonicalize(&parent));
+        eprintln!("complete error: {error}");
+        eprintln!("discovered recovery: {:?}", recovery);
+        eprintln!("canonical discovered recovery: {:?}", fs::canonicalize(&recovery));
+        for candidate in fs::read_dir(&parent).unwrap() {
+            let path = candidate.unwrap().path();
+            eprintln!(
+                "candidate: {:?}; canonical: {:?}; original backup bytes: {:?}",
+                path,
+                fs::canonicalize(&path),
+                fs::read(path.join("backup/audio-001.wav")).map(|bytes| bytes == old_audio)
+            );
+        }
         assert!(error.to_string().contains(recovery.to_str().unwrap()));
         assert_eq!(
             fs::read(recovery.join("backup/audio-001.wav")).unwrap(),

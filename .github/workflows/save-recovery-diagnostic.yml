@@ -1,0 +1,13 @@
+name: Windows save recovery diagnosis
+on:
+  push:
+    branches: [codex/v1-save-windows-diagnostic]
+jobs:
+  recovery-path:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Show recovery paths without changing the failing assertion
+        run: cargo test --locked --release -p timegrapher-core --lib recorder::tests::failed_rollback_keeps_recovery_files_and_reports_their_location -- --exact --nocapture
