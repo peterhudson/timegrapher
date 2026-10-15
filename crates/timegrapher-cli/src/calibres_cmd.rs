@@ -8,7 +8,7 @@ use crate::output;
 use serde_json::json;
 use timegrapher_core::calibre_store::{self, Catalog, Entry, Origin, UserCalibres};
 use timegrapher_core::calibres::{self, Calibre};
-use timegrapher_core::periodicity::{standard_wheels, Component, Wheel};
+use timegrapher_core::periodicity::{Component, Wheel};
 
 /// Lift angle when neither `--lift` nor the calibre gives one, degrees.
 pub const DEFAULT_LIFT_DEG: f64 = 52.0;
@@ -24,6 +24,7 @@ pub struct Resolved {
     /// The lift angle came from the flag or the calibre, not the default.
     pub lift_known: bool,
     pub escape_teeth: u32,
+    pub(crate) train: crate::long::ResolvedTrain,
 }
 
 pub fn resolve(
@@ -32,35 +33,38 @@ pub fn resolve(
     lift_deg: Option<f64>,
     escape_teeth: Option<u32>,
 ) -> Result<Resolved, String> {
-    let c = Train {
+    let train = Train {
         calibre,
         escape_teeth,
     }
-    .calibre()?;
+    .resolve()?;
+    Ok(resolve_train(train, bph, lift_deg, escape_teeth))
+}
+
+fn resolve_train(
+    train: crate::long::ResolvedTrain,
+    bph: Option<u32>,
+    lift_deg: Option<f64>,
+    escape_teeth: Option<u32>,
+) -> Resolved {
+    let c = train.calibre.as_ref();
     let lift = lift_deg.or(c.and_then(|c| c.lift_angle_deg));
-    Ok(Resolved {
+    Resolved {
         bph: bph.or(c.and_then(|c| c.bph)),
         lift_deg: lift.unwrap_or(DEFAULT_LIFT_DEG),
         lift_known: lift.is_some(),
         escape_teeth: escape_teeth
             .or(c.and_then(|c| c.escape_teeth))
             .unwrap_or(DEFAULT_ESCAPE_TEETH),
-    })
+        train,
+    }
 }
 
 /// The wheels to name components after: the calibre's train, with the
 /// escape wheel `--escape-teeth` gives in place of the table's.
-pub fn wheels(train: &Train, bph: u32) -> Result<Vec<Wheel>, String> {
-    let mut w = train.wheels(bph)?;
-    if let Some(t) = train.escape_teeth {
-        w.retain(|w| w.name != "escape wheel");
-        w.extend(
-            standard_wheels(bph, t)
-                .into_iter()
-                .filter(|w| w.name == "escape wheel"),
-        );
-    }
-    Ok(w)
+#[cfg(test)]
+fn wheels(train: &Train, bph: u32) -> Result<Vec<Wheel>, String> {
+    Ok(train.resolve()?.analysis_wheels(bph))
 }
 
 /// Name each component after the first wheel whose turn is within 6% of
@@ -279,6 +283,64 @@ mod tests {
         assert_eq!(r.lift_deg, DEFAULT_LIFT_DEG);
 
         assert!(resolve(Some("no such calibre"), None, None, None).is_err());
+    }
+
+    #[test]
+    fn catalogue_custom_settings_keep_explicit_flag_precedence() {
+        let path =
+            std::env::temp_dir().join(format!("tg-custom-settings-{}.json", std::process::id()));
+        let user: UserCalibres = serde_json::from_value(json!({
+            "schema": calibre_store::SCHEMA,
+            "custom": [{"name":"Bench 44","aliases":["Workshop-A"],"bph":21600,"lift_angle_deg":44.0,"escape_teeth":20,"wheels":[]}],
+            "wheels": [],
+        })).unwrap();
+        user.save(&path).unwrap();
+        let resolve = |bph, lift, teeth| {
+            let train = Train {
+                calibre: Some("Workshop-A"),
+                escape_teeth: teeth,
+            }
+            .resolve_at(Some(&path))
+            .unwrap();
+            resolve_train(train, bph, lift, teeth)
+        };
+        let r = resolve(None, None, None);
+        assert_eq!(
+            (r.bph, r.lift_deg, r.escape_teeth, r.lift_known),
+            (Some(21600), 44.0, 20, true)
+        );
+        assert_eq!(r.train.calibre.unwrap().name, "Bench 44");
+        let r = resolve(Some(28800), Some(52.0), Some(15));
+        assert_eq!(
+            (r.bph, r.lift_deg, r.escape_teeth, r.lift_known),
+            (Some(28800), 52.0, 15, true)
+        );
+        std::fs::write(&path, "not JSON").unwrap();
+        assert!(Train {
+            calibre: Some("Workshop-A"),
+            escape_teeth: None
+        }
+        .resolve_at(Some(&path))
+        .is_err());
+        let no_calibre = Train {
+            calibre: None,
+            escape_teeth: None,
+        }
+        .resolve_at(Some(&path))
+        .unwrap();
+        let r = resolve_train(no_calibre, None, None, None);
+        assert_eq!(
+            (r.bph, r.lift_deg, r.escape_teeth, r.lift_known),
+            (None, 52.0, 15, false)
+        );
+        std::fs::remove_file(&path).unwrap();
+        let shipped = Train {
+            calibre: Some("ETA 2824-2"),
+            escape_teeth: None,
+        }
+        .resolve_at(Some(&path))
+        .unwrap();
+        assert_eq!(shipped.calibre.unwrap().name, "ETA 2824-2");
     }
 
     #[test]

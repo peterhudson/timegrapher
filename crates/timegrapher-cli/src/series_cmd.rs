@@ -32,7 +32,7 @@ pub fn run(o: Options) -> Result<(), String> {
         .iter()
         .map(|w| crate::long::parse_wheel(w))
         .collect::<Result<_, _>>()?;
-    o.train.calibre()?;
+    let resolved_train = o.train.resolve()?;
     let files = crate::long::expand_dirs(o.files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -72,7 +72,7 @@ pub fn run(o: Options) -> Result<(), String> {
     }
 
     let mut lc = LongConfig {
-        wheels: o.train.wheels(log.bph)?,
+        wheels: resolved_train.wheels(log.bph),
         ..Default::default()
     };
     lc.wheels.extend(extra);

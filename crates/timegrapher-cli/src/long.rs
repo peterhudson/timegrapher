@@ -3,6 +3,7 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use timegrapher_core::calibre_store::{self, Catalog, Entry, UserCalibres};
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun::{self, LongReport};
@@ -39,12 +40,16 @@ impl Train<'_> {
     /// escape wheel gets one from its teeth, or `--escape-teeth`, or both
     /// common ones.
     pub(crate) fn wheels(&self, bph: u32) -> Result<Vec<Wheel>, String> {
+        Ok(self.wheels_for(self.calibre()?, bph))
+    }
+
+    fn wheels_for(&self, calibre: Option<&Calibre>, bph: u32) -> Vec<Wheel> {
         let escape = |teeth: Option<u32>| match teeth {
             Some(t) => standard_wheels(bph, t),
             None => default_wheels(bph),
         };
-        let Some(c) = self.calibre()? else {
-            return Ok(escape(self.escape_teeth));
+        let Some(c) = calibre else {
+            return escape(self.escape_teeth);
         };
         if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
@@ -61,7 +66,123 @@ impl Train<'_> {
                     .filter(|w| w.name == "escape wheel"),
             );
         }
-        Ok(w)
+        w
+    }
+}
+
+/// Owned catalogue selection for direct analyze/long/series commands. Session
+/// retains its existing built-in Train adapter until its separate parity work.
+pub(crate) struct ResolvedTrain {
+    pub calibre: Option<ResolvedCalibre>,
+    escape_teeth: Option<u32>,
+}
+
+pub(crate) struct ResolvedCalibre {
+    pub name: String,
+    pub bph: Option<u32>,
+    pub lift_angle_deg: Option<f64>,
+    pub escape_teeth: Option<u32>,
+    wheels: Vec<Wheel>,
+}
+
+impl Train<'_> {
+    pub(crate) fn resolve(&self) -> Result<ResolvedTrain, String> {
+        // Defaults must not depend on a catalogue that was not requested.
+        if self.calibre.is_none() {
+            return self.resolve_with(&UserCalibres::default());
+        }
+        self.resolve_at(calibre_store::default_path().as_deref())
+    }
+
+    pub(crate) fn resolve_at(&self, path: Option<&Path>) -> Result<ResolvedTrain, String> {
+        if self.calibre.is_none() {
+            return self.resolve_with(&UserCalibres::default());
+        }
+        let user = match path {
+            Some(path) => UserCalibres::load(path)?,
+            None => UserCalibres::default(),
+        };
+        self.resolve_with(&user)
+    }
+
+    fn resolve_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
+        let cat = Catalog::new(user);
+        let calibre = self.calibre.map(|name| {
+            let entry = cat.find(name).ok_or_else(|| format!(
+                "--calibre '{name}' is not in the catalogue; use `timegrapher calibres --search {name}`"
+            ))?;
+            Ok::<_, String>(resolved_calibre(&cat, entry))
+        }).transpose()?;
+        Ok(ResolvedTrain {
+            calibre,
+            escape_teeth: self.escape_teeth,
+        })
+    }
+}
+
+fn resolved_calibre(cat: &Catalog<'_>, entry: Entry<'_>) -> ResolvedCalibre {
+    let mut wheels = cat.wheels(entry);
+    if let Entry::Table(c) = entry {
+        // Preserve shipped first-match naming order; Catalogue supplies
+        // the effective values, overrides and additional wheel names.
+        let mut ordered = Vec::new();
+        for wheel in &c.wheels {
+            if let Some(i) = wheels.iter().position(|w| w.name == wheel.name) {
+                ordered.push(wheels.remove(i));
+            }
+        }
+        ordered.extend(wheels);
+        wheels = ordered;
+    }
+    ResolvedCalibre {
+        name: entry.name().to_string(),
+        bph: entry.bph(),
+        lift_angle_deg: entry.lift_angle_deg(),
+        escape_teeth: entry.escape_teeth(),
+        wheels,
+    }
+}
+
+impl ResolvedTrain {
+    /// Preserve the direct long/series train behavior: fill a missing escape
+    /// wheel only. Their --calibre still does not set analysis BPH or lift.
+    pub(crate) fn wheels(&self, bph: u32) -> Vec<Wheel> {
+        let escape = |teeth| match teeth {
+            Some(t) => standard_wheels(bph, t),
+            None => default_wheels(bph),
+        };
+        let Some(c) = &self.calibre else {
+            return escape(self.escape_teeth);
+        };
+        if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
+            eprintln!(
+                "note: the {} beats at {cb} vph, the recording at {bph}",
+                c.name
+            );
+        }
+        let mut wheels = c.wheels.clone();
+        if !wheels.iter().any(|w| w.name == "escape wheel") {
+            wheels.extend(
+                escape(self.escape_teeth.or(c.escape_teeth))
+                    .into_iter()
+                    .filter(|w| w.name == "escape wheel"),
+            );
+        }
+        wheels
+    }
+
+    /// Analyze's existing explicit escape-teeth override wins over named wheels.
+    pub(crate) fn analysis_wheels(&self, bph: u32) -> Vec<Wheel> {
+        let mut wheels = self.wheels(bph);
+        if let Some(teeth) = self.escape_teeth {
+            wheels.retain(|w| w.name != "escape wheel");
+            wheels.extend(
+                standard_wheels(bph, teeth)
+                    .into_iter()
+                    .filter(|w| w.name == "escape wheel"),
+            );
+        }
+        wheels
     }
 }
 
@@ -131,7 +252,7 @@ pub fn run(
         .iter()
         .map(|w| parse_wheel(w))
         .collect::<Result<_, _>>()?;
-    train.calibre()?;
+    let resolved_train = train.resolve()?;
     let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -194,7 +315,7 @@ pub fn run(
     }
 
     let mut lc = LongConfig {
-        wheels: train.wheels(log.bph)?,
+        wheels: resolved_train.wheels(log.bph),
         ..Default::default()
     };
     lc.wheels.extend(extra);
@@ -704,5 +825,175 @@ mod recording_order_tests {
         folder.manifest("[[recording]]\nfile='gamma.wav'\n");
         // Lexical and natural order agree; only manifest precedence differs.
         assert_eq!(folder.names(), ["gamma.wav", "alpha.wav", "beta.wav"]);
+    }
+}
+
+#[cfg(test)]
+mod catalogue_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn user() -> UserCalibres {
+        serde_json::from_value(json!({
+            "schema": calibre_store::SCHEMA,
+            "custom": [{"name": "Bench 44", "aliases": ["Workshop-A"], "bph": 21600,
+                "lift_angle_deg": 44.0, "escape_teeth": 20,
+                "wheels": [{"name":"escape wheel","period_s":8.0},{"name":"third wheel","period_s":123.0}]}],
+            "wheels": [{"calibre":"Rolex 3235","name":"third wheel","period_s":241.0}],
+        })).unwrap()
+    }
+
+    fn pairs(wheels: Vec<Wheel>) -> Vec<(String, f64)> {
+        wheels.into_iter().map(|w| (w.name, w.period_s)).collect()
+    }
+
+    #[test]
+    fn catalogue_custom_alias_resolves_discovered_values_and_wheels() {
+        let user = user();
+        let cat = Catalog::new(&user);
+        let discovered = cat.find("workshop a").unwrap();
+        let train = Train {
+            calibre: Some("workshop a"),
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        let c = train.calibre.as_ref().unwrap();
+        assert_eq!(c.name, discovered.name());
+        assert_eq!(c.bph, Some(21600));
+        assert_eq!(c.lift_angle_deg, Some(44.0));
+        assert_eq!(c.escape_teeth, Some(20));
+        assert_eq!(pairs(train.wheels(21600)), pairs(cat.wheels(discovered)));
+        assert!(
+            Train {
+                calibre: Some("workshop a"),
+                escape_teeth: None
+            }
+            .calibre()
+            .is_err(),
+            "legacy session adapter remains deliberately separate"
+        );
+    }
+
+    #[test]
+    fn catalogue_custom_name_shadow_uses_existing_catalogue_precedence() {
+        let mut user = user();
+        user.custom[0].aliases.push("ETA 2824-2".into());
+        let entry = Catalog::new(&user).find("ETA 2824-2").unwrap();
+        assert!(entry.is_custom());
+        let resolved = Train {
+            calibre: Some("ETA 2824-2"),
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        let c = resolved.calibre.as_ref().unwrap();
+        assert_eq!(c.name, entry.name());
+        assert_eq!(c.lift_angle_deg, Some(44.0));
+        assert_eq!(
+            pairs(resolved.wheels(21600)),
+            pairs(Catalog::new(&user).wheels(entry))
+        );
+    }
+
+    #[test]
+    fn catalogue_snapshot_is_owned_and_shipped_overrides_match_discovery() {
+        let mut user = user();
+        let train = Train {
+            calibre: Some("Rolex 3235"),
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        let discovery = Catalog::new(&user).wheels(Catalog::new(&user).find("Rolex 3235").unwrap());
+        let effective = pairs(train.wheels(28800));
+        assert!(effective.contains(&("third wheel".into(), 241.0)));
+        for wheel in discovery {
+            assert!(effective.contains(&(wheel.name, wheel.period_s)));
+        }
+        user.wheels[0].period_s = 999.0;
+        assert_eq!(
+            pairs(train.wheels(28800)),
+            effective,
+            "no store reread during analysis"
+        );
+        let custom = Train {
+            calibre: Some("Workshop-A"),
+            escape_teeth: Some(15),
+        }
+        .resolve_with(&user)
+        .unwrap();
+        assert!(
+            pairs(custom.wheels(21600)).contains(&("escape wheel".into(), 8.0)),
+            "long/series retain their named-wheel precedence"
+        );
+        let overridden = pairs(custom.analysis_wheels(21600));
+        assert!(!overridden.contains(&("escape wheel".into(), 8.0)));
+        let expected = standard_wheels(21600, 15)
+            .into_iter()
+            .find(|w| w.name == "escape wheel")
+            .unwrap();
+        assert!(overridden.contains(&(expected.name, expected.period_s)));
+        assert!(overridden.contains(&("third wheel".into(), 123.0)));
+    }
+
+    #[test]
+    fn catalogue_empty_store_preserves_every_shipped_train_and_defaults() {
+        let empty = UserCalibres::default();
+        for c in calibres::all() {
+            let bph = c.bph.unwrap_or(28800);
+            for teeth in [None, Some(15), Some(20)] {
+                let train = Train {
+                    calibre: Some(&c.calibre),
+                    escape_teeth: teeth,
+                };
+                let resolved = ResolvedTrain {
+                    calibre: Some(resolved_calibre(&Catalog::new(&empty), Entry::Table(c))),
+                    escape_teeth: teeth,
+                };
+                assert_eq!(
+                    pairs(resolved.wheels(bph)),
+                    pairs(train.wheels_for(Some(c), bph)),
+                    "{} {teeth:?}",
+                    c.calibre
+                );
+            }
+        }
+        for teeth in [None, Some(15), Some(20)] {
+            let train = Train {
+                calibre: None,
+                escape_teeth: teeth,
+            };
+            assert_eq!(
+                pairs(train.resolve_with(&empty).unwrap().wheels(28800)),
+                pairs(train.wheels(28800).unwrap())
+            );
+        }
+        assert!(Train {
+            calibre: Some("not a calibre"),
+            escape_teeth: None
+        }
+        .resolve_with(&empty)
+        .is_err());
+        let mut partial = empty;
+        partial
+            .custom
+            .push(serde_json::from_value(json!({"name":"Partial","wheels":[]})).unwrap());
+        let train = Train {
+            calibre: Some("Partial"),
+            escape_teeth: None,
+        }
+        .resolve_with(&partial)
+        .unwrap();
+        assert!(train.calibre.as_ref().unwrap().bph.is_none());
+        assert_eq!(
+            pairs(train.wheels(28800)),
+            pairs(
+                default_wheels(28800)
+                    .into_iter()
+                    .filter(|w| w.name == "escape wheel")
+                    .collect()
+            )
+        );
     }
 }

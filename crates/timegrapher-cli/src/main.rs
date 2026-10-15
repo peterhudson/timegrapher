@@ -619,12 +619,8 @@ fn main() -> ExitCode {
             cfg.amplitude.lift_deg = r.lift_deg;
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
-            let train = long::Train {
-                calibre: calibre.as_deref(),
-                escape_teeth,
-            };
             clock_cmd::correction(&file, device.as_deref(), card_ppm)
-                .and_then(|c| run_analyze(&file, &cfg, &train, beats, windows, c, json))
+                .and_then(|c| run_analyze(&file, &cfg, &r.train, beats, windows, c, json))
         }),
         Command::Shape {
             file,
@@ -992,7 +988,7 @@ fn main() -> ExitCode {
 fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
-    train: &long::Train,
+    train: &long::ResolvedTrain,
     beats: Option<PathBuf>,
     windows: Option<PathBuf>,
     clock: Option<(f64, String)>,
@@ -1000,10 +996,10 @@ fn run_analyze(
 ) -> Result<(), String> {
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let mut a = analyze(&audio, cfg);
-    let calibre = train.calibre()?;
+    let calibre = train.calibre.as_ref();
     // A calibre's own wheels name the periodic components.
     if calibre.is_some() {
-        let wheels = calibres_cmd::wheels(train, a.summary.bph)?;
+        let wheels = train.analysis_wheels(a.summary.bph);
         calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
         calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
     }
@@ -1032,7 +1028,7 @@ fn run_analyze(
     }
     if json {
         let settings = serde_json::json!({
-            "calibre": calibre.map(|c| &c.calibre),
+            "calibre": calibre.map(|c| &c.name),
             "bph": cfg.bph,
             "lift_deg": cfg.amplitude.lift_deg,
             "notch_hz": cfg.envelope.notch_hz,
@@ -1059,7 +1055,7 @@ fn run_analyze(
         if let Some(c) = calibre {
             println!(
                 "Calibre      {}: {}lift {}°, as set unless a flag said otherwise",
-                c.calibre,
+                c.name,
                 c.bph.map_or(String::new(), |b| format!("{b} bph, ")),
                 cfg.amplitude.lift_deg
             );
