@@ -149,9 +149,9 @@ fn stop_reason(cancelled: bool, closed: bool, end: tokio::time::Instant) -> Opti
 }
 
 impl Scope<'_> {
-    pub async fn run(
+    pub async fn run<T: AsRef<std::ffi::OsStr>>(
         &self,
-        args: &[String],
+        args: &[T],
         limit: Option<std::time::Duration>,
     ) -> Result<Outcome, RunError> {
         use tokio::io::AsyncReadExt;

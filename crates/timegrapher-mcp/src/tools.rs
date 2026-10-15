@@ -665,6 +665,12 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
 /// server's working folder is whatever the chat app started it in, so a
 /// relative path would point somewhere the person never meant.
 fn expand_home(s: &str) -> Result<String, String> {
+    Ok(expand_home_path(s)?.to_string_lossy().into_owned())
+}
+
+/// Native expansion for record destinations; identity and process arguments
+/// must not replace non-UTF8 native path components with display characters.
+pub(crate) fn expand_home_path(s: &str) -> Result<std::path::PathBuf, String> {
     let home = || {
         std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
@@ -684,7 +690,7 @@ fn expand_home(s: &str) -> Result<String, String> {
              a Mac or Linux, a drive letter on Windows, or ~ for their home folder)"
         ));
     }
-    Ok(path.to_string_lossy().into_owned())
+    Ok(path)
 }
 
 #[cfg(test)]
