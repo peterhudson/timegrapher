@@ -82,6 +82,14 @@ async fn call(
         Ok(line) => line,
         Err(e) => return Ok(tool_error(e)),
     };
+    let destination = if tool.name == "record_position" {
+        match takes::destination(args) {
+            Ok(path) => Some(path),
+            Err(error) => return Ok(tool_error(error)),
+        }
+    } else {
+        None
+    };
     let deadline = match policy.budget(name, args).and_then(cli::deadline) {
         Ok(deadline) => deadline,
         Err(e) => return Ok(tool_error(e)),
@@ -93,9 +101,9 @@ async fn call(
     };
     // A recording the chat app retries with the same take_id is answered
     // from the take already made; two calls never share the microphone.
-    let take = (tool.name == "record_position")
-        .then(|| takes::key(args))
-        .flatten();
+    let take = destination
+        .as_deref()
+        .and_then(|folder| takes::key(args, folder));
     if let Some(r) = take.as_ref().and_then(takes::recorded) {
         return complete(r);
     }
@@ -107,6 +115,11 @@ async fn call(
     } else {
         None
     };
+    // Another call may have completed between the first lookup and claiming
+    // the microphone. Recheck without introducing any asynchronous gap.
+    if let Some(r) = take.as_ref().and_then(takes::recorded) {
+        return complete(r);
+    }
     // The Recording view's readings over time come from the same run.
     let recording_view = tool.name == "analyze_recording";
     let (extras, _windows) = views::analyze_extras();
@@ -131,7 +144,15 @@ async fn call(
     let progress = (tool.name == "record_position")
         .then(|| progress::report(context, args, feed.as_ref().map(|f| f.path().to_path_buf())))
         .flatten();
-    let out = scope.run(&line, None).await;
+    let out = if let Some(folder) = destination {
+        let mut native: Vec<std::ffi::OsString> =
+            line.iter().map(std::ffi::OsString::from).collect();
+        // record_position has exactly one positional argument, its folder.
+        *native.last_mut().expect("record folder argument") = folder.into_os_string();
+        scope.run(&native, None).await
+    } else {
+        scope.run(&line, None).await
+    };
     drop(progress);
     let out = match out {
         Ok(out) => out,

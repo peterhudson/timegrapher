@@ -130,6 +130,22 @@ pass the same `take_id` with the same folder and position. The take
 already made then comes back, marked as such, instead of a second
 recording. The server remembers takes only while it runs.
 
+For `record_position`, retry identity uses the resolved physical destination,
+`take_id` and position. Existing directory aliases (including symbolic links,
+`~`, `.` and `..`) share an identity; missing destination components are retained
+under the resolved existing ancestor, so creating the folder does not invalidate
+a retry. Symbolic links are resolved before applying `..`. Relative paths remain
+invalid. An inaccessible, non-directory or unresolvable destination returns a
+clear tool error before starting the CLI; it does not silently disable retry.
+
+The same resolved native path is passed to the recording child, so MCP recording
+results name resolved physical paths. Ordinary CLI/save path spelling is
+unchanged. Native paths retain OS encoding internally; JSON request strings must
+be valid UTF-8. This is path identity at resolution time, not an atomic directory
+handle or a filesystem security guarantee: external directory/link replacement
+can change the filesystem while a call runs. Retry memory lasts only for the
+server process, and different positions or take IDs remain separate takes.
+
 Acquisition lengths (`seconds` on `record_position` and `check_microphone`)
 must be finite, positive and representable. Invalid lengths fail before a CLI
 child starts. The CLI applies the same checks to `record --seconds`,
