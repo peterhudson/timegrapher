@@ -1358,3 +1358,37 @@ fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
     }
     w.flush()
 }
+
+#[cfg(test)]
+mod acquisition_defaults {
+    use super::*;
+
+    #[test]
+    fn public_acquisition_defaults_remain_unchanged() {
+        let doctor = Cli::try_parse_from(["timegrapher", "doctor"]).unwrap();
+        assert!(matches!(
+            doctor.command,
+            Command::Doctor { seconds: 5.0, .. }
+        ));
+        let record = Cli::try_parse_from([
+            "timegrapher",
+            "record",
+            "unused-test-folder",
+            "--position",
+            "DU",
+        ])
+        .unwrap();
+        assert!(matches!(
+            record.command,
+            Command::Record { seconds: 120.0, .. }
+        ));
+        let clock = Cli::try_parse_from(["timegrapher", "clock", "measure"]).unwrap();
+        assert!(matches!(
+            clock.command,
+            Command::Clock {
+                action: ClockAction::Measure { minutes: 20.0, .. },
+                ..
+            }
+        ));
+    }
+}

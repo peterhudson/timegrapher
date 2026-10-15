@@ -84,7 +84,15 @@ pub fn run(a: Action, json: bool) -> Result<(), String> {
             device,
             minutes,
             save,
-        } => measure(device.as_deref(), minutes, save, json),
+        } => {
+            if !minutes.is_finite() || minutes <= 0.0 {
+                return Err("--minutes must be a finite positive number of minutes".into());
+            }
+            let seconds = minutes * 60.0;
+            timegrapher_core::capture::checked_duration(seconds)
+                .map_err(|e| format!("--minutes converted to seconds {e}"))?;
+            measure(device.as_deref(), minutes, save, json)
+        }
     }
 }
 
@@ -194,14 +202,15 @@ fn report(
 fn measure(device: Option<&str>, minutes: f64, save: bool, json: bool) -> Result<(), String> {
     use timegrapher_core::capture::{self, Event};
     let (dev, info) = capture::find(device)?;
-    let (cap, rec) = capture::open(&dev, &info, None)?;
+    let seconds = minutes * 60.0;
+    let (cap, rec, _) = capture::open_for_duration(&dev, &info, None, seconds)?;
     eprintln!(
         "timing '{}' against the system clock for {minutes:.0} min; the system clock must be kept by NTP. Nothing needs to be on the microphone.",
         info.name
     );
     let mut tr = clock::ClockTracker::new(rec.sample_rate);
     let mut next = 60.0;
-    while tr.audio_s() < minutes * 60.0 {
+    while tr.audio_s() < seconds {
         match cap.rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(Event::Audio(b)) => tr.push(b.samples.len(), b.at),
             Ok(Event::Error(e)) => return Err(format!("the input failed: {e}")),
