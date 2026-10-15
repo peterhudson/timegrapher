@@ -149,7 +149,9 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         clipped_beats: live.clipped_beats().to_vec(),
         // Not counted live; the tests don't use it.
         clipped_samples: 0,
-        jumps: Vec::new(),
+        // Imported jumps and current position/settling boundaries are all
+        // known cuts, not extra elapsed time or newly detected jumps.
+        jumps: live.breaks().to_vec(),
     })
 }
 
@@ -205,6 +207,15 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
                 (shift_t, first.index - (last_i + n))
             }
         };
+        if prev.is_some() {
+            out.jumps.push(a - shift_t);
+        }
+        out.jumps.extend(
+            log.jumps
+                .iter()
+                .filter(|&&t| t >= a && t < b)
+                .map(|t| t - shift_t),
+        );
         out.beats.extend(
             log.beats[lo..hi]
                 .iter()
@@ -222,6 +233,11 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
                     let mut w = w.clone();
                     w.start_s -= shift_t;
                     w.end_s -= shift_t;
+                    // Beat indices changed sides; keep the existing side
+                    // measurements and signed errors on those same beats.
+                    if shift_i % 2 != 0 {
+                        w.swap_sides();
+                    }
                     w
                 }),
         );
@@ -235,6 +251,8 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
         out.duration_s = b - shift_t;
         prev = Some((out.duration_s, last.time, last.index));
     }
+    out.jumps.sort_by(f64::total_cmp);
+    out.jumps.dedup();
     out
 }
 
@@ -271,11 +289,21 @@ pub fn compute_with(
         ..Default::default()
     };
     let cfg = Config::default();
-    let long = longrun::analyse(log, None, &lc);
+    // These beats are already indexed on their derived timeline. Zero-gap
+    // cuts split fits without adding time or applying side-alignment heuristics.
+    let breaks: Vec<_> = log
+        .jumps
+        .iter()
+        .map(|&audio_s| timegrapher_core::breaks::Break {
+            audio_s,
+            gap_s: 0.0,
+        })
+        .collect();
+    let long = longrun::analyse_with_breaks(log, None, &breaks, &lc);
     stage.store(2, Relaxed);
     let report = steadiness::check(log, None, &long, &lc, &cfg);
     stage.store(3, Relaxed);
-    let grids = steady_views::grids(log, cfg.rate_reading_s);
+    let grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
     let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
     let folds = steady_views::folds(&grids, &report, &lc);
@@ -1276,6 +1304,207 @@ mod tests {
     use super::*;
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    // Known beat records only: these controls do not run the detector.
+    fn context_log() -> BeatLog {
+        BeatLog {
+            sample_rate: 48000,
+            duration_s: 120.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..960)
+                .map(|index| timegrapher_core::beats::Beat {
+                    time: index as f64 * 0.125 + if index >= 480 { 0.03 } else { 0.0 },
+                    index,
+                    quality: if index % 13 == 0 { 0.2 } else { 1.0 },
+                })
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: vec![1.0, 12.0, 41.0, 61.0, 80.0],
+            clipped_samples: 17,
+            jumps: vec![60.03],
+        }
+    }
+
+    #[test]
+    fn derived_log_keeps_known_cuts_and_beat_quality() {
+        let log = context_log();
+        let original: Vec<_> = log
+            .beats
+            .iter()
+            .map(|b| (b.time, b.index, b.quality))
+            .collect();
+        let mut live = LiveAnalyzer::from_log(log, LiveConfig::default());
+        live.set_breaks(vec![40.0, 70.0]);
+        let derived = log_of(&live).unwrap();
+        assert_eq!(derived.jumps, [40.0, 60.03, 70.0]);
+        assert_eq!(
+            derived
+                .beats
+                .iter()
+                .map(|b| (b.time, b.index, b.quality))
+                .collect::<Vec<_>>(),
+            original
+        );
+        assert_eq!(derived.clipped_beats, live.clipped_beats());
+        assert_eq!(derived.duration_s, live.duration_s());
+        assert_eq!(derived.clipped_samples, 0, "not counted live, unchanged");
+    }
+
+    #[test]
+    fn derived_join_transports_cuts_and_existing_sample_context() {
+        let mut log = context_log();
+        log.jumps = vec![5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 60.03, 80.0, 110.0];
+        let spans = [(10.0, 20.0), (30.01, 30.02), (40.0, 80.0)];
+        let joined = join(&log, &spans);
+        // The empty middle span adds neither a join nor a cut. The second
+        // retained span starts at15 (ten seconds plus the existing5s gap).
+        assert_eq!(joined.jumps, [0.0, 5.0, 15.0, 35.03]);
+        assert_eq!(joined.duration_s, 55.0);
+        assert_eq!(joined.clipped_beats, [2.0, 16.0, 36.0]);
+        assert_eq!(joined.clipped_samples, 17, "existing whole-log counter");
+        let kept: Vec<_> = log
+            .beats
+            .iter()
+            .filter(|b| (10.0..20.0).contains(&b.time) || (40.0..80.0).contains(&b.time))
+            .collect();
+        assert_eq!(joined.beats.len(), kept.len());
+        for (out, input) in joined.beats.iter().zip(kept) {
+            assert_eq!(out.quality, input.quality);
+            assert_eq!(
+                out.time,
+                input.time - if input.time < 20.0 { 10.0 } else { 25.0 }
+            );
+        }
+        assert!(joined.beats.windows(2).all(|b| b[0].index < b[1].index));
+    }
+
+    #[test]
+    fn derived_join_keeps_amplitude_sides_on_the_renumbered_beats() {
+        use timegrapher_core::amplitude::AmplitudeWindow;
+        for (start, second_start, expected_swaps) in
+            [(0.0, 40.0, [false, false]), (0.125, 40.125, [true, true])]
+        {
+            let end = start + 10.0;
+            let mut log = context_log();
+            let window = |a, b| AmplitudeWindow {
+                start_s: a,
+                end_s: b,
+                even_deg: Some(260.0),
+                odd_deg: Some(280.0),
+                beat_error_ms: Some(0.4),
+                beat_error_unlock_ms: Some(-0.2),
+                even_unlock_ms: Some(-3.0),
+                odd_unlock_ms: Some(-4.0),
+                even_drop_ms: Some(0.1),
+                odd_drop_ms: Some(0.5),
+            };
+            log.amplitude_windows = vec![
+                window(start - 1.0, start + 1.0),
+                window(start + 2.0, start + 4.0),
+                window(end - 1.0, end + 1.0),
+                window(42.0, 44.0),
+            ];
+            let joined = join(&log, &[(start, end), (second_start, second_start + 10.0)]);
+            assert_eq!(
+                joined.amplitude_windows.len(),
+                2,
+                "only fully contained windows"
+            );
+            for (((a, b), w), expected_swap) in [(start, end), (second_start, second_start + 10.0)]
+                .into_iter()
+                .zip(&joined.amplitude_windows)
+                .zip(expected_swaps)
+            {
+                let input_first = log.beats.iter().find(|x| x.time >= a).unwrap();
+                let offset = if a == start {
+                    start
+                } else {
+                    second_start - 15.0
+                };
+                let output_first = joined
+                    .beats
+                    .iter()
+                    .find(|x| x.time == input_first.time - offset)
+                    .unwrap();
+                let swapped = (input_first.index - output_first.index) % 2 != 0;
+                assert_eq!(
+                    swapped, expected_swap,
+                    "explicit first/later parity coverage"
+                );
+                assert_eq!(w.even_deg, Some(if expected_swap { 280.0 } else { 260.0 }));
+                assert_eq!(
+                    w.beat_error_ms,
+                    Some(if expected_swap { -0.4 } else { 0.4 })
+                );
+                let mut expected = log
+                    .amplitude_windows
+                    .iter()
+                    .find(|w| w.start_s >= a && w.end_s <= b)
+                    .unwrap()
+                    .clone();
+                expected.start_s -= offset;
+                expected.end_s -= offset;
+                if swapped {
+                    expected.swap_sides();
+                }
+                assert_eq!(
+                    serde_json::to_value(w).unwrap(),
+                    serde_json::to_value(&expected).unwrap()
+                );
+                assert_eq!(w.mean(), Some(270.0));
+            }
+        }
+    }
+
+    #[test]
+    fn derived_compute_uses_existing_piecewise_analysis() {
+        let mut log = context_log();
+        // Unequal rates ensure whole-history weighting cannot be replaced by
+        // a latest-piece fit. Keep the existing phase step and beat qualities.
+        for b in &mut log.beats {
+            let rate = if b.index < 480 { 10.0 } else { -20.0 };
+            let local = if b.index < 480 {
+                b.index
+            } else {
+                b.index - 480
+            };
+            b.time = if b.index < 480 { 0.0 } else { 60.03 }
+                + local as f64 * 0.125 / (1.0 + rate / 86400.0);
+        }
+        let lc = LongConfig {
+            wheels: default_wheels(log.bph),
+            ..Default::default()
+        };
+        let breaks = [timegrapher_core::breaks::Break {
+            audio_s: 60.03,
+            gap_s: 0.0,
+        }];
+        let long = longrun::analyse_with_breaks(&log, None, &breaks, &lc);
+        let expected = steadiness::check(&log, None, &long, &lc, &Config::default());
+        let actual = compute(&log, None);
+        assert_eq!(
+            serde_json::to_value(&actual.report).unwrap(),
+            serde_json::to_value(&expected).unwrap()
+        );
+        let cuts = longrun::cuts(None, &breaks);
+        let whole = timegrapher_core::timing::fit_pieces(&log.beats, log.bph, &cuts).unwrap();
+        assert!((whole.rate_s_per_day + 5.0).abs() < 0.1);
+        assert_eq!(
+            long.overall.as_ref().unwrap().rate_s_per_day,
+            whole.rate_s_per_day
+        );
+        assert!(
+            (whole.rate_s_per_day + 20.0).abs() > 10.0,
+            "not latest piece"
+        );
+        assert_eq!(
+            actual.grids[0].y.len(),
+            steady_views::grids_with_breaks(&log, 10.0, &breaks)[0]
+                .y
+                .len()
+        );
+    }
 
     #[test]
     fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {

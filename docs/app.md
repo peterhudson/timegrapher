@@ -479,7 +479,17 @@ the statistics: readings, median, standard deviation, the scatter from one
 reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
 trend and period when found. **Rate**, **Amplitude** and **Beat Error**,
 in each pane's toolbar, choose which series that pane shows; at least one
-stays on. The views:
+stays on.
+
+Known phase jumps and position boundaries remain cuts in the derived
+Steadiness log, including when separate visits to one position are joined.
+Desktop rate readings do not bridge those cuts; the overall fit still combines the
+pieces using their existing beat weights. Joining also keeps amplitude sides
+and signed beat errors aligned with the renumbered beats. This preserves
+supplied context; it does not detect new jumps or change the statistical tests.
+Amplitude-window eligibility across internal cuts is unchanged.
+
+The views:
 **Readings Over Time** (the readings in time order, with the stretches of
 constant level the change finder found and, for two states, the two
 levels dashed; scaled to the readings with lone wild ones left out),
