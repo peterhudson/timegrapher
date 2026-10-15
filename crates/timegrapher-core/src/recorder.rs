@@ -981,10 +981,34 @@ mod tests {
                     .starts_with(".timegrapher-save-")
             })
             .unwrap();
-        assert!(error.to_string().contains("rollback failed"));
-        assert!(error.to_string().contains(recovery.to_str().unwrap()));
+        let message = error.to_string();
+        assert!(message.contains("rollback failed"));
+        let reported = PathBuf::from(
+            message
+                .split_once("; recovery files retained in ")
+                .expect("the error must give the complete recovery path")
+                .1,
+        );
+        assert!(
+            reported.is_dir(),
+            "reported recovery path is unusable: {message}"
+        );
+        // Windows' temp path can use RUNNER~1 while canonical paths use
+        // runneradmin. Check identity, then read the exact reported location.
         assert_eq!(
-            fs::read(recovery.join("backup/audio-001.wav")).unwrap(),
+            fs::canonicalize(&reported).unwrap(),
+            fs::canonicalize(&recovery).unwrap(),
+            "{message}; discovered recovery: {}",
+            recovery.display()
+        );
+        assert_eq!(
+            fs::canonicalize(reported.parent().unwrap()).unwrap(),
+            fs::canonicalize(&parent).unwrap(),
+            "{message}; expected save parent: {}",
+            parent.display()
+        );
+        assert_eq!(
+            fs::read(reported.join("backup/audio-001.wav")).unwrap(),
             old_audio
         );
         drop(r);
