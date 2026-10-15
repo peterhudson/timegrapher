@@ -127,3 +127,124 @@ fn an_unreadable_existing_baseline_is_not_replaced() {
     let created: Value = serde_json::from_slice(&std::fs::read(&baseline).unwrap()).unwrap();
     assert_eq!(created["schema"], "timegrapher.regress-baseline/1");
 }
+
+// A 1-second PCM silence file exercises metadata plumbing, not acoustic accuracy.
+fn silence_wav() -> Vec<u8> {
+    let frames = 48_000u32;
+    let size = frames * 2;
+    let mut bytes = Vec::new();
+    bytes.extend(b"RIFF");
+    bytes.extend((36 + size).to_le_bytes());
+    bytes.extend(b"WAVEfmt ");
+    bytes.extend(16u32.to_le_bytes());
+    bytes.extend(1u16.to_le_bytes()); // PCM
+    bytes.extend(1u16.to_le_bytes()); // mono
+    bytes.extend(48_000u32.to_le_bytes());
+    bytes.extend(96_000u32.to_le_bytes());
+    bytes.extend(2u16.to_le_bytes());
+    bytes.extend(16u16.to_le_bytes());
+    bytes.extend(b"data");
+    bytes.extend(size.to_le_bytes());
+    bytes.resize(44 + size as usize, 0);
+    bytes
+}
+
+#[test]
+fn selected_write_captures_actual_context_and_preserves_other_entry_origins() {
+    let unknown = json!({ "label":"old.wav", "rate_s_per_day":1.23456789012345,
+        "amplitude_deg":270.123456789, "beat_error_unlock_ms":-0.123456789,
+        "beat_error_ms":0.23456789, "beats":12345 });
+    let mut attributed = unknown.clone();
+    attributed["provenance"] = json!({
+        "schema":"timegrapher.regress-entry-provenance/1",
+        "software":{"git_hash":"old-entry-engine"}, "manifest":{"sha256":"old-manifest"},
+        "inputs":[], "settings":{}, "measurement_context":{}, "comparator":{},
+        "future_annotation":{"preserve":"unselected-extension"},
+    });
+    let f = Fixture::new(
+        "provenance",
+        json!({
+            "legacy/session.toml":[unknown.clone()],
+            "attributed/session.toml":[attributed.clone()],
+        }),
+    );
+    let dir = f.0.join("takes/selected");
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = silence_wav();
+    let digest = timegrapher_core::archive::sha256_hex(&wav);
+    std::fs::write(dir.join("silence.wav"), &wav).unwrap();
+    let manifest = "bph=28800\nlift=49.5\nsettle_s=0\ncard_ppm=0\n[[recording]]\nfile='silence.wav'\nposition='DU'\nstart_s=0.125\nend_s=0.875\nreference={source='historical tg label, executable unknown'}\n";
+    std::fs::write(dir.join("session.toml"), manifest).unwrap();
+    std::fs::write(
+        f.0.join("corpus.json"),
+        serde_json::to_vec(&json!({"takes":[{
+            "id":"selected", "tier":"referenced", "release":"unused-local-fixture",
+            "files":[{"name":"silence.wav","bytes":wav.len(),"sha256":digest}],
+        }]}))
+        .unwrap(),
+    )
+    .unwrap();
+    let out = f
+        .command()
+        .args(["--take", "selected", "--write-baseline", "--fetch"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let baseline: Value =
+        serde_json::from_slice(&std::fs::read(f.0.join("baseline.json")).unwrap()).unwrap();
+    assert_eq!(baseline["takes"]["attributed/session.toml"][0], attributed);
+    let mut explicit_unknown = unknown.clone();
+    explicit_unknown["provenance"] = Value::Null;
+    assert_eq!(
+        baseline["takes"]["legacy/session.toml"][0],
+        explicit_unknown
+    );
+    let p = &baseline["takes"]["selected/session.toml"][0]["provenance"];
+    assert_eq!(
+        p["manifest"]["sha256"],
+        timegrapher_core::archive::sha256_hex(manifest.as_bytes())
+    );
+    assert_eq!(p["manifest"]["recording_index_1based"], 1);
+    assert_eq!(p["manifest"]["recording"]["start_s"], 0.125);
+    assert_eq!(p["settings"]["requested_bph"], 28800);
+    assert_eq!(p["settings"]["lift_deg"], 49.5);
+    assert_eq!(p["measurement_context"]["measured_start_s"], 0.125);
+    assert_eq!(p["measurement_context"]["measured_end_s"], 0.875);
+    assert_eq!(p["measurement_context"]["detected_bph"], 28800);
+    assert_eq!(p["inputs"][0]["verified_identity"]["sha256"], digest);
+    assert_eq!(p["inputs"][0]["verified_identity"]["bytes"], wav.len());
+    assert_eq!(
+        p["inputs"][0]["verified_identity"]["timing"],
+        "verified_at_fetch_this_run"
+    );
+    assert!(p["comparator"]["executable"].is_null());
+    assert_eq!(
+        p["comparator"]["reference_as_declared"]["source"],
+        "historical tg label, executable unknown"
+    );
+
+    // A later write without fetch must not carry forward a previous hash check.
+    let out = f
+        .command()
+        .args(["--take", "selected", "--write-baseline"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let next: Value =
+        serde_json::from_slice(&std::fs::read(f.0.join("baseline.json")).unwrap()).unwrap();
+    let p = &next["takes"]["selected/session.toml"][0]["provenance"];
+    assert!(p["inputs"][0]["verified_identity"].is_null());
+    assert_eq!(p["inputs"][0]["declared_corpus_identity"]["sha256"], digest);
+    for field in [
+        "rate_s_per_day",
+        "amplitude_deg",
+        "beat_error_unlock_ms",
+        "beat_error_ms",
+        "beats",
+    ] {
+        assert_eq!(
+            next["takes"]["selected/session.toml"][0][field],
+            baseline["takes"]["selected/session.toml"][0][field]
+        );
+    }
+}

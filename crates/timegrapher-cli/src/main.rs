@@ -9,6 +9,7 @@ mod output;
 mod profile_cmd;
 mod record_cmd;
 mod regress_cmd;
+mod regress_provenance;
 mod report;
 mod series_cmd;
 mod session_cmd;

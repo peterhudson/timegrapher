@@ -89,6 +89,15 @@ pub fn holdout_ids(c: &Corpus) -> std::collections::BTreeSet<&str> {
         .collect()
 }
 
+/// A digest actually verified by this invocation's existing fetch pass.
+#[derive(Debug, Clone)]
+pub struct VerifiedFile {
+    /// Resolved during verification; never resolve this historical evidence later.
+    pub canonical_path: Option<PathBuf>,
+    pub bytes: u64,
+    pub sha256: String,
+}
+
 /// Download the audio of every take this run reads (those with a session
 /// file, and the smoke takes with `smoke`) that is missing or changed.
 /// With `holdout` only the holdout takes are read, and only then: their
@@ -100,7 +109,8 @@ pub fn fetch(
     smoke: bool,
     holdout: bool,
     quiet: bool,
-) -> Result<(), String> {
+) -> Result<Vec<VerifiedFile>, String> {
+    let mut verified = Vec::new();
     let mut got = 0u64;
     let quiet = quiet || holdout;
     for t in &c.takes {
@@ -116,8 +126,15 @@ pub fn fetch(
                 return Err(format!("{INDEX}: {}: unsafe file name {}", t.id, f.name));
             }
             let path = dir.join(&f.name);
-            if std::fs::read(&path).is_ok_and(|d| sha256_hex(&d) == f.sha256) {
-                continue;
+            if let Ok(data) = std::fs::read(&path) {
+                if sha256_hex(&data) == f.sha256 {
+                    verified.push(VerifiedFile {
+                        canonical_path: path.canonicalize().ok(),
+                        bytes: data.len() as u64,
+                        sha256: f.sha256.clone(),
+                    });
+                    continue;
+                }
             }
             if !quiet {
                 eprintln!(
@@ -152,12 +169,17 @@ pub fn fetch(
             }
             std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
             got += data.len() as u64;
+            verified.push(VerifiedFile {
+                canonical_path: path.canonicalize().ok(),
+                bytes: data.len() as u64,
+                sha256: f.sha256.clone(),
+            });
         }
     }
     if got > 0 {
         eprintln!("fetched {:.0} MB of corpus audio", got as f64 / 1e6);
     }
-    Ok(())
+    Ok(verified)
 }
 
 /// What the engine did with one smoke recording.
