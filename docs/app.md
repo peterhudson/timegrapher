@@ -790,3 +790,18 @@ Expect the first reading about 4 s after the watch goes on the microphone.
 If nothing is heard for 5 s with the beat rate on Auto, the template is
 dropped and the next watch is picked up from scratch, even at a different
 beat rate.
+
+## Recording stopped: recovery files retained
+
+If keeping the sound or closing a recording fails, capture stops and the
+app shows the scratch folder with a persistent warning. Those files may
+contain incomplete audio or clock information. Resume, Save and Save Again
+are unavailable for that session so an earlier saved take stays unchanged.
+This is different from an input disconnect alone, which can still be resumed.
+
+Copy the folder shown in the warning to a location outside the system
+temporary directory before attempting manual recovery or system cleanup; do
+not treat it as a complete saved take. The app attempts to leave a
+`RECORDING-ERROR.txt` note there and reports if even that write fails. New
+Session, opening another recording, and quitting leave the faulted folder on
+disk. After resolving the storage problem, start a new session.
