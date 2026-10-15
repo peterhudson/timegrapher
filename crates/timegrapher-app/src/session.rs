@@ -59,6 +59,7 @@ pub struct Metadata {
     pub position: String,
     pub bph: Option<u32>,
     pub lift_deg: f64,
+    pub lift_known: bool,
     pub wheels: std::collections::BTreeMap<String, f64>,
     pub guided_ranges: Vec<(Position, f64, f64)>,
     pub guided_wind_h: Option<f64>,

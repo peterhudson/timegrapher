@@ -728,6 +728,9 @@ pub struct TimegrapherApp {
     file_path: String,
     bph: Option<u32>,
     lift_deg: f64,
+    /// (value, supplied): restored/resolved context applies at this value;
+    /// numeric edits away from it retain the existing default-angle inference.
+    lift_context: (f64, bool),
     position: Position,
     /// The beat rate the live engine had locked on to, to log a change.
     locked_bph: Option<u32>,
@@ -1085,6 +1088,7 @@ impl TimegrapherApp {
                 .unwrap_or_default(),
             bph: None,
             lift_deg: DEFAULT_LIFT_DEG,
+            lift_context: (DEFAULT_LIFT_DEG, false),
             position: Position::DialUp,
             session: Session::default(),
             locked_bph: None,
@@ -1188,6 +1192,7 @@ impl TimegrapherApp {
         let mut c = LiveConfig::default();
         c.analysis.bph = self.bph;
         c.analysis.amplitude.lift_deg = self.lift_deg;
+        c.analysis.lift_known = self.lift_known();
         c.profile_s = self.sound_span();
         c
     }
@@ -1503,6 +1508,7 @@ impl TimegrapherApp {
             position: self.position.code().into(),
             bph: self.bph,
             lift_deg: self.lift_deg,
+            lift_known: self.lift_known(),
             wheels: self
                 .cal
                 .custom_wheels(&self.calibre)
@@ -1704,6 +1710,7 @@ impl TimegrapherApp {
             calibre: (!self.calibre.is_empty()).then(|| self.calibre.clone()),
             bph: self.bph.or(self.live.as_ref().and_then(|l| l.bph())),
             lift: Some(self.lift_deg),
+            lift_known: Some(self.lift_known()),
             ..Default::default()
         };
         if let Some(w) = self.cal.custom_wheels(&self.calibre) {
@@ -1772,6 +1779,10 @@ impl TimegrapherApp {
         }
         if let Some(l) = m.lift {
             self.set_lift(l);
+            // Old app manifests did not record provenance. Preserve their
+            // numeric/default inference, refined to actual calibre lift data.
+            let legacy = l != DEFAULT_LIFT_DEG || self.cal.lift(&self.calibre).is_some();
+            self.lift_context = (l, m.lift_known.unwrap_or(legacy));
         }
         if m.bph.is_some() {
             self.bph = m.bph;
@@ -1941,6 +1952,7 @@ impl TimegrapherApp {
             watch: self.watch.clone(),
             calibre: self.calibre.clone(),
             lift_deg: self.lift_deg,
+            lift_context: self.lift_context,
             bph: self.bph,
             position: self.position,
         }
@@ -1950,6 +1962,7 @@ impl TimegrapherApp {
         self.watch = s.watch;
         self.set_calibre(s.calibre);
         self.lift_deg = s.lift_deg;
+        self.lift_context = s.lift_context;
         self.bph = s.bph;
         self.position = s.position;
     }
@@ -2044,6 +2057,7 @@ impl TimegrapherApp {
         let mut cfg = StreamConfig::default();
         cfg.analysis.bph = self.bph;
         cfg.analysis.amplitude.lift_deg = self.lift_deg;
+        cfg.analysis.lift_known = self.lift_known();
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -4144,6 +4158,7 @@ impl TimegrapherApp {
         self.calibre = name;
         if let Some(l) = self.cal.lift(&self.calibre) {
             self.set_lift(l);
+            self.lift_context = (l, true);
         }
         let n = self.calibre.clone();
         self.cal.remember(&n);
@@ -4181,6 +4196,7 @@ impl TimegrapherApp {
         }
         if let Some(l) = change.lift {
             self.set_lift(l);
+            self.lift_context = (l, true);
         }
         if change.wheels {
             self.steady = None;
@@ -4225,7 +4241,7 @@ impl TimegrapherApp {
             let current = self.calibre.clone();
             let change = self.cal.panel(ui, &current, env!("CARGO_PKG_VERSION"));
             self.calibre_changed(&current, change);
-        } else if self.lift_deg == DEFAULT_LIFT_DEG {
+        } else if self.lift_deg == DEFAULT_LIFT_DEG && !self.lift_known() {
             ui.add(
                 egui::Label::new(
                     RichText::new(format!(
@@ -4238,6 +4254,17 @@ impl TimegrapherApp {
                 )
                 .wrap(),
             );
+        }
+    }
+
+    /// Restore known/assumed context only for the value it described. Numeric
+    /// edits and reverts keep the existing default-angle inference; this does
+    /// not introduce a new way to explicitly confirm an unchanged 52° in UI.
+    fn lift_known(&self) -> bool {
+        if self.lift_deg == self.lift_context.0 {
+            self.lift_context.1
+        } else {
+            self.lift_deg != DEFAULT_LIFT_DEG
         }
     }
 
@@ -6872,6 +6899,7 @@ struct WatchSetup {
     watch: String,
     calibre: String,
     lift_deg: f64,
+    lift_context: (f64, bool),
     bph: Option<u32>,
     position: Position,
 }
@@ -6882,6 +6910,7 @@ impl Default for WatchSetup {
             watch: String::new(),
             calibre: String::new(),
             lift_deg: DEFAULT_LIFT_DEG,
+            lift_context: (DEFAULT_LIFT_DEG, false),
             bph: None,
             position: Position::DialUp,
         }
@@ -7445,7 +7474,7 @@ impl eframe::App for TimegrapherApp {
         }
         // What the readings rest on: a calibre's lift angle and a measured
         // clock.
-        let lift_known = !(self.calibre.is_empty() && self.lift_deg == DEFAULT_LIFT_DEG);
+        let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
@@ -8330,6 +8359,84 @@ mod tests {
             drop(tx);
             std::fs::remove_dir_all(base).unwrap();
         }
+    }
+
+    #[test]
+    fn persisted_lift_context_roundtrips_without_guessing_legacy_history() {
+        for (text, expected) in [
+            ("lift = 52\nlift_known = false", false),
+            ("lift = 52\nlift_known = true", true),
+            ("lift = 49\nlift_known = false", false),
+            ("lift = 52", false), // Legacy app inference, unlike legacy CLI.
+            ("lift = 49", true),
+            ("lift_known = true", false), // No accompanying value.
+            ("calibre = \"Seagull ST36\"", false),
+            ("calibre = \"Unitas 6497-2\"", true),
+            (
+                "calibre = \"Unitas 6497-2\"\nlift = 52\nlift_known = false",
+                false,
+            ),
+        ] {
+            let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+            let m: Manifest = toml::from_str(text).unwrap();
+            app.apply_manifest(&m, &[]);
+            assert_eq!(app.lift_known(), expected, "{text}");
+            assert_eq!(app.live_config().analysis.lift_known, expected);
+            let value = app.lift_deg;
+            let setup = app.watch_setup();
+            let saved = toml::to_string(&app.take_manifest()).unwrap();
+            let again: Manifest = toml::from_str(&saved).unwrap();
+            assert_eq!(again.lift, Some(value));
+            assert_eq!(again.lift_known, Some(expected));
+            let mut reopened = TimegrapherApp::with_devices(Vec::new(), None, false);
+            reopened.apply_manifest(&again, &[]);
+            assert_eq!(
+                (reopened.lift_deg, reopened.lift_known()),
+                (value, expected)
+            );
+            reopened.set_watch_setup(WatchSetup::default());
+            reopened.set_watch_setup(setup);
+            assert_eq!(
+                (reopened.lift_deg, reopened.lift_known()),
+                (value, expected)
+            );
+            reopened.set_lift(value + 1.0);
+            reopened.set_lift(value);
+            assert_eq!(
+                reopened.lift_known(),
+                expected,
+                "numeric revert retains context"
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_lift_context_only_edit_stays_dirty_until_successful_save() {
+        let (mut app, base) = save_failure_fixture("lift-context");
+        app.save_into(&base.join("saved"));
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        let old = std::fs::read(dest.join(MANIFEST)).unwrap();
+        let explicit: Manifest = toml::from_str("lift = 52\nlift_known = true").unwrap();
+        app.apply_manifest(&explicit, &[]);
+        assert!(app.lift_known());
+        assert!(
+            app.metadata_unsaved(),
+            "same value, different persisted context"
+        );
+        std::fs::remove_file(dest.join(MANIFEST)).unwrap();
+        std::fs::create_dir(dest.join(MANIFEST)).unwrap();
+        app.save_again();
+        assert!(app.metadata_unsaved());
+        assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
+        std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
+        std::fs::write(dest.join(MANIFEST), old).unwrap();
+        app.save_again();
+        assert!(!app.metadata_unsaved());
+        let m: Manifest =
+            toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(m.lift_known, Some(true));
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

@@ -1062,6 +1062,9 @@ pub struct Manifest {
     pub bph: Option<u32>,
     #[serde(alias = "lift_angle")]
     pub lift: Option<f64>,
+    /// Whether the accompanying lift was supplied rather than assumed.
+    /// Absent metadata retains each reader's legacy inference.
+    pub lift_known: Option<bool>,
     pub escape_teeth: Option<u32>,
     /// More wheels to name in the cycle search, as name = seconds per
     /// turn, e.g. { "third wheel" = 450.0 }.
