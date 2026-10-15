@@ -153,7 +153,10 @@ pub struct LiveAnalyzer {
     /// silence lets a guessed rate go, so readings back in the log still
     /// fit.
     logged_bph: Option<u32>,
-    /// Where each new stretch began (a new position), oldest first: the
+    /// Known jumps in an imported beat log. Replacing position/settling
+    /// boundaries must not erase these intrinsic discontinuities.
+    intrinsic_breaks: Vec<f64>,
+    /// Intrinsic jumps and caller-supplied stretch boundaries, oldest first:
     /// readings never fit across one.
     breaks: Vec<f64>,
     /// Whether the sound card's clock is corrected, for the caveats.
@@ -181,6 +184,7 @@ impl LiveAnalyzer {
             snr: None,
             quiet_passes: 0,
             logged_bph: None,
+            intrinsic_breaks: Vec::new(),
             breaks: Vec::new(),
             clock_known: false,
         }
@@ -198,6 +202,8 @@ impl LiveAnalyzer {
         a.beats = log.beats;
         a.amp = log.amplitude_windows;
         a.clipped = log.clipped_beats;
+        a.intrinsic_breaks = log.jumps;
+        a.set_breaks(Vec::new());
         a
     }
 
@@ -266,6 +272,7 @@ impl LiveAnalyzer {
         self.snippets.clear();
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
+        self.intrinsic_breaks.clear();
         self.breaks.clear();
     }
 
@@ -283,14 +290,18 @@ impl LiveAnalyzer {
         self.next_pass = self.total;
     }
 
-    /// Where each stretch after the first began, seconds, oldest first.
+    /// Known jumps and stretch boundaries, seconds, oldest first.
     pub fn breaks(&self) -> &[f64] {
         &self.breaks
     }
 
-    /// Mark where each stretch after the first began, seconds, oldest
-    /// first, for a recording analysed at once whose positions are known.
-    pub fn set_breaks(&mut self, breaks: Vec<f64>) {
+    /// Replace caller-supplied position/settling boundaries, retaining known
+    /// jumps from the imported beat log. Distinct timestamps remain distinct;
+    /// a position boundary is not evidence that a nearby jump is the same cut.
+    pub fn set_breaks(&mut self, mut breaks: Vec<f64>) {
+        breaks.extend_from_slice(&self.intrinsic_breaks);
+        breaks.sort_by(f64::total_cmp);
+        breaks.dedup();
         self.breaks = breaks;
     }
 
@@ -703,6 +714,136 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    // Supplied beat times only: no waveform synthesis or detector involved.
+    fn viewer_phase_log(before_rate: f64, after_rate: f64) -> BeatLog {
+        let before_period = 0.125 / (1.0 + before_rate / 86400.0);
+        let after_period = 0.125 / (1.0 + after_rate / 86400.0);
+        BeatLog {
+            sample_rate: 48000,
+            duration_s: 120.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..960)
+                .map(|index| Beat {
+                    index,
+                    time: if index < 480 {
+                        index as f64 * before_period
+                    } else {
+                        60.03 + (index - 480) as f64 * after_period
+                    },
+                    quality: if index == 500 { 0.1 } else { 1.0 },
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![60.03],
+        }
+    }
+
+    #[test]
+    fn viewer_known_phase_jump_does_not_become_rate_or_irregularity() {
+        let log = viewer_phase_log(0.0, 0.0);
+        let original: Vec<_> = log
+            .beats
+            .iter()
+            .map(|b| (b.index, b.time, b.quality))
+            .collect();
+        let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let crossing = a.reading_at(90.0, 60.0);
+        println!(
+            "known phase: cuts={:?}, span={}, heard={}, rate={:?}, jitter={:?}",
+            a.breaks(),
+            crossing.span_s,
+            crossing.watch_heard,
+            crossing.rate_s_per_day,
+            crossing.jitter_us
+        );
+        assert_eq!(a.breaks(), &[60.03]);
+        assert_eq!(
+            a.beats()
+                .iter()
+                .map(|b| (b.index, b.time, b.quality))
+                .collect::<Vec<_>>(),
+            original
+        );
+        let crossing = a.reading_at(90.0, 60.0);
+        assert!(crossing.span_s <= 90.0 - 60.03 + 1e-9, "{crossing:?}");
+        assert!(
+            crossing.watch_heard,
+            "a supplied phase cut is not an irregular watch"
+        );
+        assert!(
+            crossing.rate_s_per_day.unwrap().abs() < 0.001,
+            "{crossing:?}"
+        );
+        assert!(crossing.jitter_us.unwrap() < 0.001);
+        assert!(a.reading_at(45.0, 20.0).rate_s_per_day.unwrap().abs() < 0.001);
+        assert!(a.reading_at(105.0, 10.0).rate_s_per_day.unwrap().abs() < 0.001);
+        // We preserve supplied jumps; we do not infer one from a phase change.
+        let mut unmarked = viewer_phase_log(0.0, 0.0);
+        unmarked.jumps.clear();
+        let unmarked = LiveAnalyzer::from_log(unmarked, LiveConfig::default());
+        assert!(unmarked.breaks().is_empty());
+        assert!(unmarked.reading_at(90.0, 60.0).span_s > 50.0);
+    }
+
+    #[test]
+    fn viewer_latest_piece_is_distinct_from_the_retained_whole_recording() {
+        let log = viewer_phase_log(10.0, -20.0);
+        let whole = timing::fit_pieces(&log.beats, log.bph, &log.jumps).unwrap();
+        let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let early = a.reading_at(45.0, 30.0);
+        let latest = a.reading_at(90.0, 60.0);
+        println!(
+            "unequal pieces: early={:?}, latest={:?}, whole={}",
+            early.rate_s_per_day, latest.rate_s_per_day, whole.rate_s_per_day
+        );
+        assert!((early.rate_s_per_day.unwrap() - 10.0).abs() < 0.001);
+        assert!(
+            (latest.rate_s_per_day.unwrap() + 20.0).abs() < 0.001,
+            "{latest:?}"
+        );
+        assert!(latest.span_s < 30.0);
+        assert_eq!(
+            a.beats().len(),
+            960,
+            "all pieces remain available for historical views"
+        );
+        assert!(whole.beats_used > latest.beats_used);
+        assert!(
+            (whole.rate_s_per_day + 5.0).abs() < 0.05,
+            "whole fit remains a different aggregation: {whole:?}"
+        );
+    }
+
+    #[test]
+    fn viewer_external_cuts_cannot_replace_intrinsic_jumps() {
+        let mut log = viewer_phase_log(0.0, 0.0);
+        log.jumps = vec![100.0, 60.03, 60.03];
+        let mut a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        assert_eq!(a.breaks(), &[60.03, 100.0]);
+        a.set_breaks(vec![90.0, 30.0, 60.0, 40.0, 60.03, 100.0]);
+        assert_eq!(a.breaks(), &[30.0, 40.0, 60.0, 60.03, 90.0, 100.0]);
+        a.set_breaks(vec![80.0]);
+        assert_eq!(
+            a.breaks(),
+            &[60.03, 80.0, 100.0],
+            "only external cuts are replaced"
+        );
+        a.set_breaks(vec![]);
+        assert_eq!(a.breaks(), &[60.03, 100.0]);
+        a.restart();
+        assert!(a.beats().is_empty());
+        assert!(a.breaks().is_empty());
+        a.set_breaks(vec![110.0]);
+        assert_eq!(
+            a.breaks(),
+            &[110.0],
+            "discarded history cannot reintroduce old jumps"
+        );
     }
 
     /// Room noise with no watch, seeded so the test repeats.

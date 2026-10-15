@@ -9371,6 +9371,74 @@ mod tests {
     }
 
     #[test]
+    fn whole_recording_viewer_keeps_known_jumps_with_or_without_position_cuts() {
+        for with_positions in [false, true] {
+            let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+            app.average_s = 60.0;
+            let log = BeatLog {
+                sample_rate: 48000,
+                duration_s: 120.0,
+                bph: 28800,
+                lift_deg: 52.0,
+                beats: (0..960)
+                    .map(|index| timegrapher_core::beats::Beat {
+                        index,
+                        time: index as f64 / 8.0 + if index >= 480 { 0.03 } else { 0.0 },
+                        quality: if index == 500 { 0.1 } else { 1.0 },
+                    })
+                    .collect(),
+                amplitude_windows: vec![],
+                clipped_beats: vec![],
+                clipped_samples: 0,
+                jumps: vec![60.03],
+            };
+            let original: Vec<_> = log
+                .beats
+                .iter()
+                .map(|b| (b.index, b.time, b.quality))
+                .collect();
+            let (positions, settles) = if with_positions {
+                (
+                    vec![
+                        (0.0, Position::DialUp),
+                        (30.0, Position::DialDown),
+                        (90.0, Position::DialUp),
+                    ],
+                    vec![(30.0, 40.0), (90.0, 100.0)],
+                )
+            } else {
+                (vec![], vec![])
+            };
+            app.show_log(log, "known phase step".into(), positions, settles);
+            let live = app.live.as_ref().unwrap();
+            let expected = if with_positions {
+                vec![30.0, 40.0, 60.03, 90.0, 100.0]
+            } else {
+                vec![60.03]
+            };
+            assert_eq!(
+                live.breaks(),
+                expected,
+                "position cuts cannot erase an intrinsic jump"
+            );
+            assert_eq!(
+                live.beats()
+                    .iter()
+                    .map(|b| (b.index, b.time, b.quality))
+                    .collect::<Vec<_>>(),
+                original
+            );
+            app.view_end = Some(75.0);
+            let reading = app.reading().unwrap();
+            assert!(reading.watch_heard);
+            assert!(reading.span_s <= 75.0 - 60.03 + 1e-9, "{reading:?}");
+            assert!(reading.rate_s_per_day.unwrap().abs() < 0.001, "{reading:?}");
+            app.view_end = Some(20.0);
+            assert!(app.reading().unwrap().rate_s_per_day.unwrap().abs() < 0.001);
+        }
+    }
+
+    #[test]
     fn replay_restores_saved_history_and_clear_and_selection_preserve_it() {
         let (dir, path) = replay_context_fixture("folder", false);
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
