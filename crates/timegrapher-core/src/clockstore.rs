@@ -70,6 +70,17 @@ pub fn correct_rate(card_rate_s_per_day: f64, ppm: f64) -> f64 {
     (1.0 + card_rate_s_per_day / 86400.0) / (1.0 + ppm * 1e-6) * 86400.0 - 86400.0
 }
 
+/// The analyze document's correction beside its unchanged sound-card rate.
+/// A zero-ppm correction is still a known correction; a missing raw fit stays null.
+pub fn correction_json(ppm: f64, from: &str, card_rate: Option<f64>) -> serde_json::Value {
+    serde_json::json!({
+        "ppm": ppm,
+        "from": from,
+        "rate_error_s_per_day": ppm * 1e-6 * 86400.0,
+        "rate_s_per_day": card_rate.map(|r| correct_rate(r, ppm)),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClockStore {
     pub schema: String,

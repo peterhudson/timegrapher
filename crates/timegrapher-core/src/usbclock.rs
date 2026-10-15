@@ -24,6 +24,19 @@ pub struct UsbClock {
     pub spread_ppm: f64,
 }
 
+impl UsbClock {
+    /// The correction and source text used in analysis documents.
+    pub fn correction(&self) -> (f64, String) {
+        (
+            self.ppm,
+            format!(
+                "from {} USB lines in the recording, {:.1} ppm apart",
+                self.lines, self.spread_ppm
+            ),
+        )
+    }
+}
+
 /// Lines searched: harmonics of 1 kHz in this range, Hz.
 const LOWEST_HZ: u32 = 3000;
 const HIGHEST_HZ: u32 = 10000;
