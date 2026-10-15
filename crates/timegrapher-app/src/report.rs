@@ -779,6 +779,22 @@ fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
 
+/// The configuration of the explicit excerpt replay command.
+fn excerpt_analysis_config(bph: Option<u32>, lift_deg: f64) -> AnalysisConfig {
+    let mut cfg = AnalysisConfig {
+        bph,
+        // Job::write always emits --lift, including a numeric value of 52.
+        // This describes replay arguments, not the original app's provenance.
+        lift_known: true,
+        escape_teeth: 15,
+        ..Default::default()
+    };
+    cfg.amplitude.lift_deg = lift_deg;
+    cfg.envelope.notch_hz = Vec::new();
+    cfg.envelope.highpass_hz = 1500.0;
+    cfg
+}
+
 /// What `timegrapher analyze audio/excerpt.flac --json` prints, with the
 /// command line's own defaults, so `report --replay` compares like with
 /// like. The FLAC is read back as the command line reads it.
@@ -788,14 +804,7 @@ fn analyze_like_the_cli(flac: &[u8], bph: Option<u32>, lift_deg: f64) -> Result<
     let loaded = audio::load(&tmp);
     let _ = std::fs::remove_file(&tmp);
     let audio = loaded.map_err(|e| e.to_string())?;
-    let mut cfg = AnalysisConfig {
-        bph,
-        escape_teeth: 15,
-        ..Default::default()
-    };
-    cfg.amplitude.lift_deg = lift_deg;
-    cfg.envelope.notch_hz = Vec::new();
-    cfg.envelope.highpass_hz = 1500.0;
+    let cfg = excerpt_analysis_config(bph, lift_deg);
     let a = analyze(&audio, &cfg);
     let mut doc = json!({
         "schema": "timegrapher.analyze/2",
@@ -976,6 +985,50 @@ mod tests {
     use super::*;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    fn assert_explicit_replay_lift(bph: Option<u32>, lift: f64) {
+        let cfg = excerpt_analysis_config(bph, lift);
+        assert_eq!(cfg.bph, bph, "Auto remains automatic");
+        assert_eq!(cfg.amplitude.lift_deg, lift);
+        assert_eq!(cfg.escape_teeth, 15);
+        assert_eq!(cfg.envelope.highpass_hz, 1500.0);
+        assert!(cfg.envelope.notch_hz.is_empty());
+        // Exercise the actual assessment rule without generating sound.
+        // The real bundle test below covers the analysis integration.
+        let assessment = timegrapher_core::measure::assess(
+            &[],
+            &[],
+            &timegrapher_core::measure::Context {
+                lift_known: cfg.lift_known,
+                ..Default::default()
+            },
+        );
+        assert!(!assessment.doubts.lift_unknown, "{bph:?}, {lift}");
+        assert!(assessment
+            .caveats
+            .iter()
+            .all(|c| !matches!(c, timegrapher_core::measure::Caveat::LiftUnknown)));
+    }
+
+    #[test]
+    fn excerpt_replay_fixed_default_lift() {
+        assert_explicit_replay_lift(Some(28800), 52.0);
+    }
+
+    #[test]
+    fn excerpt_replay_fixed_custom_lift() {
+        assert_explicit_replay_lift(Some(28800), 49.5);
+    }
+
+    #[test]
+    fn excerpt_replay_auto_default_lift() {
+        assert_explicit_replay_lift(None, 52.0);
+    }
+
+    #[test]
+    fn excerpt_replay_auto_custom_lift() {
+        assert_explicit_replay_lift(None, 49.5);
+    }
+
     /// A report from a recording holds the excerpt cut where asked, the
     /// analysis `report --replay` runs again, the app's readings and the
     /// consent, all listed in the manifest with their checksums.
@@ -1017,7 +1070,7 @@ mod tests {
             shown: Shown {
                 bph: Some(28800),
                 lift_deg: 52.0,
-                app: json!({ "rate_s_per_day": 10.0 }),
+                app: json!({ "rate_s_per_day": 10.0, "doubts": { "lift_unknown": true } }),
             },
         };
         job.write().unwrap();
@@ -1052,6 +1105,17 @@ mod tests {
         .unwrap();
         assert!((x.duration_s() - 30.0).abs() < 0.01);
         let r: Value = serde_json::from_slice(get("results/analyze-excerpt.json")).unwrap();
+        assert_eq!(r["doubts"]["lift_unknown"], false);
+        assert!(r["caveats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["code"] != "lift_unknown"));
+        let captured: Value = serde_json::from_slice(get("results/app.json")).unwrap();
+        assert_eq!(
+            captured, job.shown.app,
+            "original app capture remains independent"
+        );
         let rate = r["overall"]["rate_s_per_day"].as_f64().unwrap();
         assert!((rate - 10.0).abs() < 1.0, "{rate}");
         let _ = std::fs::remove_dir_all(&dir);
