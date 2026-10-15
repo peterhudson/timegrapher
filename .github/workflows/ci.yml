@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24.22.0'
-      - run: node --test crates/timegrapher-mcp/tests/recording_view.test.cjs
+      - run: node --test crates/timegrapher-mcp/tests/*.test.cjs
 
   # The engine against tg on the public corpus's takes (docs/regress.md),
   # plus its smoke takes. The audio is downloaded from the corpus's

@@ -142,6 +142,15 @@ failure as an error. Defaults remain 120 seconds for recording, 5 seconds for
 a microphone check and 20 minutes for clock measurement. These acquisition
 rules do not change analysis offsets or spans.
 
+The embedded chart view sends the MCP Apps `ui/initialize` request with
+`appInfo`, and announces readiness and its size only after a successful host
+response. Rejection or a transport-send failure during initialization shows a connection-unavailable
+message instead of announcing readiness. A host that never responds leaves the
+view waiting; this handshake has no additional timeout or retry policy. Text and
+structured tool results remain available without the embedded view. Executable
+bridge tests cover these messages with a simulated host; actual chart mounting
+and live updates still depend on the host's MCP Apps support.
+
 Only one tool uses the microphone at a time. While `record_position` or
 `check_microphone` runs, another call to either one gets an error saying
 so, and records nothing.
