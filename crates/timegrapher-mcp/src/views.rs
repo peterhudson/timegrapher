@@ -251,7 +251,14 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
 /// What the Recording view needs beyond `analyze`'s document: the strip
 /// from the windows file, and the Tick and Tock profiles over ten seconds
 /// in the middle of the recording.
-pub async fn analyze_charts(doc: &Value, extras: &[String], recording: &str) -> Value {
+pub async fn analyze_charts(
+    doc: &Value,
+    extras: &[String],
+    recording: &str,
+    scope: &cli::Scope<'_>,
+    profile_budget: std::time::Duration,
+) -> Result<(Value, Option<String>), cli::RunError> {
+    let mut warning = None;
     let mut out = Map::new();
     let duration = doc["duration_s"].as_f64().unwrap_or(0.0);
     if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--windows=")) {
@@ -280,15 +287,18 @@ pub async fn analyze_charts(doc: &Value, extras: &[String], recording: &str) -> 
         }
         line.push("--".into());
         line.push(recording.into());
-        if let Ok(cli::Outcome {
-            json: Some(profile),
-            ..
-        }) = cli::run(&line).await
-        {
-            out.insert("profile".into(), profile);
+        match scope.run(&line, Some(profile_budget)).await {
+            Ok(cli::Outcome { json: Some(profile), exit_code: Some(0), .. }) => {
+                out.insert("profile".into(), profile);
+            }
+            Ok(outcome) => {
+                warning = Some(format!("Auxiliary Tick/Tock profile unavailable (exit code {:?}): {}. The completed analysis is preserved.", outcome.exit_code, outcome.stderr));
+            }
+            Err(error) if error.stopped() => return Err(error),
+            Err(error) => warning = Some(format!("Auxiliary Tick/Tock profile unavailable: {error}. The completed analysis is preserved.")),
         }
     }
-    Value::Object(out)
+    Ok((Value::Object(out), warning))
 }
 
 #[cfg(test)]
