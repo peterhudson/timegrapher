@@ -105,9 +105,7 @@ pub fn run(o: &Options) -> Result<(), String> {
             o.position
         )
     })?;
-    if !o.seconds.is_finite() || o.seconds <= 0.0 {
-        return Err("--seconds must be more than 0".into());
-    }
+    timegrapher_core::capture::checked_duration(o.seconds).map_err(|e| format!("--seconds {e}"))?;
     if o.wind_h.is_some_and(|w| !w.is_finite() || w < 0.0) {
         return Err("--wind-h must be 0 or more".into());
     }
@@ -228,8 +226,9 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
         let a = audio::load(f).map_err(|e| format!("{}: {e}", f.display()))?;
         let fs_hz = a.sample_rate;
         let label = f.display().to_string();
+        let want =
+            timegrapher_core::capture::checked_sample_count(o.seconds, fs_hz)?.min(a.samples.len());
         let mut rec = start(info(label.clone(), fs_hz, 16))?;
-        let want = ((o.seconds * fs_hz as f64).round() as usize).min(a.samples.len());
         let t0 = SystemTime::now();
         let block = (fs_hz / 50).max(1) as usize;
         let mut feed = o
@@ -398,7 +397,8 @@ fn live(
     start: impl Fn(SessionInfo) -> Result<Recorder, String>,
 ) -> Result<(Recorder, String, u32), String> {
     use timegrapher_core::capture::{self, Event};
-    let cap = capture::open_input(o.device.as_deref(), None)?;
+    let (dev, device_info) = capture::find(o.device.as_deref())?;
+    let (cap, _, want) = capture::open_for_duration(&dev, &device_info, None, o.seconds)?;
     let mut rec = start(info(cap.label.clone(), cap.sample_rate, cap.bits))?;
     let fs_hz = cap.sample_rate;
     eprintln!(
@@ -409,7 +409,6 @@ fn live(
         cap.label,
         rec.dir().display()
     );
-    let want = (o.seconds * fs_hz as f64).round() as usize;
     let mut feed = o
         .live
         .as_ref()

@@ -25,6 +25,8 @@ pub enum Kind {
     Paths,
     Integer,
     Number,
+    /// Finite, positive acquisition seconds, checked before child spawn.
+    CaptureSeconds,
     Text,
 }
 
@@ -346,7 +348,7 @@ pub const TOOLS: &[ToolSpec] = &[
             ),
             p(
                 "seconds",
-                Kind::Number,
+                Kind::CaptureSeconds,
                 Arg::Flag("--seconds"),
                 false,
                 "Seconds to record (120 if left out; 60 to 120 is usual).",
@@ -408,7 +410,7 @@ pub const TOOLS: &[ToolSpec] = &[
             DEVICE,
             p(
                 "seconds",
-                Kind::Number,
+                Kind::CaptureSeconds,
                 Arg::Flag("--seconds"),
                 false,
                 "Seconds to listen (5 if left out).",
@@ -548,6 +550,7 @@ pub fn definition(t: &ToolSpec) -> Value {
             Kind::Paths => json!({"type": "array", "items": {"type": "string"}, "minItems": 1}),
             Kind::Integer => json!({"type": "integer", "minimum": 1}),
             Kind::Number => json!({"type": "number"}),
+            Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
         };
         let mut schema = schema.as_object().unwrap().clone();
         schema.insert("description".into(), p.description.into());
@@ -615,6 +618,18 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                 vec![n.to_string()]
             }
             (Kind::Number, Value::Number(n)) if n.as_f64().is_some_and(f64::is_finite) => {
+                vec![n.to_string()]
+            }
+            (Kind::CaptureSeconds, Value::Number(n)) => {
+                let seconds = n
+                    .as_f64()
+                    .ok_or_else(|| format!("{}: {} must be a number of seconds", t.name, p.name))?;
+                let checked = if t.command[0] == "doctor" {
+                    timegrapher_core::capture::checked_recording_deadline(seconds).map(|_| ())
+                } else {
+                    timegrapher_core::capture::checked_duration(seconds).map(|_| ())
+                };
+                checked.map_err(|e| format!("{}: {} {e}", t.name, p.name))?;
                 vec![n.to_string()]
             }
             _ => return Err(format!("{}: {} has the wrong type", t.name, p.name)),
@@ -717,6 +732,39 @@ mod tests {
             line,
             ["doctor", &format!("--file={}", full("t.wav")), "--json"]
         );
+    }
+
+    #[test]
+    fn acquisition_seconds_reject_invalid_lengths_and_preserve_defaults() {
+        for name in ["record_position", "check_microphone"] {
+            let tool = find(name).unwrap();
+            assert_eq!(
+                definition(tool)["inputSchema"]["properties"]["seconds"]["exclusiveMinimum"],
+                0
+            );
+            let mut values = json!({ "seconds": 120 });
+            if name == "record_position" {
+                values["folder"] = json!(full("test"));
+                values["position"] = json!("DU");
+                values["wind_h"] = json!(0);
+            }
+            let line = command_line(tool, values.as_object().unwrap()).unwrap();
+            assert!(line.contains(&"--seconds=120".to_string()));
+            for seconds in [
+                json!(0),
+                json!(-1),
+                json!(1e300),
+                json!(1e-300),
+                json!("NaN"),
+            ] {
+                values["seconds"] = seconds;
+                let error = command_line(tool, values.as_object().unwrap()).unwrap_err();
+                assert!(error.contains("seconds"), "{name}: {error}");
+            }
+            values.as_object_mut().unwrap().remove("seconds");
+            let line = command_line(tool, values.as_object().unwrap()).unwrap();
+            assert!(!line.iter().any(|arg| arg.starts_with("--seconds=")));
+        }
     }
 
     #[test]

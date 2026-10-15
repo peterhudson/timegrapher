@@ -222,6 +222,56 @@ fn auxiliary_profile_uses_effective_analysis_settings() {
 }
 
 #[test]
+fn invalid_capture_seconds_never_spawn_a_child() {
+    let dir = Scratch(std::env::temp_dir().join(format!(
+        "timegrapher-mcp-duration-contract-{}",
+        std::process::id()
+    )));
+    std::fs::create_dir_all(&dir.0).unwrap();
+    let cli = dir.0.join("cli");
+    std::fs::write(
+        &cli,
+        r#"#!/bin/sh
+folder=$(dirname "$0")
+printf '%s\n' "$@" > "$folder/started"
+printf '%s\n' '{"schema":"timegrapher.test/1"}'
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut client = Client::start(&cli, &dir.0.join("config"));
+    for tool in ["record_position", "check_microphone"] {
+        for seconds in [
+            json!(0),
+            json!(-1),
+            json!(1e300),
+            json!(1e-300),
+            json!("NaN"),
+        ] {
+            let mut args = json!({ "seconds": seconds });
+            if tool == "record_position" {
+                args["folder"] = json!(dir.0.join("not-created").to_string_lossy());
+                args["position"] = json!("DU");
+            }
+            let result = client.request("tools/call", json!({ "name": tool, "arguments": args }));
+            assert_eq!(result["isError"], true, "{tool}: {result}");
+            assert!(
+                !dir.0.join("started").exists(),
+                "invalid {tool} spawned the CLI"
+            );
+        }
+    }
+    // Omitting the acquisition length still delegates to the CLI's defaults.
+    let result = client.request(
+        "tools/call",
+        json!({ "name": "check_microphone", "arguments": {} }),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    let args = std::fs::read_to_string(dir.0.join("started")).unwrap();
+    assert!(!args.contains("--seconds"), "{args}");
+}
+
+#[test]
 fn child_exit_status_controls_success_even_with_json() {
     let dir = Scratch(std::env::temp_dir().join(format!(
         "timegrapher-mcp-child-outcome-{}",

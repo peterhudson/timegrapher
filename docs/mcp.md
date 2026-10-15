@@ -130,6 +130,18 @@ pass the same `take_id` with the same folder and position. The take
 already made then comes back, marked as such, instead of a second
 recording. The server remembers takes only while it runs.
 
+Acquisition lengths (`seconds` on `record_position` and `check_microphone`)
+must be finite, positive and representable. Invalid lengths fail before a CLI
+child starts. The CLI applies the same checks to `record --seconds`,
+`doctor --seconds` and `clock measure --minutes`, before device lookup.
+After selecting the input format, it also checks the sample count against the
+actual sample rate before opening the stream. A length that rounds to zero
+samples is rejected. Buffered microphone checks additionally validate their
+buffer capacity and two-second delivery deadline, and report allocation
+failure as an error. Defaults remain 120 seconds for recording, 5 seconds for
+a microphone check and 20 minutes for clock measurement. These acquisition
+rules do not change analysis offsets or spans.
+
 Only one tool uses the microphone at a time. While `record_position` or
 `check_microphone` runs, another call to either one gets an error saying
 so, and records nothing.

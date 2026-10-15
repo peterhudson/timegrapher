@@ -43,6 +43,8 @@ struct Report {
 }
 
 pub fn run(o: &Options) -> Result<(), String> {
+    timegrapher_core::capture::checked_recording_deadline(o.seconds)
+        .map_err(|e| format!("--seconds {e}"))?;
     let cfg = DiagnoseConfig {
         bph: o.bph,
         ..Default::default()

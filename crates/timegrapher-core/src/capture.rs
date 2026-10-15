@@ -15,6 +15,60 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+/// Validate an acquisition length without looking up or opening a device.
+pub fn checked_duration(seconds: f64) -> Result<Duration, String> {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return Err("must be a finite positive number of seconds".into());
+    }
+    let duration = Duration::try_from_secs_f64(seconds)
+        .map_err(|_| "is outside the clock's representable duration range".to_string())?;
+    if duration.is_zero() {
+        return Err("is too short to represent as a duration".into());
+    }
+    Ok(duration)
+}
+
+/// The buffered microphone check allows two seconds for delivery. Check
+/// both the grace-period addition and the platform's monotonic clock.
+pub fn checked_recording_deadline(seconds: f64) -> Result<Instant, String> {
+    recording_deadline_from(Instant::now(), checked_duration(seconds)?)
+}
+
+fn recording_deadline_from(now: Instant, duration: Duration) -> Result<Instant, String> {
+    let duration = duration
+        .checked_add(Duration::from_secs(2))
+        .ok_or("with its delivery grace period exceeds the clock's duration range")?;
+    now.checked_add(duration)
+        .ok_or_else(|| "with its delivery grace period exceeds the clock's deadline range".into())
+}
+
+/// Convert a length at the selected device/file rate, without saturating
+/// a float-to-integer cast or silently accepting a zero-sample recording.
+pub fn checked_sample_count(seconds: f64, sample_rate: u32) -> Result<usize, String> {
+    checked_duration(seconds)?;
+    if sample_rate == 0 {
+        return Err("the input sample rate must be positive".into());
+    }
+    let samples = (seconds * f64::from(sample_rate)).round();
+    if !samples.is_finite() || samples >= (usize::MAX as u128 + 1) as f64 {
+        return Err(format!(
+            "exceeds the sample-count range at {sample_rate} Hz"
+        ));
+    }
+    if samples < 1.0 {
+        return Err(format!("is shorter than one sample at {sample_rate} Hz"));
+    }
+    Ok(samples as usize)
+}
+
+#[cfg(any(feature = "capture", test))]
+fn checked_buffer_capacity(samples: usize) -> Result<(), String> {
+    if samples > isize::MAX as usize / std::mem::size_of::<f32>() {
+        return Err("exceeds the buffered recording's byte-capacity range".into());
+    }
+    Ok(())
+}
+
 /// A block of mono samples in [-1, 1] and the system time it arrived.
 #[derive(Debug, Clone)]
 pub struct Block {
@@ -373,7 +427,7 @@ pub fn explain_error(e: &str) -> String {
 }
 
 #[cfg(feature = "capture")]
-pub use device::{find, host, list, open, open_input, play, record, Playback};
+pub use device::{find, host, list, open, open_for_duration, open_input, play, record, Playback};
 
 #[cfg(feature = "capture")]
 mod device {
@@ -538,6 +592,29 @@ mod device {
         rate: Option<u32>,
     ) -> Result<(Capture, Recorded), String> {
         let supported = pick(dev, rate.unwrap_or(PREFERRED_RATE))?;
+        open_config(dev, info, supported)
+    }
+
+    /// Query the actual format and check its requested sample count before
+    /// opening the input stream. Device-independent validation runs first.
+    pub fn open_for_duration(
+        dev: &cpal::Device,
+        info: &InputDevice,
+        rate: Option<u32>,
+        seconds: f64,
+    ) -> Result<(Capture, Recorded, usize), String> {
+        checked_duration(seconds)?;
+        let supported = pick(dev, rate.unwrap_or(PREFERRED_RATE))?;
+        let want = checked_sample_count(seconds, supported.config().sample_rate)?;
+        let (capture, recorded) = open_config(dev, info, supported)?;
+        Ok((capture, recorded, want))
+    }
+
+    fn open_config(
+        dev: &cpal::Device,
+        info: &InputDevice,
+        supported: cpal::SupportedStreamConfig,
+    ) -> Result<(Capture, Recorded), String> {
         let format = supported.sample_format();
         let config: cpal::StreamConfig = supported.config();
         let (tx, rx) = channel();
@@ -581,14 +658,23 @@ mod device {
         info: InputDevice,
         seconds: f64,
     ) -> Result<(Audio, Recorded), String> {
-        let (cap, rec) = open(dev, &info, None)?;
-        let want = (seconds * rec.sample_rate as f64).round() as usize;
-        let mut samples = Vec::with_capacity(want);
-        let deadline = Instant::now() + Duration::from_secs_f64(seconds + 2.0);
+        checked_recording_deadline(seconds)?;
+        let supported = pick(dev, PREFERRED_RATE)?;
+        let want = checked_sample_count(seconds, supported.config().sample_rate)?;
+        checked_buffer_capacity(want)?;
+        let mut samples = Vec::new();
+        samples
+            .try_reserve_exact(want)
+            .map_err(|e| format!("could not reserve the recording buffer: {e}"))?;
+        let (cap, rec) = open_config(dev, &info, supported)?;
+        let deadline = checked_recording_deadline(seconds)?;
         while samples.len() < want {
             let left = deadline.saturating_duration_since(Instant::now());
             match cap.rx.recv_timeout(left) {
-                Ok(Event::Audio(b)) => samples.extend_from_slice(&b.samples),
+                Ok(Event::Audio(b)) => {
+                    let take = b.samples.len().min(want - samples.len());
+                    samples.extend_from_slice(&b.samples[..take]);
+                }
                 Ok(Event::Error(e)) => return Err(format!("recording failed: {e}")),
                 Ok(Event::End) => break,
                 Err(_) => return Err("the input stopped delivering audio".into()),
@@ -758,6 +844,59 @@ mod device {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn acquisition_durations_reject_invalid_and_unrepresentable_values() {
+        for seconds in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            0.0,
+            -1.0,
+            f64::MAX,
+            f64::MIN_POSITIVE,
+        ] {
+            assert!(checked_duration(seconds).is_err(), "{seconds}");
+        }
+        for seconds in [5.0, 120.0, 1200.0] {
+            assert_eq!(checked_duration(seconds).unwrap().as_secs_f64(), seconds);
+        }
+    }
+
+    #[test]
+    fn acquisition_deadline_checks_grace_and_platform_clock_overflow() {
+        let now = Instant::now();
+        let grace_error = recording_deadline_from(now, Duration::MAX).unwrap_err();
+        assert!(grace_error.contains("duration range"), "{grace_error}");
+        let deadline_error =
+            recording_deadline_from(now, Duration::from_secs(u64::MAX - 2)).unwrap_err();
+        assert!(
+            deadline_error.contains("deadline range"),
+            "{deadline_error}"
+        );
+        assert_eq!(
+            recording_deadline_from(now, Duration::from_secs(5)).unwrap(),
+            now + Duration::from_secs(7)
+        );
+    }
+
+    #[test]
+    fn acquisition_sample_counts_check_the_actual_rate_before_casting() {
+        assert_eq!(checked_sample_count(60.0, 48000).unwrap(), 2_880_000);
+        assert_eq!(checked_sample_count(0.01, 100).unwrap(), 1);
+        assert!(checked_sample_count(1e-9, 48000)
+            .unwrap_err()
+            .contains("one sample"));
+        assert!(checked_sample_count(1.0, 0).is_err());
+        assert!(checked_sample_count((usize::MAX as u128 + 1) as f64 / 48000.0, 48000).is_err());
+    }
+
+    #[test]
+    fn acquisition_buffer_capacity_is_checked_without_allocating() {
+        let maximum = isize::MAX as usize / std::mem::size_of::<f32>();
+        assert!(checked_buffer_capacity(maximum).is_ok());
+        assert!(checked_buffer_capacity(maximum + 1).is_err());
+    }
+
     #[test]
     fn device_id_without_host_prefix_is_exact() {
         let m = |id| {
