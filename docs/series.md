@@ -222,8 +222,20 @@ above, a few hundred kB on a long take (about 600 kB over 2 h 40 min), so
 plain `--json` stays small for agents. The MCP server asks for them and
 keeps them out of what the model reads.
 
-Times are seconds from the start of the take, on the true clock when
-`--clock` is given. The arrays are meant to be drawn as they are: the
+The JSON's top-level `clock` describes the correction actually applied to
+these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and
+`tracks_drift`. It is `null` when no correction was applied. An explicit
+`--clock` log takes precedence; otherwise the stored correction for the
+input named by the first recording's provenance is used, then USB lines
+from that recording if available. A stored zero correction is still an
+applied correction. There is no `--card-ppm` or `--device` option for `series`.
+Positive ppm means the card runs slow and uncorrected rates read fast;
+`rate_error_s_per_day` is ppm × 0.0864. For a log that follows drift, these
+numbers summarize the fit; its time mapping need not be one uniform
+correction. These fields do not claim calibration uncertainty or accuracy.
+
+Times are seconds from the start of the take, mapped through the selected
+clock fit when `clock` is non-null. The arrays are meant to be drawn as they are: the
 autocorrelation with its band, the Allan deviation against `white` on
 log-log axes, and the CUSUM with lines at ±1.36.
 

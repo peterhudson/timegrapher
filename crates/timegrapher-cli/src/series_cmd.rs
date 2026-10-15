@@ -40,27 +40,13 @@ pub fn run(o: Options) -> Result<(), String> {
         let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
         info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
     }
-    let clock = match o.clock_log {
-        Some(p) => {
-            let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
-            let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
-                .map_err(|e| format!("{}: {e}", p.display()))?;
-            Some(ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
-        }
-        None => None,
-    };
-    // Without a log, the same correction `analyze` and `long` would use: a
-    // stored one for the input, else the recording's own USB lines.
-    let clock = match clock {
-        Some(c) => Some(c),
-        None => {
-            let total_s = info
-                .frames
-                .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-            crate::clock_cmd::correction_or_usb(&files, None, None)?
-                .and_then(|(ppm, _)| timegrapher_core::session::fixed_clock(ppm, total_s))
-        }
-    };
+    let total_s = info
+        .frames
+        .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
+    let applied_clock = resolve_clock(o.clock_log, &info, total_s, || {
+        crate::clock_cmd::correction_or_usb(&files, None, None)
+    })?;
+    let clock = applied_clock.as_ref().map(|c| &c.fit);
 
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
     let tty = std::io::stderr().is_terminal();
@@ -91,13 +77,10 @@ pub fn run(o: Options) -> Result<(), String> {
     };
     lc.wheels.extend(extra);
     let mut log = log;
-    let breaks = breaks::with_jumps(
-        breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
-        &log.jumps,
-    );
+    let breaks = breaks::with_jumps(breaks::of_files(&paths, clock, log.sample_rate), &log.jumps);
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
-    let long = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
-    let rep = steadiness::check(&log, clock.as_ref(), &long, &lc, &o.check);
+    let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
+    let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
     if o.json {
         let settings = serde_json::json!({
@@ -114,7 +97,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "wind_h": o.check.wind_h,
             "stretch_s": o.check.stretch_s,
         });
-        let mut doc = serde_json::to_value(&rep).map_err(|e| e.to_string())?;
+        let mut doc = report_document(&rep, applied_clock.as_ref())?;
         // What only a chart draws, a few hundred kB on a long take, comes
         // with --views: the probability plots of the whole take's
         // distributions and the Steadiness pane's views.
@@ -134,6 +117,51 @@ pub fn run(o: Options) -> Result<(), String> {
         print_text(&rep, clock.is_some());
         Ok(())
     }
+}
+
+/// The fit actually supplied to analysis and the resolver's source text.
+struct AppliedClock {
+    fit: ClockFit,
+    from: String,
+}
+
+fn resolve_clock(
+    log: Option<&Path>,
+    info: &audio::AudioInfo,
+    total_s: f64,
+    fallback: impl FnOnce() -> Result<Option<(f64, String)>, String>,
+) -> Result<Option<AppliedClock>, String> {
+    if let Some(path) = log {
+        let named = |e| format!("{}: {e}", path.display());
+        let text = fs::read_to_string(path).map_err(|e| named(e.to_string()))?;
+        let pairs =
+            clock::parse_log(&text, info.sample_rate, info.bytes_per_frame).map_err(named)?;
+        let fit = ClockFit::new(&pairs).map_err(|e| named(e.to_string()))?;
+        return Ok(Some(AppliedClock {
+            fit,
+            from: format!("from clock log {}", path.display()),
+        }));
+    }
+    // Keep the existing stored-before-USB resolver and fixed fit unchanged.
+    Ok(fallback()?.and_then(|(ppm, from)| {
+        timegrapher_core::session::fixed_clock(ppm, total_s).map(|fit| AppliedClock { fit, from })
+    }))
+}
+
+fn report_document(
+    rep: &Report,
+    clock: Option<&AppliedClock>,
+) -> Result<serde_json::Value, String> {
+    let mut doc = serde_json::to_value(rep).map_err(|e| e.to_string())?;
+    doc["clock"] = clock.map_or(serde_json::Value::Null, |c| {
+        serde_json::json!({
+            "ppm": c.fit.ppm,
+            "rate_error_s_per_day": c.fit.rate_error_s_per_day,
+            "from": c.from,
+            "tracks_drift": c.fit.tracks_drift,
+        })
+    });
+    Ok(doc)
 }
 
 /// Drops the distributions' probability-plot points: every one, or with
@@ -338,5 +366,166 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
             p.explained * 100.0,
             p_text(10f64.powf(-p.significance))
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn info() -> audio::AudioInfo {
+        audio::AudioInfo {
+            sample_rate: 48000,
+            frames: Some(48000 * 600),
+            bytes_per_frame: 2,
+        }
+    }
+
+    fn report() -> Report {
+        Report {
+            duration_s: 600.0,
+            bph: 28800,
+            breaks: vec![],
+            config: Config::default(),
+            series: vec![],
+            rate_amplitude: None,
+            isochronism: None,
+            wind_down: None,
+            distributions: timegrapher_core::distribution::Distributions {
+                overall: vec![],
+                stretch_s: 0.0,
+                stretches: vec![],
+            },
+            spectra: vec![],
+            findings: vec![],
+        }
+    }
+
+    struct Log(PathBuf);
+    impl Log {
+        fn new(text: &str) -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "timegrapher-series-clock-{}-{}.csv",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::write(&path, text).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Log {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn series_clock_context_retains_selected_fallback_and_all_report_fields() {
+        let rep = report();
+        // This is the pre-change production JSON conversion: no clock context.
+        let original = serde_json::to_value(&rep).unwrap();
+        assert!(original.get("clock").is_none());
+        for (ppm, from) in [
+            (12.5, "stored for 'input', 2026-10-15"),
+            (-12.5, "from 3 USB lines in the recording, 0.2 ppm apart"),
+            (0.0, "stored for 'zero input', 2026-10-15"),
+        ] {
+            let mut calls = 0;
+            let applied = resolve_clock(None, &info(), 600.0, || {
+                calls += 1;
+                Ok(Some((ppm, from.into())))
+            })
+            .unwrap()
+            .unwrap();
+            assert_eq!(calls, 1);
+            let expected_fit = timegrapher_core::session::fixed_clock(ppm, 600.0).unwrap();
+            assert_eq!(
+                serde_json::to_value(&applied.fit).unwrap(),
+                serde_json::to_value(&expected_fit).unwrap()
+            );
+            assert_eq!(applied.fit.map(300.0), expected_fit.map(300.0));
+            let mut doc = report_document(&rep, Some(&applied)).unwrap();
+            assert_eq!(
+                doc.as_object_mut().unwrap().remove("clock").unwrap(),
+                json!({
+                    "ppm": ppm,
+                    "rate_error_s_per_day": ppm * 1e-6 * 86400.0,
+                    "from": from,
+                    "tracks_drift": false,
+                })
+            );
+            assert_eq!(doc, original, "every previous report field is unchanged");
+        }
+        let none = resolve_clock(None, &info(), 600.0, || Ok(None)).unwrap();
+        let mut doc = report_document(&rep, none.as_ref()).unwrap();
+        assert_eq!(
+            doc.as_object_mut().unwrap().remove("clock"),
+            Some(serde_json::Value::Null)
+        );
+        assert_eq!(doc, original);
+        assert!(
+            resolve_clock(None, &info(), 600.0, || Err("store unreadable".into()))
+                .err()
+                .unwrap()
+                .contains("store unreadable")
+        );
+    }
+
+    #[test]
+    fn series_clock_log_wins_and_serializes_the_fit_actually_applied() {
+        // Supplied clock entries only; no acoustic analysis or local clock store.
+        let text = "audio_s,unix_s\n0,1000\n300,1300.00375\n600,1600.0075\n";
+        let log = Log::new(text);
+        let applied = resolve_clock(Some(&log.0), &info(), 600.0, || {
+            panic!("explicit log must bypass stored/USB fallback")
+        })
+        .unwrap()
+        .unwrap();
+        let pairs = clock::parse_log(text, 48000, 2).unwrap();
+        let expected = ClockFit::new(&pairs).unwrap();
+        assert_eq!(
+            serde_json::to_value(&applied.fit).unwrap(),
+            serde_json::to_value(&expected).unwrap()
+        );
+        assert_eq!(applied.fit.map(150.0), expected.map(150.0));
+        assert!((applied.fit.ppm - 12.5).abs() < 1e-6);
+        let doc = report_document(&report(), Some(&applied)).unwrap();
+        assert_eq!(
+            doc["clock"],
+            json!({
+                "ppm": expected.ppm,
+                "rate_error_s_per_day": expected.rate_error_s_per_day,
+                "from": format!("from clock log {}", log.0.display()),
+                "tracks_drift": expected.tracks_drift,
+            })
+        );
+    }
+
+    #[test]
+    fn series_clock_drifting_log_and_invalid_log_do_not_use_fallback() {
+        let mut text = String::from("audio_s,unix_s\n");
+        for i in 0..=60 {
+            let audio_s = i as f64 * 600.0;
+            text.push_str(&format!("{audio_s},{}\n", 1000.0 + audio_s * 1.0000125));
+        }
+        let log = Log::new(&text);
+        let applied = resolve_clock(Some(&log.0), &info(), 36000.0, || panic!("fallback"))
+            .unwrap()
+            .unwrap();
+        assert!(applied.fit.tracks_drift);
+        assert_eq!(
+            report_document(&report(), Some(&applied)).unwrap()["clock"]["tracks_drift"],
+            true
+        );
+        let bad = Log::new("audio_s,unix_s\n0,1000\n");
+        let error = resolve_clock(Some(&bad.0), &info(), 600.0, || {
+            panic!("invalid log must fail rather than change clock source")
+        })
+        .err()
+        .unwrap();
+        assert!(error.contains(&bad.0.display().to_string()));
     }
 }

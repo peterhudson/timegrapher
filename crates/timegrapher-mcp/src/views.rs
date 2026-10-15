@@ -336,6 +336,24 @@ mod tests {
     }
 
     #[test]
+    fn series_chart_extraction_preserves_applied_clock_context() {
+        for clock in [
+            Value::Null,
+            json!({ "ppm": 0.0, "rate_error_s_per_day": 0.0, "from": "stored for 'input', 2026-10-15", "tracks_drift": false }),
+        ] {
+            let mut doc = json!({
+                "clock": clock,
+                "series": [{ "headline": "Rate: too few readings", "views": { "readings": {} } }],
+                "period_span": [0.5, 2.0],
+            });
+            let charts = take_series_charts(&mut doc);
+            assert_eq!(doc["clock"], clock);
+            assert!(doc["series"][0].get("views").is_none());
+            assert_eq!(charts["views"][0], json!({ "readings": {} }));
+        }
+    }
+
+    #[test]
     fn strip_from_windows() {
         let csv = "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg\n\
                    rate,0,10,4.5,-0.4,,,\n\

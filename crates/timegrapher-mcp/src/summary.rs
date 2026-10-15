@@ -265,6 +265,25 @@ fn series(doc: &Value) -> Option<String> {
         return None;
     }
     lines.insert(0, "Series:".to_string());
+    if let Some(clock) = doc.get("clock") {
+        if clock.is_null() {
+            lines.insert(
+                1,
+                "Readings are on the sound card's clock; no correction applied.".into(),
+            );
+        } else if let Some(ppm) = clock["ppm"].as_f64() {
+            let from = clock["from"].as_str().unwrap_or("source unspecified");
+            let drift = if clock["tracks_drift"].as_bool() == Some(true) {
+                "; mapping follows drift"
+            } else {
+                ""
+            };
+            lines.insert(
+                1,
+                format!("Readings use clock correction {ppm:+.3} ppm ({from}{drift})."),
+            );
+        }
+    }
     let found: Vec<&str> = doc["findings"]
         .as_array()
         .into_iter()
@@ -479,6 +498,32 @@ mod tests {
              Detected:\n\
              - Rate repeats every 60 min"
         );
+    }
+
+    #[test]
+    fn series_lead_reports_applied_clock_without_changing_legacy_documents() {
+        let mut doc = json!({
+            "schema": "timegrapher.series/2",
+            "series": [{ "headline": "Rate: too few readings for the tests" }],
+        });
+        let legacy = lead(&doc, &Map::new()).unwrap();
+        assert_eq!(legacy, "Series:\n- Rate: too few readings for the tests.");
+        doc["clock"] = Value::Null;
+        assert_eq!(lead(&doc, &Map::new()).unwrap(), "Series:\nReadings are on the sound card's clock; no correction applied.\n- Rate: too few readings for the tests.");
+        for (ppm, from, drift) in [
+            (12.5, "stored for 'input', 2026-10-15", false),
+            (
+                -12.5,
+                "from 3 USB lines in the recording, 0.2 ppm apart",
+                false,
+            ),
+            (0.0, "stored for 'zero input', 2026-10-15", false),
+            (12.5, "from clock log /take/clock.csv", true),
+        ] {
+            doc["clock"] = json!({ "ppm": ppm, "rate_error_s_per_day": ppm * 0.0864, "from": from, "tracks_drift": drift });
+            let suffix = if drift { "; mapping follows drift" } else { "" };
+            assert_eq!(lead(&doc, &Map::new()).unwrap(), format!("Series:\nReadings use clock correction {ppm:+.3} ppm ({from}{suffix}).\n- Rate: too few readings for the tests."));
+        }
     }
 
     #[test]
