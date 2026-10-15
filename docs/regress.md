@@ -159,6 +159,48 @@ between runs and keyed on `corpus.json`, so a run downloads only what
 changed. A required baseline take with no `session.toml` fails the check.
 The `not_run` list also includes deliberately unselected takes; those do not fail.
 
+### Required real-recording equivalence
+
+After regression, the same CI job reuses the fetched corpus for the existing
+`analyze_and_session_agree_on_real_takes` test. It compares four full 600-second,
+48 kHz files, each named `take_part01-001.flac`, from these takes:
+
+- `daytona4130_DU_30min`
+- `ym42_DD_30min`
+- `patek324_DU_30min`
+- `eta2824_holder_DU_30min`
+
+This is the existing full-file `analyze` versus 47-second-chunk `session`
+comparison: default analysis settings (including lift 52°), no clock correction,
+and no settling interval. It checks rate, amplitude, signed unlock/drop beat
+error and watch presence using the existing equivalence margins. It does not
+compare against tg or the settled regression baseline. Live, replay and exact
+beat-time equivalence remain separate; the four ignored legacy cases stay ignored.
+
+CI sets `TIMEGRAPHER_REQUIRE_CORPUS=1` and `TIMEGRAPHER_CORPUS` to the pinned
+checkout. The test rejects an unset or invalid root, missing/ambiguous manifest
+members, holdout takes, missing/empty/unreadable files, size/hash mismatches and
+empty decoded audio. These known-watch fixtures must yield watch presence and
+finite values for every compared quantity. Fixture paths, byte counts, SHA-256s
+and the manifest digest are logged. The completed count is logged only after
+all four comparisons pass. Output is retained in the job log and summary even
+when the test fails; the CI step has a ten-minute limit.
+
+To run that gate locally with these four files already fetched:
+
+```sh
+TIMEGRAPHER_CORPUS=/path/to/timegrapher-corpus TIMEGRAPHER_REQUIRE_CORPUS=1 \
+  cargo test --locked --release -p timegrapher-core --test equivalence \
+  analyze_and_session_agree_on_real_takes -- --exact --nocapture
+```
+
+Without either environment variable, local tests explicitly report a skip; that
+test result supplies no acoustic validation. An explicitly supplied corpus must
+contain all four authenticated inputs, even without the required-mode flag.
+Metadata belongs in `corpus.json`; audio can be under `takes/<take>/` or directly
+under `<take>/`. The fixture-validation unit cases use tiny constructed files
+without acoustic analysis or process-wide environment changes.
+
 ## Updating CI's corpus revision
 
 1. Compare the pinned corpus commit with the proposed full commit in a separate
