@@ -178,14 +178,19 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
         .iter()
         .filter_map(|v| v.amplitude_deg.map(|r| (v.position, r)))
         .collect();
+    // Reference.source is descriptive text, not a clock-basis declaration.
+    // Avoid overlaying an unknown-basis reference on even a partly corrected
+    // position aggregate; all supplied values remain in the reference table.
+    let calibrated = readings.iter().any(|r| r.measurement.calibrated);
     let rref = refs(&|r| r.reference.as_ref()?.rate_s_per_day);
+    let omitted = calibrated && !rref.is_empty();
     let aref = refs(&|r| r.reference.as_ref()?.amplitude_deg);
     let mut rs = vec![Series {
         class: "dot",
         label: "this recording",
         points: rate_pts,
     }];
-    if !rref.is_empty() {
+    if !calibrated && !rref.is_empty() {
         rs.push(Series {
             class: "ref",
             label: "reference timegrapher",
@@ -205,8 +210,13 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
         });
     }
     format!(
-        r#"<h3>Rate by position</h3>{}<h3>Amplitude by position</h3>{}"#,
+        r#"<h3>Rate by position</h3>{}{}<h3>Amplitude by position</h3>{}"#,
         position_chart("seconds per day", &rs, true),
+        if omitted {
+            r#"<p class="note">Reference rates are omitted from this rate chart because it includes clock-corrected readings and the reference clock basis is not recorded. Reference values remain in the table.</p>"#
+        } else {
+            ""
+        },
         position_chart("deg", &as_, false),
     )
 }
@@ -372,16 +382,27 @@ fn reference_table(sn: &Session) -> String {
         let f = r.reference.as_ref().unwrap();
         let m = &r.measurement;
         let be = m.beat_error();
-        let _ = write!(
-            s,
-            r#"<tr><th>{}</th><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
-            r.position.label(),
-            signed(m.rate_s_per_day, 1),
-            signed(f.rate_s_per_day, 1),
+        let basis = if m.calibrated {
+            "clock corrected"
+        } else {
+            "sound-card clock"
+        };
+        let rate_difference = if m.calibrated {
+            "—".to_string()
+        } else {
             signed(
                 m.rate_s_per_day.zip(f.rate_s_per_day).map(|(a, b)| a - b),
-                1
-            ),
+                1,
+            )
+        };
+        let _ = write!(
+            s,
+            r#"<tr><th>{}</th><td class="num">{} <span class="sub">{}</span><br>/ {} <span class="sub">reference as supplied</span></td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
+            r.position.label(),
+            signed(m.rate_s_per_day, 1),
+            basis,
+            signed(f.rate_s_per_day, 1),
+            rate_difference,
             opt(m.amplitude_deg, 0),
             opt(f.amplitude_deg, 0),
             signed(m.amplitude_deg.zip(f.amplitude_deg).map(|(a, b)| a - b), 0),
@@ -392,7 +413,7 @@ fn reference_table(sn: &Session) -> String {
             esc(&r.label)
         );
     }
-    s.push_str(r#"</tbody></table><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few seconds per day from either.</p>"#);
+    s.push_str(r#"</tbody></table><p class="note">Rate difference is omitted for clock-corrected readings because the reference clock basis is not recorded. Reference values are shown as supplied. Uncorrected differences use the supplied rates; check their clock basis against the source.</p><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few seconds per day from either.</p>"#);
     s
 }
 
@@ -661,4 +682,212 @@ code {{ font-size: 13px; }}
 /// A state of wind in a table cell: "full wind" or "24 h after winding".
 fn wind_words(w: f64) -> String {
     wind(Some(w))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use timegrapher_core::{
+        beats::Beat,
+        session::{self, Reference},
+        stream::BeatLog,
+    };
+
+    fn reading(ppm: Option<f64>, position: Position) -> Reading {
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 60.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..480)
+                .map(|index| Beat {
+                    index,
+                    time: index as f64 / 8.0,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+        };
+        let clock = ppm.and_then(|ppm| session::fixed_clock(ppm, log.duration_s));
+        let mut measurement = session::measure(&log, clock.as_ref(), 0.0, log.duration_s);
+        assert!(measurement.watch_heard);
+        assert!(measurement.rate_s_per_day.unwrap().is_finite());
+        // Independent table controls; these numbers do not test amplitude estimation.
+        measurement.amplitude_deg = Some(260.0);
+        Reading {
+            label: format!("{}.wav", position.code()),
+            position,
+            wind_h: None,
+            date: None,
+            notes: None,
+            duration_s: log.duration_s,
+            bph: log.bph,
+            measurement,
+            cycles: vec![],
+            shape: None,
+            reference: Some(Reference {
+                rate_s_per_day: Some(0.0),
+                amplitude_deg: Some(250.0),
+                beat_error_ms: None,
+                source: Some("tg on the same file".into()),
+            }),
+        }
+    }
+
+    fn render(readings: Vec<Reading>) -> String {
+        let report = session::evaluate(&readings);
+        html(&Session {
+            schema: "timegrapher.session/2".into(),
+            software: serde_json::json!({}),
+            input: serde_json::json!({}),
+            watch: None,
+            calibre: None,
+            owner: None,
+            notes: None,
+            bph: 28800,
+            lift_deg: 52.0,
+            readings,
+            report,
+        })
+    }
+
+    fn reference_cells(html: &str) -> Vec<Vec<&str>> {
+        html.split_once("<h2>Against the reference timegrapher</h2>")
+            .unwrap()
+            .1
+            .split_once("<tbody>")
+            .unwrap()
+            .1
+            .split_once("</tbody>")
+            .unwrap()
+            .0
+            .split("<tr>")
+            .skip(1)
+            .map(|row| {
+                row.split("<td")
+                    .skip(1)
+                    .map(|cell| {
+                        cell.split_once('>')
+                            .unwrap()
+                            .1
+                            .split_once("</td>")
+                            .unwrap()
+                            .0
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn rate_chart(html: &str) -> &str {
+        html.split_once("<h3>Rate by position</h3>")
+            .unwrap()
+            .1
+            .split_once("<h3>Amplitude by position</h3>")
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn nonzero_clock_keeps_corrected_rate_but_withholds_unsupported_reference_difference() {
+        let r = reading(Some(100.0), Position::CH);
+        let measured = r.measurement.rate_s_per_day.unwrap();
+        assert!(
+            measured < -8.0 && measured > -9.0,
+            "actual clock mapping must affect this fixture"
+        );
+        let shown = signed(Some(measured), 1);
+        let html = render(vec![r]);
+        println!("REPORT_HTML_START\n{html}\nREPORT_HTML_END");
+        let cells = reference_cells(&html);
+        assert!(cells[0][0].contains(&shown));
+        assert!(cells[0][0].contains("+0.0"));
+        assert!(
+            html.contains(&format!("<td class=\"num\">{shown}</td>")),
+            "headline remains corrected"
+        );
+        assert_eq!(cells[0][1], "—");
+        assert!(cells[0][0].contains("clock corrected"));
+        assert!(cells[0][0].contains("reference as supplied"));
+        assert!(html.contains("reference clock basis is not recorded"));
+        assert!(!rate_chart(&html).contains("<path class=\"ref\""));
+        assert!(rate_chart(&html).contains("Reference rates are omitted"));
+        assert_eq!(cells[0][3], "+10");
+        let amp = html
+            .split_once("<h3>Amplitude by position</h3>")
+            .unwrap()
+            .1
+            .split_once("</svg>")
+            .unwrap()
+            .0;
+        assert!(
+            amp.contains("<path class=\"ref\""),
+            "amplitude overlay unchanged"
+        );
+    }
+
+    #[test]
+    fn zero_ppm_is_still_calibrated_without_declaring_a_reference_basis() {
+        let r = reading(Some(0.0), Position::CH);
+        assert!(r.measurement.calibrated);
+        assert!(r.measurement.rate_s_per_day.unwrap().abs() < 1e-6);
+        let html = render(vec![r]);
+        assert_eq!(reference_cells(&html)[0][1], "—");
+        assert!(!rate_chart(&html).contains("<path class=\"ref\""));
+    }
+
+    #[test]
+    fn uncalibrated_difference_and_amplitude_overlay_are_preserved() {
+        let mut r = reading(None, Position::CH);
+        assert!(!r.measurement.calibrated);
+        r.reference.as_mut().unwrap().rate_s_per_day = Some(2.0);
+        let expected = signed(r.measurement.rate_s_per_day.map(|v| v - 2.0), 1);
+        let html = render(vec![r]);
+        let cells = reference_cells(&html);
+        assert_eq!(cells[0][1], expected);
+        assert_eq!(cells[0][3], "+10");
+        assert!(rate_chart(&html).contains("<path class=\"ref\""));
+        assert!(!rate_chart(&html).contains("Reference rates are omitted"));
+    }
+
+    #[test]
+    fn a_mixed_chart_omits_all_rate_references_but_table_keeps_raw_comparison() {
+        let corrected = reading(Some(100.0), Position::CH);
+        let raw = reading(None, Position::CB);
+        let expected_raw = signed(raw.measurement.rate_s_per_day, 1);
+        let html = render(vec![corrected, raw]);
+        assert!(!rate_chart(&html).contains("<path class=\"ref\""));
+        let cells = reference_cells(&html);
+        assert_eq!(cells[0][1], "—");
+        assert_eq!(cells[1][1], expected_raw);
+        assert!(rate_chart(&html).contains("Reference rates are omitted"));
+    }
+
+    #[test]
+    fn missing_values_remain_missing_without_inventing_a_difference() {
+        let mut raw = reading(None, Position::CH);
+        raw.measurement.rate_s_per_day = None;
+        let html = render(vec![raw]);
+        assert_eq!(reference_cells(&html)[0][1], "-");
+        let mut corrected = reading(Some(100.0), Position::CH);
+        corrected.reference.as_mut().unwrap().rate_s_per_day = None;
+        let html = render(vec![corrected]);
+        assert_eq!(reference_cells(&html)[0][1], "—");
+    }
+
+    #[test]
+    fn generic_reference_source_is_preserved_and_escaped() {
+        let mut r = reading(None, Position::CH);
+        r.reference.as_mut().unwrap().source = Some("No.1900 <bench> & \"source\"".into());
+        let html = render(vec![r]);
+        let cells = reference_cells(&html);
+        assert_eq!(
+            cells[0][6],
+            "No.1900 &lt;bench&gt; &amp; &quot;source&quot;"
+        );
+        assert!(!html.contains("No.1900 <bench>"));
+    }
 }
