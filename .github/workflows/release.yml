@@ -14,6 +14,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/release.yml"
+      - ".github/scripts/release_ci_gate.py"
+      - ".github/scripts/test_release_ci_gate.py"
       - "packaging/**"
       - "crates/timegrapher-mcp/packaging/**"
   workflow_dispatch:
@@ -33,7 +35,24 @@ env:
   CARGO_PROFILE_RELEASE_STRIP: debuginfo
 
 jobs:
+  ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require exact-candidate CI before release-capable builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REQUESTED: ${{ toJSON(inputs.release || false) }}
+        run: python3 .github/scripts/release_ci_gate.py
+
   build:
+    needs: ci-gate
     strategy:
       fail-fast: false
       matrix:
@@ -145,7 +164,7 @@ jobs:
 
   release:
     if: >-
-      github.ref_type == 'tag' ||
+      (github.event_name == 'push' && github.ref_type == 'tag') ||
       (github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-latest

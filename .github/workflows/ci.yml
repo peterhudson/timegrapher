@@ -26,6 +26,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Offline tests of the publishing gate; keep its five-job/step contract
+      # in .github/scripts/release_ci_gate.py synchronized with this workflow.
+      - name: Release CI gate tests (offline)
+        run: python3 -m unittest discover -s .github/scripts -p 'test_release_ci_gate.py' -v
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
