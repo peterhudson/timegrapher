@@ -919,20 +919,32 @@ mod numeric_input_tests {
         value.as_object().unwrap().clone()
     }
 
+    // Match the existing tools tests: a native absolute path, without creating a file.
+    fn full(name: &str) -> String {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     #[test]
     fn numeric_inputs_match_domains_and_schema_before_child_construction() {
         let t = find("analyze_recording").unwrap();
         for value in [json!(0), json!(-1), json!(u32::MAX as u64 + 1)] {
-            assert!(
-                command_line(t, &args(json!({"recording":"/unused.wav","bph":value}))).is_err()
-            );
+            let error = command_line(
+                t,
+                &args(json!({"recording":full("unused.wav"),"bph":value})),
+            )
+            .unwrap_err();
+            assert!(error.contains("bph"), "wrong rejection: {error}");
         }
         for value in [json!(0), json!(-0.0), json!(-1.0)] {
-            assert!(command_line(
+            let error = command_line(
                 t,
-                &args(json!({"recording":"/unused.wav","lift_deg":value}))
+                &args(json!({"recording":full("unused.wav"),"lift_deg":value})),
             )
-            .is_err());
+            .unwrap_err();
+            assert!(error.contains("lift_deg"), "wrong rejection: {error}");
         }
         let schema = definition(t);
         assert_eq!(
@@ -943,14 +955,16 @@ mod numeric_input_tests {
             schema["inputSchema"]["properties"]["lift_deg"]["exclusiveMinimum"],
             0
         );
-        assert!(command_line(
+        let line = command_line(
             t,
-            &args(json!({"recording":"/unused.wav","bph":u32::MAX,"lift_deg":52.0}))
+            &args(json!({"recording":full("unused.wav"),"bph":u32::MAX,"lift_deg":52.0})),
         )
-        .is_ok());
+        .unwrap_or_else(|error| panic!("valid native-path numeric control rejected: {error}"));
+        assert!(line.contains(&format!("--bph={}", u32::MAX)), "{line:?}");
+        assert!(line.contains(&"--lift=52.0".to_string()), "{line:?}");
         for (name, field, expected) in [
-            ("run_session", "paths", json!(["/unused"])),
-            ("record_position", "folder", json!("/unused")),
+            ("run_session", "paths", json!([full("unused")])),
+            ("record_position", "folder", json!(full("unused"))),
         ] {
             let t = find(name).unwrap();
             let mut a = args(json!({"lift_deg":0}));
@@ -958,7 +972,11 @@ mod numeric_input_tests {
                 a.insert("position".into(), json!("DU"));
             }
             a.insert(field.into(), expected);
-            assert!(command_line(t, &a).is_err(), "{name}");
+            let error = command_line(t, &a).unwrap_err();
+            assert!(
+                error.contains("lift_deg"),
+                "{name}: wrong rejection: {error}"
+            );
         }
     }
 
@@ -980,7 +998,13 @@ mod numeric_input_tests {
             json!({"lift_deg":0}),
             json!({"lift_deg":-1}),
         ] {
-            assert!(command_line(t, &args(a)).is_err());
+            let field = if a.get("bph").is_some() {
+                "bph"
+            } else {
+                "lift_deg"
+            };
+            let error = command_line(t, &args(a)).unwrap_err();
+            assert!(error.contains(field), "wrong rejection: {error}");
         }
         assert!(command_line(t, &args(json!({"bph":u32::MAX,"lift_deg":52}))).is_ok());
     }
