@@ -100,6 +100,12 @@ fn scratch_dir() -> PathBuf {
     std::env::temp_dir().join("timegrapher-unsaved")
 }
 
+/// Keep acquisition and recording failures distinct from their display text.
+enum CaptureFailure {
+    Recording(String),
+    Input(String),
+}
+
 /// The six standard test positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
@@ -1340,6 +1346,9 @@ impl TimegrapherApp {
     /// Listen to the microphone: carry on the paused session if there is
     /// one, else start a new one.
     fn start_microphone(&mut self) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         self.ensure_devices();
         if self.can_resume() {
             return self.resume_microphone();
@@ -1411,13 +1420,16 @@ impl TimegrapherApp {
             applog::info("microphone stopped and released");
             let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
             if let Ok(Err(e)) = self.session.pause(now) {
-                self.error(format!("Couldn't close the kept sound at the pause: {e}"));
+                self.recording_failed(format!("Couldn't close the kept sound at the pause: {e}"));
             }
         }
     }
 
     /// Carry on listening after a pause, in the same session.
     fn resume_microphone(&mut self) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         let rate = self.live.as_ref().map(|l| l.sample_rate());
         match capture::open_input(self.device.as_deref(), rate) {
             Ok(c) if Some(c.sample_rate) == rate => {
@@ -1512,12 +1524,17 @@ impl TimegrapherApp {
 
     /// Keep the existing sound threshold; metadata edits have no duration.
     fn needs_save_confirmation(&self) -> bool {
-        self.unsaved_s() > 5.0 || self.metadata_unsaved()
+        self.session.recording_fault().is_some()
+            || self.unsaved_s() > 5.0
+            || self.metadata_unsaved()
     }
 
     /// Save Again: the sound so far into the take saved before, with no
     /// question; the first time, Save… asks where.
     fn save_again(&mut self) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         match self.session.saved_to().and_then(|p| p.parent()) {
             Some(parent) => {
                 let parent = parent.to_path_buf();
@@ -1530,6 +1547,9 @@ impl TimegrapherApp {
     /// Save a copy of the session's sound so far, with its clock log and
     /// settings, in a folder the user picks. Listening carries on.
     fn save_recording(&mut self) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         let mut d = rfd::FileDialog::new()
             .set_title("Choose Where to Save (the Take Gets Its Own Folder Inside)");
         let start = self
@@ -1547,6 +1567,9 @@ impl TimegrapherApp {
     }
 
     fn save_into(&mut self, parent: &Path) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         let metadata = self.session.metadata_snapshot(self.save_metadata());
         // Prepare all required metadata before starting the saved-copy update.
         let prepared = (|| -> Result<_, String> {
@@ -2087,6 +2110,30 @@ impl TimegrapherApp {
         self.message = Some((m, false));
     }
 
+    fn refuse_faulted_recording(&mut self) -> bool {
+        if let Some(fault) = self.session.recording_fault() {
+            self.error(fault.description());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn recording_failed(&mut self, mut reason: String) {
+        // Release the input before attempting any remaining close/flush work.
+        self.capture = None;
+        let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        if self.session.state() == session::State::Listening {
+            if let Ok(Err(e)) = self.session.pause(now) {
+                reason.push_str(&format!("; closing the kept sound also failed: {e}"));
+            }
+        }
+        self.session.recording_failed(now, reason);
+        if let Some(fault) = self.session.recording_fault() {
+            self.error(fault.description());
+        }
+    }
+
     /// Take in whatever audio has arrived.
     fn poll(&mut self) {
         let mut ended = false;
@@ -2095,6 +2142,14 @@ impl TimegrapherApp {
             loop {
                 match cap.rx.try_recv() {
                     Ok(Event::Audio(b)) => {
+                        if let Some(r) = self.session.recorder.as_mut() {
+                            if let Err(e) = r.write(&b) {
+                                failure = Some(CaptureFailure::Recording(e.to_string()));
+                                // Do not process more queued sound or let a later
+                                // input error replace this primary recording error.
+                                break;
+                            }
+                        }
                         self.audio_at = Some(Instant::now());
                         if let Some(t) = self.clock_track.as_mut() {
                             t.push(b.samples.len(), b.at);
@@ -2108,11 +2163,6 @@ impl TimegrapherApp {
                         }
                         if l.clipped_fraction > 0.0 {
                             self.clipped_at = Some(Instant::now());
-                        }
-                        if let Some(r) = self.session.recorder.as_mut() {
-                            if let Err(e) = r.write(&b) {
-                                failure = Some(format!("Saving stopped: {e}"));
-                            }
                         }
                         if live.push(&b.samples) {
                             // While the watch settles after a move nothing is
@@ -2146,7 +2196,10 @@ impl TimegrapherApp {
                         break;
                     }
                     Ok(Event::Error(e)) => {
-                        failure = Some(format!("Input stopped. {}", capture::explain_error(&e)));
+                        failure = Some(CaptureFailure::Input(format!(
+                            "Input stopped. {}",
+                            capture::explain_error(&e)
+                        )));
                         if !cap.is_file {
                             ended = true;
                             break;
@@ -2165,22 +2218,31 @@ impl TimegrapherApp {
         if let Some(cap) = &self.capture {
             let quiet = self.audio_at.unwrap_or(self.opened_at).elapsed();
             if !cap.is_file && quiet.as_secs_f64() > 3.0 && failure.is_none() {
-                failure = Some("No sound is arriving from this input.".to_string());
+                failure = Some(CaptureFailure::Input(
+                    "No sound is arriving from this input.".to_string(),
+                ));
                 ended = true;
             }
         }
-        let was_file = self.capture.as_ref().is_some_and(|c| c.is_file);
-        if ended {
-            self.stop();
-            if was_file {
-                self.info_msg("End of the recording.".into());
+        if let Some(CaptureFailure::Recording(error)) = failure {
+            self.recording_failed(error);
+        } else {
+            let was_file = self.capture.as_ref().is_some_and(|c| c.is_file);
+            if ended {
+                self.stop();
+                if was_file {
+                    self.info_msg("End of the recording.".into());
+                }
             }
-        }
-        if let Some(f) = failure {
-            if f.starts_with("Saving") {
-                self.session.recorder = None;
+            if let Some(CaptureFailure::Input(error)) = failure {
+                // A close error during stop is a recording fault in its own
+                // right, even when the input failure triggered the stop.
+                let message = match self.session.recording_fault() {
+                    Some(fault) => format!("{}\n{error}", fault.description()),
+                    None => error,
+                };
+                self.error(message);
             }
-            self.error(f);
         }
 
         // Beat lock gained or lost, for the log.
@@ -2447,6 +2509,7 @@ impl TimegrapherApp {
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         let metadata = self.metadata_unsaved();
+        let fault = self.session.recording_fault().map(|f| f.description());
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_width(360.0);
             ui.label(
@@ -2458,7 +2521,9 @@ impl TimegrapherApp {
                 .font(theme::semibold(15.0)),
             );
             ui.add_space(4.0);
-            ui.label(if metadata && self.unsaved_s() <= 0.0 {
+            ui.label(if let Some(fault) = &fault {
+                fault.clone()
+            } else if metadata && self.unsaved_s() <= 0.0 {
                 "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
             } else if metadata {
                 format!("This session's {unsaved} of sound and changes to its settings or position history haven't been saved and will be thrown away.")
@@ -2467,12 +2532,14 @@ impl TimegrapherApp {
             });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.add(theme::primary(ui, "Save…")).clicked() {
+                if fault.is_none() && ui.add(theme::primary(ui, "Save…")).clicked() {
                     choice = Some(0);
                 }
-                let go = match what {
-                    Confirm::NewSession | Confirm::Open { .. } => "Don't Save",
-                    Confirm::Quit => "Quit Without Saving",
+                let go = match (&fault, &what) {
+                    (Some(_), Confirm::Quit) => "Leave Files and Quit",
+                    (Some(_), _) => "Leave Files and Continue",
+                    (None, Confirm::NewSession | Confirm::Open { .. }) => "Don't Save",
+                    (None, Confirm::Quit) => "Quit Without Saving",
                 };
                 if ui
                     .add(egui::Button::new(go).min_size(Vec2::new(0.0, 26.0)))
@@ -2636,7 +2703,10 @@ impl TimegrapherApp {
                     self.resume_microphone();
                 }
             } else if ui
-                .add(theme::primary(ui, "Start"))
+                .add_enabled(
+                    self.session.recording_fault().is_none(),
+                    theme::primary(ui, "Start"),
+                )
                 .on_hover_text("Start listening to the microphone")
                 .clicked()
             {
@@ -3239,6 +3309,9 @@ impl TimegrapherApp {
 
     /// The position picked: a new stretch, noted in the recording.
     fn change_position(&mut self, pos: Position) {
+        if self.refuse_faulted_recording() {
+            return;
+        }
         self.move_prompt = None;
         self.set_position(pos);
         if let Some(r) = self.session.recorder.as_mut() {
@@ -4151,6 +4224,9 @@ impl TimegrapherApp {
     }
 
     fn note_settings(&mut self) {
+        if self.session.recording_fault().is_some() {
+            return;
+        }
         if let Some(r) = self.session.recorder.as_mut() {
             let info = SessionInfo {
                 watch: self.watch.clone(),
@@ -4774,36 +4850,44 @@ impl TimegrapherApp {
         }
         if let Some(r) = &self.session.recorder {
             let since = self.unsaved_s();
-            let (text, color, hint) = match self.session.saved_to() {
-                Some(p) => (
-                    if since >= 1.0 {
+            let (text, color, hint) = if let Some(fault) = self.session.recording_fault() {
+                (
+                    "Recording stopped; recovery files retained".to_string(),
+                    pal.bad,
+                    fault.description(),
+                )
+            } else {
+                match self.session.saved_to() {
+                    Some(p) => (
+                        if since >= 1.0 {
+                            format!(
+                                "{} of sound, the last {} not saved",
+                                strip::fmt_time(r.duration_s()),
+                                strip::fmt_time(since)
+                            )
+                        } else if self.metadata_unsaved() {
+                            format!(
+                                "{} of sound, settings not saved",
+                                strip::fmt_time(r.duration_s())
+                            )
+                        } else {
+                            format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
+                        },
+                        pal.text_secondary,
                         format!(
-                            "{} of sound, the last {} not saved",
-                            strip::fmt_time(r.duration_s()),
-                            strip::fmt_time(since)
-                        )
-                    } else if self.metadata_unsaved() {
-                        format!(
-                            "{} of sound, settings not saved",
-                            strip::fmt_time(r.duration_s())
-                        )
-                    } else {
-                        format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
-                    },
-                    pal.text_secondary,
-                    format!(
-                        "Saved in {}. Sound since then is kept too; Save Again adds it, \
+                            "Saved in {}. Sound since then is kept too; Save Again adds it, \
                          and New Session or quitting asks first.",
-                        p.display()
+                            p.display()
+                        ),
                     ),
-                ),
-                None => (
-                    format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
-                    pal.text_secondary,
-                    "The session's sound is kept as it goes, so Save can keep it at any \
+                    None => (
+                        format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
+                        pal.text_secondary,
+                        "The session's sound is kept as it goes, so Save can keep it at any \
                      point. New Session or quitting throws it away unless saved."
-                        .to_string(),
-                ),
+                            .to_string(),
+                    ),
+                }
             };
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -5496,17 +5580,29 @@ impl TimegrapherApp {
 
     /// A problem, where it can't be missed, with a way to put it away.
     fn error_banner(&mut self, ui: &mut egui::Ui) {
-        let Some((m, true)) = self.message.clone() else {
-            return;
+        let fault = self.session.recording_fault().map(|f| f.description());
+        let m = match (&fault, &self.message) {
+            (Some(fault), Some((message, true))) => {
+                let fault = plain_error(fault);
+                if message.starts_with(&fault) {
+                    message.clone()
+                } else {
+                    format!("{fault}\n{message}")
+                }
+            }
+            (Some(fault), _) => fault.clone(),
+            (None, Some((message, true))) => message.clone(),
+            _ => return,
         };
         let pal = theme::pal(ui);
         let mut dismiss = false;
         banner(ui, pal.bad, |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                dismiss = ui
-                    .add(egui::Button::new("Dismiss").frame_when_inactive(false))
-                    .on_hover_text("Hide this message")
-                    .clicked();
+                dismiss = fault.is_none()
+                    && ui
+                        .add(egui::Button::new("Dismiss").frame_when_inactive(false))
+                        .on_hover_text("Hide this message")
+                        .clicked();
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.add(egui::Label::new(RichText::new(&m).color(pal.text)).wrap());
                 });
@@ -5547,7 +5643,7 @@ impl TimegrapherApp {
         self.update_banner(ui);
         // Errors float over the top of the main area rather than pushing
         // everything down.
-        if matches!(self.message, Some((_, true))) {
+        if self.session.recording_fault().is_some() || matches!(self.message, Some((_, true))) {
             let top = ui.max_rect();
             let pal = theme::pal(ui);
             egui::Area::new(egui::Id::new("error banner"))
@@ -8063,6 +8159,198 @@ mod tests {
             .filter(|e| e.file_type().unwrap().is_file())
             .map(|e| (e.file_name(), std::fs::read(e.path()).unwrap()))
             .collect()
+    }
+
+    // Replay supplies a real Capture without opening hardware. Its tiny file
+    // has no samples; replace only its public receiver with a controlled queue.
+    fn queued_capture(app: &mut TimegrapherApp, base: &Path) -> std::sync::mpsc::Sender<Event> {
+        let path = base.join("empty-input.wav");
+        hound::WavWriter::create(
+            &path,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 48000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap()
+        .finalize()
+        .unwrap();
+        let mut capture = capture::replay_file(&path).unwrap();
+        // End is sent after audio::stream closes the input. Wait before
+        // replacing rx so Windows cleanup cannot race that reader thread.
+        assert!(matches!(
+            capture
+                .rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap(),
+            Event::End
+        ));
+        let (tx, rx) = std::sync::mpsc::channel();
+        capture.rx = rx;
+        capture.is_file = false;
+        app.capture = Some(capture);
+        app.opened_at = Instant::now();
+        tx
+    }
+
+    fn queue_segment_open_failure(
+        app: &mut TimegrapherApp,
+        base: &Path,
+    ) -> std::sync::mpsc::Sender<Event> {
+        let now = app.live.as_ref().unwrap().duration_s();
+        app.session.pause(now).unwrap().unwrap();
+        app.session.resume("test").unwrap();
+        app.session.resumed_at(now);
+        // A real, deterministic failure before writing the next segment.
+        // This does not simulate a mid-sample write or a full disk.
+        std::fs::create_dir(
+            app.session
+                .recorder
+                .as_ref()
+                .unwrap()
+                .dir()
+                .join("audio-002.wav"),
+        )
+        .unwrap();
+        let tx = queued_capture(app, base);
+        tx.send(Event::Audio(timegrapher_core::capture::Block {
+            samples: vec![0.0; 960],
+            at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(2),
+        }))
+        .unwrap();
+        tx
+    }
+
+    #[test]
+    fn recording_failure_stops_capture_and_retains_scratch_with_or_without_input_error() {
+        for input_error in [false, true] {
+            let (mut app, base) = save_failure_fixture(if input_error {
+                "recording-input"
+            } else {
+                "recording-only"
+            });
+            app.save_into(&base.join("saved"));
+            let saved = app.session.saved_to().unwrap().to_path_buf();
+            let saved_bytes = saved_file_bytes(&saved);
+            let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
+            let tx = queue_segment_open_failure(&mut app, &base);
+            let before = app.live.as_ref().unwrap().duration_s();
+            if input_error {
+                tx.send(Event::Error("queued input failure".into()))
+                    .unwrap();
+            }
+            app.poll();
+            assert!(!app.running());
+            assert!(app.session.paused());
+            assert!(app.session.recorder.is_some());
+            assert!(!app.can_resume());
+            assert!(!app.session.allows(Action::Save));
+            assert_eq!(app.live.as_ref().unwrap().duration_s(), before);
+            assert_eq!(app.session.recorder.as_ref().unwrap().duration_s(), 1.0);
+            let fault = app.session.recording_fault().unwrap();
+            assert_eq!(fault.recovery_dir, scratch);
+            assert!(!fault.reason.contains("queued input failure"));
+            assert!(fault.marker_error.is_none());
+            assert!(scratch.join("RECORDING-ERROR.txt").is_file());
+            assert_eq!(
+                hound::WavReader::open(scratch.join("audio-001.wav"))
+                    .unwrap()
+                    .duration(),
+                48000
+            );
+            assert!(
+                app.needs_save_confirmation(),
+                "even a saved, short faulted take needs a retention warning"
+            );
+            // Direct methods must not reach hardware, a file dialog, or a save.
+            app.devices_listed = false;
+            app.start_microphone();
+            app.resume_microphone();
+            assert!(!app.devices_listed);
+            assert!(!app.running());
+            app.save_into(&base.join("must-not-exist"));
+            app.save_again();
+            app.save_recording();
+            assert!(!base.join("must-not-exist").exists());
+            assert_eq!(saved_file_bytes(&saved), saved_bytes);
+            app.info_msg("Another notice".into());
+            assert!(
+                app.session.recording_fault().is_some(),
+                "ordinary messages cannot dismiss the fault"
+            );
+            app.poll();
+            assert!(!app.running());
+            drop(tx);
+            if input_error {
+                eframe::App::on_exit(&mut app, None);
+            } else {
+                app.new_session();
+            }
+            assert!(scratch.join("audio-001.wav").is_file());
+            assert_eq!(saved_file_bytes(&saved), saved_bytes);
+            assert!(app.session.recorder.is_none());
+            assert!(app.session.recording_fault().is_none());
+            std::fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn input_only_failure_keeps_the_existing_resume_and_save_contract() {
+        let (mut app, base) = save_failure_fixture("input-only");
+        let tx = queued_capture(&mut app, &base);
+        tx.send(Event::Error("input disconnected".into())).unwrap();
+        app.poll();
+        assert!(!app.running());
+        assert!(app.can_resume());
+        assert!(app.session.allows(Action::Save));
+        assert!(app.session.recording_fault().is_none());
+        app.save_into(&base.join("saved"));
+        assert!(app.session.saved_to().unwrap().join(MANIFEST).is_file());
+        app.new_session();
+        drop(tx);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn pause_and_input_stop_close_failures_retain_scratch_and_report_marker_failure() {
+        for input_stop in [false, true] {
+            let (mut app, base) = save_failure_fixture(if input_stop {
+                "input-close"
+            } else {
+                "pause-close"
+            });
+            let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
+            std::fs::remove_file(scratch.join("session.json")).unwrap();
+            std::fs::create_dir(scratch.join("session.json")).unwrap();
+            std::fs::create_dir(scratch.join("RECORDING-ERROR.txt")).unwrap();
+            let tx = queued_capture(&mut app, &base);
+            if input_stop {
+                tx.send(Event::Error("input disconnected".into())).unwrap();
+                app.poll();
+            } else {
+                app.pause();
+            }
+            assert!(!app.running());
+            assert!(!app.can_resume());
+            assert!(!app.session.allows(Action::Save));
+            let fault = app.session.recording_fault().unwrap();
+            assert!(fault.reason.contains("Couldn't close"));
+            assert!(fault.marker_error.is_some());
+            assert!(fault
+                .description()
+                .contains("Couldn't write the recording-error marker"));
+            let message = &app.message.as_ref().unwrap().0;
+            assert!(message.contains("Recording stopped"));
+            if input_stop {
+                assert!(message.contains("input disconnected"));
+            }
+            app.new_session();
+            assert!(scratch.join("audio-001.wav").is_file());
+            drop(tx);
+            std::fs::remove_dir_all(base).unwrap();
+        }
     }
 
     #[test]

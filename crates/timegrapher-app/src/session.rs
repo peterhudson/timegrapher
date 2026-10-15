@@ -22,7 +22,9 @@
 //! | Analysed       |       |        |      |      |      |
 //!
 //! Listen, Replay, Open and New Session are allowed in every state: each
-//! stops what is under way first. Save needs the sound kept as well.
+//! stops what is under way first. Save needs the sound kept as well. A recording
+//! fault overrides Resume, Move and Save until the recorder is released; its
+//! files are retained for manual recovery rather than treated as a valid take.
 
 use crate::app::Position;
 use std::io;
@@ -68,6 +70,31 @@ pub struct MetadataSnapshot {
     key: Metadata,
     events: Vec<Event>,
     notes_revision: u64,
+}
+
+/// A recording whose last write/close may be incomplete. Keep its files for
+/// manual recovery; it cannot safely resume or replace a known-good saved take.
+#[derive(Debug, Clone)]
+pub struct RecordingFault {
+    pub reason: String,
+    pub recovery_dir: PathBuf,
+    pub marker_error: Option<String>,
+}
+
+impl RecordingFault {
+    pub fn description(&self) -> String {
+        let mut text = format!(
+            "Recording stopped: {}. Remaining files may be incomplete and need manual recovery: {}. \
+             This session cannot Resume or Save. New Session or quitting leaves these files on disk.",
+            self.reason, self.recovery_dir.display()
+        );
+        if let Some(error) = &self.marker_error {
+            text.push_str(&format!(
+                " Couldn't write the recording-error marker: {error}."
+            ));
+        }
+        text
+    }
 }
 
 /// Where a session is in its life.
@@ -134,12 +161,18 @@ pub struct Session {
     audio_timeline: Vec<AudioAnchor>,
     saved_metadata: Option<MetadataSnapshot>,
     notes_revision: u64,
+    recording_fault: Option<RecordingFault>,
 }
 
 impl Session {
     /// Forget everything but the recorder, which the caller discards or
     /// keeps.
     pub fn clear(&mut self) {
+        // Clearing views cannot make a damaged recorder usable again. Only
+        // releasing that recorder (discard_recording) resets its fault.
+        if self.recorder.is_none() {
+            self.recording_fault = None;
+        }
         self.state = State::Idle;
         self.settle_pending = false;
         self.settle_to = None;
@@ -155,6 +188,11 @@ impl Session {
 
     /// Whether `action` is allowed now.
     pub fn allows(&self, action: Action) -> bool {
+        if self.recording_fault.is_some()
+            && matches!(action, Action::Resume | Action::Save | Action::Move)
+        {
+            return false;
+        }
         use State::*;
         match action {
             Action::Pause => self.state == Listening,
@@ -531,13 +569,46 @@ impl Session {
         }
     }
 
-    /// Close and delete the sound kept for saving, and forget the saves.
+    pub fn recording_fault(&self) -> Option<&RecordingFault> {
+        self.recording_fault.as_ref()
+    }
+
+    /// Stop the session without discarding a possibly usable prefix. A marker
+    /// is best effort: a full/broken filesystem may reject even that write.
+    pub fn recording_failed(&mut self, now: f64, reason: String) {
+        let Some(r) = &self.recorder else { return };
+        let recovery_dir = r.dir().to_path_buf();
+        self.anchor_audio(now, false);
+        self.state = State::Paused {
+            since: Instant::now(),
+        };
+        let mut fault = RecordingFault {
+            reason,
+            recovery_dir,
+            marker_error: None,
+        };
+        if let Err(e) = std::fs::write(
+            fault.recovery_dir.join("RECORDING-ERROR.txt"),
+            fault.description() + "\n",
+        ) {
+            fault.marker_error = Some(e.to_string());
+        }
+        self.recording_fault = Some(fault);
+    }
+
+    /// Release the recorder and forget the saves. Healthy unsaved scratch is
+    /// deleted; faulted scratch is left untouched for manual recovery.
     pub fn discard_recording(&mut self) {
         if let Some(r) = self.recorder.take() {
-            if let Ok(dir) = r.finish(None) {
+            if self.recording_fault.is_some() {
+                // Drop closes handles best-effort, without writing a normal
+                // completed session.json or deleting uncertain audio.
+                drop(r);
+            } else if let Ok(dir) = r.finish(None) {
                 let _ = std::fs::remove_dir_all(dir);
             }
         }
+        self.recording_fault = None;
         self.events.retain(|e| !matches!(e, Event::Saved { .. }));
         self.audio_timeline.clear();
         self.saved_metadata = None;
@@ -646,6 +717,44 @@ mod tests {
     fn resume_at(s: &mut Session, now: f64) {
         s.resume("test").unwrap();
         s.resumed_at(now);
+    }
+
+    #[test]
+    fn recording_fault_survives_view_reset_and_retains_files_on_release() {
+        let mut s = recording("fault-retention");
+        record(&mut s, 1, 1);
+        let dir = s.recorder.as_ref().unwrap().dir().to_path_buf();
+        s.recording_failed(1.0, "write failed".into());
+        assert!(s.paused());
+        assert!(!s.allows(Action::Save));
+        assert!(s.resume("test").is_err());
+        assert!(dir.join("RECORDING-ERROR.txt").is_file());
+        s.clear();
+        assert!(s.recording_fault().is_some());
+        s.discard_recording();
+        assert!(s.recording_fault().is_none());
+        assert!(dir.join("audio-001.wav").is_file());
+        assert!(dir.join("clock.csv").is_file());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn recovery_marker_failure_does_not_erase_the_recording_fault() {
+        let mut s = recording("fault-marker");
+        record(&mut s, 1, 1);
+        let dir = s.recorder.as_ref().unwrap().dir().to_path_buf();
+        std::fs::create_dir(dir.join("RECORDING-ERROR.txt")).unwrap();
+        s.recording_failed(1.0, "original write failure".into());
+        let fault = s.recording_fault().unwrap();
+        assert_eq!(fault.reason, "original write failure");
+        assert!(fault.marker_error.is_some());
+        assert!(fault
+            .description()
+            .contains("Couldn't write the recording-error marker"));
+        assert!(!s.allows(Action::Resume));
+        s.discard_recording();
+        assert!(dir.is_dir());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
     #[test]
