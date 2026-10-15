@@ -179,9 +179,11 @@ pub struct Outcome {
     pub passed: bool,
     pub margins: Margins,
     pub counts: Counts,
-    /// Takes in the baseline that this run did not read (missing audio or
-    /// left out by --take); not a failure.
+    /// Baseline takes not read, including intentional selection exclusions.
     pub not_run: Vec<String>,
+    /// Required inputs and recording identities, checked independently of values.
+    #[serde(flatten)]
+    pub integrity: Integrity,
     /// Every value that is not Same, or every value with --all.
     pub rows: Vec<Row>,
     /// How far the engine is from tg on each take: the largest distance
@@ -205,13 +207,71 @@ pub struct Worst {
     pub beat_error_ms: Option<f64>,
 }
 
-/// Whether a baseline label names the entry's file: the file itself, or a
-/// stretch of it (`file (600–1200 s)`, from `start_s` and `end_s`).
-fn same_recording(label: &str, file: &str) -> bool {
-    label == file
-        || label
-            .strip_prefix(file)
-            .is_some_and(|r| r.starts_with(" ("))
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Integrity {
+    pub unreadable: Vec<String>,
+    pub missing_sessions: Vec<String>,
+    pub missing_readings: Vec<String>,
+    pub recording_mismatches: Vec<String>,
+}
+
+impl Integrity {
+    fn incomplete(&self) -> bool {
+        !self.unreadable.is_empty()
+            || !self.missing_sessions.is_empty()
+            || !self.missing_readings.is_empty()
+    }
+
+    fn fails(&self) -> bool {
+        self.incomplete() || !self.recording_mismatches.is_empty()
+    }
+
+    fn check_reading(
+        &mut self,
+        take: &str,
+        reading: usize,
+        now: Option<&Values>,
+        before: Option<&Values>,
+    ) {
+        let id = format!("{take} #{reading}");
+        match (now, before) {
+            (None, _) => self.unreadable.push(id),
+            (Some(n), Some(b)) if n.label != b.label => self.recording_mismatches.push(id),
+            _ => {}
+        }
+    }
+
+    fn check_count(&mut self, take: &str, now: usize, before: usize) {
+        self.missing_readings
+            .extend((now..before).map(|i| format!("{take} #{}", i + 1)));
+    }
+}
+
+fn selected_session(
+    s: &str,
+    takes: &[String],
+    holdout_ids: &std::collections::BTreeSet<String>,
+    holdout: bool,
+) -> bool {
+    (takes.is_empty() || takes.iter().any(|t| s.contains(t.as_str())))
+        && holdout_ids.contains(s.split('/').next().unwrap_or(s)) == holdout
+}
+
+fn required_missing_sessions(
+    baseline: Option<&Baseline>,
+    sessions: &[String],
+    takes: &[String],
+    holdout_ids: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    baseline
+        .map(|b| {
+            b.takes
+                .keys()
+                .filter(|s| selected_session(s, takes, holdout_ids, false) && !sessions.contains(s))
+                .map(|s| take_name(s))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Session files under `root`, as paths relative to it ('/' separated).
@@ -528,20 +588,23 @@ pub fn run(o: &Options) -> Result<bool, String> {
             Some(b)
         }
         // Holdout takes are judged against tg alone.
-        Err(_) if o.write_baseline || o.holdout => None,
+        Err(_) if o.holdout => None,
+        // Only an absent baseline may be created. Other read errors must not
+        // discard required or unselected entries from an existing baseline.
+        Err(e) if o.write_baseline && e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
-            return Err(format!(
-                "{}: {e} (write one with --write-baseline)",
-                bpath.display()
-            ))
+            let hint = if e.kind() == std::io::ErrorKind::NotFound {
+                " (write one with --write-baseline)"
+            } else {
+                " (existing baseline could not be read; not replaced)"
+            };
+            return Err(format!("{}: {e}{hint}", bpath.display()));
         }
     };
     // Holdout takes are read by --holdout and nothing else.
-    let in_holdout = |s: &str| holdout_ids.contains(s.split('/').next().unwrap_or(s));
     let sessions: Vec<String> = find_sessions(root)?
         .into_iter()
-        .filter(|s| o.takes.is_empty() || o.takes.iter().any(|t| s.contains(t.as_str())))
-        .filter(|s| in_holdout(s) == o.holdout)
+        .filter(|s| selected_session(s, &o.takes, &holdout_ids, o.holdout))
         .collect();
     if o.holdout {
         return holdout(root, &sessions, o);
@@ -562,9 +625,19 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let mut readings = 0;
     let mut fresh: BTreeMap<String, Vec<Values>> = BTreeMap::new();
     let mut amplitude_high = Vec::new();
+    let mut integrity = Integrity {
+        missing_sessions: required_missing_sessions(
+            old.as_ref(),
+            &sessions,
+            &o.takes,
+            &holdout_ids,
+        ),
+        ..Default::default()
+    };
     for (s, (m, rs)) in sessions.iter().zip(&measured) {
         let take = take_name(s);
         let before = old.as_ref().and_then(|b| b.takes.get(s));
+        integrity.check_count(&take, m.recordings.len(), before.map_or(0, Vec::len));
         let mut values = Vec::new();
         let mut offs = (Vec::new(), Vec::new(), Vec::new());
         for (i, (e, r)) in m.recordings.iter().zip(rs).enumerate() {
@@ -587,10 +660,11 @@ pub fn run(o: &Options) -> Result<bool, String> {
                     None
                 }
             };
-            // A baseline reading counts only if it is the same recording.
-            let base = before
-                .and_then(|b| b.get(i))
-                .filter(|b| same_recording(&b.label, &e.file));
+            let base = before.and_then(|b| b.get(i));
+            integrity.check_reading(&take, i + 1, now.as_ref(), base);
+            // Labels include explicit intervals rounded to seconds, not a full
+            // input identity. Changed labels must not count as acceptable New.
+            let base = base.filter(|b| now.as_ref().map_or(true, |n| n.label == b.label));
             let rs = compare(
                 &take,
                 i + 1,
@@ -639,7 +713,8 @@ pub fn run(o: &Options) -> Result<bool, String> {
     let mut counts = tally(&rows);
     counts.takes = sessions.len();
     counts.readings = readings;
-    let passed = !rows.iter().any(|r| r.status.fails())
+    let passed = !integrity.fails()
+        && !rows.iter().any(|r| r.status.fails())
         && !smoke.iter().any(|s| s.fails())
         && amplitude_high.is_empty();
     let shown: Vec<Row> = rows
@@ -651,6 +726,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
         margins: o.margins,
         counts,
         not_run,
+        integrity,
         rows: shown,
         worst,
         smoke,
@@ -658,6 +734,9 @@ pub fn run(o: &Options) -> Result<bool, String> {
     };
 
     if o.write_baseline {
+        if outcome.integrity.incomplete() {
+            return Err("required sessions or readings are missing or unreadable, so no baseline was written".into());
+        }
         let mut takes = old.map(|b| b.takes).unwrap_or_default();
         takes.extend(fresh);
         let b = Baseline {
@@ -993,6 +1072,25 @@ fn print_text(o: &Outcome, names: bool) {
     if !o.not_run.is_empty() {
         println!("Not run (in the baseline only): {}", o.not_run.join(", "));
     }
+    for (name, failures) in [
+        ("Unreadable readings", &o.integrity.unreadable),
+        (
+            "Missing required baseline sessions",
+            &o.integrity.missing_sessions,
+        ),
+        (
+            "Missing required baseline readings",
+            &o.integrity.missing_readings,
+        ),
+        (
+            "Recording identity changed",
+            &o.integrity.recording_mismatches,
+        ),
+    ] {
+        if !failures.is_empty() {
+            println!("{name}: {}: FAIL", failures.join(", "));
+        }
+    }
     if !o.amplitude_high.is_empty() {
         println!(
             "Median amplitude over 330° (the harness's own check): {}: FAIL",
@@ -1035,11 +1133,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stretches_match_their_file() {
-        assert!(same_recording("take", "take"));
-        assert!(same_recording("take (600–1200 s)", "take"));
-        assert!(!same_recording("take2", "take"));
-        assert!(!same_recording("take", "take2"));
+    fn changed_intervals_fail_identity_but_readable_new_entries_pass() {
+        let mut before = v(5.0, 250.0, 0.2, 100);
+        before.label = "take (600–1200 s)".into();
+        let mut now = before.clone();
+        let mut integrity = Integrity::default();
+        integrity.check_reading("t", 1, Some(&now), Some(&before));
+        assert!(!integrity.fails());
+        now.label = "take (1200–1800 s)".into();
+        integrity.check_reading("t", 1, Some(&now), Some(&before));
+        assert_eq!(integrity.recording_mismatches, ["t #1"]);
+        assert!(integrity.fails());
+        assert!(!integrity.incomplete()); // A successful changed interval can be rebaselined.
+        let mut integrity = Integrity::default();
+        integrity.check_reading("new", 1, Some(&now), None);
+        assert!(!integrity.fails());
     }
 
     fn v(rate: f64, amp: f64, be: f64, beats: usize) -> Values {
@@ -1165,6 +1273,61 @@ mod tests {
             &Margins::default(),
         );
         assert!(rows.iter().all(|r| r.status == Status::New));
+    }
+
+    #[test]
+    fn unreadable_new_readings_fail_even_when_all_rows_are_new() {
+        let rows = compare("new", 1, None, None, None, &Margins::default());
+        assert!(rows.iter().all(|r| r.status == Status::New));
+        let mut integrity = Integrity::default();
+        integrity.check_reading("new", 1, None, None);
+        assert_eq!(integrity.unreadable, ["new #1"]);
+        assert!(integrity.fails());
+        assert!(integrity.incomplete());
+    }
+
+    #[test]
+    fn removed_trailing_readings_fail_but_additions_do_not() {
+        let mut integrity = Integrity::default();
+        integrity.check_count("t", 1, 3);
+        assert_eq!(integrity.missing_readings, ["t #2", "t #3"]);
+        assert!(integrity.fails());
+        assert!(integrity.incomplete());
+        let mut integrity = Integrity::default();
+        integrity.check_count("t", 3, 1);
+        assert!(!integrity.fails());
+    }
+
+    #[test]
+    fn missing_sessions_respect_take_selection_and_holdout_exclusions() {
+        let baseline = Baseline {
+            schema: BASELINE_SCHEMA.into(),
+            software: serde_json::json!({}),
+            takes: [
+                "kept/session.toml",
+                "removed/session.toml",
+                "sealed/session.toml",
+            ]
+            .into_iter()
+            .map(|s| (s.into(), vec![v(5.0, 250.0, 0.2, 100)]))
+            .collect(),
+        };
+        let sessions = vec!["kept/session.toml".into()];
+        let holdout = ["sealed".into()].into_iter().collect();
+        assert_eq!(
+            required_missing_sessions(Some(&baseline), &sessions, &[], &holdout),
+            ["removed"]
+        );
+        assert!(
+            required_missing_sessions(Some(&baseline), &sessions, &["kept".into()], &holdout)
+                .is_empty()
+        );
+        assert_eq!(
+            required_missing_sessions(Some(&baseline), &sessions, &["removed".into()], &holdout),
+            ["removed"]
+        );
+        assert!(selected_session("sealed/session.toml", &[], &holdout, true));
+        assert!(!selected_session("kept/session.toml", &[], &holdout, true));
     }
 
     #[test]
