@@ -29,6 +29,14 @@ recording and sidecar that `doctor --save` already wrote.
 `--bph` and `--lift` are passed to both analyses: give them as they were
 set when the problem showed.
 
+The desktop report stores its captured screen state separately in
+`results/app.json`. Its excerpt replay command always supplies a numeric
+`--lift`, so the excerpt baseline treats that argument as explicit, even when
+its value is 52°. This aligns the baseline's lift caveat with that command; it
+does not establish the watch's physical lift angle or change the original app
+capture. It is not a guarantee that every replay field matches: clock-wrapper
+and environment differences can still be reported as changes.
+
 **Redaction.** Before anything is written, the home folder becomes `~`, and
 whole-word occurrences of the user name and host name become `<user>` and
 `<host>`. That covers the note, the results, the sidecar and the logs. The
