@@ -2,10 +2,12 @@
 //! together into one report (Witschi's multi-position test).
 
 use crate::long::expand_dirs;
+use crate::long::{ResolvedCalibre, ResolvedTrain, Train};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use timegrapher_core::calibres::{self, Calibre};
+use timegrapher_core::calibre_store::{self, UserCalibres};
+use timegrapher_core::calibres;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
@@ -34,34 +36,80 @@ pub struct Options {
     pub no_cycles: bool,
 }
 
+#[derive(Debug)]
+pub(crate) struct SessionCalibre {
+    train: ResolvedTrain,
+    manifest_name: Option<String>,
+}
+
 impl Options {
-    /// The calibre named with `--calibre` (checked before any audio is
-    /// read), else the session file's `calibre` line when the table knows
-    /// it; a name the table does not know is only a label.
-    fn calibre(&self, m: &Manifest) -> Result<Option<&'static Calibre>, String> {
-        if self.calibre.is_some() {
-            return crate::long::Train {
-                calibre: self.calibre.as_deref(),
-                escape_teeth: None,
+    /// Resolve all names from one catalogue read. Unknown manifest names are labels.
+    pub(crate) fn calibre(&self, m: &Manifest) -> Result<SessionCalibre, String> {
+        let user = if self.calibre.is_some() || m.calibre.is_some() {
+            match calibre_store::default_path() {
+                Some(path) => UserCalibres::load(&path)?,
+                None => UserCalibres::default(),
             }
-            .calibre();
+        } else {
+            UserCalibres::default()
+        };
+        self.calibre_with(m, &user)
+    }
+
+    pub(crate) fn calibre_with(
+        &self,
+        m: &Manifest,
+        user: &UserCalibres,
+    ) -> Result<SessionCalibre, String> {
+        let inherited = Train {
+            calibre: m.calibre.as_deref(),
+            escape_teeth: m.escape_teeth,
         }
-        Ok(m.calibre.as_deref().and_then(calibres::find))
+        .resolve_label_with(user)?;
+        let manifest_name = inherited.calibre.as_ref().map(|c| c.name.clone());
+        let train = if self.calibre.is_some() {
+            Train {
+                calibre: self.calibre.as_deref(),
+                escape_teeth: m.escape_teeth,
+            }
+            .resolve_with(user)
+            .map_err(|e| {
+                // Retain the session command's existing actionable known-name list.
+                format!(
+                    "{e}; known: {}",
+                    calibres::all()
+                        .iter()
+                        .map(|c| c.calibre.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?
+        } else {
+            inherited
+        };
+        let teeth = m
+            .escape_teeth
+            .or(train.calibre.as_ref().and_then(|c| c.escape_teeth))
+            .unwrap_or(15);
+        Ok(SessionCalibre {
+            train: train.with_escape_teeth(Some(teeth)),
+            manifest_name,
+        })
     }
 
     /// Where the calibre and the values that win over it disagree, with
     /// the value used.
-    fn calibre_notes(&self, m: &Manifest, cal: Option<&Calibre>) -> Vec<String> {
-        let Some(c) = cal else {
+    fn calibre_notes(&self, m: &Manifest, selection: &SessionCalibre) -> Vec<String> {
+        let Some(c) = selection.train.calibre.as_ref() else {
             return Vec::new();
         };
         let mut notes = Vec::new();
         if self.calibre.is_some() {
-            if let Some(other) = m.calibre.as_deref().and_then(calibres::find) {
-                if other.calibre != c.calibre {
+            if let Some(other) = selection.manifest_name.as_deref() {
+                if other != c.name {
                     notes.push(format!(
                         "the session file names the {}, --calibre the {}; using the {}",
-                        other.calibre, c.calibre, c.calibre
+                        other, c.name, c.name
                     ));
                 }
             }
@@ -70,7 +118,7 @@ impl Options {
         if let Some((b, cb)) = self.bph.or(m.bph).zip(c.bph).filter(|&(b, cb)| b != cb) {
             notes.push(format!(
                 "the {} beats at {cb} bph, {} says {b}; using {b}",
-                c.calibre,
+                c.name,
                 from(self.bph.is_some())
             ));
         }
@@ -78,7 +126,7 @@ impl Options {
             if (l - cl).abs() > 1e-9 {
                 notes.push(format!(
                     "the {}'s lift angle is {cl}°, {} says {l}°; using {l}°",
-                    c.calibre,
+                    c.name,
                     from(self.lift.is_some())
                 ));
             }
@@ -87,7 +135,7 @@ impl Options {
             if t != ct {
                 notes.push(format!(
                     "the {}'s escape wheel has {ct} teeth, the session file says {t}; using {t}",
-                    c.calibre
+                    c.name
                 ));
             }
         }
@@ -96,13 +144,13 @@ impl Options {
 
     /// Beat rate: the flag, else the session file, else the calibre's;
     /// none means it is measured.
-    fn bph(&self, m: &Manifest, cal: Option<&Calibre>) -> Option<u32> {
+    fn bph(&self, m: &Manifest, cal: Option<&ResolvedCalibre>) -> Option<u32> {
         self.bph.or(m.bph).or(cal.and_then(|c| c.bph))
     }
 
     /// Lift angle: the flag, else the session file, else the calibre's,
     /// else 52 degrees.
-    fn lift(&self, m: &Manifest, cal: Option<&Calibre>) -> f64 {
+    fn lift(&self, m: &Manifest, cal: Option<&ResolvedCalibre>) -> f64 {
         self.lift
             .or(m.lift)
             .or(cal.and_then(|c| c.lift_angle_deg))
@@ -243,7 +291,8 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     t.push_str("# Test session for `timegrapher session`. Edit and run:\n");
     t.push_str(&format!("#   timegrapher session {}\n\n", dir.display()));
     t.push_str("watch = \"\"\ncalibre = \"\"\n");
-    let cal = o.calibre(&Manifest::default())?;
+    let selection = o.calibre(&Manifest::default())?;
+    let cal = selection.train.calibre.as_ref();
     t.push_str(&format!(
         "bph = {}\n",
         o.bph.or(cal.and_then(|c| c.bph)).unwrap_or(28800)
@@ -357,6 +406,7 @@ fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
 
 pub(crate) struct Ctx<'a> {
     pub m: &'a Manifest,
+    pub calibre: &'a SessionCalibre,
     pub base: &'a Path,
     pub o: &'a Options,
     pub tty: bool,
@@ -382,9 +432,9 @@ fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
 }
 
 /// The analysis settings for a session's recordings, and its calibre.
-fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>), String> {
+fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a ResolvedCalibre>), String> {
     let mut cfg = StreamConfig::default();
-    let cal = c.o.calibre(c.m)?;
+    let cal = c.calibre.train.calibre.as_ref();
     cfg.analysis.bph = c.o.bph(c.m, cal);
     cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
     cfg.analysis.lift_known = lift_known(c, cal);
@@ -397,7 +447,7 @@ fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>),
 
 /// Whether the lift angle came from `--lift`, the session file or
 /// the calibre, rather than the default.
-fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
+fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
     if c.o.lift.is_some() {
         true
     } else if c.m.lift.is_some() {
@@ -477,11 +527,7 @@ fn read_one_inner(
     } else {
         let lc = LongConfig {
             wheels: match cal {
-                Some(k) => crate::long::Train {
-                    calibre: Some(k.calibre.as_str()),
-                    escape_teeth: Some(escape_teeth),
-                }
-                .wheels(log.bph)?,
+                Some(_) => c.calibre.train.wheels(log.bph),
                 None => standard_wheels(log.bph, escape_teeth),
             }
             .into_iter()
@@ -591,8 +637,9 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         return init(paths, o);
     }
     let (m, base) = load_manifest(paths)?;
-    let cal = o.calibre(&m)?;
-    let calibre_notes = o.calibre_notes(&m, cal);
+    let selection = o.calibre(&m)?;
+    let cal = selection.train.calibre.as_ref();
+    let calibre_notes = o.calibre_notes(&m, &selection);
     for n in &calibre_notes {
         eprintln!("note: {n}");
     }
@@ -601,6 +648,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     }
     let ctx = Ctx {
         m: &m,
+        calibre: &selection,
         base: &base,
         o,
         tty: std::io::stderr().is_terminal(),
@@ -620,7 +668,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     let settings = serde_json::json!({
         "bph": o.bph(&m, cal),
         "lift_deg": o.lift(&m, cal),
-        "calibre": cal.map(|c| c.calibre.as_str()),
+        "calibre": cal.map(|c| c.name.as_str()),
         "calibre_notes": calibre_notes,
         "settle_s": o.settle,
         "shape": !o.no_shape,
@@ -638,7 +686,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             .calibre
             .as_deref()
             .filter(|w| !w.is_empty())
-            .or(cal.map(|c| c.calibre.as_str())),
+            .or(cal.map(|c| c.name.as_str())),
         owner: m.owner.as_deref(),
         notes: m.notes.as_deref(),
         bph,
@@ -920,9 +968,11 @@ mod tests {
     fn a_defaulted_lift_angle_is_unknown() {
         let base = Path::new(".");
         let known = |o: &Options, m: &Manifest| {
-            let cal = o.calibre(m).unwrap();
+            let selection = o.calibre(m).unwrap();
+            let cal = selection.train.calibre.as_ref();
             let c = Ctx {
                 m,
+                calibre: &selection,
                 base,
                 o,
                 tty: false,
@@ -960,8 +1010,10 @@ mod tests {
         ] {
             let m: Manifest = toml::from_str(text).unwrap();
             let o = options(None, flag, None);
+            let selection = o.calibre(&m).unwrap();
             let c = Ctx {
                 m: &m,
+                calibre: &selection,
                 base,
                 o: &o,
                 tty: false,
@@ -981,7 +1033,8 @@ mod tests {
     fn calibre_fills_what_the_flags_and_session_file_leave_out() {
         let none = Manifest::default();
         let o = options(None, None, Some("Unitas 6497-2"));
-        let cal = o.calibre(&none).unwrap();
+        let selection = o.calibre(&none).unwrap();
+        let cal = selection.train.calibre.as_ref();
         assert_eq!(o.bph(&none, cal), Some(21600));
         assert_eq!(o.lift(&none, cal), 44.0);
         // The session file wins over the calibre, and a flag over both.
@@ -1006,35 +1059,141 @@ mod tests {
     fn the_session_files_calibre_line_counts_when_the_table_knows_it() {
         let o = options(None, None, None);
         let m: Manifest = toml::from_str("calibre = \"2824-2\"\n").unwrap();
-        let cal = o.calibre(&m).unwrap();
-        assert_eq!(cal.map(|c| c.calibre.as_str()), Some("ETA 2824-2"));
+        let selection = o.calibre(&m).unwrap();
+        let cal = selection.train.calibre.as_ref();
+        assert_eq!(cal.map(|c| c.name.as_str()), Some("ETA 2824-2"));
         assert_eq!(o.bph(&m, cal), Some(28800));
         assert_eq!(o.lift(&m, cal), 50.0);
-        assert!(o.calibre_notes(&m, cal).is_empty());
+        assert!(o.calibre_notes(&m, &selection).is_empty());
         // A name the table does not know is only a label.
         let m: Manifest = toml::from_str("calibre = \"Bespoke 9999\"\n").unwrap();
-        assert!(o.calibre(&m).unwrap().is_none());
+        assert!(o.calibre(&m).unwrap().train.calibre.is_none());
         // --calibre wins over the line, and explicit values over both, with
         // a note for each disagreement.
         let m: Manifest =
             toml::from_str("calibre = \"2824-2\"\nbph = 21600\nlift = 52\nescape_teeth = 15\n")
                 .unwrap();
-        let cal = o.calibre(&m).unwrap();
+        let selection = o.calibre(&m).unwrap();
+        let cal = selection.train.calibre.as_ref();
         assert_eq!(o.bph(&m, cal), Some(21600));
         assert_eq!(o.lift(&m, cal), 52.0);
         assert_eq!(
-            o.calibre_notes(&m, cal).len(),
+            o.calibre_notes(&m, &selection).len(),
             3,
             "{:?}",
-            o.calibre_notes(&m, cal)
+            o.calibre_notes(&m, &selection)
         );
         let o = options(None, Some(55.0), Some("Rolex 3235"));
-        let cal = o.calibre(&m).unwrap();
-        assert_eq!(cal.map(|c| c.calibre.as_str()), Some("Rolex 3235"));
+        let selection = o.calibre(&m).unwrap();
+        let cal = selection.train.calibre.as_ref();
+        assert_eq!(cal.map(|c| c.name.as_str()), Some("Rolex 3235"));
         assert_eq!(o.lift(&m, cal), 55.0);
-        let notes = o.calibre_notes(&m, cal);
+        let notes = o.calibre_notes(&m, &selection);
         assert!(notes[0].contains("ETA 2824-2"), "{notes:?}");
         assert_eq!(notes.len(), 3, "{notes:?}");
+    }
+
+    #[test]
+    fn custom_session_catalogue_preserves_value_context_precedence_and_snapshot() {
+        let mut user: UserCalibres = serde_json::from_value(serde_json::json!({
+            "schema": calibre_store::SCHEMA,
+            "custom":[{"name":"Bench 44","aliases":["Workshop-A"],"bph":21600,"lift_angle_deg":44.0,"escape_teeth":20,"wheels":[{"name":"third wheel","period_s":123.0}]}],
+            "wheels":[{"calibre":"Rolex 3235","name":"third wheel","period_s":241.0}],
+        })).unwrap();
+        for (text, flag_bph, flag_lift, expected) in [
+            (
+                "calibre = \"Workshop-A\"",
+                None,
+                None,
+                (Some(21600), 44.0, true),
+            ),
+            (
+                "calibre = \"Workshop-A\"\nbph = 18000\nlift = 52\nlift_known = false",
+                None,
+                None,
+                (Some(18000), 52.0, false),
+            ),
+            (
+                "calibre = \"Workshop-A\"\nbph = 18000\nlift = 52\nlift_known = false",
+                Some(28800),
+                Some(52.0),
+                (Some(28800), 52.0, true),
+            ),
+            (
+                "calibre = \"Unknown label\"\nlift_known = true",
+                None,
+                None,
+                (None, 52.0, false),
+            ),
+        ] {
+            let m: Manifest = toml::from_str(text).unwrap();
+            let o = options(flag_bph, flag_lift, None);
+            let selection = o.calibre_with(&m, &user).unwrap();
+            let ctx = Ctx {
+                m: &m,
+                calibre: &selection,
+                base: Path::new("."),
+                o: &o,
+                tty: false,
+                quiet: true,
+            };
+            let (cfg, _) = stream_config(&ctx).unwrap();
+            assert_eq!(
+                (
+                    cfg.analysis.bph,
+                    cfg.analysis.amplitude.lift_deg,
+                    cfg.analysis.lift_known
+                ),
+                expected
+            );
+        }
+        let m: Manifest = toml::from_str("calibre = \"Workshop-A\"").unwrap();
+        let o = options(None, None, None);
+        let selected = o.calibre_with(&m, &user).unwrap();
+        assert_eq!(selected.train.calibre.as_ref().unwrap().name, "Bench 44");
+        assert!(selected
+            .train
+            .wheels(21600)
+            .iter()
+            .any(|w| w.name == "third wheel" && w.period_s == 123.0));
+        user.custom[0].lift_angle_deg = Some(60.0);
+        user.custom[0].wheels[0].period_s = 999.0;
+        let ctx = Ctx {
+            m: &m,
+            calibre: &selected,
+            base: Path::new("."),
+            o: &o,
+            tty: false,
+            quiet: true,
+        };
+        assert_eq!(
+            stream_config(&ctx).unwrap().0.analysis.amplitude.lift_deg,
+            44.0
+        );
+        assert!(selected
+            .train
+            .wheels(21600)
+            .iter()
+            .any(|w| w.period_s == 123.0));
+        assert!(options(None, None, Some("Unknown explicit"))
+            .calibre_with(&m, &user)
+            .is_err());
+        let shipped: Manifest = toml::from_str("calibre = \"Rolex 3235\"").unwrap();
+        let selected = o.calibre_with(&shipped, &user).unwrap();
+        assert!(selected
+            .train
+            .wheels(28800)
+            .iter()
+            .any(|w| w.name == "third wheel" && w.period_s == 241.0));
+        let corpus = o.calibre_with(&shipped, &UserCalibres::default()).unwrap();
+        assert!(
+            !corpus
+                .train
+                .wheels(28800)
+                .iter()
+                .any(|w| w.name == "third wheel" && w.period_s == 241.0),
+            "regression adapter's explicit empty catalogue ignores ambient overrides"
+        );
     }
 
     #[test]

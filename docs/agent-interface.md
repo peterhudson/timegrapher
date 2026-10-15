@@ -118,10 +118,13 @@ lift and escape-teeth override. Without `--calibre`, an unreadable user
 catalogue does not affect the command's defaults; with it, catalogue errors
 are reported before reading audio.
 
-This parity currently covers those three direct commands. `record` and
-`session` retain their existing built-in calibre resolution; their custom
-catalogue parity is separate work. A discovered custom name is therefore
-not yet a promise that these two commands accept it.
+`record` and `session` also accept the same custom names/aliases and wheel
+overrides. A session resolves its catalogue once for all positions; flags
+win over persisted manifest values/context, then catalogue values fill missing
+settings. An explicit unknown calibre is an error; an unknown manifest
+calibre remains a descriptive label and supplies no assumed catalogue data.
+Regression benchmarks deliberately use only the shipped catalogue, so the
+machine's custom entries or malformed user store cannot alter the benchmark.
 
 ## `clock`
 

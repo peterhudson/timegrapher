@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, Catalog, Entry, UserCalibres};
+#[cfg(test)]
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun::{self, LongReport};
@@ -19,6 +20,7 @@ pub(crate) struct Train<'a> {
     pub escape_teeth: Option<u32>,
 }
 
+#[cfg(test)]
 impl Train<'_> {
     /// The calibre named, checked before any audio is read.
     pub(crate) fn calibre(&self) -> Result<Option<&'static Calibre>, String> {
@@ -70,13 +72,15 @@ impl Train<'_> {
     }
 }
 
-/// Owned catalogue selection for direct analyze/long/series commands. Session
-/// retains its existing built-in Train adapter until its separate parity work.
+/// Owned catalogue selection shared by CLI analysis and recording commands.
+/// Regression callers deliberately supply an empty user catalogue.
+#[derive(Debug)]
 pub(crate) struct ResolvedTrain {
     pub calibre: Option<ResolvedCalibre>,
     escape_teeth: Option<u32>,
 }
 
+#[derive(Debug)]
 pub(crate) struct ResolvedCalibre {
     pub name: String,
     pub bph: Option<u32>,
@@ -105,7 +109,23 @@ impl Train<'_> {
         self.resolve_with(&user)
     }
 
-    fn resolve_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
+    /// Manifest names that are unknown remain descriptive labels.
+    pub(crate) fn resolve_label_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
+        if self
+            .calibre
+            .and_then(|name| Catalog::new(user).find(name))
+            .is_none()
+        {
+            return Train {
+                calibre: None,
+                escape_teeth: self.escape_teeth,
+            }
+            .resolve_with(user);
+        }
+        self.resolve_with(user)
+    }
+
+    pub(crate) fn resolve_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
         let cat = Catalog::new(user);
         let calibre = self.calibre.map(|name| {
             let entry = cat.find(name).ok_or_else(|| format!(
@@ -144,6 +164,11 @@ fn resolved_calibre(cat: &Catalog<'_>, entry: Entry<'_>) -> ResolvedCalibre {
 }
 
 impl ResolvedTrain {
+    pub(crate) fn with_escape_teeth(mut self, teeth: Option<u32>) -> Self {
+        self.escape_teeth = teeth;
+        self
+    }
+
     /// Preserve the direct long/series train behavior: fill a missing escape
     /// wheel only. Their --calibre still does not set analysis BPH or lift.
     pub(crate) fn wheels(&self, bph: u32) -> Vec<Wheel> {

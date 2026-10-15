@@ -9,6 +9,7 @@
 //! session FOLDER` reads them all together. The microphone is open only
 //! while the command runs, for the time it says it will.
 
+use crate::long::Train;
 use crate::output;
 use serde::Serialize;
 use serde_json::json;
@@ -17,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use timegrapher_core::analysis::Clipping;
 use timegrapher_core::audio;
+use timegrapher_core::calibre_store::{self, UserCalibres};
+#[cfg(test)]
 use timegrapher_core::calibres;
 use timegrapher_core::capture::Block;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
@@ -155,19 +158,44 @@ fn settings(o: &Options) -> Result<Settings, String> {
     } else {
         None
     };
-    let table = match o.calibre.as_deref() {
-        Some(n) => Some(calibres::find(n).ok_or_else(|| {
-            let known: Vec<&str> = calibres::all().iter().map(|c| c.calibre.as_str()).collect();
-            format!(
-                "calibre '{n}' is not in the table; known: {}",
-                known.join(", ")
-            )
-        })?),
-        None => None,
+    let named = o
+        .calibre
+        .as_deref()
+        .or(m.as_ref().and_then(|m| m.calibre.as_deref()));
+    let user = if named.is_some() {
+        match calibre_store::default_path() {
+            Some(path) => UserCalibres::load(&path)?,
+            None => UserCalibres::default(),
+        }
+    } else {
+        UserCalibres::default()
     };
+    settings_with(o, m, &user)
+}
+
+fn settings_with(
+    o: &Options,
+    m: Option<Manifest>,
+    user: &UserCalibres,
+) -> Result<Settings, String> {
+    let file = o.folder.join(MANIFEST);
+    let named = o
+        .calibre
+        .as_deref()
+        .or(m.as_ref().and_then(|m| m.calibre.as_deref()));
+    let train = Train {
+        calibre: named,
+        escape_teeth: None,
+    };
+    let selected = if o.calibre.is_some() {
+        train.resolve_with(user)?
+    } else {
+        train.resolve_label_with(user)?
+    };
+    let table = selected.calibre.as_ref();
     let bph = o.bph.or(table.and_then(|c| c.bph));
     let lift = o.lift.or(table.and_then(|c| c.lift_angle_deg));
-    let calibre = table.map(|c| c.calibre.clone());
+    let calibre = table.map(|c| c.name.clone());
     let Some(m) = m else {
         return Ok(Settings {
             watch: o.watch.clone(),
@@ -187,12 +215,24 @@ fn settings(o: &Options) -> Result<Settings, String> {
             file.display()
         )
     };
-    if let (Some(a), Some(b)) = (bph, m.bph) {
+    // An inherited catalogue fills holes only. A newly supplied flag/calibre
+    // still cannot change a session's persisted numeric/context settings.
+    let given_bph = o.bph.or(if o.calibre.is_some() {
+        table.and_then(|c| c.bph)
+    } else {
+        None
+    });
+    let given_lift = o.lift.or(if o.calibre.is_some() {
+        table.and_then(|c| c.lift_angle_deg)
+    } else {
+        None
+    });
+    if let (Some(a), Some(b)) = (given_bph, m.bph) {
         if a != b {
             return Err(differs("bph", a.to_string(), b.to_string()));
         }
     }
-    if let (Some(a), Some(b)) = (lift, m.lift) {
+    if let (Some(a), Some(b)) = (given_lift, m.lift) {
         if (a - b).abs() > 1e-9 {
             return Err(differs("lift", format!("{a}"), format!("{b}")));
         }
@@ -204,7 +244,7 @@ fn settings(o: &Options) -> Result<Settings, String> {
     } else {
         lift.is_some()
     };
-    if lift.is_some() && m.lift.is_some() && !lift_known {
+    if given_lift.is_some() && m.lift.is_some() && !lift_known {
         return Err(format!(
             "{} records an assumed lift, but this take supplies one; edit lift_known = true \
              only if that context applies to all its takes, or record into another folder",
@@ -680,6 +720,67 @@ mod tests {
             json: false,
             live: None,
         }
+    }
+
+    #[test]
+    fn custom_record_settings_inherit_only_missing_manifest_values_and_context() {
+        let user: UserCalibres = serde_json::from_value(json!({
+            "schema": calibre_store::SCHEMA,
+            "custom":[{"name":"Bench 44","aliases":["Workshop-A"],"bph":21600,"lift_angle_deg":44.0,"escape_teeth":20,"wheels":[]}],
+            "wheels":[],
+        })).unwrap();
+        let mut o = options(PathBuf::from("unused-settings-folder"));
+        o.calibre = Some("Workshop-A".into());
+        let supplied = settings_with(&o, None, &user).unwrap();
+        assert_eq!(
+            (supplied.bph, supplied.lift, supplied.lift_known),
+            (Some(21600), 44.0, true)
+        );
+        assert_eq!(supplied.calibre.as_deref(), Some("Bench 44"));
+        let saved: Manifest = toml::from_str(&header(&supplied)).unwrap();
+        assert_eq!(
+            (saved.bph, saved.lift, saved.lift_known),
+            (Some(21600), Some(44.0), Some(true))
+        );
+        o.calibre = None;
+        let inherited: Manifest = toml::from_str("calibre = \"Workshop-A\"\n").unwrap();
+        let set = settings_with(&o, Some(inherited), &user).unwrap();
+        assert_eq!(
+            (set.bph, set.lift, set.lift_known),
+            (Some(21600), 44.0, true)
+        );
+        assert_eq!(
+            set.calibre.as_deref(),
+            Some("Workshop-A"),
+            "parent label preserved"
+        );
+        let persisted = || {
+            toml::from_str("calibre = \"Workshop-A\"\nbph=18000\nlift=52\nlift_known=false")
+                .unwrap()
+        };
+        let set = settings_with(&o, Some(persisted()), &user).unwrap();
+        assert_eq!(
+            (set.bph, set.lift, set.lift_known),
+            (Some(18000), 52.0, false)
+        );
+        o.lift = Some(52.0);
+        assert!(settings_with(&o, Some(persisted()), &user)
+            .err()
+            .unwrap()
+            .contains("assumed lift"));
+        o.lift = None;
+        o.bph = Some(28800);
+        assert!(settings_with(&o, Some(persisted()), &user).is_err());
+        o.bph = None;
+        o.calibre = Some("Workshop-A".into());
+        assert!(settings_with(&o, Some(persisted()), &user).is_err());
+        o.calibre = Some("Unknown explicit".into());
+        assert!(settings_with(&o, None, &user).is_err());
+        o.calibre = None;
+        let label: Manifest = toml::from_str("calibre=\"Unknown label\"\nlift_known=true").unwrap();
+        let set = settings_with(&o, Some(label), &user).unwrap();
+        assert_eq!((set.bph, set.lift, set.lift_known), (None, 52.0, false));
+        assert_eq!(set.calibre.as_deref(), Some("Unknown label"));
     }
 
     #[test]
