@@ -8010,6 +8010,30 @@ mod tests {
     }
 
     #[test]
+    fn successful_save_keeps_the_callers_path_for_messages_and_save_again() {
+        let (mut app, base) = save_failure_fixture("caller-path");
+        let parent = base.join("saved").join("..").join("saved");
+        app.save_into(&parent);
+        let dest = app.session.saved_to().unwrap();
+        assert_eq!(dest.parent().unwrap().as_os_str(), parent.as_os_str());
+        assert_eq!(
+            app.message.as_ref(),
+            Some(&(
+                format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(1.0),
+                    dest.display()
+                ),
+                false
+            ))
+        );
+        assert_eq!(app.save_dir, parent.display().to_string());
+        assert!(dest.join(MANIFEST).is_file());
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn failed_required_manifest_does_not_report_or_mark_a_successful_save() {
         let (mut app, base) = save_failure_fixture("manifest");
         let parent = base.join("saved");

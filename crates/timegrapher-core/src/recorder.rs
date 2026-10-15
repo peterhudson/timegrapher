@@ -478,13 +478,15 @@ impl Recorder {
             .clone()
             .unwrap_or_else(|| self.copy_name(calibre));
         fs::create_dir_all(parent)?;
-        let parent = fs::canonicalize(parent)?;
+        // Resolve identities only for the overlap check. Keep the caller's
+        // spelling for filesystem work and paths returned or shown to them.
+        let canonical_parent = fs::canonicalize(parent)?;
         let dest = parent.join(&name);
         let source = fs::canonicalize(&self.dir)?;
         let resolved = if dest.exists() {
             fs::canonicalize(&dest)?
         } else {
-            dest.clone()
+            canonical_parent.join(&name)
         };
         if resolved.starts_with(&source) || source.starts_with(&resolved) {
             return Err(io::Error::new(
@@ -494,7 +496,7 @@ impl Recorder {
         }
         self.flush()?;
         let session = self.session_text(Some(utc(SystemTime::now())), result)?;
-        let mut update = SaveUpdate::new(&parent, &dest)?;
+        let mut update = SaveUpdate::new(parent, &dest)?;
         let open = self.writer.as_ref().and_then(|_| self.segments.last());
         // Enumerate required sources explicitly: a missing segment must not
         // disappear from read_dir and turn an incomplete take into a success.
@@ -956,7 +958,7 @@ mod tests {
     #[test]
     fn failed_rollback_keeps_recovery_files_and_reports_their_location() {
         let (mut r, base) = save_fixture("rollback");
-        let parent = base.join("saved");
+        let parent = base.join("saved").join("..").join("saved");
         let dest = r.save_copy(&parent, "", None).unwrap();
         let old_audio = fs::read(dest.join("audio-001.wav")).unwrap();
         append_second(&mut r, 2);
@@ -1011,6 +1013,77 @@ mod tests {
             fs::read(reported.join("backup/audio-001.wav")).unwrap(),
             old_audio
         );
+        assert_eq!(
+            reported.parent().unwrap().as_os_str(),
+            parent.as_os_str(),
+            "the recovery error must retain the caller's path spelling: {message}"
+        );
+        drop(r);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn saved_copy_retains_the_callers_relative_path() {
+        let (mut r, base) = save_fixture("caller-path");
+        // No process-wide current-directory change: exercise a relative caller
+        // path even when the platform's temp directory already is canonical.
+        let relative = PathBuf::from(format!("tg-save-relative-{}", std::process::id()));
+        let parent = relative.join("saved").join("..").join("saved");
+        let dest = r.save_copy(&parent, "", None).unwrap();
+        assert_eq!(
+            dest.as_os_str(),
+            parent.join(r.saved_name.as_ref().unwrap()).as_os_str()
+        );
+        assert!(dest.join("session.json").is_file());
+        append_second(&mut r, 2);
+        let again = r
+            .save_copy_using(&parent, "", None, &[], |_, path| {
+                assert_eq!(path.parent().unwrap().as_os_str(), dest.as_os_str());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(again.as_os_str(), dest.as_os_str());
+
+        // Canonical identity checks must still work for relative paths. The
+        // descendant destination does not yet exist; the ancestor does.
+        let mut local = Recorder::start(&relative.join("live"), r.info.clone()).unwrap();
+        let nested = local.dir().join("nested");
+        assert!(!nested.join(local.copy_name("")).exists());
+        assert!(local.save_copy(&nested, "", None).is_err());
+        local.saved_name = Some(local.dir().file_name().unwrap().to_os_string());
+        assert!(local.save_copy(&relative.join("live"), "", None).is_err());
+        local.saved_name = Some("live".into());
+        assert!(local.save_copy(&relative, "", None).is_err());
+        append_second(&mut local, 1);
+        assert_eq!(local.duration_s(), 1.0);
+        drop(local);
+        drop(r);
+        fs::remove_dir_all(relative).unwrap();
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_parents_retain_spelling_without_bypassing_alias_checks() {
+        let (mut r, base) = save_fixture("parent-alias");
+        let real = base.join("saved");
+        fs::create_dir(&real).unwrap();
+        let alias = base.join("saved-alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let dest = r.save_copy(&alias, "", None).unwrap();
+        assert_eq!(dest.parent().unwrap().as_os_str(), alias.as_os_str());
+        assert_eq!(
+            fs::canonicalize(&dest).unwrap(),
+            fs::canonicalize(real.join(dest.file_name().unwrap())).unwrap()
+        );
+        let live_alias = base.join("live-alias");
+        std::os::unix::fs::symlink(r.dir(), &live_alias).unwrap();
+        assert!(!live_alias.join(r.saved_name.as_ref().unwrap()).exists());
+        let before = fs::read(r.dir().join("session.json")).unwrap();
+        assert!(r.save_copy(&live_alias, "", None).is_err());
+        assert_eq!(fs::read(r.dir().join("session.json")).unwrap(), before);
+        append_second(&mut r, 2);
+        assert_eq!(r.duration_s(), 2.0);
         drop(r);
         fs::remove_dir_all(base).unwrap();
     }
