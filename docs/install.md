@@ -167,9 +167,40 @@ PR-head results for the candidate's main CI.
 Pull-request packaging and manual runs without **Draft a release** remain
 nonpublishing checks and explicitly report **gate not required**. Manual runs on
 a tag also remain nonpublishing with either checkbox value; manual drafting
-requires main. The gate does not add acoustic or MCP protocol tests of the extracted release artifacts; their
-current checks remain the help/version and packaging checks in the workflow.
+requires main.
 If CI job names or the required equivalence step change, update the centralized
 contract in `.github/scripts/release_ci_gate.py` and its offline tests in the same
 review. Those tests run in all three existing platform jobs, without network or
 release operations.
+
+Before files are uploaded, release packaging also runs a synthetic operability
+check against each extracted binary pair: Linux tarball and AppImage; macOS
+mounted DMG, CLI tarball and MCP bundle; Windows ZIP and MCP bundle. A missing
+required binary or bundle fails the build. Existing help/version, signature and
+archive checks remain in place.
+
+Each pair generates the existing deterministic 40-second synthetic-watch recipe
+(48 kHz, seed 1, 28,800 bph, rate +6 s/day, amplitude 280°, beat error 0.4 ms,
+SNR 30 dB). Its CLI analysis must hear a watch, retain the explicit 52° lift and
+beat rate, provide finite readings, and meet the existing MCP test's rate margin
+of less than 1 s/day from +6. The packaged MCP server must initialize over stdio,
+list `analyze_recording`, execute it through its shipped CLI sibling, return the
+same raw rate/amplitude/beat error, and include nonempty finite Tick/Tock profile
+data with matching settings. A fresh settings directory and removal of CLI test
+overrides keep developer installations out of this check.
+
+Commands and protocol responses have bounded waits. Abnormal cleanup terminates
+the smoke runner's own process group on Unix, or requests a bounded Windows
+`taskkill /T /F` before a direct-child kill/reap fallback. Offline tests check
+that Windows command contract; descendant disappearance on Windows has not been
+proved locally. A pipe that stays open fails cleanup without blocking the job
+indefinitely.
+
+Job logs and summaries record each binary's SHA-256, the recipe, WAV SHA-256 and
+results. These checks establish synthetic operability of delivered programs;
+they do not establish real-recording accuracy, clock-correction parity, microphone
+access, GUI first launch or chart mounting in an MCP host. No recordings are
+downloaded and no hardware is opened. `packaging/test_artifact_smoke.py` tests the
+smoke script's failure handling with offline process doubles in normal CI;
+actual extracted binaries are exercised by the nonpublishing release PR builds
+and release-capable builds.
