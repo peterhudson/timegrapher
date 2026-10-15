@@ -138,7 +138,8 @@ a personal computer.
    `packaging/release-notes/X.Y.Z.md` (the new version), in the same pull
    request. They become the draft's text; without them the draft lists the
    pull requests merged since the last release.
-3. Start the build, either way:
+3. Wait for **CI** on the exact main commit to pass, then start the build,
+   either way:
    - On GitHub: **Actions**, **Release**, **Run workflow**, branch `main`,
      tick **Draft a release**, **Run workflow**.
    - Or from a clone: `git fetch origin && git tag v0.1.0 origin/main && git push origin v0.1.0`
@@ -147,3 +148,28 @@ a personal computer.
    the download for your platform, edit the notes if needed, and click
    **Publish release**. Until then nobody sees it and the app's update check
    does not offer it.
+
+Before any tag or **Draft a release** build, the release workflow checks the
+newest CI run for that exact commit from this repository's main push or manual
+CI dispatch. All five jobs must be completed successfully: the three platform
+`test` jobs, `mcp-renderer`, and `regress`. The latter must also contain the
+successful **Required real-recording analyze/session equivalence** step; an older
+same-name regression job alone does not establish that coverage. The accepted
+run URL, SHA, attempt and job results appear in the release gate's log and summary.
+
+The gate waits up to ten minutes for pending CI; a failed, missing, cancelled or
+incomplete latest run stops the build rather than reusing an older green result.
+All five jobs must belong to the latest attempt: use **Re-run all jobs** after a
+partial rerun. Markdown-only commits may have no automatic CI; run **Actions →
+CI → Run workflow** on main first. Do not tag an untested branch or substitute
+PR-head results for the candidate's main CI.
+
+Pull-request packaging and manual runs without **Draft a release** remain
+nonpublishing checks and explicitly report **gate not required**. Manual runs on
+a tag also remain nonpublishing with either checkbox value; manual drafting
+requires main. The gate does not add acoustic or MCP protocol tests of the extracted release artifacts; their
+current checks remain the help/version and packaging checks in the workflow.
+If CI job names or the required equivalence step change, update the centralized
+contract in `.github/scripts/release_ci_gate.py` and its offline tests in the same
+review. Those tests run in all three existing platform jobs, without network or
+release operations.
