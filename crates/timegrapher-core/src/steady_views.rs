@@ -90,7 +90,19 @@ const NAMES: [&str; 3] = ["rate", "amplitude", "beat_error"];
 /// The readings the tests are made on: `rate_s` rate readings, and the 2 s
 /// amplitude windows for the amplitude and the beat error from the unlock.
 pub fn grids(log: &BeatLog, rate_s: f64) -> [Grid; 3] {
-    let wins = timing::windows(&log.beats, log.bph, rate_s, rate_s);
+    grids_with_breaks(log, rate_s, &[])
+}
+
+/// The same grids with explicit zero-gap fit boundaries on the log's timeline,
+/// using the report's existing cut convention. This does not map a recording
+/// clock or insert elapsed pauses. Callers supply the boundaries used for their
+/// analysis; the legacy entry point does not infer them from log metadata.
+pub fn grids_with_breaks(log: &BeatLog, rate_s: f64, breaks: &[crate::breaks::Break]) -> [Grid; 3] {
+    // Match the report's existing explicit-break endpoint convention,
+    // including its small offset before a boundary; do not redefine it here.
+    let cuts = crate::longrun::cuts(None, breaks);
+    let mut wins = timing::windows(&log.beats, log.bph, rate_s, rate_s);
+    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
     let rate = match (wins.first(), wins.last()) {
         (Some(w0), Some(last)) => {
             let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
@@ -316,6 +328,63 @@ mod tests {
     use crate::periodicity::default_wheels;
     use crate::steadiness::{self, Config};
     use crate::synth::{generate, SynthConfig};
+
+    #[test]
+    fn derived_rate_grid_uses_the_reports_known_cut_convention() {
+        let mut log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 40.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..320)
+                .map(|index| crate::beats::Beat {
+                    time: index as f64 * 0.125,
+                    index,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![15.0, 30.0],
+        };
+        let legacy = grids(&log, 10.0)[0].clone();
+        let breaks: Vec<_> = log
+            .jumps
+            .iter()
+            .map(|&audio_s| crate::breaks::Break {
+                audio_s,
+                gap_s: 0.0,
+            })
+            .collect();
+        let baseline = grids_with_breaks(&log, 10.0, &breaks)[0].clone();
+        let cuts = crate::longrun::cuts(None, &breaks);
+        let expected: Vec<_> = timing::windows(&log.beats, log.bph, 10.0, 10.0)
+            .into_iter()
+            .filter(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s))
+            .collect();
+        assert_eq!(expected.len(), 1);
+        assert_eq!(
+            baseline.y.len(),
+            1,
+            "both the interior and exact-end cut use the existing report convention"
+        );
+        assert_eq!(baseline.t0, expected[0].start_s);
+        assert_eq!(baseline.y[0], expected[0].fit.rate_s_per_day);
+        log.jumps.clear();
+        let uncut = grids(&log, 10.0);
+        assert_eq!(uncut[0].y.len(), 3);
+        assert_eq!(uncut[0].t0, legacy.t0);
+        assert_eq!(uncut[0].y, legacy.y, "legacy grids still ignores log jumps");
+        assert_eq!(uncut[0].y[0], baseline.y[0], "unaffected reading unchanged");
+        log.jumps = vec![15.0];
+        let middle = grids_with_breaks(&log, 10.0, &breaks[..1]);
+        assert_eq!(middle[0].t0, uncut[0].t0);
+        assert_eq!(middle[0].y.len(), 3, "time grid is not compacted");
+        assert_eq!(middle[0].y[0], uncut[0].y[0]);
+        assert!(middle[0].y[1].is_nan());
+        assert_eq!(middle[0].y[2], uncut[0].y[2]);
+    }
 
     /// The app's own test take: ten minutes of a watch whose rate swings
     /// 20 s/d once a minute (a fourth wheel fault), heard as the app hears
