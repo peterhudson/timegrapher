@@ -7284,32 +7284,12 @@ const FOLDER_RULE: &str = "A recording this app saved (its own folder, or the fo
 /// its session file lists them, then any it doesn't list in natural name
 /// order.
 fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
-    if !path.is_dir() {
-        return Ok(vec![path.to_path_buf()]);
-    }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(path)
-        .map_err(|e| format!("Can't read the folder {}: {e}", path.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.is_file()
-                && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                    e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac")
-                })
-        })
-        .collect();
-    if files.is_empty() {
-        return Err(format!(
-            "There are no WAV or FLAC files in {}.",
-            path.display()
-        ));
-    }
-    files.sort_by(|a, b| natural_order(&file_name(a), &file_name(b)));
-    if let Some(listed) = listed_order(path) {
-        let rank = |f: &PathBuf| listed.iter().position(|l| l == &file_name(f));
-        // A stable sort keeps the unlisted ones in name order, after.
-        files.sort_by_key(|f| rank(f).unwrap_or(usize::MAX));
-    }
-    Ok(files)
+    let listed = if path.is_dir() {
+        listed_order(path).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    timegrapher_core::recording_order::recordings_in(path, &listed)
 }
 
 fn file_name(p: &Path) -> String {
@@ -7321,49 +7301,21 @@ fn file_name(p: &Path) -> String {
 /// Names compared with each run of digits read as a number, so part2
 /// comes before part10, and otherwise ignoring case.
 pub(crate) fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
-    fn chunks(s: &str) -> Vec<(bool, String)> {
-        let mut out: Vec<(bool, String)> = Vec::new();
-        for c in s.chars() {
-            let digit = c.is_ascii_digit();
-            match out.last_mut() {
-                Some((d, run)) if *d == digit => run.push(c),
-                _ => out.push((digit, c.to_string())),
-            }
-        }
-        out
-    }
-    let (ca, cb) = (chunks(a), chunks(b));
-    for ((da, ra), (db, rb)) in ca.iter().zip(&cb) {
-        let o = match (da, db) {
-            (true, true) => {
-                let (ta, tb) = (ra.trim_start_matches('0'), rb.trim_start_matches('0'));
-                ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb))
-            }
-            _ => ra.to_lowercase().cmp(&rb.to_lowercase()),
-        };
-        if o.is_ne() {
-            return o;
-        }
-    }
-    ca.len().cmp(&cb.len()).then_with(|| a.cmp(b))
+    timegrapher_core::recording_order::natural_order(a, b)
 }
 
-/// The files a folder's session file lists as recordings, in its order:
-/// none when it has no session file or lists the folder as a whole.
+/// File entries from a valid session manifest. The shared folder selector
+/// ranks existing direct files and ignores whole-folder or missing entries.
 fn listed_order(dir: &Path) -> Option<Vec<String>> {
     let text = std::fs::read_to_string(dir.join(MANIFEST)).ok()?;
-    let m: Manifest = toml::from_str(&text).ok()?;
-    let mut names: Vec<String> = Vec::new();
-    for e in &m.recordings {
-        let f = dir.join(&e.file);
-        if f.is_file() && f.parent().is_some_and(|p| p == dir) {
-            let n = file_name(&f);
-            if !names.contains(&n) {
-                names.push(n);
-            }
-        }
-    }
-    (!names.is_empty()).then_some(names)
+    let manifest: Manifest = toml::from_str(&text).ok()?;
+    Some(
+        manifest
+            .recordings
+            .into_iter()
+            .map(|entry| entry.file)
+            .collect(),
+    )
 }
 
 /// Where the order the files are joined in disagrees with when they were
