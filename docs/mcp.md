@@ -112,6 +112,13 @@ Before each take it tells you how to place the watch and waits for you; your
 chat app also asks you to allow each tool call. Every take is added to the
 test; the check says when no regular beat was found or beats were clipped.
 
+`check_steadiness` preserves the CLI series document's top-level `clock`
+context in its structured result: `ppm`, `rate_error_s_per_day`, `from`,
+and `tracks_drift`, or `null` when no correction was applied. Its text lead
+states that same basis. This tool uses the recording's automatic stored/USB
+resolution and exposes no explicit clock-log or card-correction input.
+Older CLI documents without this field keep their existing lead.
+
 ### Repeated and overlapping calls
 
 Each tool tells the chat app whether it changes anything (`readOnlyHint`)
