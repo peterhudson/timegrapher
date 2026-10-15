@@ -106,6 +106,13 @@ That route has not been tried with this server yet.
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
 | `read_guide` | (none) | The watchmaker skill and its pages, for the chat app to read |
 
+`analyze_recording`, `long_run` and `check_steadiness` accept the custom
+calibre names/aliases and wheel overrides returned by `list_calibres`.
+`analyze_recording` uses catalogue BPH/lift unless explicitly overridden;
+`long_run` and `check_steadiness` use the catalogue train for wheel naming
+and retain their existing BPH/lift defaults. This is partial parity:
+`record_position` and `run_session` still use built-in calibre resolution.
+
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
 Before each take it tells you how to place the watch and waits for you; your

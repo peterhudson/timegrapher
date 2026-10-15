@@ -99,7 +99,7 @@ The core builds a pre-filled GitHub issue address from them
 send themselves.
 
 `analyze --calibre NAME` sets the beat rate, the lift angle and the
-escape wheel teeth from the table (52° and 15 teeth where it gives
+escape wheel teeth from the selected catalogue entry (52° and 15 teeth where it gives
 none) and names `timing_periods` and `amplitude_periods` after that
 calibre's wheels. `--bph`, `--lift` and
 `--escape-teeth` still win over it. Without a calibre, `analyze` guesses
@@ -107,6 +107,21 @@ the beat rate and uses 52° and a 15-tooth escape wheel. The calibre and
 the settings used are in `input.settings` (`calibre`, `bph`, `lift_deg`,
 `escape_teeth`). A watch whose rate differs from its calibre's (a
 modified movement) needs `--bph`.
+
+Direct `analyze`, `long` and `series` read the same custom names, aliases and
+wheel overrides as `calibres` from `calibres.json`. A custom entry takes
+precedence over a matching shipped name, following the existing catalogue.
+Each command uses one resolved snapshot. `long` and `series` use the selected
+train for naming periodic components; their `--calibre` does not set BPH or
+lift defaults. Explicit `analyze` flags still win, including an explicit 52°
+lift and escape-teeth override. Without `--calibre`, an unreadable user
+catalogue does not affect the command's defaults; with it, catalogue errors
+are reported before reading audio.
+
+This parity currently covers those three direct commands. `record` and
+`session` retain their existing built-in calibre resolution; their custom
+catalogue parity is separate work. A discovered custom name is therefore
+not yet a promise that these two commands accept it.
 
 ## `clock`
 
