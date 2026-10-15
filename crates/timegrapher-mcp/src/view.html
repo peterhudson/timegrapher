@@ -495,6 +495,20 @@ function fileName(doc) {
   return f && f.path ? String(f.path).split(/[\\/]/).pop() : "";
 }
 
+// The CLI's authoritative correction precedes its USB estimate. Keep the
+// original document intact so the raw and alternative rates remain available.
+function analyzeRate(doc) {
+  const clock = doc.clock || {};
+  if (Number.isFinite(clock.rate_s_per_day)) {
+    const from = typeof clock.from === "string" ? clock.from : "correction supplied by the CLI";
+    return { value: clock.rate_s_per_day, basis: `corrected for the sound card's clock (${from})` };
+  }
+  if (Number.isFinite(doc.rate_corrected_s_per_day)) {
+    return { value: doc.rate_corrected_s_per_day, basis: "corrected using the recording's USB clock lines" };
+  }
+  return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
+}
+
 function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
@@ -511,14 +525,15 @@ function recordingView(doc, extra, limits) {
     ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
   const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
     ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
-  // The headline rate is corrected for the sound card's clock where the
-  // recording tells it (rate_corrected_s_per_day), as in the CLI's text.
+  const rate = analyzeRate(doc);
+  const rateNote = [esc(rate.basis)];
+  if (Number.isFinite(doc.rate_p05)) rateNote.push(`Card-clock 90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}`);
   const conf = doc.confidence || {};
   const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
   const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
   const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(Number.isFinite(doc.rate_corrected_s_per_day) ? doc.rate_corrected_s_per_day : o.rate_s_per_day, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", Number.isFinite(doc.rate_p05) ? `90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}` : "")}
+    ${tile("Rate", "--rate", signed(rate.value, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", rateNote.join("<br>"))}
     ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
     ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}

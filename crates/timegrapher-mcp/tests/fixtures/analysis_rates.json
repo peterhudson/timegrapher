@@ -1,0 +1,58 @@
+[
+  {
+    "name": "null-authoritative-falls-back-to-USB",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": null } },
+    "expected_rate": 4,
+    "expected_lead": "Readings: rate +4.0 s/day.",
+    "expected_basis": "corrected using the recording's USB clock lines"
+  },
+  {
+    "name": "invalid-corrections-fall-back-to-raw",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": null, "clock": { "rate_s_per_day": "7" } },
+    "expected_rate": 6,
+    "expected_lead": "Readings: rate +6.0 s/day.",
+    "expected_basis": "on the sound card's clock"
+  },
+  {
+    "name": "raw-only",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 } },
+    "expected_rate": 6,
+    "expected_lead": "Readings: rate +6.0 s/day.",
+    "expected_basis": "on the sound card's clock"
+  },
+  {
+    "name": "USB-only",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4 },
+    "expected_rate": 4,
+    "expected_lead": "Readings: rate +4.0 s/day.",
+    "expected_basis": "corrected using the recording's USB clock lines"
+  },
+  {
+    "name": "stored-before-USB",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": 7, "from": "stored for test-device" } },
+    "expected_rate": 7,
+    "expected_lead": "Readings: rate +7.0 s/day.",
+    "expected_basis": "corrected for the sound card's clock (stored for test-device)"
+  },
+  {
+    "name": "given-before-USB",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": -2, "from": "given with --card-ppm" } },
+    "expected_rate": -2,
+    "expected_lead": "Readings: rate -2.0 s/day.",
+    "expected_basis": "corrected for the sound card's clock (given with --card-ppm)"
+  },
+  {
+    "name": "explicit-zero-correction-before-USB",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "ppm": 0, "rate_s_per_day": 6, "from": "given with --card-ppm" } },
+    "expected_rate": 6,
+    "expected_lead": "Readings: rate +6.0 s/day.",
+    "expected_basis": "corrected for the sound card's clock (given with --card-ppm)"
+  },
+  {
+    "name": "authoritative-zero-rate",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": 0, "from": "stored for test-device" } },
+    "expected_rate": 0,
+    "expected_lead": "Readings: rate +0.0 s/day.",
+    "expected_basis": "corrected for the sound card's clock (stored for test-device)"
+  }
+]
