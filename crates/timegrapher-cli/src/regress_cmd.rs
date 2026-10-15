@@ -1251,7 +1251,10 @@ mod tests {
         );
         let encoded = serde_json::to_string(&result).unwrap();
         let result: Baseline = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(result.takes["unknown"], [unknown.clone()]);
+        assert_eq!(
+            result.takes["unknown"].as_slice(),
+            std::slice::from_ref(&unknown)
+        );
         assert_eq!(result.takes["retained"], [retained]);
         assert_eq!(result.takes["selected"], [fresh]);
         assert_eq!(
