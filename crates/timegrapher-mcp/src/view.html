@@ -90,13 +90,17 @@ th { color: var(--text2); font-weight: 500; }
 
 let nextId = 1;
 const pending = new Map();
+let initialized = false;
 
 function send(msg) { window.parent.postMessage(msg, "*"); }
 
 function request(method, params) {
   const id = nextId++;
-  send({ jsonrpc: "2.0", id, method, params });
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    try { send({ jsonrpc: "2.0", id, method, params }); }
+    catch (error) { pending.delete(id); reject(error); }
+  });
 }
 
 function notify(method, params) { send({ jsonrpc: "2.0", method, params: params || {} }); }
@@ -129,12 +133,17 @@ if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").match
 
 request("ui/initialize", {
   protocolVersion: "2026-01-26",
-  clientInfo: { name: "timegrapher-charts", version: "1" },
+  appInfo: { name: "timegrapher-charts", version: "1" },
   appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
 }).then((result) => {
   applyContext(result && result.hostContext);
   notify("ui/notifications/initialized");
-}).catch(() => notify("ui/notifications/initialized"));
+  initialized = true;
+  notifySize();
+}).catch(() => {
+  initialized = false;
+  document.getElementById("root").innerHTML = '<p class="empty">Chart connection unavailable. The tool result is available in the conversation.</p>';
+});
 
 let lastWidth = 0;
 window.addEventListener("resize", () => {
@@ -143,13 +152,15 @@ window.addEventListener("resize", () => {
 });
 
 let lastHeight = 0;
-new ResizeObserver(() => {
+function notifySize() {
+  if (!initialized) return;
   const height = Math.ceil(document.documentElement.scrollHeight);
   if (height !== lastHeight) {
     lastHeight = height;
     notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height });
   }
-}).observe(document.body);
+}
+new ResizeObserver(notifySize).observe(document.body);
 
 // ---- Formatting ---------------------------------------------------------
 
