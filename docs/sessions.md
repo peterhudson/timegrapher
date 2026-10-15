@@ -45,6 +45,27 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+New desktop and `record` session files pair `lift` with `lift_known = true`
+(supplied or taken from an actual calibre lift value) or `false` (assumed).
+This records the setting's context, not a verified physical lift angle. The
+marker applies only to its accompanying numeric `lift`; an explicit CLI
+`--lift`, including 52, wins over both. A calibre name without a lift value
+does not make an assumed angle known.
+
+Older files have no recoverable provenance marker. The CLI retains its legacy
+interpretation that a numeric manifest lift is supplied; the desktop retains
+its default-angle inference, using actual calibre lift data rather than a name
+alone. The desktop preserves newly restored context when the value is edited
+and reverted. Entering or reselecting an unchanged 52 in its existing controls
+still cannot distinguish a new explicit confirmation from the default.
+Older program versions that reject unknown manifest fields cannot read the new
+marker; removing it restores their legacy inference, not the original context.
+
+When appending a `record` take, an explicit lift cannot silently replace an
+existing session's assumed context, even at the same numeric value. Use another
+folder, or edit `lift_known = true` only if that supplied context applies to all
+of the session's takes. Existing context is retained when no new lift is given.
+
 A `reference` can describe tg on the same file or a bench instrument. Its
 `source` is descriptive text; it does not declare a machine-readable clock
 basis. The HTML report labels the measured rate as sound-card-clock or clock

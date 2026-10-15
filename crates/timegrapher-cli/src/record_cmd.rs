@@ -91,6 +91,7 @@ struct Settings {
     calibre: Option<String>,
     bph: Option<u32>,
     lift: f64,
+    lift_known: bool,
     /// Seconds `session` skips at the start of each take.
     settle_s: f64,
     existing: bool,
@@ -173,6 +174,7 @@ fn settings(o: &Options) -> Result<Settings, String> {
             calibre,
             bph,
             lift: lift.unwrap_or(52.0),
+            lift_known: lift.is_some(),
             settle_s: SETTLE_S,
             existing: false,
         });
@@ -195,11 +197,26 @@ fn settings(o: &Options) -> Result<Settings, String> {
             return Err(differs("lift", format!("{a}"), format!("{b}")));
         }
     }
+    // A persisted numeric value wins, along with its context. Legacy session
+    // files treated any numeric lift as supplied; do not guess its history.
+    let lift_known = if m.lift.is_some() {
+        m.lift_known.unwrap_or(true)
+    } else {
+        lift.is_some()
+    };
+    if lift.is_some() && m.lift.is_some() && !lift_known {
+        return Err(format!(
+            "{} records an assumed lift, but this take supplies one; edit lift_known = true \
+             only if that context applies to all its takes, or record into another folder",
+            file.display()
+        ));
+    }
     Ok(Settings {
         watch: m.watch.or(o.watch.clone()),
         calibre: m.calibre.or(calibre),
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(52.0),
+        lift_known,
         settle_s: m.settle_s.unwrap_or(SETTLE_S),
         existing: true,
     })
@@ -291,8 +308,7 @@ impl Feed {
         let mut cfg = LiveConfig::default();
         cfg.analysis.bph = set.bph;
         cfg.analysis.amplitude.lift_deg = set.lift;
-        // As the app judges it: a calibre's or a typed lift angle is known.
-        cfg.analysis.lift_known = set.calibre.is_some() || set.lift != 52.0;
+        cfg.analysis.lift_known = set.lift_known;
         let mut f = Feed {
             path: path.to_path_buf(),
             position: pos.common(),
@@ -467,12 +483,14 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         ..Default::default()
     };
     cfg.amplitude.lift_deg = set.lift;
+    cfg.lift_known = set.lift_known;
     let whole = analyze(&a, &cfg).summary;
     // The readings as `session` will take them: the same analysis, after
     // the same settling time, on the sound card's clock.
     let mut scfg = StreamConfig::default();
     scfg.analysis.bph = set.bph;
     scfg.analysis.amplitude.lift_deg = set.lift;
+    scfg.analysis.lift_known = set.lift_known;
     let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {})
         .map_err(|e| format!("{}: {e}", wav.display()))?;
     let from = set.settle_s.min(log.duration_s / 2.0);
@@ -513,7 +531,11 @@ fn header(set: &Settings) -> String {
     if let Some(b) = set.bph {
         t += &format!("bph = {b}\n");
     }
-    t += &format!("lift = {}\n", toml::Value::Float(set.lift));
+    t += &format!(
+        "lift = {}\nlift_known = {}\n",
+        toml::Value::Float(set.lift),
+        set.lift_known
+    );
     t
 }
 
@@ -637,4 +659,67 @@ fn print_report(r: &Report) {
         }
     }
     println!("Added to     {}", r.session_file);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn options(folder: PathBuf) -> Options {
+        Options {
+            folder,
+            position: "DU".into(),
+            seconds: 1.0,
+            device: None,
+            file: None,
+            watch: None,
+            calibre: None,
+            bph: None,
+            lift: None,
+            wind_h: None,
+            json: false,
+            live: None,
+        }
+    }
+
+    #[test]
+    fn recorded_lift_context_roundtrips_and_rejects_changed_session_context() {
+        let dir = std::env::temp_dir().join(format!("tg-record-lift-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut o = options(dir.clone());
+        let assumed = settings(&o).unwrap();
+        assert_eq!(assumed.lift, 52.0);
+        let saved: Manifest = toml::from_str(&header(&assumed)).unwrap();
+        assert_eq!(saved.lift_known, Some(false));
+        fs::write(dir.join(MANIFEST), header(&assumed)).unwrap();
+        assert!(!settings(&o).unwrap().lift_known);
+        o.lift = Some(52.0);
+        let error = settings(&o).err().expect("same number, changed context");
+        assert!(error.contains("assumed lift") && error.contains("another folder"));
+        fs::remove_file(dir.join(MANIFEST)).unwrap();
+        let supplied = settings(&o).unwrap();
+        assert!(supplied.lift_known);
+        let saved: Manifest = toml::from_str(&header(&supplied)).unwrap();
+        assert_eq!(saved.lift_known, Some(true));
+        fs::write(dir.join(MANIFEST), header(&supplied)).unwrap();
+        o.lift = None;
+        assert!(settings(&o).unwrap().lift_known);
+        fs::write(dir.join(MANIFEST), "lift = 52\n").unwrap();
+        assert!(settings(&o).unwrap().lift_known, "legacy CLI inference");
+        fs::remove_file(dir.join(MANIFEST)).unwrap();
+        o.calibre = Some("Unitas 6497-2".into());
+        let calibre = settings(&o).unwrap();
+        assert_eq!(calibre.lift, 44.0);
+        assert!(calibre.lift_known);
+        assert!(calibres::find("Seagull ST36")
+            .unwrap()
+            .lift_angle_deg
+            .is_none());
+        o.calibre = Some("Seagull ST36".into());
+        let named = settings(&o).unwrap();
+        assert_eq!(named.lift, 52.0);
+        assert!(!named.lift_known, "a name alone does not supply a lift");
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

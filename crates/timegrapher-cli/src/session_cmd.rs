@@ -387,6 +387,7 @@ fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>),
     let cal = c.o.calibre(c.m)?;
     cfg.analysis.bph = c.o.bph(c.m, cal);
     cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
+    cfg.analysis.lift_known = lift_known(c, cal);
     cfg.analysis.escape_teeth =
         c.m.escape_teeth
             .or(cal.and_then(|k| k.escape_teeth))
@@ -397,7 +398,13 @@ fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a Calibre>),
 /// Whether the lift angle came from `--lift`, the session file or
 /// the calibre, rather than the default.
 fn lift_known(c: &Ctx, cal: Option<&Calibre>) -> bool {
-    c.o.lift.or(c.m.lift).is_some() || cal.is_some_and(|k| k.lift_angle_deg.is_some())
+    if c.o.lift.is_some() {
+        true
+    } else if c.m.lift.is_some() {
+        c.m.lift_known.unwrap_or(true)
+    } else {
+        cal.is_some_and(|k| k.lift_angle_deg.is_some())
+    }
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
@@ -932,6 +939,42 @@ mod tests {
         // A calibre the table does not know leaves the lift angle unknown.
         let label: Manifest = toml::from_str("calibre = \"Bespoke 9999\"\n").unwrap();
         assert!(!known(&options(None, None, None), &label));
+    }
+
+    #[test]
+    fn persisted_lift_context_follows_the_winning_value() {
+        let base = Path::new(".");
+        for (text, flag, expected) in [
+            ("lift = 52\nlift_known = false", None, false),
+            ("lift = 52\nlift_known = true", None, true),
+            ("lift = 49\nlift_known = false", None, false),
+            ("lift = 52\nlift_known = false", Some(52.0), true),
+            ("lift = 52", None, true),          // Legacy CLI semantics.
+            ("lift_known = true", None, false), // No accompanying value.
+            (
+                "calibre = \"Unitas 6497-2\"\nlift_known = false",
+                None,
+                true,
+            ),
+            ("calibre = \"Bespoke 9999\"", None, false),
+        ] {
+            let m: Manifest = toml::from_str(text).unwrap();
+            let o = options(None, flag, None);
+            let c = Ctx {
+                m: &m,
+                base,
+                o: &o,
+                tty: false,
+                quiet: true,
+            };
+            let (cfg, cal) = stream_config(&c).unwrap();
+            assert_eq!(lift_known(&c, cal), expected, "{text}, {flag:?}");
+            assert_eq!(cfg.analysis.lift_known, expected);
+            let encoded = toml::to_string(&m).unwrap();
+            let again: Manifest = toml::from_str(&encoded).unwrap();
+            assert_eq!(again.lift, m.lift);
+            assert_eq!(again.lift_known, m.lift_known);
+        }
     }
 
     #[test]
