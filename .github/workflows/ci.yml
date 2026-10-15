@@ -109,9 +109,19 @@ jobs:
         run: |
           set -o pipefail
           ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet | tee regress.txt
+      - name: Required real-recording analyze/session equivalence
+        timeout-minutes: 10
+        env:
+          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
+          TIMEGRAPHER_REQUIRE_CORPUS: "1"
+        run: |
+          set -o pipefail
+          cargo test --locked --release -p timegrapher-core --test equivalence analyze_and_session_agree_on_real_takes -- --exact --nocapture 2>&1 | tee equivalence.txt
       - name: Summary
         if: always()
         run: |
-          if [ -f regress.txt ]; then
-            { echo '```'; cat regress.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          for result in regress.txt equivalence.txt; do
+            if [ -f "$result" ]; then
+              { echo "### $result"; echo '```'; cat "$result"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

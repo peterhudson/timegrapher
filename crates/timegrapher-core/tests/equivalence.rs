@@ -3,9 +3,9 @@
 //! `long`'s slices, and the live analyser (pushed audio, or a stored take
 //! replayed from its beat log). See /docs/agent-interface.md for the fields.
 //!
-//! Synthetic cases run everywhere. Cases on real recordings run only when
-//! `TIMEGRAPHER_CORPUS` names a corpus checkout with its audio fetched (the
-//! takes under `takes/` or at the top level); otherwise they pass at once.
+//! Synthetic cases run everywhere. Real cases require all four named fixtures
+//! when `TIMEGRAPHER_CORPUS` is supplied. With neither it nor
+//! `TIMEGRAPHER_REQUIRE_CORPUS` set they explicitly skip; CI requires the corpus.
 //! Tests marked `ignore` record a disagreement found on today's code; each
 //! names it, and the shared measurement (`measure.rs`) is meant to close it.
 
@@ -178,11 +178,49 @@ fn analyze_and_session_agree_on_a_whole_file() {
 
 #[test]
 fn analyze_and_session_agree_on_real_takes() {
-    for path in corpus_files() {
-        let a = load(&path).unwrap();
+    let files = corpus_files();
+    for path in &files {
+        let a = load(path).unwrap();
+        assert!(
+            !a.samples.is_empty(),
+            "{}: decoded no samples",
+            path.display()
+        );
         let s = analyze(&a, &AnalysisConfig::default()).summary;
-        let m = whole(&stream(&path, 47.0));
+        let m = whole(&stream(path, 47.0));
+        assert!(
+            s.watch_heard && m.watch_heard,
+            "{}: required watch not heard",
+            path.display()
+        );
+        for (field, value) in [
+            ("analyze rate", s.overall.map(|f| f.rate_s_per_day)),
+            ("session rate", m.rate_s_per_day),
+            ("analyze amplitude", s.amplitude_deg),
+            ("session amplitude", m.amplitude_deg),
+            ("analyze unlock beat error", s.beat_error_unlock_ms),
+            ("session unlock beat error", m.beat_error_unlock_ms),
+            (
+                "analyze drop beat error",
+                s.overall.map(|f| f.beat_error_ms),
+            ),
+            ("session drop beat error", m.beat_error_ms),
+        ] {
+            assert!(
+                value.is_some_and(f64::is_finite),
+                "{}: {field} absent or nonfinite: {value:?}",
+                path.display()
+            );
+        }
         assert_none(&path.display().to_string(), analyze_vs_session(&s, &m));
+        eprintln!("Real equivalence comparison completed: {}", path.display());
+    }
+    if !files.is_empty() {
+        eprintln!(
+            "Real equivalence comparisons completed: {} / {}",
+            files.len(),
+            REAL_TAKES.len()
+        );
     }
 }
 
@@ -441,32 +479,253 @@ fn heavy_clipping_still_reads_live() {
     );
 }
 
-/// The first file of each take the gaps were found on, when a corpus is
-/// at hand.
+const REAL_TAKES: [&str; 4] = [
+    "daytona4130_DU_30min",
+    "ym42_DD_30min",
+    "patek324_DU_30min",
+    "eta2824_holder_DU_30min",
+];
+const REAL_FILE: &str = "take_part01-001.flac";
+
 fn corpus_files() -> Vec<PathBuf> {
-    let Some(root) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
-        eprintln!("TIMEGRAPHER_CORPUS not set: no real takes checked");
-        return Vec::new();
+    let root = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from);
+    corpus_files_at(
+        root.as_deref(),
+        std::env::var_os("TIMEGRAPHER_REQUIRE_CORPUS").is_some(),
+    )
+    .unwrap_or_else(|e| panic!("required real fixtures: {e}"))
+}
+
+/// Resolve and authenticate exact fixture names before running any comparison.
+/// Explicitly supplied corpora never silently shrink to the available subset.
+fn corpus_files_at(root: Option<&Path>, required: bool) -> Result<Vec<PathBuf>, String> {
+    let Some(root) = root else {
+        if required {
+            return Err("TIMEGRAPHER_CORPUS is not set".into());
+        }
+        eprintln!(
+            "SKIP real equivalence: TIMEGRAPHER_CORPUS not set; no acoustic validation performed"
+        );
+        return Ok(Vec::new());
     };
-    let takes = [
-        "daytona4130_DU_30min",
-        "ym42_DD_30min",
-        "patek324_DU_30min",
-        "eta2824_holder_DU_30min",
-    ];
-    takes
-        .iter()
-        .filter_map(|t| {
-            let dir = [root.join("takes").join(t), root.join(t)]
-                .into_iter()
-                .find(|d| d.is_dir())?;
-            let mut f: Vec<PathBuf> = std::fs::read_dir(dir)
-                .ok()?
-                .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| p.extension().is_some_and(|x| x == "flac"))
+    if !root.is_dir() {
+        return Err(format!(
+            "{}: corpus root is not a directory",
+            root.display()
+        ));
+    }
+    let index = root.join("corpus.json");
+    let bytes = std::fs::read(&index).map_err(|e| format!("{}: {e}", index.display()))?;
+    let corpus: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", index.display()))?;
+    if corpus["schema"] != 1 {
+        return Err(format!("{}: expected corpus schema 1", index.display()));
+    }
+    let takes = corpus["takes"]
+        .as_array()
+        .ok_or("corpus.json: missing takes array")?;
+    eprintln!(
+        "Real equivalence corpus.json SHA-256: {}",
+        timegrapher_core::archive::sha256_hex(&bytes)
+    );
+    let mut files = Vec::new();
+    for id in REAL_TAKES {
+        let members: Vec<_> = takes.iter().filter(|t| t["id"] == id).collect();
+        if members.len() != 1
+            || !matches!(members[0]["tier"].as_str(), Some("referenced" | "paired"))
+        {
+            return Err(format!(
+                "corpus.json: expected one development reference take {id}"
+            ));
+        }
+        let entries = members[0]["files"]
+            .as_array()
+            .ok_or_else(|| format!("{id}: missing files array"))?;
+        let members: Vec<_> = entries.iter().filter(|f| f["name"] == REAL_FILE).collect();
+        if members.len() != 1 {
+            return Err(format!("corpus.json: expected one {id}/{REAL_FILE}"));
+        }
+        let entry = members[0];
+        // Match the previous helper's per-take layout selection. Once a
+        // directory is selected, a bad member must fail rather than fall back.
+        let nested = root.join("takes").join(id);
+        let dir = if nested.is_dir() {
+            nested
+        } else {
+            root.join(id)
+        };
+        let path = dir.join(REAL_FILE);
+        let metadata = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if !metadata.is_file() || metadata.len() == 0 {
+            return Err(format!(
+                "{}: required fixture is not a nonempty regular file",
+                path.display()
+            ));
+        }
+        let audio = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let hash = timegrapher_core::archive::sha256_hex(&audio);
+        if entry["bytes"].as_u64() != Some(audio.len() as u64)
+            || entry["sha256"].as_str() != Some(hash.as_str())
+        {
+            return Err(format!(
+                "{}: bytes or SHA-256 differ from corpus.json",
+                path.display()
+            ));
+        }
+        eprintln!(
+            "Real equivalence verified input: {id}/{REAL_FILE}; bytes={}; sha256={hash}",
+            audio.len()
+        );
+        files.push(path);
+    }
+    Ok(files)
+}
+
+mod fixture_validation {
+    use super::*;
+    use serde_json::json;
+    use std::fs;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root =
+                std::env::temp_dir().join(format!("tg-eq-fixtures-{}-{id}", std::process::id()));
+            let content = b"fixture authentication only; not acoustic test data";
+            let hash = timegrapher_core::archive::sha256_hex(content);
+            let takes: Vec<_> = REAL_TAKES
+                .iter()
+                .map(|id| {
+                    let dir = root.join("takes").join(id);
+                    fs::create_dir_all(&dir).unwrap();
+                    fs::write(dir.join(REAL_FILE), content).unwrap();
+                    json!({"id": id, "tier": "referenced", "files": [{
+                        "name": REAL_FILE, "bytes": content.len(), "sha256": hash,
+                    }]})
+                })
                 .collect();
-            f.sort();
-            f.into_iter().next()
-        })
-        .collect()
+            fs::write(
+                root.join("corpus.json"),
+                json!({"schema": 1, "takes": takes}).to_string(),
+            )
+            .unwrap();
+            Self(root)
+        }
+
+        fn first(&self) -> PathBuf {
+            self.0.join("takes").join(REAL_TAKES[0]).join(REAL_FILE)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn only_an_unconfigured_optional_run_can_skip() {
+        assert!(corpus_files_at(None, false).unwrap().is_empty());
+        assert!(corpus_files_at(None, true).unwrap_err().contains("not set"));
+        let fixture = Fixture::new();
+        for required in [false, true] {
+            assert!(corpus_files_at(Some(&fixture.0.join("absent")), required).is_err());
+            assert!(corpus_files_at(Some(&fixture.first()), required).is_err());
+        }
+    }
+
+    #[test]
+    fn exact_complete_manifest_inputs_are_selected_in_both_layouts() {
+        let fixture = Fixture::new();
+        fs::write(
+            fixture.first().with_file_name("000-unlisted.flac"),
+            b"not selected",
+        )
+        .unwrap();
+        let files = corpus_files_at(Some(&fixture.0), true).unwrap();
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0], fixture.first());
+        assert!(files.iter().all(|p| p.file_name().unwrap() == REAL_FILE));
+        // Mixed layouts remain supported; an unrelated takes/ directory must
+        // not hide complete flat fixtures.
+        fs::rename(
+            fixture.0.join("takes").join(REAL_TAKES[0]),
+            fixture.0.join(REAL_TAKES[0]),
+        )
+        .unwrap();
+        let files = corpus_files_at(Some(&fixture.0), true).unwrap();
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0], fixture.0.join(REAL_TAKES[0]).join(REAL_FILE));
+        for id in &REAL_TAKES[1..] {
+            fs::rename(fixture.0.join("takes").join(id), fixture.0.join(id)).unwrap();
+        }
+        let files = corpus_files_at(Some(&fixture.0), false).unwrap();
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0], fixture.0.join(REAL_TAKES[0]).join(REAL_FILE));
+        // A present nested take wins selection. Its missing member must not be
+        // masked by the complete flat copy of that same take.
+        fs::create_dir(fixture.0.join("takes").join(REAL_TAKES[0])).unwrap();
+        assert!(corpus_files_at(Some(&fixture.0), false).is_err());
+        assert!(corpus_files_at(Some(&fixture.0), true).is_err());
+    }
+
+    #[test]
+    fn partial_or_unauthenticated_inputs_fail_even_in_optional_mode() {
+        for fault in [
+            "missing manifest",
+            "invalid manifest",
+            "wrong schema",
+            "missing take",
+            "duplicate take",
+            "holdout",
+            "missing member",
+            "missing file",
+            "empty file",
+            "not a file",
+            "wrong size",
+            "wrong hash",
+        ] {
+            let fixture = Fixture::new();
+            let index = fixture.0.join("corpus.json");
+            let mut manifest: serde_json::Value =
+                serde_json::from_slice(&fs::read(&index).unwrap()).unwrap();
+            match fault {
+                "wrong schema" => manifest["schema"] = json!(2),
+                "missing take" => {
+                    manifest["takes"].as_array_mut().unwrap().remove(0);
+                }
+                "duplicate take" => {
+                    let first = manifest["takes"][0].clone();
+                    manifest["takes"].as_array_mut().unwrap().push(first);
+                }
+                "holdout" => manifest["takes"][0]["tier"] = json!("holdout"),
+                "missing member" => manifest["takes"][0]["files"] = json!([]),
+                "missing file" => fs::remove_file(fixture.first()).unwrap(),
+                "empty file" => fs::write(fixture.first(), []).unwrap(),
+                "not a file" => {
+                    fs::remove_file(fixture.first()).unwrap();
+                    fs::create_dir(fixture.first()).unwrap();
+                }
+                "wrong size" => manifest["takes"][0]["files"][0]["bytes"] = json!(1),
+                "wrong hash" => manifest["takes"][0]["files"][0]["sha256"] = json!("0".repeat(64)),
+                _ => {}
+            }
+            fs::write(&index, manifest.to_string()).unwrap();
+            if fault == "missing manifest" {
+                fs::remove_file(&index).unwrap();
+            }
+            if fault == "invalid manifest" {
+                fs::write(&index, b"not JSON").unwrap();
+            }
+            for required in [false, true] {
+                assert!(
+                    corpus_files_at(Some(&fixture.0), required).is_err(),
+                    "{fault}; required={required}"
+                );
+            }
+        }
+    }
 }
