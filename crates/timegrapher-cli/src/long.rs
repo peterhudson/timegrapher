@@ -82,28 +82,29 @@ pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
     })
 }
 
-/// Replace each folder with the WAV and FLAC files in it, sorted by name.
+/// Expand each directory in place, in the desktop's manifest-first/natural
+/// order. Explicit paths and repetitions keep their argument positions.
 pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
-    for f in files {
-        if !f.is_dir() {
-            out.push(f.clone());
-            continue;
-        }
-        let mut inner: Vec<PathBuf> = fs::read_dir(f)
-            .map_err(|e| format!("{}: {e}", f.display()))?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| {
-                p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                    e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac")
+    for path in files {
+        let listed = if path.is_dir() {
+            fs::read_to_string(path.join("session.toml"))
+                .ok()
+                .and_then(|text| toml::from_str::<session::Manifest>(&text).ok())
+                .map(|manifest| {
+                    manifest
+                        .recordings
+                        .into_iter()
+                        .map(|entry| entry.file)
+                        .collect()
                 })
-            })
-            .collect();
-        if inner.is_empty() {
-            return Err(format!("{}: no WAV or FLAC files", f.display()));
-        }
-        inner.sort();
-        out.extend(inner);
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        out.extend(timegrapher_core::recording_order::recordings_in(
+            path, &listed,
+        )?);
     }
     Ok(out)
 }
@@ -587,4 +588,121 @@ fn write_folds(p: &Path, r: &LongReport) -> std::io::Result<()> {
         }
     }
     w.flush()
+}
+
+#[cfg(test)]
+mod recording_order_tests {
+    use super::*;
+
+    struct Folder(PathBuf);
+    impl Folder {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path =
+                std::env::temp_dir().join(format!("tg-cli-order-{}-{n}", std::process::id()));
+            fs::create_dir_all(&path).unwrap();
+            for name in ["part10.wav", "part2.FLAC", "part1.wav", "notes.txt"] {
+                fs::write(path.join(name), []).unwrap();
+            }
+            fs::create_dir(path.join("directory.wav")).unwrap();
+            Self(path)
+        }
+        fn manifest(&self, text: &str) {
+            fs::write(self.0.join("session.toml"), text).unwrap();
+        }
+        fn names(&self) -> Vec<String> {
+            expand_dirs(std::slice::from_ref(&self.0))
+                .unwrap()
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect()
+        }
+    }
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn directory_expansion_uses_typed_manifest_then_natural_order() {
+        let folder = Folder::new();
+        assert_eq!(folder.names(), ["part1.wav", "part2.FLAC", "part10.wav"]);
+        folder.manifest("[[recording]]\nfile='part10.wav'\nposition='DU'\nstart_s=0\nend_s=1\n\n[[recording]]\nfile='part10.wav'\nposition='DD'\nstart_s=1\nend_s=2\n\n[[recording]]\nfile='part2.FLAC'\n");
+        assert_eq!(folder.names(), ["part10.wav", "part2.FLAC", "part1.wav"]);
+    }
+
+    #[test]
+    fn invalid_manifest_falls_back_without_changing_session_validation() {
+        let folder = Folder::new();
+        for text in [
+            "[[recording]",
+            "unknown_field=true\n[[recording]]\nfile='part10.wav'\n",
+            "[[recording]]\nposition='DU'\n",
+        ] {
+            folder.manifest(text);
+            assert_eq!(
+                folder.names(),
+                ["part1.wav", "part2.FLAC", "part10.wav"],
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_nested_and_whole_folder_entries_do_not_hide_direct_files() {
+        let folder = Folder::new();
+        fs::create_dir(folder.0.join("nested")).unwrap();
+        fs::write(folder.0.join("nested/part2.FLAC"), []).unwrap();
+        folder.manifest("[[recording]]\nfile='.'\n\n[[recording]]\nfile='missing.wav'\n\n[[recording]]\nfile='nested/part2.FLAC'\n\n[[recording]]\nfile='part10.wav'\n");
+        assert_eq!(folder.names(), ["part10.wav", "part1.wav", "part2.FLAC"]);
+        // read_one also expands base.join(".") for a whole-folder entry.
+        assert_eq!(
+            expand_dirs(&[folder.0.join(".")]).unwrap(),
+            ["part10.wav", "part1.wav", "part2.FLAC"].map(|name| folder.0.join(name))
+        );
+    }
+
+    #[test]
+    fn explicit_argument_order_and_repetitions_survive_folder_expansion() {
+        let folder = Folder::new();
+        let first = folder.0.join("part10.wav");
+        let last = folder.0.join("not-present.anything");
+        let input = [first.clone(), folder.0.clone(), first.clone(), last.clone()];
+        assert_eq!(
+            expand_dirs(&input).unwrap(),
+            [
+                first.clone(),
+                folder.0.join("part1.wav"),
+                folder.0.join("part2.FLAC"),
+                first.clone(),
+                first,
+                last
+            ]
+        );
+    }
+
+    #[test]
+    fn causal_natural_order_without_audio_named_directories() {
+        let folder = Folder::new();
+        fs::remove_dir(folder.0.join("directory.wav")).unwrap();
+        // No manifest or audio-named directory: only numeric order differs.
+        assert_eq!(folder.names(), ["part1.wav", "part2.FLAC", "part10.wav"]);
+    }
+
+    #[test]
+    fn causal_manifest_precedence_with_matching_lexical_and_natural_names() {
+        let folder = Folder::new();
+        fs::remove_dir(folder.0.join("directory.wav")).unwrap();
+        for name in ["part1.wav", "part2.FLAC", "part10.wav"] {
+            fs::remove_file(folder.0.join(name)).unwrap();
+        }
+        for name in ["alpha.wav", "beta.wav", "gamma.wav"] {
+            fs::write(folder.0.join(name), []).unwrap();
+        }
+        folder.manifest("[[recording]]\nfile='gamma.wav'\n");
+        // Lexical and natural order agree; only manifest precedence differs.
+        assert_eq!(folder.names(), ["gamma.wav", "alpha.wav", "beta.wav"]);
+    }
 }

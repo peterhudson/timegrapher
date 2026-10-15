@@ -31,6 +31,7 @@ pub mod palette;
 pub mod periodicity;
 pub mod profile;
 pub mod recorder;
+pub mod recording_order;
 pub mod session;
 pub mod shape;
 pub mod spectrum;

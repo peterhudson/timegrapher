@@ -43,7 +43,17 @@ folder next to the recording (`--out` to choose):
 
 A capture split into segments with no gaps is read as one recording by
 listing the files in order (`timegrapher long seg01.flac seg02.flac ...`)
-or by giving the folder that holds them, read in name order.
+or by giving the folder that holds them. A folder uses the same order as the
+desktop: existing direct WAV/FLAC files listed in its valid `session.toml` come
+first (each physical file once), followed by unlisted files in natural name
+order (`part2` before `part10`). Missing, nested and whole-folder `.` manifest
+entries do not rank files. Without a readable valid manifest, folder expansion
+uses natural order; session-loading validation still applies when running a
+session itself. Only regular files with WAV/FLAC extensions, ignoring case,
+are selected. Explicit command-line paths retain their order and repetitions;
+each folder expands at its argument position. The same expansion is used by
+`series`, session folder readings and report excerpts. This chooses file order
+only, without importing manifest measurement settings into `long` or `series`.
 
 Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`),
 plus three that name the periodic components after wheels:
