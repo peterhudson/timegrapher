@@ -195,7 +195,7 @@ headlines state facts. Everything else is as in version 1.
 | `wind_down` | `start` and `end` (`from_wind_h`, `to_wind_h`, `readings`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`), `hours_apart`, `at_24h`, `rate_change_s_per_day`, `amplitude_change_deg`, `beat_error_change_ms`, `headline`; null under two hours |
 | `distributions` | `overall[]`, `stretch_s` (0 when the take is not split) and `stretches[]` (`start_s`, `end_s`, `distributions[]`); each distribution has `series` (`rate`, `amplitude`, `beat_error`), `unit`, `values` (`readings` or `2 s`), `step_s`, `n`, `median`, `p10`, `p90`, `bin_width`, `edges` (one more than `counts`; bin i is from `edges[i]` up to `edges[i+1]`), `counts`, `below` and `above` (off the scale, counted in `n`), `peaks` (bin centres of separate peaks), `normal_line` (`centre`, `spread`: the straight line on probability paper; null with no spread), `quantiles` (`[share, value]` at 0.1%, 1, 5, 10, 25, 50, 75, 90, 95, 99 and 99.9% where the count resolves them), `points` (with `--views`, on the whole take's distributions only: the probability plot the app draws, `[value, z]` lowest first: each value against the normal score of its rank, every value up to 400 and evenly by rank beyond, the lowest and highest always kept), `summary` (the app's line). A series with fewer than three values has no entry. |
 | `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `headline` (all of these as numbers, whatever their size) |
-| `spectra[]` | the plain amplitude spectrum of each series, as a commercial timegrapher's FFT shows it: `series` (`rate`, `amplitude`, `beat_error`), `unit` (`ms` of timing for the rate, `deg`, `ms`), `step_s`, `period_s[]` (longest first) and `amplitude[]` (the size of the sine wave at each period, half its peak to peak). The rate's comes from the beat timing, so it reaches down to the escape wheel; the amplitude's and the beat error's from their 2 s windows. Each series has its slow change taken off as the period search takes it off, a Hann window is applied and its loss corrected, and the points are thinned to at most 600 on a log period axis, keeping the largest in each slice so narrow lines survive. The period search reads the same Fourier transform but whitens it and sums harmonics to decide what stands out; this keeps the raw sizes, best drawn on log axes. |
+| `spectra[]` | the plain amplitude spectrum of each series, as a commercial timegrapher's FFT shows it: `series` (`rate`, `amplitude`, `beat_error`), `unit` (`ms` of timing for the rate, `deg`, `ms`), `step_s`, `period_s[]` (longest first) and `amplitude[]` (an estimate of sine-wave size at each period for complete regular inputs, half its peak to peak), and `support` (`finite_bins`, `total_bins`). The rate's comes from the beat timing, so it reaches down to the escape wheel; the amplitude's and the beat error's from their 2 s windows. Each series has its slow change taken off as the period search takes it off, a Hann window is applied and its loss corrected, and the points are thinned to at most 600 on a log period axis, keeping the largest in each slice so narrow lines survive. The period search reads the same Fourier transform but whitens it and sums harmonics to decide what stands out; this keeps the raw sizes, best drawn on log axes. |
 | `period_span` | with `--views`: `[lo, hi]`, log10 seconds, the periods every series' search covers between them, so the Periods plots share one axis |
 | `findings[]` | one per series where a test detected structure: `code`, `series`, `title` (what was detected), `evidence` (the headline and the statistics). Codes: `periodic`, `two_states`, `measurement_split` (two levels that show on one side only, or in the beat error from the unlock but not from the drop), `shifting_mean` (level changes), `drifting` (a trend), `wandering` (correlation between readings). A series where none was detected has none. |
 
@@ -263,3 +263,24 @@ the two-state finder's 10 s blocks cannot resolve as regular. Its
 amplitude dips once a minute crown left, crown up and dial up as well.
 That points at something that turns once a minute: the seconds hand, or
 the fourth wheel and its pinion.
+
+### FFT input availability
+
+Each spectrum's `support` counts finite samples in the actual detrended FFT input
+grid, before next-power-of-two padding. Nonfinite samples (NaN or infinity) count
+as missing. These are grid-sample counts, not acoustic coverage or the percentage
+of watch beats heard; complete finite input does not establish continuous sound.
+The app and MCP FFT show these counts. Missing-input plots remain available with
+a note: missing samples affect peak heights and shapes; values are not corrected
+for gaps. Older chart documents without counts state that support was not recorded.
+
+The calculation is unchanged: the finite-data mean is removed, missing samples
+are zero-filled, and magnitudes use the full grid's Hann-weight sum. There is no
+missing-data renormalization. Equal missing counts with different gap patterns can
+produce different heights and shapes. The converted peak-to-peak rate display is
+subject to the same limitation; counts are neither a correction factor nor an
+uncertainty estimate. Eligibility, numeric arrays and period search are unchanged.
+
+When MCP moves spectrum arrays into chart metadata, compact `spectrum_support`
+entries (`series`, `unit`, `support`) remain in the model-visible structured result
+and text lead. Legacy spectra have `support: null` there; no completeness is inferred.

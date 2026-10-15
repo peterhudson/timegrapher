@@ -1,4 +1,4 @@
-//! The plain amplitude spectrum of a series: how large a sine wave of each
+//! The plain amplitude spectrum of a series: an estimate of sine-wave magnitude at each
 //! period the series holds, in the series' own units. This is the view a
 //! commercial timegrapher's FFT gives. The period search in [`longterm`]
 //! works on the same Fourier transform, but whitens it and sums harmonics
@@ -20,18 +20,43 @@ pub struct AmplitudeSpectrum {
     pub unit: &'static str,
     /// Spacing of the series the spectrum was taken of, seconds.
     pub step_s: f64,
-    /// Periods, seconds, longest first, and the size of the sine wave at
-    /// each (half its peak to peak). Each point is the largest in its
+    /// Periods, seconds, longest first, and estimated sine-wave size at
+    /// each for complete regular inputs (half its peak to peak). Each point is the largest in its
     /// slice of a log-spaced period axis, so narrow lines survive the
     /// thinning.
     pub period_s: Vec<f64>,
     pub amplitude: Vec<f64>,
+    /// Finite support of the actual FFT input grid, excluding zero-padding.
+    pub support: SpectrumSupport,
+}
+
+/// Input-grid availability, not acoustic coverage or share of watch beats heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SpectrumSupport {
+    pub finite_bins: usize,
+    pub total_bins: usize,
+}
+
+impl SpectrumSupport {
+    pub fn description(&self) -> String {
+        let mut text = format!(
+            "FFT input: {} of {} grid samples available.",
+            self.finite_bins, self.total_bins
+        );
+        if self.finite_bins < self.total_bins {
+            text.push_str(" Missing samples affect peak heights and shapes; values are not corrected for gaps.");
+        }
+        text
+    }
 }
 
 /// The amplitude spectrum of `g` between `4 × step` and half the span,
 /// with the series' mean taken off and empty readings set to it. A Hann
 /// window keeps a strong line from spreading over the whole axis; sizes
-/// are corrected for it, so a sine wave of size A reads A at its period.
+/// are corrected for it, estimating sine-wave size for complete regular data.
+/// Nonfinite bins become zero after subtracting the finite-data mean. The
+/// denominator remains the full grid's Hann-weight sum, without a correction
+/// for missing data; gap patterns therefore affect heights and shapes.
 /// `scale` multiplies the values (1000 for seconds to ms). At most
 /// `max_points` points.
 pub fn amplitude_spectrum(
@@ -91,6 +116,10 @@ pub fn amplitude_spectrum(
         step_s: g.step,
         period_s,
         amplitude,
+        support: SpectrumSupport {
+            finite_bins: fin.len(),
+            total_bins: n,
+        },
     })
 }
 
@@ -125,6 +154,81 @@ mod tests {
         assert!((at(60.0) - 0.05).abs() < 0.01, "{}", at(60.0));
         // Away from the lines the window keeps the floor far below them.
         assert!(at(20.0) < 0.005, "{}", at(20.0));
+    }
+
+    #[test]
+    fn support_counts_actual_input_grid_without_changing_missing_data_eligibility() {
+        for pattern in [
+            "complete",
+            "alternating",
+            "central_half",
+            "edge_half",
+            "nonfinite",
+        ] {
+            let n = 256;
+            let y = (0..n)
+                .map(|i| {
+                    let v = 10.0 * (std::f64::consts::TAU * i as f64 / 64.0).sin();
+                    match pattern {
+                        "alternating" if i % 2 != 0 => f64::NAN,
+                        "central_half" if (64..192).contains(&i) => f64::NAN,
+                        "edge_half" if !(64..192).contains(&i) => f64::NAN,
+                        "nonfinite" if i == 0 => f64::INFINITY,
+                        "nonfinite" if i == 1 => f64::NEG_INFINITY,
+                        _ => v,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let expected = y.iter().filter(|v| v.is_finite()).count();
+            let s = amplitude_spectrum(
+                &Grid {
+                    t0: 0.0,
+                    step: 1.0,
+                    y,
+                },
+                "amplitude",
+                "deg",
+                1.0,
+                600,
+            )
+            .unwrap();
+            assert_eq!(
+                s.support,
+                SpectrumSupport {
+                    finite_bins: expected,
+                    total_bins: n
+                }
+            );
+            assert_eq!(s.period_s.len(), s.amplitude.len());
+            assert!(s.amplitude.iter().all(|v| v.is_finite()));
+            assert!(s
+                .support
+                .description()
+                .contains(&format!("{expected} of {n}")));
+            assert_eq!(
+                s.support.description().contains("not corrected for gaps"),
+                expected < n
+            );
+            assert_eq!(
+                serde_json::to_value(&s).unwrap()["support"]["finite_bins"],
+                expected
+            );
+        }
+        // Counts exclude next-power-of-two FFT padding.
+        let s = amplitude_spectrum(
+            &Grid {
+                t0: 0.0,
+                step: 1.0,
+                y: (0..65).map(|i| (i as f64).sin()).collect(),
+            },
+            "rate",
+            "ms",
+            1.0,
+            600,
+        )
+        .unwrap();
+        assert_eq!(s.support.total_bins, 65);
+        assert_eq!(s.support.finite_bins, 65);
     }
 
     #[test]

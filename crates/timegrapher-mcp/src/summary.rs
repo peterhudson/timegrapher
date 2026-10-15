@@ -284,6 +284,21 @@ fn series(doc: &Value) -> Option<String> {
             );
         }
     }
+    if let Some(supports) = doc["spectrum_support"].as_array() {
+        for s in supports {
+            let series = s["series"].as_str().unwrap_or("series");
+            let c = &s["support"];
+            let counts = c["finite_bins"]
+                .as_u64()
+                .zip(c["total_bins"].as_u64())
+                .filter(|&(f, n)| n > 0 && f <= n);
+            lines.push(match counts {
+                Some((f, n)) => format!("FFT {series} input: {f} of {n} grid samples available.{}",
+                    if f < n { " Missing samples affect peak heights and shapes; values are not corrected for gaps." } else { "" }),
+                None => format!("FFT {series} input support was not recorded."),
+            });
+        }
+    }
     let found: Vec<&str> = doc["findings"]
         .as_array()
         .into_iter()
@@ -498,6 +513,24 @@ mod tests {
              Detected:\n\
              - Rate repeats every 60 min"
         );
+    }
+
+    #[test]
+    fn fft_support_qualifies_text_without_changing_legacy_series_leads() {
+        let mut doc = json!({"schema":"timegrapher.series/2", "series":[{"headline":"Rate: too few readings for the tests"}]});
+        let legacy = lead(&doc, &Map::new()).unwrap();
+        assert!(!legacy.contains("FFT"));
+        for (support, expected) in [
+            (json!({"finite_bins":256,"total_bins":256}), "FFT rate input: 256 of 256 grid samples available."),
+            (json!({"finite_bins":128,"total_bins":256}), "FFT rate input: 128 of 256 grid samples available. Missing samples affect peak heights and shapes; values are not corrected for gaps."),
+            (Value::Null, "FFT rate input support was not recorded."),
+            (json!({"finite_bins":true,"total_bins":256}), "FFT rate input support was not recorded."),
+        ] {
+            doc["spectrum_support"] = json!([{"series":"rate","support":support}]);
+            let text = lead(&doc, &Map::new()).unwrap();
+            assert!(text.contains(expected), "{text}");
+            assert!(text.starts_with(&legacy));
+        }
     }
 
     #[test]

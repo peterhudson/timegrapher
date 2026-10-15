@@ -219,6 +219,18 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
         .as_object_mut()
         .and_then(|o| o.remove("spectra"))
         .unwrap_or(Value::Null);
+    if let Some(spectra) = spectra.as_array() {
+        // Keep availability context model-side while large chart arrays move
+        // to metadata. Missing legacy support remains explicitly unknown.
+        doc["spectrum_support"] = spectra
+            .iter()
+            .map(|s| {
+                json!({
+                    "series": s["series"], "unit": s["unit"], "support": s["support"],
+                })
+            })
+            .collect();
+    }
     let mut points = Vec::new();
     if let Some(d) = doc.get_mut("distributions") {
         if let Some(all) = d.get_mut("overall").and_then(Value::as_array_mut) {
@@ -333,6 +345,34 @@ mod tests {
         assert_eq!(charts["period_span"], json!([0.5, 2.0]));
         assert_eq!(charts["spectra"][0]["period_s"], json!([600.0, 60.0]));
         assert_eq!(charts["points"][0], json!([[1.0, 0.0]]));
+    }
+
+    #[test]
+    fn fft_support_remains_model_visible_when_arrays_move_to_charts() {
+        for support in [Value::Null, json!({"finite_bins": 128, "total_bins": 256})] {
+            let mut spectrum = json!({"series":"rate", "unit":"ms", "period_s":[64.0,32.0], "amplitude":[5.0,1.0]});
+            if !support.is_null() {
+                spectrum["support"] = support.clone();
+            }
+            let mut doc = json!({"schema":"timegrapher.series/2", "spectra":[spectrum.clone()], "series":[{"series":"rate","headline":"Rate"}]});
+            let charts = take_series_charts(&mut doc);
+            assert_eq!(
+                charts["spectra"][0], spectrum,
+                "all chart arrays and support unchanged"
+            );
+            assert!(doc.get("spectra").is_none());
+            assert_eq!(
+                doc["spectrum_support"],
+                json!([{"series":"rate", "unit":"ms", "support":support}])
+            );
+            let lead = crate::summary::lead(&doc, &serde_json::Map::new()).unwrap();
+            assert!(lead.contains(if support.is_null() {
+                "FFT rate input support was not recorded."
+            } else {
+                "128 of 256 grid samples available"
+            }));
+            assert_eq!(lead.contains("not corrected for gaps"), !support.is_null());
+        }
     }
 
     #[test]

@@ -677,7 +677,7 @@ const STEADY_VIEWS = [
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
-  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size of the sine wave at each period, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
+  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: an estimate of size at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
 ];
 // steady::reading_swing: the peak-to-peak swing, s/d, that a beat-timing
 // sine `amp` ms in size with period `period` s makes in rate readings each
@@ -693,6 +693,12 @@ function readingSwing(amp, period, reading) {
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
 }
+function spectrumSupportText(sp) {
+  const c = sp && sp.support;
+  if (!c || !Number.isSafeInteger(c.finite_bins) || !Number.isSafeInteger(c.total_bins) || c.finite_bins < 0 || c.total_bins <= 0 || c.finite_bins > c.total_bins) return "FFT input support was not recorded.";
+  return `FFT input: ${c.finite_bins} of ${c.total_bins} grid samples available.${c.finite_bins < c.total_bins ? " Missing samples affect peak heights and shapes; values are not corrected for gaps." : ""}`;
+}
+
 const SERIES = {
   rate: ["Rate", "--rate", " s/d"],
   amplitude: ["Amplitude", "--amplitude", "°"],
@@ -956,7 +962,7 @@ function steadyPlot(s, view, doc) {
       // steady.rs's size: decimals by magnitude.
       const size = (v) => v.toFixed(v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3) + u;
       const peak = pts.reduce((a, q) => (q[1] > a[1] ? q : a), pts[0]);
-      return xyChart({
+      return `<p class="note">${esc(spectrumSupportText(sp))}</p>` + xyChart({
         title: "FFT", x, y, faint: true,
         xTicks: (p, q) => logTicks(p, q, secs),
         yTicks: (p, q) => logTicks(p, q, size),

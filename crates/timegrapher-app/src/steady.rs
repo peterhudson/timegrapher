@@ -106,7 +106,7 @@ impl View {
             }
             View::Fft => {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
-                 of the sine wave at each period, the rate's as the swing peak to peak it \
+                 estimated at each period for complete data, the rate's as the swing peak to peak it \
                  makes in 10 s rate readings (or the beat timing's, in ms, with Timing), \
                  with the wheels' periods marked and twice a turn dashed. Both axes are \
                  logarithmic"
@@ -1036,6 +1036,12 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             if pts.len() < 2 {
                 return note(ui, "The spectrum needs a longer session.");
             }
+            ui.label(
+                RichText::new(sp.support.description())
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+            let base = base.height(ui.available_height().max(40.0));
             let (x_lo, x_hi) = pts
                 .iter()
                 .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
@@ -1304,6 +1310,95 @@ mod tests {
     use super::*;
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    #[test]
+    fn fft_renderer_paints_input_availability_in_both_rate_displays() {
+        // Constructed beat/grid fixtures only: this tests presentation, not
+        // acquisition, audio detection or a new spectral estimator.
+        let mut state = compute(&context_log(), None);
+        let c = steadiness::check_series(
+            SeriesKind::Rate,
+            Grid {
+                t0: 0.0,
+                step: 10.0,
+                y: (0..40).map(|i| (i as f64).sin()).collect(),
+            },
+            None,
+            None,
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert!(
+            c.autocorrelation.is_some(),
+            "exercise the actual FFT renderer"
+        );
+        state.report.series[0] = c;
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        for missing in [false, true] {
+            let grid = Grid {
+                t0: 0.0,
+                step: 1.0,
+                y: (0..256)
+                    .map(|i| {
+                        if missing && i % 2 != 0 {
+                            f64::NAN
+                        } else {
+                            (std::f64::consts::TAU * i as f64 / 64.0).sin()
+                        }
+                    })
+                    .collect(),
+            };
+            state.report.spectra =
+                vec![
+                    timegrapher_core::spectrum::amplitude_spectrum(&grid, "rate", "ms", 1.0, 600)
+                        .unwrap(),
+                ];
+            for fft_timing in [false, true] {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(900.0, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        draw(
+                            ui,
+                            Some(&state),
+                            "FFT support fixture",
+                            View::Fft,
+                            &[true, false, false],
+                            Opts {
+                                fft_timing,
+                                ..Default::default()
+                            },
+                        );
+                    });
+                });
+                let text = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    text.contains(if missing {
+                        "128 of 256 grid samples available"
+                    } else {
+                        "256 of 256 grid samples available"
+                    }),
+                    "{text}"
+                );
+                assert_eq!(text.contains("values are not corrected for gaps"), missing);
+            }
+        }
+    }
 
     // Known beat records only: these controls do not run the detector.
     fn context_log() -> BeatLog {
