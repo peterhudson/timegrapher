@@ -8,12 +8,13 @@
 //!
 //! 1. Bin the series on a uniform grid and remove the slow trend
 //!    (mainspring let-down, temperature) with a running median.
-//! 2. Take the power spectrum and divide it by its local median, so that
-//!    under noise alone every bin is exponentially distributed with mean 1
-//!    whatever the noise colour.
+//! 2. Take the power spectrum and divide it by a local-median estimate of
+//!    its noise level. The score uses an exponential, mean-1 reference for
+//!    normalized noise power; whitening does not guarantee that model for
+//!    arbitrary noise colour, gaps or nonstationarity.
 //! 3. For each trial fundamental, sum the whitened power at its first 1, 2,
-//!    4 and 8 harmonics. Under noise a sum of K bins follows a Gamma(K)
-//!    law, so each sum converts to a false-alarm probability; the best of
+//!    4 and 8 harmonics. Independent exponential bins would sum to Gamma(K),
+//!    the reference used to score each sum; the best of
 //!    the four is the period's score. A pure sinusoid wins with K = 1, a
 //!    short dip with K = 8, and a subharmonic (twice the true period) loses
 //!    because half its harmonics are noise.
@@ -39,8 +40,8 @@ pub struct LongConfig {
     pub max_period_s: Option<f64>,
     /// Report at most this many components per series.
     pub max_components: usize,
-    /// A component is reported when the chance of noise alone producing a
-    /// score this high anywhere in the search is below this.
+    /// Threshold for the model-based whole-search false-alarm approximation;
+    /// not a calibrated false-positive rate for arbitrary input noise.
     pub false_alarm: f64,
     /// ...and when it explains at least this fraction of the detrended
     /// variance. On a very clean recording a sub-microsecond ripple can be
@@ -288,7 +289,7 @@ impl Search {
 
 const HARMONICS: [usize; 4] = [1, 2, 4, 8];
 /// Whitened power the fundamental needs before its harmonics are summed
-/// (noise alone exceeds it 5% of the time).
+/// (a mean-1 exponential reference exceeds it about 5% of the time).
 const FUNDAMENTAL_MIN: f64 = 3.0;
 
 fn search(g: &Grid, min_p: f64, max_p: f64, false_alarm: f64, exclude: &[f64]) -> Search {
@@ -434,11 +435,12 @@ fn fold_bins(period: f64, step: f64) -> usize {
 #[derive(Debug, Clone, Serialize)]
 pub struct Component {
     pub period_s: f64,
-    /// How finely the run can tell periods apart near this one
-    /// (period squared over the run length), seconds.
+    /// Nominal frequency-resolution scale expressed as a period difference
+    /// (period squared over the run length), seconds; not a confidence interval.
     pub resolution_s: f64,
-    /// -log10 of the false-alarm probability over the whole search; 2
-    /// means a 1% chance that noise alone produced it.
+    /// -log10 of the model-based whole-search false-alarm approximation.
+    /// A value of 2 corresponds to 1% under that reference model, not a
+    /// calibrated probability for arbitrary watch noise or a fault diagnosis.
     pub significance: f64,
     /// Harmonics that gave the best score (1 = a sinusoid; more = a
     /// sharper, shorter event within each cycle).
