@@ -1351,10 +1351,15 @@ impl TimegrapherApp {
         if self.refuse_faulted_recording() {
             return;
         }
-        self.ensure_devices();
         if self.can_resume() {
+            self.ensure_devices();
             return self.resume_microphone();
         }
+        let clocks = match clockstore::ClockStore::load() {
+            Ok(s) => s,
+            Err(e) => return self.error(format!("Can't load the input's clock correction: {e}")),
+        };
+        self.ensure_devices();
         self.stop();
         if let Some(s) = self.mic_setup.take() {
             self.set_watch_setup(s);
@@ -1373,9 +1378,7 @@ impl TimegrapherApp {
                 self.opened_at = Instant::now();
                 self.audio_at = None;
                 self.session.listen();
-                self.clock = clockstore::ClockStore::load()
-                    .ok()
-                    .and_then(|s| s.get(&c.label).cloned());
+                self.clock = clocks.get(&c.label).cloned();
                 self.clock_track = Some(ClockTrack {
                     device: c.label.clone(),
                     tracker: timegrapher_core::clock::ClockTracker::new(c.sample_rate),
@@ -10062,6 +10065,85 @@ mod tests {
         assert_eq!(chart_time_label(-30.0, &r), "");
         assert_eq!(chart_time_label(0.0, &r), "0:00");
         assert_eq!(chart_time_label(120.0, &r), "2:00");
+    }
+
+    #[test]
+    fn invalid_clock_store_blocks_fresh_listening_and_keep_without_hardware() {
+        const MARKER: &str = "TIMEGRAPHER_CLOCK_STORE_TEST_CHILD";
+        if std::env::var_os(MARKER).is_none() {
+            let root =
+                std::env::temp_dir().join(format!("tg-app-invalid-clock-{}", std::process::id()));
+            std::fs::create_dir_all(&root).unwrap();
+            let original = r#"{"schema":"timegrapher.clocks/1","devices":[{"device":"USB","ppm":-1000000,"ppm_sd":null,"span_s":0,"measured_utc":"legacy","source":"set"}]}"#;
+            std::fs::write(root.join("clocks.json"), original).unwrap();
+            // Isolate the config environment in a child test process, not parallel app tests.
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    &format!(
+                        "{}::invalid_clock_store_blocks_fresh_listening_and_keep_without_hardware",
+                        module_path!().split_once("::").unwrap().1
+                    ),
+                    "--nocapture",
+                ])
+                .env(MARKER, "1")
+                .env("TIMEGRAPHER_CONFIG_DIR", &root)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "child must execute the actual entrypoint test"
+            );
+            assert_eq!(
+                std::fs::read_to_string(root.join("clocks.json")).unwrap(),
+                original
+            );
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        }
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.reset_session(48_000, "retained context".into());
+        let old = clockstore::DeviceClock::from_fit(
+            "old",
+            &timegrapher_core::clock::ClockFit::fixed(12.0, 60.0),
+            "legacy".into(),
+            "set",
+        );
+        app.clock = Some(old.clone());
+        app.devices_listed = false;
+        app.start_microphone();
+        assert!(app.capture.is_none() && app.batch.is_none());
+        assert!(app.devices.is_empty());
+        assert!(
+            !app.devices_listed,
+            "invalid store must prevent device enumeration"
+        );
+        assert_eq!(app.clock, Some(old.clone()));
+        assert_eq!(app.live.as_ref().unwrap().sample_rate(), 48_000);
+        let (message, error) = app.message.as_ref().unwrap();
+        assert!(
+            *error && message.contains("clocks.json") && message.contains("ppm"),
+            "{message}"
+        );
+        app.clock_track = Some(ClockTrack {
+            device: "USB".into(),
+            tracker: timegrapher_core::clock::ClockTracker::new(48_000),
+            next_s: CLOCK_MEASURE_S,
+            fit: Some(timegrapher_core::clock::ClockFit::fixed(20.0, 1200.0)),
+        });
+        app.keep_clock();
+        assert_eq!(app.clock, Some(old));
+        let (message, error) = app.message.as_ref().unwrap();
+        assert!(
+            *error && message.contains("couldn't be kept") && message.contains("ppm"),
+            "{message}"
+        );
     }
 
     #[test]

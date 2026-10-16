@@ -70,6 +70,9 @@ pub fn run(a: Action, json: bool) -> Result<(), String> {
             device,
             save,
         } => {
+            if save {
+                ClockStore::load()?;
+            }
             let fit = from_log(&log, &recording)?;
             let d = DeviceClock::from_fit(&device, &fit, utc(SystemTime::now()), "log");
             report(
@@ -91,6 +94,9 @@ pub fn run(a: Action, json: bool) -> Result<(), String> {
             let seconds = minutes * 60.0;
             timegrapher_core::capture::checked_duration(seconds)
                 .map_err(|e| format!("--minutes converted to seconds {e}"))?;
+            if save {
+                ClockStore::load()?;
+            }
             measure(device.as_deref(), minutes, save, json)
         }
     }
@@ -322,4 +328,58 @@ pub fn correction_or_usb(
 
 fn stored_text(e: &DeviceClock) -> String {
     format!("stored for '{}', {}", e.device, e.measured_utc)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_report_merges_latest_store_and_refuses_late_invalid_store() {
+        const MARKER: &str = "TIMEGRAPHER_CLOCK_REPORT_TEST_CHILD";
+        if std::env::var_os(MARKER).is_none() {
+            let root = std::env::temp_dir().join(format!("tg-clock-report-{}", std::process::id()));
+            fs::create_dir_all(&root).unwrap();
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "clock_cmd::tests::saved_report_merges_latest_store_and_refuses_late_invalid_store", "--nocapture"])
+                .env(MARKER, "1").env("TIMEGRAPHER_CONFIG_DIR", &root).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "child must execute report test"
+            );
+            fs::remove_dir_all(root).unwrap();
+            return;
+        }
+        // Model the real preflight -> potentially long measurement -> report sequence.
+        ClockStore::load().unwrap();
+        let fit = ClockFit::fixed(20.0, 1200.0);
+        let measured = DeviceClock::from_fit("measured", &fit, "now".into(), "measure");
+        let late = DeviceClock::from_fit(
+            "added during measurement",
+            &ClockFit::fixed(3.0, 60.0),
+            "later".into(),
+            "set",
+        );
+        let mut changed = ClockStore::default();
+        changed.set(late.clone());
+        let path = changed.save().unwrap();
+        report(&measured, &fit, true, true, json!({})).unwrap();
+        let saved = ClockStore::load().unwrap();
+        assert_eq!(saved.get(&late.device), Some(&late));
+        assert_eq!(saved.get(&measured.device), Some(&measured));
+        // A store that becomes invalid after preflight must not be overwritten.
+        ClockStore::load().unwrap();
+        let invalid = r#"{"schema":"timegrapher.clocks/1","devices":[{"device":"late invalid","ppm":-1000000,"span_s":0,"measured_utc":"later","source":"set"}]}"#;
+        fs::write(&path, invalid).unwrap();
+        assert!(report(&measured, &fit, true, true, json!({}))
+            .unwrap_err()
+            .contains("ppm"));
+        assert_eq!(fs::read_to_string(path).unwrap(), invalid);
+    }
 }

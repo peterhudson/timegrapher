@@ -134,7 +134,14 @@ impl ClockStore {
     /// A store file; empty if it does not exist.
     pub fn load_from(p: &Path) -> Result<ClockStore, String> {
         match fs::read_to_string(p) {
-            Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", p.display())),
+            Ok(text) => {
+                let store: Self =
+                    serde_json::from_str(&text).map_err(|e| format!("{}: {e}", p.display()))?;
+                store
+                    .validate()
+                    .map_err(|e| format!("{}: {e}", p.display()))?;
+                Ok(store)
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ClockStore::default()),
             Err(e) => Err(format!("{}: {e}", p.display())),
         }
@@ -147,7 +154,35 @@ impl ClockStore {
         Ok(p)
     }
 
+    /// Validate the stored mathematical domains, without imposing calibration ranges.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != SCHEMA {
+            return Err(format!(
+                "unsupported clock store schema {:?}; expected {SCHEMA}",
+                self.schema
+            ));
+        }
+        for (i, d) in self.devices.iter().enumerate() {
+            let field = |name: &str, detail: &str| {
+                format!("devices[{i}] ({:?}) {name}: {detail}", d.device)
+            };
+            crate::input_domain::card_ppm(d.ppm).map_err(|e| field("ppm", &e))?;
+            if d.ppm_sd.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                return Err(field(
+                    "ppm_sd",
+                    "must be finite and nonnegative, or null when unavailable",
+                ));
+            }
+            if !d.span_s.is_finite() || d.span_s < 0.0 {
+                return Err(field("span_s", "must be finite and nonnegative"));
+            }
+        }
+        Ok(())
+    }
+
     pub fn save_to(&self, p: &Path) -> Result<(), String> {
+        self.validate()
+            .map_err(|e| format!("{}: {e}", p.display()))?;
         if let Some(d) = p.parent() {
             fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
@@ -197,6 +232,82 @@ mod tests {
             measured_utc: "2026-10-10T03:00:00Z".into(),
             source: "set".into(),
         }
+    }
+
+    #[test]
+    fn validates_store_domains_before_load_or_write() {
+        let root = std::env::temp_dir().join(format!("tg-clock-domains-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("clocks.json");
+        let mut valid = ClockStore::default();
+        let mut d = entry("USB", 0.0);
+        d.ppm_sd = None;
+        d.span_s = 0.0;
+        valid.set(d);
+        valid.save_to(&path).unwrap();
+        let original = fs::read(&path).unwrap();
+        for (field, value) in [
+            ("ppm", -1_000_000.0),
+            ("ppm", f64::NAN),
+            ("ppm", f64::INFINITY),
+            ("ppm", f64::NEG_INFINITY),
+            ("ppm_sd", -0.1),
+            ("ppm_sd", f64::NAN),
+            ("ppm_sd", f64::INFINITY),
+            ("ppm_sd", f64::NEG_INFINITY),
+            ("span_s", -1.0),
+            ("span_s", f64::NAN),
+            ("span_s", f64::INFINITY),
+            ("span_s", f64::NEG_INFINITY),
+        ] {
+            let mut bad = valid.clone();
+            match field {
+                "ppm" => bad.devices[0].ppm = value,
+                "ppm_sd" => bad.devices[0].ppm_sd = Some(value),
+                _ => bad.devices[0].span_s = value,
+            }
+            let error = bad.save_to(&path).unwrap_err();
+            assert!(error.contains(field) && error.contains("USB"), "{error}");
+            assert_eq!(fs::read(&path).unwrap(), original);
+            let absent = root.join("absent/clocks.json");
+            assert!(bad.save_to(&absent).is_err());
+            assert!(!absent.parent().unwrap().exists());
+            if value.is_finite() {
+                fs::write(&path, serde_json::to_vec(&bad).unwrap()).unwrap();
+                assert!(ClockStore::load_from(&path).unwrap_err().contains(field));
+                fs::write(&path, &original).unwrap();
+            }
+        }
+        let mut bad = valid.clone();
+        bad.schema = "future".into();
+        assert!(bad.save_to(&path).unwrap_err().contains("schema"));
+        fs::write(&path, serde_json::to_vec(&bad).unwrap()).unwrap();
+        assert!(ClockStore::load_from(&path).unwrap_err().contains("schema"));
+        // Missing SD is the historical unavailable sentinel; manual span zero is valid.
+        for sd in [None, Some(0.0), Some(0.2)] {
+            valid.devices[0].ppm_sd = sd;
+            for ppm in [-999_999.0, -12.0, 0.0, f64::MAX] {
+                valid.devices[0].ppm = ppm;
+                valid.save_to(&path).unwrap();
+                assert_eq!(ClockStore::load_from(&path).unwrap().devices, valid.devices);
+            }
+        }
+        valid.devices[0].ppm_sd = Some(f64::MAX);
+        valid.devices[0].span_s = f64::MAX;
+        valid.save_to(&path).unwrap();
+        assert_eq!(ClockStore::load_from(&path).unwrap().devices, valid.devices);
+        let mut doc = serde_json::to_value(&valid).unwrap();
+        doc["devices"][0].as_object_mut().unwrap().remove("ppm_sd");
+        fs::write(&path, doc.to_string()).unwrap();
+        assert_eq!(
+            ClockStore::load_from(&path).unwrap().devices[0].ppm_sd,
+            None
+        );
+        assert!(ClockStore::load_from(&root.join("missing.json"))
+            .unwrap()
+            .devices
+            .is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
