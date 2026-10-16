@@ -1443,6 +1443,7 @@ mod tests {
         let mut c = Calibres::open(Some(path));
         assert!(c.selected.is_none());
         let ctx = egui::Context::default();
+        theme::install(&ctx);
         let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 c.manager_body(ui, "", "test", &mut Managed::default());
