@@ -131,19 +131,21 @@ single file does not look for breaks, so read a paused take with `long`,
    0.25 s bins for runs up to 12 h, coarser beyond) and amplitude (2 s
    windows). Slow drift is removed with a running median of 30 minutes (a
    quadratic for runs under 20 minutes).
-3. **Score.** The power spectrum is divided by its local median, so under
-   noise alone each frequency has a known distribution whatever the noise
-   colour. Each trial period sums its first 1, 2, 4 or 8 harmonics, and
-   the best sum converts to a chance of arising from noise. A sinusoid
+3. **Score.** The power spectrum is normalized using a local-median noise
+   estimate. The score assumes exponential normalized noise power and a
+   Gamma reference for sums of independent bins. Each trial period sums
+   its first 1, 2, 4 or 8 harmonics, and the best sum is scored against that
+   model, with an approximate allowance for searching many frequencies. A sinusoid
    scores best with one harmonic, a short event (a dip for four minutes
    every hour) with eight; twice the true period loses because half its
    harmonics are noise. Only harmonics inside the searched band count: a
    strong line just below the shortest period searched (a 5 s escape
    wheel under the 8 s floor of a run over 12 hours, whose timing is
    gridded every second) would otherwise lift every period it divides,
-   10, 20 and 40 s. A component is reported when the chance of noise
-   producing it anywhere in the search is under 1% and it explains at
-   least 0.5% of the variation.
+   10, 20 and 40 s. With default settings, a component must pass the
+   model-based 1% whole-search threshold and explain at least 0.5% of the
+   detrended variation. This is not a calibrated 1% false-positive guarantee
+   for every noise process, missing-data pattern or repeated search.
 4. **Fold and subtract.** The strongest period is refined, the series is
    folded at it (median per phase bin) to give the average cycle and the
    raster, that cycle is subtracted, and the search repeats. Wheel periods
@@ -152,7 +154,15 @@ single file does not look for breaks, so read a paused take with `long`,
 5. **Name.** A component matches a wheel when their periods agree within
    the run's resolution (period squared over run length) or 1%. Otherwise
    the nearest wheel and how far off it is are given: a 57 s cycle in a
-   two-hour run (resolution ±0.5 s) is not the fourth wheel.
+   two-hour run (resolution scale about 0.5 s) is not the fourth wheel.
+   This scale, even when displayed with ±, is not a confidence interval for
+   the fitted period; gaps, noise and the number of observed cycles matter.
+
+The [precision and period-search assumptions](measurement-precision.md)
+include reproducible model probes and their limits. A score is evidence of
+repetition under the search model, not the probability that a particular
+wheel is faulty. Slow drift and periodic variation can be real watch
+behaviour; separating them for analysis does not make them measurement error.
 
 Rate components are searched on the timing offset and reported as rate:
 minus the slope of the average cycle, in s/d. A cycle shorter than 30 s

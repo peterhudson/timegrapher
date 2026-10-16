@@ -1,11 +1,12 @@
 //! Each reading's ± from the spread between short windows, and the
 //! conditions detected in the recording beside it.
 //!
-//! The ± is precision only: how much the reading would move on another
-//! stretch of the same recording. Accuracy rests on things the recording
-//! cannot show (the lift angle, the sound card's clock); those are stated
-//! as conditions ([`Doubts`], and the caveats of [`crate::measure`]), not
-//! folded into the ±.
+//! The ± estimates precision from successive window differences under a
+//! short-range noise model. It is not calibrated repeat-measurement coverage
+//! for arbitrary serial correlation, or a measure of true watch variation.
+//! Accuracy also rests on the lift angle and sound card's clock; these are
+//! stated as conditions ([`Doubts`] and [`crate::measure`]), not folded into
+//! the ±. See docs/measurement-precision.md for the model and its limits.
 
 use crate::amplitude::{standard_error, AmplitudeWindow};
 use crate::timing::WindowFit;
@@ -56,8 +57,9 @@ impl Confidence {
     }
 }
 
-/// Standard error of the rate from the 10 s windows. The windows overlap
-/// by half, so every other one is used to keep them independent.
+/// Estimated standard error of the rate from the 10 s windows. Taking every
+/// other available window removes ordinary half-window overlap; it does not
+/// establish independence when the underlying readings are serially correlated.
 pub fn rate_se(windows: &[WindowFit]) -> Option<f64> {
     let v: Vec<f64> = windows
         .iter()

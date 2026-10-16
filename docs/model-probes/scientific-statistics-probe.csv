@@ -1,0 +1,7 @@
+kind,case,runs,detected_or_peak,other
+spectrum,full,1,10.000000000,input_sine_amplitude_10
+spectrum,every_second_missing,1,5.000000000,input_sine_amplitude_10
+spectrum,middle_half_missing,1,1.816707781,input_sine_amplitude_10
+null,white,200,4,components=4;maximum_significance=4.858903
+null,ar1_0_9,200,10,components=12;maximum_significance=4.801332
+null,white_gapped,200,5,components=5;maximum_significance=3.670693

@@ -1,0 +1,35 @@
+{
+  "assessed_baseline": "009dcc6d54638ff4df51563941935ddc1c654a74",
+  "documentation_baseline": "49b1eb74b914b291338b1f0895bb07442e3c838e",
+  "original_compiler_and_linked_artifact_hashes": null,
+  "files": [
+    {
+      "original_filename": "precision-model-probe.rs",
+      "original_sha256": "886e149fd0e4ae6c36a7d234f7b5320a4bc3350eac7b8f0da69f4d3a438365f5",
+      "repository_path": "crates/timegrapher-core/examples/precision-model-probe.rs",
+      "repository_sha256": "0724962ab331005cbcbcfdeb341fdde36b833cf30ac726c0086751c14ac93081",
+      "transformation": "rustfmt only"
+    },
+    {
+      "original_filename": "scientific-statistics-probe.rs",
+      "original_sha256": "6f2c1bc36db08853be435f6936266b622f1c3b3b0808df579ea8f7b8a93cb54e",
+      "repository_path": "crates/timegrapher-core/examples/scientific-statistics-probe.rs",
+      "repository_sha256": "a1319443c989a5fe394ba0b901bf86a38660731159be900897b8b4ef66fc2956",
+      "transformation": "rustfmt only"
+    },
+    {
+      "original_filename": "precision-model-probe-output.txt",
+      "original_sha256": "c5b32c89e05490c86ad9fedaefea197f31004dbb22e02ec961e1350d56f22a4c",
+      "repository_path": "docs/model-probes/precision-model-probe-output.txt",
+      "repository_sha256": "c5b32c89e05490c86ad9fedaefea197f31004dbb22e02ec961e1350d56f22a4c",
+      "transformation": "byte-for-byte copy"
+    },
+    {
+      "original_filename": "scientific-statistics-probe.csv",
+      "original_sha256": "f6cb804bec88d2ffd85ecab8b7e40430ab46b7091ed16bf406c99e2743bc224b",
+      "repository_path": "docs/model-probes/scientific-statistics-probe.csv",
+      "repository_sha256": "f6cb804bec88d2ffd85ecab8b7e40430ab46b7091ed16bf406c99e2743bc224b",
+      "transformation": "byte-for-byte copy"
+    }
+  ]
+}

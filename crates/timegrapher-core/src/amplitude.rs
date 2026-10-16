@@ -242,11 +242,12 @@ pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize 
     n
 }
 
-/// Standard error of the median of window amplitudes taken in time order,
-/// degrees: 1.25 s / sqrt(n), with s the spread from one window to the
-/// next (the MAD of successive differences over sqrt 2), so a slow drift
-/// or cycle in the watch's amplitude does not count as noise. None with
-/// fewer than three values.
+/// Estimated standard error of a median from values in time order, in their
+/// own units: 1.2533 s / sqrt(n), with s = 1.4826 MAD(successive differences)
+/// / sqrt(2). The scale assumes independent Gaussian noise; serial correlation
+/// can invalidate that interpretation. Differencing limits the contribution
+/// of slow true variation (a linear drift cancels exactly), rather than
+/// measuring the watch's total variation. None with fewer than three values.
 pub fn standard_error(values: &[f64]) -> Option<f64> {
     if values.len() < 3 {
         return None;

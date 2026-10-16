@@ -128,8 +128,8 @@ time names it in its tab ("Rate · 30 s"). A pane's own time sets everything
 in it that Average Over would. Changing Readings' Average Over puts every
 pane back on it, dropping their own times. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
-median of its 2 s windows, roughly how far it could be off from their
-scatter alone. It is precision, not accuracy: a wrong lift angle moves
+median of its 2 s windows, estimated from successive window differences.
+It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
 (orange dot). The sound can't tell which beat is
@@ -140,9 +140,9 @@ error is timed from the unlock, as tg measures it (checked against tg
 in the regression tests); beside it, smaller, is the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
 Beside the rate, when it is at least 0.05 s/d, is its ± figure: the
-standard error of the fitted slope, roughly how far the rate could be off
-from the scatter of the beats alone; it shrinks with a longer averaging
-time. Under the rate: how many beats the readings used and
+estimated standard error from short-window rates, scaled to the averaging
+time. It is not the covariance error of the fitted beat-time slope.
+Under the rate: how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
 which is the spread of the dots across the strip; smaller means less
@@ -152,8 +152,11 @@ each reading explains it at length.
 
 **What limits a reading.** Each figure carries its ±, worked out as
 `analyze` and `session` work out theirs (`timegrapher_core::measure`),
-over the averaging time: how far the figure could be off, a property of
-the measurement rather than of the watch. The amplitude's and beat error's ± are the
+over the averaging time. These are model-based precision estimates, not
+bounds on total error or measures of the watch's true variation. Correlated
+window readings can make the estimates too small. The
+[precision assumptions and probes](measurement-precision.md) explain what
+is calculated and what has been checked. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 pause or a move, up to five minutes), scaled to the averaging time; it
