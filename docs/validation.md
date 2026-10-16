@@ -19,31 +19,97 @@ come back out (`crates/timegrapher-core/tests/synthetic.rs`):
 The synthetic signal is much cleaner than a real microphone, so these
 tests show the arithmetic is right, not that real recordings will be easy.
 
-## Against tg on every stored take
+## Corpus regression and pipeline coverage
 
-`timegrapher regress` measures every stored take again and fails when an
-engine change moves a reading away from tg on the same file; CI runs it
-on every pull request. See [regress](regress.md).
+CI's `regress` job checks out the reviewed corpus revision, authenticates its
+inputs and compares eligible reference/baseline readings using the documented
+margins. This is a comparison with stored tg references and historical engine
+baselines, not a fresh execution of tg or proof of physical accuracy. Coverage,
+exclusions and baseline-update rules are in [regress](regress.md).
 
-## One beat pipeline
+The same job separately requires `analyze_and_session_agree_on_real_takes`.
+It authenticates `take_part01-001.flac` from exactly four public takes:
+`daytona4130_DU_30min`, `ym42_DD_30min`, `patek324_DU_30min` and
+`eta2824_holder_DU_30min`. Missing, unreadable or unauthenticated inputs fail;
+the decoded recordings must be nonempty, both paths must hear the watch, and
+the compared rate, amplitude and both beat errors must be present and finite.
+Agreement margins remain 0.3 s/day, 1.5° and 0.03 ms respectively. This gates
+whole-file analyze/session agreement on those fixtures, not real live-input,
+all-interval or all-watch equivalence. Completion logs identify the four inputs.
+An ordinary developer run without the corpus reports a skip and supplies no
+real-recording evidence. The earlier audit's absent-corpus coverage gap was
+addressed by this required CI step; that audit's counts describe its older run.
 
-Every reading of a recording rests on the same beats: the chunked stream
-(47 s chunks, 1 s margins) that `session`, `long`, `series` and `regress`
-read files through, and since 2026-10-11 `analyze` too, which before then
-found its beats with one template over the whole file. The two had drifted
-apart on real takes: on the Yacht-Master dial down `analyze` lost 47 beats
-of the first file and read the beat error from the drop as +0.89 ms against
-`session`'s −0.19 ms, and on the first file of the ETA 2824 in its holder it
-read 332° against 321° at the default lift angle of 52° (321° against 310° at
-the take's 50°). regress checks the stream's readings against tg, so those are the ones
-kept. `crates/timegrapher-core/tests/equivalence.rs` holds the pipelines to
-one another (and records where the live screen still differs).
+## Shared file beats and different measurement intervals
 
-Each chunk times its beats against the template it has at hand, so a beat's
-time depends a little on where the chunk boundaries fall: reading the same
-take in 47, 10 or 3.7 s chunks moves single beats by up to 34 µs (0.03% of
-a 28,800 beat), while the readings agree within the regress margins. The
-chunk length is fixed, so every reading of one file sees the same beats.
+The chunked stream (47 s chunks, 1 s margins by default) supplies file beats to
+`session`, `long`, `series`, `regress` and `analyze`. Live pushed audio uses the
+same detector components with rolling windows and settlement boundaries, rather
+than the identical file processing schedule. Shared components do not establish
+identical beat logs or readings for every push size and interval.
+
+The historical 2026-10-11 file-pipeline change made `analyze` use the stream too.
+Before that change the Yacht-Master dial-down file lost 47 beats in `analyze`
+and read drop beat error +0.89 ms against session's −0.19 ms; the first ETA
+holder file read 332° against 321° at 52° lift (321° against 310° at 50°).
+These are historical observations, not measurements of the current build.
+
+`LiveAnalyzer::reading_at` fits the requested trailing interval only since its
+latest known cut or raw inter-beat gap greater than 2 s. `from_log` preserves
+supplied log jumps. By contrast the equivalence helper `whole` calls
+`session::measure` over the full log duration, without supplying extra breaks;
+its selected interval and cut context therefore need not match replay's.
+A latest-piece rate and a whole-selection aggregate can correctly differ when
+the watch's rate changes. The active pure beat-log test
+`viewer_latest_piece_is_distinct_from_the_retained_whole_recording` explicitly
+checks unequal piece rates, a different whole fit and retained full history.
+It establishes that bounded contract, not equivalence on arbitrary real audio.
+This distinction does not establish that every product label or exported interval
+communicates the scope correctly;
+those presentation contracts need separate assessment.
+
+## Four retained ignored diagnostics
+
+`crates/timegrapher-core/tests/equivalence.rs` retains the following ignored
+tests with their original assertions and tolerances. They are not executed by
+normal CI and do not gate release. Their recorded discrepancy numbers predate
+this disposition and were not remeasured for it. Passing the active synthetic
+and four-file checks does not resolve these stronger claims.
+
+| Ignored test | Disposition and evidence limit |
+| --- | --- |
+| `chunk_size_does_not_change_the_beat_times` | Its <1 µs per-beat assertion is stronger than active `chunk_size_does_not_change_the_readings`, which checks beat counts and aggregate rate, amplitude and unlock beat error. Up to 34 µs was observed historically for 47, 10 and 3.7 s chunks. The current stream retains its initial template; the old explanation that every chunk builds its own template is not a demonstrated current cause. Timestamp invariance, current magnitude and cause remain unresolved. |
+| `push_size_does_not_change_the_live_beats` | Exact beat-count equality across 480, 4,096 and 48,000 sample pushes remains unresolved. Historical counts were 1,432, 1,435 and 1,436 of 1,440. Rolling analysis, startup and end settlement need investigation before deciding whether a difference is intended or a scheduling/tracking defect. Active synthetic live-reading checks do not prove block-invariant beat logs. |
+| `live_matches_analyze_on_real_takes` | It compares a pushed live trailing/latest-piece reading with a whole-file analysis, including separately detected beats. Interval, settlement and cut context must be aligned before treating every difference as an estimator defect. Historical Daytona/ETA values remain in the annotation; some predate shared file beats. Its comparator already compares beat-error magnitudes, so a historical sign flip alone does not establish failure of this assertion. Current real-live agreement remains unverified by this test. |
+| `a_replayed_real_take_matches_session` | Universal equality is not the supported contract across changing pieces or different cut contexts. The retained diagnostic compares replay's latest piece with the full session selection. Historical ETA rates 11.49/11.14 s/day are not current results. The active supplied-beat test above protects the intended distinction; an interval/cut-aligned real replay comparison remains future work. |
+
+The first two are unresolved stronger invariants, not evidence that all timing
+or scheduling differences are harmless. The latter two require a comparison
+contract before any attempt to make them pass. No detector change, tolerance
+relaxation or new regularity policy follows from this disposition.
+
+For a deliberate real diagnostic, first use the pinned checkout/fetch procedure
+in [regress](regress.md), then supply both variables below with the corpus's
+absolute path. The helper authenticates all four exact manifest members. Do not
+count an absent-corpus skip as a diagnostic run:
+
+```sh
+TIMEGRAPHER_CORPUS=/absolute/path/to/corpus TIMEGRAPHER_REQUIRE_CORPUS=1 \
+  cargo test --locked --release -p timegrapher-core --test equivalence \
+  live_matches_analyze_on_real_takes -- --exact --ignored --nocapture
+```
+
+Replace the test name with `a_replayed_real_take_matches_session` for the replay
+diagnostic. Record the engine/corpus revisions, authenticated input identities,
+command, interval/settings and complete output, including failures. These
+commands are opt-in investigations, not additional passing CI gates; no such
+real diagnostic was run for this documentation change.
+
+## Historical recording studies
+
+The studies below retain their recorded observations and development context.
+They are not new measurements of the current build or substitutes for the
+current CI coverage described above.
 
 ## Against tg on a real recording
 
@@ -60,8 +126,8 @@ every 100 ms from its 16 s window.
 | Beat error | 0.17 ms (median) | 0.23 ms from the unlock (0.08 ms from the drop) |
 
 Beat error is compared below, with the bench watches.
-Absolute rate is uncalibrated in both: neither corrects the sound card's
-clock yet.
+In this 2026-10-08 comparison, absolute rate was uncalibrated in both:
+neither applied a sound-card clock correction to these results.
 
 ## Against tg on the bench watches
 
