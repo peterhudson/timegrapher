@@ -941,8 +941,8 @@ impl TimegrapherApp {
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
-            // Kept in the user calibre file now.
-            custom_calibres: Vec::new(),
+            // Drop legacy entries only after their user-catalogue save succeeds.
+            custom_calibres: self.cal.pending_legacy().to_vec(),
             recent_calibres: self.cal.recent.clone(),
             short_added: self.cal.short_added.clone(),
             short_removed: self.cal.short_removed.clone(),
@@ -9849,6 +9849,52 @@ mod tests {
         assert!(app.settings().custom_calibres.is_empty());
         // The pick itself is about the watch on the stand, so it isn't kept.
         assert!(next.calibre.is_empty());
+    }
+
+    #[test]
+    fn unsaved_legacy_calibres_remain_in_app_settings() {
+        let root = std::env::temp_dir().join(format!(
+            "tg-app-legacy-calibre-protection-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("calibres.json");
+        let original = b"unreadable original catalogue";
+        std::fs::write(&path, original).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.cal = calibre_ui::Calibres::open(Some(path.clone()));
+        let mut settings = Settings::default();
+        settings
+            .custom_calibres
+            .push(crate::settings::CustomCalibre {
+                name: "Legacy Bench".into(),
+                wheels: vec![crate::settings::CustomWheel {
+                    name: " Third Wheel ".into(),
+                    period_s: 450.0,
+                }],
+            });
+        let originals = settings.custom_calibres.clone();
+        app.apply_settings(settings);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        // Actual app settings serialization preserves the original legacy form,
+        // rather than only its normalized, temporary catalogue entry.
+        let json = serde_json::to_string(&app.settings()).unwrap();
+        let persisted: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(persisted.custom_calibres, originals);
+        let mut next = TimegrapherApp::with_devices(Vec::new(), None, false);
+        next.apply_settings(persisted.clone()); // no persistent path
+        assert_eq!(next.settings().custom_calibres, originals);
+        assert!(next.cal.find("Legacy Bench").is_some());
+        // A new instance can load a repaired path and finish the migration.
+        std::fs::remove_file(&path).unwrap();
+        let mut repaired = TimegrapherApp::with_devices(Vec::new(), None, false);
+        repaired.cal = calibre_ui::Calibres::open(Some(path.clone()));
+        repaired.apply_settings(persisted);
+        assert!(repaired.settings().custom_calibres.is_empty());
+        assert!(calibre_ui::Calibres::open(Some(path))
+            .find("Legacy Bench")
+            .is_some());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
