@@ -148,6 +148,29 @@ which must be kept by NTP; 20 minutes gives about ±0.3 ppm. `from-log`
 takes the error from a recording's clock log. Neither stores anything
 without `--save`.
 
+Store loading and saving require schema `timegrapher.clocks/1` and validate
+all entries: `ppm` must be finite with `1 + ppm * 1e-6 > 0`, `ppm_sd` must
+be finite and nonnegative when present, and `span_s` must be finite and
+nonnegative. Missing/null `ppm_sd` means unavailable; zero ppm, zero standard
+error and a manual entry's zero span remain valid. These are mathematical
+domains, not calibration quality limits. An invalid store produces a path
+and field error rather than an empty store, and cannot be overwritten by
+`set`, `forget` or a saved measurement. Invalid values supplied programmatically
+are rejected before creating directories or writing a store. This is boundary
+validation, not automatic validation of every constructed `DeviceClock`.
+
+`measure --save` and `from-log --save` validate the store before device/audio
+work, then reload it before merging the result so intervening changes are
+retained. A store that becomes invalid meanwhile prevents saving. Without
+`--save` these commands do not need the store. An explicit `--card-ppm`, including
+zero, still bypasses stored correction lookup. A fresh desktop microphone
+session loads the store before querying/opening devices or replacing its
+current context; load errors stop the start and are shown. A resumed session
+retains its already-selected correction even if the store has changed. Keeping
+a measured correction changes the app's selected correction only after a
+successful save. No correction is selected when a valid store has no matching
+input. Fix an invalid store explicitly; these operations do not repair it.
+
 `analyze` adds the corrected rate beside the card's: with `--card-ppm N`,
 `--device NAME`, or a stored entry for the input the recording names, its
 document gains `clock` (`ppm`, `from`, `rate_error_s_per_day`,
