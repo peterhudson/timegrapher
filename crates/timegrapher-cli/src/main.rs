@@ -26,6 +26,31 @@ use timegrapher_core::stream::StreamConfig;
 use timegrapher_core::synth::{self, SynthConfig};
 use timegrapher_core::{analyze, load, Analysis, AnalysisConfig};
 
+fn parse_bph(text: &str) -> Result<u32, String> {
+    let value = text
+        .parse::<u64>()
+        .map_err(|_| "BPH must be an integer from 1 through 4294967295".to_string())?;
+    timegrapher_core::input_domain::bph(value)
+}
+fn parse_lift(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::lift_deg(
+        text.parse()
+            .map_err(|_| "lift angle must be finite and positive".to_string())?,
+    )
+}
+fn parse_escape_teeth(text: &str) -> Result<u32, String> {
+    timegrapher_core::input_domain::escape_teeth(
+        text.parse()
+            .map_err(|_| "escape teeth must be a positive u32 integer".to_string())?,
+    )
+}
+fn parse_card_ppm(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::card_ppm(
+        text.parse()
+            .map_err(|_| "card ppm must be finite with a positive clock scale".to_string())?,
+    )
+}
+
 #[derive(Parser)]
 #[command(
     name = "timegrapher",
@@ -53,11 +78,11 @@ enum Command {
         #[arg(long)]
         calibre: Option<String>,
         /// Beat rate in beats per hour (default: the calibre's, or guessed).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees (default: the calibre's, or 52, named as
         /// the default).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz (e.g. 5000,6000,7000).
         #[arg(long, value_delimiter = ',')]
@@ -67,7 +92,7 @@ enum Command {
         highpass: f64,
         /// Escape wheel teeth, used to name periodic components (default:
         /// the calibre's, or 15).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_escape_teeth)]
         escape_teeth: Option<u32>,
         /// Write one row per beat to this CSV file.
         #[arg(long)]
@@ -82,7 +107,7 @@ enum Command {
         device: Option<String>,
         /// Correct the rate for a sound card this many ppm slow (negative
         /// if fast), instead of a stored correction.
-        #[arg(long, allow_hyphen_values = true)]
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_card_ppm)]
         card_ppm: Option<f64>,
         /// Print the summary as JSON instead of text.
         #[arg(long)]
@@ -92,10 +117,10 @@ enum Command {
     Shape {
         file: PathBuf,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0)]
+        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
         lift: f64,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
@@ -123,10 +148,10 @@ enum Command {
         #[arg(long, default_value_t = 10.0)]
         span: f64,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0)]
+        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
         lift: f64,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
@@ -159,13 +184,13 @@ enum Command {
         device: Option<String>,
         /// Without a clock log: correct for a sound card this many ppm slow
         /// (negative if fast).
-        #[arg(long, allow_hyphen_values = true)]
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_card_ppm)]
         card_ppm: Option<f64>,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0)]
+        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
         lift: f64,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
@@ -180,7 +205,7 @@ enum Command {
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:
         /// the calibre's, or both 15 and 20 when no calibre is given).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_escape_teeth)]
         escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable),
         /// e.g. --wheel "third wheel=450".
@@ -209,10 +234,10 @@ enum Command {
         #[arg(long)]
         clock: Option<PathBuf>,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0)]
+        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
         lift: f64,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
@@ -227,7 +252,7 @@ enum Command {
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:
         /// the calibre's, or both 15 and 20 when no calibre is given).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_escape_teeth)]
         escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable).
         #[arg(long)]
@@ -311,7 +336,7 @@ enum Command {
         #[arg(long)]
         apply: bool,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Print the report as JSON instead of text.
         #[arg(long)]
@@ -357,10 +382,10 @@ enum Command {
         #[arg(long)]
         calibre: Option<String>,
         /// Beat rate in beats per hour (guessed if omitted).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees (default: the calibre's, else 52).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Hours since the watch was fully wound (0 for the fully wound
         /// half of a test, 24 for the run-down half); left out of the
@@ -388,10 +413,10 @@ enum Command {
         #[arg(long)]
         init: bool,
         /// Beat rate in beats per hour (overrides the session file).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees (overrides the session file; default 52).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// The movement (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name
         /// lists the known ones): its beat rate, lift angle and wheels
@@ -499,10 +524,10 @@ enum Command {
         #[arg(long)]
         note: Option<String>,
         /// Beat rate in beats per hour, as set when the problem showed.
-        #[arg(long)]
+        #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
         /// Lift angle in degrees, as set.
-        #[arg(long)]
+        #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Folder for the zip (default: the current folder).
         #[arg(long)]
@@ -527,7 +552,7 @@ enum Command {
         out: PathBuf,
         #[arg(long, default_value_t = 60.0)]
         duration: f64,
-        #[arg(long, default_value_t = 28800)]
+        #[arg(long, default_value_t = 28800, value_parser = parse_bph)]
         bph: u32,
         #[arg(long, default_value_t = 270.0)]
         amplitude: f64,
@@ -586,7 +611,7 @@ enum ClockAction {
     /// Store a known error by hand: ppm slow, negative if fast.
     Set {
         device: String,
-        #[arg(allow_hyphen_values = true)]
+        #[arg(allow_hyphen_values = true, value_parser = parse_card_ppm)]
         ppm: f64,
     },
     /// Remove an input's stored correction.
@@ -1340,6 +1365,108 @@ fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
         )?;
     }
     w.flush()
+}
+
+#[cfg(test)]
+mod numeric_input_tests {
+    use super::*;
+
+    fn args(command: &str) -> Vec<String> {
+        let mut args = vec!["timegrapher".into(), command.into()];
+        match command {
+            "doctor" => {}
+            "record" => args.extend(["unused-folder", "--position", "DU"].map(String::from)),
+            _ => args.push("unused.wav".into()),
+        }
+        args
+    }
+
+    #[test]
+    fn numeric_inputs_reject_invalid_explicit_scalars_before_dispatch() {
+        for command in [
+            "analyze", "shape", "profile", "long", "series", "doctor", "record", "session",
+            "synth", "report",
+        ] {
+            let mut argv = args(command);
+            argv.push("--bph=0".into());
+            assert!(Cli::try_parse_from(argv).is_err(), "{command}: zero BPH");
+        }
+        for command in [
+            "analyze", "shape", "profile", "long", "series", "record", "session", "report",
+        ] {
+            for value in ["0", "-1", "NaN", "inf", "-inf"] {
+                let mut argv = args(command);
+                argv.push(format!("--lift={value}"));
+                assert!(
+                    Cli::try_parse_from(argv).is_err(),
+                    "{command}: lift {value}"
+                );
+            }
+        }
+        for command in ["analyze", "long", "series"] {
+            let mut argv = args(command);
+            argv.push("--escape-teeth=0".into());
+            assert!(Cli::try_parse_from(argv).is_err(), "{command}: zero teeth");
+        }
+        for value in ["NaN", "inf", "-inf", "-1000000", "-1000001"] {
+            for command in ["analyze", "long"] {
+                let mut argv = args(command);
+                argv.push(format!("--card-ppm={value}"));
+                assert!(Cli::try_parse_from(argv).is_err(), "{command}: ppm {value}");
+            }
+            assert!(
+                Cli::try_parse_from(["timegrapher", "clock", "set", "unused-device", value])
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_inputs_preserve_defaults_valid_extremes_and_report_analysis_settings() {
+        let parsed = Cli::try_parse_from(args("analyze")).unwrap();
+        assert!(matches!(
+            parsed.command,
+            Command::Analyze {
+                bph: None,
+                lift: None,
+                escape_teeth: None,
+                card_ppm: None,
+                ..
+            }
+        ));
+        let parsed = Cli::try_parse_from(args("shape")).unwrap();
+        assert!(matches!(parsed.command, Command::Shape { lift: 52.0, .. }));
+        for ppm in ["0", "-12.5", "-999999.9999999999", "12.5"] {
+            assert!(Cli::try_parse_from([
+                "timegrapher",
+                "analyze",
+                "unused.wav",
+                "--bph=1",
+                "--lift=52",
+                "--escape-teeth=1",
+                &format!("--card-ppm={ppm}")
+            ])
+            .is_ok());
+        }
+        assert!(Cli::try_parse_from([
+            "timegrapher",
+            "analyze",
+            "unused.wav",
+            "--bph=4294967295",
+            "--lift=1e300",
+            "--escape-teeth=4294967295"
+        ])
+        .is_ok());
+        // Report settings are forwarded to analysis subprocesses, even with --no-audio.
+        assert!(Cli::try_parse_from([
+            "timegrapher",
+            "report",
+            "--bph=28800",
+            "--lift=52",
+            "--no-audio"
+        ])
+        .is_ok());
+    }
 }
 
 #[cfg(test)]

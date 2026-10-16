@@ -23,7 +23,10 @@ pub enum Kind {
     Choice(&'static [&'static str]),
     Path,
     Paths,
-    Integer,
+    /// Positive BPH representable by the CLI's u32.
+    BeatRate,
+    /// Finite positive lift angle; no empirical upper limit.
+    LiftAngle,
     Number,
     /// Finite, positive acquisition seconds, checked before child spawn.
     CaptureSeconds,
@@ -91,14 +94,14 @@ const RECORDINGS: Param = p(
 );
 const BPH: Param = p(
     "bph",
-    Kind::Integer,
+    Kind::BeatRate,
     Arg::Flag("--bph"),
     false,
     "Beat rate in beats per hour, e.g. 28800 (guessed from the sound if left out).",
 );
 const LIFT: Param = p(
     "lift_deg",
-    Kind::Number,
+    Kind::LiftAngle,
     Arg::Flag("--lift"),
     false,
     "Lift angle of the calibre in degrees (52 if left out). Amplitude depends on it.",
@@ -170,7 +173,7 @@ pub const TOOLS: &[ToolSpec] = &[
             BPH,
             p(
                 "lift_deg",
-                Kind::Number,
+                Kind::LiftAngle,
                 Arg::Flag("--lift"),
                 false,
                 "Lift angle in degrees (overrides session.toml; 52 if neither gives one).",
@@ -372,7 +375,7 @@ pub const TOOLS: &[ToolSpec] = &[
             BPH,
             p(
                 "lift_deg",
-                Kind::Number,
+                Kind::LiftAngle,
                 Arg::Flag("--lift"),
                 false,
                 "Lift angle in degrees (the calibre's if left out, else 52).",
@@ -483,7 +486,7 @@ pub const TOOLS: &[ToolSpec] = &[
             BPH,
             p(
                 "lift_deg",
-                Kind::Number,
+                Kind::LiftAngle,
                 Arg::Flag("--lift"),
                 false,
                 "Lift angle in degrees, as set when the problem showed.",
@@ -548,7 +551,8 @@ pub fn definition(t: &ToolSpec) -> Value {
             Kind::Path | Kind::Text => json!({"type": "string"}),
             Kind::Choice(words) => json!({"type": "string", "enum": words}),
             Kind::Paths => json!({"type": "array", "items": {"type": "string"}, "minItems": 1}),
-            Kind::Integer => json!({"type": "integer", "minimum": 1}),
+            Kind::BeatRate => json!({"type":"integer", "minimum":1, "maximum":u32::MAX}),
+            Kind::LiftAngle => json!({"type":"number", "exclusiveMinimum":0}),
             Kind::Number => json!({"type": "number"}),
             Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
         };
@@ -614,7 +618,20 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
             (Kind::Choice(words), Value::String(s)) if words.contains(&s.as_str()) => {
                 vec![s.clone()]
             }
-            (Kind::Integer, Value::Number(n)) if n.as_u64().is_some_and(|n| n > 0) => {
+            (Kind::BeatRate, Value::Number(n)) => {
+                let value = n.as_u64().ok_or_else(|| {
+                    format!("{}: {} must be a positive u32 integer", t.name, p.name)
+                })?;
+                timegrapher_core::input_domain::bph(value)
+                    .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
+                vec![n.to_string()]
+            }
+            (Kind::LiftAngle, Value::Number(n)) => {
+                let value = n
+                    .as_f64()
+                    .ok_or_else(|| format!("{}: {} must be finite and positive", t.name, p.name))?;
+                timegrapher_core::input_domain::lift_deg(value)
+                    .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
                 vec![n.to_string()]
             }
             (Kind::Number, Value::Number(n)) if n.as_f64().is_some_and(f64::is_finite) => {
@@ -892,5 +909,103 @@ mod tests {
             assert_eq!(d["inputSchema"]["type"], "object");
             assert!(d["description"].as_str().unwrap().len() > 40);
         }
+    }
+}
+
+#[cfg(test)]
+mod numeric_input_tests {
+    use super::*;
+    fn args(value: Value) -> Map<String, Value> {
+        value.as_object().unwrap().clone()
+    }
+
+    // Match the existing tools tests: a native absolute path, without creating a file.
+    fn full(name: &str) -> String {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn numeric_inputs_match_domains_and_schema_before_child_construction() {
+        let t = find("analyze_recording").unwrap();
+        for value in [json!(0), json!(-1), json!(u32::MAX as u64 + 1)] {
+            let error = command_line(
+                t,
+                &args(json!({"recording":full("unused.wav"),"bph":value})),
+            )
+            .unwrap_err();
+            assert!(error.contains("bph"), "wrong rejection: {error}");
+        }
+        for value in [json!(0), json!(-0.0), json!(-1.0)] {
+            let error = command_line(
+                t,
+                &args(json!({"recording":full("unused.wav"),"lift_deg":value})),
+            )
+            .unwrap_err();
+            assert!(error.contains("lift_deg"), "wrong rejection: {error}");
+        }
+        let schema = definition(t);
+        assert_eq!(
+            schema["inputSchema"]["properties"]["bph"]["maximum"],
+            u32::MAX
+        );
+        assert_eq!(
+            schema["inputSchema"]["properties"]["lift_deg"]["exclusiveMinimum"],
+            0
+        );
+        let line = command_line(
+            t,
+            &args(json!({"recording":full("unused.wav"),"bph":u32::MAX,"lift_deg":52.0})),
+        )
+        .unwrap_or_else(|error| panic!("valid native-path numeric control rejected: {error}"));
+        assert!(line.contains(&format!("--bph={}", u32::MAX)), "{line:?}");
+        assert!(line.contains(&"--lift=52.0".to_string()), "{line:?}");
+        for (name, field, expected) in [
+            ("run_session", "paths", json!([full("unused")])),
+            ("record_position", "folder", json!(full("unused"))),
+        ] {
+            let t = find(name).unwrap();
+            let mut a = args(json!({"lift_deg":0}));
+            if name == "record_position" {
+                a.insert("position".into(), json!("DU"));
+            }
+            a.insert(field.into(), expected);
+            let error = command_line(t, &a).unwrap_err();
+            assert!(
+                error.contains("lift_deg"),
+                "{name}: wrong rejection: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_inputs_validate_report_analysis_settings() {
+        let t = find("make_report_bundle").unwrap();
+        let schema = definition(t);
+        assert_eq!(
+            schema["inputSchema"]["properties"]["bph"]["maximum"],
+            u32::MAX
+        );
+        assert_eq!(
+            schema["inputSchema"]["properties"]["lift_deg"]["exclusiveMinimum"],
+            0
+        );
+        for a in [
+            json!({"bph":0}),
+            json!({"bph":u32::MAX as u64+1}),
+            json!({"lift_deg":0}),
+            json!({"lift_deg":-1}),
+        ] {
+            let field = if a.get("bph").is_some() {
+                "bph"
+            } else {
+                "lift_deg"
+            };
+            let error = command_line(t, &args(a)).unwrap_err();
+            assert!(error.contains(field), "wrong rejection: {error}");
+        }
+        assert!(command_line(t, &args(json!({"bph":u32::MAX,"lift_deg":52}))).is_ok());
     }
 }
