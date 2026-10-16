@@ -7,7 +7,8 @@ version = "0.3.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/peterhudson/timegrapher"
-rust-version = "1.80"
+# Supported source-build floor, exercised by the Linux CI job (docs/building.md).
+rust-version = "1.90"
 
 [workspace.dependencies]
 timegrapher-core = { path = "crates/timegrapher-core" }

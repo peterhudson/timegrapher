@@ -151,8 +151,8 @@ pub fn generate(
         let amp = amp_fn(t);
         let osc = 2.0 * nominal;
         let mut tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
-        let side = if k % 2 == 0 { 0.5 } else { -0.5 };
-        if k % 2 == 0 {
+        let side = if k.is_multiple_of(2) { 0.5 } else { -0.5 };
+        if k.is_multiple_of(2) {
             tud += cfg.even_unlock_lead_s;
         }
         // The drop is the reference point; the unlock comes tud earlier.
@@ -171,7 +171,7 @@ pub fn generate(
             (drop - (1.0 - impulse_at) * tud, s2),
             (drop, s3),
         ];
-        if let Some(e) = cfg.extra.filter(|e| e.even == (k % 2 == 0)) {
+        if let Some(e) = cfg.extra.filter(|e| e.even == k.is_multiple_of(2)) {
             events.push((drop + e.offset_s, e.sound));
         }
         for (te, snd) in events {
@@ -191,7 +191,7 @@ pub fn generate(
                     * (2.0 * std::f64::consts::PI * fc * tt + ph).sin();
             }
         }
-        if let Some(r) = cfg.rub.filter(|r| r.even == (k % 2 == 0)) {
+        if let Some(r) = cfg.rub.filter(|r| r.even == k.is_multiple_of(2)) {
             let i0 = ((drop + 0.001) * fs).round() as isize;
             for j in 0..(r.length_s * fs) as isize {
                 if let Some(v) = usize::try_from(i0 + j).ok().and_then(|i| x.get_mut(i)) {

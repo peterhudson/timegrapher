@@ -121,8 +121,10 @@ with the line in `SHA256SUMS.txt`.
 
 ## Building from source
 
-See the [README](../README.md): `cargo run --release -p timegrapher-app`
-with a Rust toolchain (and `libasound2-dev` on Linux).
+Use Rust 1.90.0 or later and the checked-in lockfile. See
+[building from source](building.md) for per-package features, Linux system
+requirements and the scope of the compiler/packaging checks. For the desktop
+app, start with `cargo run --release --locked -p timegrapher-app`.
 
 ## Making a release
 

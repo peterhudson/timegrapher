@@ -297,7 +297,7 @@ mod tests {
         }
         let a = (4.0 * fs) as usize;
         for (j, v) in y[a..a + (0.15 * fs) as usize].iter_mut().enumerate() {
-            *v += if j % 2 == 0 { 3.0 } else { -3.0 };
+            *v += if j.is_multiple_of(2) { 3.0 } else { -3.0 };
         }
         let before = y.clone();
         assert_eq!(burst_gate(&mut y, fs, 2.0), 0.0);

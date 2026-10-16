@@ -36,7 +36,8 @@ Windows from the
 [Releases page](https://github.com/peterhudson/timegrapher/releases/latest).
 The builds are not signed, so macOS and Windows ask once per version before
 opening them: [docs/install.md](docs/install.md) has the steps. To build
-from source instead, see below.
+from source instead, use Rust 1.90.0 or later and see the
+[package and platform requirements](docs/building.md).
 
 ## Desktop app
 
@@ -50,7 +51,7 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 ## Command line
 
 ```sh
-cargo build --release          # Linux needs libasound2-dev for sound input
+cargo build --release --locked -p timegrapher-cli # Linux: libasound2-dev
 ./target/release/timegrapher doctor      # is the microphone set up right?
 ./target/release/timegrapher analyze recording.flac --lift 52
 ```
@@ -133,9 +134,12 @@ that repeats like a bad tooth.
    the difference gives the beat error from the unlock, as tg and
    commercial timegraphers measure it. That is the headline figure (median
    over the windows), with the drop's alongside.
-6. **Periodicity.** Timing residuals and amplitude binned to 1 s, detrended,
-   and searched with a Lomb–Scargle periodogram; peaks near a wheel's turn
-   are labelled with it.
+6. **Periodicity.** `analyze` bins timing residuals and amplitude to 1 s,
+   detrends them and searches with a Lomb–Scargle periodogram. `long` and
+   `series` use uniform grids and the FFT-based harmonic search described in
+   [long runs](docs/long-runs.md#how-the-search-works). Periods near a wheel's
+   turn can be labelled with it; the association is not a fault diagnosis.
+   See the [model assumptions](docs/measurement-precision.md).
 
 Validation against tg is in [docs/validation.md](docs/validation.md).
 

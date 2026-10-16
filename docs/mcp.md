@@ -39,12 +39,13 @@ Claude Desktop says so when installing it; that is expected.
 
 ### From source
 
-To build both programs yourself (Rust 1.88 or later):
+To build both programs yourself, use the supported Rust 1.90.0 or later
+([package and platform requirements](building.md)):
 
 ```sh
 git clone https://github.com/peterhudson/timegrapher
 cd timegrapher
-cargo build --release -p timegrapher-cli -p timegrapher-mcp
+cargo build --release --locked -p timegrapher-cli -p timegrapher-mcp
 ```
 
 Both programs are then in `target/release/`. Copy `timegrapher` and
