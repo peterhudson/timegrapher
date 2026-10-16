@@ -673,7 +673,17 @@ been published yet"). The request carries no account or identifier.
   - **Your additions.** Wheel periods and custom calibres are kept in
     `calibres.json` in the settings folder (core `calibre_store`), which
     the command line and the MCP server read too. Calibres typed in under
-    earlier versions move there the first time the app starts.
+    earlier versions move there the first time the app starts; their original
+    settings copy is kept until the catalogue has actually been saved.
+    If the catalogue cannot be read (including invalid JSON or an unsupported
+    layout), Manage Calibres shows a persistent warning, even with no calibre
+    selected. Built-in calibres remain available, but catalogue edits in that
+    app instance stay in memory and cannot overwrite the unreadable file.
+    Repair or move the file, then restart before making changes to keep; the
+    app does not silently reload it or merge temporary edits. An ordinary save
+    error also leaves edits in memory and preserves pending legacy settings
+    until a later save succeeds. These protections do not add numerical
+    validation or concurrent-edit/crash-recovery guarantees to the catalogue.
   - **Share with the Project….** It opens a GitHub issue in the browser,
     filled in with what you added to the calibre, to look over and send.
     Nothing is sent from the app.

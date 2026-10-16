@@ -32,6 +32,11 @@ pub struct Calibres {
     /// Where the user's additions are kept; `None` keeps them in memory
     /// (tests, or no settings folder).
     path: Option<PathBuf>,
+    /// A failed load must never turn an empty fallback into a replacement file.
+    /// Kept for this instance even if the file is repaired externally.
+    blocked_load: Option<String>,
+    /// Original legacy settings, retained until a catalogue save succeeds.
+    pending_legacy: Vec<settings::CustomCalibre>,
     /// Calibre names picked lately, the latest first.
     pub recent: Vec<String>,
     /// Calibres the watchmaker added to the short list, and the list's
@@ -112,13 +117,22 @@ pub struct Change {
 
 impl Calibres {
     /// The user's calibres from `path`; none yet, or an unreadable file,
-    /// starts empty (and says why for the latter).
+    /// starts empty. A load error blocks persistence for this instance; edits
+    /// remain in memory and the original path/error stay visible.
     pub fn open(path: Option<PathBuf>) -> Self {
         let mut c = Calibres::in_memory();
         if let Some(p) = &path {
             match UserCalibres::load(p) {
                 Ok(u) => c.user = u,
-                Err(e) => c.problem = Some(format!("Your calibres couldn't be read: {e}")),
+                Err(e) => {
+                    let problem = format!(
+                        "Your calibres couldn't be read: {e}. Catalogue edits are only in memory; \
+                         the existing file will not be overwritten. Repair or move the file, \
+                         then restart the app before making changes you want to keep."
+                    );
+                    c.blocked_load = Some(problem.clone());
+                    c.problem = Some(problem);
+                }
             }
         }
         c.path = path;
@@ -130,6 +144,8 @@ impl Calibres {
         Calibres {
             user: UserCalibres::default(),
             path: None,
+            blocked_load: None,
+            pending_legacy: Vec::new(),
             recent: Vec::new(),
             short_added: Vec::new(),
             short_removed: Vec::new(),
@@ -142,12 +158,33 @@ impl Calibres {
         }
     }
 
-    fn save(&mut self) {
-        if let Some(p) = &self.path {
-            if let Err(e) = self.user.save(p) {
-                self.problem = Some(format!("Your calibres couldn't be saved: {e}"));
+    /// True only after a disk save. A failed load is not retried implicitly:
+    /// this instance never observed the existing catalogue it would replace.
+    fn save(&mut self) -> bool {
+        if let Some(problem) = &self.blocked_load {
+            self.problem = Some(problem.clone());
+            return false;
+        }
+        let Some(p) = &self.path else { return false };
+        match self.user.save(p) {
+            Ok(()) => {
+                self.pending_legacy.clear();
+                self.problem = None;
+                true
+            }
+            Err(e) => {
+                self.problem = Some(format!(
+                    "Your calibres couldn't be saved: {e}. Catalogue edits are only in memory."
+                ));
+                false
             }
         }
+    }
+
+    /// Keep the originals in app settings until their catalogue write succeeds,
+    /// including when no persistent catalogue path is available.
+    pub fn pending_legacy(&self) -> &[settings::CustomCalibre] {
+        &self.pending_legacy
     }
 
     pub fn find(&self, name: &str) -> Option<Entry<'_>> {
@@ -241,11 +278,13 @@ impl Calibres {
     }
 
     /// Calibres typed in before they were kept in the user calibre file,
-    /// from the app's settings: moved there, once, and dropped from the
-    /// settings.
+    /// from the app's settings. The original settings are dropped only after
+    /// an actual catalogue save, never after a blocked or memory-only migration.
     pub fn migrate(&mut self, old: Vec<settings::CustomCalibre>) {
-        let mut moved = false;
         for c in old {
+            if !self.pending_legacy.contains(&c) {
+                self.pending_legacy.push(c.clone());
+            }
             if self.user.custom.iter().any(|x| x.name == c.name) {
                 continue;
             }
@@ -253,9 +292,8 @@ impl Calibres {
                 &c.name,
                 c.wheels.iter().map(|w| (w.name.as_str(), w.period_s)),
             ));
-            moved = true;
         }
-        if moved {
+        if !self.pending_legacy.is_empty() {
             self.save();
         }
     }
@@ -611,6 +649,11 @@ impl Calibres {
 
     fn manager_body(&mut self, ui: &mut egui::Ui, current: &str, version: &str, out: &mut Managed) {
         let pal = theme::pal(ui);
+        // A load failure can leave no selected calibre; show the warning before
+        // the details pane's early return, not only beside a selected entry.
+        if let Some(problem) = &self.problem {
+            ui.label(RichText::new(problem).color(pal.bad));
+        }
         ui.horizontal(|ui| {
             ui.label(RichText::new("Manage Calibres").strong().size(16.0));
             theme::help(ui, "Manage Calibres", MANAGE_HELP);
@@ -941,9 +984,6 @@ impl Calibres {
             self.selected = Some(n.clone());
         }
         out.name = name;
-        if let Some(p) = &self.problem {
-            ui.label(RichText::new(p).small().color(pal.bad));
-        }
     }
 
     /// A custom calibre's name, maker, beat rate and lift angle, and the
@@ -1263,6 +1303,164 @@ fn period_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn store_fixture(label: &str) -> (PathBuf, PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "tg-calibre-protection-{label}-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("calibres.json");
+        (dir, path)
+    }
+
+    fn legacy_calibre() -> settings::CustomCalibre {
+        settings::CustomCalibre {
+            name: "Legacy Bench".into(),
+            wheels: vec![settings::CustomWheel {
+                name: " Third Wheel ".into(),
+                period_s: 450.0,
+            }],
+        }
+    }
+
+    #[test]
+    fn unreadable_catalogue_is_never_replaced_by_fallback_edits() {
+        for bytes in [
+            b"{ invalid catalogue, preserve me".as_slice(),
+            br#"{"schema":"timegrapher.user-calibres/future","custom":[],"wheels":[]}"#,
+        ] {
+            let (dir, path) = store_fixture("blocked");
+            std::fs::write(&path, bytes).unwrap();
+            let mut c = Calibres::open(Some(path.clone()));
+            assert!(c.user.custom.is_empty());
+            let problem = c.problem.clone().expect("load failure is visible");
+            assert!(problem.contains(&path.display().to_string()));
+            assert!(c.find("Rolex 4130").is_some(), "built-ins remain usable");
+            c.new_custom("Temporary New");
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            c.adopt("Temporary Imported", &[("third wheel".into(), 123.0)]);
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            c.migrate(vec![legacy_calibre()]);
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            assert_eq!(c.pending_legacy(), &[legacy_calibre()]);
+            // Wheel changes and custom editor updates share this save boundary.
+            c.user.set_wheel("Rolex 4130", "third wheel", 400.0, None);
+            c.user.remove_custom("Temporary New");
+            c.save();
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            assert_eq!(c.problem.as_ref(), Some(&problem));
+            assert!(problem.contains("only in memory"));
+            assert!(!path.with_extension("json.tmp").exists());
+            // Repairing externally does not authorize this empty-fallback
+            // instance to overwrite a catalogue it has never loaded.
+            let mut repaired = UserCalibres::default();
+            repaired.put_custom(custom("Repaired Original", [("third wheel", 321.0)]));
+            repaired.save(&path).unwrap();
+            let repaired_bytes = std::fs::read(&path).unwrap();
+            c.new_custom("Still Temporary");
+            assert_eq!(std::fs::read(&path).unwrap(), repaired_bytes);
+            let reopened = Calibres::open(Some(path));
+            assert!(reopened.problem.is_none());
+            assert!(reopened.find("Repaired Original").is_some());
+            assert!(reopened.find("Still Temporary").is_none());
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn unreadable_directory_catalogue_stays_blocked_after_path_repair() {
+        let (dir, path) = store_fixture("directory");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join("original"), b"keep").unwrap();
+        let mut c = Calibres::open(Some(path.clone()));
+        c.new_custom("Temporary");
+        assert_eq!(std::fs::read(path.join("original")).unwrap(), b"keep");
+        std::fs::remove_dir_all(&path).unwrap();
+        c.new_custom("Still Temporary");
+        assert!(
+            !path.exists(),
+            "a repaired path does not unblock this instance"
+        );
+        assert!(c.problem.as_ref().unwrap().contains("only in memory"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_settings_survive_failed_save_until_successful_retry() {
+        let (dir, path) = store_fixture("retry");
+        let mut c = Calibres::open(Some(path.clone()));
+        // Deterministic rename failure, without permission assumptions.
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join("original"), b"keep").unwrap();
+        let old = vec![legacy_calibre()];
+        c.migrate(old.clone());
+        assert_eq!(c.pending_legacy(), old);
+        assert!(c.find("Legacy Bench").is_some());
+        assert!(c.problem.as_ref().unwrap().contains("couldn't be saved"));
+        assert_eq!(std::fs::read(path.join("original")).unwrap(), b"keep");
+        std::fs::remove_dir_all(&path).unwrap();
+        // A normal later edit retries the save, including the migrated entry.
+        c.adopt("Later Entry", &[("fourth wheel".into(), 60.0)]);
+        assert!(c.pending_legacy().is_empty());
+        assert!(c.problem.is_none());
+        let reopened = Calibres::open(Some(path));
+        assert!(reopened.find("Legacy Bench").is_some());
+        assert!(reopened.find("Later Entry").is_some());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_valid_and_memory_only_catalogues_keep_their_contracts() {
+        let (dir, path) = store_fixture("valid");
+        let mut c = Calibres::open(Some(path.clone()));
+        assert!(c.problem.is_none());
+        c.new_custom("First Entry");
+        let mut c = Calibres::open(Some(path.clone()));
+        c.adopt("Second Entry", &[("third wheel".into(), 123.0)]);
+        c.migrate(vec![legacy_calibre()]);
+        assert!(c.pending_legacy().is_empty());
+        let reopened = Calibres::open(Some(path));
+        for name in ["First Entry", "Second Entry", "Legacy Bench"] {
+            assert!(reopened.find(name).is_some(), "{name}");
+        }
+        let mut memory = Calibres::in_memory();
+        memory.new_custom("Memory Entry");
+        memory.migrate(vec![legacy_calibre()]);
+        assert!(memory.find("Memory Entry").is_some());
+        assert!(memory.find("Legacy Bench").is_some());
+        assert_eq!(memory.pending_legacy(), &[legacy_calibre()]);
+        assert!(memory.problem.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn blocked_catalogue_warning_is_painted_without_a_selection() {
+        let (dir, path) = store_fixture("warning");
+        std::fs::write(&path, b"invalid JSON").unwrap();
+        let mut c = Calibres::open(Some(path));
+        assert!(c.selected.is_none());
+        let ctx = egui::Context::default();
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                c.manager_body(ui, "", "test", &mut Managed::default());
+            });
+        });
+        let text = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("only in memory"), "{text}");
+        assert!(text.contains("will not be overwritten"), "{text}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn settings_calibres_move_to_the_user_file_once() {
