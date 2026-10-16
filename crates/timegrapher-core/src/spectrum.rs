@@ -105,7 +105,7 @@ pub fn amplitude_spectrum(
         let a = 2.0 * c.norm() / wsum;
         let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
         let k = k.min(slices - 1);
-        if best[k].map_or(true, |(_, b)| a > b) {
+        if best[k].is_none_or(|(_, b)| a > b) {
             best[k] = Some((p, a));
         }
     }

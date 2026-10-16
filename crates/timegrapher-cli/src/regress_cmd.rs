@@ -726,7 +726,7 @@ pub fn run(o: &Options) -> Result<bool, String> {
             integrity.check_reading(&take, i + 1, now.as_ref(), base);
             // Labels include explicit intervals rounded to seconds, not a full
             // input identity. Changed labels must not count as acceptable New.
-            let base = base.filter(|b| now.as_ref().map_or(true, |n| n.label == b.label));
+            let base = base.filter(|b| now.as_ref().is_none_or(|n| n.label == b.label));
             let rs = compare(
                 &take,
                 i + 1,

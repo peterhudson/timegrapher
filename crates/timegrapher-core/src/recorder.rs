@@ -520,7 +520,7 @@ impl Recorder {
             let file = source.file_name().expect("recording file");
             let to = dest.join(file);
             let closed = file.to_str().is_some_and(|n| {
-                self.segments.iter().any(|s| s == n) && open.map_or(true, |s| s != n)
+                self.segments.iter().any(|s| s == n) && open.is_none_or(|s| s != n)
             });
             let there = match fs::symlink_metadata(&to) {
                 Ok(m) if !m.is_file() => {

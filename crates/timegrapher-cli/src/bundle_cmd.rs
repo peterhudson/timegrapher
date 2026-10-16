@@ -583,7 +583,7 @@ fn safe_to_replay(args: &[String]) -> bool {
         return false;
     }
     let rest = &args[3..];
-    rest.len() % 2 == 0
+    rest.len().is_multiple_of(2)
         && rest
             .chunks(2)
             .all(|p| matches!(p[0].as_str(), "--bph" | "--lift") && p[1].parse::<f64>().is_ok())

@@ -636,7 +636,7 @@ mod tests {
             .collect();
         let s = series(900, |_, t| {
             let k = edges.iter().filter(|&&e| e <= t).count();
-            if k % 2 == 0 {
+            if k.is_multiple_of(2) {
                 312.0
             } else {
                 293.0
@@ -670,7 +670,7 @@ mod tests {
             .collect();
         let mut s = series(900, |_, t| {
             let k = edges.iter().filter(|&&e| e <= t).count();
-            if k % 2 == 0 {
+            if k.is_multiple_of(2) {
                 300.0
             } else {
                 280.0

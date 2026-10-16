@@ -142,7 +142,7 @@ pub fn encode_flac(pcm: &Pcm) -> Result<Vec<u8>, AudioError> {
     if !(4..=24).contains(&bps) {
         return unsupported(format!("{bps}-bit samples"));
     }
-    if !(1..=8).contains(&ch) || pcm.samples.len() % ch != 0 {
+    if !(1..=8).contains(&ch) || !pcm.samples.len().is_multiple_of(ch) {
         return unsupported(format!("{ch} channels of {bps}-bit samples"));
     }
     if !(1..=655_350).contains(&pcm.sample_rate) {
