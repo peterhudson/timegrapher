@@ -45,6 +45,27 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+`record` and `session` use the custom names, aliases and wheel overrides
+shown by `calibres`, using one resolved catalogue snapshot per invocation.
+Session flags win over manifest values/context; catalogue values fill only
+missing fields, then existing defaults apply. A custom name without a lift
+value does not make the default lift known. An explicit unknown `--calibre`
+fails; an unknown manifest name remains a descriptive label. Named selections
+report malformed catalogue errors before reading audio.
+
+A new `record` session stores effective numeric BPH/lift and lift context,
+using the catalogue's canonical name. Appending preserves the parent manifest
+text and label, including an alias; each take records its effective settings.
+Legacy calibre-only manifests inherit missing values from the current
+catalogue at each invocation. Their past settings cannot be recovered from
+the label alone, and appending does not silently rewrite that history.
+The session JSON's `input.settings.calibre` identifies the resolved canonical
+selection; its descriptive `calibre` field can retain the original label.
+If `record --calibre` overrides an unknown or different parent label, a later
+`session` may need the same explicit override to interpret fields the parent
+did not store. Appending still preserves that parent label and enforces its
+existing numeric/context consistency checks.
+
 New desktop and `record` session files pair `lift` with `lift_known = true`
 (supplied or taken from an actual calibre lift value) or `false` (assumed).
 This records the setting's context, not a verified physical lift angle. The

@@ -110,8 +110,10 @@ That route has not been tried with this server yet.
 calibre names/aliases and wheel overrides returned by `list_calibres`.
 `analyze_recording` uses catalogue BPH/lift unless explicitly overridden;
 `long_run` and `check_steadiness` use the catalogue train for wheel naming
-and retain their existing BPH/lift defaults. This is partial parity:
-`record_position` and `run_session` still use built-in calibre resolution.
+and retain their existing BPH/lift defaults. `record_position` and
+`run_session` also resolve the same custom catalogue. Existing session
+numeric settings and lift context retain precedence; an unknown manifest
+label stays descriptive, while an explicit unknown calibre is an error.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.

@@ -370,12 +370,14 @@ fn measure_all(
         for e in &m.recordings {
             session_cmd::position_of(e).map_err(|err| format!("{s}: {err}"))?;
         }
-        loaded.push((m, base, digest));
+        // Benchmarks must not depend on the machine's user catalogue.
+        let calibre = opts.calibre_with(&m, &Default::default())?;
+        loaded.push((m, base, digest, calibre));
     }
     let work: Vec<(usize, usize)> = loaded
         .iter()
         .enumerate()
-        .flat_map(|(t, (m, _, _))| (0..m.recordings.len()).map(move |i| (t, i)))
+        .flat_map(|(t, (m, _, _, _))| (0..m.recordings.len()).map(move |i| (t, i)))
         .collect();
     let results: Mutex<BTreeMap<(usize, usize), Result<MeasuredReading, String>>> =
         Mutex::new(BTreeMap::new());
@@ -385,9 +387,10 @@ fn measure_all(
             scope.spawn(|| loop {
                 let k = next.fetch_add(1, Ordering::Relaxed);
                 let Some(&(t, i)) = work.get(k) else { break };
-                let (m, base, digest) = &loaded[t];
+                let (m, base, digest, calibre) = &loaded[t];
                 let ctx = Ctx {
                     m,
+                    calibre,
                     base,
                     o: &opts,
                     tty: false,
@@ -421,7 +424,7 @@ fn measure_all(
     Ok(loaded
         .into_iter()
         .enumerate()
-        .map(|(t, (m, _, _))| {
+        .map(|(t, (m, _, _, _))| {
             let rs = (0..m.recordings.len())
                 .map(|i| results.remove(&(t, i)).unwrap())
                 .collect();
@@ -1184,6 +1187,41 @@ fn print_text(o: &Outcome, names: bool) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn regression_session_resolution_ignores_malformed_ambient_catalogue() {
+        const MARKER: &str = "TIMEGRAPHER_TEST_REGRESSION_CATALOGUE_ROOT";
+        if let Some(root) = std::env::var_os(MARKER) {
+            let root = PathBuf::from(root);
+            let measured =
+                measure_all(&root, &["take/session.toml".into()], 1, true, None).unwrap();
+            assert_eq!(measured.len(), 1);
+            let error = measured[0].1[0].as_ref().err().unwrap();
+            assert!(error.contains("missing.wav"), "{error}");
+            assert!(!error.contains("calibres.json"), "{error}");
+            return;
+        }
+        let root =
+            std::env::temp_dir().join(format!("tg-regress-user-catalogue-{}", std::process::id()));
+        fs::create_dir_all(root.join("take")).unwrap();
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(root.join("config/calibres.json"), "malformed JSON").unwrap();
+        fs::write(
+            root.join("take/session.toml"),
+            "calibre=\"Rolex 3235\"\n[[recording]]\nfile=\"missing.wav\"\nposition=\"DU\"\n",
+        )
+        .unwrap();
+        let result=std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["regress_cmd::tests::regression_session_resolution_ignores_malformed_ambient_catalogue","--exact"])
+            .env(MARKER,&root).env("TIMEGRAPHER_CONFIG_DIR",root.join("config")).output().unwrap();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            result.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
     use super::*;
 
     #[test]
