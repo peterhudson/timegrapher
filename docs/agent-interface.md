@@ -340,9 +340,15 @@ Defaults, explicit 52° lift and zero correction keep their existing meanings.
 Passing these domain checks does not guarantee every subsequent numerical
 operation is representable for extreme inputs or that a watch uses those settings.
 
-This is an explicit-argument contract. It does not validate settings loaded from
-session manifests, custom calibre catalogues, clock stores, or internal library
-configurations; their validation is separate work. Filter parameters and other
+This is an explicit-argument contract. Separately, consumed session manifests
+validate `bph`, `lift`/`lift_angle`, `escape_teeth` and `card_ppm` against the same
+four domains. CLI session/record reject invalid stored values before audio or
+append/report writes, even if flags would override them. Desktop opening validates
+an applicable manifest before replay/analysis, retains unrelated valid-TOML/no-manifest
+behavior, and rejects corrupt manifest syntax rather than silently defaulting.
+See [sessions.md](sessions.md) for applicability and compatibility details.
+Custom calibre catalogues, clock stores, other manifest numbers and internal
+programmatic configurations remain outside these checks. Filter parameters and other
 numeric arguments are not covered by these checks. Acquisition duration checks
 remain as documented separately.
 
