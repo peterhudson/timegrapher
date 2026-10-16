@@ -32,8 +32,12 @@ jobs:
         run: python3 -m unittest discover -s .github/scripts -p 'test_release_ci_gate.py' -v
       - name: Release artifact smoke tests (offline)
         run: python3 -m unittest discover -s packaging -p 'test_artifact_smoke.py' -v
+      # Exercise the supported compiler floor without another build/job.
+      # Keep this version aligned with workspace.package.rust-version and
+      # docs/building.md. Other hosts continue checking current stable.
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ matrix.os == 'ubuntu-latest' && '1.90.0' || 'stable' }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: ALSA headers for sound input
