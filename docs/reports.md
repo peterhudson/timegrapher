@@ -34,8 +34,20 @@ The desktop report stores its captured screen state separately in
 `--lift`, so the excerpt baseline treats that argument as explicit, even when
 its value is 52°. This aligns the baseline's lift caveat with that command; it
 does not establish the watch's physical lift angle or change the original app
-capture. It is not a guarantee that every replay field matches: clock-wrapper
-and environment differences can still be reported as changes.
+capture.
+
+When the excerpt itself yields a USB clock estimate, its baseline includes the
+same `clock` object as CLI `analyze`, including a zero-ppm estimate. The summary's
+`overall` and `rate_s_per_day` remain on the sound-card clock; `clock.rate_s_per_day`
+is the corrected rate beside them, or null when no rate fit exists. No clock
+object is added without an estimate. The app's original clock fit is not applied
+to the excerpt, and captured `results/app.json` remains unchanged.
+
+`env/clock.json` is a diagnostic copy of stored device corrections. Replay does
+not import it into the reader's settings or use it as a clock log. The emitted
+excerpt command has no device or explicit correction; it measures the excerpt's
+USB lines again. Other software/environment changes can still be reported, and
+older desktop bundles missing this wrapper can still report a clock-field change.
 
 **Redaction.** Before anything is written, the home folder becomes `~`, and
 whole-word occurrences of the user name and host name become `<user>` and

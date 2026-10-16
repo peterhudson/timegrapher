@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use timegrapher_core::analysis::{analyze, AnalysisConfig};
+use timegrapher_core::analysis::{analyze, AnalysisConfig, Summary};
 use timegrapher_core::{archive, audio, capture, clockstore, excerpt, recorder};
 
 /// The most sound a report holds: five minutes of FLAC is about 18 MB,
@@ -806,6 +806,11 @@ fn analyze_like_the_cli(flac: &[u8], bph: Option<u32>, lift_deg: f64) -> Result<
     let audio = loaded.map_err(|e| e.to_string())?;
     let cfg = excerpt_analysis_config(bph, lift_deg);
     let a = analyze(&audio, &cfg);
+    excerpt_document(&a.summary, &cfg)
+}
+
+/// The same raw-summary plus correction-wrapper contract as CLI analyze.
+fn excerpt_document(summary: &Summary, cfg: &AnalysisConfig) -> Result<Value, String> {
     let mut doc = json!({
         "schema": "timegrapher.analyze/2",
         "software": software(),
@@ -820,7 +825,15 @@ fn analyze_like_the_cli(flac: &[u8], bph: Option<u32>, lift_deg: f64) -> Result<
             },
         },
     });
-    let body = serde_json::to_value(&a.summary).map_err(|e| e.to_string())?;
+    let mut body = serde_json::to_value(summary).map_err(|e| e.to_string())?;
+    if let Some(usb) = summary.usb_clock {
+        let (ppm, from) = usb.correction();
+        body["clock"] = clockstore::correction_json(
+            ppm,
+            &from,
+            summary.overall.as_ref().map(|f| f.rate_s_per_day),
+        );
+    }
     if let (Some(d), Value::Object(b)) = (doc.as_object_mut(), body) {
         d.extend(b);
     }
@@ -1029,6 +1042,118 @@ mod tests {
         assert_explicit_replay_lift(None, 49.5);
     }
 
+    // Supplied measurement records: these tests exercise document construction,
+    // not USB detection, acoustic fitting, or new clock estimates.
+    fn clock_summary(ppm: Option<f64>, fitted: bool) -> Summary {
+        use timegrapher_core::{
+            analysis::Clipping, confidence::Doubts, timing::TimingFit, usbclock::UsbClock,
+        };
+        Summary {
+            duration_s: 60.0,
+            sample_rate: 48000,
+            bph: 28800,
+            bph_heard: None,
+            beats_found: 480,
+            beats_found_fraction: 1.0,
+            watch_heard: fitted,
+            overall: fitted.then_some(TimingFit {
+                rate_s_per_day: 12.0,
+                beat_error_ms: 0.2,
+                period_s: 0.125,
+                jitter_us: 10.0,
+                beats_used: 480,
+            }),
+            beat_error_unlock_ms: None,
+            rate_p05: None,
+            rate_p95: None,
+            jitter_us: None,
+            timing_scatter_fraction: None,
+            amplitude_deg: None,
+            amplitude_even_deg: None,
+            amplitude_odd_deg: None,
+            amplitude_se_deg: None,
+            amplitude_even_se_deg: None,
+            amplitude_odd_se_deg: None,
+            lift_deg: 52.0,
+            timing_periods: vec![],
+            amplitude_periods: vec![],
+            clipping: Clipping {
+                samples: 0,
+                beats: 0,
+                beat_fraction: 0.0,
+                peak_dbfs: -10.0,
+            },
+            usb_clock: ppm.map(|ppm| UsbClock {
+                ppm,
+                lines: 3,
+                spread_ppm: 0.125,
+            }),
+            rate_s_per_day: fitted.then_some(12.0),
+            rate_corrected_s_per_day: fitted
+                .then(|| ppm.map(|p| clockstore::correct_rate(12.0, p)))
+                .flatten(),
+            doubts: Doubts {
+                clipped: false,
+                beats_missing: false,
+                lift_unknown: false,
+                clock_unknown: ppm.is_none(),
+            },
+            confidence: None,
+            caveats: vec![],
+            shape: None,
+        }
+    }
+
+    fn assert_clock_document(ppm: Option<f64>, fitted: bool) {
+        let summary = clock_summary(ppm, fitted);
+        let raw = serde_json::to_value(&summary).unwrap();
+        let doc = excerpt_document(&summary, &excerpt_analysis_config(Some(28800), 52.0)).unwrap();
+        for (key, value) in raw.as_object().unwrap() {
+            assert_eq!(
+                &doc[key], value,
+                "summary field {key} must remain unchanged"
+            );
+        }
+        match ppm {
+            Some(ppm) => {
+                assert_eq!(doc["clock"]["ppm"], ppm);
+                assert_eq!(
+                    doc["clock"]["from"],
+                    "from 3 USB lines in the recording, 0.1 ppm apart"
+                );
+                assert_eq!(doc["clock"]["rate_error_s_per_day"], ppm * 1e-6 * 86400.0);
+                assert_eq!(
+                    doc["clock"]["rate_s_per_day"],
+                    fitted
+                        .then(|| (1.0 + 12.0 / 86400.0) / (1.0 + ppm * 1e-6) * 86400.0 - 86400.0)
+                        .map_or(Value::Null, |v| json!(v))
+                );
+            }
+            None => assert!(doc.get("clock").is_none()),
+        }
+    }
+
+    #[test]
+    fn excerpt_clock_positive() {
+        assert_clock_document(Some(100.0), true);
+    }
+    #[test]
+    fn excerpt_clock_negative() {
+        assert_clock_document(Some(-100.0), true);
+    }
+    #[test]
+    fn excerpt_clock_zero() {
+        assert_clock_document(Some(0.0), true);
+    }
+    #[test]
+    fn excerpt_clock_without_rate() {
+        assert_clock_document(Some(100.0), false);
+    }
+    #[test]
+    fn excerpt_clock_absent() {
+        assert_clock_document(None, true);
+    }
+
     /// A report from a recording holds the excerpt cut where asked, the
     /// analysis `report --replay` runs again, the app's readings and the
     /// consent, all listed in the manifest with their checksums.
@@ -1118,6 +1243,50 @@ mod tests {
         );
         let rate = r["overall"]["rate_s_per_day"].as_f64().unwrap();
         assert!((rate - 10.0).abs() < 1.0, "{rate}");
+        assert!(
+            r.get("clock").is_none(),
+            "ordinary fixture has no USB correction"
+        );
+
+        // A second bundle, sequentially: the temporary decoder filename is shared
+        // within this process. Keep the original fixture and assertions above.
+        let mut usb_audio = a.clone();
+        for (i, sample) in usb_audio.samples.iter_mut().enumerate() {
+            for f in [5000.0, 6000.0, 7000.0] {
+                *sample += (0.01
+                    * (std::f64::consts::TAU * f * (1.0 + 20e-6) * i as f64
+                        / usb_audio.sample_rate as f64)
+                        .sin()) as f32;
+            }
+        }
+        audio::write_wav(&wav, &usb_audio).unwrap();
+        let usb_job = Job {
+            zip: dir.join("usb.zip"),
+            ..job
+        };
+        usb_job.write().unwrap();
+        let usb_files = archive::read_zip(&usb_job.zip).unwrap();
+        let usb_get = |name: &str| &usb_files.iter().find(|(p, _)| p == name).unwrap().1;
+        let usb_doc: Value =
+            serde_json::from_slice(usb_get("results/analyze-excerpt.json")).unwrap();
+        assert!(
+            usb_doc["usb_clock"].is_object(),
+            "USB fixture must yield an estimate"
+        );
+        assert_eq!(usb_doc["clock"]["ppm"], usb_doc["usb_clock"]["ppm"]);
+        assert_eq!(
+            usb_doc["clock"]["rate_s_per_day"],
+            usb_doc["rate_corrected_s_per_day"]
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(usb_get("results/app.json")).unwrap(),
+            usb_job.shown.app
+        );
+        let usb_manifest: Value = serde_json::from_slice(usb_get("manifest.json")).unwrap();
+        assert_eq!(
+            usb_manifest["commands"], m["commands"],
+            "same replay settings"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

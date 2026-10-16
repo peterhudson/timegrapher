@@ -1010,15 +1010,7 @@ fn run_analyze(
             a.summary.clock_known();
             Some(c)
         }
-        None => a.summary.usb_clock.map(|c| {
-            (
-                c.ppm,
-                format!(
-                    "from {} USB lines in the recording, {:.1} ppm apart",
-                    c.lines, c.spread_ppm
-                ),
-            )
-        }),
+        None => a.summary.usb_clock.map(|c| c.correction()),
     };
     if let Some(p) = beats {
         write_beats(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -1067,13 +1059,7 @@ fn run_analyze(
 
 /// The clock correction applied to a rate read on the sound card.
 pub fn clock_json(ppm: f64, from: &str, card_rate: Option<f64>) -> serde_json::Value {
-    use timegrapher_core::clockstore::correct_rate;
-    serde_json::json!({
-        "ppm": ppm,
-        "from": from,
-        "rate_error_s_per_day": ppm * 1e-6 * 86400.0,
-        "rate_s_per_day": card_rate.map(|r| correct_rate(r, ppm)),
-    })
+    timegrapher_core::clockstore::correction_json(ppm, from, card_rate)
 }
 
 #[cfg(feature = "live")]
@@ -1387,5 +1373,33 @@ mod acquisition_defaults {
                 ..
             }
         ));
+    }
+}
+
+#[cfg(test)]
+mod report_clock_context {
+    use super::*;
+
+    #[test]
+    fn explicit_zero_correction_keeps_precedence_and_document_shape() {
+        // The explicit reader path must not consult a device or user's store.
+        let (ppm, from) = clock_cmd::correction(
+            std::path::Path::new("nonexistent-report-excerpt.flac"),
+            Some("nonexistent-input"),
+            Some(0.0),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ppm, 0.0);
+        assert_eq!(from, "given with --card-ppm");
+        let doc = clock_json(ppm, &from, Some(12.0));
+        assert_eq!(doc["ppm"], 0.0);
+        assert_eq!(doc["from"], from);
+        assert_eq!(doc["rate_error_s_per_day"], 0.0);
+        assert!((doc["rate_s_per_day"].as_f64().unwrap() - 12.0).abs() < 1e-9);
+        assert_eq!(
+            clock_json(ppm, &from, None)["rate_s_per_day"],
+            serde_json::Value::Null
+        );
     }
 }
