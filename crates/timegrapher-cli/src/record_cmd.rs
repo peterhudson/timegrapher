@@ -158,6 +158,11 @@ fn settings(o: &Options) -> Result<Settings, String> {
     } else {
         None
     };
+    if let Some(manifest) = &m {
+        manifest
+            .validate_analysis_inputs()
+            .map_err(|e| format!("{}: {e}", file.display()))?;
+    }
     let named = o
         .calibre
         .as_deref()

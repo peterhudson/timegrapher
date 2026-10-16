@@ -1,6 +1,7 @@
-//! Domains for explicit public CLI/MCP scalar inputs, before work or side effects.
+//! Shared scalar domains used by explicit CLI/MCP input parsers and selected
+//! Manifest consumption points, before their analysis or recording work.
 //! These are mathematical/type constraints, not empirical watch operating ranges.
-//! Persisted settings and programmatic analysis configurations are not validated here.
+//! Other persisted/programmatic configurations are not automatically validated.
 
 pub fn bph(value: u64) -> Result<u32, String> {
     u32::try_from(value)

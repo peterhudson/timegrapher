@@ -45,6 +45,30 @@ position = "CH"
 clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
+When a session manifest is consumed, `bph` must be a positive `u32`,
+`lift` (including its `lift_angle` alias) must be finite and positive,
+`escape_teeth` must be a positive `u32`, and `card_ppm` must be finite with
+`1 + card_ppm × 10⁻⁶ > 0`. These are representation/mathematical domains,
+not watch operating ranges. Zero clock correction remains valid. Missing
+fields, labels, lift context and valid-setting precedence are unchanged.
+
+CLI session/record reject an invalid stored field before audio or take/report
+writes, even if a command-line flag would override it. Regression manifest
+reads use the same checks. The desktop rejects invalid settings in a manifest
+that lists the opened recording, before starting replay or analysis; a valid
+TOML manifest that does not list that recording remains unrelated and is not
+validated for these fields. Applicability retains the existing exact-path
+matching: child-file entries alone do not attach settings to the folder view;
+a folder entry such as `file = "."` can apply to that folder. A syntactically
+corrupt neighboring manifest cannot establish applicability and now fails
+opening instead of falling back to defaults. No-manifest opening keeps its previous behavior.
+
+This check is explicit at those consumption points. It does not change
+Serde parsing/serialization, validate programmatically constructed settings,
+or validate other numeric fields, custom catalogue entries or clock stores.
+Invalid persisted data must be repaired explicitly; it is not normalized or
+rewritten by a failed read.
+
 `record` and `session` use the custom names, aliases and wheel overrides
 shown by `calibres`, using one resolved catalogue snapshot per invocation.
 Session flags win over manifest values/context; catalogue values fill only

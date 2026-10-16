@@ -1094,6 +1094,27 @@ pub struct Manifest {
     pub recordings: Vec<RecordingEntry>,
 }
 
+impl Manifest {
+    /// Check the four persisted analysis scalars at a manifest consumption
+    /// boundary. Parsing, construction and serialization do not call this.
+    /// Valid fields keep their values and precedence; no watch ranges are added.
+    pub fn validate_analysis_inputs(&self) -> Result<(), String> {
+        if let Some(value) = self.bph {
+            crate::input_domain::bph(u64::from(value)).map_err(|e| format!("bph: {e}"))?;
+        }
+        if let Some(value) = self.lift {
+            crate::input_domain::lift_deg(value).map_err(|e| format!("lift: {e}"))?;
+        }
+        if let Some(value) = self.escape_teeth {
+            crate::input_domain::escape_teeth(value).map_err(|e| format!("escape_teeth: {e}"))?;
+        }
+        if let Some(value) = self.card_ppm {
+            crate::input_domain::card_ppm(value).map_err(|e| format!("card_ppm: {e}"))?;
+        }
+        Ok(())
+    }
+}
+
 /// One recording in a session file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1136,4 +1157,89 @@ pub struct KnownFault {
     pub side: Option<String>,
     /// How the fault was confirmed, e.g. "bench: ...".
     pub source: Option<String>,
+}
+
+#[cfg(test)]
+mod manifest_input_tests {
+    use super::*;
+
+    #[test]
+    fn consumed_manifest_domains_reject_invalid_scalars() {
+        let invalid = Manifest {
+            bph: Some(0),
+            ..Default::default()
+        };
+        assert!(invalid
+            .validate_analysis_inputs()
+            .unwrap_err()
+            .starts_with("bph:"));
+        let invalid = Manifest {
+            escape_teeth: Some(0),
+            ..Default::default()
+        };
+        assert!(invalid
+            .validate_analysis_inputs()
+            .unwrap_err()
+            .starts_with("escape_teeth:"));
+        for value in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let invalid = Manifest {
+                lift: Some(value),
+                ..Default::default()
+            };
+            assert!(invalid
+                .validate_analysis_inputs()
+                .unwrap_err()
+                .starts_with("lift:"));
+        }
+        for value in [
+            -1_000_000.0,
+            -1_000_001.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            let invalid = Manifest {
+                card_ppm: Some(value),
+                ..Default::default()
+            };
+            assert!(invalid
+                .validate_analysis_inputs()
+                .unwrap_err()
+                .starts_with("card_ppm:"));
+        }
+    }
+
+    #[test]
+    fn consumed_manifest_domains_preserve_defaults_valid_extremes_and_context() {
+        Manifest::default().validate_analysis_inputs().unwrap();
+        for value in [f64::from_bits(1), f64::MIN_POSITIVE, 52.0, f64::MAX] {
+            for ppm in [-999_999.999_999_999_9, -12.5, -0.0, 0.0, 12.5, f64::MAX] {
+                let m = Manifest {
+                    bph: Some(u32::MAX),
+                    lift: Some(value),
+                    lift_known: Some(false),
+                    escape_teeth: Some(u32::MAX),
+                    card_ppm: Some(ppm),
+                    calibre: Some("Unknown descriptive label".into()),
+                    ..Default::default()
+                };
+                let before = serde_json::to_value(&m).unwrap();
+                m.validate_analysis_inputs().unwrap();
+                assert_eq!(
+                    serde_json::to_value(&m).unwrap(),
+                    before,
+                    "validation must not normalize values/context"
+                );
+            }
+        }
+        // Consumption validation is explicit, not a Deserialize/Serialize hook.
+        let m: Manifest = serde_json::from_str("{\"bph\":0,\"lift\":0}").unwrap();
+        assert!(m.validate_analysis_inputs().is_err());
+        assert_eq!(serde_json::to_value(&m).unwrap()["bph"], 0);
+        let orphan: Manifest =
+            serde_json::from_str("{\"lift_known\":true,\"calibre\":\"label\",\"settle_s\":-1}")
+                .unwrap();
+        orphan.validate_analysis_inputs().unwrap();
+        assert_eq!(orphan.lift, None); // Context and interval policy are unchanged.
+    }
 }

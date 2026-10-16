@@ -246,6 +246,8 @@ pub(crate) fn load_manifest(paths: &[PathBuf]) -> Result<(Manifest, PathBuf), St
 pub(crate) fn load_manifest_file(f: &Path) -> Result<(Manifest, PathBuf, String), String> {
     let text = fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
     let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?;
+    m.validate_analysis_inputs()
+        .map_err(|e| format!("{}: {e}", f.display()))?;
     if m.recordings.is_empty() {
         return Err(format!("{}: no [[recording]] entries", f.display()));
     }
@@ -1194,6 +1196,35 @@ mod tests {
                 .any(|w| w.name == "third wheel" && w.period_s == 241.0),
             "regression adapter's explicit empty catalogue ignores ambient overrides"
         );
+    }
+
+    #[test]
+    fn consumed_manifest_toml_validation_keeps_aliases_legacy_fields_and_context() {
+        for (text, field) in [
+            ("bph=0", "bph"),
+            ("lift=nan", "lift"),
+            ("lift_angle=0", "lift"),
+            ("escape_teeth=0", "escape_teeth"),
+            ("card_ppm=-1000000", "card_ppm"),
+        ] {
+            let m: Manifest = toml::from_str(text).unwrap();
+            assert!(m
+                .validate_analysis_inputs()
+                .unwrap_err()
+                .starts_with(&format!("{field}:")));
+        }
+        let text="calibre=\"Unknown label\"\nlift_angle=52\nlift_known=false\ncard_ppm=0\ntolerance=\"old\"\n[limits]\nrate=99\n";
+        let m: Manifest = toml::from_str(text).unwrap();
+        m.validate_analysis_inputs().unwrap();
+        assert_eq!(m.lift, Some(52.0));
+        assert_eq!(m.lift_known, Some(false));
+        assert_eq!(m.calibre.as_deref(), Some("Unknown label"));
+        assert_eq!(m.card_ppm, Some(0.0));
+        let encoded = toml::to_string(&m).unwrap();
+        let again: Manifest = toml::from_str(&encoded).unwrap();
+        again.validate_analysis_inputs().unwrap();
+        assert_eq!(again.lift_known, m.lift_known);
+        assert!(toml::from_str::<Manifest>("no_such_key=1").is_err());
     }
 
     #[test]

@@ -1840,6 +1840,11 @@ impl TimegrapherApp {
             Err(e) => return self.open_failed(e),
         };
         let path = inner.as_path();
+        // Reject a relevant invalid manifest before opening audio or a worker.
+        let manifest = match read_manifest(path) {
+            Ok(manifest) => manifest,
+            Err(e) => return self.open_failed(e),
+        };
         let files = match recordings_in(path) {
             Ok(f) => f,
             Err(e) => return self.open_failed(e),
@@ -1855,14 +1860,14 @@ impl TimegrapherApp {
         };
         match started {
             Ok(c) => {
-                let (stretches, settles) = match read_manifest(path) {
-                    Ok(Some((m, entries))) => {
+                let (stretches, settles) = match manifest {
+                    Some((m, entries)) => {
                         self.keep_mic_setup();
                         self.set_watch_setup(WatchSetup::default());
                         self.open_note = None;
                         self.apply_manifest(&m, &entries)
                     }
-                    _ => {
+                    None => {
                         self.fresh_setup(path, &files);
                         Default::default()
                     }
@@ -1996,6 +2001,11 @@ impl TimegrapherApp {
             ));
         }
         let path = inner.as_path();
+        // Reject a relevant invalid manifest before opening audio or a worker.
+        let manifest = match read_manifest(path) {
+            Ok(manifest) => manifest,
+            Err(e) => return self.open_failed(e),
+        };
         if self.file_path.trim() != path.display().to_string() {
             self.file_path = path.display().to_string();
         }
@@ -2017,8 +2027,7 @@ impl TimegrapherApp {
         // What the take's session file says: the watch, calibre, lift
         // angle, beat rate and positions, before the analysis uses them.
         // Nothing carries over from the take before.
-        let manifest = read_manifest(path);
-        if !matches!(manifest, Ok(Some(_))) {
+        if manifest.is_none() {
             match carried {
                 Some(s) => {
                     self.keep_mic_setup();
@@ -2033,12 +2042,8 @@ impl TimegrapherApp {
             self.open_note = None;
         }
         let (stretches, settles) = match manifest {
-            Ok(Some((m, entries))) => self.apply_manifest(&m, &entries),
-            Ok(None) => Default::default(),
-            Err(e) => {
-                self.error(e);
-                Default::default()
-            }
+            Some((m, entries)) => self.apply_manifest(&m, &entries),
+            None => Default::default(),
         };
         if let Some(n) = &order_note {
             self.open_note = Some(match self.open_note.take() {
@@ -7298,7 +7303,12 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
         .filter(|e| same(&dir.join(&e.file), path))
         .cloned()
         .collect();
-    Ok((!entries.is_empty()).then_some((m, entries)))
+    if entries.is_empty() {
+        return Ok(None);
+    }
+    m.validate_analysis_inputs()
+        .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
+    Ok(Some((m, entries)))
 }
 
 /// How the files in a folder are put together, said where a folder is
@@ -9240,6 +9250,121 @@ mod tests {
         // A recording with no session file opens as before.
         assert!(read_manifest(&base).unwrap().is_none());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn applicable_invalid_manifest_stops_actual_open_entrypoints_before_audio() {
+        let root =
+            std::env::temp_dir().join(format!("tg-invalid-manifest-open-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("watch.wav");
+        // Deliberately not an audio file: manifest error must win over header error.
+        std::fs::write(&path, []).unwrap();
+        for (fields, field) in [
+            ("bph=0", "bph"),
+            ("lift=nan", "lift"),
+            ("lift_angle=0", "lift"),
+            ("escape_teeth=0", "escape_teeth"),
+            ("card_ppm=-1000000", "card_ppm"),
+        ] {
+            std::fs::write(
+                root.join(MANIFEST),
+                format!("{fields}\n[[recording]]\nfile=\"watch.wav\"\nposition=\"DU\"\n"),
+            )
+            .unwrap();
+            for replay in [true, false] {
+                let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+                if replay {
+                    app.start_replay(&path);
+                } else {
+                    app.start_batch(&path);
+                }
+                assert!(app.capture.is_none() && app.batch.is_none());
+                let (message, error) = app.message.as_ref().unwrap();
+                assert!(*error);
+                assert!(
+                    message.contains(MANIFEST) && message.contains(&format!("{field}:")),
+                    "{replay}: {message}"
+                );
+            }
+        }
+        // Applicability cannot be established from a syntactically corrupt file.
+        std::fs::write(root.join(MANIFEST), "not valid TOML [").unwrap();
+        for replay in [true, false] {
+            let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+            if replay {
+                app.start_replay(&path);
+            } else {
+                app.start_batch(&path);
+            }
+            assert!(app.capture.is_none() && app.batch.is_none());
+            assert!(app
+                .message
+                .as_ref()
+                .is_some_and(|(m, e)| *e && m.contains(MANIFEST)));
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn valid_absent_and_unrelated_manifests_keep_actual_open_paths() {
+        use std::time::Duration;
+        use timegrapher_core::audio;
+        let root =
+            std::env::temp_dir().join(format!("tg-valid-manifest-open-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("watch.wav");
+        // Empty valid WAV: no acoustic signal or device; enough to admit each path.
+        audio::write_wav(
+            &path,
+            &audio::Audio {
+                samples: Vec::new(),
+                sample_rate: 48000,
+            },
+        )
+        .unwrap();
+        let valid = "lift_angle=52\nlift_known=false\ncard_ppm=0\n[[recording]]\nfile=\"watch.wav\"\nposition=\"DU\"\n";
+        let unrelated = "bph=0\nlift=nan\n[[recording]]\nfile=\"other.wav\"\nposition=\"DU\"\n";
+        for text in [None, Some(valid), Some(unrelated)] {
+            let manifest = root.join(MANIFEST);
+            match text {
+                Some(text) => std::fs::write(&manifest, text).unwrap(),
+                None => {
+                    let _ = std::fs::remove_file(&manifest);
+                }
+            }
+            if text == Some(unrelated) {
+                assert!(read_manifest(&path).unwrap().is_none());
+            }
+            // Existing exact-path applicability does not attach child-file
+            // metadata to the folder view itself.
+            assert!(read_manifest(&root).unwrap().is_none());
+            for replay in [true, false] {
+                let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+                if replay {
+                    app.start_replay(&path);
+                    let capture = app.capture.as_ref().expect("replay admitted");
+                    assert!(matches!(
+                        capture.rx.recv_timeout(Duration::from_secs(5)),
+                        Ok(Event::End)
+                    ));
+                } else {
+                    app.start_batch(&path);
+                    let batch = app.batch.as_ref().expect("analysis admitted");
+                    // Completion (even a no-beats result) establishes that the
+                    // source reader closed before deleting the fixture.
+                    let _result = batch
+                        .rx
+                        .recv_timeout(Duration::from_secs(5))
+                        .expect("empty batch completes");
+                }
+                assert!(!app.message.as_ref().is_some_and(|(_, error)| *error));
+                assert_eq!(app.lift_deg, 52.0);
+                assert!(!app.lift_known());
+                app.stop();
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
