@@ -9864,13 +9864,15 @@ mod tests {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.cal = calibre_ui::Calibres::open(Some(path.clone()));
         let mut settings = Settings::default();
-        settings.custom_calibres.push(settings::CustomCalibre {
-            name: "Legacy Bench".into(),
-            wheels: vec![settings::CustomWheel {
-                name: " Third Wheel ".into(),
-                period_s: 450.0,
-            }],
-        });
+        settings
+            .custom_calibres
+            .push(crate::settings::CustomCalibre {
+                name: "Legacy Bench".into(),
+                wheels: vec![crate::settings::CustomWheel {
+                    name: " Third Wheel ".into(),
+                    period_s: 450.0,
+                }],
+            });
         let originals = settings.custom_calibres.clone();
         app.apply_settings(settings);
         assert_eq!(std::fs::read(&path).unwrap(), original);
