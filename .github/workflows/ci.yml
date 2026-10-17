@@ -22,10 +22,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Offline tests of the publishing gate; keep its five-job/step contract
       # in .github/scripts/release_ci_gate.py synchronized with this workflow.
       - name: Release CI gate tests (offline)
@@ -37,7 +37,7 @@ jobs:
       # docs/building.md. Other hosts continue checking current stable.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.os == 'ubuntu-latest' && '1.90.0' || 'stable' }}
+          toolchain: ${{ matrix.os == 'ubuntu-24.04' && '1.90.0' || 'stable' }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: ALSA headers for sound input
@@ -48,9 +48,9 @@ jobs:
       - run: cargo test --locked --release
 
   mcp-renderer:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '24.22.0'
@@ -60,16 +60,16 @@ jobs:
   # plus its smoke takes. The audio is downloaded from the corpus's
   # releases, checked by SHA-256 and cached between runs.
   regress:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Reviewed with the engine baseline; update through docs/regress.md.
       CORPUS_REVISION: 224b6032b831e120277e8e58ded4449b57706794
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Metadata in git, audio in releases: no secret, so this also runs on
       # pull requests from forks.
       - name: Check out the corpus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: peterhudson/timegrapher-corpus
           ref: ${{ env.CORPUS_REVISION }}
@@ -92,7 +92,7 @@ jobs:
               summary.write(report)
           PY
       - name: Corpus audio cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             corpus/takes/**/*.flac

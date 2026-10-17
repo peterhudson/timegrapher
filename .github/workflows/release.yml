@@ -37,13 +37,13 @@ env:
 
 jobs:
   ci-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Require exact-candidate CI before release-capable builds
@@ -67,7 +67,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Version
         run: |
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
@@ -173,7 +173,7 @@ jobs:
             python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
           path: dist/*
@@ -184,12 +184,12 @@ jobs:
       (github.event_name == 'push' && github.ref_type == 'tag') ||
       (github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main')
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # Creating the release and uploading its files.
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Tag
@@ -202,7 +202,7 @@ jobs:
             exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
