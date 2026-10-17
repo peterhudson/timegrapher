@@ -1,0 +1,5 @@
+# Windows programs carry the Visual C++ runtime inside them. Without this they
+# need vcruntime140.dll, which a fresh Windows does not have, and the app stops
+# at start with "VCRUNTIME140.dll was not found".
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
