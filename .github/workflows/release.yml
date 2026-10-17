@@ -13,6 +13,7 @@ on:
     tags: ["v*"]
   pull_request:
     paths:
+      - ".cargo/config.toml"
       - ".github/workflows/release.yml"
       - ".github/scripts/release_ci_gate.py"
       - ".github/scripts/test_release_ci_gate.py"
@@ -158,6 +159,8 @@ jobs:
           check/*/timegrapher.exe --version
           check/*/timegrapher-app.exe --help
           check/*/timegrapher-mcp.exe --version
+          # Only DLLs every Windows has (the C runtime is built in).
+          python packaging/windows_imports.py check/timegrapher-*
           python packaging/artifact_smoke.py check/timegrapher-* --label windows-zip
           bundles=(dist/*.mcpb)
           [ "${#bundles[@]}" -eq 1 ] && [ -f "${bundles[0]}" ]
@@ -166,6 +169,7 @@ jobs:
             python -c "import json; json.load(open('mcpb/manifest.json'))"
             mcpb/server/timegrapher-mcp.exe --version
             mcpb/server/timegrapher.exe --version
+            python packaging/windows_imports.py mcpb/server
             python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
           done
 
