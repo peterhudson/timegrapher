@@ -16,7 +16,7 @@ import urllib.request
 REPOSITORY = "peterhudson/timegrapher"
 WORKFLOW = ".github/workflows/ci.yml"
 REQUIRED_JOBS = (
-    "test (ubuntu-latest)",
+    "test (ubuntu-24.04)",
     "test (windows-latest)",
     "test (macos-latest)",
     "mcp-renderer",
