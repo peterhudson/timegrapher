@@ -4367,12 +4367,16 @@ impl TimegrapherApp {
             .on_hover_text(help::NO_REGULAR_BEAT);
         };
         // The cards share one height, the tallest's on the last frame, so a
-        // card with an extra line doesn't leave the row ragged.
+        // card with an extra line doesn't leave the row ragged. While
+        // listening the row only grows: readings coming and going (beats
+        // lost, a reading's extra line) would otherwise move every pane
+        // below it up and down. It fits its cards again once stopped or
+        // when the window's width changes.
         let height_id = ui.id().with("readout height");
-        let height = ui
+        let (height, height_w) = ui
             .ctx()
-            .data(|d| d.get_temp::<f32>(height_id))
-            .unwrap_or(0.0);
+            .data(|d| d.get_temp::<(f32, f32)>(height_id))
+            .unwrap_or((0.0, 0.0));
         let tallest = std::cell::Cell::new(0f32);
         let card = |ui: &mut egui::Ui,
                     title: &str,
@@ -4746,9 +4750,15 @@ impl TimegrapherApp {
             .map(|c| c.min_rect().bottom())
             .fold(origin.y, f32::max);
         ui.allocate_space(Vec2::new(total, bottom - origin.y));
-        if tallest.get() != height {
+        let keep = self.running() && height_w == total;
+        let fit = if keep {
+            tallest.get().max(height)
+        } else {
+            tallest.get()
+        };
+        if (fit, total) != (height, height_w) {
             ui.ctx()
-                .data_mut(|d| d.insert_temp(height_id, tallest.get()));
+                .data_mut(|d| d.insert_temp(height_id, (fit, total)));
             ui.ctx().request_repaint();
         }
         Readouts {
