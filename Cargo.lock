@@ -3916,7 +3916,7 @@ dependencies = [
 
 [[package]]
 name = "timegrapher-app"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "claxon",
  "eframe",
@@ -3932,7 +3932,7 @@ dependencies = [
 
 [[package]]
 name = "timegrapher-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "clap",
  "serde",
@@ -3943,7 +3943,7 @@ dependencies = [
 
 [[package]]
 name = "timegrapher-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "claxon",
  "cpal",
@@ -3959,7 +3959,7 @@ dependencies = [
 
 [[package]]
 name = "timegrapher-mcp"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "rmcp",
  "serde",
