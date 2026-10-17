@@ -12,6 +12,9 @@ by hand.
   release_version.py set VERSION      write VERSION into Cargo.toml and the
                                       workspace crates' entries in Cargo.lock,
                                       in the build's own checkout only
+  release_version.py changes          turn `git log --merges --format=
+                                      '%s%x1f%b%x1e'` on stdin into a
+                                      Markdown list of pull requests
 
 Standard library only; no network.
 """
@@ -86,6 +89,22 @@ def set_cargo_lock(text, old, version):
     return "\n[[package]]\n".join(blocks)
 
 
+def changes(log):
+    """One line per merged pull request: its title and number."""
+    lines = []
+    for record in log.split("\x1e"):
+        if not record.strip():
+            continue
+        subject, _, body = record.strip("\n").partition("\x1f")
+        title = body.strip().splitlines()[0] if body.strip() else ""
+        match = re.match(r"Merge pull request #(\d+) ", subject)
+        if match and title:
+            lines.append(f"- {title} (#{match.group(1)})")
+        else:
+            lines.append(f"- {subject}")
+    return "\n".join(lines) + "\n" if lines else ""
+
+
 def read(path):
     """Text with LF endings, and whether the file used CRLF (Windows checkouts)."""
     with open(path, newline="") as f:
@@ -114,6 +133,8 @@ def main(argv):
             write(lock_path, set_cargo_lock(lock, old, version), lock_crlf)
             write(toml_path, set_cargo_toml(toml, version), toml_crlf)
         print(version)
+    elif len(argv) == 2 and argv[1] == "changes":
+        sys.stdout.write(changes(sys.stdin.read()))
     else:
         raise SystemExit(__doc__)
 

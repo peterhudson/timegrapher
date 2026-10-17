@@ -80,6 +80,20 @@ class SetVersion(unittest.TestCase):
             rv.set_cargo_lock(LOCK, "0.9.9", "1.0.0")
 
 
+class Changes(unittest.TestCase):
+    def test_pull_requests_are_listed_by_title_and_number(self):
+        log = ("Merge pull request #254 from o/branch\x1fCargo.lock: crates at 0.4.2\n\x1e\n"
+               "Merge pull request #253 from o/other\x1fWorkflows: Node 24\n\nMore.\n\x1e\n"
+               "Merge branch 'main' into x\x1f\x1e\n")
+        self.assertEqual(rv.changes(log),
+                         "- Cargo.lock: crates at 0.4.2 (#254)\n"
+                         "- Workflows: Node 24 (#253)\n"
+                         "- Merge branch 'main' into x\n")
+
+    def test_nothing_merged_gives_nothing(self):
+        self.assertEqual(rv.changes(""), "")
+
+
 class Files(unittest.TestCase):
     def test_crlf_files_keep_their_endings(self):
         import tempfile

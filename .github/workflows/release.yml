@@ -234,6 +234,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # The history the notes list pull requests from.
+          fetch-depth: 0
       - name: Tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -263,15 +265,29 @@ jobs:
           # published.
           # The notes for testers and users come from
           # packaging/release-notes/X.Y.Z.md when there is one; otherwise
-          # GitHub lists the pull requests merged since the last release.
+          # they list the pull requests merged since the newest earlier
+          # release's commit. Either way they end with the commit built.
+          body="$RUNNER_TEMP/notes.md"
           notes="packaging/release-notes/${TAG#v}.md"
           if [ -f "$notes" ]; then
-            body=(--notes-file "$notes")
+            cat "$notes" > "$body"
           else
-            body=(--notes "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." --generate-notes)
+            echo "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." > "$body"
+            read -r prev_name prev_sha < <(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=1" \
+              --jq '.[0] | "\(.name | gsub(" "; "_")) \(.target_commitish)"' || true) || true
+            if [ -n "${prev_sha:-}" ] && git merge-base --is-ancestor "$prev_sha" "$GITHUB_SHA" 2>/dev/null; then
+              {
+                echo
+                echo "## Merged since ${prev_name//_/ }"
+                echo
+                git log --first-parent --merges --format='%s%x1f%b%x1e' "$prev_sha..$GITHUB_SHA" |
+                  python3 packaging/release_version.py changes
+              } >> "$body"
+            fi
           fi
+          printf '\nBuilt from %s.\n' "$GITHUB_SHA" >> "$body"
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft --target "$GITHUB_SHA" \
             --title "Timegrapher ${TAG#v}" \
-            "${body[@]}"
+            --notes-file "$body"
