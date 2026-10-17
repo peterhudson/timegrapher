@@ -159,8 +159,8 @@ successful **Required real-recording analyze/session equivalence** step; an olde
 same-name regression job alone does not establish that coverage. The accepted
 run URL, SHA, attempt and job results appear in the release gate's log and summary.
 
-The gate waits up to ten minutes for pending CI; a failed, missing, cancelled or
-incomplete latest run stops the build rather than reusing an older green result.
+The gate waits up to 40 minutes for pending CI, so the build can be started
+straight after a merge; a failed, missing, cancelled or incomplete latest run stops the build rather than reusing an older green result.
 All five jobs must belong to the latest attempt: use **Re-run all jobs** after a
 partial rerun. Markdown-only commits may have no automatic CI; run **Actions →
 CI → Run workflow** on main first. Do not tag an untested branch or substitute
