@@ -127,7 +127,7 @@ def validate_jobs(run, jobs):
     return accepted
 
 
-def check(api, candidate, wait_seconds=600, sleep=time.sleep, monotonic=time.monotonic,
+def check(api, candidate, wait_seconds=2400, sleep=time.sleep, monotonic=time.monotonic,
           log=print):
     if not re.fullmatch(r"[0-9a-f]{40}", candidate):
         raise GateError("Candidate must be a full commit SHA")
