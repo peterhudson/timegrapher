@@ -184,7 +184,9 @@ def check(folder):
     def ids(path):
         return set(re.findall(r'\bid="([^"]*)"', path.read_text(encoding="utf-8")))
 
-    for page in sorted(folder.rglob("*.html")):
+    # os.walk does not follow links, such as the disk image's Applications.
+    found = [Path(d) / f for d, _, fs in os.walk(folder) for f in fs if f.endswith(".html")]
+    for page in sorted(found):
         pages += 1
         text = page.read_text(encoding="utf-8")
         for url in re.findall(r'\b(?:href|src)="([^"]*)"', text):

@@ -2,17 +2,18 @@
 
 Ready-made downloads are on the
 [Releases page](https://github.com/peterhudson/timegrapher/releases/latest).
-Each release has one zip for each system, and `SHA256SUMS.txt` to check a
-download:
+Each release has one download for each system, and `SHA256SUMS.txt` to
+check a download:
 
 | System | Download |
 |---|---|
-| macOS 11 or later, Apple silicon and Intel | `timegrapher-<version>-macos.zip` |
+| macOS 11 or later, Apple silicon and Intel | `timegrapher-<version>-macos.dmg` |
 | Windows 10 or 11, 64-bit | `timegrapher-<version>-windows-x64.zip` |
 | Linux, 64-bit Intel and AMD, distributions from 2022 on | `timegrapher-<version>-linux-x86_64.zip` |
 
-Each zip holds one folder, **Timegrapher &lt;version&gt;**, with the desktop
-app, a **Command Line** folder (the `timegrapher` command line tool and
+The Windows and Linux zips each hold one folder,
+**Timegrapher &lt;version&gt;**, and the macOS disk image holds the same
+things beside a shortcut to Applications: the desktop app, a **Command Line** folder (the `timegrapher` command line tool and
 `timegrapher-mcp`, the [MCP server](mcp.md) for AI chat apps), a
 **Claude Desktop** folder with the extension (macOS and Windows), the
 **Documentation** as pages that open in a browser, and **Start Here.html**,
@@ -25,10 +26,7 @@ normally.
 
 ## macOS
 
-Double-click the zip to unpack it (Safari may already have done so), then
-open the **Timegrapher &lt;version&gt;** folder.
-
-1. Drag **Timegrapher.app** into **Applications**.
+1. Open the `.dmg` and drag **Timegrapher.app** onto **Applications**.
 2. Open Timegrapher from Applications. macOS says *"Timegrapher" Not Opened*
    (or, on older versions, *cannot be opened because Apple cannot check it
    for malicious software*). Click **Done**.
@@ -43,8 +41,8 @@ On macOS 14 and earlier, right-clicking the app, choosing **Open** and then
 **Open** in the dialog does the same as steps 2 and 3.
 
 The command line tool is inside the app at
-`/Applications/Timegrapher.app/Contents/MacOS/timegrapher`, and in the
-folder's **Command Line** folder. To run it from Terminal by name:
+`/Applications/Timegrapher.app/Contents/MacOS/timegrapher`, and in the disk
+image's **Command Line** folder. To run it from Terminal by name:
 
 ```sh
 sudo ln -s /Applications/Timegrapher.app/Contents/MacOS/timegrapher /usr/local/bin/timegrapher
@@ -52,6 +50,9 @@ timegrapher --version
 ```
 
 ## Windows
+
+Timegrapher for Windows is a standalone app: there is nothing to install.
+It runs from its folder, and deleting the folder removes it.
 
 1. Right-click the zip, choose **Extract All…**, and extract it to a
    folder you keep, such as `Documents`. That makes
@@ -188,10 +189,10 @@ release operations.
 
 Before files are uploaded, release packaging also runs a synthetic operability
 check against each binary pair in the unzipped download: Linux **Command
-Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle;
-Windows **Command Line** folder and MCP bundle. A missing required binary or
-bundle fails the build, as does a zip that is not one folder or whose
-documentation pages link to a file it lacks. Existing help/version, signature
+Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle
+on the mounted disk image; Windows **Command Line** folder and MCP bundle. A
+missing required binary or bundle fails the build, as does a zip that is not
+one folder, or a download whose documentation pages link to a file it lacks. Existing help/version, signature
 and archive checks remain in place.
 
 The documentation pages come from the Release workflow's `docs` job:

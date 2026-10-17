@@ -1,11 +1,12 @@
 # Timegrapher for macOS
 
-This folder holds everything in this release. It runs on Apple silicon and
-Intel Macs with macOS 11 (Big Sur) or later.
+This disk image holds everything in this release. It runs on Apple silicon
+and Intel Macs with macOS 11 (Big Sur) or later.
 
-| In this folder | What it is |
+| On this disk image | What it is |
 |---|---|
 | **Timegrapher.app** | The desktop app |
+| **Applications** | A shortcut to your Applications folder, to drag the app onto |
 | **Command Line** | `timegrapher`, the command line tool, and `timegrapher-mcp`, the server that lets AI chat apps use it |
 | **Claude Desktop** | `Timegrapher.mcpb`, the Claude Desktop extension |
 | **Documentation** | The guides, as pages that open in your browser |
@@ -13,7 +14,7 @@ Intel Macs with macOS 11 (Big Sur) or later.
 
 ## Open the App
 
-1. Drag **Timegrapher.app** into your **Applications** folder.
+1. Drag **Timegrapher.app** onto **Applications** in this window.
 2. Open Timegrapher from Applications. This build is not signed with an
    Apple developer certificate, so macOS says *"Timegrapher" Not Opened*.
    Click **Done**.
@@ -37,8 +38,9 @@ sudo ln -s /Applications/Timegrapher.app/Contents/MacOS/timegrapher /usr/local/b
 timegrapher --help
 ```
 
-Or run it from the **Command Line** folder: `./timegrapher --help`. Keep
-`timegrapher-mcp` beside `timegrapher`: the server runs it.
+Or copy the **Command Line** folder somewhere you keep and run
+`./timegrapher --help` there. Keep `timegrapher-mcp` beside `timegrapher`:
+the server runs it.
 
 ## Add It to Claude Desktop
 

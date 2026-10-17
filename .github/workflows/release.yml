@@ -186,18 +186,24 @@ jobs:
           cargo build --release --locked $PKGS
           packaging/windows.sh dist "$RUNNER_TEMP/docs-html/windows"
 
-      # One zip per platform: it must hold one folder with the documentation
-      # (no broken links), and every program in it must start.
-      - name: Check the zip
+      # One file per platform (a disk image on macOS, a zip holding one
+      # folder elsewhere): its documentation must have no broken links, and
+      # every program in it must start.
+      - name: Check the download
         run: |
-          zips=(dist/*)
-          [ "${#zips[@]}" -eq 1 ] && [[ "${zips[0]}" == *.zip ]]
-          echo "ZIP=${zips[0]}" >> "$GITHUB_ENV"
-          mkdir check
+          files=(dist/*)
+          [ "${#files[@]}" -eq 1 ]
+          echo "ZIP=${files[0]}" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = macOS ]; then
-            ditto -x -k "${zips[0]}" check
+            [[ "${files[0]}" == *.dmg ]]
+            # Copied out so the image is detached before the upload.
+            hdiutil attach "${files[0]}" -mountpoint "$RUNNER_TEMP/dmg" -nobrowse -readonly
+            mkdir check && cp -R "$RUNNER_TEMP/dmg" "check/volume"
+            hdiutil detach "$RUNNER_TEMP/dmg"
+            [ -L check/volume/Applications ]
           else
-            7z x -bso0 -ocheck "${zips[0]}"
+            [[ "${files[0]}" == *.zip ]]
+            mkdir check && 7z x -bso0 -ocheck "${files[0]}"
           fi
           folders=(check/*)
           [ "${#folders[@]}" -eq 1 ] && [ -d "${folders[0]}" ]
@@ -261,7 +267,7 @@ jobs:
           python packaging/windows_imports.py mcpb/server
           python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
 
-      # Uploaded as the zip itself, so a download from the run's page is
+      # Uploaded as the file itself, so a download from the run's page is
       # the same file the release gets, not a zip around it.
       - uses: actions/upload-artifact@v7
         with:
@@ -299,10 +305,10 @@ jobs:
           echo "TAG=$tag" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v8
         with:
-          pattern: timegrapher-*.zip
+          pattern: timegrapher-*
           path: dist
           merge-multiple: true
-          # The zips are the release files: keep them whole.
+          # The zips and the disk image are the release files: keep them whole.
           skip-decompress: true
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt

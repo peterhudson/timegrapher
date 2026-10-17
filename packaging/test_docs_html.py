@@ -79,6 +79,16 @@ class Check(unittest.TestCase):
             self.assertEqual(missing, ["Start Here.html: Documentation/gone.html"])
             self.assertEqual(unknown, ["Start Here.html: Documentation/a.html#nope"])
 
+    def test_links_to_other_folders_are_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+            Path(other, "broken.html").write_text('<a href="gone.html">x</a>')
+            Path(tmp, "Start Here.html").write_text("<p>hi</p>")
+            try:
+                Path(tmp, "Applications").symlink_to(other, target_is_directory=True)
+            except OSError:
+                self.skipTest("this system cannot make symbolic links")
+            self.assertEqual(docs_html.check(tmp), ([], []))
+
     def test_an_empty_folder_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(docs_html.check(tmp)[0], ["no pages"])

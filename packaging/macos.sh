@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# The macOS download: one zip holding a folder with Timegrapher.app (one
-# binary for Apple silicon and Intel), the command line tools, the Claude
-# Desktop extension (.mcpb, where the workspace has the MCP server) and the
-# documentation.
+# The macOS download: one disk image holding Timegrapher.app (one binary
+# for Apple silicon and Intel) beside a link to Applications to drag it
+# onto, the command line tools, the Claude Desktop extension (.mcpb, where
+# the workspace has the MCP server) and the documentation.
 #
 #   packaging/macos.sh DIST [DOCS]
 #
 # Expects both programs built for aarch64-apple-darwin and
 # x86_64-apple-darwin under target/<triple>/release. Runs on macOS only
-# (lipo, sips, iconutil, codesign, ditto). DOCS is the folder
+# (lipo, sips, iconutil, codesign, hdiutil). DOCS is the folder
 # packaging/docs_html.py rendered for macos; without it the pages are
 # rendered here, which needs pandoc.
 set -euo pipefail
@@ -69,7 +69,7 @@ if [ -f "$work/bin/timegrapher-mcp" ] && [ -f "$mcpb" ]; then
   bash "$mcpb" "$folder/Command Line" "$folder/Claude Desktop/Timegrapher.mcpb"
 fi
 
-# ditto zips the way Finder does, keeping the app's signature and the
-# programs' executable bits.
-rm -f "$dist/timegrapher-$version-macos.zip"
-ditto -c -k --sequesterRsrc --keepParent "$folder" "$dist/timegrapher-$version-macos.zip"
+# The disk image: the app beside a link to Applications, to drag across.
+ln -s /Applications "$folder/Applications"
+hdiutil create -volname "Timegrapher $version" -srcfolder "$folder" -ov -format UDZO \
+  "$dist/timegrapher-$version-macos.dmg"

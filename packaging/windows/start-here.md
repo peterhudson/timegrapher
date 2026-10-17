@@ -1,8 +1,9 @@
 # Timegrapher for Windows
 
 This folder holds everything in this release, for 64-bit Windows 10 or 11.
-Extract the whole folder somewhere you keep, such as
-`Documents\Timegrapher`, before opening anything in it.
+Timegrapher is a standalone app: there is nothing to install. Extract the
+whole folder somewhere you keep, such as `Documents`, and run it from
+there. To remove it, delete the folder.
 
 | In this folder | What it is |
 |---|---|
