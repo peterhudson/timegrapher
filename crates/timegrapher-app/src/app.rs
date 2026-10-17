@@ -388,6 +388,9 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
     )
 }
 
+const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
+     position. Listening carries on into the new session; a replay stops. Unsaved sound is \
+     asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
      settings, to analyse again later. The first time it asks where: the take goes in a \
      folder of its own, named for its time and watch, inside the folder you choose. After \
@@ -1471,7 +1474,10 @@ impl TimegrapherApp {
 
     /// Forget this session (after asking, if its sound isn't saved), ready
     /// to start another.
+    /// Clear everything for the next watch or position. Listening to the
+    /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
+        let listening = self.running() && self.session.mic();
         self.stop();
         self.session.discard_recording();
         self.session.clear();
@@ -1483,6 +1489,9 @@ impl TimegrapherApp {
         self.guided_measured.clear();
         self.source_label.clear();
         self.message = None;
+        if listening {
+            self.start_microphone();
+        }
     }
 
     /// Unsaved sound that a new session would throw away, seconds.
@@ -2767,12 +2776,9 @@ impl TimegrapherApp {
             }
             let mic_data = self.session.mic() && self.live.is_some();
             if mic_data
-                && !self.running()
                 && ui
                     .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(
-                        "Clear everything and start again with the next watch or position",
-                    )
+                    .on_hover_text(NEW_SESSION_HINT)
                     .clicked()
             {
                 if self.needs_save_confirmation() {
@@ -3565,41 +3571,43 @@ impl TimegrapherApp {
             "Draw the Rate reading as a red line over the beats it was fitted to, to \
              check that it follows the dots",
         );
-        ui.add_enabled_ui(self.rate_line, |ui| {
-            theme::switch_row(
-                ui,
-                "Parallel Guides",
-                &mut self.rate_guides,
-                "Faint lines at the rate line's slope across the whole strip, so it is \
-                 easy to see whether the dots run parallel to it",
-            );
-        });
-        ui.label(
-            RichText::new("Draw over the strip")
-                .small()
-                .color(theme::pal(ui).text_secondary),
+        theme::switch_row(
+            ui,
+            "Parallel Guides",
+            &mut self.rate_guides,
+            "Faint lines at the Rate reading's slope across the whole strip, so it is \
+             easy to see whether the dots run parallel to it. They show with or without \
+             the Rate Line.",
         );
-        for (i, (name, hint)) in [
-            (
-                "Amplitude",
-                "The amplitude readings as a purple line against the same time, on their \
+        let overlays = &mut self.overlays;
+        // The name and its three switches kept together, on one line.
+        theme::row(
+            ui,
+            "Draw over the strip",
+            Some("Readings drawn as lines over the beats against the same time, each on its own scale"),
+            |ui| {
+            for (i, (name, hint)) in [
+                (
+                    "Amplitude",
+                    "The amplitude readings as a purple line against the same time, on their \
                  own scale",
-            ),
-            (
-                "Rate",
-                "The rate readings as a red line against the same time, on their own scale",
-            ),
-            (
-                "Beat Error",
-                "The beat error readings, from the unlock, as a yellow line against the same \
+                ),
+                (
+                    "Rate",
+                    "The rate readings as a red line against the same time, on their own scale",
+                ),
+                (
+                    "Beat Error",
+                    "The beat error readings, from the unlock, as a yellow line against the same \
                  time, on their own scale",
-            ),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            theme::switch_row(ui, name, &mut self.overlays[i], hint);
-        }
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                theme::switch_row(ui, name, &mut overlays[i], hint);
+            }
+        });
         theme::switch_row(
             ui,
             "Auto-Centre",
@@ -3768,18 +3776,13 @@ impl TimegrapherApp {
             self.save_recording();
         }
         // Anything shown, from the microphone or a recording, can be
-        // cleared once nothing is running.
+        // cleared, listening or not.
         if ui
-            .add_enabled(
-                self.live.is_some() && !self.running(),
-                egui::Button::new("New Session"),
+            .add_enabled(self.live.is_some(), egui::Button::new("New Session"))
+            .on_hover_text(NEW_SESSION_HINT)
+            .on_disabled_hover_text(
+                "Nothing to clear yet: listen to a watch or open a recording first",
             )
-            .on_hover_text("Clear everything and start again with the next watch or position")
-            .on_disabled_hover_text(if self.running() {
-                "Stop listening or replaying first"
-            } else {
-                "Nothing to clear yet: listen to a watch or open a recording first"
-            })
             .clicked()
         {
             ui.close();
@@ -5876,8 +5879,9 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
         // The strip's own Average Over, as its overlays use.
-        let rate_line = self
-            .rate_line
+        // The guides follow the rate line's slope, so it is worked out for
+        // either.
+        let rate_line = (self.rate_line || self.rate_guides)
             .then(|| self.reading_over(self.average_for(Pane::Strip)))
             .flatten()
             .and_then(|r| {
@@ -5933,6 +5937,7 @@ impl TimegrapherApp {
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
+            line: self.rate_line,
             guides: self.rate_guides,
             overlays: &overlays,
             cursor_t: self.cursor_t,

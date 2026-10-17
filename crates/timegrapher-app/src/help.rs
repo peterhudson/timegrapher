@@ -168,7 +168,7 @@ pub const STRIP: &[&str] = &[
      the dots follow it, the reading describes them well. The faint red lines beside it \
      (Parallel Guides) run at the same slope across the whole strip, one per grid step, \
      so you can see at a glance whether the dots everywhere run parallel to the rate \
-     or bend away from it.",
+     or bend away from it. Each can be shown without the other.",
     "Amplitude, rate and beat error can be drawn over the strip as lines against the \
      same time, each on its own scale: the scale's ends are written in the line's colour \
      above the strip (or beside it when the strip lies across). Seeing amplitude beside \

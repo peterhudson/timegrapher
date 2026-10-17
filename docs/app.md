@@ -34,7 +34,8 @@ from and what to do with it, then the watch itself. It is a pane like the
 others: drag it by its tab, or hide it and bring it back from its icon or
 the View menu. At its top, **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
-**Resume**), **New Session** when stopped, **Save…**
+**Resume**), **New Session** (listening or not: listening carries on into the
+new session), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
 peak meter and Show Every Input. For a recording: **Open…**, **Open
 Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
@@ -384,7 +385,8 @@ fitted to, on top of them, as tg does: if the dots follow it, the reading
 describes them well. **Parallel Guides** (on by default) adds faint red
 lines at the same slope across the whole strip, one per grid step, since
 the eye judges whether lines are parallel far better than it judges a
-slope; dots that bend away from the guides show the rate changing. Under
+slope; dots that bend away from the guides show the rate changing. The
+guides show with or without the Rate Line. Under
 **Draw over the strip**, amplitude (purple, on by default), rate (red)
 and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above

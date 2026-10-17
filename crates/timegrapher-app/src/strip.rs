@@ -237,7 +237,10 @@ impl Overlay {
 pub struct Extras<'a> {
     /// A line of text over the strip, such as where the view is.
     pub note: Option<&'a str>,
+    /// The Rate reading the line and the guides are drawn from.
     pub rate_line: Option<RateLine>,
+    /// Draw the rate line itself.
+    pub line: bool,
     /// Faint lines parallel to the rate line across the whole strip.
     pub guides: bool,
     /// A time to mark with a cursor line: where the pointer is on a chart.
@@ -925,14 +928,16 @@ pub fn draw_strip(
                     polyline(oldest, end_s, k as f64 * step, faint);
                 }
             }
-            // A thin dark edge under the line keeps it readable over the dots.
-            polyline(
-                ta,
-                tb,
-                0.0,
-                Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
-            );
-            polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.trace_rate));
+            if extras.line {
+                // A thin dark edge under the line keeps it readable over the dots.
+                polyline(
+                    ta,
+                    tb,
+                    0.0,
+                    Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
+                );
+                polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.trace_rate));
+            }
         }
     }
     if let Some(t) = extras.cursor_t.filter(|t| *t >= oldest && *t <= end_s) {
