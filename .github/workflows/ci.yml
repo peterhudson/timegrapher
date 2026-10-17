@@ -30,8 +30,8 @@ jobs:
       # in .github/scripts/release_ci_gate.py synchronized with this workflow.
       - name: Release CI gate tests (offline)
         run: python3 -m unittest discover -s .github/scripts -p 'test_release_ci_gate.py' -v
-      - name: Release artifact smoke tests (offline)
-        run: python3 -m unittest discover -s packaging -p 'test_artifact_smoke.py' -v
+      - name: Packaging script tests (offline)
+        run: python3 -m unittest discover -s packaging -p 'test_*.py' -v
       # Exercise the supported compiler floor without another build/job.
       # Keep this version aligned with workspace.package.rust-version and
       # docs/building.md. Other hosts continue checking current stable.
