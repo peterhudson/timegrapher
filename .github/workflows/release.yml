@@ -94,8 +94,34 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Version: $version" | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # The documentation every download carries, as offline web pages, with
+  # a Start Here page for each platform (packaging/docs_html.py).
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Render
+        env:
+          # Links to source files go to GitHub at the commit built.
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          command -v pandoc >/dev/null || { sudo apt-get update && sudo apt-get install -y pandoc; }
+          pandoc --version | head -1
+          for p in linux macos windows; do
+            python3 packaging/docs_html.py render "docs-html/$p" "$p" --ref "$REF"
+            python3 packaging/docs_html.py check "docs-html/$p"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: docs-html
+          if-no-files-found: error
+
   build:
-    needs: [ci-gate, version]
+    needs: [ci-gate, version, docs]
     strategy:
       fail-fast: false
       matrix:
@@ -119,12 +145,17 @@ jobs:
           py=python3; [ "$RUNNER_OS" = Windows ] && py=python
           "$py" packaging/release_version.py set "$VERSION"
           [ "$(packaging/version.sh)" = "$VERSION" ]
+          echo "PY=$py" >> "$GITHUB_ENV"
           # The build date in --version is the commit's, not the runner's.
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
           # The programs released; the MCP server once the workspace has it.
           pkgs="-p timegrapher-cli -p timegrapher-app"
           [ -d crates/timegrapher-mcp ] && pkgs="$pkgs -p timegrapher-mcp"
           echo "PKGS=$pkgs" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          name: docs-html
+          path: ${{ runner.temp }}/docs-html
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -140,87 +171,102 @@ jobs:
           curl -sSfL -o "$RUNNER_TEMP/appimagetool" \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x "$RUNNER_TEMP/appimagetool"
-          APPIMAGE_EXTRACT_AND_RUN=1 APPIMAGETOOL="$RUNNER_TEMP/appimagetool" packaging/linux.sh dist
+          APPIMAGE_EXTRACT_AND_RUN=1 APPIMAGETOOL="$RUNNER_TEMP/appimagetool" \
+            packaging/linux.sh dist "$RUNNER_TEMP/docs-html/linux"
       - name: Build (macOS)
         if: matrix.platform == 'macos'
         run: |
           for t in aarch64-apple-darwin x86_64-apple-darwin; do
             cargo build --release --locked $PKGS --target "$t"
           done
-          packaging/macos.sh dist
+          packaging/macos.sh dist "$RUNNER_TEMP/docs-html/macos"
       - name: Build (Windows)
         if: matrix.platform == 'windows'
         run: |
           cargo build --release --locked $PKGS
-          packaging/windows.sh dist
+          packaging/windows.sh dist "$RUNNER_TEMP/docs-html/windows"
 
-      # Each file must open and its programs start.
-      - name: Check the files (Linux)
+      # One zip per platform: it must hold one folder with the documentation
+      # (no broken links), and every program in it must start.
+      - name: Check the zip
+        run: |
+          zips=(dist/*)
+          [ "${#zips[@]}" -eq 1 ] && [[ "${zips[0]}" == *.zip ]]
+          echo "ZIP=${zips[0]}" >> "$GITHUB_ENV"
+          mkdir check
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -x -k "${zips[0]}" check
+          else
+            7z x -bso0 -ocheck "${zips[0]}"
+          fi
+          folders=(check/*)
+          [ "${#folders[@]}" -eq 1 ] && [ -d "${folders[0]}" ]
+          echo "PKG=${folders[0]}" >> "$GITHUB_ENV"
+          find "${folders[0]}" -maxdepth 2 | sort
+          "$PY" packaging/docs_html.py check "${folders[0]}"
+          [ -f "${folders[0]}/Start Here.html" ] && [ -f "${folders[0]}/LICENSE.txt" ]
+      - name: Check the programs (Linux)
         if: matrix.platform == 'linux'
         run: |
-          mkdir check && tar -C check -xzf dist/*.tar.gz
-          check/*/timegrapher --version
-          check/*/timegrapher-app --help
-          check/*/timegrapher-mcp --version
-          python3 packaging/artifact_smoke.py check/timegrapher-* --label linux-tar
-          APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage cli --version
-          APPIMAGE_EXTRACT_AND_RUN=1 dist/*.AppImage --help
+          cli="$PKG/Command Line"
+          "$cli/timegrapher" --version
+          "$cli/timegrapher-mcp" --version
+          python3 packaging/artifact_smoke.py "$cli" --label linux-cli
+          # Unzipped with 7-Zip above; unzip must also keep the AppImage
+          # executable, as file managers do.
+          mkdir unzip-check && unzip -q "$ZIP" -d unzip-check
+          app=(unzip-check/*/Timegrapher.AppImage)
+          [ -x "${app[0]}" ] && [ -x "$(dirname "${app[0]}")/Command Line/timegrapher" ]
+          APPIMAGE_EXTRACT_AND_RUN=1 "${app[0]}" cli --version
+          APPIMAGE_EXTRACT_AND_RUN=1 "${app[0]}" --help
           mkdir appimage-check
-          (cd appimage-check && ../dist/*.AppImage --appimage-extract >/dev/null)
+          (cd appimage-check && "../${app[0]}" --appimage-extract >/dev/null)
           python3 packaging/artifact_smoke.py appimage-check/squashfs-root/usr/bin --label linux-appimage
-      - name: Check the files (macOS)
+      - name: Check the programs (macOS)
         if: matrix.platform == 'macos'
         run: |
-          hdiutil attach dist/*.dmg -mountpoint "$RUNNER_TEMP/dmg" -nobrowse
-          trap 'hdiutil detach "$RUNNER_TEMP/dmg" || true' EXIT
-          app="$RUNNER_TEMP/dmg/Timegrapher.app"
+          app="$PKG/Timegrapher.app"
           lipo -archs "$app/Contents/MacOS/timegrapher-app"
           codesign --verify --verbose "$app"
           "$app/Contents/MacOS/timegrapher" --version
           "$app/Contents/MacOS/timegrapher-app" --help
-          python3 packaging/artifact_smoke.py "$app/Contents/MacOS" --label macos-dmg
-          hdiutil detach "$RUNNER_TEMP/dmg"
-          trap - EXIT
-          mkdir check && tar -C check -xzf dist/*-cli.tar.gz
-          check/*/timegrapher --version
-          check/*/timegrapher-mcp --version
-          python3 packaging/artifact_smoke.py check/timegrapher-* --label macos-tar
-          # The MCP bundle is a required release file on this platform.
-          bundles=(dist/*.mcpb)
-          [ "${#bundles[@]}" -eq 1 ] && [ -f "${bundles[0]}" ]
-          for b in "${bundles[@]}"; do
-            mkdir mcpb && unzip -q "$b" -d mcpb
-            python3 -c "import json,sys; json.load(open('mcpb/manifest.json'))"
-            lipo -archs mcpb/server/timegrapher-mcp
-            mcpb/server/timegrapher-mcp --version
-            mcpb/server/timegrapher --version
-            python3 packaging/artifact_smoke.py mcpb/server --label macos-mcpb
-          done
-      - name: Check the files (Windows)
+          python3 packaging/artifact_smoke.py "$app/Contents/MacOS" --label macos-app
+          cli="$PKG/Command Line"
+          "$cli/timegrapher" --version
+          "$cli/timegrapher-mcp" --version
+          python3 packaging/artifact_smoke.py "$cli" --label macos-cli
+          # The Claude Desktop extension is required on this platform.
+          b="$PKG/Claude Desktop/Timegrapher.mcpb"
+          mkdir mcpb && unzip -q "$b" -d mcpb
+          python3 -c "import json,sys; json.load(open('mcpb/manifest.json'))"
+          lipo -archs mcpb/server/timegrapher-mcp
+          mcpb/server/timegrapher-mcp --version
+          mcpb/server/timegrapher --version
+          python3 packaging/artifact_smoke.py mcpb/server --label macos-mcpb
+      - name: Check the programs (Windows)
         if: matrix.platform == 'windows'
         run: |
-          7z x -bso0 -ocheck dist/*.zip
-          check/*/timegrapher.exe --version
-          check/*/timegrapher-app.exe --help
-          check/*/timegrapher-mcp.exe --version
+          "$PKG/Timegrapher.exe" --help
+          cli="$PKG/Command Line"
+          "$cli/timegrapher.exe" --version
+          "$cli/timegrapher-mcp.exe" --version
           # Only DLLs every Windows has (the C runtime is built in).
-          python packaging/windows_imports.py check/timegrapher-*
-          python packaging/artifact_smoke.py check/timegrapher-* --label windows-zip
-          bundles=(dist/*.mcpb)
-          [ "${#bundles[@]}" -eq 1 ] && [ -f "${bundles[0]}" ]
-          for b in "${bundles[@]}"; do
-            7z x -bso0 -omcpb "$b"
-            python -c "import json; json.load(open('mcpb/manifest.json'))"
-            mcpb/server/timegrapher-mcp.exe --version
-            mcpb/server/timegrapher.exe --version
-            python packaging/windows_imports.py mcpb/server
-            python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
-          done
+          python packaging/windows_imports.py "$PKG" "$cli"
+          python packaging/artifact_smoke.py "$cli" --label windows-cli
+          # The Claude Desktop extension is required on this platform.
+          7z x -bso0 -omcpb "$PKG/Claude Desktop/Timegrapher.mcpb"
+          python -c "import json; json.load(open('mcpb/manifest.json'))"
+          mcpb/server/timegrapher-mcp.exe --version
+          mcpb/server/timegrapher.exe --version
+          python packaging/windows_imports.py mcpb/server
+          python packaging/artifact_smoke.py mcpb/server --label windows-mcpb
 
+      # Uploaded as the zip itself, so a download from the run's page is
+      # the same file the release gets, not a zip around it.
       - uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.platform }}
-          path: dist/*
+          path: ${{ env.ZIP }}
+          archive: false
           if-no-files-found: error
 
   release:
@@ -253,9 +299,11 @@ jobs:
           echo "TAG=$tag" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v8
         with:
-          pattern: release-*
+          pattern: timegrapher-*.zip
           path: dist
           merge-multiple: true
+          # The zips are the release files: keep them whole.
+          skip-decompress: true
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Draft release
