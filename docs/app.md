@@ -555,7 +555,8 @@ uses Direct3D 12 on Windows (including Windows' own software renderer),
 Metal on macOS and Vulkan on Linux. The log records what the window drew
 with. If neither opens a window, or the window closes before drawing
 anything, the app says why in the log and, on Windows and macOS, in a
-message box, and exits with an error.
+message box, and exits with an error. An error that ends the window after it
+has drawn is reported the same way.
 
 **Report a Problem.** **Report a Problem…** at the right of the status line
 makes the same zip as `timegrapher report` (see [reports.md](reports.md)) to

@@ -174,15 +174,17 @@ fn main() -> ExitCode {
     // machine or remote desktop without 3D, an old driver), wgpu, which on
     // Windows can draw with Direct3D 12's software renderer.
     let gl = match open_window(eframe::Renderer::Glow, file.clone(), analyse) {
-        Ok(()) => return ExitCode::SUCCESS,
-        Err(e) => e,
+        Closed::Quit => return ExitCode::SUCCESS,
+        Closed::Broke(e) => return window_broke(&e),
+        Closed::NeverDrew(e) => e,
     };
     applog::warn(&format!(
         "OpenGL didn't open the window ({gl}); trying wgpu"
     ));
     match open_window(eframe::Renderer::Wgpu, file, analyse) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(wgpu) => {
+        Closed::Quit => ExitCode::SUCCESS,
+        Closed::Broke(e) => window_broke(&e),
+        Closed::NeverDrew(wgpu) => {
             window_failed(&format!("With OpenGL: {gl}\nWith wgpu: {wgpu}"));
             ExitCode::FAILURE
         }
@@ -200,13 +202,19 @@ pub fn frame_built() {
     }
 }
 
-/// Run the window with `renderer` until it closes. An error if it couldn't
-/// open or closed before drawing anything; a quit after that is `Ok`.
-fn open_window(
-    renderer: eframe::Renderer,
-    file: Option<PathBuf>,
-    analyse: bool,
-) -> Result<(), String> {
+/// How the window's run ended.
+enum Closed {
+    /// Quit after drawing.
+    Quit,
+    /// Couldn't open, or closed before drawing anything: worth another
+    /// renderer.
+    NeverDrew(String),
+    /// Drew, then ended with an error.
+    Broke(String),
+}
+
+/// Run the window with `renderer` until it closes.
+fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>, analyse: bool) -> Closed {
     let options = eframe::NativeOptions {
         renderer,
         viewport: eframe::egui::ViewportBuilder::default()
@@ -234,15 +242,12 @@ fn open_window(
     );
     let built = FRAME_BUILT.load(std::sync::atomic::Ordering::Relaxed);
     match result {
-        Err(e) if !built => Err(e.to_string()),
-        Err(e) => {
-            applog::error(&format!("The window closed with an error: {e}"));
-            Ok(())
-        }
-        Ok(()) if !built => Err("the window closed before drawing anything".into()),
+        Err(e) if !built => Closed::NeverDrew(e.to_string()),
+        Err(e) => Closed::Broke(e.to_string()),
+        Ok(()) if !built => Closed::NeverDrew("the window closed before drawing anything".into()),
         Ok(()) => {
             applog::info("The window closed");
-            Ok(())
+            Closed::Quit
         }
     }
 }
@@ -268,23 +273,40 @@ fn graphics(cc: &eframe::CreationContext) -> String {
     "an unknown renderer".into()
 }
 
-/// The window couldn't open with either renderer. A Windows app has
-/// nowhere to print, so the reason goes to the log and, on Windows and
-/// macOS, a message box too.
+/// The window couldn't open with either renderer.
 fn window_failed(reason: &str) {
-    eprintln!("{reason}");
     applog::error(&format!("The window couldn't open: {reason}"));
+    tell(
+        reason,
+        &format!(
+            "Timegrapher couldn't open its window.\n\n{reason}\n\nThe window needs the \
+             computer's graphics to draw with OpenGL 2.0 or newer, or with Direct3D 12, \
+             Metal or Vulkan. A virtual machine or remote desktop without 3D graphics, or \
+             a missing graphics driver, may offer neither. The command line tool, \
+             timegrapher, works without a window."
+        ),
+    );
+}
+
+/// The window drew, then ended with an error.
+fn window_broke(reason: &str) -> ExitCode {
+    applog::error(&format!("The window closed with an error: {reason}"));
+    tell(
+        reason,
+        &format!("Timegrapher's window closed with an error.\n\n{reason}"),
+    );
+    ExitCode::FAILURE
+}
+
+/// Say why the app is ending. A Windows app has nowhere to print, so the
+/// reason is also in the log and, on Windows and macOS, a message box.
+fn tell(reason: &str, text: &str) {
+    eprintln!("{reason}");
     let log = applog::dir()
         .map(|d| d.join("logs").join("timegrapher.log"))
         .map(|p| format!("\n\nThis is also written in the log, {}.", p.display()))
         .unwrap_or_default();
-    let text = format!(
-        "Timegrapher couldn't open its window.\n\n{reason}\n\nThe window needs the \
-         computer's graphics to draw with OpenGL 2.0 or newer, or with Direct3D 12, \
-         Metal or Vulkan. A virtual machine or remote desktop without 3D graphics, or \
-         a missing graphics driver, may offer neither. The command line tool, \
-         timegrapher, works without a window.{log}"
-    );
+    let text = format!("{text}{log}");
     #[cfg(any(windows, target_os = "macos"))]
     let _ = rfd::MessageDialog::new()
         .set_level(rfd::MessageLevel::Error)
