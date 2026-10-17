@@ -3,8 +3,8 @@ name: Release
 # Builds every platform's files and creates a draft release holding them; a
 # maintainer reads the draft and publishes it. Two ways to start a release:
 # run this workflow on main from the Actions tab with "Draft a release"
-# ticked (the tag vX.Y.Z, from Cargo.toml, is made when the draft is
-# published), or push a tag vX.Y.Z. Run by hand without the tick, or on a
+# ticked (it takes the next free version, see the version job; the tag
+# vX.Y.Z is made when the draft is published), or push a tag vX.Y.Z. Run by hand without the tick, or on a
 # pull request touching the packaging, it builds the same files as workflow
 # artifacts and releases nothing.
 # Steps for cutting a release: docs/install.md, "Making a release".
@@ -29,6 +29,12 @@ on:
 permissions:
   contents: read
 
+# One release-capable run at a time, so two drafts never pick the same
+# version; pull request runs only build and may overlap.
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: false
+
 env:
   # Smaller programs: no debug information in the downloads (crash records
   # still name the functions).
@@ -52,8 +58,42 @@ jobs:
           RELEASE_REQUESTED: ${{ toJSON(inputs.release || false) }}
         run: python3 .github/scripts/release_ci_gate.py
 
+  # The version every file of this run carries. Cargo.toml holds the base
+  # X.Y.Z; a draft takes the first patch at or above it that no release
+  # (drafts included) or tag has used, so a draft can be made at any time
+  # without a version bump. A tag build takes the tag's version.
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # Draft releases are listed only to a token that can write.
+      contents: write
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REQUESTED: ${{ toJSON(inputs.release || false) }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            version="$(packaging/version.sh "${GITHUB_REF_NAME}")"
+          elif [ "${RELEASE_REQUESTED}" = true ] && [ "${GITHUB_REF}" = refs/heads/main ]; then
+            used="$RUNNER_TEMP/used-versions"
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' > "$used"
+            git ls-remote --tags origin | sed -e 's#.*refs/tags/##' -e 's#\^{}$##' >> "$used"
+            version="$(python3 packaging/release_version.py next "$used")"
+          else
+            version="$(packaging/version.sh)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version" | tee -a "$GITHUB_STEP_SUMMARY"
+
   build:
-    needs: ci-gate
+    needs: [ci-gate, version]
     strategy:
       fail-fast: false
       matrix:
@@ -69,12 +109,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then
-            packaging/version.sh "${GITHUB_REF_NAME}"
-          else
-            packaging/version.sh
-          fi
+          # Only this checkout changes: Cargo.toml and Cargo.lock take the
+          # version the programs, file names and MCP bundle then carry.
+          py=python3; [ "$RUNNER_OS" = Windows ] && py=python
+          "$py" packaging/release_version.py set "$VERSION"
+          [ "$(packaging/version.sh)" = "$VERSION" ]
           # The build date in --version is the commit's, not the runner's.
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
           # The programs released; the MCP server once the workspace has it.
@@ -183,7 +225,7 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref_type == 'tag') ||
       (github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main')
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-24.04
     permissions:
       # Creating the release and uploading its files.
@@ -192,13 +234,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # The history the notes list pull requests from.
+          fetch-depth: 0
       - name: Tag
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          tag="v$(packaging/version.sh)"
+          tag="v$VERSION"
+          # The version job picked a free number; this only guards against a
+          # release made by hand since.
           if [ "${GITHUB_REF_TYPE}" != tag ] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "a release $tag already exists: raise the version in Cargo.toml first" >&2
+            echo "a release $tag already exists: run the workflow again" >&2
             exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
@@ -218,15 +265,29 @@ jobs:
           # published.
           # The notes for testers and users come from
           # packaging/release-notes/X.Y.Z.md when there is one; otherwise
-          # GitHub lists the pull requests merged since the last release.
+          # they list the pull requests merged since the newest earlier
+          # release's commit. Either way they end with the commit built.
+          body="$RUNNER_TEMP/notes.md"
           notes="packaging/release-notes/${TAG#v}.md"
           if [ -f "$notes" ]; then
-            body=(--notes-file "$notes")
+            cat "$notes" > "$body"
           else
-            body=(--notes "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." --generate-notes)
+            echo "Downloads and first-launch steps for each platform: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install.md)." > "$body"
+            read -r prev_name prev_sha < <(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=1" \
+              --jq '.[0] | "\(.name | gsub(" "; "_")) \(.target_commitish)"' || true) || true
+            if [ -n "${prev_sha:-}" ] && git merge-base --is-ancestor "$prev_sha" "$GITHUB_SHA" 2>/dev/null; then
+              {
+                echo
+                echo "## Merged since ${prev_name//_/ }"
+                echo
+                git log --first-parent --merges --format='%s%x1f%b%x1e' "$prev_sha..$GITHUB_SHA" |
+                  python3 packaging/release_version.py changes
+              } >> "$body"
+            fi
           fi
+          printf '\nBuilt from %s.\n' "$GITHUB_SHA" >> "$body"
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft --target "$GITHUB_SHA" \
             --title "Timegrapher ${TAG#v}" \
-            "${body[@]}"
+            --notes-file "$body"

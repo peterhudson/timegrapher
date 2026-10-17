@@ -132,20 +132,26 @@ For maintainers. Releases are built by
 [.github/workflows/release.yml](../.github/workflows/release.yml), never on
 a personal computer.
 
-1. The version in the root `Cargo.toml` (`[workspace.package]`, `version`)
-   is the version released. Raise it in a pull request before each release
-   after the first, following [semantic versioning](https://semver.org):
-   0.1.0 to 0.1.1 for fixes, to 0.2.0 for new features.
-2. Write the release notes, for watchmakers rather than developers, in
-   `packaging/release-notes/X.Y.Z.md` (the new version), in the same pull
-   request. They become the draft's text; without them the draft lists the
-   pull requests merged since the last release.
+1. A draft can be made from main at any time, with no version bump. The
+   root `Cargo.toml` (`[workspace.package]`, `version`) holds the base
+   version X.Y.Z, and each draft takes the first patch number at or above
+   it that no release (drafts included) or tag has used: with 0.4.0 and
+   0.4.1 made, the next draft is 0.4.2. Runs that can draft take turns, so
+   two never pick the same number. For new features raise X or Y in a pull
+   request, following [semantic versioning](https://semver.org), and change
+   the four workspace crates' `version` lines in `Cargo.lock` with it (CI
+   builds with `--locked`); nobody raises Z by hand.
+2. Release notes, for watchmakers rather than developers, go in
+   `packaging/release-notes/X.Y.Z.md` for the version the draft will take.
+   They become the draft's text; without them the draft lists the pull
+   requests merged since the last release.
 3. Wait for **CI** on the exact main commit to pass, then start the build,
    either way:
    - On GitHub: **Actions**, **Release**, **Run workflow**, branch `main`,
      tick **Draft a release**, **Run workflow**.
    - Or from a clone: `git fetch origin && git tag v0.1.0 origin/main && git push origin v0.1.0`
-     (the tag must be `v` plus the Cargo.toml version, or the build stops).
+     (the tag must be `v` plus the Cargo.toml version, or the build stops;
+     a tag build takes the tag's version as it is).
 4. When the run is green, **Releases** shows a draft with every file. Try
    the download for your platform, edit the notes if needed, and click
    **Publish release**. Until then nobody sees it and the app's update check

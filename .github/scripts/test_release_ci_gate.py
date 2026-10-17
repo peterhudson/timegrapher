@@ -77,7 +77,8 @@ class GateTests(unittest.TestCase):
                          "(github.event_name == 'push' && github.ref_type == 'tag') || "
                          "(github.event_name == 'workflow_dispatch' && inputs.release && "
                          "github.ref == 'refs/heads/main')")
-        self.assertRegex(text, r"(?m)^  build:\n    needs: ci-gate\n")
+        # Every build waits for the gate, whatever else it needs.
+        self.assertRegex(text, r"(?m)^  build:\n    needs: (ci-gate|\[([\w-]+, )*ci-gate(, [\w-]+)*\])\n")
 
     def test_five_jobs_and_required_step_succeed(self):
         for event in ["push", "workflow_dispatch"]:
