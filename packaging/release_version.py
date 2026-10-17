@@ -48,7 +48,7 @@ def base_version(cargo_toml):
 
 
 def next_version(base, used_names):
-    """The first patch at or above base's that no used vX.Y.Z name has taken."""
+    """One above the highest patch used for base's X.Y, and never below base."""
     major, minor, patch = parse(base)
     taken = set()
     for name in used_names:

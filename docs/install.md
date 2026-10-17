@@ -134,9 +134,10 @@ a personal computer.
 
 1. A draft can be made from main at any time, with no version bump. The
    root `Cargo.toml` (`[workspace.package]`, `version`) holds the base
-   version X.Y.Z, and each draft takes the first patch number at or above
-   it that no release (drafts included) or tag has used: with 0.4.0 and
-   0.4.1 made, the next draft is 0.4.2. Runs that can draft take turns, so
+   version X.Y.Z, and each draft takes one more than the highest patch
+   number any release (drafts included) or tag has used for that X.Y, never
+   less than the base: with 0.4.0 and 0.4.1 made, the next draft is 0.4.2,
+   and a deleted draft's number is not used again. Runs that can draft take turns, so
    two never pick the same number. For new features raise X or Y in a pull
    request, following [semantic versioning](https://semver.org), and change
    the four workspace crates' `version` lines in `Cargo.lock` with it (CI

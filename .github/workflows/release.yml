@@ -3,9 +3,9 @@ name: Release
 # Builds every platform's files and creates a draft release holding them; a
 # maintainer reads the draft and publishes it. Two ways to start a release:
 # run this workflow on main from the Actions tab with "Draft a release"
-# ticked (it takes the next free version, see the version job; the tag
-# vX.Y.Z is made when the draft is published), or push a tag vX.Y.Z. Run by hand without the tick, or on a
-# pull request touching the packaging, it builds the same files as workflow
+# ticked (it takes the next version, see the version job; the tag vX.Y.Z is
+# made when the draft is published), or push a tag vX.Y.Z. Run by hand
+# without the tick, or on a pull request touching the packaging, it builds the same files as workflow
 # artifacts and releases nothing.
 # Steps for cutting a release: docs/install.md, "Making a release".
 on:
@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: Draft a release of main's version (Cargo.toml) from this run
+        description: Draft a release of main from this run (it takes the next version; see docs/install.md)
         type: boolean
         default: false
 
@@ -82,6 +82,8 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
             version="$(packaging/version.sh "${GITHUB_REF_NAME}")"
           elif [ "${RELEASE_REQUESTED}" = true ] && [ "${GITHUB_REF}" = refs/heads/main ]; then
+            # A failed listing must stop the run, not drop names.
+            set -o pipefail
             used="$RUNNER_TEMP/used-versions"
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' > "$used"
             git ls-remote --tags origin | sed -e 's#.*refs/tags/##' -e 's#\^{}$##' >> "$used"
