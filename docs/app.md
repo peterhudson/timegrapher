@@ -548,6 +548,15 @@ report?** with **Make a Report…** (copies the record and opens a new GitHub
 issue to paste it into), **Show the Record** and **Dismiss**. Nothing is
 sent anywhere by the app itself.
 
+**If the window can't open.** The window draws with OpenGL 2.0 or newer.
+Where the graphics can't (a virtual machine or remote desktop without 3D
+graphics, a missing graphics driver), the app tries again with wgpu, which
+uses Direct3D 12 on Windows (including Windows' own software renderer),
+Metal on macOS and Vulkan on Linux. The log records what the window drew
+with. If neither opens a window, or the window closes before drawing
+anything, the app says why in the log and, on Windows and macOS, in a
+message box, and exits with an error.
+
 **Report a Problem.** **Report a Problem…** at the right of the status line
 makes the same zip as `timegrapher report` (see [reports.md](reports.md)) to
 attach to a GitHub issue. Choose what kind of problem it is (Bug, Reading,

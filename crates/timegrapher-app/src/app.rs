@@ -7489,6 +7489,7 @@ impl TimegrapherApp {
 
 impl eframe::App for TimegrapherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        crate::frame_built();
         if std::mem::take(&mut self.check_pending) {
             self.updates.start(ctx, false);
         }
