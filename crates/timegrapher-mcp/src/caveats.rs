@@ -52,9 +52,16 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
             }
             None => "The recording was paused; the readings leave the pauses out.".into(),
         },
+        // Any masked time counts, so a sliver gets a tenth of a second, and
+        // under 0.05 s, where that would read 0.0 s, no figure at all.
         "masked" => match c["seconds"].as_f64() {
-            Some(t) => format!("{t:.0} s of the take were masked out of the readings by hand."),
-            None => "Stretches of the take were masked out of the readings by hand.".into(),
+            Some(t) if t >= 9.95 => {
+                format!("{t:.0} s of the take were masked out of the readings by hand.")
+            }
+            Some(t) if t >= 0.05 => {
+                format!("{t:.1} s of the take were masked out of the readings by hand.")
+            }
+            _ => "Stretches of the take were masked out of the readings by hand.".into(),
         },
         _ => return None,
     })
@@ -277,9 +284,18 @@ mod tests {
             "12 s of the take were masked out of the readings by hand."
         );
         assert_eq!(
-            fact(&json!({ "code": "masked" }), None).unwrap(),
-            "Stretches of the take were masked out of the readings by hand."
+            fact(&json!({ "code": "masked", "seconds": 0.3 }), None).unwrap(),
+            "0.3 s of the take were masked out of the readings by hand."
         );
+        for c in [
+            json!({ "code": "masked", "seconds": 0.02 }),
+            json!({ "code": "masked" }),
+        ] {
+            assert_eq!(
+                fact(&c, None).unwrap(),
+                "Stretches of the take were masked out of the readings by hand."
+            );
+        }
     }
 
     #[test]

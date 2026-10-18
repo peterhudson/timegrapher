@@ -624,7 +624,8 @@ mod tests {
                 10.0,
                 "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
                  next; no level change, trend or correlation between readings detected. The \
-                 rate's period search also finds 60 s.",
+                 rate's period search also finds 60 s (1.20 s/d peak to peak, the fourth \
+                 wheel's period).",
             ),
             (
                 120.0,
