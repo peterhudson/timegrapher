@@ -86,17 +86,17 @@ mod tests {
     #[test]
     fn an_appimage_is_used_only_when_it_is_a_file_and_runs_this() {
         let file = std::env::current_exe().unwrap();
-        let mount = std::path::Path::new("/tmp/.mount_Timegr");
-        let exe = mount.join("usr/bin/timegrapher-app");
+        // Absolute on every system the tests run on.
+        let mount = file.parent().unwrap().join(".mount_Timegr");
+        let mount = mount.as_path();
+        let exe = mount.join("usr").join("bin").join("timegrapher-app");
+        let elsewhere = file.parent().unwrap().join("other").join("x");
         let some = |p: &std::path::Path| Some(p.as_os_str().to_owned());
         assert_eq!(appimage(some(&file), some(mount), &exe), Some(file.clone()));
         assert_eq!(appimage(None, some(mount), &exe), None);
         assert_eq!(appimage(some(&file), None, &exe), None);
         // Started by an AppImage, not run from one.
-        assert_eq!(
-            appimage(some(&file), some(mount), std::path::Path::new("/usr/bin/x")),
-            None
-        );
+        assert_eq!(appimage(some(&file), some(mount), &elsewhere), None);
         assert_eq!(
             appimage(Some("Timegrapher.AppImage".into()), some(mount), &exe),
             None
