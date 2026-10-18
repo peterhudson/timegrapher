@@ -257,12 +257,9 @@ fn series(doc: &Value) -> Option<String> {
         // their scatter ("Rate: 360 10 s readings, median ..."), and the
         // too-short one says there are too few. Other headlines may name
         // readings too ("10 s readings are too coarse to show it") without
-        // giving these figures, so the count is the key, not the word.
-        let stated = s["readings"]
-            .as_u64()
-            .zip(s["step_s"].as_f64())
-            .is_some_and(|(n, step)| h.contains(&format!("{n} {step:.0} s ")));
-        lines.push(if facts.is_empty() || stated || h.contains("too few") {
+        // giving these figures, so the word alone is not the key.
+        let stated = h.contains(" readings, median ") || h.contains("too few");
+        lines.push(if facts.is_empty() || stated {
             format!("- {h}.")
         } else {
             format!("- {h} ({}).", facts.join("; "))
@@ -524,10 +521,10 @@ mod tests {
 
     #[test]
     fn a_headline_naming_readings_still_gets_the_figures_unless_it_gives_them() {
-        let one = |headline: &str| {
+        let one = |step: f64, headline: &str| {
             let doc = json!({
                 "schema": "timegrapher.series/2",
-                "series": [{ "series": "rate", "unit": "s/d", "readings": 360, "step_s": 10.0,
+                "series": [{ "series": "rate", "unit": "s/d", "readings": 360, "step_s": step,
                     "median": 3.1, "sd": 1.24, "short_term_sd": 0.9, "headline": headline }],
             });
             lead(&doc, &Map::new()).unwrap()
@@ -535,22 +532,39 @@ mod tests {
         let figures = "(360 readings of 10 s; median 3.10 s/d; SD 1.24 s/d; reading to \
                        reading 0.90 s/d)";
         // A level change with the period search's fast line, and correlated
-        // readings: the word "readings" is there, the figures are not.
+        // readings, as the engine words them: the word "readings" is there,
+        // the figures are not.
         for h in [
-            "Rate steps from +2.0 s/d to +4.0 s/d at 30 min. The beat timing repeats every \
-             5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings are too \
-             coarse to show it.",
+            "Rate shifts level 1 time: +2.0 s/d, then +4.0 s/d. The beat timing repeats \
+             every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings \
+             are too coarse to show it.",
             "Successive 10 s rate readings are correlated (lag-1 correlation 0.40); no \
              cycle, level change or trend detected.",
         ] {
-            assert!(one(h).contains(figures), "{}", one(h));
+            assert!(one(10.0, h).contains(figures), "{}", one(10.0, h));
         }
-        // The steady headline gives them itself.
-        let steady = one(
-            "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
-             next; no cycle, level change, trend or correlation between readings detected.",
-        );
-        assert!(!steady.contains("readings of 10 s"), "{steady}");
+        // The steady and too-short headlines give them, or say there are too
+        // few, themselves, whatever the reading length.
+        for (step, h) in [
+            (
+                10.0,
+                "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+                 next; no cycle, level change, trend or correlation between readings detected.",
+            ),
+            (
+                120.0,
+                "Rate: 360 2 min readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+                 next; no cycle, level change, trend or correlation between readings detected.",
+            ),
+            (
+                10.0,
+                "12 10 s rate readings over 120 s: too few to search for structure (needs 30 \
+                 readings over 120 s).",
+            ),
+        ] {
+            let text = one(step, h);
+            assert!(!text.contains("readings of"), "{text}");
+        }
     }
 
     #[test]

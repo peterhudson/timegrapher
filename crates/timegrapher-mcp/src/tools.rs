@@ -395,7 +395,8 @@ pub const TOOLS: &[ToolSpec] = &[
                 "Lift angle in degrees (the calibre's if left out and the table has it, \
                  else 52). In a folder whose session.toml has a lift angle, that angle is \
                  used: a different one, given here or through the calibre, is an error, and \
-                 if the file marks its angle as assumed, any lift given here is refused.",
+                 if the file marks its angle as assumed, any lift given here or through the \
+                 calibre is refused, even the same one.",
             ),
             DEVICE,
             p(
