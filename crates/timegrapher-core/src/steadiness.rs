@@ -1260,15 +1260,18 @@ fn cycle(
         })
         .map(|(p, src)| at(p, src))
         .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .map(reduce)
-        .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .filter(|c| {
+        .map(|c| (c.period_s, reduce(c)))
+        .filter(|(_, c)| c.explained >= cfg.periodic_min_explained)
+        .filter(|(before, c)| {
             // The alias itself is set aside; a whole number of its turns
             // only when folding there explains no clearly more than the
             // alias does (a real slow cycle at that period does). A cycle
             // the period search also finds in the beat timing, where it is
-            // slow enough to need no readings, is real however it aliases.
-            slow_search_line(c.period_s, g.step, d.span(), s.period.as_ref())
+            // slow enough to need no readings, is real however it aliases,
+            // and so is one reduced from such a line.
+            [*before, c.period_s]
+                .iter()
+                .any(|&p| slow_search_line(p, g.step, d.span(), s.period.as_ref()))
                 || alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()).is_none_or(
                     |a| {
                         (c.period_s / a - 1.0).abs() >= 0.05
@@ -1276,6 +1279,7 @@ fn cycle(
                     },
                 )
         })
+        .map(|(_, c)| c)
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
 }
 
@@ -1291,8 +1295,9 @@ fn slow_search_line(period: f64, step: f64, span: f64, search: Option<&Period>) 
 }
 
 /// The alias period, when a cycle of `period` in readings `step` apart
-/// is a whole or half number of turns of the alias of a period-search
-/// line too fast for the readings, within the resolution (period² over
+/// is a whole number of turns of the alias of a period-search line too
+/// fast for the readings, or a half number that is also a whole number
+/// of the line's own turns, within the resolution (period² over
 /// `span`, at least 1%, and at least 5% of the alias). Readings averaged
 /// over `step` sample a line of frequency ν at 1/`step`, so it shows at
 /// |ν − m/`step`| for the nearest whole m: a 15-tooth escape wheel at
@@ -1317,7 +1322,10 @@ fn alias_of_fast_line(period: f64, step: f64, span: f64, search: Option<&Period>
             let a = 1.0 / alias;
             let m = (2.0 * period / a).round() / 2.0;
             let tol = (period * period / span).max(0.01 * period).max(0.05 * a);
-            (m >= 1.0 && (period - m * a).abs() <= tol).then_some(a)
+            // A half turn holds the alias only where it is also a whole
+            // number of the line's own turns (75 s is 20 of 3.75 s).
+            let holds = m.fract() == 0.0 || (m * a - (m * a / q).round() * q).abs() <= tol;
+            (m >= 1.0 && holds && (period - m * a).abs() <= tol).then_some(a)
         })
 }
 
@@ -2526,6 +2534,20 @@ mod tests {
                 s.headline
             );
         }
+    }
+
+    #[test]
+    fn a_half_turn_of_an_alias_counts_only_where_it_holds_the_line() {
+        let line = |q| Some(search_line(q, 0.3, "ms", None));
+        // 75 s is 2.5 turns of the 30 s alias of 3.75 s, and 20 of its own.
+        let p = line(3.75);
+        let a = alias_of_fast_line(75.0, 10.0, 7200.0, p.as_ref()).unwrap();
+        assert!((a - 30.0).abs() < 1e-9);
+        // 30 s is 1.5 turns of the 20 s alias of 6.67 s, and 4.5 of its own.
+        let p = line(1.0 / 0.15);
+        let a = alias_of_fast_line(40.0, 10.0, 7200.0, p.as_ref()).unwrap();
+        assert!((a - 20.0).abs() < 1e-9);
+        assert_eq!(alias_of_fast_line(30.0, 10.0, 7200.0, p.as_ref()), None);
     }
 
     #[test]

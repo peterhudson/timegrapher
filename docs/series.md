@@ -128,14 +128,22 @@ the period search). A cycle at the alias of a period-search line too
 fast for the readings is set aside: readings averaged over 10 s show a
 3.75 s line (a 15-tooth escape wheel at 28,800 bph) at 30 s, and fold
 almost as well at 60 s, 120 s or 330 s (and partly at half turns, 75 s).
-A whole or half number of the alias's turns, matched within the
-resolution (the period squared over the take, at least 1%, and at least
-5% of the alias), still counts when folding there explains more than
-1.25 times what the alias does, as the same watch's 60 s fourth wheel
-does. A cycle the period search also finds in the beat timing as a line
-of three readings or longer (within the period squared over the take,
-at least 1%: the search's own rule for matching a wheel) always counts: at 19,800 bph a 15-tooth escape wheel turns in
-5.45 s, which aliases to exactly the fourth wheel's 60 s. The headline leads
+A whole number of the alias's turns, or a half number that is also a
+whole number of the line's own turns, matched within the resolution
+(the period squared over the take, at least 1%, and at least 5% of the
+alias), still counts only when folding there explains more than 1.25
+times what the alias does, as the same watch's 60 s fourth wheel does.
+On a long take that tolerance covers most periods above a few turns of
+the alias (for the 30 s alias, every period from about 160 s to 430 s
+over 1 to 7 h), so a real slow cycle there must clearly outfold the
+alias to count unless the period search lists it. On takes shorter than
+twenty turns of the alias the 5% floor no longer sets the match at one
+turn either, so it widens there too. A cycle the period search also
+finds in the beat timing as a line of three readings or longer (within
+the period squared over the take, at least 1%: the search's own rule for
+matching a wheel) always counts, before or after it is reduced to a
+shorter fraction: at 19,800 bph a 15-tooth escape wheel turns in 5.45 s,
+which aliases to exactly the fourth wheel's 60 s. The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,
 the headline adds a sentence. If one side's unlock edges or 2 s windows
