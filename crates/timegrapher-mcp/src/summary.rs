@@ -259,10 +259,20 @@ fn series(doc: &Value) -> Option<String> {
         // readings too ("10 s readings are too coarse to show it") without
         // giving these figures, so the word alone is not the key.
         let stated = h.contains(" readings, median ") || h.contains("too few");
+        // The first sentence is the series' own; any after it ("The rate
+        // also repeats ...", "The beat timing repeats every 5.0 s ...") is
+        // about a cycle or a level, so the figures go after the first.
+        // Decimals never end a sentence: ". " does.
+        let (first, rest) = h.split_once(". ").unwrap_or((h, ""));
+        let rest = if rest.is_empty() {
+            String::new()
+        } else {
+            format!(" {rest}.")
+        };
         lines.push(if facts.is_empty() || stated {
             format!("- {h}.")
         } else {
-            format!("- {h} ({}).", facts.join("; "))
+            format!("- {first} ({}).{rest}", facts.join("; "))
         });
     }
     if lines.is_empty() {
@@ -538,11 +548,38 @@ mod tests {
             "Rate shifts level 1 time: +2.0 s/d, then +4.0 s/d. The beat timing repeats \
              every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings \
              are too coarse to show it.",
-            "Successive 10 s rate readings are correlated (lag-1 correlation 0.40); no \
-             cycle, level change or trend detected.",
+            "Successive 10 s rate readings are correlated (lag-1 correlation 0.40, \
+             Ljung–Box p 0.002); no cycle, level change or trend detected.",
         ] {
             assert!(one(10.0, h).contains(figures), "{}", one(10.0, h));
         }
+        // The figures are the series' own, so they follow its first
+        // sentence, not a later one about the beat timing or a cycle.
+        let text = one(
+            10.0,
+            "Rate shifts level 1 time: +2.0 s/d, then +4.0 s/d. The beat timing repeats \
+             every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings \
+             are too coarse to show it.",
+        );
+        assert!(
+            text.contains(&format!(
+                "- Rate shifts level 1 time: +2.0 s/d, then +4.0 s/d {figures}. The beat \
+                 timing repeats every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; \
+                 10 s readings are too coarse to show it."
+            )),
+            "{text}"
+        );
+        let text = one(
+            10.0,
+            "Rate slides from +1.0 s/d to +5.0 s/d (+0.5 s/d per hour). The rate also \
+             repeats every 300 s (the third wheel), 1.20 s/d peak to peak.",
+        );
+        assert!(
+            text.contains(&format!(
+                "(+0.5 s/d per hour) {figures}. The rate also repeats every 300 s"
+            )),
+            "{text}"
+        );
         // The steady and too-short headlines give them, or say there are too
         // few, themselves, whatever the reading length.
         for (step, h) in [
