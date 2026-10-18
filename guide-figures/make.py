@@ -18,7 +18,7 @@ take (no `seconds`) fetches it.
 
 With no FIGURE, every figure is made. --corpus names a checkout of
 peterhudson/timegrapher-corpus (default: guide-figures/.cache/corpus, cloned
-at the revision CI pins); the audio is fetched with its scripts/fetch.py.
+at CORPUS_REVISION); the audio is fetched with its scripts/fetch.py.
 --keep leaves each figure's raw screen and home folder in .cache/ to look at.
 
 Needs: a built timegrapher-app (target/release, or APP_BIN), Xvfb, openbox,
@@ -26,7 +26,6 @@ xdotool, ImageMagick and pngquant; ffmpeg for --clips. Linux only. Standard libr
 """
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -66,17 +65,18 @@ BASE_SETTINGS = {
 }
 
 
-def corpus_revision():
-    """The corpus revision CI checks the engine against."""
-    with open(os.path.join(ROOT, ".github", "workflows", "ci.yml")) as f:
-        return re.search(r"CORPUS_REVISION:\s*([0-9a-f]{40})", f.read()).group(1)
+# The corpus commit the figures are made from. It runs ahead of the one
+# CI pins when a figure needs a take regress doesn't read.
+CORPUS_REVISION = "23b08a1016033e9823e27c85ac13ddad5e4b6e51"
 
 
 def ensure_corpus(path):
     if not os.path.isdir(os.path.join(path, "takes")):
-        rev = corpus_revision()
         subprocess.run(["git", "clone", "-q", "https://github.com/peterhudson/timegrapher-corpus", path], check=True)
-        subprocess.run(["git", "-C", path, "checkout", "-q", rev], check=True)
+    head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    if head != CORPUS_REVISION:
+        subprocess.run(["git", "-C", path, "fetch", "-q", "origin"], check=True)
+        subprocess.run(["git", "-C", path, "checkout", "-q", CORPUS_REVISION], check=True)
     return path
 
 
