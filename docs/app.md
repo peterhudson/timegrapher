@@ -402,7 +402,7 @@ left (\\). Running **across**, time goes left to right with the newest beats
 on the right, and early is up. The gap between the two lines is the beat
 error. A line that runs off one edge comes back on the other, so the
 strip's width is its zoom and its length sets how much history it shows.
-Type both (a width of ±0.1 to ±60,000 ms; a length such as `45`, `5 min`,
+Type both (a width of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
 widths run from ±1 ms, for a good watch's beat error, through ±62.5 ms,
 half a beat at 28,800 bph and the widest view in which tick and tock can't
@@ -753,14 +753,14 @@ listening and lets go of the microphone, so another program can use it
 readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
-stop. **New session** clears everything for the next watch or position;
+stop. **New Session** clears everything for the next watch or position;
 pressed while listening, listening carries on into the new session. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it.
 **Save Again** (Ctrl+S) later brings that copy up to date without asking
 again, and **Save As…** (Ctrl+Shift+S) copies the session to a new folder
 of your choosing, which Save Again then keeps up to date. Sound that hasn't been saved is never thrown away
-without asking: New session, opening or replaying a recording, and
+without asking: New Session, opening or replaying a recording, and
 closing the window ask whether to save it first. The microphone's own
 settings are kept aside while recordings are open and come back with
 **Microphone**. Once stopped, the time slider shows for a microphone

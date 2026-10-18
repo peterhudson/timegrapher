@@ -1479,9 +1479,14 @@ impl TimegrapherApp {
     /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
         let listening = self.running() && self.session.mic();
-        // Cleared first, so an error from closing the kept sound stays shown.
         self.message = None;
         self.stop();
+        // A failed close leaves files behind: say so, and don't start
+        // listening again over it.
+        let close_error = self
+            .session
+            .recording_fault()
+            .and_then(|_| self.message.clone());
         self.session.discard_recording();
         self.session.clear();
         self.live = None;
@@ -1491,8 +1496,11 @@ impl TimegrapherApp {
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.source_label.clear();
-        if listening {
+        if listening && close_error.is_none() {
             self.start_microphone();
+        }
+        if close_error.is_some() {
+            self.message = close_error;
         }
     }
 
@@ -10300,5 +10308,24 @@ mod tests {
         app.apply_strip_input(zoom, app.end_s());
         assert_eq!(app.strip.span_s, 60.0);
         assert_eq!(app.strip.half_width_ms, 5.0);
+    }
+
+    /// New Session while listening, when closing the kept sound fails:
+    /// the error stays shown and listening doesn't start again over it.
+    #[test]
+    fn new_session_keeps_a_close_error() {
+        let (mut app, base) = save_failure_fixture("new-session-close");
+        let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
+        std::fs::remove_file(scratch.join("session.json")).unwrap();
+        std::fs::create_dir(scratch.join("session.json")).unwrap();
+        let tx = queued_capture(&mut app, &base);
+        assert!(app.running() && app.session.mic());
+        app.new_session();
+        assert!(!app.running());
+        let (m, error) = app.message.clone().expect("the close error is shown");
+        assert!(error, "{m}");
+        assert!(m.contains("pause"), "{m}");
+        drop(tx);
+        let _ = std::fs::remove_dir_all(base);
     }
 }
