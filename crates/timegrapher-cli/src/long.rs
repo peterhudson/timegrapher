@@ -304,9 +304,6 @@ pub fn run(
     let resolved_train = train.resolve()?;
     let mut cfg = cfg.clone();
     cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(lift);
-    if let Some(note) = resolved_train.lift_default_note(lift) {
-        eprintln!("{note}");
-    }
     let cfg = &cfg;
     let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
@@ -314,6 +311,10 @@ pub fn run(
     for f in &files[1..] {
         let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
         info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
+    }
+    // Once the recordings open, so a run that fails on them says only why.
+    if let Some(note) = resolved_train.lift_default_note(lift) {
+        eprintln!("{note}");
     }
     let clock_log = clock_args.log;
     let clock = match clock_log {

@@ -60,7 +60,8 @@ plus three that name the periodic components after wheels:
 
 - `--calibre NAME` takes the train from the table of common calibres
   (`crates/timegrapher-core/data/train-wheels.json`): "ETA 2824-2",
-  "Rolex 3235", "NH35" and so on. An unknown name lists the known ones.
+  "Rolex 3235", "NH35" and so on. A name not in the catalogue is an error
+  that points to `timegrapher calibres --search NAME`.
   It also sets the lift angle when `--lift` is not given (52° when the
   table has no lift angle for the calibre); it does not set the beat
   rate, which `--bph` gives or the recording shows.

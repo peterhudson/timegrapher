@@ -78,6 +78,17 @@ fn has_note(err: &str) -> bool {
 }
 
 #[test]
+fn a_missing_recording_gets_no_lift_note() {
+    let f = Fixture::new();
+    let missing = f.0.join("missing.wav");
+    for command in ["long", "series"] {
+        let out = f.run(&[command, missing.to_str().unwrap()]);
+        assert!(!out.status.success(), "{command}");
+        assert!(!has_note(&stderr(&out)), "{command}: {}", stderr(&out));
+    }
+}
+
+#[test]
 fn long_and_series_take_the_lift_from_the_flag_then_the_calibre_then_52() {
     let f = Fixture::new();
     for command in ["long", "series"] {
@@ -97,6 +108,10 @@ fn long_and_series_take_the_lift_from_the_flag_then_the_calibre_then_52() {
             ),
             "{command}: {err}"
         );
+
+        let (lift, err) = f.lift(command, &["--calibre", "Bench Unknown", "--lift", "48"]);
+        assert_eq!(lift, 48.0, "{command}");
+        assert!(!has_note(&err), "{command}: {err}");
 
         let (lift, err) = f.lift(command, &[]);
         assert_eq!(lift, 52.0, "{command}");

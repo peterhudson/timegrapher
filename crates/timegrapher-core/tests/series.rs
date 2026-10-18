@@ -11,6 +11,16 @@ use timegrapher_core::stream::{analyze_file, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
 
 fn run(name: &str, duration_s: f64, amp: impl Fn(f64) -> f64, rate: impl Fn(f64) -> f64) -> Report {
+    run_with(name, duration_s, amp, rate, 15)
+}
+
+fn run_with(
+    name: &str,
+    duration_s: f64,
+    amp: impl Fn(f64) -> f64,
+    rate: impl Fn(f64) -> f64,
+    escape_teeth: u32,
+) -> Report {
     let cfg = SynthConfig {
         duration_s,
         rate_s_per_day: 10.0,
@@ -23,7 +33,7 @@ fn run(name: &str, duration_s: f64, amp: impl Fn(f64) -> f64, rate: impl Fn(f64)
     let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
     std::fs::remove_file(&path).ok();
     let lc = LongConfig {
-        wheels: standard_wheels(log.bph, 15),
+        wheels: standard_wheels(log.bph, escape_teeth),
         ..Default::default()
     };
     let long = longrun::analyse(&log, None, &lc);
@@ -39,6 +49,7 @@ fn steady_watch_is_steady() {
     let r = run("steady", 900.0, |_| 270.0, |_| 0.0);
     for s in &r.series {
         assert!(s.cycle.is_none(), "{}", s.headline);
+        assert!(s.faster_than_readings().is_none(), "{}", s.headline);
         assert!(
             s.headline
                 .contains("no cycle, level change, trend or correlation"),
@@ -47,6 +58,40 @@ fn steady_watch_is_steady() {
         );
     }
     assert!(r.findings.is_empty());
+}
+
+#[test]
+fn an_escape_wheel_line_faster_than_the_readings_is_named_not_denied() {
+    // A 20-tooth escape wheel at 28,800 bph turns in 5 s: under three
+    // 10 s readings (each averages two whole turns away), so no cycle can
+    // show in them, but the period search on the beat timing finds it.
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run_with(
+        "escape",
+        900.0,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / 5.0).sin(),
+        20,
+    );
+    let s = series(&r, SeriesKind::Rate);
+    assert!(s.cycle.is_none(), "{}", s.headline);
+    let p = s.faster_than_readings().expect(&s.headline);
+    assert!((p.period_s - 5.0).abs() < 0.05, "{}", p.period_s);
+    assert!(!s.headline.contains("no cycle"), "{}", s.headline);
+    // In place of "no cycle", or as its own sentence after another lead.
+    assert!(
+        s.headline
+            .to_lowercase()
+            .contains("the beat timing repeats every 5.0 s, the escape wheel's period,"),
+        "{}",
+        s.headline
+    );
+    assert!(
+        s.headline
+            .contains("10 s readings are too coarse to show it"),
+        "{}",
+        s.headline
+    );
 }
 
 #[test]

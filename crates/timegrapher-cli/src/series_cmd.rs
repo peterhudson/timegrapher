@@ -37,15 +37,16 @@ pub fn run(o: Options) -> Result<(), String> {
     let resolved_train = o.train.resolve()?;
     let mut stream_cfg = o.stream.clone();
     stream_cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(o.lift);
-    if let Some(note) = resolved_train.lift_default_note(o.lift) {
-        eprintln!("{note}");
-    }
     let files = crate::long::expand_dirs(o.files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
     for f in &files[1..] {
         let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
         info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
+    }
+    // Once the recordings open, so a run that fails on them says only why.
+    if let Some(note) = resolved_train.lift_default_note(o.lift) {
+        eprintln!("{note}");
     }
     let total_s = info
         .frames
@@ -253,7 +254,11 @@ fn print_text(r: &Report, calibrated: bool) {
         }
     }
     if r.findings.is_empty() {
-        println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
+        if r.series.iter().any(|s| s.faster_than_readings().is_some()) {
+            println!("\nNo two levels, level change, trend or correlation between readings detected in any series, and no cycle the readings can show.");
+        } else {
+            println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
+        }
     }
 }
 
