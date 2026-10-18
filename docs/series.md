@@ -127,12 +127,14 @@ error) and fit five times in the take (three for
 the period search). A cycle at the alias of a period-search line too
 fast for the readings is set aside: readings averaged over 10 s show a
 3.75 s line (a 15-tooth escape wheel at 28,800 bph) at 30 s, and fold
-almost as well at 60 s or 120 s. A whole number of the alias's turns, up
-to eight, still counts when folding there explains more than 1.25 times
-what the alias does, as the same watch's 60 s fourth wheel does. A cycle
-the period search also finds in the beat timing as a line of three
-readings or longer (within its resolution, the period squared over the
-take) always counts: at 19,800 bph a 15-tooth escape wheel turns in
+almost as well at 60 s, 120 s or 330 s (and partly at half turns, 75 s).
+A whole or half number of the alias's turns, matched within the
+resolution (the period squared over the take, at least 1%, and at least
+5% of the alias), still counts when folding there explains more than
+1.25 times what the alias does, as the same watch's 60 s fourth wheel
+does. A cycle the period search also finds in the beat timing as a line
+of three readings or longer (within the period squared over the take,
+at least 1%: the search's own rule for matching a wheel) always counts: at 19,800 bph a 15-tooth escape wheel turns in
 5.45 s, which aliases to exactly the fourth wheel's 60 s. The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,

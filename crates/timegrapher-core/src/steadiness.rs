@@ -1068,10 +1068,12 @@ pub fn check_series(
 /// under steps or a slide, or steps or a slide under a cycle.
 fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
     let k = s.series;
+    // Named, not "it": after a one-sided lead "it" would read as the side.
+    let the = format!("The {}", k.name());
     let mut out = Vec::new();
     if let Some(c) = s.cycle.as_ref().filter(|_| s.lead != Lead::Periodic) {
         out.push(format!(
-            "It also repeats every {:.0} s{}{}, {} peak to peak.",
+            "{the} also repeats every {:.0} s{}{}, {} peak to peak.",
             c.period_s,
             c.wheel
                 .as_ref()
@@ -1094,7 +1096,7 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
                 .map(|g| g.mean)
                 .fold(f64::NEG_INFINITY, f64::max);
             out.push(format!(
-                "Its level also moves over the take, between {} and {}.",
+                "{the}'s level also moves over the take, between {} and {}.",
                 k.fmt(lo),
                 k.fmt(hi)
             ));
@@ -1267,26 +1269,19 @@ fn cycle(
             // the period search also finds in the beat timing, where it is
             // slow enough to need no readings, is real however it aliases.
             slow_search_line(c.period_s, g.step, d.span(), s.period.as_ref())
-                || alias_of_fast_line(c.period_s, g.step, s.period.as_ref()).is_none_or(|a| {
-                    (c.period_s / a - 1.0).abs() >= 0.05
-                        && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
-                })
+                || alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()).is_none_or(
+                    |a| {
+                        (c.period_s / a - 1.0).abs() >= 0.05
+                            && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
+                    },
+                )
         })
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
 }
 
-/// The alias period, when a cycle of `period` in readings `step` apart
-/// is within 5% of a whole number (up to [`ALIAS_TURNS_MAX`]) of turns of the alias of a period-search
-/// line too fast for the readings. Readings averaged over `step` sample a
-/// line of frequency ν at 1/`step`, so it shows at |ν − m/`step`| for the
-/// nearest whole m: a 15-tooth escape wheel at 28,800 bph (3.75 s) reads
-/// as a 30 s cycle in 10 s readings, and folds as well at 60 s or 120 s.
-/// The readings alone cannot tell such a cycle from a slow one, so the
-/// caller sets it aside unless folding at its period explains clearly
-/// more than at the alias: the same watch's fourth wheel turns in 60 s,
-/// two turns of that alias, and is real.
 /// Whether the period search has a line of three readings or longer
-/// within its resolution (period² over the span) of `period`.
+/// within its resolution (period² over the span, at least 1%) of
+/// `period`: the search's own rule for matching a wheel.
 fn slow_search_line(period: f64, step: f64, span: f64, search: Option<&Period>) -> bool {
     search.is_some_and(|p| {
         std::iter::once(p.period_s)
@@ -1295,11 +1290,19 @@ fn slow_search_line(period: f64, step: f64, span: f64, search: Option<&Period>) 
     })
 }
 
-/// Up to this many turns of an alias count as its multiples, as a cycle
-/// is reduced to at most eight turns of a shorter one.
-const ALIAS_TURNS_MAX: f64 = 8.0;
-
-fn alias_of_fast_line(period: f64, step: f64, search: Option<&Period>) -> Option<f64> {
+/// The alias period, when a cycle of `period` in readings `step` apart
+/// is a whole or half number of turns of the alias of a period-search
+/// line too fast for the readings, within the resolution (period² over
+/// `span`, at least 1%, and at least 5% of the alias). Readings averaged
+/// over `step` sample a line of frequency ν at 1/`step`, so it shows at
+/// |ν − m/`step`| for the nearest whole m: a 15-tooth escape wheel at
+/// 28,800 bph (3.75 s) reads as a 30 s cycle in 10 s readings, and folds
+/// as well at 60 s, 120 s or 330 s, and partly at 75 s. The readings
+/// alone cannot tell such a cycle from a slow one, so the caller sets it
+/// aside unless folding at its period explains clearly more than at the
+/// alias: the same watch's fourth wheel turns in 60 s, two turns of that
+/// alias, and is real.
+fn alias_of_fast_line(period: f64, step: f64, span: f64, search: Option<&Period>) -> Option<f64> {
     let p = search?;
     let fs = 1.0 / step;
     std::iter::once(p.period_s)
@@ -1308,10 +1311,13 @@ fn alias_of_fast_line(period: f64, step: f64, search: Option<&Period>) -> Option
         .find_map(|q| {
             let nu = 1.0 / q;
             let alias = (nu - (nu / fs).round() * fs).abs();
-            let k = period * alias;
-            let m = k.round();
-            (alias > 0.0 && (1.0..=ALIAS_TURNS_MAX).contains(&m) && (k - m).abs() < 0.05 * m)
-                .then(|| 1.0 / alias)
+            if alias <= 0.0 {
+                return None;
+            }
+            let a = 1.0 / alias;
+            let m = (2.0 * period / a).round() / 2.0;
+            let tol = (period * period / span).max(0.01 * period).max(0.05 * a);
+            (m >= 1.0 && (period - m * a).abs() <= tol).then_some(a)
         })
 }
 
@@ -2487,6 +2493,39 @@ mod tests {
             "{}",
             s.headline
         );
+    }
+
+    #[test]
+    fn a_fast_lines_alias_is_no_cycle_at_any_number_of_its_turns() {
+        // One to seven hours of 10 s rate readings carrying the 30 s alias
+        // of a 3.75 s escape-wheel line, a fifth to a half of their
+        // variance: the autocorrelation offers every 30 s lag, and 330 s
+        // or 390 s (11 and 13 turns of the alias) do not reduce to it.
+        let tau = 2.0 * std::f64::consts::PI;
+        let runs = [360, 720, 1440, 2520].into_iter().flat_map(|n| {
+            [(0.7, 21), (1.0, 22), (1.4, 23)].map(|(amp, seed)| (n, amp, seed + n as u64))
+        });
+        for (n, amp, seed) in runs {
+            let mut z = Noise(seed);
+            let y: Vec<f64> = (0..n)
+                .map(|i| 5.0 + amp * (tau * i as f64 / 3.0 + 0.4).sin() + z.next())
+                .collect();
+            let s = check_series(
+                SeriesKind::Rate,
+                grid(y, 10.0),
+                None,
+                Some(search_line(3.75, 0.3, "ms", Some("escape wheel"))),
+                None,
+                &[],
+                &Config::default(),
+            );
+            assert!(s.cycle.is_none(), "seed {seed}: {}", s.headline);
+            assert!(
+                s.faster_than_readings().is_some(),
+                "seed {seed}: {}",
+                s.headline
+            );
+        }
     }
 
     #[test]
