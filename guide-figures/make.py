@@ -68,7 +68,7 @@ BASE_SETTINGS = {
 
 # The corpus commit the figures are made from. It runs ahead of the one
 # CI pins when a figure needs a take regress doesn't read.
-CORPUS_REVISION = "23b08a1016033e9823e27c85ac13ddad5e4b6e51"
+CORPUS_REVISION = "39b0d45e8999121e166ff69ccaa60d28d56de72d"
 
 
 def ensure_corpus(path):
