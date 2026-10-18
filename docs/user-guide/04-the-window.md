@@ -74,6 +74,19 @@ Pane settings sit in their toolbars or tab bars. Two-way controls such
 as **Stacked / Beside** switch between their alternatives. A narrow pane
 may truncate text; hover over a summary to read the full version.
 
+## Exporting a Pane
+
+Every pane except Watch has **Export…** in its toolbar; a chart has it in
+its tab bar. It saves the pane as a picture, as it is on the screen: a
+PNG file. A name with no ending is saved as a PNG. In the picture, the
+pane's name (with its own averaging time, if it has one) and a chart's
+key take the place of its controls, so the picture says what it shows
+without the buttons around it.
+
+The save starts in the folder you last chose for a picture, or else in
+the folder of the recording you last opened. The app forgets both when
+it closes.
+
 ## Help at the Point of Use
 
 Hover over **?** beside a card or pane name for a short explanation.
