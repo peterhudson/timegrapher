@@ -6,21 +6,27 @@ and “how early or late relative to the nominal beat sequence?” Once those
 axes are clear, the slope, separation and thickness of the lines tell
 different parts of the story.
 
-![Paper Strip running down, with Tick and Tock dots, a Rate Line, parallel guides and amplitude overlay](images/paper-strip.png)
+![Paper Strip across the window, with time increasing to the right](images/paper-strip-across.png)
 
 ## How to Read It
 
-With **Direction: Down**, the newest beats are at the top and older beats
-move down. Across the strip is timing displacement in milliseconds;
-**early is to the right**. At 28,800 bph the reference sequence has one
-beat every 125 ms.
+The strip runs **Across** unless you choose **Direction: Down**. Across,
+time runs from left to right with the newest beats at the right edge, and
+up and down is timing displacement in milliseconds: **early is up**. At
+28,800 bph the reference sequence has one beat every 125 ms.
 
-A watch at nominal rate maintains a constant timing displacement, so its
-trace is vertical. A gaining watch becomes progressively earlier: its
-trace leans right as you follow it upwards towards newer beats. A losing
-watch leans left. Compare the sideways displacement over a stated time,
-not the visual angle alone, because changing either scale changes that
-angle.
+A watch at nominal rate keeps a constant timing displacement, so its
+trace is level. A gaining watch becomes progressively earlier: its trace
+climbs as you follow it to the right towards newer beats. A losing watch
+falls. Compare the displacement over a stated time, not the visual angle
+alone, because changing either scale changes that angle.
+
+**Direction: Down** turns the strip a quarter turn, like the paper of a
+printing timegrapher: the newest beats are at the top, older beats move
+down, and early is to the right, so a gaining watch's trace leans right
+as you follow it upwards. The schematic below is drawn that way.
+
+![Paper Strip running down, with Tick and Tock dots, a Rate Line, parallel guides and amplitude overlay](images/paper-strip.png)
 
 ![Schematic strip patterns: steady, gaining, losing, separated Tick and Tock traces, and wrapping at an edge](images/strip-patterns.svg)
 
@@ -39,12 +45,6 @@ does not choose among those causes.
 When a line reaches an edge it wraps to the other side. That discontinuity
 is a display wrap, not a beat that suddenly arrived a strip-width early.
 Widen the view if wrapping obscures the pattern.
-
-With **Direction: Across**, time runs left to right, newest beats are on
-the right, and early is upwards. A gaining watch therefore rises to the
-right.
-
-![Paper Strip across the window, with time increasing to the right](images/paper-strip-across.png)
 
 ### Relating a Slope to Rate
 

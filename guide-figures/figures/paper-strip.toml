@@ -1,6 +1,6 @@
 # Chapter 6, The Paper Strip: the strip across, beside the Watch pane, for
 # a watch whose rate is steady over half a minute.
-output = "paper-strip.png"
+output = "paper-strip-across.png"
 
 # The readings across the top, Watch down the left, the strip filling the rest.
 layout = ["row", [0.2, "Watch"], [0.8, "Strip"]]
