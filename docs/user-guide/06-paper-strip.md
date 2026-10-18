@@ -26,7 +26,7 @@ printing timegrapher: the newest beats are at the top, older beats move
 down, and early is to the right, so a gaining watch's trace leans right
 as you follow it upwards. The schematic below is drawn that way.
 
-![Paper Strip running down, with Tick and Tock dots, a Rate Line, parallel guides and amplitude overlay](images/paper-strip.png)
+![Paper Strip running down, with Tick and Tock dots, a Rate Line and parallel guides](images/paper-strip.png)
 
 ![Schematic strip patterns: steady, gaining, losing, separated Tick and Tock traces, and wrapping at an edge](images/strip-patterns.svg)
 
@@ -112,7 +112,9 @@ and labelled **Masked**. A drag shorter than half a second is ignored, as
 a slip of the mouse. Click a masked stretch to bring it back, or
 **Unmask All** to bring them all back. While any are masked, the toolbar
 says how many there are and how long they add up to, for example
-"2 stretches masked, 41 s in all".
+"2 stretches masked, 0:41 in all".
+
+![Five seconds of a recording masked on the strip, shaded and labelled Masked, with the toolbar's count](images/paper-strip-masked.png)
 
 A masked stretch is cut like a pause. No reading reaches across it and
 nothing is read inside it; the charts, the whole-take figures, the

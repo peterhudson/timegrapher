@@ -1,0 +1,27 @@
+# Chapter 13, Sessions and Recordings: the Microphone controls once
+# stopped: Resume, New Session and Save.
+output = "stopped-buttons.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+# The watch on the stand, Start, listen a while, then Stop.
+actions = [["sleep", 10], ["stand", "DU"], ["click", 80, 164], ["sleep", 25], ["click", 79, 188], ["sleep", 1], ["stand", "off"]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 80
+folder = "Dandong 3235 DU"
+mode = "microphone"
+
+[wait]
+exact = 3
+
+[window]
+size = [1500, 900]
+
+[settings]
+show_readings = false
+keep_awake = false
+overlays = [false, false, false]

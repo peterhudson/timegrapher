@@ -1,0 +1,30 @@
+# Chapter 6, The Paper Strip: a stretch masked out of the readings.
+output = "paper-strip-masked.png"
+
+layout = "Strip"
+
+# Mask on, then drag along the strip over the stretch to leave out.
+actions = [["sleep", 8], ["click", 1306, 266], ["sleep", 1], ["drag", 620, 520, 900, 520], ["sleep", 3]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 45
+
+# The take names the calibre "3235", which the catalogue reads as Rolex's.
+[data.session]
+calibre = "Dandong 3235"
+
+[window]
+size = [1700, 800]
+
+[settings]
+overlays = [false, false, false]
+rate_line = true
+rate_guides = false
+
+[settings.strip]
+half_width_ms = 10.0
+span_s = 30.0
+horizontal = true

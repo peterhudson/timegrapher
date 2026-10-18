@@ -88,6 +88,9 @@ half of a paired test, **Save Results for 24 Hours…**.
 
    ![Positions Test measuring Dial Up](images/positions-measuring.png)
 
+   The pictures in this chapter shorten settling and measuring to 5 and
+   20 seconds; the app's own are 20 and 60 seconds.
+
 3. When prompted, turn the watch to the next position, check its seating,
    and click the named button, such as **Start DD Measurement**. The
    measured interval does not start while the app is waiting for that

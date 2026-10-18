@@ -376,9 +376,12 @@ def make(name, fig, corpus, clips, keep):
     if data.get("mode") == "microphone":
         # The app listens to a virtual stand that plays the recording.
         folder_of = target if os.path.isdir(target) else os.path.dirname(target)
-        stand = {k.upper(): os.path.join(folder_of, v) for k, v in data.get("stand", {}).items()}
-        if not stand:
-            stand = {"DU": target}
+        # A position's file is in the figure's folder, or a clip of its own
+        # ({corpus, file, start, seconds}) from another take.
+        stand = {k.upper(): os.path.join(recording(f"{name}-{k.lower()}", v, corpus, clips), clip_name(v))
+                 if isinstance(v, dict) else os.path.join(folder_of, v)
+                 for k, v in data.get("stand", {}).items()}
+        stand = {"DU": target, **stand}
         fig = dict(fig, _stand=stand)
         args = []
     return shoot(name, fig, work, home, args, data, keep)
@@ -514,7 +517,7 @@ def stop_player(env):
 
 def act(step, env):
     """One step before the picture: ["click", x, y] (in the window),
-    ["key", "ctrl+o"], ["type", "text"], ["sleep", seconds], or (with a
+    ["drag", x1, y1, x2, y2], ["key", "ctrl+o"], ["type", "text"], ["sleep", seconds], or (with a
     microphone figure) ["stand", "DD"] to turn the watch, ["stand", "off"]
     to take it off."""
     kind = step[0]
@@ -529,6 +532,22 @@ def act(step, env):
         subprocess.run(["xdotool", "mousemove", "--window", win, str(step[1]), str(step[2])], env=env)
         time.sleep(0.5)
         subprocess.run(["xdotool", "click", "1"], env=env)
+        time.sleep(0.5)
+        subprocess.run(["xdotool", "mousemove", "0", str(SCREEN[1] - 1)], env=env)
+    elif kind == "drag":
+        # ["drag", x1, y1, x2, y2]: press, move in steps as a hand would, release.
+        win = subprocess.run(["xdotool", "search", "--sync", "--onlyvisible", "--name", "^Timegrapher"],
+                             env=env, capture_output=True, text=True).stdout.split()[0]
+        x1, y1, x2, y2 = step[1:5]
+        subprocess.run(["xdotool", "mousemove", "--window", win, str(x1), str(y1)], env=env)
+        time.sleep(0.5)
+        subprocess.run(["xdotool", "mousedown", "1"], env=env)
+        for i in range(1, 21):
+            time.sleep(0.05)
+            subprocess.run(["xdotool", "mousemove", "--window", win,
+                            str(round(x1 + (x2 - x1) * i / 20)), str(round(y1 + (y2 - y1) * i / 20))], env=env)
+        time.sleep(0.3)
+        subprocess.run(["xdotool", "mouseup", "1"], env=env)
         time.sleep(0.5)
         subprocess.run(["xdotool", "mousemove", "0", str(SCREEN[1] - 1)], env=env)
     elif kind == "key":

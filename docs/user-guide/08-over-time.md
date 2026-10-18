@@ -19,7 +19,7 @@ that watch or another movement.
 
 ## The Charts
 
-![Rate, Amplitude and Beat Error charts over a two-hour recording](images/charts.png)
+![Rate, Amplitude and Beat Error charts over a two-hour recording, each averaged over 60 seconds](images/charts.png)
 
 The **Rate**, **Amplitude** and **Beat Error** panes plot readings against
 time. Rate is red, amplitude purple and beat error yellow. Additional
