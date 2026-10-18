@@ -40,7 +40,14 @@ timegrapher --help
 
 Or copy the **Command Line** folder somewhere you keep and run
 `./timegrapher --help` there. Keep `timegrapher-mcp` beside `timegrapher`:
-the server runs it.
+the server runs it. Programs copied off the disk image meet the same check
+as the app: if macOS says it cannot verify `timegrapher`, click **Done**,
+then **Open Anyway** in **System Settings**, **Privacy & Security**, as in
+step 3 above, or clear the download mark once in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine "Command Line"
+```
 
 ## Add It to Claude Desktop
 

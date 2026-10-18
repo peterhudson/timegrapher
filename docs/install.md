@@ -191,9 +191,10 @@ Before files are uploaded, release packaging also runs a synthetic operability
 check against each binary pair in the unzipped download: Linux **Command
 Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle
 on the mounted disk image; Windows **Command Line** folder and MCP bundle. A
-missing required binary or bundle fails the build, as does a zip that is not
-one folder, or a download whose documentation pages link to a file it lacks. Existing help/version, signature
-and archive checks remain in place.
+missing required binary or bundle fails the build, as does a zip that holds
+anything besides one folder, a disk image without its Applications shortcut,
+or a download whose documentation pages link to a file it lacks. Existing
+help/version, signature and archive checks remain in place.
 
 The documentation pages come from the Release workflow's `docs` job:
 `packaging/docs_html.py` renders `README.md`, `docs/` and the watchmaker

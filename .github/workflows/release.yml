@@ -59,9 +59,10 @@ jobs:
         run: python3 .github/scripts/release_ci_gate.py
 
   # The version every file of this run carries. Cargo.toml holds the base
-  # X.Y.Z; a draft takes the first patch at or above it that no release
-  # (drafts included) or tag has used, so a draft can be made at any time
-  # without a version bump. A tag build takes the tag's version.
+  # X.Y.Z; a draft takes one more than the highest patch any release
+  # (drafts included) or tag has used for that X.Y, never less than the
+  # base, so a draft can be made at any time without a version bump. A tag
+  # build takes the tag's version.
   version:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -206,11 +207,15 @@ jobs:
             mkdir check && 7z x -bso0 -ocheck "${files[0]}"
           fi
           folders=(check/*)
-          [ "${#folders[@]}" -eq 1 ] && [ -d "${folders[0]}" ]
+          # One line per test: bash -e does not stop on a failed test
+          # inside an && list.
+          [ "${#folders[@]}" -eq 1 ]
+          [ -d "${folders[0]}" ]
           echo "PKG=${folders[0]}" >> "$GITHUB_ENV"
           find "${folders[0]}" -maxdepth 2 | sort
           "$PY" packaging/docs_html.py check "${folders[0]}"
-          [ -f "${folders[0]}/Start Here.html" ] && [ -f "${folders[0]}/LICENSE.txt" ]
+          [ -f "${folders[0]}/Start Here.html" ]
+          [ -f "${folders[0]}/LICENSE.txt" ]
       - name: Check the programs (Linux)
         if: matrix.platform == 'linux'
         run: |
@@ -222,7 +227,8 @@ jobs:
           # executable, as file managers do.
           mkdir unzip-check && unzip -q "$ZIP" -d unzip-check
           app=(unzip-check/*/Timegrapher.AppImage)
-          [ -x "${app[0]}" ] && [ -x "$(dirname "${app[0]}")/Command Line/timegrapher" ]
+          [ -x "${app[0]}" ]
+          [ -x "$(dirname "${app[0]}")/Command Line/timegrapher" ]
           APPIMAGE_EXTRACT_AND_RUN=1 "${app[0]}" cli --version
           APPIMAGE_EXTRACT_AND_RUN=1 "${app[0]}" --help
           mkdir appimage-check
