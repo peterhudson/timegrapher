@@ -34,7 +34,7 @@ steady_shown = [["Periods", [true, false, false]], ["Fft", [true, false, false]]
 
 [settings.strip]
 half_width_ms = 250.0
-span_s = 300.0
+span_s = 7200.0
 horizontal = true
 
 # The take has no session.toml; these are from its README.
