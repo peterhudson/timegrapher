@@ -1,6 +1,7 @@
 # Desktop app
 
-`timegrapher-app` is the live timegrapher screen: put the watch on the
+The desktop app (**Timegrapher** in the downloads, `timegrapher-app` when
+built from source) is the live timegrapher screen: put the watch on the
 microphone and it shows the paper-strip trace with rate, amplitude and beat
 error, the way a bench timegrapher does. A recording, or a folder of
 segments, opens analysed all at once to look back through; it can also be
@@ -95,7 +96,9 @@ shift as they change.
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
 recording: **Open a Folder…** on the opening screen, **Open Folder…** in
-the Watch pane or the File menu, a folder typed into the path box, or `timegrapher-app FOLDER`.
+the Watch pane or the File menu, a folder typed into the path box, or the folder's path given to the app
+when it is started from a terminal (`timegrapher-app FOLDER`; see
+[Without a window](#without-a-window) for its name in each download).
 A saved take opens from its own folder or from the folder it was saved
 into, when that holds just the one take; with several, the message names
 them so one can be picked.
@@ -802,7 +805,10 @@ the program being stopped abruptly.
 
 ## Without a window
 
-For scripts, tests and an AI agent helping someone set up:
+For scripts, tests and an AI agent helping someone set up. The program
+is `timegrapher-app` when built from source, as below; in the downloads it
+is `Timegrapher.exe` on Windows, `Timegrapher.AppImage` on Linux and
+`Timegrapher.app/Contents/MacOS/timegrapher-app` on macOS.
 
 ```sh
 timegrapher-app --devices          # sound input devices and their formats, as JSON
