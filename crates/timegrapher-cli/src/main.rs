@@ -1253,6 +1253,11 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
             )),
             Caveat::ClockUnknown => Some("clock: card clock, not corrected".to_string()),
             Caveat::Breaks { count } => Some(format!("{count} breaks in the take")),
+            Caveat::Masked { seconds } if *seconds < 0.05 => None,
+            Caveat::Masked { seconds } if *seconds < 9.95 => {
+                Some(format!("{seconds:.1} s masked out"))
+            }
+            Caveat::Masked { seconds } => Some(format!("{seconds:.0} s masked out")),
             // Said on their own lines.
             Caveat::NoWatch
             | Caveat::SetRateDisagrees { .. }

@@ -326,7 +326,7 @@ fn readings_table(sn: &Session) -> String {
                     m.jitter_us,
                     r.bph
                 )),
-                duration(m.end_s - m.start_s),
+                duration(m.measured_s()),
                 esc(&r.label),
             );
             continue;
@@ -349,7 +349,7 @@ fn readings_table(sn: &Session) -> String {
             m.unlock_coverage
                 .map_or("-".into(), |c| format!("{:.0}%", 100.0 * c)),
             100.0 * m.clipped_fraction,
-            duration(m.end_s - m.start_s),
+            duration(m.measured_s()),
             esc(&r.label),
         );
     }

@@ -159,6 +159,10 @@ pub struct LiveAnalyzer {
     /// Intrinsic jumps and caller-supplied stretch boundaries, oldest first:
     /// readings never fit across one.
     breaks: Vec<f64>,
+    /// Stretches masked out of the readings by hand, start and end in
+    /// seconds, sorted and apart: cut like breaks, and nothing read in
+    /// them.
+    masked: Vec<(f64, f64)>,
     /// Whether the sound card's clock is corrected, for the caveats.
     clock_known: bool,
 }
@@ -186,6 +190,7 @@ impl LiveAnalyzer {
             logged_bph: None,
             intrinsic_breaks: Vec::new(),
             breaks: Vec::new(),
+            masked: Vec::new(),
             clock_known: false,
         }
     }
@@ -303,6 +308,19 @@ impl LiveAnalyzer {
         breaks.sort_by(f64::total_cmp);
         breaks.dedup();
         self.breaks = breaks;
+    }
+
+    /// Stretches masked out of the readings, start and end in seconds.
+    pub fn masked(&self) -> &[(f64, f64)] {
+        &self.masked
+    }
+
+    /// Replace the stretches masked out of the readings (any order;
+    /// overlapping ones are joined). The beats in them are kept, for the
+    /// strip, but no reading uses them or reaches across one.
+    pub fn set_masked(&mut self, spans: &[(f64, f64)]) {
+        let pairs: Vec<[f64; 2]> = spans.iter().map(|&(a, b)| [a, b]).collect();
+        self.masked = crate::session::masked_spans(&pairs);
     }
 
     /// Move the audio clock on by `seconds` with no audio, for a pause in
@@ -556,15 +574,26 @@ impl LiveAnalyzer {
     /// Readings over the `average_s` seconds before `end_s`.
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
         let mut from = end_s - average_s;
-        // The sound heard over the averaging time, since the start or the
-        // latest break.
-        let since = self
+        let masked_s = crate::session::masked_within(&self.masked, from, end_s);
+        // A masked stretch is cut like a break: readings start again at
+        // its end, and inside one there is nothing to read.
+        let mask_cut = self
+            .masked
+            .iter()
+            .filter(|m| m.0 <= end_s)
+            .map(|m| m.1.min(end_s))
+            .fold(f64::NEG_INFINITY, f64::max);
+        let latest_break = self
             .breaks
             .iter()
             .rev()
             .find(|&&b| b <= end_s)
             .copied()
-            .unwrap_or(0.0);
+            .unwrap_or(f64::NEG_INFINITY)
+            .max(mask_cut);
+        // The sound heard over the averaging time, since the start or the
+        // latest break.
+        let since = latest_break.max(0.0);
         let listened_s = (end_s - from.max(since).max(0.0)).max(0.0);
         let mut lo = self.beats.partition_point(|b| b.time < from);
         let hi = self.beats.partition_point(|b| b.time <= end_s);
@@ -576,14 +605,12 @@ impl LiveAnalyzer {
             lo = gap;
             from = self.beats[gap].time - 1e-6;
         }
-        // Nor across the start of a new stretch.
-        let brk = self.breaks.partition_point(|&b| b <= end_s);
-        if let Some(&b) = brk.checked_sub(1).and_then(|i| self.breaks.get(i)) {
-            if b > from {
-                from = b;
-                lo = lo.max(self.beats.partition_point(|x| x.time < b));
-            }
+        // Nor across the start of a new stretch or a masked one.
+        if latest_break > from {
+            from = latest_break;
+            lo = lo.max(self.beats.partition_point(|x| x.time < latest_break));
         }
+        let lo = lo.min(hi);
         let span_s = if lo < hi {
             end_s - self.beats[lo].time.max(from)
         } else {
@@ -597,7 +624,15 @@ impl LiveAnalyzer {
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
         let a0 = self.amp.partition_point(|w| w.end_s <= from);
         let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
-        let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)].iter().collect();
+        let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)]
+            .iter()
+            .filter(|w| {
+                !self
+                    .masked
+                    .iter()
+                    .any(|&(a, b)| w.start_s < b && w.end_s > a)
+            })
+            .collect();
         let med = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Option<f64> {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
@@ -618,12 +653,7 @@ impl LiveAnalyzer {
         // unbroken run of beats, back to a break, up to RATE_RUN_S), scaled
         // to the averaging time by `measure`.
         let rate_windows = bph.map_or_else(Vec::new, |b| {
-            let floor = from.min(end_s - RATE_RUN_S).max(
-                brk.checked_sub(1)
-                    .and_then(|i| self.breaks.get(i))
-                    .copied()
-                    .unwrap_or(f64::NEG_INFINITY),
-            );
+            let floor = from.min(end_s - RATE_RUN_S).max(latest_break);
             let mut r0 = self.beats.partition_point(|x| x.time < floor);
             if let Some(gap) = (r0 + 1..hi)
                 .rev()
@@ -653,6 +683,10 @@ impl LiveAnalyzer {
                 average_s: Some(average_s),
             },
         );
+        let mut caveats = assessment.caveats;
+        if masked_s > 0.0 {
+            measure::add(&mut caveats, Caveat::Masked { seconds: masked_s });
+        }
         LiveReading {
             time_s: end_s,
             bph,
@@ -673,7 +707,7 @@ impl LiveAnalyzer {
             watch_heard,
             rate_error_s_per_day: assessment.confidence.and_then(|c| c.rate.se),
             beat_error_unlock_error_ms: assessment.confidence.and_then(|c| c.beat_error.se),
-            caveats: assessment.caveats,
+            caveats,
         }
     }
 }
@@ -741,6 +775,34 @@ mod tests {
             clipped_samples: 0,
             jumps: vec![60.03],
         }
+    }
+
+    #[test]
+    fn a_masked_stretch_is_cut_like_a_break() {
+        // 10 s/d before 60 s, 200 s/d after: a mask over the start of the
+        // second run leaves readings after it on that run alone, and none
+        // inside it.
+        let mut log = viewer_phase_log(10.0, 200.0);
+        log.jumps.clear();
+        let mut a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let before = a.reading_at(90.0, 60.0);
+        a.set_masked(&[(70.0, 80.0), (55.0, 62.0)]);
+        assert_eq!(a.masked(), [(55.0, 62.0), (70.0, 80.0)]);
+        let inside = a.reading_at(75.0, 30.0);
+        assert_eq!(inside.rate_s_per_day, None);
+        assert_eq!(inside.beats_used, 0);
+        let after = a.reading_at(90.0, 60.0);
+        assert!((after.span_s - 10.0).abs() < 0.2, "{}", after.span_s);
+        assert!(after
+            .rate_s_per_day
+            .is_some_and(|r| (r - 200.0).abs() < 5.0));
+        assert!(after.caveats.contains(&Caveat::Masked { seconds: 17.0 }));
+        assert!(!before
+            .caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::Masked { .. })));
+        a.set_masked(&[]);
+        assert_eq!(a.reading_at(90.0, 60.0).span_s, before.span_s);
     }
 
     #[test]

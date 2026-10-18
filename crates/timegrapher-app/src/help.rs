@@ -182,6 +182,12 @@ pub const STRIP: &[&str] = &[
     "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
+    "Mask leaves stretches out of the readings, such as a bump of the stand: with it \
+     on, drag along the strip over the beats to mask them, and click a masked stretch \
+     to bring it back. Nothing is read inside a masked stretch and no reading reaches \
+     across one; the charts, the steadiness tests and a Positions Test leave it out too. \
+     A take saved from the app keeps them; masking a recording opened from disk lasts \
+     until it is closed. While Mask is on, dragging masks instead of sliding the trace.",
 ];
 
 pub const PROFILE: &[&str] = &[

@@ -223,6 +223,9 @@ pub struct Measurement {
     /// fitted on each side of them apart.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<Break>,
+    /// Seconds within the stretch masked out of the readings by hand.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub masked_s: f64,
     pub beats: usize,
     /// Share of the expected beats found with a clean match, 0..1.
     pub clean_fraction: f64,
@@ -293,6 +296,59 @@ impl Measurement {
             .or(self.beat_error_ms)
             .map(f64::abs)
     }
+
+    /// The seconds measured: the stretch read, less what was masked out.
+    pub fn measured_s(&self) -> f64 {
+        self.end_s - self.start_s - self.masked_s
+    }
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// Masked stretches as given, cleaned for use: finite, start before end,
+/// sorted, and overlapping ones joined.
+pub fn masked_spans(spans: &[[f64; 2]]) -> Vec<(f64, f64)> {
+    let mut v: Vec<(f64, f64)> = spans
+        .iter()
+        .filter(|s| s[0].is_finite() && s[1].is_finite() && s[1] > s[0])
+        .map(|s| (s[0], s[1]))
+        .collect();
+    v.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out: Vec<(f64, f64)> = Vec::with_capacity(v.len());
+    for (a, b) in v {
+        match out.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => out.push((a, b)),
+        }
+    }
+    out
+}
+
+/// Whether `t` falls in one of the (cleaned) masked stretches.
+pub fn in_mask(masked: &[(f64, f64)], t: f64) -> bool {
+    masked.iter().any(|&(a, b)| t >= a && t <= b)
+}
+
+/// Seconds of the masked stretches that fall between `from_s` and `to_s`.
+pub fn masked_within(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> f64 {
+    masked
+        .iter()
+        .map(|&(a, b)| (b.min(to_s) - a.max(from_s)).max(0.0))
+        .sum()
+}
+
+/// Leave the masked stretches out of a beat log: their beats, the
+/// amplitude windows that reach into them, and their clipped beats.
+pub fn mask_log(log: &mut BeatLog, masked: &[(f64, f64)]) {
+    if masked.is_empty() {
+        return;
+    }
+    log.beats.retain(|b| !in_mask(masked, b.time));
+    log.amplitude_windows
+        .retain(|w| !masked.iter().any(|&(a, b)| w.start_s < b && w.end_s > a));
+    log.clipped_beats.retain(|&t| !in_mask(masked, t));
 }
 
 fn percentile(v: &[f64], q: f64) -> Option<f64> {
@@ -326,15 +382,39 @@ pub fn measure_with_breaks(
     from_s: f64,
     to_s: f64,
 ) -> Measurement {
+    measure_masked(log, clock, breaks, &[], from_s, to_s)
+}
+
+/// [`measure_with_breaks`] leaving out stretches masked by hand (cleaned
+/// with [`masked_spans`]): they are cut like breaks, so no fit or window
+/// reaches across one, their beats and amplitude windows are left out,
+/// the beats expected and the sound listened to leave out their time, and
+/// the caveats say how much was masked.
+pub fn measure_masked(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    masked: &[(f64, f64)],
+    from_s: f64,
+    to_s: f64,
+) -> Measurement {
     let to_s = to_s.min(log.duration_s);
     let from_s = from_s.clamp(0.0, to_s);
+    let masked_s = masked_within(masked, from_s, to_s);
     let map = crate::longrun::true_time(clock, breaks);
-    let cuts = crate::longrun::cuts(clock, breaks);
+    let mut cuts = crate::longrun::cuts(clock, breaks);
+    cuts.extend(
+        masked
+            .iter()
+            .filter(|&&(a, b)| b > from_s && a < to_s)
+            .map(|&(a, _)| map(a)),
+    );
+    cuts.sort_by(f64::total_cmp);
     let apart = |w: &timing::WindowFit| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s);
     let beats: Vec<Beat> = log
         .beats
         .iter()
-        .filter(|b| b.time >= from_s && b.time < to_s)
+        .filter(|b| b.time >= from_s && b.time < to_s && !in_mask(masked, b.time))
         .map(|b| Beat {
             time: map(b.time),
             ..*b
@@ -358,6 +438,7 @@ pub fn measure_with_breaks(
         .amplitude_windows
         .iter()
         .filter(|w| w.start_s >= from_s && w.end_s <= to_s)
+        .filter(|w| !masked.iter().any(|&(a, b)| w.start_s < b && w.end_s > a))
         .collect();
     let amps: Vec<f64> = amp.iter().filter_map(|w| w.mean()).collect();
     let amp_samples: Vec<twostate::Sample> = amp
@@ -381,14 +462,15 @@ pub fn measure_with_breaks(
         .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
         .map(|b| b.gap_s)
         .sum();
-    let span = map(to_s) - map(from_s) - gaps;
+    let span = map(to_s) - map(from_s) - gaps - masked_s;
     let expected = span * log.bph as f64 / 3600.0;
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
     let clipped = log
         .clipped_beats
         .iter()
-        .filter(|&&t| t >= from_s && t < to_s)
+        .filter(|&&t| t >= from_s && t < to_s && !in_mask(masked, t))
         .count();
+    let listened_s = to_s - from_s - masked_s;
     let jitter_us = median_of(windows.iter().map(|w| w.fit.jitter_us));
     let mut m = Measurement {
         start_s: from_s,
@@ -398,6 +480,7 @@ pub fn measure_with_breaks(
             .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
             .copied()
             .collect(),
+        masked_s,
         beats: beats.len(),
         clean_fraction: (clean as f64 / expected.max(1.0)).min(1.0),
         calibrated: clock.is_some(),
@@ -408,7 +491,7 @@ pub fn measure_with_breaks(
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
         jitter_us,
-        watch_heard: crate::measure::watch_heard(jitter_us, log.bph, to_s - from_s),
+        watch_heard: crate::measure::watch_heard(jitter_us, log.bph, listened_s),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
@@ -444,16 +527,24 @@ pub fn measure_with_breaks(
             expected,
             clipped_fraction: m.clipped_fraction,
             span_s: match (beats.first(), beats.last()) {
-                (Some(a), Some(b)) => b.time - a.time - gaps,
+                (Some(a), Some(b)) => {
+                    b.time - a.time - gaps - masked_within(masked, a.time, b.time)
+                }
                 _ => 0.0,
             },
-            listened_s: to_s - from_s,
+            listened_s,
             breaks: m.breaks.len(),
             average_s: None,
         },
     );
     m.confidence = a.confidence;
     m.caveats = a.caveats;
+    if masked_s > 0.0 {
+        crate::measure::add(
+            &mut m.caveats,
+            crate::measure::Caveat::Masked { seconds: masked_s },
+        );
+    }
     if !m.watch_heard {
         m.rate_s_per_day = None;
         m.beat_error_ms = None;
@@ -950,7 +1041,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                 ),
             );
         }
-        let measured = m.end_s - m.start_s;
+        let measured = m.measured_s();
         if measured < SHORT_MEASURE_S {
             push(
                 "measurement_short",
@@ -1150,6 +1241,11 @@ pub struct RecordingEntry {
     pub end_s: Option<f64>,
     pub settle_s: Option<f64>,
     pub measure_s: Option<f64>,
+    /// Stretches left out of the readings by hand, as `[start, end]` pairs
+    /// in seconds into the file or folder, such as a bump of the stand:
+    /// `masked = [[600.0, 612.5]]`. They are cut out like breaks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub masked: Vec<[f64; 2]>,
     pub notes: Option<String>,
     pub reference: Option<Reference>,
     /// A fault confirmed at the bench, on a corpus holdout take:

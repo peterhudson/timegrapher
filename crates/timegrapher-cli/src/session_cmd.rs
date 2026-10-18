@@ -161,6 +161,29 @@ impl Options {
 /// Seconds of audio the beat shape is measured on.
 const SHAPE_S: f64 = 60.0;
 
+/// Where the beat shape is measured, clear of masked stretches: the first
+/// unmasked stretch from `from_s` to `to_s` that is [`SHAPE_S`] long, else
+/// the longest one. Start and length, seconds; None when all of it is
+/// masked.
+fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, f64)> {
+    let mut clear = Vec::new();
+    let mut at = from_s;
+    for &(a, b) in masked {
+        if a > at {
+            clear.push((at, a.min(to_s)));
+        }
+        at = at.max(b);
+    }
+    clear.push((at, to_s));
+    let clear: Vec<(f64, f64)> = clear.into_iter().filter(|(a, b)| b > a).collect();
+    let pick = clear.iter().find(|(a, b)| b - a >= SHAPE_S).or_else(|| {
+        clear
+            .iter()
+            .max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0)))
+    })?;
+    Some((pick.0, SHAPE_S.min(pick.1 - pick.0)))
+}
+
 fn is_audio(p: &Path) -> bool {
     p.extension()
         .and_then(|e| e.to_str())
@@ -505,6 +528,9 @@ fn read_one_inner(
         &log.jumps,
     );
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    // Stretches masked by hand are left out of everything read below.
+    let masked = session::masked_spans(&e.masked);
+    session::mask_log(&mut log, &masked);
     let (start, stop) = span_of(e, log.duration_s)?;
     let settle = start
         + e.settle_s
@@ -517,7 +543,8 @@ fn read_one_inner(
         .or(c.m.measure_s)
         .map_or(stop, |m| settle + m)
         .min(stop);
-    let mut measurement = session::measure_with_breaks(&log, clock.as_ref(), &breaks, settle, end);
+    let mut measurement =
+        session::measure_masked(&log, clock.as_ref(), &breaks, &masked, settle, end);
     if !lift_known(c, cal) {
         measurement.lift_unknown();
     }
@@ -544,14 +571,25 @@ fn read_one_inner(
         // The part's times start at `settle`, so its breaks move with
         // it; a clock fit that holds the gaps at their own places is left
         // out (a ppm or so makes no odds to a cycle's period).
-        let inside: Vec<_> = breaks
+        let mut inside: Vec<_> = breaks
             .iter()
             .filter(|b| b.audio_s > settle && b.audio_s < end)
             .map(|b| breaks::Break {
                 audio_s: b.audio_s - settle,
                 gap_s: b.gap_s,
             })
+            // A masked stretch is a missing one, with no time lost.
+            .chain(
+                masked
+                    .iter()
+                    .filter(|&&(a, _)| a > settle && a < end)
+                    .map(|&(a, _)| breaks::Break {
+                        audio_s: a - settle,
+                        gap_s: 0.0,
+                    }),
+            )
             .collect();
+        inside.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
         let part_clock = clock.as_ref().filter(|c| c.breaks.is_empty());
         session::cycles(
             &longrun::analyse_with_breaks(&part, part_clock, &inside, &lc),
@@ -561,14 +599,15 @@ fn read_one_inner(
 
     let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
         None
-    } else {
-        let len = SHAPE_S.min(end - settle);
-        let (x, fs) = excerpt(&files, settle, len)?;
+    } else if let Some((from, len)) = shape_stretch(&masked, settle, end) {
+        let (x, fs) = excerpt(&files, from, len)?;
         let env = envelope(&x, fs, &EnvelopeConfig::default());
         let (found, _) = beats::detect(&env, fs, log.bph);
         let beat_s = timing::fit(&found, log.bph).map_or(3600.0 / log.bph as f64, |f| f.period_s);
         let r = shape::analyze(&env, fs, &found, beat_s, &ShapeConfig::default());
         Some(session::shape_summary(&r, x.len() as f64 / fs))
+    } else {
+        None
     };
 
     let label = if e.start_s.is_some() || e.end_s.is_some() {
@@ -764,7 +803,7 @@ fn csv(s: &Session) -> String {
             r.label.replace(',', ";"),
             r.position,
             opt(r.wind_h, 1).replace('-', ""),
-            m.end_s - m.start_s,
+            m.measured_s(),
             m.beats,
             m.clean_fraction,
             m.calibrated,
@@ -1264,6 +1303,93 @@ mod tests {
         .unwrap();
         assert!(m.recordings.is_empty());
         assert!(toml::from_str::<Manifest>("no_such_key = 1\n").is_err());
+    }
+
+    #[test]
+    fn the_shape_is_measured_clear_of_masked_stretches() {
+        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
+        // A bump in the first minute: the next clear minute.
+        assert_eq!(
+            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
+            Some((58.0, SHAPE_S))
+        );
+        // No clear minute: the longest clear stretch.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
+            Some((75.0, 25.0))
+        );
+        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
+    }
+
+    /// A session file with a masked bump: `session` leaves it out of the
+    /// rate, says how much was masked, and counts only the seconds read.
+    #[test]
+    fn a_masked_bump_in_a_session_file_is_left_out() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-session-masked-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let bump = (50.0, 56.0);
+        let cfg = SynthConfig {
+            duration_s: 120.0,
+            rate_s_per_day: 0.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 280.0,
+            |t| {
+                if t >= bump.0 && t < bump.1 {
+                    4000.0
+                } else {
+                    3.0
+                }
+            },
+        );
+        audio::write_wav(&dir.join("take.wav"), &audio).unwrap();
+        let read = |masked: &str| -> serde_json::Value {
+            fs::write(
+                dir.join("session.toml"),
+                format!("bph = 28800\nlift = 52\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n{masked}"),
+            )
+            .unwrap();
+            let out = dir.join("out");
+            let o = Options {
+                settle: Some(10.0),
+                out: Some(out.clone()),
+                ..options(None, None, None)
+            };
+            run(std::slice::from_ref(&dir), &o).unwrap();
+            let text = fs::read_to_string(out.join("summary.json")).unwrap();
+            let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+            v["csv"] = fs::read_to_string(out.join("readings.csv")).unwrap().into();
+            v
+        };
+        let bumped = read("");
+        let m = &bumped["readings"][0]["measurement"];
+        let rate = m["rate_s_per_day"].as_f64().unwrap();
+        assert!((rate - 3.0).abs() > 5.0, "the bump didn't show: {rate}");
+        assert!(m.get("masked_s").is_none());
+
+        let v = read("masked = [[49.0, 57.0]]\n");
+        let m = &v["readings"][0]["measurement"];
+        let rate = m["rate_s_per_day"].as_f64().unwrap();
+        assert!((rate - 3.0).abs() < 1.0, "rate {rate}");
+        assert_eq!(m["masked_s"].as_f64(), Some(8.0));
+        let caveats = m["caveats"].to_string();
+        assert!(caveats.contains("masked"), "{caveats}");
+        assert!(!caveats.contains("beats_missing"), "{caveats}");
+        // 110 s after settling, less the 8 s masked.
+        let row = v["csv"]
+            .as_str()
+            .unwrap()
+            .lines()
+            .nth(1)
+            .unwrap()
+            .to_string();
+        assert_eq!(row.split(',').nth(3), Some("102.0"), "{row}");
+        assert!(v["readings"][0]["shape"].is_object(), "no shape");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
