@@ -320,6 +320,10 @@ pub struct SeriesCheck {
     /// Length of each reading, seconds; readings used; readings left out
     /// as outliers.
     pub step_s: f64,
+    /// Length of the readings cycles are folded in: `step_s`, or the
+    /// shorter windows (2 s) where the amplitude and beat error have them.
+    #[serde(skip)]
+    cycle_step_s: f64,
     pub readings: usize,
     pub outliers: usize,
     pub median: Option<f64>,
@@ -869,6 +873,7 @@ pub fn check_series(
         lead: Lead::TooShort,
         headline: String::new(),
         step_s: g.step,
+        cycle_step_s: fine.as_ref().map_or(g.step, |f| f.step),
         readings: n,
         outliers,
         median: {
@@ -1374,7 +1379,7 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
     // "no cycle"; any other lead without a cycle gets it as a sentence.
     match s.lead {
         Lead::TooShort | Lead::Steady | Lead::Wandering | Lead::Periodic => text,
-        _ => match fast_line(s, &every_text(s.step_s)) {
+        _ => match fast_line(s) {
             Some(line) => {
                 let mut c = line.chars();
                 let line: String = c
@@ -1411,7 +1416,7 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
         // check_series states the too-short case, with its rule, before
         // the tests run.
         Lead::TooShort => s.headline.clone(),
-        Lead::Steady => match fast_line(s, &step) {
+        Lead::Steady => match fast_line(s) {
             None => format!(
                 "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
                 s.readings,
@@ -1526,7 +1531,7 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
                     a.max_excess
                 ));
             }
-            match fast_line(s, &step) {
+            match fast_line(s) {
                 None => format!(
                     "Successive {step} {name} readings are correlated ({}); no cycle, level change or trend detected.",
                     parts.join("; ")
@@ -1542,37 +1547,41 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
 
 impl SeriesCheck {
     /// The period search's line when no cycle shows in the readings and
-    /// the line turns in under three readings, so they cannot show it.
+    /// the line turns in under three of the readings cycles are folded in
+    /// (the 2 s windows for the amplitude and beat error), so they cannot
+    /// show it.
     pub fn faster_than_readings(&self) -> Option<&Period> {
         self.period
             .as_ref()
-            .filter(|p| self.cycle.is_none() && p.period_s < 3.0 * self.step_s)
+            .filter(|p| self.cycle.is_none() && p.period_s < 3.0 * self.cycle_step_s)
     }
 }
 
 /// The period search's line when it is too fast for the readings to show
 /// as a cycle (under three readings a turn): without it, a headline that
 /// says "no cycle" would contradict the period search on the same series.
-/// For the rate the search reads the beat timing, so its size is the
-/// timing swing.
-fn fast_line(s: &SeriesCheck, step: &str) -> Option<String> {
+/// For the rate the search reads the beat timing: a line under 30 s is
+/// sized as the timing swing in ms, a slower one as the rate swing in s/d
+/// (`longrun::TIMING_UNIT_BELOW_S`), and named after what it measures.
+fn fast_line(s: &SeriesCheck) -> Option<String> {
     let p = s.faster_than_readings()?;
-    let what = match s.series {
-        SeriesKind::Rate => "the beat timing".to_string(),
-        k => format!("the {}", k.name()),
+    let what = match (s.series, p.size_unit) {
+        (SeriesKind::Rate, "ms") => "the beat timing".to_string(),
+        (k, _) => format!("the {}", k.name()),
     };
     let wheel = p
         .wheel
         .as_ref()
         .map_or(String::new(), |w| format!(", the {w}'s period"));
-    let size = if p.size >= 0.1 {
-        format!("{:.2}", p.size)
-    } else {
-        format!("{:.3}", p.size)
+    // Two decimals, as the period search's own line in the report.
+    let size = match p.size_unit {
+        "deg" => format!("{:.2}°", p.size),
+        u => format!("{:.2} {u}", p.size),
     };
     Some(format!(
-        "{what} repeats every {:.1} s{wheel}, {size} {} peak to peak; {step} readings are too coarse to show it",
-        p.period_s, p.size_unit
+        "{what} repeats every {:.1} s{wheel}, {size} peak to peak; {} readings are too coarse to show it",
+        p.period_s,
+        every_text(s.cycle_step_s)
     ))
 }
 
@@ -2340,6 +2349,125 @@ mod tests {
         assert_eq!(ch.segments.len(), 2);
         assert!((ch.segments[1].start_s - 2000.0).abs() < 90.0);
         assert!((s.cusum.unwrap().at_s - 2000.0).abs() < 90.0);
+    }
+
+    fn search_line(
+        period_s: f64,
+        size: f64,
+        size_unit: &'static str,
+        wheel: Option<&str>,
+    ) -> Period {
+        Period {
+            period_s,
+            significance: 10.0,
+            explained: 0.5,
+            peak_to_peak: size,
+            timing_peak_to_peak_ms: None,
+            size,
+            size_unit,
+            wheel: wheel.map(str::to_string),
+            other_periods_s: vec![],
+        }
+    }
+
+    fn noise(seed: u64, n: usize, level: f64, sd: f64) -> Vec<f64> {
+        let mut z = Noise(seed);
+        (0..n).map(|_| level + sd * z.next()).collect()
+    }
+
+    #[test]
+    fn a_fast_rate_line_is_stated_as_the_beat_timing_in_ms() {
+        let s = check_series(
+            SeriesKind::Rate,
+            grid(noise(11, 360, 5.0, 2.0), 10.0),
+            None,
+            Some(search_line(5.0, 0.0432, "ms", Some("escape wheel"))),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert_eq!(s.lead, Lead::Steady, "{}", s.headline);
+        assert!(
+            s.headline.ends_with("; the beat timing repeats every 5.0 s, the escape wheel's period, 0.04 ms peak to peak; 10 s readings are too coarse to show it."),
+            "{}",
+            s.headline
+        );
+    }
+
+    #[test]
+    fn a_rate_line_of_30_s_or_more_is_stated_as_the_rate_in_s_per_day() {
+        // `series --reading 30`: the fourth wheel turns in two readings.
+        let s = check_series(
+            SeriesKind::Rate,
+            grid(noise(12, 400, 5.0, 2.0), 30.0),
+            None,
+            Some(search_line(60.0, 1.2, "s/d", Some("fourth wheel"))),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert!(
+            s.headline.contains("; the rate repeats every 60.0 s, the fourth wheel's period, 1.20 s/d peak to peak; 30 s readings are too coarse to show it."),
+            "{}",
+            s.headline
+        );
+        assert!(!s.headline.contains("beat timing"), "{}", s.headline);
+    }
+
+    #[test]
+    fn an_amplitude_line_is_judged_against_the_2_s_windows() {
+        let fine = || grid(noise(13, 1800, 270.0, 3.0), 2.0);
+        let readings = || grid(noise(14, 360, 270.0, 1.5), 10.0);
+        let s = check_series(
+            SeriesKind::Amplitude,
+            readings(),
+            Some(fine()),
+            Some(search_line(4.0, 0.8, "deg", None)),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert!(
+            s.headline.ends_with("; the amplitude repeats every 4.0 s, 0.80° peak to peak; 2 s readings are too coarse to show it."),
+            "{}",
+            s.headline
+        );
+        // 20 s is under three 10 s readings but over three 2 s windows,
+        // which can show it: no fast line.
+        let s = check_series(
+            SeriesKind::Amplitude,
+            readings(),
+            Some(fine()),
+            Some(search_line(20.0, 0.8, "deg", None)),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert!(s.faster_than_readings().is_none(), "{}", s.headline);
+        assert!(!s.headline.contains("too coarse"), "{}", s.headline);
+    }
+
+    #[test]
+    fn a_fast_line_beside_a_level_change_is_its_own_sentence() {
+        let mut z = Noise(2);
+        let y: Vec<f64> = (0..1800)
+            .map(|i| if i < 1000 { 5.0 } else { 9.0 } + 2.0 * z.next())
+            .collect();
+        let s = check_series(
+            SeriesKind::Rate,
+            grid(y, 2.0),
+            None,
+            Some(search_line(4.0, 0.0432, "ms", Some("escape wheel"))),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert_eq!(s.lead, Lead::ShiftingMean, "{}", s.headline);
+        assert!(
+            s.headline.ends_with(". The beat timing repeats every 4.0 s, the escape wheel's period, 0.04 ms peak to peak; 2 s readings are too coarse to show it."),
+            "{}",
+            s.headline
+        );
     }
 
     #[test]
