@@ -45,7 +45,7 @@ The most consequential distinction is:
 | `analyze` | Explicit `--bph` and `--lift` override the calibre; otherwise use its known values, then detected beat rate/default 52° |
 | `record` | Can use calibre values when numerical settings are absent; records context in the session |
 | `session` | Explicit numerical options override the manifest; the manifest takes precedence over catalogue defaults |
-| `long`, `series` | `--calibre` supplies train associations; give `--lift` separately (default 52°), and `--bph` if you need to fix the nominal rate |
+| `long`, `series` | `--lift` overrides the calibre's lift angle; otherwise use the calibre's, then 52°. `--calibre` also supplies the train periods but not the beat rate: give `--bph` if you need to fix the nominal rate |
 | `profile`, `shape` | Supply `--lift` and, if needed, `--bph`; these commands do not take `--calibre` |
 
 `--notch 5000,7000` removes selected steady tones in Hz where supported.
@@ -205,7 +205,7 @@ bounded memory. It reports timing and amplitude trends and periodic
 components with possible wheel associations, and writes an HTML report.
 
 ```sh
-timegrapher long overnight/ --bph 28800 --lift 52 --calibre "ETA 2824-2" --clock overnight/clock.csv --out overnight-report/
+timegrapher long overnight/ --bph 28800 --calibre "ETA 2824-2" --clock overnight/clock.csv --out overnight-report/
 ```
 
 The explicit `--clock` log takes precedence over other clock sources.
@@ -213,9 +213,10 @@ Without a log, stored or USB-derived corrections may be available; read
 the reported basis. A log must belong to the recording's audio timeline.
 Omit the option if there is no suitable log.
 
-`--calibre` supplies train periods here; it does **not** replace the
-separate `--lift` setting. A reported match to a wheel's period is an
-association to investigate, not proof that the wheel is faulty. See
+`--calibre` supplies the train periods and the lift angle here (an
+explicit `--lift` wins); it does **not** set the beat rate, so give
+`--bph` when the nominal rate matters. A reported match says a period in
+the rate agrees with that wheel's period; it does not say what causes it. See
 [Long runs](../long-runs.md) and
 [Steadiness](09-steadiness.md#periods).
 
@@ -225,7 +226,7 @@ association to investigate, not proof that the wheel is faulty. See
 panes:
 
 ```sh
-timegrapher series overnight/ --bph 28800 --lift 52 --calibre "ETA 2824-2"
+timegrapher series overnight/ --bph 28800 --calibre "ETA 2824-2"
 timegrapher series overnight/ --bph 28800 --lift 52 --wind-h 0 --json > series.json
 timegrapher series overnight/ --bph 28800 --lift 52 --json --views > series-with-plots.json
 ```

@@ -202,8 +202,8 @@ timegrapher series run-down/ --bph 28800 --lift 52 --wind-h 0 --json > run-down-
 ```
 
 Add `--clock run-down/clock.csv` when the recording carries a suitable
-clock log. Use `--calibre` to supply wheel associations as well, but in
-`series` the lift angle is still supplied separately with `--lift`.
+clock log. `--calibre` supplies the wheel periods and, when you don't
+give `--lift`, the calibre's lift angle; it does not set the beat rate.
 
 The JSON includes each amplitude bin's count, quartiles and time range,
 the fitted coefficients, and the exact comparison intervals. That makes

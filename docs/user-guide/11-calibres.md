@@ -124,8 +124,8 @@ amplitude calculation too.
 `timegrapher calibres` lists the catalogue; a name or `--search` narrows
 it. Settings have command-specific meanings. In particular, `analyze`
 can take beat rate and lift angle from `--calibre`, while `long` and
-`series` use it only to name wheels: give the lift angle with `--lift`
-(52° if you don't). See [Common Options](14-command-line.md#common-options).
+`series` take its lift angle and wheels but not its beat rate (`--lift`
+overrides the lift angle; 52° when neither gives one). See [Common Options](14-command-line.md#common-options).
 
 ---
 
