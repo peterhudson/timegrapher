@@ -40,7 +40,12 @@ assume that every individual operation will always produce a new prompt.
 
 ## A Useful First Conversation
 
-Start with a saved recording whose conditions you know. Give its **full
+The simplest start is a recording and a plain question:
+
+> Here is a recording of my watch, dial up:
+> /Users/you/Recordings/watch_DU.flac. What do the figures say?
+
+The more you tell it, the more it can say. Give the recording's **full
 local path**, the position, calibre, lift angle and winding state. For
 example:
 
