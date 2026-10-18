@@ -116,6 +116,17 @@ impl Position {
         format!("{} ({})", self.name(), self.code())
     }
 
+    /// The name as the app and the text report show it: "Crown Up (CU,
+    /// 3H)", the common code with Witschi's beside it, or "Dial Up (DU)"
+    /// where Witschi's is a letter code. JSON keeps [`Position::label`].
+    pub fn display_label(self) -> String {
+        if self.code().starts_with(|c: char| c.is_ascii_digit()) {
+            format!("{} ({}, {})", self.name(), self.common(), self.code())
+        } else {
+            format!("{} ({})", self.name(), self.common())
+        }
+    }
+
     /// The short name most hobby timegraphers use.
     pub fn common(self) -> &'static str {
         match self {
@@ -862,7 +873,7 @@ const UNLOCK_COVERAGE_LISTED: f64 = 0.6;
 const SHORT_MEASURE_S: f64 = 40.0;
 
 /// The sentence for a recording with no regular beat, e.g. "No regular
-/// beat found (timing scatter 8.6 ms, 2.4% of a beat)", as every surface
+/// beat found (timing scatter 8.6 ms, 6.9% of a beat)", as every surface
 /// states it.
 pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
     match jitter_us.filter(|j| j.is_finite()) {

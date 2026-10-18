@@ -185,10 +185,11 @@ the letter forms match in any case; 3H, 6H, 9H and 12H only in capitals,
 so that `_2h` or `_12h` (a duration) is not taken for a position.
 
 Witschi's codes count round the dial with the crown at 3 o'clock, so crown
-up is 3H and crown right 12H. The report names each position in words with
-the code beside it: "Crown Up (3H)", "Dial Down (CB)". (The app names
-the crown positions with both codes, "Crown Up (CU, 3H)", and the dial
-positions with the common one, "Dial Down (DD)".)
+up is 3H and crown right 12H. The report and the text table name each
+position as the app does: in words with the common code, and Witschi's
+beside it for the crown positions: "Crown Up (CU, 3H)", "Dial Down (DD)".
+The JSON (a finding's `recording` and `evidence`) keeps Witschi's code
+alone: "Crown Up (3H)", "Dial Down (CB)".
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -203,7 +204,7 @@ After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 of the recording or for `measure_s`:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
-  corrected for the sound card's clock when the recording has a clock log
+  corrected for the sound card's clock when the session file names a clock log
   or the session gives `card_ppm`;
 - beat error measured from the unlock, as tg and bench timegraphers do
   (median of the 2 s windows); this is the value the report shows first.
@@ -230,7 +231,7 @@ of the recording or for `measure_s`:
 
 The quick check `record` prints while recording skips the same settling
 time and reads the same stretch on the sound card's clock, as this report
-reads the session file `record` writes (which names no clock log), so the
+reads a session file `record` creates (which names no clock log), so the
 two agree.
 
 Repeat readings in the same position and state of wind are averaged.
