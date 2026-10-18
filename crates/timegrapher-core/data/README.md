@@ -64,9 +64,11 @@ How the rows were merged:
 
 - One row per maker, calibre, beat rate and lift angle. Where the lists
   give a calibre two beat rates or two lift angles, it gets a row for
-  each, named with the figures, e.g. "ETA 2824 (21,600 vph, 53°)",
+  each, named with the figures, e.g. "ETA 2824 (21,600 bph, 53°)",
   because unnamed variants exist and a list can be wrong; the notes say
-  what the other rows give.
+  what the other rows give. These rows were first named with "vph"; the
+  old names are kept in `former_names`, so a saved pick or a take that
+  names one still finds the row.
 - Where a list agrees with a checked entry, its source is added to that
   entry. Where it disagrees, the checked entry stays as it is and the
   list's figures become a row of their own.

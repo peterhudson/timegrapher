@@ -2620,8 +2620,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 38° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Audemars Piguet 5007 (19,800 vph, 38°)",
+    "calibre": "Audemars Piguet 5007 (19,800 bph, 38°)",
     "maker": "Audemars Piguet",
+    "former_names": [
+      "Audemars Piguet 5007 (19,800 vph, 38°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 38.0,
     "wheels": [
@@ -2768,8 +2771,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,031 vph (the lift-angle sheet)."
   },
   {
-    "calibre": "Audemars Piguet Rond 6/7” (21,031 vph)",
+    "calibre": "Audemars Piguet Rond 6/7” (21,031 bph)",
     "maker": "Audemars Piguet",
+    "former_names": [
+      "Audemars Piguet Rond 6/7” (21,031 vph)"
+    ],
     "bph": 21031,
     "wheels": [
       {
@@ -9317,8 +9323,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANAC (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANAC (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANAC (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -9354,8 +9363,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANACB (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANACB (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANACB (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -9391,8 +9403,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANACD (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANACD (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANACD (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -12321,8 +12336,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools); 21,600 vph and 54° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 20 (21,600 vph, 52°)",
+    "calibre": "Citizen 20 (21,600 bph, 52°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 20 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -12340,8 +12358,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 54° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 20 (21,600 vph, 54°)",
+    "calibre": "Citizen 20 (21,600 bph, 54°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 20 (21,600 vph, 54°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 54.0,
     "wheels": [
@@ -12377,8 +12398,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools); 21,600 vph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 31 (21,600 vph, 52°)",
+    "calibre": "Citizen 31 (21,600 bph, 52°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 31 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -12396,8 +12420,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 31 (21,600 vph, 50°)",
+    "calibre": "Citizen 31 (21,600 bph, 50°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 31 (21,600 vph, 50°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -14443,8 +14470,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,880 vph and 36° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Citizen 7220 (28,880 vph, 36°)",
+    "calibre": "Citizen 7220 (28,880 bph, 36°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 7220 (28,880 vph, 36°)"
+    ],
     "bph": 28880,
     "lift_angle_deg": 36.0,
     "wheels": [
@@ -14498,8 +14528,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 32,600 vph and 46° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Citizen 7270 (32,600 vph, 46°)",
+    "calibre": "Citizen 7270 (32,600 bph, 46°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 7270 (32,600 vph, 46°)"
+    ],
     "bph": 32600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -16351,8 +16384,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2369 (18,000 vph, 52°)",
+    "calibre": "Enicar 2369 (18,000 bph, 52°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2369 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -18902,8 +18938,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2840 (21,600 vph, 53°)",
+    "calibre": "Enicar 2840 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2840 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -18956,8 +18995,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2851 (21,600 vph, 53°)",
+    "calibre": "Enicar 2851 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2851 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19010,8 +19052,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2853 (21,600 vph, 53°)",
+    "calibre": "Enicar 2853 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2853 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19064,8 +19109,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2859 (21,600 vph, 53°)",
+    "calibre": "Enicar 2859 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2859 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19118,8 +19166,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2871 (21,600 vph, 53°)",
+    "calibre": "Enicar 2871 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2871 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19172,8 +19223,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2873 (21,600 vph, 53°)",
+    "calibre": "Enicar 2873 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2873 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19226,8 +19280,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2879 (21,600 vph, 53°)",
+    "calibre": "Enicar 2879 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2879 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19480,8 +19537,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 510 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 510 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 510 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19510,8 +19570,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 511 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 511 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 511 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19540,8 +19603,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 520 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 520 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 520 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19570,8 +19636,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 570 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 570 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 570 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19600,8 +19669,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 590 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 590 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 590 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -22143,8 +22215,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6700 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6700 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6700 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22181,8 +22256,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6701 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6701 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6701 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22257,8 +22335,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6720 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6720 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6720 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22295,8 +22376,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6721 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6721 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6721 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -23010,8 +23094,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 26 (21,600 vph, 52°)",
+    "calibre": "Girard Perregaux 26 (21,600 bph, 52°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 26 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -23568,8 +23655,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 442 (19,800 vph, 50°)",
+    "calibre": "Girard Perregaux 442 (19,800 bph, 50°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 442 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -23757,8 +23847,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 810 (21,600 vph, 52°)",
+    "calibre": "Girard Perregaux 810 (21,600 bph, 52°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 810 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -24785,8 +24878,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 56° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 44 (19,800 vph, 56°)",
+    "calibre": "IWC 44 (19,800 bph, 56°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 44 (19,800 vph, 56°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 56.0,
     "wheels": [
@@ -24822,8 +24918,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "IWC 45 (21,600 vph, 51°)",
+    "calibre": "IWC 45 (21,600 bph, 51°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 45 (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -24864,8 +24963,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 51 (18,000 vph, 50°)",
+    "calibre": "IWC 51 (18,000 bph, 50°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 51 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -24894,8 +24996,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 60 (18,000 vph, 46°)",
+    "calibre": "IWC 60 (18,000 bph, 46°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 60 (18,000 vph, 46°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -24936,8 +25041,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 62 (18,000 vph, 40°)",
+    "calibre": "IWC 62 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 62 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -24966,8 +25074,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 37° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 67 (18,000 vph, 37°)",
+    "calibre": "IWC 67 (18,000 bph, 37°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 67 (18,000 vph, 37°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 37.0,
     "wheels": [
@@ -25015,8 +25126,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 83 (18,000 vph, 41°)",
+    "calibre": "IWC 83 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 83 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25057,8 +25171,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 88 (18,000 vph, 41°)",
+    "calibre": "IWC 88 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 88 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25094,8 +25211,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 89 (18,000 vph, 41°)",
+    "calibre": "IWC 89 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 89 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25154,8 +25274,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 95 (18,000 vph, 40°)",
+    "calibre": "IWC 95 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 95 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25184,8 +25307,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 44° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 96 (18,000 vph, 44°)",
+    "calibre": "IWC 96 (18,000 bph, 44°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 96 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -25221,8 +25347,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 97 (18,000 vph, 40°)",
+    "calibre": "IWC 97 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 97 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25258,8 +25387,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 98 (18,000 vph, 40°)",
+    "calibre": "IWC 98 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 98 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25295,8 +25427,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 61° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 171 (18,000 vph, 61°)",
+    "calibre": "IWC 171 (18,000 bph, 61°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 171 (18,000 vph, 61°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 61.0,
     "wheels": [
@@ -25495,8 +25630,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 57° (the lift-angle sheet)."
   },
   {
-    "calibre": "IWC 442 (21,600 vph, 57°)",
+    "calibre": "IWC 442 (21,600 bph, 57°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 442 (21,600 vph, 57°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 57.0,
     "wheels": [
@@ -25525,8 +25663,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 54° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 852 (19,800 vph, 54°)",
+    "calibre": "IWC 852 (19,800 bph, 54°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 852 (19,800 vph, 54°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 54.0,
     "wheels": [
@@ -25725,8 +25866,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 9520 (18,000 vph, 40°)",
+    "calibre": "IWC 9520 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 9520 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -26212,8 +26356,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 846 (28,800 vph, 52°)",
+    "calibre": "IWC 846 (28,800 bph, 52°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 846 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -28563,8 +28710,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 19 ASD (19,800 vph, 50°)",
+    "calibre": "Longines 19 ASD (19,800 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 19 ASD (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28630,8 +28780,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 22 L (18,000 vph, 50°)",
+    "calibre": "Longines 22 L (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 22 L (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28659,8 +28812,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 22 LS (18,000 vph, 50°)",
+    "calibre": "Longines 22 LS (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 22 LS (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28767,8 +28923,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 25.17 (18,000 vph, 50°)",
+    "calibre": "Longines 25.17 (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 25.17 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28796,8 +28955,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 25.17 ABC (18,000 vph, 50°)",
+    "calibre": "Longines 25.17 ABC (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 25.17 ABC (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -29193,8 +29355,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (the lift-angle sheet)."
   },
   {
-    "calibre": "Longines 320 (21,600 vph, 51°)",
+    "calibre": "Longines 320 (21,600 bph, 51°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 320 (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -29516,8 +29681,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Longines 430 (36,000 vph, 52°)",
+    "calibre": "Longines 430 (36,000 bph, 52°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 430 (36,000 vph, 52°)"
+    ],
     "bph": 36000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32209,8 +32377,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (Watchmaking Tools, the lift-angle sheet)."
   },
   {
-    "calibre": "Movado 138 (28,800 vph, 52°)",
+    "calibre": "Movado 138 (28,800 bph, 52°)",
     "maker": "Movado",
+    "former_names": [
+      "Movado 138 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32319,8 +32490,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Movado 275 (28,800 vph, 52°)",
+    "calibre": "Movado 275 (28,800 bph, 52°)",
     "maker": "Movado",
+    "former_names": [
+      "Movado 275 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32812,8 +32986,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Omega 245 (19,800 vph, 52°)",
+    "calibre": "Omega 245 (19,800 bph, 52°)",
     "maker": "Omega",
+    "former_names": [
+      "Omega 245 (19,800 vph, 52°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -34135,8 +34312,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Oris 695 (21,600 vph, 46°)",
+    "calibre": "Oris 695 (21,600 bph, 46°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 695 (21,600 vph, 46°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -34249,8 +34429,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Oris 705 (21,600 vph, 46°)",
+    "calibre": "Oris 705 (21,600 bph, 46°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 705 (21,600 vph, 46°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -34363,8 +34546,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 44° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Oris 725 (21,600 vph, 44°)",
+    "calibre": "Oris 725 (21,600 bph, 44°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 725 (21,600 vph, 44°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -34496,8 +34682,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Oris 742 (21,600 vph, 53°)",
+    "calibre": "Oris 742 (21,600 bph, 53°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 742 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -34769,8 +34958,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Patek Philippe 13.5-320 (21,600 vph, 52°)",
+    "calibre": "Patek Philippe 13.5-320 (21,600 bph, 52°)",
     "maker": "Patek Philippe",
+    "former_names": [
+      "Patek Philippe 13.5-320 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -35049,8 +35241,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
   },
   {
-    "calibre": "Patek Philippe 17” 170 (18,000 vph, 46°)",
+    "calibre": "Patek Philippe 17” 170 (18,000 bph, 46°)",
     "maker": "Patek Philippe",
+    "former_names": [
+      "Patek Philippe 17” 170 (18,000 vph, 46°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -35367,8 +35562,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Peseux 7001 (21,600 vph, 52°)",
+    "calibre": "Peseux 7001 (21,600 bph, 52°)",
     "maker": "Peseux",
+    "former_names": [
+      "Peseux 7001 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -36487,8 +36685,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Frederic Piguet 7020 (21,600 vph, 52°)",
+    "calibre": "Frederic Piguet 7020 (21,600 bph, 52°)",
     "maker": "Frederic Piguet",
+    "former_names": [
+      "Frederic Piguet 7020 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -36909,8 +37110,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Record 109 (18,000 vph, 50°)",
+    "calibre": "Record 109 (18,000 bph, 50°)",
     "maker": "Record",
+    "former_names": [
+      "Record 109 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -37101,8 +37305,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "Record 022-18 (18,000 vph, 41°)",
+    "calibre": "Record 022-18 (18,000 bph, 41°)",
     "maker": "Record",
+    "former_names": [
+      "Record 022-18 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -39201,8 +39408,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 1413 (21,600 vph, 52°)",
+    "calibre": "Ronda 1413 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 1413 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39256,8 +39466,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 1513 (21,600 vph, 52°)",
+    "calibre": "Ronda 1513 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 1513 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39462,8 +39675,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 6061 (21,600 vph, 52°)",
+    "calibre": "Ronda 6061 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 6061 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39517,8 +39733,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 6065 (21,600 vph, 52°)",
+    "calibre": "Ronda 6065 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 6065 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -42981,8 +43200,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5150 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5150 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5150 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43019,8 +43241,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5151 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5151 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5151 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43057,8 +43282,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5152 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5152 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5152 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43095,8 +43323,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5153 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5153 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5153 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43133,8 +43364,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5154 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5154 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5154 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43171,8 +43405,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5156 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5156 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5156 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43465,8 +43702,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 6 ¾ (36,000 vph)",
+    "calibre": "Seiko 6 ¾ (36,000 bph)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 6 ¾ (36,000 vph)"
+    ],
     "bph": 36000,
     "wheels": [
       {
@@ -43515,8 +43755,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 12 ½ (36,000 vph)",
+    "calibre": "Seiko 12 ½ (36,000 bph)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 12 ½ (36,000 vph)"
+    ],
     "bph": 36000,
     "wheels": [
       {
@@ -43931,8 +44174,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 47.8° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 2706 (28,800 vph, 47.8°)",
+    "calibre": "Seiko 2706 (28,800 bph, 47.8°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 2706 (28,800 vph, 47.8°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 47.8,
     "wheels": [
@@ -43968,8 +44214,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 47.8° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 2906 (28,800 vph, 47.8°)",
+    "calibre": "Seiko 2906 (28,800 bph, 47.8°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 2906 (28,800 vph, 47.8°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 47.8,
     "wheels": [
@@ -44005,8 +44254,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 58.5° (Watchmaking Tools)."
   },
   {
-    "calibre": "Seiko 4006 (19,800 vph, 58.5°)",
+    "calibre": "Seiko 4006 (19,800 bph, 58.5°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 4006 (19,800 vph, 58.5°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 58.5,
     "wheels": [
@@ -44080,8 +44332,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 5246 (28,800 vph, 52°)",
+    "calibre": "Seiko 5246 (28,800 bph, 52°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 5246 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -44335,8 +44590,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52.36° (the lift-angle sheet); 36,000 vph and 52.5° (Watchmaking Tools)."
   },
   {
-    "calibre": "Seiko 6159 (36,000 vph, 52.5°)",
+    "calibre": "Seiko 6159 (36,000 bph, 52.5°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 6159 (36,000 vph, 52.5°)"
+    ],
     "bph": 36000,
     "lift_angle_deg": 52.5,
     "wheels": [
@@ -46585,8 +46843,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "Unitas 6497 (18,000 vph, 44°)",
+    "calibre": "Unitas 6497 (18,000 bph, 44°)",
     "maker": "Unitas",
+    "former_names": [
+      "Unitas 6497 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -46605,8 +46866,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 44° (this project's checked entry, Unitas 6497-2)."
   },
   {
-    "calibre": "Unitas 6498 (18,000 vph, 44°)",
+    "calibre": "Unitas 6498 (18,000 bph, 44°)",
     "maker": "Unitas",
+    "former_names": [
+      "Unitas 6498 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -48862,8 +49126,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "Valjoux 7750 (28,800 vph, 52°)",
+    "calibre": "Valjoux 7750 (28,800 bph, 52°)",
     "maker": "Valjoux",
+    "former_names": [
+      "Valjoux 7750 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -50683,8 +50950,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52.4° (Watchmaking Tools)."
   },
   {
-    "calibre": "Zodiac 10 (21,600 vph, 52.4°)",
+    "calibre": "Zodiac 10 (21,600 bph, 52.4°)",
     "maker": "Zodiac",
+    "former_names": [
+      "Zodiac 10 (21,600 vph, 52.4°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.4,
     "wheels": [
@@ -56144,8 +56414,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "ETA 2824 (21,600 vph, 53°)",
+    "calibre": "ETA 2824 (21,600 bph, 53°)",
     "maker": "ETA",
+    "former_names": [
+      "ETA 2824 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -56649,8 +56922,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "ETA 2892 (28,800 vph, 53°)",
+    "calibre": "ETA 2892 (28,800 bph, 53°)",
     "maker": "ETA",
+    "former_names": [
+      "ETA 2892 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -60689,8 +60965,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 367 (18,000 vph, 52°)",
+    "calibre": "Roamer 367 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 367 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -60928,8 +61207,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 422 (18,000 vph, 52°)",
+    "calibre": "Roamer 422 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 422 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -61060,8 +61342,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 450 (18,000 vph, 52°)",
+    "calibre": "Roamer 450 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 450 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -61089,8 +61374,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 451 (18,000 vph, 52°)",
+    "calibre": "Roamer 451 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 451 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -67026,8 +67314,11 @@
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 45° (Watchmaking Tools)."
   },
   {
-    "calibre": "Universal Geneve 281 (18,000 vph, 45°)",
+    "calibre": "Universal Geneve 281 (18,000 bph, 45°)",
     "maker": "Universal Geneve",
+    "former_names": [
+      "Universal Geneve 281 (18,000 vph, 45°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 45.0,
     "wheels": [
