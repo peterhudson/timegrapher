@@ -360,30 +360,31 @@ impl Pane {
 /// The starting arrangement: the strip beside the sound and the three
 /// charts when it runs down the window, above them when it lies on its
 /// side.
-/// A pane's icon and the colour it is drawn in: the series' colour for a
-/// chart or a distribution, grey otherwise.
+/// A pane's icon and the colour it is drawn in: the reading's colour for a
+/// chart or a distribution, one green for the Steadiness views so they read
+/// as a family, and a colour of its own for each of the rest.
 fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
     use theme::Icon;
     match pane {
-        Pane::Watch => (Icon::Watch, pal.text_secondary),
-        Pane::Strip => (Icon::Strip, pal.text_secondary),
-        Pane::Sound => (Icon::Profile, pal.text_secondary),
-        Pane::Scope => (Icon::Scope, pal.text_secondary),
-        Pane::SteadyReadings => (Icon::Steadiness, pal.text_secondary),
-        Pane::SteadyPeriods => (Icon::Periods, pal.text_secondary),
-        Pane::SteadyCycle => (Icon::Cycle, pal.text_secondary),
-        Pane::SteadyAutocorrelation => (Icon::Autocorrelation, pal.text_secondary),
-        Pane::SteadyAllan => (Icon::Allan, pal.text_secondary),
-        Pane::SteadyCusum => (Icon::Cusum, pal.text_secondary),
-        Pane::SteadyFft => (Icon::Fft, pal.text_secondary),
-        Pane::Isochronism => (Icon::Isochronism, pal.text_secondary),
-        Pane::PositionsTest => (Icon::Positions, pal.text_secondary),
-        Pane::Rate => (Icon::Chart, pal.trace_rate),
-        Pane::Amplitude => (Icon::Chart, pal.trace_amplitude),
-        Pane::BeatError => (Icon::Chart, pal.trace_beat_error),
-        Pane::RateHistogram => (Icon::Distribution, pal.trace_rate),
-        Pane::AmplitudeHistogram => (Icon::Distribution, pal.trace_amplitude),
-        Pane::BeatErrorHistogram => (Icon::Distribution, pal.trace_beat_error),
+        Pane::Watch => (Icon::Watch, pal.sound),
+        Pane::Strip => (Icon::Strip, pal.pink),
+        Pane::Sound => (Icon::Profile, pal.tick),
+        Pane::Scope => (Icon::Scope, pal.tock),
+        Pane::SteadyReadings => (Icon::Steadiness, pal.unlock),
+        Pane::SteadyPeriods => (Icon::Periods, pal.unlock),
+        Pane::SteadyCycle => (Icon::Cycle, pal.unlock),
+        Pane::SteadyAutocorrelation => (Icon::Autocorrelation, pal.unlock),
+        Pane::SteadyAllan => (Icon::Allan, pal.unlock),
+        Pane::SteadyCusum => (Icon::Cusum, pal.unlock),
+        Pane::SteadyFft => (Icon::Fft, pal.unlock),
+        Pane::Isochronism => (Icon::Isochronism, pal.drop),
+        Pane::PositionsTest => (Icon::Positions, pal.teal),
+        Pane::Rate => (Icon::RateChart, pal.trace_rate),
+        Pane::Amplitude => (Icon::AmplitudeChart, pal.trace_amplitude),
+        Pane::BeatError => (Icon::BeatErrorChart, pal.trace_beat_error),
+        Pane::RateHistogram => (Icon::RateDistribution, pal.trace_rate),
+        Pane::AmplitudeHistogram => (Icon::AmplitudeDistribution, pal.trace_amplitude),
+        Pane::BeatErrorHistogram => (Icon::BeatErrorDistribution, pal.trace_beat_error),
     }
 }
 
@@ -1045,10 +1046,8 @@ impl TimegrapherApp {
             .collect();
         self.sync_trends();
         self.cal.migrate(custom_calibres);
-        self.cal.recent = recent_calibres;
-        self.cal.recent.truncate(calibre_ui::RECENT);
-        self.cal.short_added = short_added;
-        self.cal.short_removed = short_removed;
+        self.cal
+            .restore(recent_calibres, short_added, short_removed);
         // Checked against the inputs when they are listed.
         if let Some(d) = device.filter(|d| {
             !self.devices_listed || capture::choices(&self.devices).iter().any(|c| &c.id == d)
@@ -1172,7 +1171,7 @@ impl TimegrapherApp {
             strip: StripView {
                 half_width_ms: 10.0,
                 span_s: 30.0,
-                horizontal: false,
+                horizontal: true,
             },
             follow: false,
             rate_line: true,
@@ -3634,8 +3633,8 @@ impl TimegrapherApp {
         if let Some(e) = &self.pump_fault {
             ui.label(
                 RichText::new(format!(
-                    "Sound is taken only while the window is showing: the thread that \
-                     takes it otherwise didn't start ({e})."
+                    "Sound is taken only while the window is showing, and the computer \
+                     isn't kept awake: the thread that does both didn't start ({e})."
                 ))
                 .small()
                 .color(pal.warn),
@@ -4102,14 +4101,9 @@ impl TimegrapherApp {
     fn pane_icons(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
-        if theme::icon_toggle(
-            ui,
-            theme::Icon::Readings,
-            self.show_readings,
-            pal.text_secondary,
-        )
-        .on_hover_text("Readings: the rate, amplitude and beat error cards")
-        .clicked()
+        if theme::icon_toggle(ui, theme::Icon::Readings, self.show_readings, pal.accent)
+            .on_hover_text("Readings: the rate, amplitude and beat error cards")
+            .clicked()
         {
             self.show_readings = !self.show_readings;
         }
@@ -4327,6 +4321,8 @@ impl TimegrapherApp {
     /// Pick a calibre: its lift angle, where the list or the user gives
     /// one, and its wheels for naming the cycles Steadiness finds.
     fn set_calibre(&mut self, name: String) {
+        // A take saved before the table renamed its calibre.
+        let name = self.cal.current_name(&name);
         if name == self.calibre {
             return;
         }
@@ -10543,6 +10539,18 @@ mod tests {
     }
 
     /// A computer that slept mid-take carries on, with the gap a break.
+    #[test]
+    fn a_take_saved_under_a_former_calibre_name_picks_the_new_one() {
+        let c = timegrapher_core::calibres::all()
+            .iter()
+            .find(|c| !c.former_names.is_empty())
+            .expect("a renamed calibre in the table");
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.set_calibre(c.former_names[0].clone());
+        assert_eq!(app.calibre, c.calibre);
+        assert_eq!(app.cal.recent.first(), Some(&c.calibre));
+    }
+
     #[test]
     fn a_sleep_becomes_a_break() {
         let (mut app, base) = save_failure_fixture("slept");

@@ -27,8 +27,13 @@ and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
 menus, one icon for each pane that shows or hides it (resting the pointer
-on an icon names its pane; a pane showing has its icon lit, and the
-charts' and distributions' icons take their colours).
+on an icon names its pane). Each icon is a small picture with a pun on
+its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
+Tock Profile, a die showing six for the Positions Test, a hare for the
+Rate chart, a dromedary for the Rate distribution (one hump), an Allen
+key for Allan, and so on. A pane showing has its icon in colour on a
+tinted chip; a hidden one is faint grey. The charts and distributions
+take their reading's colour, and the Steadiness views share one green.
 
 **The Watch pane**, at the left to begin with, is where the sound comes
 from and what to do with it, then the watch itself. It is a pane like the
@@ -184,9 +189,10 @@ found.
 **Long takes.** Listening carries on while the window is hidden behind
 other windows, minimised, or with the screen locked or switched off: the
 sound is saved and read as it comes in, on a thread of its own, so the
-window shows everything heard as soon as it is back. The one exception is
-a file dialog (Open, Save, choosing a folder): while one is open the sound
-waits in memory, and is saved and read once the dialog closes. With **Keep
+window shows everything heard as soon as it is back. The exceptions are a
+file dialog (Open, Save, choosing a folder) and Save or Save Again copying
+the take: meanwhile the sound waits in memory, and is saved and read once
+they finish. With **Keep
 Awake** on (it is unless switched off), the app asks the computer not to
 go to sleep on its own while it listens; the screen can still lock and
 switch off as usual. If the system refuses, a note under the switch says
@@ -198,8 +204,8 @@ the jump. The app's log notes every ten minutes that listening is still
 going.
 
 **Positions Test.** The Positions Test pane, a tab beside the Tick
-Tock Profile to begin with (its icon is a watch dial up and two on their
-sides), leads through the six positions in the app's order: Dial Up,
+Tock Profile to begin with (its icon is a die showing six, one face for
+each position), leads through the six positions in the app's order: Dial Up,
 Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
 has **Start Test** (**Start a New Test** once one has finished), **Load
 Full-Wind Results…**, **Settle** and **Measure** (the seconds the watch
@@ -412,11 +418,12 @@ and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above
 the strip (beside it when the strip lies across), as some versions of tg
 do for amplitude: a wobble in the rate that comes with a dip in amplitude
-shows at a glance. Running **down** (the default, as on
-tg), the newest beats are at the top, a watch on rate draws a vertical
-line, a gaining watch leans right as it rises (/) and a losing one leans
-left (\\). Running **across**, time goes left to right with the newest beats
-on the right, and early is up. The gap between the two lines is the beat
+shows at a glance. Running **across** (the default), time goes left to
+right with the newest beats on the right, and early is up, with the strip
+above the charts. Running **down**, as on tg, the newest beats are at
+the top, a watch on rate draws a vertical line, a gaining watch leans
+right as it rises (/) and a losing one leans left (\\). A direction
+already chosen and saved stays as it was. The gap between the two lines is the beat
 error. A line that runs off one edge comes back on the other, so the
 strip's width is its zoom and its length sets how much history it shows.
 Type both (a width of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`,
@@ -553,10 +560,10 @@ direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement, the
 distribution settings, the averaging time, folded groups in the Watch pane, the
 appearance, Keep Awake, the last microphone (used again when it is
-plugged in) and the
-window's size and place. Nothing about the watch is kept: the lift angle,
-beat rate and position start fresh, since the next watch on the pickup may
-differ. **Reset Panes** puts the panes back as they started.
+plugged in) and the window's size and place. Nothing about the watch is
+kept: the lift angle, beat rate and position start fresh, since the next
+watch on the pickup may differ. **Reset Panes** puts the panes back as
+they started.
 
 **Log and crash records.** The app writes a log, `logs/timegrapher.log`, in
 the timegrapher settings folder (`~/.config/timegrapher` on Linux,
@@ -685,7 +692,9 @@ been published yet"). The request carries no account or identifier.
     beside a maker do a whole maker at once: untick the clones, say, or
     keep just one maker's calibres. **Reset the Short List** goes back to
     the one the app comes with. The short list and the recent picks are
-    kept with the app's settings.
+    kept with the app's settings. When the list renames a calibre (the
+    "vph" names became "bph"), the short list, the recent picks and a take
+    saved under the old name all use the new one.
   - **What a pick does.** It fills in the calibre's lift angle, where the
     list gives one, and names the cycles Steadiness finds after its own
     wheels. If the watch beats at another rate than the calibre, a line

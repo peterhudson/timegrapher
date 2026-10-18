@@ -191,6 +191,35 @@ impl Calibres {
         Catalog::new(&self.user).find(name)
     }
 
+    /// `name` as the table calls it now, when the table has renamed it
+    /// ("… vph" to "… bph"); a calibre of the user's own keeps its name.
+    pub fn current_name(&self, name: &str) -> String {
+        if self.user.custom.iter().any(|c| c.name == name) {
+            return name.to_string();
+        }
+        calibres::renamed(name).unwrap_or(name).to_string()
+    }
+
+    /// The recent picks and the short list saved by an earlier version,
+    /// under the table's current names, each once.
+    pub fn restore(&mut self, recent: Vec<String>, added: Vec<String>, removed: Vec<String>) {
+        let current = |names: Vec<String>| {
+            let mut out: Vec<String> = Vec::new();
+            for n in names {
+                let n = self.current_name(&n);
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+            out
+        };
+        let (recent, added, removed) = (current(recent), current(added), current(removed));
+        self.recent = recent;
+        self.recent.truncate(RECENT);
+        self.short_added = added;
+        self.short_removed = removed;
+    }
+
     /// The wheels known for `name`, the table's and the user's, for
     /// naming the cycles Steadiness finds; `None` when no calibre is set.
     pub fn wheels(&self, name: &str) -> Option<Vec<Wheel>> {
@@ -1316,7 +1345,11 @@ fn with_maker_name(maker: &str, name: &str) -> String {
                 .is_none_or(|c| !c.is_alphanumeric())
     };
     if maker_words(maker).iter().any(|w| starts_with(w)) {
-        name.to_string()
+        // The maker goes, but not what it says about the calibre.
+        match maker.strip_suffix(" (clone)") {
+            Some(_) => format!("{name} (clone)"),
+            None => name.to_string(),
+        }
     } else {
         format!("{maker} {name}")
     }
@@ -1352,6 +1385,33 @@ mod tests {
             with_maker_name("Tianjin Seagull", "Seagull ST36"),
             "Seagull ST36"
         );
+        // A clone stays marked as one.
+        assert_eq!(
+            with_maker_name("APS (clone)", "APS 4401"),
+            "APS 4401 (clone)"
+        );
+    }
+
+    #[test]
+    fn saved_picks_follow_the_tables_renames() {
+        let c = calibres::all()
+            .iter()
+            .find(|c| !c.former_names.is_empty())
+            .expect("a renamed calibre in the table");
+        let (old, new) = (c.former_names[0].clone(), c.calibre.clone());
+        let mut cal = Calibres::in_memory();
+        assert_eq!(cal.current_name(&old), new);
+        assert_eq!(cal.current_name("Not in the table"), "Not in the table");
+        // Saved under both names: one row, and on the short list either way.
+        cal.restore(
+            vec![old.clone(), new.clone()],
+            vec![old.clone()],
+            vec![old.clone()],
+        );
+        assert_eq!(cal.recent, vec![new.clone()]);
+        assert_eq!(cal.short_added, vec![new.clone()]);
+        assert_eq!(cal.short_removed, vec![new.clone()]);
+        assert!(cal.find(&new).is_some_and(|e| e.name() == new));
     }
 
     #[test]
