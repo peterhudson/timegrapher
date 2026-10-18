@@ -67,10 +67,10 @@ fn print_report(r: &ShapeReport, bph: u32, beat_s: f64, lift_deg: f64) {
         r.windows.len()
     );
     let cols: [(&str, Option<&Shape>); 4] = [
-        ("even", Some(&r.even.windows)),
-        ("odd", Some(&r.odd.windows)),
-        ("even all", r.even.whole.as_ref()),
-        ("odd all", r.odd.whole.as_ref()),
+        ("Tick", Some(&r.even.windows)),
+        ("Tock", Some(&r.odd.windows)),
+        ("Tick all", r.even.whole.as_ref()),
+        ("Tock all", r.odd.whole.as_ref()),
     ];
     print!("{:<24}", "");
     for (name, _) in &cols {
@@ -131,7 +131,7 @@ fn print_report(r: &ShapeReport, bph: u32, beat_s: f64, lift_deg: f64) {
         }
         println!();
     }
-    for (name, s) in [("even", &r.even), ("odd", &r.odd)] {
+    for (name, s) in [("Tick", &r.even), ("Tock", &r.odd)] {
         print_side(name, s);
     }
 }

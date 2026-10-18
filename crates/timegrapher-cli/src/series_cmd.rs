@@ -18,6 +18,8 @@ pub struct Options<'a> {
     pub files: &'a [PathBuf],
     pub clock_log: Option<&'a Path>,
     pub stream: StreamConfig,
+    /// `--lift`; without it the calibre's lift angle, else the default.
+    pub lift: Option<f64>,
     pub train: crate::long::Train<'a>,
     pub wheels: &'a [String],
     pub check: Config,
@@ -33,6 +35,8 @@ pub fn run(o: Options) -> Result<(), String> {
         .map(|w| crate::long::parse_wheel(w))
         .collect::<Result<_, _>>()?;
     let resolved_train = o.train.resolve()?;
+    let mut stream_cfg = o.stream.clone();
+    stream_cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(o.lift);
     let files = crate::long::expand_dirs(o.files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -52,7 +56,7 @@ pub fn run(o: Options) -> Result<(), String> {
     let tty = std::io::stderr().is_terminal();
     let mut last = 0.0;
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-    let log = stream::analyze_files(&paths, &o.stream, |done| {
+    let log = stream::analyze_files(&paths, &stream_cfg, |done| {
         if done - last >= 600.0 || total.is_some_and(|t| done >= t) {
             last = done;
             let msg = match total {
@@ -85,10 +89,10 @@ pub fn run(o: Options) -> Result<(), String> {
     if o.json {
         let settings = serde_json::json!({
             "clock_log": o.clock_log.map(|p| p.display().to_string()),
-            "bph": o.stream.analysis.bph,
-            "lift_deg": o.stream.analysis.amplitude.lift_deg,
-            "notch_hz": o.stream.analysis.envelope.notch_hz,
-            "highpass_hz": o.stream.analysis.envelope.highpass_hz,
+            "bph": stream_cfg.analysis.bph,
+            "lift_deg": stream_cfg.analysis.amplitude.lift_deg,
+            "notch_hz": stream_cfg.analysis.envelope.notch_hz,
+            "highpass_hz": stream_cfg.analysis.envelope.highpass_hz,
             "calibre": o.train.calibre,
             "escape_teeth": o.train.escape_teeth,
             "named_wheels": lc.wheels,
