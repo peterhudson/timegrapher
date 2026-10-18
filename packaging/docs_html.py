@@ -4,7 +4,8 @@
     python3 packaging/docs_html.py check FOLDER
 
 render writes OUT/Start Here.html (from packaging/PLATFORM/start-here.md),
-OUT/Documentation/ (README.md, docs/ and the watchmaker skill) and
+OUT/Documentation/ (README.md, docs/, and the watchmaker skill with its
+reference pages) and
 OUT/LICENSE.txt, for the platform script to copy into the download's
 folder. Links between those files are rewritten to the pages beside them;
 links to anything else in the repository (source files, workflows) go to
@@ -26,7 +27,8 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO = "peterhudson/timegrapher"
+# Set by GitHub Actions; the default is for local runs.
+REPO = os.environ.get("GITHUB_REPOSITORY", "peterhudson/timegrapher")
 PLATFORMS = ("linux", "macos", "windows")
 INDEX = "docs/index.md"
 
@@ -90,6 +92,10 @@ def outputs(platform):
             rel = path.relative_to(ROOT).as_posix()
             dest = "Documentation/" + rel[len("docs/"):]
             out[rel] = dest[:-3] + ".html" if dest.endswith(".md") else dest
+    # The skill's reference pages, which SKILL.md links to throughout.
+    for path in sorted((ROOT / "skills/watchmaker/references").glob("*.md")):
+        rel = path.relative_to(ROOT).as_posix()
+        out[rel] = f"Documentation/watchmaker-skill/{path.stem}.html"
     return out
 
 

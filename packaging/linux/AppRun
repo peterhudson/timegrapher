@@ -1,5 +1,5 @@
 #!/bin/sh
-# Starts the desktop app; `timegrapher.AppImage cli ARGS` runs the command
+# Starts the desktop app; `Timegrapher.AppImage cli ARGS` runs the command
 # line tool instead.
 here="$(dirname "$(readlink -f "$0")")"
 if [ "$1" = "cli" ]; then
