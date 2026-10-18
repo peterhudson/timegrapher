@@ -1,6 +1,7 @@
 # Desktop app
 
-`timegrapher-app` is the live timegrapher screen: put the watch on the
+The desktop app (**Timegrapher** in the downloads, `timegrapher-app` when
+built from source) is the live timegrapher screen: put the watch on the
 microphone and it shows the paper-strip trace with rate, amplitude and beat
 error, the way a bench timegrapher does. A recording, or a folder of
 segments, opens analysed all at once to look back through; it can also be
@@ -34,7 +35,8 @@ from and what to do with it, then the watch itself. It is a pane like the
 others: drag it by its tab, or hide it and bring it back from its icon or
 the View menu. At its top, **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
-**Resume**), **New Session** when stopped, **Save…**
+**Resume**), **New Session** (listening or not: listening carries on into the
+new session), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
 peak meter and Show Every Input. For a recording: **Open…**, **Open
 Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
@@ -94,7 +96,9 @@ shift as they change.
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
 recording: **Open a Folder…** on the opening screen, **Open Folder…** in
-the Watch pane or the File menu, a folder typed into the path box, or `timegrapher-app FOLDER`.
+the Watch pane or the File menu, a folder typed into the path box, or the folder's path given to the app
+when it is started from a terminal (`timegrapher-app FOLDER`; see
+[Without a window](#without-a-window) for its name in each download).
 A saved take opens from its own folder or from the folder it was saved
 into, when that holds just the one take; with several, the message names
 them so one can be picked.
@@ -384,8 +388,9 @@ fitted to, on top of them, as tg does: if the dots follow it, the reading
 describes them well. **Parallel Guides** (on by default) adds faint red
 lines at the same slope across the whole strip, one per grid step, since
 the eye judges whether lines are parallel far better than it judges a
-slope; dots that bend away from the guides show the rate changing. Under
-**Draw over the strip**, amplitude (purple, on by default), rate (red)
+slope; dots that bend away from the guides show the rate changing. The
+guides show with or without the Rate Line. Under
+**Draw Over the Strip**, amplitude (purple, on by default), rate (red)
 and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above
 the strip (beside it when the strip lies across), as some versions of tg
@@ -397,11 +402,12 @@ left (\\). Running **across**, time goes left to right with the newest beats
 on the right, and early is up. The gap between the two lines is the beat
 error. A line that runs off one edge comes back on the other, so the
 strip's width is its zoom and its length sets how much history it shows.
-Type both (a width of ±0.1 to ±250 ms; a length such as `45`, `5 min`,
+Type both (a width of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
-widths run from ±1 ms, for a good watch's beat error, to ±62.5 ms, half a
-beat at 28,800 bph and the widest view in which tick and tock can't wrap
-onto each other; the lengths run from 10 s of beats to a two-hour run.
+widths run from ±1 ms, for a good watch's beat error, through ±62.5 ms,
+half a beat at 28,800 bph and the widest view in which tick and tock can't
+wrap onto each other, up to ±60 s, so a long run-down take that drifts by
+many seconds can be shown without wrapping; the lengths run from 10 s of beats to a two-hour run.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
@@ -747,14 +753,14 @@ listening and lets go of the microphone, so another program can use it
 readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
-stop. **New session**, shown while stopped, clears everything for the
-next watch or position. Everything heard is kept as it comes in, so
+stop. **New Session** clears everything for the next watch or position;
+pressed while listening, listening carries on into the new session. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it.
 **Save Again** (Ctrl+S) later brings that copy up to date without asking
 again, and **Save As…** (Ctrl+Shift+S) copies the session to a new folder
 of your choosing, which Save Again then keeps up to date. Sound that hasn't been saved is never thrown away
-without asking: New session, opening or replaying a recording, and
+without asking: New Session, opening or replaying a recording, and
 closing the window ask whether to save it first. The microphone's own
 settings are kept aside while recordings are open and come back with
 **Microphone**. Once stopped, the time slider shows for a microphone
@@ -799,7 +805,10 @@ the program being stopped abruptly.
 
 ## Without a window
 
-For scripts, tests and an AI agent helping someone set up:
+For scripts, tests and an AI agent helping someone set up. The program
+is `timegrapher-app` when built from source, as below; in the downloads it
+is `Timegrapher.exe` on Windows, `Timegrapher.AppImage` on Linux and
+`Timegrapher.app/Contents/MacOS/timegrapher-app` on macOS.
 
 ```sh
 timegrapher-app --devices          # sound input devices and their formats, as JSON

@@ -70,7 +70,9 @@ pub struct StripView {
 
 impl StripView {
     pub const MIN_HALF_WIDTH_MS: f64 = 0.1;
-    pub const MAX_HALF_WIDTH_MS: f64 = 250.0;
+    /// Wide enough for a long run-down take to drift by tens of seconds
+    /// without its beats wrapping.
+    pub const MAX_HALF_WIDTH_MS: f64 = 60_000.0;
     pub const MIN_SPAN_S: f64 = 2.0;
     pub const MAX_SPAN_S: f64 = 24.0 * 3600.0;
 
@@ -237,7 +239,10 @@ impl Overlay {
 pub struct Extras<'a> {
     /// A line of text over the strip, such as where the view is.
     pub note: Option<&'a str>,
+    /// The Rate reading the line and the guides are drawn from.
     pub rate_line: Option<RateLine>,
+    /// Draw the rate line itself.
+    pub line: bool,
     /// Faint lines parallel to the rate line across the whole strip.
     pub guides: bool,
     /// A time to mark with a cursor line: where the pointer is on a chart.
@@ -563,7 +568,11 @@ fn axis_ms(ms: f64) -> String {
         "0 ms".into()
     } else {
         let sign = if ms > 0.0 { "+" } else { "−" };
-        format!("{sign}{}", fmt_ms(ms.abs()))
+        if ms.abs() >= 1000.0 {
+            format!("{sign}{} s", fmt_ms(ms.abs() / 1000.0))
+        } else {
+            format!("{sign}{}", fmt_ms(ms.abs()))
+        }
     }
 }
 
@@ -781,7 +790,7 @@ pub fn draw_strip(
     let colors = side_colors(dark);
     let mut at = Pos2::new(r.left(), outer.top() + 3.0);
     let mut keys: Vec<(&str, Color32)> = vec![("Tick", colors[0]), ("Tock", colors[1])];
-    if extras.rate_line.is_some() {
+    if extras.line && extras.rate_line.is_some() {
         keys.push(("Rate Line", pal.trace_rate));
     }
     for (o, _) in &overlays {
@@ -925,14 +934,16 @@ pub fn draw_strip(
                     polyline(oldest, end_s, k as f64 * step, faint);
                 }
             }
-            // A thin dark edge under the line keeps it readable over the dots.
-            polyline(
-                ta,
-                tb,
-                0.0,
-                Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
-            );
-            polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.trace_rate));
+            if extras.line {
+                // A thin dark edge under the line keeps it readable over the dots.
+                polyline(
+                    ta,
+                    tb,
+                    0.0,
+                    Stroke::new(2.6_f32, vis.extreme_bg_color.gamma_multiply(0.7)),
+                );
+                polyline(ta, tb, 0.0, Stroke::new(1.2_f32, pal.trace_rate));
+            }
         }
     }
     if let Some(t) = extras.cursor_t.filter(|t| *t >= oldest && *t <= end_s) {
@@ -1052,6 +1063,14 @@ mod tests {
                 assert!((g.time_at(g.pos(3.0, t)) - t).abs() < 1e-3);
             }
         }
+    }
+
+    #[test]
+    fn axis_labels_turn_to_seconds() {
+        assert_eq!(axis_ms(0.0), "0 ms");
+        assert_eq!(axis_ms(-250.0), "−250");
+        assert_eq!(axis_ms(2000.0), "+2.0 s");
+        assert_eq!(axis_ms(-20_000.0), "−20 s");
     }
 
     #[test]

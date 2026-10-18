@@ -843,8 +843,10 @@ pub fn toggle(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
     let text = RichText::new(label)
         .size(12.5)
         .color(if *on { p.text } else { p.text_secondary });
+    // One line always: a narrow toolbar must not stack the label's letters.
     let mut resp = ui.add(
         egui::Button::new(text)
+            .wrap_mode(egui::TextWrapMode::Extend)
             .selected(*on)
             .corner_radius(CornerRadius::same(CONTROL_RADIUS)),
     );

@@ -388,6 +388,9 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
     )
 }
 
+const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
+     position. Listening carries on into the new session; a replay stops. Unsaved sound is \
+     asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
      settings, to analyse again later. The first time it asks where: the take goes in a \
      folder of its own, named for its time and watch, inside the folder you choose. After \
@@ -599,8 +602,11 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
 /// beat at 28,800 bph, the widest view in which tick and tock can't wrap
-/// onto each other.
-const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
+/// onto each other; the wider ones keep a long take's drift from wrapping.
+const WIDTHS: [f64; 16] = [
+    1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5, 100.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0,
+    30_000.0, 60_000.0,
+];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
 /// run.
 const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
@@ -1469,10 +1475,18 @@ impl TimegrapherApp {
         }
     }
 
-    /// Forget this session (after asking, if its sound isn't saved), ready
-    /// to start another.
+    /// Clear everything for the next watch or position. Listening to the
+    /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
+        let listening = self.running() && self.session.mic();
+        self.message = None;
         self.stop();
+        // A failed close leaves files behind: say so, and don't start
+        // listening again over it.
+        let close_error = self
+            .session
+            .recording_fault()
+            .and_then(|_| self.message.clone());
         self.session.discard_recording();
         self.session.clear();
         self.live = None;
@@ -1482,7 +1496,12 @@ impl TimegrapherApp {
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.source_label.clear();
-        self.message = None;
+        if listening && close_error.is_none() {
+            self.start_microphone();
+        }
+        if close_error.is_some() {
+            self.message = close_error;
+        }
     }
 
     /// Unsaved sound that a new session would throw away, seconds.
@@ -2767,12 +2786,9 @@ impl TimegrapherApp {
             }
             let mic_data = self.session.mic() && self.live.is_some();
             if mic_data
-                && !self.running()
                 && ui
                     .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(
-                        "Clear everything and start again with the next watch or position",
-                    )
+                    .on_hover_text(NEW_SESSION_HINT)
                     .clicked()
             {
                 if self.needs_save_confirmation() {
@@ -3500,7 +3516,11 @@ impl TimegrapherApp {
                 );
                 ui.label("ms");
                 let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
-                    format!("±{} ms", fields::plain(v))
+                    if v >= 1000.0 {
+                        format!("±{} s", fields::plain(v / 1000.0))
+                    } else {
+                        format!("±{} ms", fields::plain(v))
+                    }
                 });
                 if a || b {
                     self.strip.set_half_width(w);
@@ -3565,25 +3585,20 @@ impl TimegrapherApp {
             "Draw the Rate reading as a red line over the beats it was fitted to, to \
              check that it follows the dots",
         );
-        ui.add_enabled_ui(self.rate_line, |ui| {
-            theme::switch_row(
-                ui,
-                "Parallel Guides",
-                &mut self.rate_guides,
-                "Faint lines at the rate line's slope across the whole strip, so it is \
-                 easy to see whether the dots run parallel to it",
-            );
-        });
-        ui.label(
-            RichText::new("Draw over the strip")
-                .small()
-                .color(theme::pal(ui).text_secondary),
+        theme::switch_row(
+            ui,
+            "Parallel Guides",
+            &mut self.rate_guides,
+            "Faint lines at the Rate reading's slope across the whole strip, so it is \
+             easy to see whether the dots run parallel to it. They show with or without \
+             the Rate Line.",
         );
-        for (i, (name, hint)) in [
+        let overlays = &mut self.overlays;
+        let lines = [
             (
                 "Amplitude",
-                "The amplitude readings as a purple line against the same time, on their \
-                 own scale",
+                "The amplitude readings as a purple line against the same time, on their own \
+                 scale",
             ),
             (
                 "Rate",
@@ -3594,11 +3609,20 @@ impl TimegrapherApp {
                 "The beat error readings, from the unlock, as a yellow line against the same \
                  time, on their own scale",
             ),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            theme::switch_row(ui, name, &mut self.overlays[i], hint);
+        ];
+        // The name stays on one line with the first switch; the others
+        // wrap to the next line when the pane is narrow.
+        theme::row(
+            ui,
+            "Draw Over the Strip",
+            Some(
+                "Readings drawn as lines over the beats against the same time, each on its \
+                 own scale",
+            ),
+            |ui| theme::switch_row(ui, lines[0].0, &mut overlays[0], lines[0].1),
+        );
+        for (i, (name, hint)) in lines.into_iter().enumerate().skip(1) {
+            theme::switch_row(ui, name, &mut overlays[i], hint);
         }
         theme::switch_row(
             ui,
@@ -3768,18 +3792,13 @@ impl TimegrapherApp {
             self.save_recording();
         }
         // Anything shown, from the microphone or a recording, can be
-        // cleared once nothing is running.
+        // cleared, listening or not.
         if ui
-            .add_enabled(
-                self.live.is_some() && !self.running(),
-                egui::Button::new("New Session"),
+            .add_enabled(self.live.is_some(), egui::Button::new("New Session"))
+            .on_hover_text(NEW_SESSION_HINT)
+            .on_disabled_hover_text(
+                "Nothing to clear yet: listen to a watch or open a recording first",
             )
-            .on_hover_text("Clear everything and start again with the next watch or position")
-            .on_disabled_hover_text(if self.running() {
-                "Stop listening or replaying first"
-            } else {
-                "Nothing to clear yet: listen to a watch or open a recording first"
-            })
             .clicked()
         {
             ui.close();
@@ -5876,8 +5895,9 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
         // The strip's own Average Over, as its overlays use.
-        let rate_line = self
-            .rate_line
+        // The guides follow the rate line's slope, so it is worked out for
+        // either.
+        let rate_line = (self.rate_line || self.rate_guides)
             .then(|| self.reading_over(self.average_for(Pane::Strip)))
             .flatten()
             .and_then(|r| {
@@ -5933,6 +5953,7 @@ impl TimegrapherApp {
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
+            line: self.rate_line,
             guides: self.rate_guides,
             overlays: &overlays,
             cursor_t: self.cursor_t,
@@ -10287,5 +10308,24 @@ mod tests {
         app.apply_strip_input(zoom, app.end_s());
         assert_eq!(app.strip.span_s, 60.0);
         assert_eq!(app.strip.half_width_ms, 5.0);
+    }
+
+    /// New Session while listening, when closing the kept sound fails:
+    /// the error stays shown and listening doesn't start again over it.
+    #[test]
+    fn new_session_keeps_a_close_error() {
+        let (mut app, base) = save_failure_fixture("new-session-close");
+        let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
+        std::fs::remove_file(scratch.join("session.json")).unwrap();
+        std::fs::create_dir(scratch.join("session.json")).unwrap();
+        let tx = queued_capture(&mut app, &base);
+        assert!(app.running() && app.session.mic());
+        app.new_session();
+        assert!(!app.running());
+        let (m, error) = app.message.clone().expect("the close error is shown");
+        assert!(error, "{m}");
+        assert!(m.contains("pause"), "{m}");
+        drop(tx);
+        let _ = std::fs::remove_dir_all(base);
     }
 }
