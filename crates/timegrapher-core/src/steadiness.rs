@@ -1054,9 +1054,12 @@ pub fn check_series(
 
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.lead = lead(&out, cfg);
-    out.headline = headline(&out, mean);
+    out.headline = lead_text(&out, mean);
     if let Some(more) = also(&out, cfg) {
         out.headline = format!("{} {more}", out.headline);
+    }
+    if let Some(fast) = fast_sentence(&out) {
+        out.headline = format!("{} {fast}", out.headline);
     }
     out
 }
@@ -1260,17 +1263,20 @@ fn cycle(
         .filter(|c| {
             // The alias itself is set aside; a whole number of its turns
             // only when folding there explains no clearly more than the
-            // alias does (a real slow cycle at that period does).
-            alias_of_fast_line(c.period_s, g.step, s.period.as_ref()).is_none_or(|a| {
-                (c.period_s / a - 1.0).abs() >= 0.05
-                    && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
-            })
+            // alias does (a real slow cycle at that period does). A cycle
+            // the period search also finds in the beat timing, where it is
+            // slow enough to need no readings, is real however it aliases.
+            slow_search_line(c.period_s, g.step, d.span(), s.period.as_ref())
+                || alias_of_fast_line(c.period_s, g.step, s.period.as_ref()).is_none_or(|a| {
+                    (c.period_s / a - 1.0).abs() >= 0.05
+                        && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
+                })
         })
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
 }
 
 /// The alias period, when a cycle of `period` in readings `step` apart
-/// is within 5% of a whole number of turns of the alias of a period-search
+/// is within 5% of a whole number (up to [`ALIAS_TURNS_MAX`]) of turns of the alias of a period-search
 /// line too fast for the readings. Readings averaged over `step` sample a
 /// line of frequency ν at 1/`step`, so it shows at |ν − m/`step`| for the
 /// nearest whole m: a 15-tooth escape wheel at 28,800 bph (3.75 s) reads
@@ -1279,6 +1285,20 @@ fn cycle(
 /// caller sets it aside unless folding at its period explains clearly
 /// more than at the alias: the same watch's fourth wheel turns in 60 s,
 /// two turns of that alias, and is real.
+/// Whether the period search has a line of three readings or longer
+/// within its resolution (period² over the span) of `period`.
+fn slow_search_line(period: f64, step: f64, span: f64, search: Option<&Period>) -> bool {
+    search.is_some_and(|p| {
+        std::iter::once(p.period_s)
+            .chain(p.other_periods_s.iter().copied())
+            .any(|q| q >= 3.0 * step && (period - q).abs() <= (q * q / span).max(0.01 * q))
+    })
+}
+
+/// Up to this many turns of an alias count as its multiples, as a cycle
+/// is reduced to at most eight turns of a shorter one.
+const ALIAS_TURNS_MAX: f64 = 8.0;
+
 fn alias_of_fast_line(period: f64, step: f64, search: Option<&Period>) -> Option<f64> {
     let p = search?;
     let fs = 1.0 / step;
@@ -1289,7 +1309,8 @@ fn alias_of_fast_line(period: f64, step: f64, search: Option<&Period>) -> Option
             let nu = 1.0 / q;
             let alias = (nu - (nu / fs).round() * fs).abs();
             let k = period * alias;
-            (alias > 0.0 && k.round() >= 1.0 && (k - k.round()).abs() < 0.05 * k.round())
+            let m = k.round();
+            (alias > 0.0 && (1.0..=ALIAS_TURNS_MAX).contains(&m) && (k - m).abs() < 0.05 * m)
                 .then(|| 1.0 / alias)
         })
 }
@@ -1373,23 +1394,19 @@ fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
     }
 }
 
-fn headline(s: &SeriesCheck, mean: f64) -> String {
-    let text = lead_text(s, mean);
-    // The steady and correlated headlines carry the line in place of
-    // "no cycle"; any other lead gets it as a sentence, beside a slower
-    // cycle as one the series "also" repeats.
+/// The fast line as a sentence of its own, last in the headline, for the
+/// leads whose text does not carry it in place of "no cycle"; beside a
+/// slower cycle it is one the series "also" repeats.
+fn fast_sentence(s: &SeriesCheck) -> Option<String> {
     match s.lead {
-        Lead::TooShort | Lead::Steady | Lead::Wandering => text,
-        _ => match fast_line(s) {
-            Some(line) => {
-                let mut c = line.chars();
-                let line: String = c
-                    .next()
-                    .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
-                format!("{text} {line}.")
-            }
-            None => text,
-        },
+        Lead::TooShort | Lead::Steady | Lead::Wandering => None,
+        _ => fast_line(s).map(|line| {
+            let mut c = line.chars();
+            let line: String = c
+                .next()
+                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+            format!("{line}.")
+        }),
     }
 }
 

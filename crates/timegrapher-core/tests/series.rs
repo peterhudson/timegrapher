@@ -21,8 +21,20 @@ fn run_with(
     rate: impl Fn(f64) -> f64,
     escape_teeth: u32,
 ) -> Report {
+    run_at(name, duration_s, 28800, amp, rate, escape_teeth)
+}
+
+fn run_at(
+    name: &str,
+    duration_s: f64,
+    bph: u32,
+    amp: impl Fn(f64) -> f64,
+    rate: impl Fn(f64) -> f64,
+    escape_teeth: u32,
+) -> Report {
     let cfg = SynthConfig {
         duration_s,
+        bph,
         rate_s_per_day: 10.0,
         snr_db: 24.0,
         ..Default::default()
@@ -152,6 +164,41 @@ fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
         "{}",
         s.headline
     );
+}
+
+#[test]
+fn a_fourth_wheel_cycle_on_the_escape_wheels_alias_is_still_found() {
+    // At 19,800 bph a 15-tooth escape wheel turns in 5.4545 s, which
+    // aliases to exactly 60 s in 10 s readings: the fourth wheel's turn.
+    // The period search finds the 60 s cycle in the beat timing itself,
+    // so it is listed, not set aside as the alias.
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run_at(
+        "alias-on-minute",
+        900.0,
+        19800,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / (60.0 / 11.0)).sin() + if t % 60.0 < 8.0 { -30.0 } else { 0.0 },
+        15,
+    );
+    let s = series(&r, SeriesKind::Rate);
+    let p = s.period.as_ref().expect(&s.headline);
+    assert!(
+        std::iter::once(p.period_s)
+            .chain(p.other_periods_s.iter().copied())
+            .any(|q| (q - 60.0 / 11.0).abs() < 0.05),
+        "{:?}",
+        p
+    );
+    let c = s.cycle.as_ref().expect(&s.headline);
+    assert!(
+        (c.period_s - 60.0).abs() < 2.0,
+        "{} {}",
+        c.period_s,
+        s.headline
+    );
+    assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
+    assert!(!s.headline.contains("no cycle"), "{}", s.headline);
 }
 
 #[test]
