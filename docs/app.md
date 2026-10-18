@@ -296,20 +296,24 @@ that the test never stays that long in one position. Both scroll with a
 bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
-against the computer's. After 20 minutes of listening, if no error is
-kept for that input yet and the timing is known to half a ppm, the Rate
-card shows the error it timed with a **Keep** button (a busy computer
-delivers sound less evenly, so the offer can come later); the timing is only right when the computer's clock is
-kept by internet time (NTP). When the microphone's own clock error has
-been kept (by **Keep**, `timegrapher clock measure --save`, or `clock
-from-log --save` after a take with a clock log; see `clock` in
-[the agent interface](agent-interface.md#clock)), a
-line under the rate gives the rate corrected onto true time, labelled
-True Clock. A sound card's crystal runs a steady 10 to 50 ppm off, which
-moves every rate read on it by 1 to 4 s/d. The big figure always stays on
-the card's clock, the same clock tg and `timegrapher analyze` read, so it
-compares directly with them; the True Clock line is beside it, never
-instead of it. It is looked up by the input's name when a microphone
+against the computer's. After 20 minutes of listening, once the timing is
+known to half a ppm, the Rate card shows the error it timed with a
+**Keep** button if no error is kept for that input yet, or if the one kept
+is more than 2 ppm from it; then the line also gives how far apart they
+are and the day the kept one was measured, since an input reached by a
+shared name (the system default, say) may be another sound card. A busy
+computer delivers sound less evenly, so the offer can come later. The
+timing is only right when the computer's clock is kept by internet time
+(NTP). When the microphone's own clock error has been kept (by **Keep**,
+`timegrapher clock measure --save`, or `clock from-log --save` after a
+take with a clock log; see `clock` in [the agent
+interface](agent-interface.md#clock)), a line under the rate gives the
+rate corrected onto true time, labelled True Clock, with the day the clock
+it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
+which moves every rate read on it by 1 to 4 s/d. The big figure always
+stays on the card's clock, the same clock tg and `timegrapher analyze`
+read, so it compares directly with them; the True Clock line is beside it,
+never instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording.
 
 **Clipping.** Whenever a beat in the readings has a clipped sample in
@@ -398,40 +402,44 @@ recording. Only the few seconds around the beats are read, however long
 the recording: a WAV seeks there and a FLAC is searched by its frame
 headers (`span.rs`). No crosshair, as on the other sound plots.
 
-**Paper Strip.** One dot per beat, tick and tock in two colours. Across the
-strip is how early or late each beat came against a perfect clock beating
-exactly at the nominal beat rate (every 125 ms at 28,800 bph): a beat
-before that clock's beat is early, after it late, the words Witschi's
-training course uses (doc. 71.1010D35e p. 6).
-Along it is time; both axes are labelled, in ms across and in minutes and
-seconds along, and every grid line is drawn alike. **Rate Line** (on by
-default) draws the Rate reading as a thin solid red line over the beats it was
-fitted to, on top of them, as tg does: if the dots follow it, the reading
-describes them well. **Parallel Guides** (on by default) adds faint red
-lines at the same slope across the whole strip, one per grid step, since
-the eye judges whether lines are parallel far better than it judges a
-slope; dots that bend away from the guides show the rate changing. The
-guides show with or without the Rate Line. Under
-**Draw Over the Strip**, amplitude (purple, on by default), rate (red)
-and beat error (yellow) readings can be drawn as lines against the same
-time, each on its own scale, whose ends are written in its colour above
-the strip (beside it when the strip lies across), as some versions of tg
-do for amplitude: a wobble in the rate that comes with a dip in amplitude
-shows at a glance. Running **across** (the default), time goes left to
-right with the newest beats on the right, and early is up, with the strip
-above the charts. Running **down**, as on tg, the newest beats are at
-the top, a watch on rate draws a vertical line, a gaining watch leans
-right as it rises (/) and a losing one leans left (\\). A direction
-already chosen and saved stays as it was. The gap between the two lines
-is the beat error. A line that runs off one edge comes back on the
-other, so the strip's width is its zoom and its length sets how much
-history it shows.
-Type both (a width of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`,
-`2h` or `1:30:00`) or pick a common value from the list beside each: the
-widths run from ±1 ms, for a good watch's beat error, through ±62.5 ms,
-half a beat at 28,800 bph and the widest view in which tick and tock can't
-wrap onto each other, up to ±60 s, so a long run-down take that drifts by
-many seconds can be shown without wrapping; the lengths run from 10 s of beats to a two-hour run.
+**Paper Strip.** One dot per beat, tick and tock in two colours. Across
+the strip is how early or late each beat came against a perfect clock
+beating exactly at the nominal beat rate (every 125 ms at 28,800 bph): a
+beat before that clock's beat is early, after it late, the words Witschi's
+training course uses (doc. 71.1010D35e p. 6). Along it is time; both axes
+are labelled, in ms across and in minutes and seconds along, and every
+grid line is drawn alike. **Rate Line** (on by default) draws the Rate
+reading as a thin solid red line over the beats it was fitted to, on top
+of them, as tg does: if the dots follow it, the reading describes them
+well. **Parallel Guides** (on by default) adds faint red lines at the same
+slope across the whole strip, one per grid step, since the eye judges
+whether lines are parallel far better than it judges a slope; dots that
+bend away from the guides show the rate changing. The guides show with or
+without the Rate Line. Under **Draw Over the Strip**, amplitude (purple,
+on by default), rate (red) and beat error (yellow) readings can be drawn
+as lines against the same time, each on its own scale, whose ends are
+written in its colour above the strip (beside it when the strip lies
+across), as some versions of tg do for amplitude: a wobble in the rate
+that comes with a dip in amplitude shows at a glance. The lines use
+readings spaced a four-hundredth of the strip's length apart (about 4.5 s
+on a 30-minute strip, never closer than half a second), or the
+recording's own when those are no more than twice as far apart, and
+break only where the readings do.
+Running **across** (the default), time goes left to right with the newest
+beats on the right, and early is up, with the strip above the charts.
+Running **down**, as on tg, the newest beats are at the top, a watch on
+rate draws a vertical line, a gaining watch leans right as it rises (/)
+and a losing one leans left (\\). A direction already chosen and saved
+stays as it was. The gap between the two lines is the beat error. A line
+that runs off one edge comes back on the other, so the strip's width is
+its zoom and its length sets how much history it shows. Type both (a width
+of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`, `2h` or
+`1:30:00`) or pick a common value from the list beside each: the widths
+run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
+beat at 28,800 bph and the widest view in which tick and tock can't wrap
+onto each other, up to ±60 s, so a long run-down take that drifts by many
+seconds can be shown without wrapping; the lengths run from 10 s of beats
+to a two-hour run.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
@@ -557,13 +565,13 @@ shows. The plots don't pan, zoom or show values under the pointer.
 
 **Remembered settings.** The app keeps its views between runs: the strip's
 direction, width and length and what is drawn over it, the profile's
-layout, scale and Time From, the panes shown and their arrangement, the
-distribution settings, the averaging time, folded groups in the Watch pane, the
-appearance, Keep Awake, the last microphone (used again when it is
-plugged in) and the window's size and place. Nothing about the watch is
-kept: the lift angle, beat rate and position start fresh, since the next
-watch on the pickup may differ. **Reset Panes** puts the panes back as
-they started.
+layout, scale and Time From, the panes shown and their arrangement,
+whether the Readings show, the distribution settings, the averaging time,
+folded groups in the Watch pane, the appearance, Keep Awake, the last
+microphone (used again when it is plugged in) and the window's size and
+place. Nothing about the watch is kept: the lift angle, beat rate and
+position start fresh, since the next watch on the pickup may differ.
+**Reset Panes** puts the panes back as they started.
 
 **Log and crash records.** The app writes a log, `logs/timegrapher.log`, in
 the timegrapher settings folder (`~/.config/timegrapher` on Linux,

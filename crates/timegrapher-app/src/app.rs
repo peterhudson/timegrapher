@@ -52,6 +52,11 @@ struct Readouts {
 /// measure` takes by default. It is timed again each minute after.
 const CLOCK_MEASURE_S: f64 = 1200.0;
 
+/// How far the clock timed while listening may be from the one kept for
+/// the input's name before the Rate card says so and offers the new one.
+/// It decides only when that fact is shown.
+const CLOCK_DIFFERS_PPM: f64 = 2.0;
+
 /// The microphone's clock, timed against the computer's while listening.
 struct ClockTrack {
     /// The input's name, as the clock file keeps it.
@@ -79,6 +84,11 @@ impl ClockTrack {
             self.fit = self.tracker.fit();
         }
     }
+}
+
+/// The day of a UTC timestamp kept as text ("2026-10-12T…").
+fn day_of(utc: &str) -> &str {
+    utc.get(..10).unwrap_or(utc)
 }
 
 /// The Rate caveat for an input whose clock hasn't been measured.
@@ -687,6 +697,17 @@ fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
     out
 }
 
+/// What the strip's own readings were worked out for: the window and the
+/// spacing in steps, the averaging time and how much sound there was.
+type StripKey = (i64, i64, u64, u64, u64);
+
+/// How far apart the strip's overlay readings should be at most over a
+/// window `span_s` long: fine enough to follow a swing of a few seconds
+/// on a short strip, without working out more than a few hundred.
+fn strip_step(span_s: f64) -> f64 {
+    (span_s / 400.0).max(0.5)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrendPoint {
     t: f64,
@@ -818,6 +839,9 @@ pub struct TimegrapherApp {
     /// The readings over the session at each averaging time a pane uses
     /// other than Readings' (whose are `trend`), by milliseconds.
     other_trends: std::collections::BTreeMap<u64, Vec<TrendPoint>>,
+    /// Readings worked out afresh over the strip's window when the run kept
+    /// for the whole take is too sparse there, with what they were for.
+    strip_points: Option<(StripKey, Vec<TrendPoint>)>,
     /// Where the last Save put the session, if it has been saved.
     /// The folder Save offers first.
     save_dir: String,
@@ -995,6 +1019,7 @@ impl TimegrapherApp {
             pane_average: self.pane_average.iter().map(|(&p, &s)| (p, s)).collect(),
             check_updates: self.check_at_start,
             keep_awake: self.keep_awake,
+            show_readings: self.show_readings,
         }
     }
 
@@ -1032,9 +1057,11 @@ impl TimegrapherApp {
             pane_average,
             check_updates,
             keep_awake,
+            show_readings,
         } = s;
         self.check_at_start = check_updates;
         self.keep_awake = keep_awake;
+        self.show_readings = show_readings;
         // Readings' time first: setting it drops every pane's own.
         if AVERAGES.contains(&average_s) {
             self.set_average(average_s);
@@ -1160,6 +1187,7 @@ impl TimegrapherApp {
             cal: calibre_ui::Calibres::in_memory(),
             pane_average: Default::default(),
             other_trends: Default::default(),
+            strip_points: None,
             confirm: None,
             opened_path: String::new(),
             mic_setup: None,
@@ -1327,6 +1355,7 @@ impl TimegrapherApp {
     /// Clear every run of readings, for a new session or a change that
     /// makes them all out of date; new readings fill them again.
     fn clear_trends(&mut self) {
+        self.strip_points = None;
         self.trend.clear();
         for t in self.other_trends.values_mut() {
             t.clear();
@@ -2501,6 +2530,7 @@ impl TimegrapherApp {
     /// Work the charts out again over the whole session, for a new
     /// averaging time or lift angle.
     fn rebuild_trend(&mut self) {
+        self.strip_points = None;
         self.other_trends.clear();
         self.trend = self.context_trend(self.average_s);
         self.sync_trends();
@@ -4608,7 +4638,8 @@ impl TimegrapherApp {
             .collect();
         let picked = std::cell::Cell::new(None);
         let keep_clock = std::cell::Cell::new(false);
-        let measured = self.clock_measured().filter(|_| self.clock.is_none());
+        let measured = self.clock_offer();
+        let kept = self.clock.clone();
         card(
             &mut cols[0],
             "Readings",
@@ -4716,9 +4747,12 @@ impl TimegrapherApp {
                     let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
                     let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
                     ui.label(
-                        RichText::new(format!("True Clock {v} seconds per day"))
-                            .small()
-                            .color(pal.text_secondary),
+                        RichText::new(format!(
+                            "True Clock {v} seconds per day, with the clock kept {}",
+                            day_of(&c.measured_utc)
+                        ))
+                        .small()
+                        .color(pal.text_secondary),
                     )
                     .on_hover_text(format!(
                         "The rate corrected for this input's own clock, which runs {:.1} ppm \
@@ -4738,17 +4772,10 @@ impl TimegrapherApp {
                 if let Some(f) = measured {
                     // Timed long enough while listening: offered, never kept
                     // unasked.
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
-                        ui.label(
-                            RichText::new(format!(
-                                "input clock timed: {:.1} ppm {slow}",
-                                f.ppm.abs()
-                            ))
-                            .small()
-                            .color(pal.text_secondary),
-                        )
-                        .on_hover_text(format!(
+                        let mut text = format!("input clock timed: {:.1} ppm {slow}", f.ppm.abs());
+                        let mut hint = format!(
                             "Timed against the computer's clock over {} of listening, this \
                              input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
                              day on every rate. Keep it to show the corrected rate as True \
@@ -4759,7 +4786,30 @@ impl TimegrapherApp {
                             f.ppm.abs(),
                             f.ppm_sd,
                             f.rate_error_s_per_day
-                        ));
+                        );
+                        if let Some(c) = &kept {
+                            let off = f.ppm - c.ppm;
+                            text += &format!(
+                                ", {:.1} ppm from the clock kept {}",
+                                off.abs(),
+                                day_of(&c.measured_utc)
+                            );
+                            hint += &format!(
+                                "\n\nThe clock kept for \"{}\" runs {:.1} ppm {}, kept {}. \
+                                 This timing is {:.1} ppm from it, {:.1} seconds per day on \
+                                 True Clock. An input reached by a shared name, such as the \
+                                 system default, may be a different sound card from the one \
+                                 timed then. Keep replaces the kept clock with this one.",
+                                c.device,
+                                c.ppm.abs(),
+                                if c.ppm >= 0.0 { "slow" } else { "fast" },
+                                day_of(&c.measured_utc),
+                                off.abs(),
+                                off.abs() * 0.0864
+                            );
+                        }
+                        ui.label(RichText::new(text).small().color(pal.text_secondary))
+                            .on_hover_text(hint);
                         if ui
                             .small_button("Keep")
                             .on_hover_text("Keep this input's clock error and correct its rates")
@@ -4938,6 +4988,17 @@ impl TimegrapherApp {
             .fit
             .as_ref()
             .filter(|f| f.ppm_sd.is_finite() && f.ppm_sd < 0.5)
+    }
+
+    /// The clock timed while listening, offered to keep: when none is kept
+    /// for the input, or the kept one is more than [`CLOCK_DIFFERS_PPM`]
+    /// from it.
+    fn clock_offer(&self) -> Option<&timegrapher_core::clock::ClockFit> {
+        self.clock_measured().filter(|f| {
+            self.clock
+                .as_ref()
+                .is_none_or(|c| (f.ppm - c.ppm).abs() > CLOCK_DIFFERS_PPM)
+        })
     }
 
     /// Keep the microphone's clock as timed: corrected rates from now on,
@@ -6023,6 +6084,54 @@ impl TimegrapherApp {
         ui.allocate_rect(full, egui::Sense::hover());
     }
 
+    /// The readings averaged over `seconds` for the strip's window from
+    /// `from` to `end`, and how far apart they are. The run kept for the
+    /// whole take serves when it is close enough there; a long take opened
+    /// whole keeps one only every take/4000 s (6.7 s over 7½ hours), too
+    /// sparse for a short strip, so they are worked out afresh.
+    fn strip_trend(&mut self, from: f64, end: f64, seconds: f64) -> (Vec<TrendPoint>, f64) {
+        let step = strip_step(end - from);
+        let kept: Vec<TrendPoint> = self
+            .trend_for(seconds)
+            .iter()
+            .filter(|p| p.t >= from && p.t <= end)
+            .copied()
+            .collect();
+        let spacing = if kept.len() > 1 {
+            (kept[kept.len() - 1].t - kept[0].t) / (kept.len() - 1) as f64
+        } else {
+            f64::INFINITY
+        };
+        let Some(live) = &self.live else {
+            return (kept, spacing.min(step));
+        };
+        if spacing <= 2.0 * step {
+            return (kept, spacing);
+        }
+        let key: StripKey = (
+            (from / step).floor() as i64,
+            (end / step).ceil() as i64,
+            trend_key(seconds),
+            step.to_bits(),
+            live.duration_s().to_bits(),
+        );
+        if let Some((k, pts)) = &self.strip_points {
+            if *k == key {
+                return (pts.clone(), step);
+            }
+        }
+        let mut pts = Vec::new();
+        let mut t = key.0 as f64 * step;
+        while t <= (key.1 as f64 * step).min(live.duration_s()) + 1e-9 {
+            if t > 0.0 && self.session.replay_reading_allowed(t) {
+                pts.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
+            }
+            t += step;
+        }
+        self.strip_points = Some((key, pts.clone()));
+        (pts, step)
+    }
+
     fn strip_pane(&mut self, ui: &mut egui::Ui) {
         if self.follow {
             self.centre();
@@ -6035,6 +6144,8 @@ impl TimegrapherApp {
                 strip::fmt_time(end)
             )
         });
+        let from = end - self.strip.span_s - 5.0;
+        let (trend, step) = self.strip_trend(from, end, self.average_for(Pane::Strip));
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
         // The strip's own Average Over, as its overlays use.
@@ -6051,8 +6162,8 @@ impl TimegrapherApp {
                 })
             });
         let pal = theme::pal(ui);
-        let from = end - self.strip.span_s - 5.0;
-        let trend = self.trend_for(self.average_for(Pane::Strip));
+        // A gap in the readings, not just their spacing, is a gap in a line.
+        let gap_s = (2.5 * step).max(5.0);
         let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             trend
                 .iter()
@@ -6069,6 +6180,7 @@ impl TimegrapherApp {
                 color: pal.trace_amplitude,
                 min_span: 10.0,
                 points: series(|p| p.amplitude),
+                gap_s,
             });
         }
         if self.overlays[1] {
@@ -6079,6 +6191,7 @@ impl TimegrapherApp {
                 color: pal.trace_rate,
                 min_span: 4.0,
                 points: series(|p| p.rate),
+                gap_s,
             });
         }
         if self.overlays[2] {
@@ -6089,6 +6202,7 @@ impl TimegrapherApp {
                 color: pal.trace_beat_error,
                 min_span: 0.2,
                 points: series(|p| p.beat_error_unlock),
+                gap_s,
             });
         }
         let bands = self.position_bands();
@@ -10113,6 +10227,7 @@ mod tests {
         // Down, now that Across is the default: a saved Down stays.
         app.strip.horizontal = false;
         app.relayout(false);
+        app.show_readings = false;
         app.sound_opts.scale = profiles::Scale::Decibels;
         app.hist_cumulative = true;
         app.folded.insert("Window".into());
@@ -10122,6 +10237,7 @@ mod tests {
         let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
         again.apply_settings(serde_json::from_str(&json).unwrap());
         assert!(!again.strip.horizontal);
+        assert!(!again.show_readings);
         assert_eq!(again.sound_opts.scale, profiles::Scale::Decibels);
         assert!(again.hist_cumulative);
         assert!(again.folded.contains("Window"));
@@ -10149,6 +10265,7 @@ mod tests {
         tree.tiles.remove(id);
         assert!(!layout_is_whole(&tree));
         before.panes = Some(tree);
+        again.strip.horizontal = true;
         again.apply_settings(before);
         assert!(layout_is_whole(&again.panes));
         assert!(!again.strip.horizontal, "the saved arrangement was kept");
@@ -10372,6 +10489,22 @@ mod tests {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.clock_track = Some(t);
         assert!(app.clock_measured().is_some());
+        assert!(app.clock_offer().is_some(), "offered with none kept");
+        // One kept for the same name: offered again only when it is more
+        // than a couple of ppm away, as when another card answers to it.
+        let kept = |ppm: f64| clockstore::DeviceClock {
+            device: "Test Mic".into(),
+            ppm,
+            ppm_sd: Some(0.1),
+            span_s: 1200.0,
+            measured_utc: "2026-10-12T20:00:00Z".into(),
+            source: "measure".into(),
+        };
+        app.clock = Some(kept(21.0));
+        assert!(app.clock_offer().is_none(), "the kept clock agrees");
+        app.clock = Some(kept(-14.0));
+        assert!(app.clock_offer().is_some(), "the kept clock is 34 ppm off");
+        assert_eq!(day_of("2026-10-12T20:00:00Z"), "2026-10-12");
     }
 
     /// A pane follows Readings' Average Over until given a time of its
@@ -10505,8 +10638,10 @@ mod tests {
         let before = app.heard_s();
         let saved_before = app.session.recorder.as_ref().unwrap().duration_s();
         let shell = crate::pump::Shell::new(app);
-        // 30 s of sound in the 20 ms blocks a microphone sends.
-        for k in 0..1500u64 {
+        // 10 s of sound in the 20 ms blocks a microphone sends: several
+        // passes of the listening thread, and quick enough in a debug build
+        // run alongside the other tests.
+        for k in 0..500u64 {
             tx.send(Event::Audio(timegrapher_core::capture::Block {
                 samples: vec![0.0; 960],
                 at: std::time::UNIX_EPOCH + Duration::from_millis(2000 + 20 * k),
@@ -10522,7 +10657,7 @@ mod tests {
                     a.session.recorder.as_ref().unwrap().duration_s(),
                 )
             };
-            if heard - before >= 30.0 - 1e-6 && saved - saved_before >= 30.0 - 1e-6 {
+            if heard - before >= 10.0 - 1e-6 && saved - saved_before >= 10.0 - 1e-6 {
                 break;
             }
             assert!(
@@ -10560,6 +10695,46 @@ mod tests {
         assert!(app.running());
         drop(tx);
         let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_long_take_still_draws_over_a_short_strip() {
+        // Opened whole, a take over 5 h 33 min keeps a reading only every
+        // take/4000 s, more than 5 s apart: thinned here to the 6.7 s of
+        // the 7 h 28 min Pepsi take, the strip works out its own.
+        let mut app = synthetic(40.0, 20.0);
+        let thin = |app: &mut TimegrapherApp| {
+            let step = 26_880.0 / TREND_POINTS;
+            let mut t = 0.0;
+            let mut thin = Vec::new();
+            while t <= 40.0 {
+                if let Some(p) = app.trend.iter().find(|p| p.t >= t) {
+                    thin.push(*p);
+                }
+                t += step;
+            }
+            app.trend = thin;
+        };
+        thin(&mut app);
+        let (pts, spacing) = app.strip_trend(5.0, 40.0, app.average_s);
+        assert_eq!(spacing, strip_step(35.0));
+        assert!(pts.len() >= 60, "{} points", pts.len());
+        assert!(pts.iter().filter(|p| p.rate.is_some()).count() >= 40);
+        // A new lift angle works the strip's readings out again, so the
+        // amplitude line follows it at once.
+        let amplitude = |pts: &[TrendPoint]| pts.iter().find_map(|p| p.amplitude).unwrap();
+        let before = amplitude(&pts);
+        app.set_lift(app.lift_deg + 10.0);
+        assert!(app.strip_points.is_none());
+        thin(&mut app);
+        let (pts, _) = app.strip_trend(5.0, 40.0, app.average_s);
+        assert!(amplitude(&pts) != before, "amplitude {before} kept");
+        // The kept run serves when it is fine enough.
+        let mut app = synthetic(40.0, 20.0);
+        let kept = app.trend.len();
+        let (pts, _) = app.strip_trend(0.0, 40.0, app.average_s);
+        assert!(app.strip_points.is_none());
+        assert!(pts.len() <= kept);
     }
 
     #[test]

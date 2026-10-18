@@ -209,6 +209,19 @@ pub struct Overlay {
     pub min_span: f64,
     /// (time in s, value), oldest first.
     pub points: Vec<[f64; 2]>,
+    /// Neighbouring points further apart than this have a gap between
+    /// them, and no line.
+    pub gap_s: f64,
+}
+
+/// The pairs of neighbouring `points` joined by a line: those no further
+/// apart than `gap_s`.
+fn joined(points: &[&[f64; 2]], gap_s: f64) -> Vec<([f64; 2], [f64; 2])> {
+    points
+        .windows(2)
+        .filter(|w| w[1][0] - w[0][0] <= gap_s)
+        .map(|w| (*w[0], *w[1]))
+        .collect()
 }
 
 impl Overlay {
@@ -891,16 +904,9 @@ pub fn draw_strip(
             .iter()
             .filter(|p| p[0] >= oldest - 2.0 && p[0] <= end_s)
             .collect();
-        for w in pts.windows(2) {
-            // A gap in the readings is a gap in the line.
-            if w[1][0] - w[0][0] > 5.0 {
-                continue;
-            }
+        for (a, b) in joined(&pts, o.gap_s) {
             painter.line_segment(
-                [
-                    g.pos(across(w[0][1]), w[0][0]),
-                    g.pos(across(w[1][1]), w[1][0]),
-                ],
+                [g.pos(across(a[1]), a[0]), g.pos(across(b[1]), b[0])],
                 Stroke::new(1.6_f32, o.color),
             );
         }
@@ -1005,6 +1011,21 @@ pub fn fmt_time_fine(t: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readings_further_apart_than_the_gap_are_not_joined() {
+        // A 7 h 28 min take opened whole keeps a reading every take/4000 s,
+        // 6.7 s apart: joined, with the gap set from that spacing.
+        let step = 26_880.0 / 4000.0;
+        let pts: Vec<[f64; 2]> = (0..10).map(|i| [i as f64 * step, 10.0]).collect();
+        let refs: Vec<&[f64; 2]> = pts.iter().collect();
+        assert_eq!(joined(&refs, (2.5 * step).max(5.0)).len(), 9);
+        // The old fixed 5 s gap joined none of them.
+        assert!(joined(&refs, 5.0).is_empty());
+        // A real hole in the readings stays a hole.
+        let holed: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] < 20.0 || p[0] > 50.0).collect();
+        assert_eq!(joined(&holed, (2.5 * step).max(5.0)).len(), holed.len() - 2);
+    }
 
     fn beat(index: i64, time: f64) -> Beat {
         Beat {
