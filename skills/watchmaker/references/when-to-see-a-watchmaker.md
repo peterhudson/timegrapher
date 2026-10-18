@@ -171,7 +171,7 @@ look; over 330° means check the lift angle and the microphone; 2 ms of
 beat error is large; a spread between positions over 10 s/d is worth a
 look when no maker's figure exists.
 
-For calibres not built like a Swiss 28,800 vph lever movement (slower
+For calibres not built like a Swiss 28,800 bph lever movement (slower
 beats, older or simpler escapements), say that these sets are for modern
 watches and lean on the trend between tests. Omega co-axial and other
 non-lever escapements can't be measured for amplitude by most

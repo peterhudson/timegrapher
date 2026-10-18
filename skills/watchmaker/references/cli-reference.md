@@ -18,7 +18,7 @@ authoritative list of fields; this page covers what an agent reads.
 build has them):
 
 ```
-timegrapher calibres [NAME] [--json]       the built-in calibre table: vph, lift angle, escape wheel teeth, wheel turn periods, sources
+timegrapher calibres [NAME] [--json]       the built-in calibre table: bph, lift angle, escape wheel teeth, wheel turn periods, sources
 timegrapher calibres --search QUERY        the calibres that answer QUERY, best first (a name, another name or the maker: "dd 3235", "AP 3120")
 timegrapher analyze FILE --calibre NAME    beat rate, lift angle and wheel names from the table; --bph, --lift, --escape-teeth win
 timegrapher session FOLDER --calibre NAME  the same for a session: the flag, then session.toml, then the calibre, then the defaults
@@ -49,7 +49,7 @@ then the command's own fields alongside them:
 
 ```json
 {
-  "schema": "timegrapher.analyze/1",
+  "schema": "timegrapher.analyze/2",
   "software": { "name": "timegrapher", "version": "0.1.0", "os": "linux", "arch": "x86_64" },
   "input": {
     "files": [ { "path": "dialup.wav", "recording": { "...": "from dialup.wav.json if present" } } ],

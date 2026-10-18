@@ -29,8 +29,8 @@ apart:
    locking face, and the fork comes against its banking. The loudest.
 
 Unlock to drop is the time the balance takes to pass through the lift
-angle, which is how amplitude is measured. At 28,800 vph and 52° lift it's
-about 7.7 ms at 270°, 8.7 ms at 240° and 10.4 ms at 200°. At 18,000 vph,
+angle, which is how amplitude is measured. At 28,800 bph and 52° lift it's
+about 7.7 ms at 270°, 8.7 ms at 240° and 10.4 ms at 200°. At 18,000 bph,
 multiply by 1.6. (From `t = (T/π)·asin(L / 2A)` with T the full
 oscillation period.)
 
