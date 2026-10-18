@@ -148,9 +148,10 @@ a personal computer.
    next run takes 0.4.2 again). A draft from a tag build keeps its tag, so
    its number stays taken until the tag is deleted too. Runs that can draft
    take turns, so two never pick the same number. For new features raise X
-   or Y in a pull request, following [semantic versioning](https://semver.org), and change
-   the four workspace crates' `version` lines in `Cargo.lock` with it (CI
-   builds with `--locked`); nobody raises Z by hand.
+   or Y in a pull request, following
+   [semantic versioning](https://semver.org), and change the four workspace
+   crates' `version` lines in `Cargo.lock` with it (CI builds with
+   `--locked`); nobody raises Z by hand.
 2. Release notes, for watchmakers rather than developers, go in
    `packaging/release-notes/X.Y.Z.md` for the version the draft will take.
    They become the draft's text; without them the draft lists the pull

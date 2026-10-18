@@ -55,8 +55,8 @@ def next_version(base, used_names):
         match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", name.strip())
         if match and (int(match.group(1)), int(match.group(2))) == (major, minor):
             taken.add(int(match.group(3)))
-    # Above every patch already used, so numbers only go up even when a
-    # draft has been deleted.
+    # Above every patch still used, so a number below a remaining release
+    # or tag never comes back; deleting the newest draft frees its number.
     if taken:
         patch = max(patch, max(taken) + 1)
     return f"{major}.{minor}.{patch}"
