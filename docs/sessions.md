@@ -185,11 +185,12 @@ the letter forms match in any case; 3H, 6H, 9H and 12H only in capitals,
 so that `_2h` or `_12h` (a duration) is not taken for a position.
 
 Witschi's codes count round the dial with the crown at 3 o'clock, so crown
-up is 3H and crown right 12H. The report and the text table name each
-position as the app does: in words with the common code, and Witschi's
-beside it for the crown positions: "Crown Up (CU, 3H)", "Dial Down (DD)".
-The JSON (a finding's `recording` and `evidence`) keeps Witschi's code
-alone: "Crown Up (3H)", "Dial Down (CB)".
+up is 3H and crown right 12H. The report's tables and the text table
+name each position as the app does: in words with the common code, and
+Witschi's beside it for the crown positions: "Crown Up (CU, 3H)", "Dial
+Down (DD)". A finding's `evidence`, shown as it is in the JSON and in
+both reports' findings, keeps Witschi's code alone: "Crown Up (3H)",
+"Dial Down (CB)"; the charts and the facts line show the codes.
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -232,7 +233,8 @@ of the recording or for `measure_s`:
 The quick check `record` prints while recording skips the same settling
 time and reads the same stretch on the sound card's clock, as this report
 reads a session file `record` creates (which names no clock log), so the
-two agree.
+two agree, unless listening stopped and started again within the take:
+the report splits the reading there, and the check does not.
 
 Repeat readings in the same position and state of wind are averaged.
 
