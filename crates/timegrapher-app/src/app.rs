@@ -792,6 +792,12 @@ pub struct TimegrapherApp {
     check_at_start: bool,
     /// Keep the computer from sleeping on its own while listening.
     keep_awake: bool,
+    /// Why the computer isn't being kept awake although asked, set by the
+    /// listening thread.
+    pub(crate) awake_fault: Option<String>,
+    /// Why the listening thread didn't start, if it didn't: then sound is
+    /// only taken while the window draws.
+    pub(crate) pump_fault: Option<String>,
     /// The check at start is still to be made (on the first frame, which
     /// has the context it repaints).
     check_pending: bool,
@@ -1146,6 +1152,8 @@ impl TimegrapherApp {
             guided_measure_s: guided::MEASURE_S,
             check_at_start: true,
             keep_awake: true,
+            awake_fault: None,
+            pump_fault: None,
             check_pending: false,
             average_s: 10.0,
             watch: String::new(),
@@ -2270,8 +2278,9 @@ impl TimegrapherApp {
                                 self.last_beat_seen = 0.0;
                                 self.move_prompt = None;
                                 let m = format!(
-                                    "Nothing was heard for {} while the computer slept. \
-                                     The take carries on, with the gap marked as a break.",
+                                    "The sound's timestamps jumped by {}, as they do when the \
+                                     computer sleeps. The jump is left out of the take as a \
+                                     break, and listening carries on.",
                                     fields::duration(gap.round())
                                 );
                                 applog::warn(&m);
@@ -3611,6 +3620,27 @@ impl TimegrapherApp {
             "While listening, stop the computer going to sleep on its own, so a long take \
              isn't cut short. The screen can still lock and switch off.",
         );
+        let pal = theme::pal(ui);
+        if let (true, Some(e)) = (self.keep_awake, &self.awake_fault) {
+            ui.label(
+                RichText::new(format!(
+                    "The computer isn't being kept awake: {e}. It may sleep on its own \
+                     during a long take."
+                ))
+                .small()
+                .color(pal.warn),
+            );
+        }
+        if let Some(e) = &self.pump_fault {
+            ui.label(
+                RichText::new(format!(
+                    "Sound is taken only while the window is showing: the thread that \
+                     takes it otherwise didn't start ({e})."
+                ))
+                .small()
+                .color(pal.warn),
+            );
+        }
     }
 
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
@@ -10526,7 +10556,8 @@ mod tests {
         for k in 0..50 {
             tx.send(block(2000 + 20 * k)).unwrap();
         }
-        app.poll();
+        // Everything queued, however long it takes.
+        while app.poll_for(Duration::from_secs(60)) > 0 {}
         let heard = app.heard_s();
         assert!(app.session.recorder.as_ref().unwrap().breaks().is_empty());
         // An hour asleep, then the sound runs on.
@@ -10534,7 +10565,7 @@ mod tests {
         for k in 0..50 {
             tx.send(block(woke + 20 * k)).unwrap();
         }
-        app.poll();
+        while app.poll_for(Duration::from_secs(60)) > 0 {}
         assert!(app.running());
         let breaks = app.session.recorder.as_ref().unwrap().breaks();
         assert_eq!(breaks.len(), 1);
@@ -10546,7 +10577,7 @@ mod tests {
         assert!((app.heard_s() - heard - 3601.0).abs() < 0.05);
         let (m, error) = app.message.clone().unwrap();
         assert!(!error);
-        assert!(m.contains("while the computer slept"), "{m}");
+        assert!(m.contains("timestamps jumped by"), "{m}");
         drop(tx);
         let _ = std::fs::remove_dir_all(base);
     }

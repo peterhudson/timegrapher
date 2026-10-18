@@ -5,53 +5,123 @@
 //! sleeping from idleness waits. On macOS the same request stops the
 //! system slowing the app down while its window is hidden (App Nap).
 //!
-//! Held and let go on the listening thread ([`crate::pump`]), which lives
-//! as long as the app: Windows ties the request to the thread that made
-//! it.
+//! Held and let go on a thread of its own that lives as long as the app
+//! (Windows ties the request to the thread that made it), so a slow or
+//! stuck system call never holds up the listening thread or quitting.
 
 use crate::applog;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 const REASON: &str = "Listening to a watch";
 
 /// Asks the system to stay awake while held.
-#[derive(Default)]
 pub struct Awake {
-    held: Option<sys::Held>,
-    /// The system refused once; not asked again until listening stops.
-    refused: bool,
+    want: Option<Sender<bool>>,
+    /// Asked for last.
+    wanted: bool,
+    /// Why the system didn't keep the computer awake, when it didn't.
+    fault: Arc<Mutex<Option<String>>>,
 }
 
-impl Awake {
-    /// Hold the computer awake while `want`, let it go otherwise.
-    pub fn hold(&mut self, want: bool) {
-        if !want {
-            if let Some(h) = self.held.take() {
-                sys::release(h);
-                applog::info("the computer may sleep on its own again");
-            }
-            self.refused = false;
-            return;
-        }
-        if self.held.is_some() || self.refused {
-            return;
-        }
-        match sys::hold() {
-            Ok(h) => {
-                applog::info("keeping the computer awake while listening");
-                self.held = Some(h);
-            }
+impl Default for Awake {
+    fn default() -> Self {
+        let fault = Arc::new(Mutex::new(None));
+        let (tx, rx) = mpsc::channel();
+        let f = fault.clone();
+        let want = match std::thread::Builder::new()
+            .name("keep awake".into())
+            .spawn(move || run(&rx, &f))
+        {
+            Ok(_) => Some(tx),
             Err(e) => {
-                applog::warn(&format!("couldn't keep the computer awake: {e}"));
-                self.refused = true;
+                *lock(&fault) = Some(format!("its thread didn't start: {e}"));
+                None
             }
+        };
+        Awake {
+            want,
+            wanted: false,
+            fault,
         }
     }
 }
 
-impl Drop for Awake {
-    fn drop(&mut self) {
-        self.hold(false);
+impl Awake {
+    /// Hold the computer awake while `want`, let it go otherwise. Returns
+    /// at once; the system is asked on the thread.
+    pub fn hold(&mut self, want: bool) {
+        if want == self.wanted {
+            return;
+        }
+        self.wanted = want;
+        if let Some(tx) = &self.want {
+            let _ = tx.send(want);
+        }
+    }
+
+    /// Why the computer isn't being kept awake although asked, if so.
+    pub fn fault(&self) -> Option<String> {
+        if self.wanted {
+            lock(&self.fault).clone()
+        } else {
+            None
+        }
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Hold or let go as asked, until the app goes. A refusal isn't retried
+/// until listening stops and starts again.
+fn run(want: &Receiver<bool>, fault: &Mutex<Option<String>>) {
+    let mut held = None;
+    while let Ok(w) = want.recv() {
+        if w && held.is_none() {
+            match sys::hold() {
+                Ok(h) => {
+                    applog::info("keeping the computer awake while listening");
+                    held = Some(h);
+                    *lock(fault) = None;
+                }
+                Err(e) => {
+                    applog::warn(&format!("couldn't keep the computer awake: {e}"));
+                    *lock(fault) = Some(e);
+                }
+            }
+        } else if !w {
+            if let Some(h) = held.take() {
+                sys::release(h);
+                applog::info("the computer may sleep on its own again");
+            }
+            *lock(fault) = None;
+        }
+    }
+    if let Some(h) = held {
+        sys::release(h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fault_shows_only_while_asked() {
+        // No thread, so the system is never asked and the refusal stays.
+        let mut a = Awake {
+            want: None,
+            wanted: false,
+            fault: Arc::new(Mutex::new(Some("refused".into()))),
+        };
+        assert_eq!(a.fault(), None);
+        a.hold(true);
+        assert_eq!(a.fault().as_deref(), Some("refused"));
+        a.hold(false);
+        assert_eq!(a.fault(), None);
     }
 }
 

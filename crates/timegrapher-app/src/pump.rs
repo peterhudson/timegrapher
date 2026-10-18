@@ -34,12 +34,19 @@ impl Shell {
     pub fn new(app: TimegrapherApp) -> Self {
         let app = Arc::new(Mutex::new(app));
         let stop = Arc::new(AtomicBool::new(false));
-        let thread = {
+        let spawned = {
             let (app, stop) = (app.clone(), stop.clone());
             std::thread::Builder::new()
                 .name("listening".into())
                 .spawn(move || run(&app, &stop))
-                .ok()
+        };
+        let thread = match spawned {
+            Ok(t) => Some(t),
+            Err(e) => {
+                applog::warn(&format!("the listening thread didn't start: {e}"));
+                lock(&app).pump_fault = Some(e.to_string());
+                None
+            }
         };
         Shell { app, stop, thread }
     }
@@ -82,8 +89,10 @@ fn run(app: &Mutex<TimegrapherApp>, stop: &AtomicBool) {
             std::thread::sleep(EVERY);
         }
         let started = Instant::now();
+        let fault = awake.fault();
         let (taken, listening, heard, want_awake) = {
             let mut a = lock(app);
+            a.awake_fault = fault;
             let taken = a.pump();
             (taken, a.running(), a.heard_s(), a.wants_awake())
         };
