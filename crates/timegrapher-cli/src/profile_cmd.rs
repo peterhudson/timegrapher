@@ -1,5 +1,5 @@
-//! `timegrapher profile`: the sound of the tick and of the tock (even and odd
-//! beats; the JSON keeps `a` for the tick and `b` for the tock), with the
+//! `timegrapher profile`: the sound of the Tick and of the Tock (the JSON
+//! keeps `a` for the Tick and `b` for the Tock), with the
 //! unlock, drop and sound marks the engine measured on them.
 
 use std::fmt::Write as _;
@@ -119,11 +119,7 @@ fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lif
         * 1.3;
     for (i, p) in profiles.iter().enumerate() {
         let y0 = mt + i as f64 * (h + gap);
-        let label = if i == 0 {
-            "Tick (even beats)"
-        } else {
-            "Tock (odd beats)"
-        };
+        let label = if i == 0 { "Tick" } else { "Tock" };
         let _ = writeln!(
             s,
             r##"<rect x="{ml}" y="{y0}" width="{}" height="{h}" fill="none" stroke="#999"/><text x="{ml}" y="{}">{label}</text>"##,

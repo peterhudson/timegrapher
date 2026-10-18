@@ -131,14 +131,14 @@ enum Command {
         /// Print the measurements as JSON instead of text.
         #[arg(long)]
         json: bool,
-        /// Write the even and odd whole-recording templates to this CSV file.
+        /// Write the Tick and Tock whole-recording templates to this CSV file
+        /// (columns `even` and `odd`).
         #[arg(long)]
         templates: Option<PathBuf>,
     },
-    /// The sound of the tick and the tock (even and odd beats) over a stretch of
-    /// a recording, with the unlock, drop and sound marks the engine
-    /// measured on them: the place to look when amplitude or beat error
-    /// seem wrong.
+    /// The sound of the Tick and the Tock over a stretch of a recording,
+    /// with the unlock, drop and sound marks the engine measured on them:
+    /// the place to look when amplitude or beat error seem wrong.
     Profile {
         file: PathBuf,
         /// Start of the stretch, seconds from the start of the recording.
@@ -189,18 +189,18 @@ enum Command {
         /// Beat rate in beats per hour (guessed if omitted).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
-        lift: f64,
+        /// Lift angle in degrees (default: the calibre's, else 52).
+        #[arg(long, value_parser = parse_lift)]
+        lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
         #[arg(long, default_value_t = 1500.0)]
         highpass: f64,
-        /// The movement, to name periodic components after its wheels
-        /// (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name lists the
-        /// known ones).
+        /// The movement, to name periodic components after its wheels and
+        /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
+        /// 3235"; an unknown name lists the known ones).
         #[arg(long)]
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:
@@ -236,18 +236,18 @@ enum Command {
         /// Beat rate in beats per hour (guessed if omitted).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees.
-        #[arg(long, default_value_t = 52.0, value_parser = parse_lift)]
-        lift: f64,
+        /// Lift angle in degrees (default: the calibre's, else 52).
+        #[arg(long, value_parser = parse_lift)]
+        lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
         #[arg(long, default_value_t = 1500.0)]
         highpass: f64,
-        /// The movement, to name periodic components after its wheels
-        /// (e.g. "ETA 2824-2", "Rolex 3235"; an unknown name lists the
-        /// known ones).
+        /// The movement, to name periodic components after its wheels and
+        /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
+        /// 3235"; an unknown name lists the known ones).
         #[arg(long)]
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:
@@ -714,7 +714,6 @@ fn main() -> ExitCode {
         } => {
             let mut cfg = StreamConfig::default();
             cfg.analysis.bph = bph;
-            cfg.analysis.amplitude.lift_deg = lift;
             cfg.analysis.envelope.notch_hz = notch;
             cfg.analysis.envelope.highpass_hz = highpass;
             long::run(
@@ -725,6 +724,7 @@ fn main() -> ExitCode {
                     card_ppm,
                 },
                 &cfg,
+                lift,
                 long::Train {
                     calibre: calibre.as_deref(),
                     escape_teeth,
@@ -752,7 +752,6 @@ fn main() -> ExitCode {
         } => {
             let mut cfg = StreamConfig::default();
             cfg.analysis.bph = bph;
-            cfg.analysis.amplitude.lift_deg = lift;
             cfg.analysis.envelope.notch_hz = notch;
             cfg.analysis.envelope.highpass_hz = highpass;
             if reading.is_nan() || reading <= 0.0 {
@@ -764,6 +763,7 @@ fn main() -> ExitCode {
                     files: &files,
                     clock_log: clock.as_deref(),
                     stream: cfg,
+                    lift,
                     train: long::Train {
                         calibre: calibre.as_deref(),
                         escape_teeth,
@@ -1218,7 +1218,7 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
         opt(s.rate_p95, 1)
     );
     println!(
-        "Amplitude    {}{} deg (even beats {}, odd beats {}; lift angle {} deg)",
+        "Amplitude    {}{} deg (Tick {}, Tock {}; lift angle {} deg)",
         opt(s.amplitude_deg, 0),
         s.amplitude_se_deg.map_or(String::new(), |e| if e < 1.0 {
             format!(" ± {e:.1}")

@@ -63,7 +63,7 @@ Rate         +24.5 s/d (uncalibrated sound-card clock)
 Beat error   0.23 ms (from the unlock; 0.08 ms from the drop)
 Jitter       166 us per beat (within 10 s windows)
 Rate spread  -0.9 to 49.0 s/d (5th-95th percentile of 10 s windows)
-Amplitude    232 deg (even beats 233, odd beats 232; lift angle 52 deg)
+Amplitude    232 deg (Tick 233, Tock 232; lift angle 52 deg)
 Periodic components in timing:
       59.3 s  explains   11% of variance  (fourth wheel?)
 Periodic components in amplitude:
@@ -78,7 +78,7 @@ beat error and amplitude over time, and where each side's unlock and drop
 sat in each 2 s window, ms from the beat time), `--json`.
 
 `timegrapher profile recording.flac --at 60 --svg profile.svg` shows the
-sound of the tick and the tock (even and odd beats) over a 10 s stretch,
+sound of the Tick and the Tock over a 10 s stretch,
 with the unlock, drop and sound marks behind the amplitude and beat error
 readings: the place to look when those readings seem wrong.
 

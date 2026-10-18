@@ -170,7 +170,7 @@ impl ResolvedTrain {
     }
 
     /// Preserve the direct long/series train behavior: fill a missing escape
-    /// wheel only. Their --calibre still does not set analysis BPH or lift.
+    /// wheel only. Their --calibre still does not set analysis BPH.
     pub(crate) fn wheels(&self, bph: u32) -> Vec<Wheel> {
         let escape = |teeth| match teeth {
             Some(t) => standard_wheels(bph, t),
@@ -194,6 +194,13 @@ impl ResolvedTrain {
             );
         }
         wheels
+    }
+
+    /// The lift angle for long and series: `--lift`, else the calibre's,
+    /// else the default.
+    pub(crate) fn lift_deg(&self, flag: Option<f64>) -> f64 {
+        flag.or(self.calibre.as_ref().and_then(|c| c.lift_angle_deg))
+            .unwrap_or(crate::calibres_cmd::DEFAULT_LIFT_DEG)
     }
 
     /// Analyze's existing explicit escape-teeth override wins over named wheels.
@@ -264,10 +271,12 @@ pub struct ClockArgs<'a> {
     pub card_ppm: Option<f64>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     files: &[PathBuf],
     clock_args: ClockArgs,
     cfg: &StreamConfig,
+    lift: Option<f64>,
     train: Train,
     wheels: &[String],
     out: Option<PathBuf>,
@@ -278,6 +287,9 @@ pub fn run(
         .map(|w| parse_wheel(w))
         .collect::<Result<_, _>>()?;
     let resolved_train = train.resolve()?;
+    let mut cfg = cfg.clone();
+    cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(lift);
+    let cfg = &cfg;
     let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -898,6 +910,26 @@ mod catalogue_tests {
             .is_err(),
             "legacy session adapter remains deliberately separate"
         );
+    }
+
+    #[test]
+    fn lift_comes_from_the_flag_then_the_calibre_then_the_default() {
+        let user = user();
+        let named = Train {
+            calibre: Some("workshop a"),
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        assert_eq!(named.lift_deg(None), 44.0);
+        assert_eq!(named.lift_deg(Some(50.0)), 50.0);
+        let none = Train {
+            calibre: None,
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        assert_eq!(none.lift_deg(None), crate::calibres_cmd::DEFAULT_LIFT_DEG);
     }
 
     #[test]
