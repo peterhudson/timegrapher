@@ -1,23 +1,41 @@
-# Chapter 9, Steadiness: a rate that repeats with the fourth wheel, seen
-# in the strip's rate line, as a peak in Periods and a spike in the FFT.
+# Chapter 9, Steadiness: a rate that swings every 5 s, one turn of the
+# escape wheel, seen in the strip's rate line, as the tallest peak in
+# Periods and as a spike in the FFT.
 output = "steadiness-periods-fft.png"
 
 layout = ["row", [0.2, "Watch"], [0.8, ["column",
-    [0.45, "Strip"],
-    [0.55, ["row", [0.5, "SteadyPeriods"], [0.5, "SteadyFft"]]],
+    [0.5, "Strip"],
+    [0.5, ["row", [0.5, "SteadyPeriods"], [0.5, "SteadyFft"]]],
 ]]]
 
+# The last part of a 7 h 28 min take; its 10 min clip is cut from the
+# corpus (too large to keep in the repository).
 [data]
-corpus = "dd3235_DU_30min"
+corpus = "pepsi3235_DU_7h"
+file = "take_part01-008.flac"
+start = 0
+seconds = 600
+folder = "Pepsi 3235 DU"
+
+# The take has no session.toml; these are from its README.
+[data.session]
+watch = "Pepsi (Dandong 3235)"
+calibre = "Dandong 3235"
+bph = 28800
+lift = 55
+position = "DU"
 
 [window]
 size = [1600, 940]
 
 [settings]
 overlays = [false, true, false]
+follow = true
 rate_line = false
 rate_guides = false
 periods_log = true
+fft_timing = true
+steady_shown = [["Periods", [true, false, false]], ["Fft", [true, false, false]]]
 
 [settings.strip]
 half_width_ms = 250.0

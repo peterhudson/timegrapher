@@ -80,33 +80,51 @@ def ensure_corpus(path):
     return path
 
 
-def fetch_take(corpus, take):
+def fetch_take(corpus, take, file=None):
     dest = os.path.join(CACHE, "audio")
+    if file and os.path.exists(os.path.join(dest, take, file)):
+        return os.path.join(dest, take)
     subprocess.run([sys.executable, "-I", os.path.join(corpus, "scripts", "fetch.py"), dest, take], check=True)
     return os.path.join(dest, take)
 
 
+# A clip larger than this stays in .cache/clips and is cut again from the
+# corpus on a fresh checkout, so the repository holds no large audio.
+KEEP_BYTES = 5_000_000
+
+
 def clip(name, data, corpus):
-    """Cut the figure's seconds from its corpus take into data/<figure>/,
-    with a session.toml carrying the take's watch, so the app shows it."""
-    take = fetch_take(corpus, data["corpus"])
-    out = os.path.join(DATA, name)
+    """Cut the figure's seconds from its corpus take into data/<figure>/ (or
+    .cache/clips/<figure>/ when large), with a session.toml carrying the
+    take's watch, so the app shows it. [data.session] adds to or replaces
+    the take's own (a take with no session.toml needs one)."""
+    take = fetch_take(corpus(), data["corpus"], data["file"])
+    out = os.path.join(CACHE, "clips", name)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     start, secs = data.get("start", 0), data["seconds"]
     subprocess.run(["ffmpeg", "-v", "error", "-ss", str(start), "-t", str(secs),
                     "-i", os.path.join(take, data["file"]), "-map_metadata", "-1",
                     "-c:a", "flac", "-compression_level", "12", os.path.join(out, data["file"])], check=True)
-    with open(os.path.join(take, "session.toml"), "rb") as f:
-        session = tomllib.load(f)
-    position = next((r["position"] for r in session.get("recording", []) if r.get("file") == data["file"]),
-                    session.get("recording", [{}])[0].get("position", "DU"))
+    session = {}
+    if os.path.exists(os.path.join(take, "session.toml")):
+        with open(os.path.join(take, "session.toml"), "rb") as f:
+            session = tomllib.load(f)
+    session.update(data.get("session", {}))
+    position = session.get("position") or next(
+        (r["position"] for r in session.get("recording", []) if r.get("file") == data["file"]),
+        session.get("recording", [{}])[0].get("position", "DU"))
     lines = [f"{k} = {json.dumps(session[k], ensure_ascii=False)}" for k in ("watch", "calibre", "bph", "lift") if k in session]
     lines.append(json.dumps(f"{secs} s of {data['file']} from {start} s, take {data['corpus']} "
                             f"in peterhudson/timegrapher-corpus (CC0).", ensure_ascii=False).join(["notes = ", ""]))
     lines += ["", "[[recording]]", f"file = {json.dumps(data['file'])}", f"position = {json.dumps(position)}"]
     with open(os.path.join(out, "session.toml"), "w") as f:
         f.write("\n".join(lines) + "\n")
+    if os.path.getsize(os.path.join(out, data["file"])) <= KEEP_BYTES:
+        kept = os.path.join(DATA, name)
+        shutil.rmtree(kept, ignore_errors=True)
+        shutil.move(out, kept)
+        return kept
     return out
 
 
@@ -118,10 +136,10 @@ def recording(name, data, corpus, clips):
             raise SystemExit(f"{name}: {target} is not here; {data.get('source', 'see the figure file')}")
         return target
     if "seconds" in data:
-        here = os.path.join(DATA, name)
-        if clips or not os.path.isdir(here):
-            here = clip(name, data, corpus())
-        return here
+        for here in (os.path.join(DATA, name), os.path.join(CACHE, "clips", name)):
+            if not clips and os.path.isdir(here):
+                return here
+        return clip(name, data, corpus)
     return fetch_take(corpus(), data["corpus"])
 
 

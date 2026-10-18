@@ -16,7 +16,10 @@ Each figure is a TOML file:
 - `[data]`: the recording. `corpus` and `file` name a take in
   [timegrapher-corpus](https://github.com/peterhudson/timegrapher-corpus);
   `start` and `seconds` cut a clip of it, kept in `data/<figure>/` so the
-  figures build without a download. With no `seconds` the whole take is
+  figure builds without a download; a clip over 5 MB stays in `.cache/` and
+  is cut again from a downloaded take. `[data.session]` sets the watch,
+  calibre, beat rate, lift angle and position when the take has no
+  session file. With no `seconds` the whole take is
   fetched. `mode = "replay"` replays it instead of analysing it.
 - `[window]`: `size` in points, on a 1920x1080 screen.
 - `[settings]`: the app's settings, over the base ones (light, the strip across).
