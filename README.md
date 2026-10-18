@@ -57,22 +57,31 @@ cargo build --release --locked -p timegrapher-cli # Linux: libasound2-dev
 ```
 
 ```
-Duration     300.0 s at 48000 Hz
-Beat rate    28800 bph, 2400 beats found
-Rate         +24.5 s/d (uncalibrated sound-card clock)
-Beat error   0.23 ms (from the unlock; 0.08 ms from the drop)
-Jitter       166 us per beat (within 10 s windows)
-Rate spread  -0.9 to 49.0 s/d (5th-95th percentile of 10 s windows)
-Amplitude    232 deg (Tick 233, Tock 232; lift angle 52 deg)
+Duration     600.0 s at 48000 Hz
+Beat rate    28800 bph, 4799 beats found (100.0% of those expected)
+Rate         +8.9 ± 0.2 s/d, corrected for the sound card's clock (19.3 ppm slow, from 8 USB lines in the recording, 0.1 ppm apart); +10.5 s/d on the card's clock
+Beat error   0.16 ± 0.01 ms (from the unlock; 0.26 ms from the drop)
+Jitter       209 us per beat (within 10 s windows)
+Rate spread  6.8 to 12.3 s/d (5th-95th percentile of 10 s windows)
+Amplitude    298 ± 0.6 deg (Tick 298, Tock 297; lift angle 52 deg)
+Shape        Tick: sound 1 in 98%, sound 2 in 100% of 299 windows; 1-2 2.35 ms, 1-3 7.10 ms, level 1/3 0.07, tail 0.12
+             Tock: sound 1 in 100%, sound 2 in 100% of 299 windows; 1-2 2.24 ms, 1-3 7.06 ms, level 1/3 0.16, tail 0.17
+             beat error from the unlock +0.17 ms in the first quarter, +0.14 ms in the last (75 windows each)
 Periodic components in timing:
-      59.3 s  explains   11% of variance  (fourth wheel?)
+     154.8 s  explains   10% of variance
+     100.1 s  explains    9% of variance
+       5.0 s  explains    7% of variance
 Periodic components in amplitude:
-      56.7 s  explains   38% of variance  (fourth wheel?)
+      46.4 s  explains   26% of variance
+       5.0 s  explains   15% of variance
+     107.6 s  explains    7% of variance
 ```
 
 Options: `--bph` (guessed if omitted), `--lift` (degrees),
-`--notch 5000,7000` (remove steady interference tones), `--escape-teeth`
-(`long` and `series` also take `--calibre NAME`),
+`--notch 5000,7000` (remove steady interference tones), `--escape-teeth`,
+`--calibre NAME` (the movement's beat rate, lift angle and wheels from the
+calibre table; `long`, `series`, `session` and `record` take it too, and
+take its lift angle when `--lift` is not given),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
 beat error and amplitude over time, and where each side's unlock and drop
 sat in each 2 s window, ms from the beat time), `--json`.
