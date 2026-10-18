@@ -58,8 +58,7 @@ peaks: the case, holder and microphone alter their relative prominence.
 
 ![Schematic envelope of one beat, showing the Unlock, Impulse and Drop sound groups and the measured unlock-to-drop interval](images/beat-sounds.svg)
 
-Witschi describes the acoustic groups in its [training course, printed
-pp. 5–6](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf).
+Witschi describes the acoustic groups in its [training course](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf).
 For the mechanical sequence, including the distinction between drop,
 locking and run to the banking, see Horopedia's [Swiss lever escapement,
 sections 6 and 9](https://horopedia.org/distribution-mechanism-swiss-lever-escapement/).
@@ -180,8 +179,8 @@ The principal reading uses the **unlock** timing. The app also reports a
 value labelled **from the drop**, based on the detected beat reference
 near the dominant sound group. If the two sides have different
 unlock-to-reference delays, the values differ. That difference is useful
-information about the sound and its extraction; it is not automatically
-a second mechanical fault.
+information about the sound and its extraction; by itself it says
+nothing about the escapement.
 
 The cards show the magnitude because Tick and Tock are arbitrary labels.
 Some advanced analyses retain the sign to preserve changes through zero;

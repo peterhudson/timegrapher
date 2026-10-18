@@ -70,7 +70,7 @@ these settings. Choose a longer interval when the watch takes time to
 settle or when a short reading would sample only part of a visible cycle.
 Use the same choices for comparisons.
 
-For context, Witschi's [2025 measurement tips, p. 33](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf)
+For context, Witschi's [2025 measurement tips, about p. 34](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf)
 specify 20 seconds of stabilisation and at least 40 seconds of measurement
 per position. The app's defaults are consistent with those timings; they
 are not a guarantee that every movement has settled after 20 seconds.
@@ -113,7 +113,7 @@ includes time spent turning the watch, pauses and abandoned partial
 measurements. Beats outside the accepted measurement intervals are faint.
 
 These labels explain the result's selection, not whether the excluded
-audio contains a healthy beat. The sound remains useful for checking a
+audio contains a regular beat. The sound remains useful for checking a
 transition or understanding why a measurement was restarted. Test marks
 remain until a new test or session.
 
@@ -172,7 +172,7 @@ changes calculated as **later minus earlier**. **Im** is the rate change
 with the largest absolute magnitude among the eligible positions,
 excluding crown right/12H; it retains that change's sign. **Ie** is the
 absolute change in mean rate over the common positions. Witschi describes
-the Im exclusion in its [discussion of NIHS 93-10, p. 28](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf).
+the Im exclusion in its [discussion of NIHS 93-10](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf).
 This guide uses that published explanation, not a claim that the app
 performs a complete standards certification test.
 

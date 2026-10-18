@@ -39,7 +39,7 @@ The solid markers show the edge detector's estimates:
 | --- | --- |
 | **Unlock** | Estimated onset of the first sound group |
 | **Drop** | Estimated onset of the dominant drop group |
-| **Drop Peak** | Peak of that group |
+| **Peak** | Peak of that group (named Drop Peak when you rest the pointer on it) |
 
 The unlock-to-drop interval supplies the amplitude estimate. Unlock
 timing, combined with the alternating beat timing, supplies the usual
@@ -61,7 +61,7 @@ face of the pallet stone, is explained in
 At 28,800 bph with a 55° lift angle, a summary above a profile might
 read:
 
-> Tick 40 beats · unlock −9.09 ms · drop −0.61 ms · unlock to drop
+> Tick 40 beats · unlock -9.09 ms · drop -0.61 ms · unlock to drop
 > 8.48 ms · amplitude 259°
 
 The negative times are offsets before the detected beat reference. The
@@ -116,7 +116,8 @@ Next use the Scope with several beats overlaid. Look for a repeated early
 sound, a changing noise floor, clipping or a disturbance. If adjusting
 coupling or gain makes the apparent jump disappear on a repeat recording,
 that is evidence about the measurement. If the same change persists with
-clear, repeatable markers, it deserves a mechanical investigation. The
+clear, repeatable markers, that is consistent with a change in the watch
+rather than the measurement. The
 profile helps you decide which question to ask next; it cannot identify
 a defective part by itself.
 
@@ -137,12 +138,12 @@ Tick Tock Profile.
 | **10 ms** | 8 ms before to 2 ms after |
 | **20 ms** | 14 ms before to 6 ms after; usually the useful starting view of a complete sound group |
 | **50 ms** | 15 ms before to 35 ms after; includes more ringing after the beat |
-| **One Beat** | From 15 ms before one reference to 15 ms before the next |
 | **200 ms** | 20 ms before to 180 ms after; may include the following beat, depending on beat rate |
 | **400 ms** | A continuous grey row containing several beats; how many depends on beat rate |
+| **One Beat** | A separate button: from 15 ms before one reference to 15 ms before the next |
 
-At 20 ms, Tick and Tock occupy separate rows, with the profile's Unlock
-and Drop markers for reference. Those markers still come from the
+At every span except 400 ms, Tick and Tock occupy separate rows; from 5
+to 50 ms the profile's Unlock and Drop markers are shown for reference. Those markers still come from the
 combined profile; they are not new edge measurements on every waveform.
 
 **Beats** overlays the latest 1, 4, 8 or 16 beats, with older ones fainter.

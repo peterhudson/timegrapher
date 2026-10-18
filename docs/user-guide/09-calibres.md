@@ -77,7 +77,8 @@ picks are retained between runs.
 ## Adding What You Know
 
 In an entry, a blank wheel period can be filled in and is marked as yours.
-**Clear** removes that addition; **Another wheel** adds a named period.
+**Clear** removes that addition. To add a named period, type the wheel's
+name and period and press **Add**.
 Use **New Custom Calibre…** for a movement that needs its own identity,
 maker, beat rate or lift angle. Custom entries also offer **Delete
 Calibre**.
@@ -123,8 +124,8 @@ amplitude calculation too.
 `timegrapher calibres` lists the catalogue; a name or `--search` narrows
 it. Settings have command-specific meanings. In particular, `analyze`
 can take beat rate and lift angle from `--calibre`, while `long` and
-`series` use it for train associations and require the lift angle
-separately. See [Common Options](12-command-line.md#common-options).
+`series` use it only to name wheels: give the lift angle with `--lift`
+(52° if you don't). See [Common Options](12-command-line.md#common-options).
 
 ---
 

@@ -220,9 +220,9 @@ establish that Timegrapher has the same performance.
 - **Witschi, _Measuring Technology and Troubleshooting for Watches_,
   training course, document 71.1010D35e, release 1.1 (2010).**
   [PDF hosted by Welwyn Watches](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf).
-  Printed pp. 5–6 explain the three acoustic groups; p. 7 covers rate,
-  amplitude and beat error. Page references here are the printed numbers,
-  not a PDF viewer's one-based page count.
+  It explains the three acoustic groups, rate, amplitude and beat error,
+  the words early and late for the paper strip (p. 6) and the scope spans
+  (p. 12).
 - **Horopedia, _Distribution Mechanism — Swiss Lever Escapement_.**
   [Illustrated mechanical sequence](https://horopedia.org/distribution-mechanism-swiss-lever-escapement/).
   Particularly useful for separating the tooth's action on the pallet
@@ -230,12 +230,12 @@ establish that Timegrapher has the same performance.
 - **Witschi, _Testing Methods for Mechanical Watches_ (2025).**
   [Official PDF](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf),
   available from Witschi's [training resources](https://www.witschi.com/en/service/uhrmacherinnen/).
-  Printed p. 28 describes Im and Ie; p. 33 gives practical measurement
-  advice. The NIHS 93-10 convention discussed in this guide is based on
+  It describes Im and Ie, and gives practical measurement advice (the
+  20-second stabilisation, about p. 34). The NIHS 93-10 convention discussed in this guide is based on
   Witschi's account; this guide does not reproduce or independently
   establish compliance with that standard.
-- **W. J. Riley, _Handbook of Frequency Stability Analysis_, NIST Special
-  Publication 1065 (2008).**
+- **_Handbook of Frequency Stability Analysis_, NIST Special Publication
+  1065 (2008).**
   [NIST PDF](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication1065.pdf).
   Section 5.2.4 covers overlapping Allan variance. This is background for
   understanding the statistic, not a claim that the app's watch data are

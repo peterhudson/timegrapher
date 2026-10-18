@@ -68,7 +68,7 @@ independent chart navigation over the session.
 ### Average Over
 
 A chart follows the Readings card unless you choose a separate **Average
-Over** in its toolbar. A different value appears in the tab name. Changing
+Over** in its tab bar, beside **Match Strip**. A different value appears in the tab name. Changing
 the interval recalculates its history; changing the lift angle recalculates
 amplitude history as well. These are analysis settings, not edits to the
 saved audio.

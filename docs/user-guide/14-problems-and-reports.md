@@ -100,9 +100,10 @@ A recorded crash produces a banner at the next start:
 
 ![The crash banner offers Make a Report, Show the Record and Dismiss](images/crash-banner.png)
 
-**Show the Record** opens the crash record. **Make a Report…** copies the
-record and opens a GitHub issue form for you to paste it into. **Dismiss**
-closes the banner. Opening the form does not submit a report.
+**Show the Record** displays the crash record in the banner (then
+**Hide the Record** hides it). **Make a Report…** copies the record and
+opens a GitHub issue form for you to paste it into. **Dismiss** stops the
+app asking about that crash. Opening the form does not submit a report.
 
 If a recording was in progress, check the scratch files before starting a
 replacement session; [Sessions and Recordings](11-sessions-and-recordings.md)

@@ -26,9 +26,10 @@ position boundary or a gap of more than two seconds. Settling time after
 a position change is excluded.
 
 This setting also supplies the default interval for the ordinary charts,
-Distributions, Tick Tock Profile, and the fitted line and overlays on the
-Paper Strip. A pane can use its own interval through **Average Over** in
-its toolbar; its tab then identifies that interval. Changing the setting
+Distributions (when their **Values** is **Readings**), Tick Tock Profile,
+and the fitted line and overlays on the Paper Strip. A pane can use its
+own interval through **Average Over** in its toolbar (for the charts, in
+their tab bar); its tab then identifies that interval. Changing the setting
 on the Readings card returns those panes to the shared value. Profiles
 are limited to 60 seconds.
 
@@ -43,9 +44,10 @@ clock. Positive means gaining and negative means losing. It is fitted to
 beat times with a separate Tick/Tock offset; it is not an average of
 individual reciprocal beat intervals.
 
-Below it are the number of beats used, their time span, and **jitter**.
-Jitter is a robust estimate of the spread of timing residuals after the
-rate and alternating offset have been fitted, in microseconds. Think of
+Below it are the beats used and the interval they cover (the actual
+span, when it is shorter than Average Over), and **jitter**. Jitter is
+how far individual beats land from the fitted line, in microseconds,
+after the rate and the Tick/Tock offset have been fitted. Think of
 it as the thickness of each strip line rather than the distance between
 the two lines. Watch behaviour, noise, acoustic coupling and beat
 extraction can all contribute. It is not a direct measurement of balance
@@ -102,10 +104,9 @@ Tock estimates and the lift angle used. Each side is inferred from its
 acoustic lift time using the model in
 [chapter 1](01-how-it-works.md#amplitude).
 
-The two side readings are useful checks. A persistent difference may
-involve asymmetric escapement action, but the microphone and edge
-selection can also produce it. Start with the profile and Scope before
-interpreting it mechanically. The amplitude measured on the displayed
+The two side readings are useful checks. The microphone and edge
+selection can produce a persistent difference on their own; the profile
+and Scope show what each side's marks stand on. The amplitude measured on the displayed
 profile need not exactly equal the card: measuring an edge on a longer
 combined profile and summarising measurements from short windows are
 different operations.
@@ -141,9 +142,8 @@ It answers a narrower question than “how much did the watch vary?” A
 small ± can coexist with a clear trend or a large periodic swing. It also
 cannot separate the watch's short-term variation from measurement noise.
 
-The estimate assumes a noise model. Successive readings can remain
-correlated even without overlap, and positive correlation can make the
-estimate too optimistic. It is neither a guaranteed bound nor a stated
+The estimate assumes a noise model. Neighbouring readings share some of
+their behaviour, so the ± can look smaller than it should. It is neither a guaranteed bound nor a stated
 95% confidence interval. Lift angle, clock calibration and systematic
 edge-selection errors are outside it. The
 [precision reference](../measurement-precision.md) gives the formula and
@@ -184,7 +184,8 @@ interval.
 
 ## No Regular Beat Found
 
-When timing scatter reaches 2% of the nominal beat interval, the app
+Once there are at least 10 seconds of sound, if the timing scatter reaches
+2% of the nominal beat interval, the app
 withholds the readings and reports **No regular beat found**, together
 with the scatter. At 28,800 bph, 2% is 2.5 ms. This is a detection
 criterion, not an acceptable beat-error limit.

@@ -8,9 +8,9 @@ receives the result, then explains that result in the conversation.
 This can be useful when several observations need to be considered
 together. For example, a periodic change in amplitude may deserve a look
 at the beat profiles, the rate spectrum and a second recording before
-suggesting a mechanical cause. The assistant can help organise that
+naming a wheel association. The assistant can help organise that
 investigation. Its explanation is still an interpretation: ask it to
-separate measured facts, assumptions and possible causes.
+separate measured facts from hypotheses.
 
 ## Installing the Extension
 

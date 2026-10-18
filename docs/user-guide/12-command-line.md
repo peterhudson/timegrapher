@@ -68,7 +68,7 @@ timegrapher analyze watch_DU.flac --bph 28800 --lift 52 --json > analysis.json
 timegrapher analyze watch_DU.flac --bph 28800 --lift 52 --beats beats.csv --windows windows.csv
 ```
 
-The output includes rate, amplitude, unlock- and reference-based beat
+The output includes rate, amplitude, unlock- and drop-based beat
 error, jitter, beat coverage, clipping and other measurement conditions.
 **Rate spread** describes the distribution of short-window rates over
 the take, not a confidence interval for the overall rate. The CSV options

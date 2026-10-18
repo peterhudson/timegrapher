@@ -87,8 +87,8 @@ The ordinary **Rate**, **Amplitude** and **Beat Error** charts show their
 history. Use the **?** beside a pane or card for its local explanation:
 hover for a short hint, click for the longer text.
 
-Do not regulate from the first number that appears. Let the signal settle,
-confirm the context and see whether the rate itself is steady. A later
+The first figure covers only a few seconds of beats. Let the signal
+settle, confirm the context and see whether the rate itself is steady. A later
 [Positions Test](10-positions.md) will show whether the dial-up result is
 representative of the other positions.
 
@@ -102,8 +102,9 @@ folder continuously follows new audio.
 
 **Stop** releases the microphone while retaining the session for review.
 **Resume** continues that session; **New Session** prepares a separate
-one. With the desktop update accompanying this guide, New Session also
-works while listening and capture continues into the new session. The
+one. New Session also works while listening: capture continues into the
+new session (a replay stops). Builds before this change, up to 0.4.2,
+ask you to stop listening first. The
 app asks about unsaved audio before discarding it. See
 [Sessions and Recordings](11-sessions-and-recordings.md) for the timeline
 and file details.

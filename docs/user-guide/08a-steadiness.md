@@ -100,8 +100,8 @@ close while the whole series spreads widely, so SD can be much larger.
 The ± printed before “reading to reading” is this scatter, not the
 standard error printed on a reading card.
 
-The tests can exclude isolated readings more than six scatter units from
-a five-minute local level. The count is reported. If more than 3% would
+The tests can exclude isolated readings more than six robust standard
+deviations from a five-minute local level. The count is reported. If more than 3% would
 be excluded, none are excluded by that rule. The display is not proof that
 all disturbances have been removed, and the Readings plot can still show
 points that are not used in a particular statistical summary.
@@ -324,7 +324,7 @@ C[k] = sum(x[i] − mean(x), i ≤ k) / (s_short × sqrt(n))
 
 Here `s_short` is the reading-to-reading scatter and `n` is the number of
 finite readings. Because the departures are measured from the same
-whole-series mean, the curve returns approximately to zero at the end.
+whole-series mean, the curve returns to zero at the end.
 That return does not mean the watch recovered its original rate.
 
 Suppose the first half of a take is at +2 s/d and the second at +12 s/d.

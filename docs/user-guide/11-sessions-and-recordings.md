@@ -11,9 +11,9 @@ much less useful if its position, winding state or settings are unknown.
 and analysis as the session grows. **Stop** releases the microphone and
 keeps the session available for review. **Resume** continues it, and
 **New Session** clears the current session after any required save prompt.
-With the desktop update accompanying this guide, it is also available
-while listening: microphone capture continues into a fresh session. It
-stops a replay. Earlier builds require stopping microphone capture first.
+It is also available while listening: microphone capture continues into
+a fresh session. It stops a replay. Builds up to 0.4.2 require stopping
+microphone capture first.
 
 ![Stopped microphone controls: Resume, New Session and Save](images/stopped-buttons.png)
 
@@ -61,9 +61,9 @@ saving deliberately is the better way to preserve an important take.
 
 ### What a Saved Take Holds
 
-The folder name includes its start time and, when supplied, the watch name
-and calibre. For example:
-`2026-10-08T21-30-00_Test-watch_Rolex_3235`.
+The folder name includes its start time in UTC and, when supplied, the
+watch name and calibre, with spaces turned into underscores. For example:
+`2026-10-08T21-30-00_Test_watch_Rolex_3235`.
 
 | File | Purpose |
 | --- | --- |

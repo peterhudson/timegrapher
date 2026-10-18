@@ -117,7 +117,7 @@ range, an upright line marks it. For the fitted curve
 A_turn = A₀ − c₁/(2c₂)
 ```
 
-This is what the caption means by the rate changing least near that
+This is what the headline means by the rate changing least near that
 amplitude. It is not an instruction to regulate or alter the movement to
 run there. A quadratic fitted to a small or noisy range can have a
 turning point without establishing a repeatable mechanical optimum.
@@ -189,8 +189,8 @@ A sound follow-up is a second continuous run in the same position under
 comparable conditions. Compare the amplitude range shared by both runs,
 the dot pattern and spread, the rate change across that range, and the
 actual time windows. Repeat in another position as a separate test if
-that is the next question. A difference between positions is evidence to
-investigate, not something to average away without recording it.
+that is the next question. Record a difference between positions as a
+separate result rather than averaging it away.
 
 ## Command-Line Analysis
 
