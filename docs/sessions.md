@@ -186,8 +186,9 @@ so that `_2h` or `_12h` (a duration) is not taken for a position.
 
 Witschi's codes count round the dial with the crown at 3 o'clock, so crown
 up is 3H and crown right 12H. The report names each position in words with
-the code beside it: "Crown Up (3H)", "Dial Down (CB)". (The app also
-shows the common code: "Crown Up (CU, 3H)".)
+the code beside it: "Crown Up (3H)", "Dial Down (CB)". (The app names
+the crown positions with both codes, "Crown Up (CU, 3H)", and the dial
+positions with the common one, "Dial Down (DD)".)
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -201,7 +202,7 @@ After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 *Testing Methods for Mechanical Watches*, D40e, 2025, measurement tips, about p. 34), to the end
 of the recording or for `measure_s`:
 
-- rate from one fit over every beat (tick and toc fitted together),
+- rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock when the recording has a clock log
   or the session gives `card_ppm`;
 - beat error measured from the unlock, as tg and bench timegraphers do
@@ -228,9 +229,9 @@ of the recording or for `measure_s`:
   between (see [Two states](#two-states)).
 
 The quick check `record` prints while recording skips the same settling
-time and reads the same stretch, but on the sound card's clock: where the
-take has a clock log, its rate differs from the report's by the card's
-clock error (0.0864 s/d for each ppm).
+time and reads the same stretch on the sound card's clock, as this report
+reads the session file `record` writes (which names no clock log), so the
+two agree.
 
 Repeat readings in the same position and state of wind are averaged.
 
