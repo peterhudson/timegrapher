@@ -190,7 +190,7 @@ name each position as the app does: in words with the common code, and
 Witschi's beside it for the crown positions: "Crown Up (CU, 3H)", "Dial
 Down (DD)". A finding's `evidence`, shown as it is in the JSON and in
 both reports' findings, keeps Witschi's code alone: "Crown Up (3H)",
-"Dial Down (CB)"; the charts and the facts line show the codes.
+"Dial Down (CB)"; the charts and the facts line show Witschi's codes.
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
