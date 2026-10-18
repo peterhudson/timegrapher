@@ -555,7 +555,7 @@ pub fn draw(
                 for (k, &(i, c)) in series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
-                        row(ui, s, i, c, view, opts);
+                        row(ui, s, i, c, view, opts, None);
                     });
                     if k + 1 < n {
                         ui.add_space(gap);
@@ -565,45 +565,77 @@ pub fn draw(
     } else {
         // Wide and short: side by side.
         let col_w = fits(n, w);
+        // Every headline in the same room, so the plots line up.
+        let rows = series
+            .iter()
+            .map(|(_, c)| headline(ui, &c.headline, col_w, HEADLINE_ROWS).rows.len())
+            .max()
+            .unwrap_or(1);
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = gap;
             for &(i, c) in &series {
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
-                    ui.vertical(|ui| row(ui, s, i, c, view, opts));
+                    ui.vertical(|ui| row(ui, s, i, c, view, opts, Some(rows)));
                 });
             }
         });
     }
 }
 
-fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
-    let log_y = opts.periods_log;
-    let pal = theme::pal(ui);
-    ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
-    // What was detected, on up to two lines; all of it on hover, with the
-    // statistics behind it.
+/// The most lines a headline takes before it ends in "…"; the whole of it
+/// is on hover.
+const HEADLINE_ROWS: usize = 8;
+
+/// A headline laid out `width` wide on up to `max_rows` lines.
+fn headline(
+    ui: &egui::Ui,
+    text: &str,
+    width: f32,
+    max_rows: usize,
+) -> std::sync::Arc<egui::Galley> {
     let font = egui::TextStyle::Small.resolve(ui.style());
     let mut job = egui::text::LayoutJob::single_section(
-        c.headline.clone(),
-        egui::TextFormat::simple(font, pal.text_secondary),
+        text.to_owned(),
+        egui::TextFormat::simple(font, theme::pal(ui).text_secondary),
     );
     job.wrap = egui::text::TextWrapping {
-        max_width: ui.available_width(),
-        max_rows: 2,
+        max_width: width,
+        max_rows,
         break_anywhere: false,
         overflow_character: Some('…'),
     };
-    let galley = ui.fonts_mut(|f| f.layout_job(job));
-    let one_line = galley.rows.len() < 2;
-    let line_h = galley.size().y;
+    ui.fonts_mut(|f| f.layout_job(job))
+}
+
+/// One series' headline, statistics and plot. Side by side, `rows` gives
+/// every headline the same room so the plots line up; one above another,
+/// each takes the lines it needs.
+fn row(
+    ui: &mut egui::Ui,
+    s: &Steadiness,
+    i: usize,
+    c: &SeriesCheck,
+    view: View,
+    opts: Opts,
+    rows: Option<usize>,
+) {
+    let log_y = opts.periods_log;
+    let pal = theme::pal(ui);
+    ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
+    // What was detected, in full unless it is very long; all of it on
+    // hover, with the statistics behind it.
+    let max_rows = rows.unwrap_or(HEADLINE_ROWS).max(1);
+    let galley = headline(ui, &c.headline, ui.available_width(), max_rows);
+    let short_by = rows.map_or(0, |r| r.saturating_sub(galley.rows.len().max(1)));
+    let line_h = galley.size().y / galley.rows.len().max(1) as f32;
     let stats = stats_line(c);
     ui.add(egui::Label::new(galley))
         .on_hover_text(format!("{}\n\n{stats}", c.headline));
-    // Always two lines' room, so the plots line up.
-    if one_line {
-        ui.add_space(line_h);
+    // Side by side, the same room for each, so the plots line up.
+    if short_by > 0 {
+        ui.add_space(line_h * short_by as f32);
     }
     // Too few readings: no tests ran, so there is nothing to draw.
     if c.autocorrelation.is_none() {
@@ -1311,6 +1343,29 @@ mod tests {
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    #[test]
+    fn a_long_headline_is_shown_whole() {
+        // A headline ending on a line faster than the readings, at the
+        // Steadiness tab's width in a 1280-point window.
+        let text = "Rate repeats every 90 s, 1.1 s/d peak to peak, 0.4 s/d \
+            above the scatter. The rate's level also moves 0.8 s/d over the \
+            take. The beat timing also repeats every 5.0 s, faster than the \
+            10 s readings show: Escape Wheel, 0.12 ms peak to peak, in the \
+            beat timing itself.";
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut rows = None;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let g = headline(ui, text, 415.0, HEADLINE_ROWS);
+                let shown: String = g.rows.iter().map(|r| r.text()).collect();
+                assert!(!shown.contains('…'), "{shown}");
+                rows = Some(g.rows.len());
+            });
+        });
+        let rows = rows.unwrap();
+        assert!(rows > 3 && rows < HEADLINE_ROWS, "{rows} rows");
+    }
     #[test]
     fn fft_renderer_paints_input_availability_in_both_rate_displays() {
         // Constructed beat/grid fixtures only: this tests presentation, not

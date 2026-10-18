@@ -63,6 +63,8 @@ pub struct Settings {
     pub check_updates: bool,
     /// Keep the computer from sleeping on its own while listening.
     pub keep_awake: bool,
+    /// The readings' cards across the top shown.
+    pub show_readings: bool,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -117,6 +119,7 @@ impl Default for Settings {
             pane_average: Vec::new(),
             check_updates: true,
             keep_awake: true,
+            show_readings: true,
         }
     }
 }
