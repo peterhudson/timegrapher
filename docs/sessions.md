@@ -186,7 +186,8 @@ so that `_2h` or `_12h` (a duration) is not taken for a position.
 
 Witschi's codes count round the dial with the crown at 3 o'clock, so crown
 up is 3H and crown right 12H. The report names each position in words with
-the code beside it, as the app does: "Crown Up (3H)", "Dial Down (CB)".
+the code beside it: "Crown Up (3H)", "Dial Down (CB)". (The app also
+shows the common code: "Crown Up (CU, 3H)".)
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -211,9 +212,9 @@ of the recording or for `measure_s`:
   analysis locks on, so the sign can change from one run to the next.
   `summary.json` keeps the signed values;
 - amplitude, the median of the 2 s windows, with Tick and Tock beside it
-  (the two kinds of beat, one per pallet stone; Tick is the even beats
-  and Tock the odd ones, `amplitude_even_deg` and `amplitude_odd_deg` in
-  the JSON, since the sound can't say which stone is which);
+  (the two kinds of beat, one per pallet stone, since the sound can't
+  say which stone is which; in the JSON, Tick is `amplitude_even_deg`
+  and Tock `amplitude_odd_deg`);
 - jitter, and the median and the 5th to 95th percentile of rate in 10 s
   windows: how steady the rate is. The headline rate is the fit over
   every beat, the average the hands keep; where the rate wanders with
@@ -226,9 +227,10 @@ of the recording or for `measure_s`:
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
 
-Because the settling time is left out, and the sound card's clock is
-corrected where it was logged, these readings can differ by a few s/d
-from the quick check `record` prints while recording.
+The quick check `record` prints while recording skips the same settling
+time and reads the same stretch, but on the sound card's clock: where the
+take has a clock log, its rate differs from the report's by the card's
+clock error (0.0864 s/d for each ppm).
 
 Repeat readings in the same position and state of wind are averaged.
 
@@ -237,7 +239,7 @@ A recording whose beats are no steadier than noise, as on an empty stand
 rule as `analyze`), shows no rate, amplitude, beat error, cycles or
 shape: those numbers would describe noise. Its measurement has
 `watch_heard` false, and its row and its finding read "No regular beat
-found (timing scatter 8.6 ms, 2.4% of a beat)".
+found (timing scatter 8.6 ms, 6.9% of a beat)" for a 28,800 bph watch.
 
 ## Two states
 
@@ -310,7 +312,7 @@ the watchmaker skill, each with its source.
 
 | Code | Title, e.g. | Listed when |
 | --- | --- | --- |
-| `no_regular_beat` | No regular beat found (timing scatter 8.6 ms, 2.4% of a beat) | the median timing scatter is 2% of the beat period or more |
+| `no_regular_beat` | No regular beat found (timing scatter 8.6 ms, 6.9% of a beat) | the median timing scatter is 2% of the beat period or more |
 | `unlock_unreliable` | Unlock found in 45% of windows | fewer than 60% of the 2 s amplitude windows find the unlock on both sides; amplitude and the beat error from the unlock rest on those windows |
 | `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
 | `measurement_short` | 25 s measured | under 40 s measured after settling (D40e's "≥40 s measurement time", about p. 34) |
