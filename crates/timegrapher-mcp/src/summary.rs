@@ -253,9 +253,13 @@ fn series(doc: &Value) -> Option<String> {
         say("sd", "SD");
         say("short_term_sd", "reading to reading");
         let h = h.trim_end_matches('.');
-        // A headline with no structure found already gives the readings
-        // and their median.
-        lines.push(if facts.is_empty() || h.contains(" readings") {
+        // The steady headline already gives the readings, their median and
+        // their scatter ("Rate: 360 10 s readings, median ..."), and the
+        // too-short one says there are too few. Other headlines may name
+        // readings too ("10 s readings are too coarse to show it") without
+        // giving these figures, so the word alone is not the key.
+        let stated = h.contains(" readings, median ") || h.contains("too few");
+        lines.push(if facts.is_empty() || stated {
             format!("- {h}.")
         } else {
             format!("- {h} ({}).", facts.join("; "))
@@ -513,6 +517,54 @@ mod tests {
              Detected:\n\
              - Rate repeats every 60 min"
         );
+    }
+
+    #[test]
+    fn a_headline_naming_readings_still_gets_the_figures_unless_it_gives_them() {
+        let one = |step: f64, headline: &str| {
+            let doc = json!({
+                "schema": "timegrapher.series/2",
+                "series": [{ "series": "rate", "unit": "s/d", "readings": 360, "step_s": step,
+                    "median": 3.1, "sd": 1.24, "short_term_sd": 0.9, "headline": headline }],
+            });
+            lead(&doc, &Map::new()).unwrap()
+        };
+        let figures = "(360 readings of 10 s; median 3.10 s/d; SD 1.24 s/d; reading to \
+                       reading 0.90 s/d)";
+        // A level change with the period search's fast line, and correlated
+        // readings, as the engine words them: the word "readings" is there,
+        // the figures are not.
+        for h in [
+            "Rate shifts level 1 time: +2.0 s/d, then +4.0 s/d. The beat timing repeats \
+             every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings \
+             are too coarse to show it.",
+            "Successive 10 s rate readings are correlated (lag-1 correlation 0.40); no \
+             cycle, level change or trend detected.",
+        ] {
+            assert!(one(10.0, h).contains(figures), "{}", one(10.0, h));
+        }
+        // The steady and too-short headlines give them, or say there are too
+        // few, themselves, whatever the reading length.
+        for (step, h) in [
+            (
+                10.0,
+                "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+                 next; no cycle, level change, trend or correlation between readings detected.",
+            ),
+            (
+                120.0,
+                "Rate: 360 2 min readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+                 next; no cycle, level change, trend or correlation between readings detected.",
+            ),
+            (
+                10.0,
+                "12 10 s rate readings over 120 s: too few to search for structure (needs 30 \
+                 readings over 120 s).",
+            ),
+        ] {
+            let text = one(step, h);
+            assert!(!text.contains("readings of"), "{text}");
+        }
     }
 
     #[test]

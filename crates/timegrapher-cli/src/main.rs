@@ -382,7 +382,8 @@ enum Command {
         #[arg(long)]
         watch: Option<String>,
         /// The movement, from the calibre table: gives bph and lift when
-        /// they are not given (an unknown name lists the known ones).
+        /// they are not given (a name not in the catalogue is an error
+        /// that points to `timegrapher calibres --search`).
         #[arg(long)]
         calibre: Option<String>,
         /// Beat rate in beats per hour (guessed if omitted).

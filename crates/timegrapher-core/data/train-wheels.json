@@ -410,7 +410,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "VR is the prefix from the watch factory that first used it, not the movement maker. Given the 3135's train because genuine parts fit; the barrel is left out because the clone's power reserve is not documented. The VR3186 is a true clone except for its jumping hour hand."
+    "notes": "VR is the prefix from the watch factory that first used it, not the movement maker. Given the 3135's train because genuine parts fit; the barrel is left out because the clone's power reserve is not documented. That it is a true clone that takes genuine parts, and its 52° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles); no independent source was found."
   },
   {
     "calibre": "SH3135",
@@ -442,7 +442,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "A clone of the 3135 whose parts are not fully interchangeable with genuine ones, so the escape wheel is left out."
+    "notes": "A clone of the 3135 whose parts are not fully interchangeable with genuine ones, so the escape wheel is left out. That its parts are not fully interchangeable, and its 52° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles); no independent source was found."
   },
   {
     "calibre": "Rolex 3235",
@@ -543,7 +543,7 @@
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT is built on it (confirmed by a watchmaker who has serviced many)."
+    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT is built on it (confirmed by a watchmaker who has serviced many). That it is a true clone, and its 55° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles), and the DD3285 note on one watchmaker's word with no published source; the bench recordings support the 20-tooth escape wheel, and a teardown thread the larger pallet stones."
   },
   {
     "calibre": "JH3235",
@@ -585,7 +585,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "A true 32xx clone with a free-sprung balance and a flat hairspring, not the 31xx/32xx hybrid VR3235. Its own escape wheel is not the skeletonised Chronergy one and, as on the Dandong, its pallet stones are larger than the genuine ones, so the 55° lift angle may not be exact. It has a shock setting for the escape wheel. Power reserve not documented."
+    "notes": "A true 32xx clone with a free-sprung balance and a flat hairspring, not the 31xx/32xx hybrid VR3235. Its own escape wheel is not the skeletonised Chronergy one and, as on the Dandong, its pallet stones are larger than the genuine ones, so the 55° lift angle may not be exact. It has a shock setting for the escape wheel. Power reserve not documented. Its 55° lift angle rests only on one author's two forum guides (on clone movements and on lift angles); the teardown thread is the second source for its being a true clone."
   },
   {
     "calibre": "VR3235",
@@ -620,7 +620,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Not a true clone: a hybrid of the 3135 and 3235, about 40 h, so neither train can be assumed and the escape wheel is left out. VR is the prefix from the watch factory that first used it; the guide credits the Shanghai movement factory in one place and Shanghai Jinghe in another."
+    "notes": "Not a true clone: a hybrid of the 3135 and 3235, about 40 h, so neither train can be assumed and the escape wheel is left out. VR is the prefix from the watch factory that first used it; the guide credits the Shanghai movement factory in one place and Shanghai Jinghe in another. That it is a 3135 and 3235 hybrid of about 40 h, and its 52° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles); no independent source was found."
   },
   {
     "calibre": "SH3285",
@@ -653,7 +653,7 @@
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (closer to genuine than the VR3235; balance, pallet fork and escape wheel not to genuine spec)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Its escapement is not to genuine spec, so the escape wheel and lift angle are left out."
+    "notes": "Everything in this entry rests on one source, one author's forum guide to clone movements, and no second source was found: its account of the escapement (not to genuine spec, so the escape wheel and lift angle are left out) and the beat rate, taken as the 28,800 bph of the Rolex 32xx it copies. The balance follows from that beat rate, and the fourth and centre wheels from the centre-seconds layout of the 32xx."
   },
   {
     "calibre": "Rolex 4130",
@@ -744,7 +744,7 @@
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
     "confidence": "measured",
-    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's balance bridge, pallet fork and escape wheel are not to genuine spec, and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry."
+    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's balance bridge, pallet fork and escape wheel are not to genuine spec, and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry. That it is a true clone, the SH4130 remark and its 52° lift angle rest only on one author's two forum guides (on clone movements and on lift angles); the bench recordings support the 20-tooth escape wheel."
   },
   {
     "calibre": "Rolex 4131",
@@ -831,7 +831,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Its train is taken as the 4131's on the factory's claim that 95% of parts interchange. It looks like a true clone, but genuine 4131 parts are very hard to get, so no part swap has been tried and a genuine balance complete fitting is unconfirmed. Lift 55° as the 4131, probably, not measured."
+    "notes": "Its train is taken as the 4131's on the factory's claim that 95% of parts interchange. Whether a genuine balance complete fits is unconfirmed. Lift 55° as the 4131, probably, not measured. Its 55° lift angle rests only on one author's two forum guides (on clone movements and on lift angles). That 95% of parts interchange rests only on the factory's own write-up; the guides do not claim it."
   },
   {
     "calibre": "SH4131",
@@ -863,7 +863,7 @@
       "https://forum.replica-watch.info/threads/a-comprehensive-info-on-the-vs4131-aka-dd4131.10997243/ (a T-shaped pallet fork as in Asian 7750s; no skeletonised escape wheel and no shock setting for it)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "A clone of the 4131 except for the escapement, which has a T-shaped pallet fork as in Asian 7750s, not the Chronergy one. Lift 52°, as the Rolex 31xx, whose pallet fork geometry it resembles, is a bench setting, not a published figure. The escape wheel is not the genuine one and is left out."
+    "notes": "A clone of the 4131 except for the escapement, which has a T-shaped pallet fork as in Asian 7750s, not the Chronergy one. Lift 52°, as the Rolex 31xx, whose pallet fork geometry it resembles, is a bench setting, not a published figure. The escape wheel is not the genuine one and is left out. The T-shaped pallet fork rests only on the Dandong (VS) factory's write-up on its own DD4131. That it is a clone of the 4131 except for the escapement rests only on one author's forum guide to clone movements."
   },
   {
     "calibre": "Audemars Piguet 3120",
@@ -1048,7 +1048,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "The 3120 clones from APS and ZF run at 21,600 bph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry."
+    "notes": "The 3120 clones from APS and ZF run at 21,600 bph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry. Its 53° lift angle rests only on one author's forum guide to lift angles, which gives it for the genuine 3120."
   },
   {
     "calibre": "SA4302",
@@ -1118,7 +1118,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "An integrated flyback chronograph clone of the 4401; the beat rate is a dealer's figure only. Lift angle as the 4401, probably 50 to 52°, not settled."
+    "notes": "An integrated flyback chronograph clone of the 4401; that it is one, and its beat rate, rest only on one dealer's page. Lift angle as the 4401, probably 50 to 52°, not settled; that range rests only on one author's forum guide to lift angles."
   },
   {
     "calibre": "Seiko NH35A",
@@ -1504,7 +1504,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "measured",
-    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Lift 52° as the clone timegrapher guide gives for the 324."
+    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Lift 52° as the clone timegrapher guide gives for the 324. Its 52° lift angle rests only on one author's forum guide to lift angles."
   },
   {
     "calibre": "Peacock SL1258",

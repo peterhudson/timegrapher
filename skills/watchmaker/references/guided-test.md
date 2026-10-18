@@ -37,8 +37,9 @@ Ask, in one message:
   change in how it keeps time.
 
 Look the calibre up in the program's calibre table: `timegrapher
-calibres NAME --json` (in a build without it, `timegrapher long --calibre
-X` lists the known names when X is not one of them), then in
+calibres NAME --json` (a name not in the table is an error that points
+to `timegrapher calibres --search NAME`, which matches by number, maker
+or other name), then in
 [reading-the-numbers.md](reading-the-numbers.md#lift-angle). Take the lift
 angle from the table, never from memory. Note bph and lift. If the calibre is not known, say so: you'll use 52° and let the
 beat rate be found, and the amplitude is then only as good as that

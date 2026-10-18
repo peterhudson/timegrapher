@@ -253,12 +253,20 @@ fn print_text(r: &Report, calibrated: bool) {
             );
         }
     }
-    if r.findings.is_empty() {
-        if r.series.iter().any(|s| s.faster_than_readings().is_some()) {
-            println!("\nNo two levels, level change, trend or correlation between readings detected in any series, and no cycle the readings can show.");
-        } else {
-            println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
-        }
+    if let Some(line) = closing_line(r) {
+        println!("\n{line}");
+    }
+}
+
+/// The last line when nothing was found; it leaves "no cycle" out when a
+/// period-search line is too fast for the readings.
+fn closing_line(r: &Report) -> Option<&'static str> {
+    if !r.findings.is_empty() {
+        None
+    } else if r.series.iter().any(|s| s.faster_than_readings().is_some()) {
+        Some("No two levels, level change, trend or correlation between readings detected in any series, and no cycle the readings can show.")
+    } else {
+        Some("No cycle, two levels, level change, trend or correlation between readings detected in any series.")
     }
 }
 
@@ -413,6 +421,68 @@ mod tests {
             spectra: vec![],
             findings: vec![],
         }
+    }
+
+    #[test]
+    fn the_closing_line_leaves_out_no_cycle_only_beside_a_fast_line() {
+        use timegrapher_core::longterm::Grid;
+        use timegrapher_core::steadiness::{check_series, Period, SeriesKind};
+        // White noise: no cycle, level change or trend.
+        let steady = |period: Option<Period>| {
+            let mut seed = 7u64;
+            let mut z = || {
+                (0..12)
+                    .map(|_| {
+                        seed = seed
+                            .wrapping_mul(6364136223846793005)
+                            .wrapping_add(1442695040888963407);
+                        (seed >> 11) as f64 / (1u64 << 53) as f64
+                    })
+                    .sum::<f64>()
+                    - 6.0
+            };
+            let y = (0..360).map(|_| 5.0 + 2.0 * z()).collect();
+            check_series(
+                SeriesKind::Rate,
+                Grid {
+                    t0: 0.0,
+                    step: 10.0,
+                    y,
+                },
+                None,
+                period,
+                None,
+                &[],
+                &Config::default(),
+            )
+        };
+        let line = Period {
+            period_s: 5.0,
+            significance: 10.0,
+            explained: 0.5,
+            peak_to_peak: 0.04,
+            timing_peak_to_peak_ms: Some(0.04),
+            size: 0.04,
+            size_unit: "ms",
+            wheel: Some("escape wheel".into()),
+            other_periods_s: vec![],
+        };
+        let mut r = report();
+        r.series = vec![steady(None)];
+        assert_eq!(
+            closing_line(&r),
+            Some("No cycle, two levels, level change, trend or correlation between readings detected in any series.")
+        );
+        r.series = vec![steady(Some(line))];
+        assert!(
+            r.series[0].faster_than_readings().is_some(),
+            "{}",
+            r.series[0].headline
+        );
+        assert_eq!(
+            closing_line(&r),
+            Some("No two levels, level change, trend or correlation between readings detected in any series, and no cycle the readings can show.")
+        );
     }
 
     struct Log(PathBuf);

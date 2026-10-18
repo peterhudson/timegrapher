@@ -30,8 +30,8 @@ pub struct Calibre {
     #[serde(default)]
     pub family: Vec<String>,
     /// Names the entry went by in earlier versions of the table, so a
-    /// saved pick or a take that names one still finds it. Not shown and
-    /// not searched.
+    /// saved pick or a take that names one still finds it, with or without
+    /// the maker. Listed in `calibres --json`; not searched.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former_names: Vec<String>,
     /// Common and modern: in the short list the app offers first. The
@@ -145,16 +145,29 @@ pub fn find(name: &str) -> Option<&'static Calibre> {
         key(&c.calibre) == k
             || key(c.calibre.strip_prefix(c.maker.as_str()).unwrap_or("")) == k
             || c.family.iter().any(|f| key(f) == k)
-            || c.former_names.iter().any(|f| key(f) == k)
+            || had_name(c, &k)
     })
 }
 
-/// The current name of a table entry once called `name`, when the table
-/// has renamed it; `None` for a name still in use or not in the table.
+/// Whether `c` once went by the name whose [`key`] is `k`, with or without
+/// the maker.
+fn had_name(c: &Calibre, k: &str) -> bool {
+    c.former_names
+        .iter()
+        .any(|f| key(f) == k || key(f.strip_prefix(c.maker.as_str()).unwrap_or("")) == k)
+}
+
+/// The current name of a table entry once called `name`, matched as
+/// [`find`] matches a former name; `None` for a name still in use or not
+/// in the table.
 pub fn renamed(name: &str) -> Option<&'static str> {
+    let k = key(name);
+    if k.is_empty() {
+        return None;
+    }
     all()
         .iter()
-        .find(|c| c.former_names.iter().any(|f| f == name))
+        .find(|c| had_name(c, &k))
         .map(|c| c.calibre.as_str())
 }
 
@@ -322,6 +335,19 @@ mod tests {
         assert_eq!(c.calibre, "ETA 2824 (21,600 bph, 53°)");
         assert_eq!(renamed(old), Some("ETA 2824 (21,600 bph, 53°)"));
         assert_eq!(renamed("ETA 2824-2"), None);
+        assert_eq!(
+            renamed("eta 2824 (21600 vph 53°)"),
+            Some("ETA 2824 (21,600 bph, 53°)")
+        );
+        assert_eq!(
+            renamed("2824 (21,600 vph, 53°)"),
+            Some("ETA 2824 (21,600 bph, 53°)")
+        );
+        // Without the maker, as a bare name also finds the current row.
+        assert_eq!(
+            find("2824 (21,600 vph, 53°)").map(|c| c.calibre.as_str()),
+            Some("ETA 2824 (21,600 bph, 53°)")
+        );
         // Only renamed rows carry former names, and none matches a search.
         assert!(search("vph").is_empty());
     }

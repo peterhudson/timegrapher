@@ -21,8 +21,20 @@ fn run_with(
     rate: impl Fn(f64) -> f64,
     escape_teeth: u32,
 ) -> Report {
+    run_at(name, duration_s, 28800, amp, rate, escape_teeth)
+}
+
+fn run_at(
+    name: &str,
+    duration_s: f64,
+    bph: u32,
+    amp: impl Fn(f64) -> f64,
+    rate: impl Fn(f64) -> f64,
+    escape_teeth: u32,
+) -> Report {
     let cfg = SynthConfig {
         duration_s,
+        bph,
         rate_s_per_day: 10.0,
         snr_db: 24.0,
         ..Default::default()
@@ -92,6 +104,101 @@ fn an_escape_wheel_line_faster_than_the_readings_is_named_not_denied() {
         "{}",
         s.headline
     );
+}
+
+#[test]
+fn a_fast_line_aliased_in_the_readings_is_not_a_cycle() {
+    // The 15-tooth escape wheel at 28,800 bph turns in 3.75 s; 10 s
+    // readings average 2.67 turns, so it leaves a 30 s alias in them
+    // ("Rate repeats every 30 s" before the guard).
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run(
+        "alias",
+        900.0,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / 3.75).sin(),
+    );
+    let s = series(&r, SeriesKind::Rate);
+    assert!(s.cycle.is_none(), "{}", s.headline);
+    let p = s.faster_than_readings().expect(&s.headline);
+    assert!((p.period_s - 3.75).abs() < 0.05, "{}", p.period_s);
+    assert!(!s.headline.contains("repeats every 30 s"), "{}", s.headline);
+    assert!(
+        s.headline
+            .to_lowercase()
+            .contains("the beat timing repeats every 3.8 s, the escape wheel's period,"),
+        "{}",
+        s.headline
+    );
+}
+
+#[test]
+fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
+    // The same 3.75 s line, and the fourth wheel's 60 s (two turns of the
+    // 30 s alias): 8 s of every minute 30 s/d slower.
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run(
+        "alias-and-minute",
+        900.0,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / 3.75).sin() + if t % 60.0 < 8.0 { -30.0 } else { 0.0 },
+    );
+    let s = series(&r, SeriesKind::Rate);
+    let c = s.cycle.as_ref().expect(&s.headline);
+    assert!(
+        (c.period_s - 60.0).abs() < 2.0,
+        "{} {}",
+        c.period_s,
+        s.headline
+    );
+    assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
+    // The period search's line, under three readings, is named beside it.
+    let p = s.faster_than_readings().expect(&s.headline);
+    assert!(
+        s.headline.contains(&format!(
+            ". The beat timing also repeats every {:.1} s",
+            p.period_s
+        )) && s
+            .headline
+            .ends_with("10 s readings are too coarse to show it."),
+        "{}",
+        s.headline
+    );
+}
+
+#[test]
+fn a_fourth_wheel_cycle_on_the_escape_wheels_alias_is_still_found() {
+    // At 19,800 bph a 15-tooth escape wheel turns in 5.4545 s, which
+    // aliases to exactly 60 s in 10 s readings: the fourth wheel's turn.
+    // The period search finds the 60 s cycle in the beat timing itself,
+    // so it is listed, not set aside as the alias.
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run_at(
+        "alias-on-minute",
+        900.0,
+        19800,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / (60.0 / 11.0)).sin() + if t % 60.0 < 8.0 { -30.0 } else { 0.0 },
+        15,
+    );
+    let s = series(&r, SeriesKind::Rate);
+    let p = s.period.as_ref().expect(&s.headline);
+    assert!(
+        std::iter::once(p.period_s)
+            .chain(p.other_periods_s.iter().copied())
+            .any(|q| (q - 60.0 / 11.0).abs() < 0.05),
+        "{:?}",
+        p
+    );
+    let c = s.cycle.as_ref().expect(&s.headline);
+    assert!(
+        (c.period_s - 60.0).abs() < 2.0,
+        "{} {}",
+        c.period_s,
+        s.headline
+    );
+    assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
+    assert!(!s.headline.contains("no cycle"), "{}", s.headline);
 }
 
 #[test]
