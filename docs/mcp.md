@@ -120,7 +120,8 @@ angle for a calibre, 52° is used. `record_position` and
 numeric settings and lift context retain precedence; an unknown manifest
 label stays descriptive, while an explicit unknown calibre is an error. That
 error suggests `timegrapher calibres --search` with the name; `run_session`'s
-also lists the known names, and `list_calibres` with no name lists them all.
+also lists the known names. `list_calibres` with no name lists the common
+calibres and the user's own.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
