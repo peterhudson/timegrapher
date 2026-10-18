@@ -52,6 +52,10 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
             }
             None => "The recording was paused; the readings leave the pauses out.".into(),
         },
+        "masked" => match c["seconds"].as_f64() {
+            Some(t) => format!("{t:.0} s of the take were masked out of the readings by hand."),
+            None => "Stretches of the take were masked out of the readings by hand.".into(),
+        },
         _ => return None,
     })
 }
@@ -244,6 +248,7 @@ mod tests {
             { "code": "short_span", "span_s": 4.0 }, { "code": "clipped", "fraction": 0.03 },
             { "code": "beats_missing", "fraction": 0.8 }, { "code": "lift_unknown" },
             { "code": "clock_unknown" }, { "code": "breaks", "count": 2 },
+            { "code": "masked", "seconds": 12.0 }, { "code": "masked" },
         ]);
         for c in codes.as_array().unwrap() {
             for lift in [Some(52.0), None] {
@@ -263,6 +268,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn masked_stretches_are_said_with_their_seconds() {
+        assert_eq!(
+            fact(&json!({ "code": "masked", "seconds": 12.4 }), None).unwrap(),
+            "12 s of the take were masked out of the readings by hand."
+        );
+        assert_eq!(
+            fact(&json!({ "code": "masked" }), None).unwrap(),
+            "Stretches of the take were masked out of the readings by hand."
+        );
     }
 
     #[test]

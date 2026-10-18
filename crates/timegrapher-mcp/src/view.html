@@ -895,7 +895,7 @@ function steadyPlot(s, view, doc) {
     }
     case "cycle": {
       const f = v.fold;
-      if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found: nothing repeats in these readings.");
+      if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found to fold these readings at.");
       const bins = f.profile.length, at = (b) => (b + 0.5) / bins * f.period_s;
       const dots = [];
       for (const row of f.raster || []) row.forEach((y, b) => { if (Number.isFinite(y)) dots.push([at(b), y]); });

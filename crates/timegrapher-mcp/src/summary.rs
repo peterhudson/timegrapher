@@ -598,6 +598,20 @@ mod tests {
             )),
             "{text}"
         );
+        // After correlated readings the period search's other lines are a
+        // sentence of their own; the figures stay with the first.
+        let text = one(
+            10.0,
+            "Successive 10 s rate readings are correlated (lag-1 correlation 0.40, \
+             Ljung–Box p 0.002); no level change or trend detected. The rate's period \
+             search also finds 60 s (1.20 s/d peak to peak, the fourth wheel's period).",
+        );
+        assert!(
+            text.contains(&format!(
+                "no level change or trend detected {figures}. The rate's period search"
+            )),
+            "{text}"
+        );
         // The steady and too-short headlines give them, or say there are too
         // few, themselves, whatever the reading length.
         for (step, h) in [
@@ -605,6 +619,12 @@ mod tests {
                 10.0,
                 "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
                  next; no cycle, level change, trend or correlation between readings detected.",
+            ),
+            (
+                10.0,
+                "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+                 next; no level change, trend or correlation between readings detected. The \
+                 rate's period search also finds 60 s.",
             ),
             (
                 120.0,
