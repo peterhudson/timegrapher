@@ -24,6 +24,7 @@ at CORPUS_REVISION); the audio is fetched with its scripts/fetch.py.
 Needs: a built timegrapher-app (target/release, or APP_BIN), Xvfb, openbox,
 xdotool, ImageMagick and pngquant; ffmpeg for --clips. Linux only. Standard library only.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -93,34 +94,55 @@ def fetch_take(corpus, take, file=None):
 KEEP_BYTES = 5_000_000
 
 
+def cached_clip(data):
+    """Where a large clip is kept: named by its [data], so figures that
+    show the same stretch of a take share one."""
+    key = hashlib.sha1(json.dumps(data, sort_keys=True).encode()).hexdigest()[:12]
+    return os.path.join(CACHE, "clips", key)
+
+
+def clip_name(data):
+    """The clip's file name: the take's file it starts in."""
+    return data.get("files", [data.get("file")])[0]
+
+
 def clip(name, data, corpus):
     """Cut the figure's seconds from its corpus take into data/<figure>/ (or
-    .cache/clips/<figure>/ when large), with a session.toml carrying the
+    .cache/clips/ when large), with a session.toml carrying the
     take's watch, so the app shows it. [data.session] adds to or replaces
     the take's own (a take with no session.toml needs one)."""
-    take = fetch_take(corpus(), data["corpus"], data["file"])
-    out = os.path.join(CACHE, "clips", name)
+    sources = data.get("files", [data.get("file")])
+    take = fetch_take(corpus(), data["corpus"], sources[-1])
+    out = cached_clip(data)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     start, secs = data.get("start", 0), data["seconds"]
-    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(start), "-t", str(secs),
-                    "-i", os.path.join(take, data["file"]), "-map_metadata", "-1",
-                    "-c:a", "flac", "-compression_level", "12", os.path.join(out, data["file"])], check=True)
+    # Several files of a take are one run: joined, then cut.
+    listing = os.path.join(out, "files.txt")
+    with open(listing, "w") as f:
+        f.writelines(f"file '{os.path.join(take, s)}'\n" for s in sources)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "concat", "-safe", "0", "-i", listing,
+                    "-ss", str(start), "-t", str(secs), "-map_metadata", "-1",
+                    "-c:a", "flac", "-compression_level", "12", os.path.join(out, clip_name(data))], check=True)
+    os.remove(listing)
+    with open(os.path.join(out, "source.json"), "w") as f:
+        json.dump(data, f, sort_keys=True, indent=1)
+        f.write("\n")
     session = {}
     if os.path.exists(os.path.join(take, "session.toml")):
         with open(os.path.join(take, "session.toml"), "rb") as f:
             session = tomllib.load(f)
     session.update(data.get("session", {}))
     position = session.get("position") or next(
-        (r["position"] for r in session.get("recording", []) if r.get("file") == data["file"]),
+        (r["position"] for r in session.get("recording", []) if r.get("file") == clip_name(data)),
         session.get("recording", [{}])[0].get("position", "DU"))
     lines = [f"{k} = {json.dumps(session[k], ensure_ascii=False)}" for k in ("watch", "calibre", "bph", "lift") if k in session]
-    lines.append(json.dumps(f"{secs} s of {data['file']} from {start} s, take {data['corpus']} "
+    lines.append(json.dumps(f"{secs} s of {' + '.join(sources)} from {start} s, take {data['corpus']} "
                             f"in peterhudson/timegrapher-corpus (CC0).", ensure_ascii=False).join(["notes = ", ""]))
-    lines += ["", "[[recording]]", f"file = {json.dumps(data['file'])}", f"position = {json.dumps(position)}"]
+    lines += ["", "[[recording]]", f"file = {json.dumps(clip_name(data))}", f"position = {json.dumps(position)}"]
     with open(os.path.join(out, "session.toml"), "w") as f:
         f.write("\n".join(lines) + "\n")
-    if os.path.getsize(os.path.join(out, data["file"])) <= KEEP_BYTES:
+    if os.path.getsize(os.path.join(out, clip_name(data))) <= KEEP_BYTES:
         kept = os.path.join(DATA, name)
         shutil.rmtree(kept, ignore_errors=True)
         shutil.move(out, kept)
@@ -136,8 +158,14 @@ def recording(name, data, corpus, clips):
             raise SystemExit(f"{name}: {target} is not here; {data.get('source', 'see the figure file')}")
         return target
     if "seconds" in data:
-        for here in (os.path.join(DATA, name), os.path.join(CACHE, "clips", name)):
-            if not clips and os.path.isdir(here):
+        # A clip is kept while the figure's [data] still describes it.
+        for here in (os.path.join(DATA, name), cached_clip(data)):
+            try:
+                with open(os.path.join(here, "source.json")) as f:
+                    same = json.load(f) == json.loads(json.dumps(data))
+            except OSError:
+                same = False
+            if not clips and same:
                 return here
         return clip(name, data, corpus)
     return fetch_take(corpus(), data["corpus"])
@@ -303,10 +331,22 @@ def make(name, fig, corpus, clips, keep):
     shelf = os.path.join(home, "Recordings")
     os.makedirs(shelf, exist_ok=True)
     target = os.path.join(shelf, folder)
-    if os.path.isdir(source):
+    if os.path.isdir(source) and "session" in data and "seconds" not in data:
+        # A whole take with no session file of its own: its audio, and
+        # one written from [data.session].
+        os.makedirs(target)
+        for entry in sorted(os.listdir(source)):
+            if entry.lower().endswith((".flac", ".wav")):
+                os.symlink(os.path.join(source, entry), os.path.join(target, entry))
+        session = data["session"]
+        lines = [f"{k} = {json.dumps(session[k], ensure_ascii=False)}" for k in ("watch", "calibre", "bph", "lift") if k in session]
+        lines += ["", "[[recording]]", 'file = "."', f"position = {json.dumps(session.get('position', 'DU'))}"]
+        with open(os.path.join(target, "session.toml"), "w") as f:
+            f.write("\n".join(lines) + "\n")
+    elif os.path.isdir(source):
         os.symlink(source, target)
-        if "file" in data:
-            target = os.path.join(target, data["file"])
+        if "file" in data or "files" in data:
+            target = os.path.join(target, clip_name(data))
     else:
         os.symlink(source, os.path.join(shelf, os.path.basename(source)))
         target = os.path.join(shelf, os.path.basename(source))
@@ -374,10 +414,8 @@ def act(step, env):
     elif kind == "click":
         win = subprocess.run(["xdotool", "search", "--sync", "--onlyvisible", "--name", "^Timegrapher"],
                              env=env, capture_output=True, text=True).stdout.split()[0]
-        geo = subprocess.run(["xdotool", "getwindowgeometry", "--shell", win], env=env,
-                             capture_output=True, text=True).stdout
-        g = dict(line.split("=") for line in geo.split())
-        subprocess.run(["xdotool", "mousemove", str(int(g["X"]) + step[1]), str(int(g["Y"]) + step[2]),
+        # Relative to the app's own window, below its title bar.
+        subprocess.run(["xdotool", "mousemove", "--window", win, str(step[1]), str(step[2]),
                         "click", "1"], env=env)
         time.sleep(0.5)
         subprocess.run(["xdotool", "mousemove", "0", str(SCREEN[1] - 1)], env=env)
