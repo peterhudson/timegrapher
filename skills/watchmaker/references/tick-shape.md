@@ -38,8 +38,9 @@ oscillation period.)
 are delivered by alternate stones, the entry and the exit pallet. A fault
 on one stone, or on one side of the fork, shows on every other beat only.
 Call the two sides the **Tick** (even beats) and the **Tock** (odd
-beats) when talking to people; `shape` labels them "even" and "odd" and
-`profile` labels them `a` and `b`. The program can't tell which is
+beats) when talking to people, as `shape` labels them (its
+`--templates` file keeps `even` and `odd`); `profile` labels them `a`
+and `b`. The program can't tell which is
 physically the tick, nor which is the entry stone and which the exit; that depends on where in
 the swing the recording started. What it can tell you is that the two
 differ. To see where the engine put the unlock and drop marks on each
@@ -63,9 +64,9 @@ shape.
 
 ## Reading the output
 
-Columns: **even** and **odd** are medians over 2-second windows (the better
-reading of timing, as amplitude changes smear the whole-recording
-average); **even all** and **odd all** are measured on the
+Columns: **Tick** and **Tock** are medians over 2-second windows (the
+better reading of timing, as amplitude changes smear the whole-recording
+average); **Tick all** and **Tock all** are measured on the
 whole-recording averaged tick (where faint extra events show best). Times
 are milliseconds from the unlock edge.
 

@@ -293,13 +293,15 @@ two sides; report that rather than the amplitude.
 ```
 timegrapher long FILES... [--clock LOG] [--bph N] [--lift DEG] [--notch HZ,...]
                  [--highpass HZ] [--escape-teeth N] [--wheel "NAME=SECONDS"]...
-                 [--out DIR] [--json]
+                 [--calibre NAME] [--out DIR] [--json]
 ```
 
 `FILES` are read as one continuous recording in the order given; a folder
 stands for its WAV and FLAC files in name order. `--clock` is the
 sound-card calibration log; `--wheel` names another wheel by its period
-(repeatable). Output folder (default `<recording>_long/` beside it):
+(repeatable); `--calibre` names periodic changes after that movement's
+wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
+is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
 (`start_s,end_s,true_start_s,even_deg,odd_deg`), `slices.csv`
@@ -339,7 +341,9 @@ Is the take steady? Reads rate, amplitude and beat error in time order
 rate against the amplitude, always given) and `findings[]` (`code`,
 `series`, `title`, `evidence`) (`series/2`).
 `--calibre` names periodic changes after that movement's wheels; an
-unknown name lists the calibres the program knows. Same input as `long`.
+unknown name lists the calibres the program knows. The lift angle is
+`--lift`, else the calibre's when `--calibre` is given, else 52°. Same
+input as `long`.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
