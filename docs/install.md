@@ -2,8 +2,22 @@
 
 Ready-made downloads are on the
 [Releases page](https://github.com/peterhudson/timegrapher/releases/latest).
-Each release has the desktop app and the `timegrapher` command line tool for
-Linux, macOS and Windows, and `SHA256SUMS.txt` to check a download.
+Each release has one download for each system, and `SHA256SUMS.txt` to
+check a download:
+
+| System | Download |
+|---|---|
+| macOS 11 or later, Apple silicon and Intel | `timegrapher-<version>-macos.dmg` |
+| Windows 10 or 11, 64-bit | `timegrapher-<version>-windows-x64.zip` |
+| Linux, 64-bit Intel and AMD, distributions from 2022 on | `timegrapher-<version>-linux-x86_64.zip` |
+
+The Windows and Linux zips each hold one folder,
+**Timegrapher &lt;version&gt;**, and the macOS disk image holds the same
+things beside a shortcut to Applications: the desktop app, a **Command Line** folder (the `timegrapher` command line tool and
+`timegrapher-mcp`, the [MCP server](mcp.md) for AI chat apps), a
+**Claude Desktop** folder with the extension (macOS and Windows), the
+**Documentation** as pages that open in a browser, and **Start Here.html**,
+which has the steps below for that system.
 
 The builds are **not signed** with an Apple or Microsoft developer
 certificate, so macOS and Windows warn the first time you open each new
@@ -12,10 +26,7 @@ normally.
 
 ## macOS
 
-Download `timegrapher-<version>-macos.dmg`. It runs on Apple silicon and
-Intel Macs with macOS 11 (Big Sur) or later.
-
-1. Open the `.dmg` and drag **Timegrapher** onto **Applications**.
+1. Open the `.dmg` and drag **Timegrapher.app** onto **Applications**.
 2. Open Timegrapher from Applications. macOS says *"Timegrapher" Not Opened*
    (or, on older versions, *cannot be opened because Apple cannot check it
    for malicious software*). Click **Done**.
@@ -30,8 +41,8 @@ On macOS 14 and earlier, right-clicking the app, choosing **Open** and then
 **Open** in the dialog does the same as steps 2 and 3.
 
 The command line tool is inside the app at
-`/Applications/Timegrapher.app/Contents/MacOS/timegrapher`, and on its own in
-`timegrapher-<version>-macos-cli.tar.gz`. To run it from Terminal by name:
+`/Applications/Timegrapher.app/Contents/MacOS/timegrapher`, and in the disk
+image's **Command Line** folder. To run it from Terminal by name:
 
 ```sh
 sudo ln -s /Applications/Timegrapher.app/Contents/MacOS/timegrapher /usr/local/bin/timegrapher
@@ -40,49 +51,43 @@ timegrapher --version
 
 ## Windows
 
-Download `timegrapher-<version>-windows-x86_64.zip` (Windows 10 or 11,
-64-bit).
+Timegrapher for Windows is a standalone app: there is nothing to install.
+It runs from its folder, and deleting the folder removes it.
 
-1. Right-click the `.zip`, choose **Extract All…**, and extract it to a
-   folder you keep, such as `Documents\Timegrapher`.
-2. Double-click `timegrapher-app.exe`. Windows says *Windows protected your
-   PC*. Click **More info**, then **Run anyway**.
+1. Right-click the zip, choose **Extract All…**, and extract it to a
+   folder you keep, such as `Documents`. That makes
+   `Documents\Timegrapher <version>`.
+2. In that folder, double-click **Timegrapher.exe**. Windows says *Windows
+   protected your PC*. Click **More info**, then **Run anyway**.
 3. If Windows asks whether Timegrapher may use the microphone, allow it. If
    no input is found later, check Settings, Privacy & security, Microphone,
    and turn on *Let desktop apps access your microphone*.
 
-To pin it, right-click `timegrapher-app.exe` and choose **Pin to Start**.
-`timegrapher.exe` in the same folder is the command line tool: open a
-terminal there and run `.\timegrapher.exe --help`.
+To pin it, right-click **Timegrapher.exe** and choose **Pin to Start**. The
+command line tool is in the **Command Line** folder: open a terminal there
+and run `.\timegrapher.exe --help`.
 
 ## Linux
 
-Two downloads, for 64-bit Intel and AMD PCs with a distribution from 2022 or
-later (Ubuntu 22.04, Debian 12, Fedora 36 or newer):
+For 64-bit Intel and AMD PCs with a distribution from 2022 or later
+(Ubuntu 22.04, Debian 12, Fedora 36 or newer). Unpack the zip (most file
+managers: right-click, **Extract Here**) and open the
+**Timegrapher &lt;version&gt;** folder. **Timegrapher.AppImage** is the
+desktop app in one file: double-click it, or from a terminal:
 
-- `timegrapher-<version>-linux-x86_64.AppImage`: the desktop app in one
-  file. Make it executable and open it:
+```sh
+unzip timegrapher-*-linux-x86_64.zip
+cd "Timegrapher "*/
+./Timegrapher.AppImage
+"Command Line/timegrapher" --version
+```
 
-  ```sh
-  chmod +x timegrapher-*-linux-x86_64.AppImage
-  ./timegrapher-*-linux-x86_64.AppImage
-  ```
-
-  Most file managers can do the same: Properties, Permissions, *Allow
-  executing file as program*, then double-click. The command line tool is
-  inside too: `./timegrapher-*.AppImage cli --help`. If it says FUSE is
-  missing, install `libfuse2` (Ubuntu 22.04: `sudo apt install libfuse2`;
-  Ubuntu 24.04: `sudo apt install libfuse2t64`) or run it with
-  `--appimage-extract-and-run`.
-- `timegrapher-<version>-linux-x86_64.tar.gz`: both programs, a desktop
-  entry and an icon, to unpack wherever you like:
-
-  ```sh
-  tar -xzf timegrapher-*-linux-x86_64.tar.gz
-  cd timegrapher-*-linux-x86_64
-  ./timegrapher-app
-  ./timegrapher --version
-  ```
+If the file manager does not run it, open its Properties, Permissions, tick
+*Allow executing file as program*, then double-click. The command line tool
+is inside the AppImage too: `./Timegrapher.AppImage cli --help`. If it says
+FUSE is missing, install `libfuse2` (Ubuntu 22.04:
+`sudo apt install libfuse2`; Ubuntu 24.04: `sudo apt install libfuse2t64`)
+or run it with `--appimage-extract-and-run`.
 
 Sound input goes through ALSA (`libasound2`), which every desktop
 distribution installs; PipeWire and PulseAudio systems reach the
@@ -91,8 +96,8 @@ microphone through their ALSA plugin.
 ## Updating
 
 To update, download the new version and install it the same way as the
-first, over the old one (macOS: replace the app in Applications; Windows:
-extract over the old folder; Linux: replace the AppImage or tarball).
+first (macOS: replace the app in Applications; Windows and Linux: use the
+new version's folder and delete the old one).
 Settings and saved recordings are kept, since they live elsewhere.
 
 To ask whether a newer version is published:
@@ -183,10 +188,19 @@ review. Those tests run in all three existing platform jobs, without network or
 release operations.
 
 Before files are uploaded, release packaging also runs a synthetic operability
-check against each extracted binary pair: Linux tarball and AppImage; macOS
-mounted DMG, CLI tarball and MCP bundle; Windows ZIP and MCP bundle. A missing
-required binary or bundle fails the build. Existing help/version, signature and
-archive checks remain in place.
+check against each binary pair in the unzipped download: Linux **Command
+Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle
+on the mounted disk image; Windows **Command Line** folder and MCP bundle. A
+missing required binary or bundle fails the build, as does a zip that is not
+one folder, or a download whose documentation pages link to a file it lacks. Existing help/version, signature
+and archive checks remain in place.
+
+The documentation pages come from the Release workflow's `docs` job:
+`packaging/docs_html.py` renders `README.md`, `docs/` and the watchmaker
+skill with pandoc, and each platform's **Start Here** page from
+`packaging/PLATFORM/start-here.md`. Links between those files point at the
+pages beside them; links to other repository files go to GitHub at the
+commit built.
 
 Each pair generates the existing deterministic 40-second synthetic-watch recipe
 (48 kHz, seed 1, 28,800 bph, rate +6 s/day, amplitude 280°, beat error 0.4 ms,
