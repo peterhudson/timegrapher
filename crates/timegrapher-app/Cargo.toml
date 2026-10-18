@@ -22,6 +22,7 @@ egui_plot = "0.34"
 rfd = "0.15"
 claxon = "0.4"
 hound = "3.5"
+png = "0.18"
 
 # Keeping the computer awake during a take (see src/awake.rs), with
 # crates the lock already holds.

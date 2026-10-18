@@ -77,7 +77,15 @@ settings carries them onto a second line. The charts carry theirs in the
 tab bar: **Match Strip**, on, shows the same stretch of time as the paper
 strip, and off, the whole session. A choice between two options, such as
 Stacked and Beside, switches to the other option wherever it is clicked,
-so it can be flipped back and forth without moving the pointer. Titles and
+so it can be flipped back and forth without moving the pointer. Every
+pane but the Watch pane has **Export…** in its toolbar (a chart's in its
+tab bar), which saves the pane as a picture: a PNG of it as it is on the
+screen, or, with a name ending `.svg`, an SVG drawing whose lines and
+text stay sharp at any size. A name with no ending is saved as a PNG.
+In the picture the pane's name (with its own averaging time, if it has
+one) and a chart's key take the place of its controls. The save starts
+in the folder last chosen for a picture, else in the folder of the
+recording last opened; the app forgets both when it closes. Titles and
 labels are in Title Case. Across the top, the readings: five cards of one width, Readings (with
 **Average Over**), Rate, Amplitude, Beat Error and Beat Rate, and below
 them the panes. Along the bottom, the

@@ -20,6 +20,7 @@ mod applog;
 mod awake;
 mod calibre_ui;
 mod desktop;
+mod export;
 mod fields;
 mod guided;
 mod help;
