@@ -11,7 +11,7 @@ body:
     id: watch
     attributes:
       label: Watch and calibre
-      placeholder: "Omega Seamaster, cal. 565, 19,800 vph"
+      placeholder: "Omega Seamaster, cal. 565, 19,800 bph"
     validations:
       required: true
   - type: input
