@@ -106,13 +106,23 @@ const LIFT: Param = p(
     false,
     "Lift angle of the calibre in degrees (52 if left out). Amplitude depends on it.",
 );
+/// For tools that also take a calibre, whose lift angle fills in.
+const LIFT_OR_CALIBRE: Param = p(
+    "lift_deg",
+    Kind::LiftAngle,
+    Arg::Flag("--lift"),
+    false,
+    "Lift angle of the calibre in degrees (the calibre's if one is given, else 52). \
+     Amplitude depends on it.",
+);
 const CALIBRE: Param = p(
     "calibre",
     Kind::Text,
     Arg::Flag("--calibre"),
     false,
     "The movement, e.g. \"ETA 2824-2\" or \"Rolex 3235\", to name periodic changes after \
-     its wheels. An unknown name gives an error listing the known ones.",
+     its wheels; its lift angle is used where lift_deg is not given. An unknown name gives \
+     an error listing the known ones.",
 );
 
 /// For tools that read a watch: the calibre fills in what is not given.
@@ -142,7 +152,7 @@ pub const TOOLS: &[ToolSpec] = &[
             beats are, and whether a regular beat was found. When `watch_heard` is false \
             no regular beat was found, and the readings are null.",
         command: &["analyze"],
-        params: &[RECORDING, CALIBRE_READING, BPH, LIFT],
+        params: &[RECORDING, CALIBRE_READING, BPH, LIFT_OR_CALIBRE],
         charts: true,
         read_only: true,
         idempotent: true,
@@ -205,7 +215,7 @@ pub const TOOLS: &[ToolSpec] = &[
         params: &[
             RECORDINGS,
             BPH,
-            LIFT,
+            LIFT_OR_CALIBRE,
             CALIBRE,
             p(
                 "reading_s",
@@ -228,7 +238,7 @@ pub const TOOLS: &[ToolSpec] = &[
             wheels. Also writes report.html and summary.json in a folder next to the \
             recording.",
         command: &["long"],
-        params: &[RECORDINGS, BPH, LIFT, CALIBRE],
+        params: &[RECORDINGS, BPH, LIFT_OR_CALIBRE, CALIBRE],
         charts: false,
         read_only: false,
         idempotent: true,
