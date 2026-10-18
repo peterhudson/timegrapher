@@ -260,10 +260,15 @@ fn series(doc: &Value) -> Option<String> {
         // giving these figures, so the word alone is not the key.
         let stated = h.contains(" readings, median ") || h.contains("too few");
         // The first sentence is the series' own; any after it ("The rate
-        // also repeats ...", "The beat timing repeats every 5.0 s ...") is
-        // about a cycle or a level, so the figures go after the first.
-        // Decimals never end a sentence: ". " does.
-        let (first, rest) = h.split_once(". ").unwrap_or((h, ""));
+        // also repeats ...", "The beat timing repeats every 5.0 s ...")
+        // says something more, so the figures go after the first. A later
+        // sentence starts with a capital ("The", "Tick", "Tock"); a ". "
+        // inside one, as in a user's wheel named "sec. wheel", does not.
+        let end = h
+            .match_indices(". ")
+            .map(|(i, _)| i)
+            .find(|&i| h[i + 2..].starts_with(|c: char| c.is_uppercase()));
+        let (first, rest) = end.map_or((h, ""), |i| (&h[..i], &h[i + 2..]));
         let rest = if rest.is_empty() {
             String::new()
         } else {
@@ -572,11 +577,24 @@ mod tests {
         let text = one(
             10.0,
             "Rate slides from +1.0 s/d to +5.0 s/d (+0.5 s/d per hour). The rate also \
-             repeats every 300 s (the third wheel), 1.20 s/d peak to peak.",
+             repeats every 300 s (the third wheel), 1.2 s/d peak to peak.",
         );
         assert!(
             text.contains(&format!(
                 "(+0.5 s/d per hour) {figures}. The rate also repeats every 300 s"
+            )),
+            "{text}"
+        );
+        // A user's wheel name may hold ". ": the figures still follow the
+        // whole first sentence.
+        let text = one(
+            10.0,
+            "Rate repeats every 60 s (the sec. wheel), 1.2 s/d peak to peak. The rate's \
+             level also moves over the take, between +1.0 s/d and +3.0 s/d.",
+        );
+        assert!(
+            text.contains(&format!(
+                "(the sec. wheel), 1.2 s/d peak to peak {figures}. The rate's level"
             )),
             "{text}"
         );
