@@ -1,9 +1,9 @@
 """The version a release build carries, so a draft can be made at any time.
 
-The root Cargo.toml holds the base version X.Y.Z. A release takes the first
-patch number, at or above the base, that no release or tag has used yet:
-with 0.4.0 and 0.4.1 already made from a base of 0.4.0, the next draft is
-0.4.2. Raise X or Y in Cargo.toml for a new feature release; nobody raises Z
+The root Cargo.toml holds the base version X.Y.Z. A release takes one more
+than the highest patch number any release or tag has used for that X.Y,
+never less than the base: with 0.4.0 and 0.4.1 already made from a base of
+0.4.0, the next draft is 0.4.2. Raise X or Y in Cargo.toml for a new feature release; nobody raises Z
 by hand.
 
   release_version.py next TAGS_FILE   print the version for the next release,

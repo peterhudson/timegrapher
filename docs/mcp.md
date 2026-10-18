@@ -18,15 +18,17 @@ prints; some tools put a few plain lines before it (see
 
 ### Claude Desktop (Mac and Windows)
 
-Each [release](https://github.com/peterhudson/timegrapher/releases) has a
-Claude Desktop extension for each system:
-`timegrapher-VERSION-macos.mcpb` (Apple silicon and Intel) and
-`timegrapher-VERSION-windows-x64.mcpb`. It holds both programs, so nothing
-else needs installing.
+The macOS DMG and the Windows zip on each
+[release](https://github.com/peterhudson/timegrapher/releases) each have the
+extension in their **Claude Desktop** folder, as `Timegrapher.mcpb` (Apple
+silicon and Intel on macOS). It holds both programs, so nothing else needs
+installing. The Linux zip has no extension.
 
-1. Download the `.mcpb` for your computer.
-2. Double-click it or drag it into Claude Desktop's window. Or open Claude
-   Desktop's settings, choose **Extensions**, then **Advanced settings**,
+1. Open the download for your computer: `timegrapher-VERSION-macos.dmg` or
+   `timegrapher-VERSION-windows-x64.zip` (extract the whole folder first).
+   The extension is in **Timegrapher VERSION/Claude Desktop**.
+2. Double-click `Timegrapher.mcpb` or drag it into Claude Desktop's window.
+   Or open Claude Desktop's settings, choose **Extensions**, then **Advanced settings**,
    then **Install Extension...**, and pick the file.
 3. Choose **Install**. The timegrapher's tools appear in the chat's tools
    menu.

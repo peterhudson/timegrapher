@@ -55,7 +55,7 @@ impl Train<'_> {
         };
         if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
-                "note: the {} beats at {cb} vph, the recording at {bph}",
+                "note: the {} beats at {cb} bph, the recording at {bph}",
                 c.calibre
             );
         }
@@ -181,7 +181,7 @@ impl ResolvedTrain {
         };
         if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
-                "note: the {} beats at {cb} vph, the recording at {bph}",
+                "note: the {} beats at {cb} bph, the recording at {bph}",
                 c.name
             );
         }

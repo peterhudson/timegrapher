@@ -38,6 +38,10 @@ class RewriteLinks(unittest.TestCase):
         self.assertEqual(self.rewrite("docs/long-runs.md#how-the-search-works"),
                          "long-runs.html#how-the-search-works")
         self.assertEqual(self.rewrite("skills/watchmaker/SKILL.md"), "watchmaker-skill.html")
+        self.assertEqual(self.rewrite("references/diagnosis.md", "skills/watchmaker/SKILL.md"),
+                         "watchmaker-skill/diagnosis.html")
+        self.assertEqual(self.rewrite("../SKILL.md", "skills/watchmaker/references/diagnosis.md"),
+                         "../watchmaker-skill.html")
         self.assertEqual(self.rewrite("sessions.md", "docs/app.md"), "sessions.html")
         self.assertEqual(self.rewrite("../README.md", "docs/app.md"), "README.html")
 
