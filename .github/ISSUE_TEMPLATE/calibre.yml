@@ -22,7 +22,7 @@ body:
       description: Filled in by **Share with the project…**. Without the app, list each wheel and one full turn in seconds, and for a new calibre its beat rate and lift angle.
       placeholder: |
         third wheel: one full turn, in seconds
-        for a new calibre: beat rate in vph, lift angle in degrees
+        for a new calibre: beat rate in bph, lift angle in degrees
       render: json
     validations:
       required: true
