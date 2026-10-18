@@ -386,8 +386,8 @@ pub fn measure_with_breaks(
 }
 
 /// [`measure_with_breaks`] leaving out stretches masked by hand (cleaned
-/// with [`masked_spans`]): they are cut like breaks, so no fit or window
-/// reaches across one, their beats and amplitude windows are left out,
+/// with [`masked_spans`]): they are cut like breaks at both ends, so no
+/// fit, 10 s window or two-state sample reaches into one, their beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
 pub fn measure_masked(
@@ -403,11 +403,14 @@ pub fn measure_masked(
     let masked_s = masked_within(masked, from_s, to_s);
     let map = crate::longrun::true_time(clock, breaks);
     let mut cuts = crate::longrun::cuts(clock, breaks);
+    // Cut at both ends of each mask: a window or sample that reaches
+    // into a mask from either side, taking in a ragged edge of beats, is
+    // dropped, so nothing is averaged across a mask.
     cuts.extend(
         masked
             .iter()
             .filter(|&&(a, b)| b > from_s && a < to_s)
-            .map(|&(a, _)| map(a)),
+            .flat_map(|&(a, b)| [map(a), map(b)]),
     );
     cuts.sort_by(f64::total_cmp);
     let apart = |w: &timing::WindowFit| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s);
