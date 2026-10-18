@@ -189,8 +189,9 @@ up is 3H and crown right 12H. The report's tables and the text table
 name each position as the app does: in words with the common code, and
 Witschi's beside it for the crown positions: "Crown Up (CU, 3H)", "Dial
 Down (DD)". A finding's `evidence`, shown as it is in the JSON and in
-both reports' findings, keeps Witschi's code alone: "Crown Up (3H)",
-"Dial Down (CB)"; the charts and the facts line show Witschi's codes.
+the findings of the summary and the report, keeps Witschi's code alone:
+"Crown Up (3H)", "Dial Down (CB)"; the charts, the facts line and the
+Im line ("excluding 12H") show Witschi's codes.
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -230,11 +231,16 @@ of the recording or for `measure_s`:
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
 
-The quick check `record` prints while recording skips the same settling
-time and reads the same stretch on the sound card's clock, as this report
-reads a session file `record` creates (which names no clock log), so the
-two agree, unless listening stopped and started again within the take:
-the report splits the reading there, and the check does not.
+The quick check `record` prints while recording skips the session
+file's `settle_s` (30 s when the file has none) and reads the rest on the
+sound card's clock, so it agrees with this report on a session file
+`record` creates (which sets `settle_s = 30` and names no clock log). It
+can differ where a reading uses what the check does not: `--settle`, a
+reading's own `settle_s`, `measure_s`, `start_s` or `end_s`, a clock log
+or `card_ppm`, the 20 s default on a file with no `settle_s`, or a
+restart in listening within the take, where this report fits the reading
+in pieces between the restarts (still one row) and the check fits it
+whole.
 
 Repeat readings in the same position and state of wind are averaged.
 

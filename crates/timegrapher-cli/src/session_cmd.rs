@@ -878,13 +878,11 @@ fn print_summary(s: &Session) {
         "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
     );
     println!(
-        "Readings leave out the settling time at the start of each position, as record's quick check does{}.",
-        if s.readings.iter().any(|r| r.measurement.calibrated) {
-            "; they also correct the sound card's clock where it was logged, which that check does not"
-        } else {
-            ""
-        }
+        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (30 s when the file has none, where this report uses 20 s) and none of --settle, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
     );
+    if s.readings.iter().any(|r| r.measurement.calibrated) {
+        println!("The sound card's clock is corrected where a clock log or card_ppm is given.");
+    }
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
             "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
