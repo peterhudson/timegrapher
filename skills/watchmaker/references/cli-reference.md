@@ -299,9 +299,11 @@ timegrapher long FILES... [--clock LOG] [--device NAME] [--card-ppm PPM]
 
 `FILES` are read as one continuous recording in the order given; a folder
 stands for its WAV and FLAC files in name order. `--clock` is the
-sound-card calibration log; without one, `--device` corrects with the
-clock error stored for that input and `--card-ppm` for a card that many
-ppm slow (negative if fast); `--wheel` names another wheel by its period
+sound-card calibration log. Without one, `--card-ppm` corrects for a
+card that many ppm slow (negative if fast); else `--device` uses the
+clock error stored for that input, and is an error when none is stored;
+else the error stored for the input the recording names, else the
+recording's USB lines; `--wheel` names another wheel by its period
 (repeatable); `--calibre` names periodic changes after that movement's
 wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
 is given, else 52°. Output folder (default `<recording>_long/` beside it):
@@ -343,8 +345,9 @@ Is the take steady? Reads rate, amplitude and beat error in time order
 `unlock_hopping`, and the tests behind it, plus `rate_amplitude` (the
 rate against the amplitude, always given) and `findings[]` (`code`,
 `series`, `title`, `evidence`) (`series/2`).
-`--calibre` names periodic changes after that movement's wheels; an
-unknown name lists the calibres the program knows. The lift angle is
+`--calibre` names periodic changes after that movement's wheels; a
+name not in the table is an error that points to `timegrapher calibres
+--search`, as it is for `analyze` and `record`. The lift angle is
 `--lift`, else the calibre's when `--calibre` is given, else 52°. Same
 input as `long`.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
