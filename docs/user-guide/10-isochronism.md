@@ -1,4 +1,4 @@
-# 8b. Isochronism and a Controlled Run-Down
+# 10. Isochronism and a Controlled Run-Down
 
 An oscillator is isochronous if its period is independent of amplitude.
 For a watch on the bench, the practical question is how much its rate
@@ -159,7 +159,7 @@ sign change as a mechanical change.
 
 This table is a **one-position comparison within one recording**. For
 separate measurements in six positions just after winding and a day
-later, use the [Positions Test](10-positions.md#full-wind-against-24-hours).
+later, use the [Positions Test](12-positions.md#full-wind-against-24-hours).
 Its saved full-wind results and Im/Ie summary answer a different question.
 
 ## What the Curve Can and Cannot Establish
@@ -210,10 +210,10 @@ the fitted coefficients, and the exact comparison intervals. That makes
 it possible to check whether a bin represents many hours of behaviour or
 just a short passage through one amplitude. `--views` adds the plot data
 for the other Steadiness analyses. See
-[The Command Line](12-command-line.md#series) and the
+[The Command Line](14-command-line.md#series) and the
 [technical series reference](../series.md#isochronism-and-the-0-h--24-h-comparison).
 
 ---
 
-Previous: [Steadiness](08a-steadiness.md) ·
-Next: [Calibres and Lift Angles](09-calibres.md)
+Previous: [Steadiness](09-steadiness.md) ·
+Next: [Calibres and Lift Angles](11-calibres.md)

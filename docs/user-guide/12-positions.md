@@ -1,4 +1,4 @@
-# 10. Positions and the Positions Test
+# 12. Positions and the Positions Test
 
 A positional test measures the same watch under different orientations to
 gravity. It can reveal differences that a single dial-up rate conceals.
@@ -45,7 +45,7 @@ behaviour; the guided Positions Test has its own Settle control.
 Distributions and Steadiness select the currently chosen position. If
 you record DU, then DD, then DU again, both DU stretches can contribute.
 That is useful for a positional summary, but is not equivalent to an
-uninterrupted run. See [Steadiness](08a-steadiness.md#which-readings-are-analysed)
+uninterrupted run. See [Steadiness](09-steadiness.md#which-readings-are-analysed)
 before interpreting its time axis or long-term statistics.
 
 ### When the Beats Stop
@@ -196,5 +196,5 @@ two interfaces.
 
 ---
 
-Previous: [Calibres and Lift Angles](09-calibres.md) ·
-Next: [Sessions and Recordings](11-sessions-and-recordings.md)
+Previous: [Calibres and Lift Angles](11-calibres.md) ·
+Next: [Sessions and Recordings](13-sessions-and-recordings.md)

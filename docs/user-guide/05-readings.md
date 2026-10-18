@@ -35,7 +35,7 @@ are limited to 60 seconds.
 
 **Steadiness and Isochronism use their own fixed intervals.** Moving this
 control does not smooth away a cycle in those analyses. See
-[Which readings are analysed](08a-steadiness.md#which-readings-are-analysed).
+[Which readings are analysed](09-steadiness.md#which-readings-are-analysed).
 
 ## Rate
 
@@ -94,7 +94,7 @@ In the current app, **Steadiness and Isochronism remain on the sample
 clock**. Positions Test results can use the stored correction. The command
 line can also apply a correction automatically or from a supplied log,
 so compare the reported clock basis rather than assuming every screen
-uses True Clock. See [clock](12-command-line.md#clock).
+uses True Clock. See [clock](14-command-line.md#clock).
 
 ## Amplitude
 

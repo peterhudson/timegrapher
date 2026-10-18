@@ -45,7 +45,7 @@ software headline nor an attractive graph replaces the mechanical checks.
 For a first measurement, read chapters 1–3 and then keep chapters 5 and 7
 nearby. For a watch already producing reliable readings, begin with
 [Over Time](08-over-time.md), then use the dedicated
-[Steadiness](08a-steadiness.md) and [Isochronism](08b-isochronism.md)
+[Steadiness](09-steadiness.md) and [Isochronism](10-isochronism.md)
 chapters alongside those panes. They explain the axes, calculations,
 assumptions and limits, with suggestions for a useful follow-up test.
 
@@ -61,15 +61,15 @@ assumptions and limits, with suggestions for a useful follow-up test.
 | [6. The Paper Strip](06-paper-strip.md) | Read slope, spacing, scatter and recurring timing patterns |
 | [7. The Sound of the Beat](07-sound-of-the-beat.md) | Inspect the Tick Tock Profile and Scope, and assess the acoustic markers |
 | [8. Over Time](08-over-time.md) | Use time charts and distributions without losing the order of events |
-| [8a. Steadiness](08a-steadiness.md) | Readings, Periods, Autocorrelation, Allan Deviation, CUSUM, Cycle and FFT |
-| [8b. Isochronism](08b-isochronism.md) | Design a run-down measurement; interpret amplitude bins, fitted curves and wind comparisons |
-| [9. Calibres and Lift Angles](09-calibres.md) | Verify catalogue settings, calculate wheel periods and add a movement |
-| [10. Positions and the Positions Test](10-positions.md) | Use unambiguous orientations and compare position tests consistently |
-| [11. Sessions and Recordings](11-sessions-and-recordings.md) | Understand saving, pauses, replay, position history and long recordings |
-| [12. The Command Line](12-command-line.md) | Run explicit measurements and analyses, with example commands |
-| [13. Claude Desktop](13-claude-desktop.md) | Install the extension and use an assistant to investigate recordings |
-| [14. Problems and Reports](14-problems-and-reports.md) | Troubleshoot the measurement and preserve useful evidence |
-| [15. Glossary and Sources](15-glossary.md) | Check terminology, conventions and supporting references |
+| [9. Steadiness](09-steadiness.md) | Readings, Periods, Autocorrelation, Allan Deviation, CUSUM, Cycle and FFT |
+| [10. Isochronism](10-isochronism.md) | Design a run-down measurement; interpret amplitude bins, fitted curves and wind comparisons |
+| [11. Calibres and Lift Angles](11-calibres.md) | Verify catalogue settings, calculate wheel periods and add a movement |
+| [12. Positions and the Positions Test](12-positions.md) | Use unambiguous orientations and compare position tests consistently |
+| [13. Sessions and Recordings](13-sessions-and-recordings.md) | Understand saving, pauses, replay, position history and long recordings |
+| [14. The Command Line](14-command-line.md) | Run explicit measurements and analyses, with example commands |
+| [15. Claude Desktop](15-claude-desktop.md) | Install the extension and use an assistant to investigate recordings |
+| [16. Problems and Reports](16-problems-and-reports.md) | Troubleshoot the measurement and preserve useful evidence |
+| [17. Glossary and Sources](17-glossary.md) | Check terminology, conventions and supporting references |
 
 ## Conventions and Examples
 
@@ -80,7 +80,7 @@ shortcut.
 **Tick** is blue and **Tock** is orange. They are alternating software
 labels, not permanent identities for the entry and exit pallets. The
 position names and their assumptions are explained in
-[chapter 10](10-positions.md#the-six-positions).
+[chapter 12](12-positions.md#the-six-positions).
 
 Worked numerical examples illustrate calculations; they are not claimed
 measurements of your watch. Screenshots show particular recordings and

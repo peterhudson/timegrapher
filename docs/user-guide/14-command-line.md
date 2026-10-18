@@ -1,4 +1,4 @@
-# 12. The Command Line
+# 14. The Command Line
 
 The command-line tool is useful when you want a reproducible analysis,
 a report from several recordings, or numerical data for your own plots.
@@ -141,7 +141,7 @@ timegrapher calibres "ETA 2824-2"
 
 The catalogue includes aliases, known numerical settings, wheel periods,
 sources and your custom entries. Inspect the notes when alternatives
-disagree. See [Calibres and Lift Angles](09-calibres.md).
+disagree. See [Calibres and Lift Angles](11-calibres.md).
 
 ## record
 
@@ -217,7 +217,7 @@ Omit the option if there is no suitable log.
 separate `--lift` setting. A reported match to a wheel's period is an
 association to investigate, not proof that the wheel is faulty. See
 [Long runs](../long-runs.md) and
-[Steadiness](08a-steadiness.md#periods).
+[Steadiness](09-steadiness.md#periods).
 
 ## series
 
@@ -245,7 +245,7 @@ recording provenance and available USB lines. Inspect the top-level
 `clock` field when comparing it with the desktop panes, which use the
 sample clock.
 
-See [Steadiness](08a-steadiness.md), [Isochronism](08b-isochronism.md)
+See [Steadiness](09-steadiness.md), [Isochronism](10-isochronism.md)
 and the detailed [series reference](../series.md).
 
 ## clock
@@ -325,5 +325,5 @@ that produced it.
 
 ---
 
-Previous: [Sessions and Recordings](11-sessions-and-recordings.md) ·
-Next: [Claude Desktop](13-claude-desktop.md)
+Previous: [Sessions and Recordings](13-sessions-and-recordings.md) ·
+Next: [Claude Desktop](15-claude-desktop.md)

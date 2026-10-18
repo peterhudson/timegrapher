@@ -29,7 +29,7 @@ Cmd on macOS.
 **Light** and **Dark** override it. The update check asks GitHub about
 published releases and offers a link when one is available. Downloading
 and installing remain separate actions. See
-[Problems and Reports](14-problems-and-reports.md#settings-logs-and-updates).
+[Problems and Reports](16-problems-and-reports.md#settings-logs-and-updates).
 
 ## Finding a Pane
 
@@ -40,16 +40,16 @@ in View, so you do not need to memorise the icons.
 
 | Pane | Purpose | Guide |
 | --- | --- | --- |
-| **Watch** | Input, watch identity, calibre, lift angle, beat rate and position | [Microphone](03-microphone.md), [Calibres](09-calibres.md) |
+| **Watch** | Input, watch identity, calibre, lift angle, beat rate and position | [Microphone](03-microphone.md), [Calibres](11-calibres.md) |
 | **Paper Strip** | Beat timing and fitted-rate overlays | [Paper Strip](06-paper-strip.md) |
 | **Tick Tock Profile** | Combined acoustic envelopes and measured edges | [Sound of the Beat](07-sound-of-the-beat.md) |
 | **Scope** | Individual filtered waveforms | [Sound of the Beat](07-sound-of-the-beat.md#the-scope) |
 | **Rate**, **Amplitude**, **Beat Error** | Ordinary charts against time | [Over Time](08-over-time.md#the-charts) |
 | **Rate Distribution**, **Amplitude Distribution**, **Beat Error Distribution** | Values without their time order | [Distributions](08-over-time.md#distributions) |
-| **Readings Over Time**, **Periods**, **Cycle** | Steadiness data and periodic structure | [Steadiness](08a-steadiness.md) |
-| **Autocorrelation**, **Allan Deviation**, **CUSUM**, **FFT** | Correlation, averaging behaviour, level changes and spectral size | [Steadiness](08a-steadiness.md) |
-| **Isochronism** | Rate versus amplitude and a run-down comparison | [Isochronism](08b-isochronism.md) |
-| **Positions Test** | Guided measurements in six positions | [Positions](10-positions.md) |
+| **Readings Over Time**, **Periods**, **Cycle** | Steadiness data and periodic structure | [Steadiness](09-steadiness.md) |
+| **Autocorrelation**, **Allan Deviation**, **CUSUM**, **FFT** | Correlation, averaging behaviour, level changes and spectral size | [Steadiness](09-steadiness.md) |
+| **Isochronism** | Rate versus amplitude and a run-down comparison | [Isochronism](10-isochronism.md) |
+| **Positions Test** | Guided measurements in six positions | [Positions](12-positions.md) |
 
 **Rate** and **Readings Over Time** are different panes. Rate follows the
 chosen chart averaging interval and time navigation. Readings Over Time
@@ -104,7 +104,7 @@ selection. Calibre short lists and custom entries are also retained.
 A fresh launch does not assume that the previous watch is still on the
 microphone. Watch-specific settings such as calibre, lift angle, beat
 rate and position start fresh. Opening a saved session can restore its
-recorded context; see [Sessions and Recordings](11-sessions-and-recordings.md).
+recorded context; see [Sessions and Recordings](13-sessions-and-recordings.md).
 
 ---
 

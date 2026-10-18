@@ -139,7 +139,7 @@ During a Positions Test, the strip also distinguishes settling,
 measurement and unused test intervals. An unused interval may still
 contain perfectly audible beats: the label explains which sound
 contributed to the test result. See
-[Positions](10-positions.md#what-the-strip-shows-during-a-test).
+[Positions](12-positions.md#what-the-strip-shows-during-a-test).
 
 ---
 

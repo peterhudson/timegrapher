@@ -89,7 +89,7 @@ hover for a short hint, click for the longer text.
 
 The first figure covers only a few seconds of beats. Let the signal
 settle, confirm the context and see whether the rate itself is steady. A later
-[Positions Test](10-positions.md) will show whether the dial-up result is
+[Positions Test](12-positions.md) will show whether the dial-up result is
 representative of the other positions.
 
 ## Save Something You Can Compare
@@ -105,7 +105,7 @@ folder continuously follows new audio.
 one. New Session also works while listening: capture continues into the
 new session (a replay stops). The
 app asks about unsaved audio before discarding it. See
-[Sessions and Recordings](11-sessions-and-recordings.md) for the timeline
+[Sessions and Recordings](13-sessions-and-recordings.md) for the timeline
 and file details.
 
 ## Try a Recording First

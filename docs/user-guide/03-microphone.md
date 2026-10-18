@@ -137,7 +137,7 @@ Use the device name reported on your machine. With no `--device`, doctor
 uses the default input. On Linux it can report relevant mixer controls
 and proposed adjustments. It makes those changes only when you supply
 `--apply`; read the proposed changes before using it. See
-[doctor](12-command-line.md#doctor).
+[doctor](14-command-line.md#doctor).
 
 ## When Capture Stops
 

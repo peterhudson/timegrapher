@@ -1,4 +1,4 @@
-# 8a. Steadiness: Reading the Structure in a Recording
+# 9. Steadiness: Reading the Structure in a Recording
 
 Suppose a watch averages +6 s/d. That could describe a nearly constant
 +6, a smooth oscillation between 0 and +12, or a take that spent half its
@@ -423,4 +423,4 @@ pointer value readout. Use the ordinary charts for time selection and
 ---
 
 Previous: [Over Time](08-over-time.md) ·
-Next: [Isochronism](08b-isochronism.md)
+Next: [Isochronism](10-isochronism.md)

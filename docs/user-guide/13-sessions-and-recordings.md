@@ -1,4 +1,4 @@
-# 11. Sessions and Recordings
+# 13. Sessions and Recordings
 
 A saved recording lets you return to a result, inspect the sound behind
 it, or apply a corrected lift angle without asking the watch to repeat
@@ -37,7 +37,7 @@ last reading from before the move and labels it accordingly.
 
 Steadiness and Isochronism are different: moving the time cursor does not
 restrict them to the selected moment. They analyse the eligible history
-for the chosen position. See [Steadiness](08a-steadiness.md).
+for the chosen position. See [Steadiness](09-steadiness.md).
 
 ## Saving
 
@@ -146,9 +146,9 @@ copy. Avoid moving the watch, changing input routing or adjusting gain
 midway unless that change is part of the experiment and is recorded.
 
 A continuous run is especially valuable for
-[Isochronism](08b-isochronism.md). For reports over hours or days, the
-command-line [long](12-command-line.md#long) and
-[series](12-command-line.md#series) commands process the saved input in
+[Isochronism](10-isochronism.md). For reports over hours or days, the
+command-line [long](14-command-line.md#long) and
+[series](14-command-line.md#series) commands process the saved input in
 bounded memory. A suitable clock log can correct the time basis during
 that analysis.
 
@@ -162,9 +162,9 @@ saved take is not silently replaced. Resolve the storage problem, then
 start a new session.
 
 When reporting a failure, include the exact message and whether the earlier
-saved copy still opens. See [Problems and Reports](14-problems-and-reports.md).
+saved copy still opens. See [Problems and Reports](16-problems-and-reports.md).
 
 ---
 
-Previous: [Positions and the Positions Test](10-positions.md) ·
-Next: [The Command Line](12-command-line.md)
+Previous: [Positions and the Positions Test](12-positions.md) ·
+Next: [The Command Line](14-command-line.md)

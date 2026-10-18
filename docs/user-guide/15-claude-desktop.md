@@ -1,4 +1,4 @@
-# 13. Claude Desktop
+# 15. Claude Desktop
 
 The Timegrapher extension gives Claude access to the measuring engine on
 your computer. You can ask it to analyse a saved recording, compare
@@ -112,7 +112,7 @@ settings rather than changing them.
 A diagnostic bundle can contain audio. Making one saves a local file;
 submitting it to GitHub, attaching a recording to a chat, or sharing a
 report is a separate action. Review and listen to anything you choose to
-share. See [Problems and Reports](14-problems-and-reports.md).
+share. See [Problems and Reports](16-problems-and-reports.md).
 
 ## Other Assistants and Updates
 
@@ -121,7 +121,7 @@ run `timegrapher-mcp` from the download's **Command Line** folder. Keep
 the matching `timegrapher` executable beside it
 and use the server's full path as the command. The [MCP documentation](../mcp.md)
 gives configuration details. Assistants that can run shell commands can
-use the [command line](12-command-line.md) and watchmaker skill directly.
+use the [command line](14-command-line.md) and watchmaker skill directly.
 
 The extension contains its own binaries. Updating the desktop Timegrapher
 app does not by itself update an already installed extension. Install the
@@ -130,5 +130,5 @@ versions if two interfaces disagree.
 
 ---
 
-Previous: [The Command Line](12-command-line.md) ·
-Next: [Problems and Reports](14-problems-and-reports.md)
+Previous: [The Command Line](14-command-line.md) ·
+Next: [Problems and Reports](16-problems-and-reports.md)

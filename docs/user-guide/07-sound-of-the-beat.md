@@ -153,8 +153,8 @@ to a longer span helps separate ringing after one beat from another event.
 
 While listening, the Scope follows the latest beats. When reviewing a
 session it reads the beats up to the selected time from the recording.
-The command-line [profile](12-command-line.md#profile) and
-[shape](12-command-line.md#shape) commands provide saved plots and numerical
+The command-line [profile](14-command-line.md#profile) and
+[shape](14-command-line.md#shape) commands provide saved plots and numerical
 sound-shape measurements for closer comparison.
 
 ---

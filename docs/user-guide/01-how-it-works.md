@@ -136,7 +136,7 @@ one. This is the model implemented by Timegrapher's
 It is an acoustic estimate under that model, not an optical observation
 of the turning point.
 
-For the profile pictured in [chapter 7](07-sound-of-the-beat.md),
+For the example summary in [chapter 7](07-sound-of-the-beat.md),
 `t = 8.48 ms`, `T = 250 ms` and `L = 55°`:
 
 ```text
@@ -184,7 +184,7 @@ nothing about the escapement.
 
 The cards show the magnitude because Tick and Tock are arbitrary labels.
 Some advanced analyses retain the sign to preserve changes through zero;
-[Steadiness](08a-steadiness.md#which-readings-are-analysed) explains this.
+[Steadiness](09-steadiness.md#which-readings-are-analysed) explains this.
 
 ## Precision, Stability and Accuracy
 

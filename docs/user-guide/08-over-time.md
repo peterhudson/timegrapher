@@ -9,9 +9,9 @@ that history, then choose the analysis that answers your question.
 | --- | --- |
 | When did the rate or amplitude change? | The ordinary charts below |
 | How widely do the readings vary, or do they form separate groups? | [Distributions](#distributions) |
-| Does a pattern repeat, and how large is it? | [Steadiness: Periods, Cycle and FFT](08a-steadiness.md) |
-| How long should I average, and is the level drifting? | [Steadiness: Autocorrelation, Allan Deviation and CUSUM](08a-steadiness.md#autocorrelation) |
-| How does rate depend on amplitude during run-down? | [Isochronism](08b-isochronism.md) |
+| Does a pattern repeat, and how large is it? | [Steadiness: Periods, Cycle and FFT](09-steadiness.md) |
+| How long should I average, and is the level drifting? | [Steadiness: Autocorrelation, Allan Deviation and CUSUM](09-steadiness.md#autocorrelation) |
+| How does rate depend on amplitude during run-down? | [Isochronism](10-isochronism.md) |
 
 The screenshots here show an earlier two-hour dial-up recording. They
 illustrate the controls and patterns; they are not acceptance limits for
@@ -151,7 +151,7 @@ aspects of variation. They begin after about five minutes in one position
 and update in the background as the session grows. Their analysis
 intervals and selected data differ from the ordinary chart controls.
 
-[Chapter 8a](08a-steadiness.md) covers **Readings Over Time**, **Periods**,
+[Chapter 9](09-steadiness.md) covers **Readings Over Time**, **Periods**,
 **Cycle**, **Autocorrelation**, **Allan Deviation**, **CUSUM** and **FFT**
 individually, with the meaning of their axes, statistics and reference
 lines. It also explains how to investigate a suspected wheel-period
@@ -165,7 +165,7 @@ position is the useful experiment. Changing position, winding the watch
 or changing microphone contact during the run makes the relationship
 harder to interpret.
 
-[Chapter 8b](08b-isochronism.md) explains the dots, quartile bars, fitted
+[Chapter 10](10-isochronism.md) explains the dots, quartile bars, fitted
 curve, slope and turning point, as well as the exact intervals used in
 **Full Wind Against 24 Hours Later**. A shorter take can show a comparison
 under that heading; check whether the second column says **At 24 h** or
@@ -174,5 +174,4 @@ under that heading; check whether the second column says **At 24 h** or
 ---
 
 Previous: [The Sound of the Beat](07-sound-of-the-beat.md) ·
-Continue: [Steadiness](08a-steadiness.md) ·
-Next main chapter: [Calibres and Lift Angles](09-calibres.md)
+Next: [Steadiness](09-steadiness.md)

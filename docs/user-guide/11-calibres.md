@@ -1,4 +1,4 @@
-# 9. Calibres and Lift Angles
+# 11. Calibres and Lift Angles
 
 Selecting a calibre supplies context that the microphone cannot discover
 on its own. The lift angle sets the amplitude scale, and the train's wheel
@@ -96,7 +96,7 @@ your additions. Review it and supply the source before submitting. The
 app does not post it automatically.
 
 Your additions are stored in `calibres.json` in the
-[settings folder](14-problems-and-reports.md#settings-logs-and-updates).
+[settings folder](16-problems-and-reports.md#settings-logs-and-updates).
 The command-line tool and MCP server read that catalogue too. Keep a
 copy if those additions form part of your bench records.
 
@@ -125,9 +125,9 @@ amplitude calculation too.
 it. Settings have command-specific meanings. In particular, `analyze`
 can take beat rate and lift angle from `--calibre`, while `long` and
 `series` use it only to name wheels: give the lift angle with `--lift`
-(52° if you don't). See [Common Options](12-command-line.md#common-options).
+(52° if you don't). See [Common Options](14-command-line.md#common-options).
 
 ---
 
-Previous: [Isochronism](08b-isochronism.md) ·
-Next: [Positions and the Positions Test](10-positions.md)
+Previous: [Isochronism](10-isochronism.md) ·
+Next: [Positions and the Positions Test](12-positions.md)

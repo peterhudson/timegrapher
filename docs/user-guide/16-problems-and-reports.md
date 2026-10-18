@@ -1,4 +1,4 @@
-# 14. Problems and Reports
+# 16. Problems and Reports
 
 When a reading looks wrong, preserve the evidence before changing the
 setup. Save the recording, note the time of the suspect interval, and
@@ -61,7 +61,7 @@ to a different input, sample rate or operating condition. The
 establishes and what it does not.
 
 If the discrepancy remains, compare saved audio with explicit settings.
-The [command-line chapter](12-command-line.md#analyze) gives a way to make
+The [command-line chapter](14-command-line.md#analyze) gives a way to make
 the interval, lift angle and correction unambiguous. Include both
 instruments' settings when reporting the comparison.
 
@@ -75,9 +75,9 @@ A peak close to a wheel period is a candidate for investigation. It is
 not a component diagnosis. A **Cycle** plot can fold at a reference period
 even when no significant cycle was detected, and a low Allan-deviation
 point can result from averaging over a cycle. The
-[Steadiness chapter](08a-steadiness.md) explains these cases and the
+[Steadiness chapter](09-steadiness.md) explains these cases and the
 individual panes. For unexpected rate-versus-amplitude behaviour, check
-the recording design and bin coverage in [Isochronism](08b-isochronism.md).
+the recording design and bin coverage in [Isochronism](10-isochronism.md).
 
 ## The App Will Not Start
 
@@ -106,7 +106,7 @@ opens a GitHub issue form for you to paste it into. **Dismiss** stops the
 app asking about that crash. Opening the form does not submit a report.
 
 If a recording was in progress, check the scratch files before starting a
-replacement session; [Sessions and Recordings](11-sessions-and-recordings.md)
+replacement session; [Sessions and Recordings](13-sessions-and-recordings.md)
 explains how they relate to saved copies. Do not assume that the latest
 seconds were flushed before a crash.
 
@@ -145,7 +145,7 @@ text. That redaction does not remove voices from audio or guarantee that
 every personal detail in a note or filename is anonymous. See
 [Reporting a Problem](../reports.md) for the exact contents and replay
 procedure. `timegrapher report` provides the same general workflow from
-the [command line](12-command-line.md#report).
+the [command line](14-command-line.md#report).
 
 The project's [issue forms](https://github.com/peterhudson/timegrapher/issues/new/choose)
 cover bugs, readings and suggestions. To contribute a useful reference
@@ -174,5 +174,5 @@ extension, update its bundle separately.
 
 ---
 
-Previous: [Claude Desktop](13-claude-desktop.md) ·
-Next: [Glossary and Sources](15-glossary.md)
+Previous: [Claude Desktop](15-claude-desktop.md) ·
+Next: [Glossary and Sources](17-glossary.md)

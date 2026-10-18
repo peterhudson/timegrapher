@@ -1,4 +1,4 @@
-# 15. Glossary and Sources
+# 17. Glossary and Sources
 
 ## Glossary
 
@@ -6,7 +6,7 @@
 against averaging duration. It helps distinguish short-term noise from
 behaviour that stops averaging away. It is not the standard deviation of
 all readings, nor a confidence interval on their mean. See
-[Allan Deviation](08a-steadiness.md#allan-deviation).
+[Allan Deviation](09-steadiness.md#allan-deviation).
 
 **Amplitude**: the angular excursion of the balance from equilibrium to
 a turning point, in degrees. Timegrapher estimates it acoustically using
@@ -43,7 +43,7 @@ must be checked against the particular version being measured.
 **CH, CB, 3H, 6H, 9H, 12H**: Swiss position notation. CH is dial up; CB is
 dial down. For vertical positions, the hour numeral named points upward.
 The correspondence with crown directions assumes a particular crown
-location. See [The Six Positions](10-positions.md#the-six-positions).
+location. See [The Six Positions](12-positions.md#the-six-positions).
 
 **Clipping**: truncation when the signal exceeds the recording system's
 available range. It can alter the envelope and compromise amplitude,
@@ -94,7 +94,7 @@ not the balance's motion or a direct plot of escapement force.
 **FFT**: fast Fourier transform, an algorithm for resolving a sampled
 signal into frequency components. The FFT pane plots component size
 against period. Its units and amplitude convention depend on the series;
-see [FFT](08a-steadiness.md#fft).
+see [FFT](09-steadiness.md#fft).
 
 **Harmonic**: a component at an integer multiple of a fundamental
 frequency. Twice the frequency means half the period. Several harmonics
@@ -105,7 +105,7 @@ position tests, using positions present in both.
 
 **Im**: the signed rate change with the largest absolute magnitude among
 eligible positions in the two tests; the 12H position is excluded by the
-convention used here. See [Comparing Full Wind and 24 Hours](10-positions.md#full-wind-against-24-hours).
+convention used here. See [Comparing Full Wind and 24 Hours](12-positions.md#full-wind-against-24-hours).
 
 **Impulse**: energy transferred from an escape-wheel tooth acting on a
 pallet stone's impulse face, through the pallet lever and fork, to the
@@ -122,7 +122,7 @@ within a bin, not uncertainty in that bin's median.
 **Isochronism**: constancy of oscillation period as amplitude changes.
 The app examines the observed relationship between rate and amplitude;
 that relationship alone does not isolate amplitude from other changing
-conditions. See [Isochronism](08b-isochronism.md).
+conditions. See [Isochronism](10-isochronism.md).
 
 **Jitter**: scatter of individual beat times around a fitted timing model,
 usually expressed in microseconds. It can contain both physical
@@ -258,5 +258,5 @@ references for interpreting observations in the context of a watch.
 
 ---
 
-Previous: [Problems and Reports](14-problems-and-reports.md) ·
+Previous: [Problems and Reports](16-problems-and-reports.md) ·
 [Back to the contents](README.md)
