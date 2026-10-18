@@ -247,17 +247,8 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     // on each stretch between jumps, and no window spans one.
     let cuts: Vec<f64> = log.jumps.iter().map(|&t| t - 1e-6).collect();
     let overall = timing::fit_pieces(&beats, bph, &cuts);
-    let mut residuals = Vec::with_capacity(beats.len());
-    let mut from = 0;
-    for end in cuts
-        .iter()
-        .map(|&c| beats.partition_point(|b| b.time < c))
-        .chain([beats.len()])
-    {
-        let piece = &beats[from..end.max(from)];
-        residuals.extend(timing::residuals(piece).unwrap_or_else(|| vec![f64::NAN; piece.len()]));
-        from = end.max(from);
-    }
+    let residuals =
+        timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
     let mut rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
     rate_windows.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
     let rates: Vec<f64> = rate_windows.iter().map(|w| w.fit.rate_s_per_day).collect();

@@ -139,16 +139,36 @@ fn pieces<'a>(beats: &'a [Beat], cuts: &[f64]) -> Vec<&'a [Beat]> {
     out
 }
 
+/// The shortest stretch between cuts that [`fit_pieces`] and
+/// [`residuals_pieces`] read, seconds: the length of the 10 s bins the
+/// readings rest on. A shorter stretch is the ragged edge of a mask or a
+/// gap and is left out rather than fitted, since a few seconds of beats
+/// give a rate several s/d out.
+pub const MIN_PIECE_S: f64 = 10.0;
+
+/// Whether a stretch spans [`MIN_PIECE_S`] from its first beat to its last,
+/// so a stretch exactly 10 s long between cuts, whose beats span a beat
+/// less, is left out too.
+fn whole(p: &[Beat]) -> bool {
+    match (p.first(), p.last()) {
+        (Some(a), Some(b)) => b.time - a.time >= MIN_PIECE_S - 1e-9,
+        _ => false,
+    }
+}
+
 /// [`fit`] for a take with breaks: each stretch between `cuts` is fitted on
 /// its own, since the phase (and after a long gap the rate) does not carry
 /// across a break, and the fits are combined weighted by the beats each
-/// used. With no cuts this is [`fit`].
+/// used, so the rate is the average over the time the watch was heard.
+/// Stretches shorter than [`MIN_PIECE_S`] are left out. With no cuts this
+/// is [`fit`].
 pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
     if cuts.is_empty() {
         return fit(beats, bph);
     }
     let fits: Vec<TimingFit> = pieces(beats, cuts)
         .into_iter()
+        .filter(|p| whole(p))
         .filter_map(|p| fit(p, bph))
         .collect();
     let n: usize = fits.iter().map(|f| f.beats_used).sum();
@@ -168,15 +188,16 @@ pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
     })
 }
 
-/// [`residuals`] for a take with breaks: each stretch against its own fit.
-/// With no cuts this is [`residuals`].
+/// [`residuals`] for a take with breaks: each stretch against its own fit,
+/// and NaN for a stretch shorter than [`MIN_PIECE_S`]. With no cuts this
+/// is [`residuals`].
 pub fn residuals_pieces(beats: &[Beat], cuts: &[f64]) -> Option<Vec<f64>> {
     if cuts.is_empty() {
         return residuals(beats);
     }
     let mut out = Vec::with_capacity(beats.len());
     for p in pieces(beats, cuts) {
-        match residuals(p) {
+        match whole(p).then(|| residuals(p)).flatten() {
             Some(r) => out.extend(r),
             None => out.extend(vec![f64::NAN; p.len()]),
         }
@@ -215,4 +236,100 @@ pub fn windows(beats: &[Beat], bph: u32, window_s: f64, step_s: f64) -> Vec<Wind
         start += step_s;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on
+    /// the stretches given, numbered on one grid.
+    fn take(rate: f64, spans: &[(f64, f64)]) -> Vec<Beat> {
+        let p = 0.125 / (1.0 + rate / 86400.0);
+        let mut seed = 7u64;
+        let mut noise = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 2e-4
+        };
+        (0..(spans.last().unwrap().1 / p) as i64)
+            .map(|k| Beat {
+                index: k,
+                time: k as f64 * p + side(k) * 3e-4 + noise(),
+                quality: 1.0,
+            })
+            .filter(|b| spans.iter().any(|&(a, e)| b.time >= a && b.time < e))
+            .collect()
+    }
+
+    #[test]
+    fn a_ragged_piece_does_not_pull_the_rate() {
+        // Masks at 60-90 s, 180-182 s and 183.5-190 s leave a 60 s piece
+        // and a 1.5 s piece between them at 182-183.5 s.
+        let beats = take(
+            5.5,
+            &[(0.0, 60.0), (90.0, 180.0), (182.0, 183.5), (190.0, 600.0)],
+        );
+        let cuts = [60.0, 180.0, 183.5 + 1e-3];
+        let mut skewed = beats.clone();
+        // The short piece's few beats, slewed as after a knock.
+        for b in skewed
+            .iter_mut()
+            .filter(|b| b.time >= 182.0 && b.time < 183.5)
+        {
+            b.time += (b.time - 182.0) * 2e-4;
+        }
+        let f = fit_pieces(&skewed, 28800, &cuts).unwrap();
+        assert!(
+            (f.rate_s_per_day - 5.5).abs() < 0.005,
+            "{}",
+            f.rate_s_per_day
+        );
+        assert!((f.beat_error_ms - 0.3).abs() < 0.01, "{}", f.beat_error_ms);
+        let r = residuals_pieces(&skewed, &cuts).unwrap();
+        let short = skewed
+            .iter()
+            .zip(&r)
+            .filter(|(b, _)| b.time >= 182.0 && b.time < 183.5);
+        assert!(short.clone().count() > 6 && short.clone().all(|(_, r)| r.is_nan()));
+        assert!(skewed
+            .iter()
+            .zip(&r)
+            .filter(|(b, _)| b.time > 190.0)
+            .all(|(_, r)| r.is_finite()));
+    }
+
+    #[test]
+    fn a_short_whole_piece_counts_by_its_beats() {
+        // A 12 s piece, its time shortened by 2 s/d so it reads faster than
+        // the 400 s piece, is kept and counts by its beats.
+        let beats = take(5.5, &[(0.0, 400.0), (420.0, 432.0)]);
+        let mut b2 = beats.clone();
+        for b in b2.iter_mut().filter(|b| b.time >= 420.0) {
+            b.time -= (b.time - 420.0) * 2.0 / 86400.0;
+        }
+        let f = fit_pieces(&b2, 28800, &[410.0]).unwrap();
+        let k = b2.partition_point(|b| b.time < 410.0);
+        let (a, c) = (fit(&b2[..k], 28800).unwrap(), fit(&b2[k..], 28800).unwrap());
+        let n = (a.beats_used + c.beats_used) as f64;
+        let mean =
+            (a.rate_s_per_day * a.beats_used as f64 + c.rate_s_per_day * c.beats_used as f64) / n;
+        assert!(
+            (f.rate_s_per_day - mean).abs() < 1e-9,
+            "{} {}",
+            f.rate_s_per_day,
+            mean
+        );
+        assert!(
+            (f.rate_s_per_day - a.rate_s_per_day).abs() > 0.04,
+            "{} {}",
+            f.rate_s_per_day,
+            a.rate_s_per_day
+        );
+        assert_eq!(
+            fit_pieces(&b2[..10], 28800, &[410.0]).map(|f| f.beats_used),
+            None
+        );
+    }
 }
