@@ -18,18 +18,22 @@ You don't need it to use the app. It is worth knowing for:
 The program comes with the app. Your download's **Start Here** page says
 where it is; in short:
 
-- **macOS**: inside the app, at
-  `/Applications/Timegrapher.app/Contents/MacOS/timegrapher`. To run it by
-  name from Terminal, link it once:
+- **macOS**: in the disk image's **Command Line** folder, and inside the
+  app, at `/Applications/Timegrapher.app/Contents/MacOS/timegrapher`. To
+  run it by name from Terminal, link it once:
 
   ```sh
   sudo ln -s /Applications/Timegrapher.app/Contents/MacOS/timegrapher /usr/local/bin/timegrapher
   ```
 
-- **Windows**: `timegrapher.exe`, in the folder you extracted. Open a
-  terminal in that folder and run `.\timegrapher.exe`.
-- **Linux**: `timegrapher` in the tarball's folder, or inside the
-  AppImage: `./timegrapher-*.AppImage cli`.
+- **Windows**: `timegrapher.exe`, in the **Command Line** folder of the
+  folder you extracted. Open a terminal there and run `.\timegrapher.exe`.
+- **Linux**: `timegrapher`, in the **Command Line** folder, or inside the
+  AppImage: `./Timegrapher.AppImage cli`.
+
+`timegrapher-mcp`, beside it in the Command Line folder, is the server for
+AI chat apps (see [Claude Desktop](13-claude-desktop.md)). Keep the two
+together if you move them.
 
 Then:
 
@@ -151,8 +155,9 @@ timegrapher record mywatch/ --position DD --seconds 120
 timegrapher session mywatch/
 ```
 
-It listens only while it runs. When no regular beat is found, or the beats
-clip, it says so, and keeps the take.
+It listens only while it runs. The first 30 seconds of each take are left
+out of its readings while the watch settles. When no regular beat is found,
+or the beats clip, it says so, and keeps the take.
 
 ## session
 

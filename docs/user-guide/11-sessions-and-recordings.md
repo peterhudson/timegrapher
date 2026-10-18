@@ -18,6 +18,7 @@ the beats, the readings and the positions.
 - **Resume** carries on in the same session. The strip and charts leave the
   stopped time out, and the readings start from the beats after the stop.
 - **New Session** clears everything for the next watch or position.
+  Pressed while listening, listening carries on into the new session.
 
 ![The Watch pane after Stop: Resume, New Session and Save… under the microphone menu](images/stopped-buttons.png)
 

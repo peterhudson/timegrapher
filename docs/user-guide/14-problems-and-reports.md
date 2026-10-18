@@ -148,8 +148,9 @@ of these.
 With **Check for Updates at Start** on (in the Help menu; on unless you
 turn it off), the app asks GitHub once at start whether a newer version is
 published, and shows a banner with **Download** if so. **Check for
-Updates…** asks at any time. To update, download the new version and
-install it over the old one, as the first time. See
+Updates…** asks at any time. To update, download the new version and set
+it up as the first time: on macOS, replace the app in Applications; on
+Windows and Linux, use the new version's folder and delete the old one. See
 [Installing and updating](../install.md#updating).
 
 ---

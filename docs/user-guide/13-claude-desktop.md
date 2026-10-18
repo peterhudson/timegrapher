@@ -17,11 +17,11 @@ watch, this is the place to ask, and you can check every source it gives.
 
 - **Claude Desktop** on a Mac or a Windows PC, signed in to your Claude
   account.
-- The extension file from the download: `Timegrapher.mcpb` (or
-  `timegrapher-VERSION-macos.mcpb` / `timegrapher-VERSION-windows-x64.mcpb`
-  on the Releases page). Your download's **Start Here** page says where it
-  is. It holds both the server and the command line tool, so nothing else
-  needs installing.
+- The extension, `Timegrapher.mcpb`, in the **Claude Desktop** folder of
+  the macOS or Windows download (on Windows, extract the whole zip first).
+  It holds both the server and the command line tool, so nothing else needs
+  installing. The Linux download has no extension; see
+  [Other Chat Apps](#other-chat-apps).
 
 ## Install
 
@@ -67,7 +67,7 @@ seeing it first. Give full paths to recordings and folders.
 | `long_run` | Rate and amplitude over hours, and the wheel behind a periodic change; writes `report.html` |
 | `check_recording` | A recording's level, clipping, automatic gain and noise |
 | `list_calibres` | A calibre's beat rate, lift angle and train |
-| `make_report_bundle` | A zip for a GitHub issue, saved on your computer |
+| `make_report_bundle` | A zip for a GitHub issue, saved in your home folder unless you name another |
 | `read_guide` | The watchmaker skill and its pages, for Claude to read |
 
 Each tool runs the `timegrapher` command line and passes back exactly what
@@ -95,11 +95,11 @@ A calibre you added in the app can be used by name here too.
 ## Other Chat Apps
 
 Any chat app or editor that runs local MCP servers can use the server,
-`timegrapher-mcp`, which comes beside the command line tool in the
-download. Give
-the app its full path as the command, with no arguments, and keep
-`timegrapher` beside it. [The MCP server](../mcp.md) has the details,
-including adding it to Claude Desktop by hand.
+`timegrapher-mcp`, which is in the download's **Command Line** folder beside
+the command line tool. Give the app its full path as the command, with no
+arguments, and keep `timegrapher` beside it. [The MCP server](../mcp.md) has the details,
+including adding it to Claude Desktop by hand and
+[what to check when it does not work](../mcp.md#when-it-does-not-work).
 
 Assistants that can run commands themselves, such as Claude Code, can use
 the `timegrapher` command line directly with the watchmaker skill; see

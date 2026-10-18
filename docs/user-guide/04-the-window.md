@@ -26,7 +26,8 @@ From top to bottom:
 - **Save…** (Ctrl+S) copies the session into a folder of its own;
   afterwards it becomes **Save Again**, which brings that copy up to date.
   **Save As…** (Ctrl+Shift+S) copies it to a new folder.
-- **New Session** clears everything for the next watch.
+- **New Session** clears everything for the next watch. Pressed while
+  listening, listening carries on into the new session.
 - **Quit** (Ctrl+Q).
 
 **View**

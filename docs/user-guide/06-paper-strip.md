@@ -47,10 +47,11 @@ then rises to the right.
 ### Width and Length
 
 - **Width** is how far either side of the centre the strip reaches, from
-  ±0.1 ms to ±250 ms. Type it, or pick a common value: the list runs from
-  ±1 ms, for a fine look at the beat error, to ±62.5 ms, which at 28,800
-  bph is half a beat, the widest view in which Ticks and Tocks can't wrap
-  onto each other.
+  ±0.1 ms to ±60 s, typed in milliseconds. Type it, or pick a common value:
+  the list runs from ±1 ms, for a fine look at the beat error, through
+  ±62.5 ms, which at 28,800 bph is half a beat, the widest view in which
+  Ticks and Tocks can't wrap onto each other, up to ±60 s, so a long take
+  that drifts by many seconds can be shown without wrapping.
 - **Length** is how much time the strip shows. Type it as `45` (seconds),
   `5 min`, `2h` or `1:30:00`, or pick from the list, from 10 seconds to two
   hours.
@@ -69,8 +70,8 @@ then rises to the right.
   whether lines are parallel far better than it judges a slope, so dots
   that bend away from the guides show the rate changing.
 
-In the current version the guides are drawn with the Rate Line, so
-turning the Rate Line off hides them too.
+Each switches on and off on its own: the guides show with or without the
+Rate Line.
 
 ### Draw Over the Strip
 

@@ -91,7 +91,9 @@ recording opened; also, on the command line, a multi-position test.
 
 **Settling**: the seconds after the watch is turned that are left out of
 the readings, while it steadies in its new position: 10 seconds in the
-app, 20 seconds in the Positions Test unless you change it.
+app, 20 seconds in the Positions Test unless you change it, and 30 seconds
+of each take made by the command line's `record` (and so by Claude
+Desktop's `record_position`).
 
 **Signal**: how far the typical beat stands above the background noise,
 such as "signal 30×". Noise alone reads about 2×.

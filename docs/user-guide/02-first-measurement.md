@@ -25,9 +25,14 @@ settle on the microphone.
 ## Install
 
 Download the file for your computer from the
-[Releases page](https://github.com/peterhudson/timegrapher/releases/latest)
-and open it. Its **Start Here** page lists what it holds and how to open
-the app the first time. The builds are not signed with an Apple or
+[Releases page](https://github.com/peterhudson/timegrapher/releases/latest):
+a disk image (`.dmg`) for macOS, or a zip for Windows or Linux. Each holds
+the app, a **Command Line** folder, a **Claude Desktop** folder (macOS and
+Windows), this guide and the other documentation in a **Documentation**
+folder, and a **Start Here** page that says how to open the app the first
+time. On macOS, drag the app onto Applications. On Windows and Linux,
+extract the whole folder somewhere you keep and run the app from there:
+there is nothing to install. The builds are not signed with an Apple or
 Microsoft developer certificate, so macOS and Windows warn you the first
 time you open each new version; the Start Here page and
 [Installing and updating](../install.md) give the steps past that warning.
@@ -106,7 +111,8 @@ for a line or two of explanation, or click it for the whole explanation.
 - **Save…** copies the session, sound included, into a folder you choose,
   so you can open it again later. Nothing is lost if you forget: the app
   asks before throwing away sound that hasn't been saved.
-- **New Session** clears everything for the next watch.
+- **New Session** clears everything for the next watch. Pressed while
+  listening, listening carries on into the new session.
 
 [Sessions and Recordings](11-sessions-and-recordings.md) covers these in
 full.
