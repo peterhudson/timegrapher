@@ -61,6 +61,8 @@ charts and the recording quality before simply waiting longer.
 
 ## Reading the Plot
 
+![Amplitude over a 16-hour run-down above the Isochronism pane's rate-against-amplitude curve](images/isochronism.png)
+
 The horizontal axis is **amplitude in degrees**, increasing to the right.
 The vertical axis is **rate in seconds per day**. A watch whose amplitude
 falls during run-down usually moves from the right side of this graph
