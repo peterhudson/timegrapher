@@ -1061,7 +1061,66 @@ pub fn check_series(
     if let Some(fast) = fast_sentence(&out) {
         out.headline = format!("{} {fast}", out.headline);
     }
+    if let Some(more) = search_also(&out) {
+        out.headline = format!("{} {more}", out.headline);
+    }
     out
+}
+
+/// The period search's lines the headline does not name: not the cycle
+/// (or the shorter cycle inside it), and not the fast line, within the resolution (period²
+/// over the take, at least 1%). The search lists only lines that pass
+/// its own significance test.
+fn search_also(s: &SeriesCheck) -> Option<String> {
+    let p = s.period.as_ref()?;
+    let span = s.readings as f64 * s.step_s;
+    let near = |a: f64, b: f64| (a - b).abs() <= (b * b / span).max(0.01 * b);
+    let named: Vec<f64> = s
+        .cycle
+        .iter()
+        .flat_map(|c| [Some(c.period_s), c.inner_period_s])
+        .flatten()
+        .collect();
+    let fast = s.faster_than_readings().is_some();
+    // Seconds throughout: minutes rounded would make 225 s and 263 s
+    // both "4 min".
+    let period = |q: f64| {
+        if q < 30.0 {
+            format!("{q:.1} s")
+        } else {
+            format!("{q:.0} s")
+        }
+    };
+    let mut lines = Vec::new();
+    if !fast && !named.iter().any(|&n| near(p.period_s, n)) {
+        let size = match p.size_unit {
+            "deg" => format!("{:.2}°", p.size),
+            u => format!("{:.2} {u}", p.size),
+        };
+        let wheel = p
+            .wheel
+            .as_ref()
+            .map_or(String::new(), |w| format!(", the {w}'s period"));
+        lines.push(format!(
+            "{} ({size} peak to peak{wheel})",
+            period(p.period_s)
+        ));
+    }
+    lines.extend(
+        p.other_periods_s
+            .iter()
+            .filter(|&&q| !named.iter().any(|&n| near(q, n)))
+            .map(|&q| period(q)),
+    );
+    let list = match lines.as_slice() {
+        [] => return None,
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    };
+    Some(format!(
+        "The {}'s period search also finds {list}.",
+        s.series.name()
+    ))
 }
 
 /// A second sentence for structure the verdict does not name: a cycle
@@ -1079,7 +1138,7 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
                 .as_ref()
                 .map_or(String::new(), |w| format!(" (the {w})")),
             inner_text(c),
-            k.fmt_size(c.peak_to_peak)
+            k.fmt_size(c.peak_to_peak),
         ));
     }
     let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
@@ -1195,19 +1254,7 @@ fn cycle(
             cands.push((refine(&d, q, 0.01), CycleSource::PeriodSearch));
         }
     }
-    let at = |p: f64, src: CycleSource| {
-        let (explained, ptp) = fold(&d, p);
-        Cycle {
-            period_s: p,
-            peak_to_peak: ptp,
-            explained,
-            source: src,
-            wheel: wheel_for(p, wheels),
-            inner_period_s: None,
-            inner_explained: None,
-            turns: None,
-        }
-    };
+    let at = |p: f64, src: CycleSource| cycle_at(&d, p, src, wheels);
     // Folding at five turns of a cycle explains as much as folding at one,
     // and the autocorrelation's lag grid can favour the multiple (a 48 s
     // cycle in 10 s readings lines up best at 240 s). Each candidate is
@@ -1290,7 +1337,73 @@ fn cycle(
                     },
                 )
         })
+        .map(|mut c| {
+            // At a turn and a half or more of an alias, the fold holds the
+            // alias too: its share and size are given net of the alias's own
+            // fold. On the alias itself the two cannot be parted.
+            if let Some(a) = alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()) {
+                if c.period_s / a >= 1.25 {
+                    let (rest, kept) = without_fold(&d, refine(&d, a, 0.03));
+                    let (e, ptp) = fold(&rest, c.period_s);
+                    c.explained = e * kept;
+                    c.peak_to_peak = ptp;
+                }
+            }
+            c
+        })
+        .filter(|c| c.explained >= cfg.periodic_min_explained)
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
+}
+
+/// The cycle folded at `period`.
+fn cycle_at(d: &Grid, period: f64, source: CycleSource, wheels: &[Wheel]) -> Cycle {
+    let (explained, peak_to_peak) = fold(d, period);
+    Cycle {
+        period_s: period,
+        peak_to_peak,
+        explained,
+        source,
+        wheel: wheel_for(period, wheels),
+        inner_period_s: None,
+        inner_explained: None,
+        turns: None,
+    }
+}
+
+/// The readings less their fold at `period`, and the share of their
+/// variance left.
+fn without_fold(d: &Grid, period: f64) -> (Grid, f64) {
+    let bins = ((period / d.step).round() as usize).clamp(2, 30);
+    let bin = |i: usize| {
+        let x = (d.time(i) - d.t0) / period;
+        (((x - x.floor()) * bins as f64) as usize).min(bins - 1)
+    };
+    let mut sum = vec![0.0; bins];
+    let mut n = vec![0usize; bins];
+    for (i, &v) in d.y.iter().enumerate() {
+        if v.is_finite() {
+            sum[bin(i)] += v;
+            n[bin(i)] += 1;
+        }
+    }
+    let mut rest = d.clone();
+    for (i, v) in rest.y.iter_mut().enumerate() {
+        if v.is_finite() && n[bin(i)] > 0 {
+            *v -= sum[bin(i)] / n[bin(i)] as f64;
+        }
+    }
+    let var = |y: &[f64]| {
+        let f: Vec<f64> = y.iter().copied().filter(|v| v.is_finite()).collect();
+        let m = f.iter().sum::<f64>() / f.len().max(1) as f64;
+        f.iter().map(|v| (v - m).powi(2)).sum::<f64>()
+    };
+    let total = var(&d.y);
+    let kept = if total > 0.0 {
+        var(&rest.y) / total
+    } else {
+        0.0
+    };
+    (rest, kept)
 }
 
 /// Whether the period search has a line of three readings or longer
@@ -1459,6 +1572,14 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
         // the tests run.
         Lead::TooShort => s.headline.clone(),
         Lead::Steady => match fast_line(s) {
+            // A period-search line the headline adds is a cycle: say
+            // nothing of cycles here.
+            None if search_also(s).is_some() => format!(
+                "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no level change, trend or correlation between readings detected.",
+                s.readings,
+                k.fmt(s.median.unwrap_or(mean)),
+                k.fmt_size(s.short_term_sd.unwrap_or(0.0))
+            ),
             None => format!(
                 "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
                 s.readings,
@@ -1574,6 +1695,10 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
                 ));
             }
             match fast_line(s) {
+                None if search_also(s).is_some() => format!(
+                    "Successive {step} {name} readings are correlated ({}); no level change or trend detected.",
+                    parts.join("; ")
+                ),
                 None => format!(
                     "Successive {step} {name} readings are correlated ({}); no cycle, level change or trend detected.",
                     parts.join("; ")
@@ -2488,6 +2613,14 @@ mod tests {
         );
         assert!(s.faster_than_readings().is_none(), "{}", s.headline);
         assert!(!s.headline.contains("too coarse"), "{}", s.headline);
+        // The search's line is named, and the lead says nothing of cycles.
+        assert!(
+            s.headline.ends_with(
+                "; no level change or trend detected. The amplitude's period search also finds 20.0 s (0.80° peak to peak)."
+            ),
+            "{}",
+            s.headline
+        );
     }
 
     #[test]
@@ -2547,7 +2680,7 @@ mod tests {
     }
 
     /// Fast lines too quick for 10 s readings and the alias each shows at.
-    const FAST_LINES: [(f64, f64); 3] = [(3.75, 30.0), (1.0 / 0.15, 20.0), (60.0 / 7.0, 60.0)];
+    const FAST_LINES: [(f64, f64); 3] = [(3.75, 30.0), (1.0 / 0.15, 20.0), (60.0 / 11.0, 60.0)];
 
     /// One to seven hours of 10 s rate readings: noise, the alias of a fast
     /// line at `alias_amp`, and slow sines at `slow` (period, amplitude).
@@ -2563,7 +2696,9 @@ mod tests {
         (0..n)
             .map(|i| {
                 let t = 10.0 * i as f64;
-                5.0 + alias_amp * (tau * t / alias + 0.4).sin()
+                // A phase near a quarter turn keeps the 20 s alias, two
+                // readings a turn, at nearly its full size.
+                5.0 + alias_amp * (tau * t / alias + 1.4).sin()
                     + slow
                         .iter()
                         .map(|&(p, a)| a * (tau * t / p + 1.1).sin())
@@ -2595,17 +2730,50 @@ mod tests {
     }
 
     #[test]
-    fn a_weak_fourth_wheel_beside_a_fast_line_is_found_not_its_alias() {
+    fn a_weak_fourth_wheel_beside_a_fast_line_is_sized_on_its_own() {
         // The docs' watch: a 3.75 s escape-wheel line (a 30 s alias in 10 s
-        // readings) and a sinusoidal 60 s fourth wheel under a third its size,
-        // both lines the period search lists.
+        // readings) and a sinusoidal 60 s fourth wheel under a third its
+        // size, both lines the period search lists. Folding at 60 s, two
+        // turns of the alias, holds the alias too; net of it, the wheel's
+        // own swing is 0.6 s/d and too small a share to be the cycle, so
+        // the headline names it from the period search.
         for n in HOURS {
             for seed in 0..4 {
                 let y = aliased_readings(n, seed + n as u64, 30.0, 1.0, &[(60.0, 0.3)]);
                 let s = rate_check(y, 3.75, &[60.0]);
+                match &s.cycle {
+                    Some(c) => assert!(
+                        near(c, 60.0, n) && c.peak_to_peak < 1.2,
+                        "{n} readings, seed {seed}: {}",
+                        s.headline
+                    ),
+                    None => assert!(
+                        s.headline.contains("period search also finds 60 s"),
+                        "{n} readings, seed {seed}: {}",
+                        s.headline
+                    ),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_listed_line_on_alias_turns_with_nothing_of_its_own_is_no_cycle() {
+        // The period search lists 60 s, two turns of the 30 s alias, but
+        // the readings hold only the alias: net of it, nothing is left.
+        for n in HOURS {
+            for seed in 0..4 {
+                let y = aliased_readings(n, seed + 5 * n as u64, 30.0, 1.0, &[]);
+                let s = rate_check(y, 3.75, &[60.0]);
                 assert!(
-                    s.cycle.as_ref().is_some_and(|c| near(c, 60.0, n)),
+                    s.cycle.is_none(),
                     "{n} readings, seed {seed}: {}",
+                    s.headline
+                );
+                assert!(
+                    s.headline
+                        .ends_with(" The rate's period search also finds 60 s."),
+                    "{}",
                     s.headline
                 );
             }
@@ -2613,18 +2781,77 @@ mod tests {
     }
 
     #[test]
+    fn a_cycle_on_alias_turns_is_sized_net_of_the_alias() {
+        // A 60 s fourth wheel of 2 s/d peak to peak beside a 3.75 s line's
+        // 30 s alias of 2 s/d: the fold at 60 s holds both, about 3 s/d;
+        // net of the alias it is the wheel's own, about 2 s/d.
+        for n in HOURS {
+            for seed in 0..4 {
+                let y = aliased_readings(n, seed + 11 * n as u64, 30.0, 1.0, &[(60.0, 1.0)]);
+                let s = rate_check(y, 3.75, &[60.0]);
+                let c = s.cycle.as_ref().unwrap();
+                assert!(
+                    near(c, 60.0, n),
+                    "{n} readings, seed {seed}: {}",
+                    s.headline
+                );
+                assert!(
+                    (1.4..2.6).contains(&c.peak_to_peak),
+                    "{n} readings, seed {seed}: {} ({:.2})",
+                    s.headline,
+                    c.peak_to_peak
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_search_line_the_headline_does_not_name_is_added() {
+        // A 30 min amplitude swing leads; the period search also lists a
+        // 45 s line the readings' cycle does not name.
+        let tau = 2.0 * std::f64::consts::PI;
+        let mut z = Noise(41);
+        let y: Vec<f64> = (0..3600)
+            .map(|i| 270.0 + 6.0 * (tau * 2.0 * i as f64 / 1800.0).sin() + z.next())
+            .collect();
+        let mut line = search_line(45.0, 0.8, "deg", None);
+        line.other_periods_s = vec![1800.0, 600.0];
+        let s = check_series(
+            SeriesKind::Amplitude,
+            grid(y, 2.0),
+            None,
+            Some(line),
+            None,
+            &[],
+            &Config::default(),
+        );
+        assert!(
+            s.headline.ends_with(
+                " The amplitude's period search also finds 45 s (0.80° peak to peak) and 600 s."
+            ),
+            "{}",
+            s.headline
+        );
+    }
+
+    #[test]
     fn a_real_slow_line_beside_an_alias_is_the_only_cycle_found() {
         // A 450 s line (a third wheel) beside the 30 s, 20 s and 60 s
-        // aliases. Listed by the period search, it is found; unlisted, it
-        // may be lost when it does not clearly outfold the alias, but no
-        // other cycle is ever listed in its place.
+        // aliases. Listed by the period search, it is the cycle, or, when
+        // net of the alias it is too small a share of the readings, the
+        // headline names it from the search; unlisted, it may be lost when
+        // it does not clearly outfold the alias. No other cycle is ever
+        // listed in its place.
         for n in HOURS {
             for seed in 0..4 {
                 for (q, a) in FAST_LINES {
                     let y = aliased_readings(n, seed + 7 * n as u64, a, 1.0, &[(450.0, 0.7)]);
                     let s = rate_check(y.clone(), q, &[450.0]);
                     assert!(
-                        s.cycle.as_ref().is_some_and(|c| near(c, 450.0, n)),
+                        match &s.cycle {
+                            Some(c) => near(c, 450.0, n),
+                            None => s.headline.contains("period search also finds 450 s"),
+                        },
                         "{a} s alias, listed, {n} readings, seed {seed}: {}",
                         s.headline
                     );
@@ -2641,7 +2868,7 @@ mod tests {
 
     #[test]
     fn a_pure_alias_is_no_cycle_at_whole_half_or_third_turns() {
-        // The 30 s, 20 s and 60 s aliases alone, at a third to two thirds
+        // The 30 s, 20 s and 60 s aliases alone, at a fifth to two thirds
         // of the readings' variance, over one to seven hours: the
         // autocorrelation offers whole, half and third turns of each.
         for n in HOURS {
