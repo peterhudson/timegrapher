@@ -170,7 +170,7 @@ plus these:
   movements, one on lift angles) and teardown threads, cited by URL per
   entry; the escape wheel of a clone resting on them alone is marked
   inferred, and each clone entry's notes say which of its claims rest on
-  those guides alone.
+  those guides alone, or on one other source alone.
 - **Lift angles** are what sources give. Rolex, AP and Patek publish
   none, so theirs are the figures timegrapher users work with (Rolex 31xx
   and 4130 52°, 32xx and 4131 55° with a reported Rolex revision of the
