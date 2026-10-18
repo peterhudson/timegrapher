@@ -28,7 +28,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 # Set by GitHub Actions; the default is for local runs.
-REPO = os.environ.get("GITHUB_REPOSITORY", "peterhudson/timegrapher")
+REPO = os.environ.get("GITHUB_REPOSITORY") or "peterhudson/timegrapher"
 PLATFORMS = ("linux", "macos", "windows")
 INDEX = "docs/index.md"
 

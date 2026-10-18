@@ -5,7 +5,7 @@
   "display_name": "Timegrapher",
   "version": "@VERSION@",
   "description": "Test a mechanical watch at home from the sound of its ticking: rate, amplitude and beat error, with charts.",
-  "long_description": "The open-source timegrapher in your chat app. It reads recordings of a watch, records each position from the microphone when you allow it, and shows the readings as charts in the conversation. It brings the watchmaker skill, so the chat app can guide a multi-position test and say plainly whether the watch needs a service. Nothing is uploaded, and your sound settings are never changed.",
+  "long_description": "The open-source timegrapher in your chat app. It reads recordings of a watch, records each position from the microphone when you allow it, and shows the readings as charts in the conversation. It brings the watchmaker skill, so the chat app can guide a multi-position test and explain the readings, citing its sources. Nothing is uploaded, and your sound settings are never changed.",
   "author": {
     "name": "Timegrapher contributors",
     "url": "https://github.com/peterhudson/timegrapher"

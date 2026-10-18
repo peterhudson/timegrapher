@@ -141,8 +141,10 @@ a personal computer.
    root `Cargo.toml` (`[workspace.package]`, `version`) holds the base
    version X.Y.Z, and each draft takes one more than the highest patch
    number any release (drafts included) or tag has used for that X.Y, never
-   less than the base: with 0.4.0 and 0.4.1 made, the next draft is 0.4.2,
-   and a deleted draft's number is not used again. Runs that can draft take turns, so
+   less than the base: with 0.4.0 and 0.4.1 made, the next draft is 0.4.2.
+   A draft has no tag until it is published, so deleting the newest draft
+   frees its number for the next run; numbers below the highest remaining
+   one are never used again. Runs that can draft take turns, so
    two never pick the same number. For new features raise X or Y in a pull
    request, following [semantic versioning](https://semver.org), and change
    the four workspace crates' `version` lines in `Cargo.lock` with it (CI
@@ -191,8 +193,8 @@ Before files are uploaded, release packaging also runs a synthetic operability
 check against each binary pair in the unzipped download: Linux **Command
 Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle
 on the mounted disk image; Windows **Command Line** folder and MCP bundle. A
-missing required binary or bundle fails the build, as does a zip that holds
-anything besides one folder, a disk image without its Applications shortcut,
+missing required binary or bundle fails the build, as does a zip whose top
+level is not one folder (hidden entries aside), a disk image without its Applications shortcut,
 or a download whose documentation pages link to a file it lacks. Existing
 help/version, signature and archive checks remain in place.
 

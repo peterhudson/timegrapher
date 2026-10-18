@@ -61,8 +61,8 @@ jobs:
   # The version every file of this run carries. Cargo.toml holds the base
   # X.Y.Z; a draft takes one more than the highest patch any release
   # (drafts included) or tag has used for that X.Y, never less than the
-  # base, so a draft can be made at any time without a version bump. A tag
-  # build takes the tag's version.
+  # base, so a draft can be made at any time without a version bump; X or Y
+  # is raised by hand in Cargo.toml. A tag build takes the tag's version.
   version:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -207,8 +207,8 @@ jobs:
             mkdir check && 7z x -bso0 -ocheck "${files[0]}"
           fi
           folders=(check/*)
-          # One line per test: bash -e does not stop on a failed test
-          # inside an && list.
+          # One line per test: bash -e ignores a failed test in an && list
+          # unless it is the list's last command.
           [ "${#folders[@]}" -eq 1 ]
           [ -d "${folders[0]}" ]
           echo "PKG=${folders[0]}" >> "$GITHUB_ENV"
