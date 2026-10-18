@@ -20,6 +20,7 @@ A JSON array, one object per calibre:
 | `calibre` | Name shown to the user, e.g. "ETA 2824-2" |
 | `maker` | Maker, or "(clone)" for a copy |
 | `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
+| `former_names` | Names the row had in earlier versions of the table (the 97 variant rows were first named with "vph"); they still match, with or without the maker, but are not searched or shown in the app. Left out when there are none |
 | `common` | `true` for common and modern calibres, the short list the app offers first; uncommon and vintage ones (most of the imported list) leave it out and appear when the list is expanded or searched |
 | `bph` | Beats per hour, where a source gives it |
 | `escape_teeth` | Escape wheel teeth, only where there is evidence |
