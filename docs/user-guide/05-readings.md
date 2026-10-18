@@ -127,12 +127,13 @@ rest the pointer on it:
 
 | Shown | Means |
 | --- | --- |
-| **12 s of beats** | The beats span less than 10 seconds |
+| **8 s of beats** | The beats span less than 10 seconds |
 | **540 of 600 expected beats found** | Fewer than 95% of the beats expected were found |
 | **3% of beats clipped** | More than 1% of the beats clip (amplitude and beat error) |
 | **lift angle 52°, the default (calibre not set)** | No calibre or lift angle was given (amplitude) |
 | **21600 bph heard** | The beat rate set under Watch differs from the one heard |
 | **2 pauses** | The take was paused in this stretch |
+| **input clock not measured** | The microphone's clock hasn't been measured, so the rate includes the sound card's own clock error (see [True Clock](#true-clock)) |
 
 None of these is a grade. They say what the figure stands on, so you can
 decide how much weight to give it.

@@ -17,8 +17,8 @@ seconds unless you change it. See [Readings](05-readings.md#average-over).
 once each way in each swing.
 
 **Beat error**: how unevenly the Tick and the Tock are spaced, in
-milliseconds. Timed from the unlock (the usual reading) and, smaller,
-from the beat as a whole.
+milliseconds. Timed from the unlock (the usual reading), and also from
+the drop.
 
 **Beat rate**: beats per hour (bph), counting Ticks and Tocks alike:
 28,800 for a balance swinging back and forth 4 times a second.
@@ -49,17 +49,24 @@ on the pallet stone. Usually the loudest.
 **DU, DD, CU, CD, CL, CR**: dial up, dial down, crown up, crown down,
 crown left, crown right.
 
+**DH, DV**: in a multi-position test, the largest difference between the
+rates of the flat positions (DH) or of the upright ones (DV).
+
+**Di**: in a multi-position test, the rate crown left (6H) less the rate
+dial up (CH).
+
 **DVH**: in a multi-position test, the mean of the upright positions less
 the mean of the flat ones, for rate and amplitude.
 
 **FFT**: a spectrum: the size of the cycle at each period in a series of
 readings.
 
-**Ie**: in the test 24 hours after full wind, the size of the change in
-the mean rate.
+**Ie**: in a test made at full wind and again later (usually 24 hours),
+the size of the change in the mean rate.
 
-**Im**: in the test 24 hours after full wind, the largest change in any
-position's rate, with crown right left out, as NIHS 93-10 takes it.
+**Im**: in a test made at full wind and again later (usually 24 hours),
+the largest change in any position's rate, with crown right left out, as
+NIHS 93-10 takes it.
 
 **Impulse**: the second sound of a beat, when the escape wheel tooth
 pushes the lever.
@@ -111,7 +118,9 @@ See [Readings](05-readings.md#true-clock).
 **Unlock**: the first sound of a beat, when the pallet stone lets go of
 the escape wheel tooth. The quietest of the three.
 
-**X**: in a multi-position test, the mean rate of the positions.
+**X, XH, XV**: in a multi-position test, the mean rate of all the
+positions (X), of the flat ones (XH, shown as H) and of the upright ones
+(XV, shown as V).
 
 ## Sources
 

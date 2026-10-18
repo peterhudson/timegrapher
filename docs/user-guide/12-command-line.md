@@ -53,13 +53,14 @@ Most commands that read a recording take:
 
 | Option | Means |
 | --- | --- |
-| `--calibre NAME` | The movement, from the calibre table (see `calibres`): its beat rate, lift angle and wheels |
+| `--calibre NAME` | The movement, from the calibre table (see `calibres`). For `analyze`, `session` and `record`: its beat rate, lift angle and wheels. For `long` and `series`: its wheels only. `profile` and `shape` don't take it |
 | `--bph N` | Beat rate in beats per hour (found from the beats if left out) |
-| `--lift DEG` | Lift angle in degrees (the calibre's, or 52 if left out) |
+| `--lift DEG` | Lift angle in degrees. Left out: the calibre's for `analyze`, `session` and `record`, otherwise 52 |
 | `--notch 5000,7000` | Remove steady interference tones at these frequencies, in Hz |
 | `--json` | Print one JSON document instead of text |
 
-`--bph` and `--lift` win over the calibre's figures.
+`--bph` and `--lift` win over the calibre's figures. So for `long`,
+`series`, `profile` and `shape`, give the lift angle with `--lift`.
 
 ## analyze
 
@@ -239,7 +240,12 @@ Rate repeats every 60 s (the fourth wheel), 11.7 s/d peak to peak. Its level als
   cycle          60.0 s (fourth wheel), 11.69 s/d p-p, explains 18% (found by the autocorrelation)
 ```
 
-See [Structure in time](../series.md).
+`series` corrects the rate for the sound card's clock, from a kept
+correction or the recording's USB timing, as `analyze` does. The app's
+Steadiness views use the sound card's own clock, so the same take's rate
+levels there differ by the clock error: 1.7 s/d for this one, compared
+with [the app's figures](08-over-time.md#steadiness). See
+[Structure in time](../series.md).
 
 ## clock
 
@@ -288,7 +294,8 @@ adds a change that repeats like a wheel turning once a minute.
 
 Every command takes `--json` and prints one JSON document with a `schema`
 field (such as `timegrapher.analyze/2`), the software version and the input
-it read. Exit codes: 0 success, 1 error. The
+it read. Exit codes: 0 success, 1 error (and 3 from `regress`, the
+project's own regression check). The
 [agent interface](../agent-interface.md) documents every field.
 
 ---
