@@ -142,11 +142,13 @@ a personal computer.
    version X.Y.Z, and each draft takes one more than the highest patch
    number any release (drafts included) or tag has used for that X.Y, never
    less than the base: with 0.4.0 and 0.4.1 made, the next draft is 0.4.2.
-   A draft has no tag until it is published, so deleting the newest draft
-   frees its number for the next run; numbers below the highest remaining
-   one are never used again. Runs that can draft take turns, so
-   two never pick the same number. For new features raise X or Y in a pull
-   request, following [semantic versioning](https://semver.org), and change
+   Only the numbers still held count: a draft started from the Actions tab
+   has no tag until it is published, so deleting it frees its number
+   whenever no higher number is left (delete 0.4.3, then 0.4.2, and the
+   next run takes 0.4.2 again). A draft from a tag build keeps its tag, so
+   its number stays taken until the tag is deleted too. Runs that can draft
+   take turns, so two never pick the same number. For new features raise X
+   or Y in a pull request, following [semantic versioning](https://semver.org), and change
    the four workspace crates' `version` lines in `Cargo.lock` with it (CI
    builds with `--locked`); nobody raises Z by hand.
 2. Release notes, for watchmakers rather than developers, go in
@@ -194,9 +196,10 @@ check against each binary pair in the unzipped download: Linux **Command
 Line** folder and AppImage; macOS app, **Command Line** folder and MCP bundle
 on the mounted disk image; Windows **Command Line** folder and MCP bundle. A
 missing required binary or bundle fails the build, as does a zip whose top
-level is not one folder (hidden entries aside), a disk image without its Applications shortcut,
-or a download whose documentation pages link to a file it lacks. Existing
-help/version, signature and archive checks remain in place.
+level is not one folder (hidden entries aside), a disk image without its
+Applications shortcut, or a download whose documentation pages link to a file
+it lacks. Existing help/version, signature and archive checks remain in
+place.
 
 The documentation pages come from the Release workflow's `docs` job:
 `packaging/docs_html.py` renders `README.md`, `docs/` and the watchmaker
