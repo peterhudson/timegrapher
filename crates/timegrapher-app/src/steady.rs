@@ -139,7 +139,8 @@ pub struct Steadiness {
 /// The session's beats and amplitude windows so far, as a recording's
 /// analysis would give them.
 pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
-    Some(BeatLog {
+    let masked = live.masked();
+    let mut log = BeatLog {
         sample_rate: live.sample_rate(),
         duration_s: live.duration_s(),
         bph: live.bph()?,
@@ -149,10 +150,17 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         clipped_beats: live.clipped_beats().to_vec(),
         // Not counted live; the tests don't use it.
         clipped_samples: 0,
-        // Imported jumps and current position/settling boundaries are all
-        // known cuts, not extra elapsed time or newly detected jumps.
+        // Imported jumps, current position/settling boundaries and the
+        // start of each masked stretch are all known cuts, not extra
+        // elapsed time or newly detected jumps.
         jumps: live.breaks().to_vec(),
-    })
+    };
+    // Stretches masked by hand are left out, each one a cut.
+    timegrapher_core::session::mask_log(&mut log, masked);
+    log.jumps.extend(masked.iter().map(|m| m.0));
+    log.jumps.sort_by(f64::total_cmp);
+    log.jumps.dedup();
+    Some(log)
 }
 
 /// Room left between two stretches in one position when they are joined

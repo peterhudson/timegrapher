@@ -64,6 +64,8 @@ pub struct Metadata {
     pub guided_ranges: Vec<(Position, f64, f64)>,
     pub guided_wind_h: Option<f64>,
     pub full_wind: Option<crate::guided::FullWind>,
+    /// Stretches masked out on the strip, in the session's seconds.
+    pub masked: Vec<(f64, f64)>,
 }
 
 /// The metadata inputs captured before a save transaction begins.

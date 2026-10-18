@@ -329,10 +329,10 @@ impl Test {
 
     /// Read each position measured since the last call, so the pane's
     /// table fills in as the test goes.
-    pub fn read_new(&mut self, log: &BeatLog, clock: Option<&ClockFit>) {
+    pub fn read_new(&mut self, log: &BeatLog, clock: Option<&ClockFit>, masked: &[(f64, f64)]) {
         while self.done.len() < self.spans.len() {
             let (p, from, to) = self.spans[self.done.len()];
-            match self.reading(p, from, to, log, clock) {
+            match self.reading(p, from, to, log, clock, masked) {
                 Some(r) => self.done.push(r),
                 None => break,
             }
@@ -445,16 +445,27 @@ impl Test {
 
     /// Read each position's stretch of the session, as `session` reads a
     /// recording after its settling time.
-    pub fn finish(&mut self, log: &BeatLog, clock: Option<&ClockFit>) {
+    pub fn finish(&mut self, log: &BeatLog, clock: Option<&ClockFit>, masked: &[(f64, f64)]) {
         let readings = self
             .spans
             .iter()
-            .filter_map(|&(p, from, to)| self.reading(p, from, to, log, clock))
+            .filter_map(|&(p, from, to)| self.reading(p, from, to, log, clock, masked))
             .collect();
         self.readings = Some(readings);
     }
 
-    /// One position's stretch of the session, `from` to `to` seconds.
+    /// Read every position measured so far again, as when the stretches
+    /// masked change; a finished test is finished again.
+    pub fn reread(&mut self, log: &BeatLog, clock: Option<&ClockFit>, masked: &[(f64, f64)]) {
+        self.done.clear();
+        self.read_new(log, clock, masked);
+        if self.readings.is_some() {
+            self.finish(log, clock, masked);
+        }
+    }
+
+    /// One position's stretch of the session, `from` to `to` seconds,
+    /// leaving out the stretches `masked` as `session` does.
     fn reading(
         &self,
         p: Position,
@@ -462,9 +473,10 @@ impl Test {
         to: f64,
         log: &BeatLog,
         clock: Option<&ClockFit>,
+        masked: &[(f64, f64)],
     ) -> Option<Reading> {
         let position = session::Position::parse(p.code())?;
-        let measurement: Measurement = session::measure(log, clock, from, to);
+        let measurement: Measurement = session::measure_masked(log, clock, &[], masked, from, to);
         Some(Reading {
             label: p.name().into(),
             position,
@@ -1475,7 +1487,78 @@ pub fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
+    use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    /// A bump of the stand inside a position, masked: the position is read
+    /// without it, its rate comes back, the masked caveat says how much was
+    /// left out, and the masked seconds aren't counted as beats missing.
+    /// Masking after the test has finished reads it again.
+    #[test]
+    fn a_masked_bump_inside_a_position_is_left_out() {
+        let each = SETTLE_S + MEASURE_S;
+        // The first position, dial up, measures from 20 s to 80 s; the
+        // bump knocks the beats about for 6 s from 45 s.
+        let bump = (45.0, 51.0);
+        let cfg = SynthConfig {
+            duration_s: each * 6.0 + 1.0,
+            rate_s_per_day: 0.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 280.0,
+            |t| {
+                if t >= bump.0 && t < bump.1 {
+                    4000.0
+                } else {
+                    3.0
+                }
+            },
+        );
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let mut t = Test::new();
+        t.tick(0.0);
+        for i in 1..=6 {
+            t.tick(each * i as f64);
+            t.advance(each * i as f64);
+        }
+        let log = crate::steady::log_of(&live).expect("beat rate");
+        t.finish(&log, None, &[]);
+        let first = |t: &Test| t.readings.as_ref().unwrap()[0].measurement.clone();
+        let bumped = first(&t).rate_s_per_day.unwrap();
+        assert!((bumped - 3.0).abs() > 5.0, "the bump didn't show: {bumped}");
+
+        let masked = [(bump.0 - 1.0, bump.1 + 1.0)];
+        live.set_masked(&masked);
+        let log = crate::steady::log_of(&live).expect("beat rate");
+        t.reread(&log, None, &masked);
+        let m = first(&t);
+        let rate = m.rate_s_per_day.unwrap();
+        assert!((rate - 3.0).abs() < 1.0, "rate {rate}");
+        assert!((m.masked_s - 8.0).abs() < 1e-9, "masked {}", m.masked_s);
+        assert!(
+            m.caveats
+                .iter()
+                .any(|c| matches!(c, Caveat::Masked { seconds } if (seconds - 8.0).abs() < 1e-9)),
+            "{:?}",
+            m.caveats
+        );
+        assert!(
+            !m.caveats
+                .iter()
+                .any(|c| matches!(c, Caveat::BeatsMissing { .. })),
+            "{:?}",
+            m.caveats
+        );
+        // The other positions are as they were.
+        let r = t.readings.as_ref().unwrap();
+        assert_eq!(r.len(), 6);
+        assert_eq!(r[1].measurement.masked_s, 0.0);
+    }
 
     /// Six positions with their own rates, each held for one settle and
     /// one measurement: the test reads each position's rate and the
@@ -1501,12 +1584,12 @@ mod tests {
             assert_eq!(t.tick(each * i as f64), Phase::Turn);
             // Each position is read as soon as it is measured.
             assert!(t.needs_reading());
-            t.read_new(&log, None);
+            t.read_new(&log, None, &[]);
             assert_eq!(t.readings_so_far().len(), i);
             t.advance(each * i as f64);
         }
         let so_far = t.readings_so_far().to_vec();
-        t.finish(&log, None);
+        t.finish(&log, None, &[]);
         let rates_of = |v: &[Reading]| -> Vec<Option<f64>> {
             v.iter().map(|r| r.measurement.rate_s_per_day).collect()
         };
