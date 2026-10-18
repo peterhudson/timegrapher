@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" width="820" height="300" font-family="Helvetica, Arial, sans-serif" font-size="13">
+<title>How the parts fit together</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6e6e73"/></marker></defs>
+<rect x="0.5" y="0.5" width="819" height="299" rx="10" fill="#ffffff" stroke="#dcdce1"/>
+<text x="24" y="32" font-size="16" font-weight="bold" fill="#1d1d1f">One measuring engine, three ways to use it</text>
+<rect x="24" y="120" width="120" height="60" rx="8" fill="#f7f7f9" stroke="#c7c7cc"/>
+<text x="84.0" y="147.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Watch</text>
+<text x="84.0" y="165.0" text-anchor="middle" fill="#6e6e73" font-size="12">on a stand</text>
+<rect x="174" y="120" width="130" height="60" rx="8" fill="#f7f7f9" stroke="#c7c7cc"/>
+<text x="239.0" y="147.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Microphone</text>
+<text x="239.0" y="165.0" text-anchor="middle" fill="#6e6e73" font-size="12">sound card, USB</text>
+<rect x="334" y="120" width="140" height="60" rx="8" fill="#f7f7f9" stroke="#c7c7cc"/>
+<text x="404.0" y="147.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Recording</text>
+<text x="404.0" y="165.0" text-anchor="middle" fill="#6e6e73" font-size="12">WAV or FLAC files</text>
+<rect x="504" y="56" width="160" height="52" rx="8" fill="#e8f2fc" stroke="#0068c9"/>
+<text x="584.0" y="79.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Desktop App</text>
+<text x="584.0" y="97.0" text-anchor="middle" fill="#6e6e73" font-size="12">Timegrapher</text>
+<rect x="504" y="124" width="160" height="52" rx="8" fill="#e8f2fc" stroke="#0068c9"/>
+<text x="584.0" y="147.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Command Line</text>
+<text x="584.0" y="165.0" text-anchor="middle" fill="#6e6e73" font-size="12">timegrapher</text>
+<rect x="504" y="192" width="160" height="52" rx="8" fill="#e8f2fc" stroke="#0068c9"/>
+<text x="584.0" y="215.0" text-anchor="middle" font-weight="bold" fill="#1d1d1f">Claude Desktop</text>
+<text x="584.0" y="233.0" text-anchor="middle" fill="#6e6e73" font-size="12">the extension</text>
+<line x1="144" y1="150" x2="172" y2="150" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="304" y1="150" x2="332" y2="150" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M240,120 C240,80 400,82 502,82" fill="none" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="474" y1="150" x2="502" y2="150" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M474,160 C490,180 490,218 502,218" fill="none" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M474,140 C488,120 488,90 502,90" fill="none" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="690" y="56" width="110" height="188" rx="8" fill="#fff7ec" stroke="#c45100"/>
+<text x="745" y="104" text-anchor="middle" fill="#1d1d1f">The same</text>
+<text x="745" y="122" text-anchor="middle" fill="#1d1d1f">engine in all</text>
+<text x="745" y="140" text-anchor="middle" fill="#1d1d1f">three: the same</text>
+<text x="745" y="158" text-anchor="middle" fill="#1d1d1f">recording gives</text>
+<text x="745" y="176" text-anchor="middle" fill="#1d1d1f">the same</text>
+<text x="745" y="194" text-anchor="middle" fill="#1d1d1f">figures</text>
+<line x1="664" y1="82" x2="688" y2="82" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="664" y1="150" x2="688" y2="150" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="664" y1="218" x2="688" y2="218" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="24" y="280" fill="#6e6e73" font-size="12">The app and the command line listen to the microphone or read a recording. The Claude Desktop extension runs the command line for you.</text>
+</svg>
