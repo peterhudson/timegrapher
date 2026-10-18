@@ -38,7 +38,9 @@ if [ "$phase" = record ] && [ -f "$folder/record.pid" ]; then
   printf '%s\n' '{"schema":"timegrapher.test/1","retried":true}'
   exit 0
 fi
-printf '%s\n' "$$" > "$folder/$phase.pid"
+# Written aside and renamed, so a reader never sees the file before its PID.
+printf '%s\n' "$$" > "$folder/$phase.pid.part"
+mv "$folder/$phase.pid.part" "$folder/$phase.pid"
 # exec keeps the blocked process the direct child whose PID was recorded.
 exec sleep 30
 "#).unwrap();
