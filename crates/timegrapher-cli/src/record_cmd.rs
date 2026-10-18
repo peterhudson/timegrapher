@@ -447,11 +447,13 @@ impl Feed {
             // Windows refuses the swap while another program (a virus
             // scanner, say) holds either file open; try again briefly
             // rather than lose the second's readings.
-            for _ in 0..5 {
+            for k in 0..5 {
+                if k > 0 {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
                 if fs::rename(&tmp, &self.path).is_ok() {
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(20));
             }
         }
     }

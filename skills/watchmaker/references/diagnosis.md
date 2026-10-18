@@ -149,7 +149,7 @@ see [long-runs.md](long-runs.md).
 
 | Wheel | One turn | Notes |
 | --- | --- | --- |
-| Escape wheel | 2 × teeth beats: 3.75 s at 28,800 bph (15 teeth) | Most escape wheels have 15 teeth; Witschi says 15–21 |
+| Escape wheel | 2 × teeth beats: 3.75 s at 28,800 bph (15 teeth) | Most escape wheels have 15 teeth; Witschi's *Testing methods for mechanical watches* (2025, doc. D40e, its "escape wheel out of round" fault) gives 15–21 |
 | Fourth wheel (seconds wheel) | 60 s | Carries the seconds hand on centre-seconds and most small-seconds calibres. The commonest periodic culprit |
 | Third wheel | Calibre-specific, often around 7–10 min | Depends on centre wheel teeth and third pinion leaves; give it with `--wheel` if known |
 | Centre wheel | 60 min | Carries the minute hand (direct-drive calibres; check for indirect) |

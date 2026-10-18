@@ -291,14 +291,17 @@ two sides; report that rather than the amplitude.
 ## long
 
 ```
-timegrapher long FILES... [--clock LOG] [--bph N] [--lift DEG] [--notch HZ,...]
+timegrapher long FILES... [--clock LOG] [--device NAME] [--card-ppm PPM]
+                 [--bph N] [--lift DEG] [--notch HZ,...]
                  [--highpass HZ] [--escape-teeth N] [--wheel "NAME=SECONDS"]...
                  [--calibre NAME] [--out DIR] [--json]
 ```
 
 `FILES` are read as one continuous recording in the order given; a folder
 stands for its WAV and FLAC files in name order. `--clock` is the
-sound-card calibration log; `--wheel` names another wheel by its period
+sound-card calibration log; without one, `--device` corrects with the
+clock error stored for that input and `--card-ppm` for a card that many
+ppm slow (negative if fast); `--wheel` names another wheel by its period
 (repeatable); `--calibre` names periodic changes after that movement's
 wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
 is given, else 52°. Output folder (default `<recording>_long/` beside it):
