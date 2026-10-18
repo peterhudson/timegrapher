@@ -449,7 +449,7 @@ fn path(d: &str) -> Vec<(Vec<Pos2>, bool)> {
         match cmd.to_ascii_uppercase() {
             'M' => {
                 finish(&mut run, &mut out, false);
-                for (k, xy) in n.chunks_exact(2).enumerate() {
+                for (k, xy) in n.as_chunks::<2>().0.iter().enumerate() {
                     cur = Pos2::new(xy[0], xy[1]) + base(cur);
                     if k == 0 {
                         begin = cur;
@@ -458,7 +458,7 @@ fn path(d: &str) -> Vec<(Vec<Pos2>, bool)> {
                 }
             }
             'L' => {
-                for xy in n.chunks_exact(2) {
+                for xy in n.as_chunks::<2>().0 {
                     cur = Pos2::new(xy[0], xy[1]) + base(cur);
                     run.push(cur);
                 }
@@ -504,7 +504,7 @@ fn path(d: &str) -> Vec<(Vec<Pos2>, bool)> {
                 ctrl = last_ctrl;
             }
             'Q' => {
-                for v in n.chunks_exact(4) {
+                for v in n.as_chunks::<4>().0 {
                     let b = base(cur);
                     let (c, to) = (Pos2::new(v[0], v[1]) + b, Pos2::new(v[2], v[3]) + b);
                     for i in 1..=8 {
@@ -519,7 +519,7 @@ fn path(d: &str) -> Vec<(Vec<Pos2>, bool)> {
                 }
             }
             'A' => {
-                for v in n.chunks_exact(7) {
+                for v in n.as_chunks::<7>().0 {
                     let to = Pos2::new(v[5], v[6]) + base(cur);
                     run.extend(arc(cur, to, v[0], v[1], v[2], v[3] != 0.0, v[4] != 0.0));
                     cur = to;
