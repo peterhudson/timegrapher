@@ -134,15 +134,16 @@ whole number of the line's own turns, matched within the resolution
 alias), still counts only when folding there explains more than 1.25
 times what the alias does, as the same watch's 60 s fourth wheel does.
 On a long take that tolerance covers most periods above a few turns of
-the alias (for the 30 s alias, every period from about 160 s to 430 s
-over 1 to 7 h), so a real slow cycle there must clearly outfold the
-alias to count unless the period search lists it. On takes shorter than
+the alias (for the 30 s alias, every period above about 160 s on a 1 h
+take, and above about 430 s on a 7 h take), so a real slow cycle there
+must clearly outfold the alias to count unless the period search lists
+it. On takes shorter than
 twenty turns of the alias the 5% floor no longer sets the match at one
 turn either, so it widens there too. A cycle the period search also
 finds in the beat timing as a line of three readings or longer (within
 the period squared over the take, at least 1%: the search's own rule for
-matching a wheel) always counts, before or after it is reduced to a
-shorter fraction: at 19,800 bph a 15-tooth escape wheel turns in 5.45 s,
+matching a wheel) always counts, and is not reduced to a shorter
+fraction that lands on the alias or its turns: at 19,800 bph a 15-tooth escape wheel turns in 5.45 s,
 which aliases to exactly the fourth wheel's 60 s. The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,

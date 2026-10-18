@@ -1260,18 +1260,29 @@ fn cycle(
         })
         .map(|(p, src)| at(p, src))
         .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .map(|c| (c.period_s, reduce(c)))
-        .filter(|(_, c)| c.explained >= cfg.periodic_min_explained)
-        .filter(|(before, c)| {
+        .map(|c| {
+            // A line the period search lists stays itself when reducing
+            // would move it onto a fast line's alias or its turns: the
+            // fraction then holds the alias, not the line.
+            let r = reduce(c.clone());
+            let listed = |p| slow_search_line(p, g.step, d.span(), s.period.as_ref());
+            if listed(c.period_s)
+                && !listed(r.period_s)
+                && alias_of_fast_line(r.period_s, g.step, d.span(), s.period.as_ref()).is_some()
+            {
+                c
+            } else {
+                r
+            }
+        })
+        .filter(|c| c.explained >= cfg.periodic_min_explained)
+        .filter(|c| {
             // The alias itself is set aside; a whole number of its turns
             // only when folding there explains no clearly more than the
             // alias does (a real slow cycle at that period does). A cycle
             // the period search also finds in the beat timing, where it is
-            // slow enough to need no readings, is real however it aliases,
-            // and so is one reduced from such a line.
-            [*before, c.period_s]
-                .iter()
-                .any(|&p| slow_search_line(p, g.step, d.span(), s.period.as_ref()))
+            // slow enough to need no readings, is real however it aliases.
+            slow_search_line(c.period_s, g.step, d.span(), s.period.as_ref())
                 || alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()).is_none_or(
                     |a| {
                         (c.period_s / a - 1.0).abs() >= 0.05
@@ -1279,7 +1290,6 @@ fn cycle(
                     },
                 )
         })
-        .map(|(_, c)| c)
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
 }
 
@@ -2533,6 +2543,121 @@ mod tests {
                 "seed {seed}: {}",
                 s.headline
             );
+        }
+    }
+
+    /// Fast lines too quick for 10 s readings and the alias each shows at.
+    const FAST_LINES: [(f64, f64); 3] = [(3.75, 30.0), (1.0 / 0.15, 20.0), (60.0 / 7.0, 60.0)];
+
+    /// One to seven hours of 10 s rate readings: noise, the alias of a fast
+    /// line at `alias_amp`, and slow sines at `slow` (period, amplitude).
+    fn aliased_readings(
+        n: usize,
+        seed: u64,
+        alias: f64,
+        alias_amp: f64,
+        slow: &[(f64, f64)],
+    ) -> Vec<f64> {
+        let tau = 2.0 * std::f64::consts::PI;
+        let mut z = Noise(seed);
+        (0..n)
+            .map(|i| {
+                let t = 10.0 * i as f64;
+                5.0 + alias_amp * (tau * t / alias + 0.4).sin()
+                    + slow
+                        .iter()
+                        .map(|&(p, a)| a * (tau * t / p + 1.1).sin())
+                        .sum::<f64>()
+                    + z.next()
+            })
+            .collect()
+    }
+
+    fn rate_check(y: Vec<f64>, fast: f64, listed: &[f64]) -> SeriesCheck {
+        let mut line = search_line(fast, 0.3, "ms", Some("escape wheel"));
+        line.other_periods_s = listed.to_vec();
+        check_series(
+            SeriesKind::Rate,
+            grid(y, 10.0),
+            None,
+            Some(line),
+            None,
+            &[],
+            &Config::default(),
+        )
+    }
+
+    const HOURS: [usize; 4] = [360, 720, 1440, 2520];
+
+    /// Whether a found cycle is `p`, within the take's resolution.
+    fn near(c: &Cycle, p: f64, n: usize) -> bool {
+        (c.period_s - p).abs() <= (p * p / (10.0 * n as f64)).max(0.01 * p)
+    }
+
+    #[test]
+    fn a_weak_fourth_wheel_beside_a_fast_line_is_found_not_its_alias() {
+        // The docs' watch: a 3.75 s escape-wheel line (a 30 s alias in 10 s
+        // readings) and a sinusoidal 60 s fourth wheel under a third its size,
+        // both lines the period search lists.
+        for n in HOURS {
+            for seed in 0..4 {
+                let y = aliased_readings(n, seed + n as u64, 30.0, 1.0, &[(60.0, 0.3)]);
+                let s = rate_check(y, 3.75, &[60.0]);
+                assert!(
+                    s.cycle.as_ref().is_some_and(|c| near(c, 60.0, n)),
+                    "{n} readings, seed {seed}: {}",
+                    s.headline
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_real_slow_line_beside_an_alias_is_the_only_cycle_found() {
+        // A 450 s line (a third wheel) beside the 30 s, 20 s and 60 s
+        // aliases. Listed by the period search, it is found; unlisted, it
+        // may be lost when it does not clearly outfold the alias, but no
+        // other cycle is ever listed in its place.
+        for n in HOURS {
+            for seed in 0..4 {
+                for (q, a) in FAST_LINES {
+                    let y = aliased_readings(n, seed + 7 * n as u64, a, 1.0, &[(450.0, 0.7)]);
+                    let s = rate_check(y.clone(), q, &[450.0]);
+                    assert!(
+                        s.cycle.as_ref().is_some_and(|c| near(c, 450.0, n)),
+                        "{a} s alias, listed, {n} readings, seed {seed}: {}",
+                        s.headline
+                    );
+                    let s = rate_check(y, q, &[]);
+                    assert!(
+                        s.cycle.as_ref().is_none_or(|c| near(c, 450.0, n)),
+                        "{a} s alias, unlisted, {n} readings, seed {seed}: {}",
+                        s.headline
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_pure_alias_is_no_cycle_at_whole_half_or_third_turns() {
+        // The 30 s, 20 s and 60 s aliases alone, at a third to two thirds
+        // of the readings' variance, over one to seven hours: the
+        // autocorrelation offers whole, half and third turns of each.
+        for n in HOURS {
+            for seed in 0..4 {
+                for (q, a) in FAST_LINES {
+                    for amp in [0.7, 1.0, 1.4] {
+                        let y = aliased_readings(n, seed + 3 * n as u64, a, amp, &[]);
+                        let s = rate_check(y, q, &[]);
+                        assert!(
+                            s.cycle.is_none(),
+                            "{a} s alias, {n} readings, seed {seed}: {}",
+                            s.headline
+                        );
+                    }
+                }
+            }
         }
     }
 
