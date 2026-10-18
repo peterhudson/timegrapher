@@ -1,13 +1,10 @@
 # Chapter 9, Steadiness. Periods: the tallest peak at 5 s, one turn of the escape wheel,
 # under the strip whose rate line swings every 5 s. Two hours of the take
 # (its sixth and seventh), as the period search needs a long run to stand
-# out; the app draws a whole 7 h take's strip overlay too coarsely.
+# out.
 output = "steadiness-periods.png"
 
 layout = ["column", [0.45, "Strip"], [0.55, "SteadyPeriods"]]
-
-# The Readings cards off, for room (the app doesn't keep that setting).
-actions = [["sleep", 5], ["click", 153, 18]]
 
 [data]
 corpus = "pepsi3235_DU_7h"
@@ -24,6 +21,7 @@ at_most = 1200
 size = [1800, 1000]
 
 [settings]
+show_readings = false
 overlays = [false, true, false]
 follow = true
 rate_line = false

@@ -78,7 +78,14 @@ To measure and keep the input's correction:
    irregularities can make this take longer.
 4. Click **Keep** to store the correction for that input.
 
-The card then adds **True Clock**, the corrected rate. The large figure
+The offer also comes back when an input already has a kept error but the
+newly timed one is more than 2 ppm from it. The line then gives how far
+apart the two are and the day the kept one was measured, because an input
+reached by a shared name, such as the system default, may be another
+sound card.
+
+The card then adds **True Clock**, the corrected rate, with the day the
+correction it uses was kept. The large figure
 continues to use the sample clock. This lets you compare it with another
 analysis that uses that same clock, provided the same recording interval
 and settings are selected.

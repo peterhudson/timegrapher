@@ -98,8 +98,8 @@ capture error can remain until dismissed or capture restarts.
 
 The app keeps your workspace preferences: window size and position,
 pane arrangement and visibility, appearance, averaging settings,
-strip and profile options, folded control groups, Keep Awake and the last
-microphone selection. Calibre short lists and custom entries are also retained.
+strip and profile options, whether the Readings cards show, folded
+control groups, Keep Awake and the last microphone selection. Calibre short lists and custom entries are also retained.
 
 A fresh launch does not assume that the previous watch is still on the
 microphone. Watch-specific settings such as calibre, lift angle, beat
