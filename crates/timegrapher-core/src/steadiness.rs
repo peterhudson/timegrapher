@@ -1348,9 +1348,9 @@ fn cycle(
 /// Whether a cycle of `period` stands apart from a fast line's alias.
 /// The alias itself is set aside, and so is a whole number of its turns
 /// unless the cycle explains clearly more than folding at the alias does
-/// (a real slow cycle at that period does). A cycle the period search also finds
-/// in the beat timing, where it is slow enough to need no readings, is
-/// real however it aliases.
+/// (a real slow cycle at that period does). A cycle the period search
+/// also finds in the beat timing, where it is slow enough to need no
+/// readings, is real however it aliases.
 fn clears_alias(period: f64, explained: f64, d: &Grid, search: Option<&Period>) -> bool {
     slow_search_line(period, d.step, d.span(), search)
         || alias_of_fast_line(period, d.step, d.span(), search).is_none_or(|a| {
@@ -1368,7 +1368,9 @@ fn clears_alias(period: f64, explained: f64, d: &Grid, search: Option<&Period>) 
 /// shows in the shape's harmonics: a shape that repeats at half the
 /// period has its variance in the even ones. The cycle moves to half its
 /// period when sines at the half and the quarter explain 85% or more of
-/// what all n phases explain (sines at every harmonic up to n/2), and the
+/// what all n phases explain (sines at every harmonic up to n/2; at seven
+/// readings, where the quarter is under two readings and cannot be told
+/// from the third, the half alone), and the
 /// moved cycle then explains 10% or more on its own and clears a fast
 /// line's alias as any cycle must. A line the period search lists at an
 /// odd harmonic, or a listed fast line's alias there, is a line of its
@@ -1409,8 +1411,15 @@ fn half_cycle(
         .map(|k| p / k as f64)
         .collect();
     let t = p / 2.0;
+    // At seven readings a turn the quarter (1.75 readings) cannot be told
+    // from the third in the readings, so the half is fitted alone.
+    let half_sines: &[f64] = if t / 2.0 < 2.0 * d.step {
+        &[t]
+    } else {
+        &[t, t / 2.0]
+    };
     let (all, _) = sine_fit(d, &phases, p);
-    let (half, mut ptp) = sine_fit(d, &[t, t / 2.0], t);
+    let (half, mut ptp) = sine_fit(d, half_sines, t);
     if all <= 0.0 || half < 0.85 * all || !clears_alias(t, half, d, search) {
         return None;
     }
@@ -1418,7 +1427,7 @@ fn half_cycle(
     if let Some(a) = alias_of_fast_line(t, d.step, d.span(), search) {
         if t / a >= 1.25 {
             let (rest, kept) = without_fold(d, refine(d, a, 0.03));
-            let (e, size) = sine_fit(&rest, &[t, t / 2.0], t);
+            let (e, size) = sine_fit(&rest, half_sines, t);
             explained = e * kept;
             ptp = size;
         }
@@ -3189,7 +3198,11 @@ mod tests {
 
     /// `half_cycle` of the cycle found at 90 s, nine readings a turn.
     fn from_90(d: &Grid, search: Option<&Period>) -> Option<Cycle> {
-        let c = cycle_at(d, refine(d, 90.0, 0.01), CycleSource::Autocorrelation, &[]);
+        from_at(d, 90.0, search)
+    }
+
+    fn from_at(d: &Grid, p: f64, search: Option<&Period>) -> Option<Cycle> {
+        let c = cycle_at(d, refine(d, p, 0.01), CycleSource::Autocorrelation, &[]);
         half_cycle(&c, d, search, &[], &Config::default())
     }
 
@@ -3249,6 +3262,32 @@ mod tests {
             line.other_periods_s = vec![30.0];
             let c = from_90(&d, Some(&line)).unwrap_or_else(|| panic!("seed {seed}"));
             assert!((c.period_s - 45.0).abs() < 0.5, "seed {seed}: {c:?}");
+        }
+    }
+
+    #[test]
+    fn at_seven_readings_a_turn_the_half_is_fitted_alone() {
+        // 70 s is seven readings, and its quarter (17.5 s) cannot be told
+        // from its third (23.33 s) in them. A 70 s cycle beside a listed
+        // 23.33 s line stays at 70 s; a 35 s cycle beside it moves, sized
+        // by its own sine.
+        let mut line = search_line(5.0, 0.3, "ms", Some("escape wheel"));
+        line.other_periods_s = vec![70.0 / 3.0];
+        for seed in 0..16 {
+            for size in [0.8, 1.2, 1.6] {
+                let d = sines(800 + seed, &[(70.0, 0.8), (70.0 / 3.0, size)]);
+                assert!(
+                    from_at(&d, 70.0, Some(&line)).is_none(),
+                    "seed {seed}, {size}"
+                );
+            }
+            let d = sines(900 + seed, &[(35.0, 0.8), (70.0 / 3.0, 0.8)]);
+            let c = from_at(&d, 70.0, Some(&line)).unwrap_or_else(|| panic!("seed {seed}"));
+            assert!((c.period_s - 35.0).abs() < 0.5, "seed {seed}: {c:?}");
+            assert!(
+                (c.peak_to_peak / 1.6 - 1.0).abs() < 0.3,
+                "seed {seed}: {c:?}"
+            );
         }
     }
 
