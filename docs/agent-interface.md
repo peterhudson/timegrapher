@@ -213,10 +213,7 @@ measured over the whole take, so a short take still gets them.
 The readings come from the stretch `session` will read: the check skips
 the take's `settle_s` from the session file (30 s in a file `record`
 writes; at most half the take) and reads the rest on the sound card's
-clock, as `session` reads a take `record` added: the take's entry names
-no clock log, so `session` leaves the take's `clock.csv` unread and the
-check and the report agree. A `clock` or `card_ppm` line added to the
-session file later corrects `session`'s readings, not the check's; they are
+clock, as `session` does, so the check and the report agree; they are
 null when no regular beat is found or that stretch is too short to hear
 the watch on its own. Every take is added to `FOLDER/session.toml`
 (written on the first take with the watch, calibre, bph, lift and
