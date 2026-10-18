@@ -447,7 +447,9 @@ run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
 beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other, up to ±60 s, so a long run-down take that drifts by many
 seconds can be shown without wrapping; the lengths run from 10 s of beats
-to a two-hour run.
+to a two-hour run, then **Fit**, which sets the length to the whole
+session so far, or its last 24 hours when it is longer, and shows it up
+to its latest beat.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
@@ -460,11 +462,19 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Mask** leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
-the mouse), and clicking a masked stretch brings it back; **Unmask All**
-brings them all back. Masked stretches are shaded and named on the strip,
+the mouse), dragging a masked stretch's edge moves it, and clicking a
+masked stretch, or right-clicking one with Mask on or off, brings it
+back; **Unmask All** brings them all back. Stretches that overlap, by
+masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
 and the toolbar says how many there are and how long they add up to.
-They are cut like a pause: no reading reaches across one, nothing is
-read inside one, and the charts, the whole-take figures, the
+They are cut like a pause, at both ends: no reading reaches across one,
+nothing is read inside one, a chart's line breaks there and comes back
+once nine tenths of an averaging time of beats has been heard after it
+(as at the start of a session and after a pause), the steadiness tests
+leave out any 10-second rate reading that takes in either end of one (a
+10-second amplitude or beat-error reading there is still made from the
+2-second stretches outside the mask when they fill at least half of
+it), and the charts, the whole-take figures, the
 distributions (their 2-second stretches too), the steadiness tests and a
 Positions Test leave their beats out; a Positions Test's positions are
 read again when what is masked changes. A reading whose averaging time
@@ -475,9 +485,19 @@ A take saved from a session in the app keeps every masked stretch
 (`masked` on each recording of its `session.toml`, in seconds of the
 saved sound; see [sessions.md](sessions.md)), so `timegrapher session`
 leaves them out too, and all of them come back masked when the saved
-take is opened or replayed. A recording opened from disk can't be saved
-from the app, so masking one changes only what the app shows until it is
-closed. Report a Problem sends the masked stretches with its details.
+take is opened or replayed. Masks on a recording opened from disk are
+kept by **Save Masks** (beside **Unmask All**, in the File menu while
+they're unsaved, or Ctrl+S, Cmd+S on a Mac), and New Session, opening
+another recording or quitting asks first when they've changed. On a take
+it changes only `masked` on the session file's entries for what was
+opened, written whole through a file beside it; comments and everything
+else stay as they were. A lone file, or a folder with no session file,
+gets a new `session.toml` with what saving a take recorded here would
+write for the same settings (its one entry is the whole folder), which
+makes its folder a take that the app and `timegrapher session` open as
+one; opening the file itself then reads it too. It is refused, saying
+why, when the folder holds other recordings, or a session file that
+doesn't list what was opened. Report a Problem sends the masked stretches with its details.
 While Mask is on, dragging along the strip masks instead of sliding the
 trace. Mask turns off, and nothing is masked, when a new take, New
 Session or another recording starts.
@@ -511,9 +531,8 @@ session again and, while listening, follows new beats as they come in.
 Once a chart has been panned or zoomed a **Follow Live** button
 (**Show Whole Session** for a recording) appears on it and does the same,
 and the box at the pointer lists these controls. Clicking a moment shows it on the strip and in the
-readings. The scale is the 2nd to 98th percentile of the values, kept
-within eight robust spreads of the median, so neither one glitch nor a
-few seconds of knocking flattens the lines. Beat error is charted as a
+readings. The scale holds every value in view, so no point is drawn
+off the chart. Beat error is charted as a
 size, as on its card. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
