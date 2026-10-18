@@ -76,8 +76,8 @@ How the rows were merged:
   one. No other wheel periods come from the lists.
 - Left out: rows with neither a lift angle nor a beat rate, rows with
   no calibre name, electronic movements, pin-lever makers (Roskopf,
-  Timex), and beat rates under 3,600 or over 72,000 vph. A beat rate
-  under 100 vph in the spreadsheet is read as a typing slip and left
+  Timex), and beat rates under 3,600 or over 72,000 bph. A beat rate
+  under 100 bph in the spreadsheet is read as a typing slip and left
   out of the row, with a note. Calibre names the spreadsheet turned into
   dates ("13-Mar") are read back as numbers ("13.3").
 
@@ -98,7 +98,7 @@ Each row cites the page it came from and the beat rate as the page
 wrote it. Only Hangzhou's drawings give a lift angle; the other pages
 give the beat rate, jewels, size and power reserve, so those rows carry
 a beat rate and a balance period and no lift angle. Seagull's pages print
-the beat rate as a bare number ("Frequency: 21600"), read as vph. Pages
+the beat rate as a bare number ("Frequency: 21600"), read as bph. Pages
 with no figures were left out, and none of the pages says which calibre
 a movement copies.
 
@@ -121,8 +121,8 @@ into this table with the issue as their source.
 
 - **balance**: one full swing is two beats, `7200 / bph` seconds.
 - **escape wheel**: a lever escape wheel moves one tooth per swing, so
-  `teeth × 7200 / bph`. At 28,800 vph a 20-tooth wheel turns in 5.0 s and
-  a 15-tooth wheel in 3.75 s; at 21,600 vph a 15-tooth wheel turns in 5.0 s.
+  `teeth × 7200 / bph`. At 28,800 bph a 20-tooth wheel turns in 5.0 s and
+  a 15-tooth wheel in 3.75 s; at 21,600 bph a 15-tooth wheel turns in 5.0 s.
 - **fourth wheel** (or **seconds wheel** / **seconds pinion** where the
   seconds are driven indirectly and the fourth wheel's own period is not
   known): 60 s when it carries the seconds hand.
@@ -145,16 +145,16 @@ full published train (escape 15 on a 10-leaf pinion, fourth 120/8, third
 60/10, centre 80). Everything else rests on the beat rate and the layout,
 plus these:
 
-- **20-tooth escape wheels at 28,800 vph.** The ETA 2824-2's escape wheel
+- **20-tooth escape wheels at 28,800 bph.** The ETA 2824-2's escape wheel
   is documented with 20 teeth. Rolex's own escapement patent (US8529122)
   uses a standard 20-tooth Swiss lever as its baseline (its own design
-  has 24 teeth), SJX reports that Chronergy kept the old tooth count, and every 28,800 vph watch recorded in this
+  has 24 teeth), SJX reports that Chronergy kept the old tooth count, and every 28,800 bph watch recorded in this
   project (Rolex 3235, Dandong 3235 and 4130, Patek 324 clone, Peacock
   SL1258) shows a rate cycle of exactly 5.00 s locked to 40 beats. So the
   Rolex calibres and the clones are entered with 20 teeth: "inferred" for
   the genuine Rolex calibres, "measured" for the clones recorded here
   (the Dandong 3235 recorded here carries a genuine escape wheel).
-  The 2892-A2, 7750, Miyota 9015 and the Seiko 21,600 vph calibres have
+  The 2892-A2, 7750, Miyota 9015 and the Seiko 21,600 bph calibres have
   no escape wheel entry because no count was found.
 - **Barrels.** Rolex 3135: 5 h, from SJX's 5:1 barrel to minute ratio.
   Rolex 3235: 22,050 s, from SJX's 98:16 ratio read as barrel teeth to
