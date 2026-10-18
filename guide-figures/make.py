@@ -27,7 +27,9 @@ xdotool, ImageMagick and pngquant; ffmpeg for --clips. Linux only. Standard libr
 import hashlib
 import json
 import os
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -325,7 +327,9 @@ def make(name, fig, corpus, clips, keep):
     openbox_config(home)
 
     # The recording sits in ~/Recordings/<folder>, as a reader's would.
-    data = fig["data"]
+    data = fig.get("data", {})
+    if not data:
+        return shoot(name, fig, work, home, [], data, keep)
     source = recording(name, data, corpus, clips)
     folder = data.get("folder", data.get("corpus", os.path.basename(source.rstrip("/"))))
     shelf = os.path.join(home, "Recordings")
@@ -353,13 +357,34 @@ def make(name, fig, corpus, clips, keep):
     args = [target]
     if data.get("mode", "open") == "replay":
         args = ["--replay", target]
+    if data.get("mode") == "microphone":
+        # The app listens to a virtual stand that plays the recording.
+        folder_of = target if os.path.isdir(target) else os.path.dirname(target)
+        stand = {k.upper(): os.path.join(folder_of, v) for k, v in data.get("stand", {}).items()}
+        if not stand:
+            stand = {"DU": target}
+        fig = dict(fig, _stand=stand)
+        args = []
+    return shoot(name, fig, work, home, args, data, keep)
 
+
+def shoot(name, fig, work, home, args, data, keep):
     env = dict(os.environ, DISPLAY=DISPLAY, HOME=home,
                XDG_DATA_HOME=os.path.join(home, ".local", "share"),
                XDG_CONFIG_HOME=os.path.join(home, ".config"))
     env.pop("WAYLAND_DISPLAY", None)
     procs = []
+    pulse = None
+    if os.path.exists(f"/tmp/.X{DISPLAY[1:]}-lock"):
+        raise SystemExit(f"{name}: display {DISPLAY} is in use, by another run of this script?")
     try:
+        if "_stand" in fig:
+            pulse = start_stand(work, env)
+            env["PULSE_SERVER"] = f"unix:{pulse}/native"
+            # On the stand from the start, unless an action puts it there.
+            if not any(step[0] == "stand" for step in fig.get("actions", [])):
+                first = next(iter(fig["_stand"]))
+                env["_STAND_PLAYER"] = str(place(fig["_stand"][fig.get("on_stand", first)], env))
         procs.append(subprocess.Popen(["Xvfb", DISPLAY, "-screen", "0", f"{SCREEN[0]}x{SCREEN[1]}x24", "-wr", "-nolisten", "tcp"],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         time.sleep(1)
@@ -372,13 +397,22 @@ def make(name, fig, corpus, clips, keep):
         subprocess.run(["xdotool", "mousemove", "0", str(SCREEN[1] - 1)], env=env)
 
         for step in fig.get("actions", []):
-            act(step, env)
+            if step[0] == "stand":
+                stop_player(env)
+                if step[1] != "off":
+                    env["_STAND_PLAYER"] = str(place(fig["_stand"][step[1].upper()], env))
+            else:
+                act(step, env)
 
         wait = fig.get("wait", {})
         least, most = wait.get("at_least", 4), wait.get("at_most", 600)
         start, prev = time.time(), None
         raw = os.path.join(work, "screen.png")
-        while True:
+        # A live screen never settles: take it after a set time instead.
+        if "exact" in wait:
+            time.sleep(wait["exact"])
+            shot(raw)
+        while "exact" not in wait:
             time.sleep(2)
             shot(raw)
             if prev and time.time() - start >= least and same(prev, raw):
@@ -390,6 +424,10 @@ def make(name, fig, corpus, clips, keep):
             prev = raw + ".prev.png"
             shutil.copy(raw, prev)
     finally:
+        stop_player(env)
+        if pulse:
+            subprocess.run(["pulseaudio", "--kill"], env=dict(os.environ, PULSE_RUNTIME_PATH=pulse),
+                           capture_output=True)
         for p in reversed(procs):
             p.terminate()
         for p in procs:
@@ -405,9 +443,64 @@ def make(name, fig, corpus, clips, keep):
     print(f"{name}: {os.path.relpath(out, ROOT)}")
 
 
+def start_stand(work, env):
+    """A PulseAudio server of the figure's own, with a null sink "stand"
+    whose monitor is the default input, "USB_Stand_Mic" (as the persona
+    harness's stand): what plays into the sink, the app hears."""
+    pulse = os.path.join(work, "pulse")
+    os.makedirs(pulse, exist_ok=True)
+    # A run killed part way leaves its server and its player behind; the
+    # player would find the new server and play into it as a second watch.
+    subprocess.run(["pulseaudio", "--kill"], env=dict(os.environ, PULSE_RUNTIME_PATH=pulse),
+                   capture_output=True)
+    try:
+        with open(os.path.join(pulse, "players")) as f:
+            for pid in f.read().split():
+                try:
+                    os.killpg(int(pid), 15)
+                except OSError:
+                    pass
+        os.remove(os.path.join(pulse, "players"))
+    except FileNotFoundError:
+        pass
+    script = os.path.join(pulse, "stand.pa")
+    with open(script, "w") as f:
+        f.write("load-module module-native-protocol-unix\n"
+                "load-module module-null-sink sink_name=stand rate=48000 channels=1 "
+                "sink_properties=device.description=Stand\n"
+                "load-module module-remap-source master=stand.monitor source_name=standmic rate=48000 "
+                "channels=1 source_properties=device.description=USB_Stand_Mic\n"
+                "set-default-source standmic\n")
+    subprocess.run(["pulseaudio", "-n", "-F", script, "-D", "--exit-idle-time=-1", "--disallow-exit"],
+                   env=dict(os.environ, PULSE_RUNTIME_PATH=pulse, HOME=env["HOME"]), check=True,
+                   capture_output=True)
+    return pulse
+
+
+def place(path, env):
+    """Put the watch on the stand: play the recording into it, looping."""
+    p = subprocess.Popen(["bash", "-c", f"while true; do paplay --device=stand {shlex.quote(path)} || sleep 1; done"],
+                         env=env, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open(os.path.join(env["PULSE_SERVER"][len("unix:"):-len("/native")], "players"), "a") as f:
+        f.write(f"{p.pid}\n")
+    return p.pid
+
+
+def stop_player(env):
+    pid = env.pop("_STAND_PLAYER", None)
+    if pid:
+        try:
+            os.killpg(int(pid), 15)
+        except OSError:
+            pass
+
+
 def act(step, env):
     """One step before the picture: ["click", x, y] (in the window),
-    ["key", "ctrl+o"], ["type", "text"] or ["sleep", seconds]."""
+    ["key", "ctrl+o"], ["type", "text"], ["sleep", seconds], or (with a
+    microphone figure) ["stand", "DD"] to turn the watch, ["stand", "off"]
+    to take it off."""
     kind = step[0]
     if kind == "sleep":
         time.sleep(step[1])
@@ -415,8 +508,11 @@ def act(step, env):
         win = subprocess.run(["xdotool", "search", "--sync", "--onlyvisible", "--name", "^Timegrapher"],
                              env=env, capture_output=True, text=True).stdout.split()[0]
         # Relative to the app's own window, below its title bar.
-        subprocess.run(["xdotool", "mousemove", "--window", win, str(step[1]), str(step[2]),
-                        "click", "1"], env=env)
+        # Hover first, then press and release, as a hand would: egui acts
+        # on what is under the pointer as of the frame before.
+        subprocess.run(["xdotool", "mousemove", "--window", win, str(step[1]), str(step[2])], env=env)
+        time.sleep(0.5)
+        subprocess.run(["xdotool", "click", "1"], env=env)
         time.sleep(0.5)
         subprocess.run(["xdotool", "mousemove", "0", str(SCREEN[1] - 1)], env=env)
     elif kind == "key":
@@ -446,4 +542,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # Killed (by timeout, say): still close the screen, the app and the stand.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     sys.exit(main(sys.argv))
