@@ -4,6 +4,7 @@
 
 use crate::applog;
 use crate::calibre_ui;
+use crate::export;
 use crate::fields::{self, Format};
 use crate::guided;
 use crate::help;
@@ -410,6 +411,10 @@ const MASK_HINT: &str = "Leave stretches out of the readings, such as a bump of 
      with Mask on, drag along the strip over the beats to mask them, and click a masked \
      stretch to bring it back. A take saved from the app keeps them; masking a recording \
      opened from disk lasts until it is closed.";
+const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
+     or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
+     .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
+     of its controls.";
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
      position. Listening carries on into the new session, unless closing the kept sound \
      fails; a replay stops. Unsaved sound is asked about first.";
@@ -962,6 +967,9 @@ pub struct TimegrapherApp {
     clock_track: Option<ClockTrack>,
     gain_error: Option<String>,
     message: Option<(String, bool)>,
+    /// A pane being saved as a picture, and the folder the last one went to.
+    export: Option<PaneExport>,
+    export_dir: Option<PathBuf>,
     /// The tick and tock sound: how it is drawn, what it was every few
     /// seconds of this session, and one worked out from the file for a
     /// moment that history doesn't cover.
@@ -1259,6 +1267,8 @@ impl TimegrapherApp {
             clock_track: None,
             gain_error: None,
             message: None,
+            export: None,
+            export_dir: None,
             sound_opts: profiles::Options::default(),
             sound_history: Vec::new(),
             sound_at: None,
@@ -3199,33 +3209,178 @@ impl TimegrapherApp {
             Pane::Strip => theme::pane_toolbar(ui, title, help::STRIP, |ui| {
                 self.strip_settings(ui);
                 self.pane_average_setting(ui, Pane::Strip);
+                self.export_button(ui, pane);
             }),
             Pane::Sound => theme::pane_toolbar(ui, title, help::PROFILE, |ui| {
                 self.profile_settings(ui);
                 self.pane_average_setting(ui, Pane::Sound);
+                self.export_button(ui, pane);
             }),
             Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
-                scope::settings(ui, &mut self.scope_view)
+                scope::settings(ui, &mut self.scope_view);
+                self.export_button(ui, pane);
             }),
             p if p.steady_view().is_some() => {
                 theme::pane_toolbar(ui, title, help::STEADINESS, |ui| {
-                    self.steady_settings(ui, p)
+                    self.steady_settings(ui, p);
+                    self.export_button(ui, p);
                 })
             }
-            Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |_| {}),
+            Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |ui| {
+                self.export_button(ui, pane)
+            }),
             Pane::PositionsTest => theme::pane_toolbar(ui, title, help::POSITIONS_TEST, |ui| {
-                self.positions_settings(ui)
+                self.positions_settings(ui);
+                self.export_button(ui, pane);
             }),
             p if Pane::HISTOGRAMS.contains(&p) => {
                 theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                     self.span_setting(ui);
                     self.histogram_settings(ui);
                     self.pane_average_setting(ui, p);
+                    self.export_button(ui, p);
                 })
             }
             _ => return false,
         }
         true
+    }
+
+    /// Export: save the pane as a PNG picture or an SVG drawing.
+    fn export_button(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        if ui.button("Export…").on_hover_text(EXPORT_HINT).clicked() {
+            let dir = self.export_dir.clone().or_else(|| {
+                Path::new(self.file_path.trim())
+                    .parent()
+                    .map(Path::to_path_buf)
+            });
+            if let Some(path) = export::ask_path(pane.title(), dir.as_deref()) {
+                self.export_dir = path.parent().map(Path::to_path_buf);
+                self.start_export(pane, path);
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+
+    /// Draw `pane` for a picture on the next frames and save it to `path`.
+    fn start_export(&mut self, pane: Pane, path: PathBuf) {
+        self.export = Some(PaneExport {
+            pane,
+            path,
+            rect: None,
+            asked: false,
+            frames: 0,
+        });
+    }
+
+    /// A pane's name as its tab shows it, with its own averaging time.
+    fn pane_heading(&self, pane: Pane) -> String {
+        match self.pane_average.get(&pane) {
+            Some(&s) => format!("{} · {}", pane.title(), fields::duration(s)),
+            None => pane.title().to_string(),
+        }
+    }
+
+    /// Where a picture of a pane has its toolbar: the pane's name, and a
+    /// chart's key, since the tab bar isn't in the picture.
+    fn export_heading(&self, ui: &mut egui::Ui, pane: Pane) {
+        let pal = theme::pal(ui);
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(self.pane_heading(pane))
+                    .font(theme::semibold(13.0))
+                    .color(pal.text),
+            );
+            for (name, color, gaps) in chart_key(pane, pal) {
+                ui.add_space(10.0);
+                match gaps {
+                    Some(g) => theme::dash(ui, color, g),
+                    None => theme::dot(ui, color),
+                };
+                ui.label(RichText::new(name).small().color(pal.text_secondary));
+            }
+        });
+    }
+
+    /// The pane's shapes are in: an SVG is written now, and a PNG waits for
+    /// the screenshot of the frame, asked for here.
+    fn pane_drawn_for_export(
+        &mut self,
+        ctx: &egui::Context,
+        rect: egui::Rect,
+        shapes: Vec<egui::epaint::ClippedShape>,
+        background: Color32,
+    ) {
+        let Some(e) = &mut self.export else {
+            return;
+        };
+        if export::is_svg(&e.path) {
+            let (pane, path) = (e.pane, e.path.clone());
+            self.export = None;
+            let doc = export::svg(&shapes, rect, background);
+            self.export_done(pane, &path, std::fs::write(&path, doc));
+        } else {
+            e.rect = Some(rect);
+            if !e.asked {
+                e.asked = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            }
+            ctx.request_repaint();
+        }
+    }
+
+    /// A screenshot came back: cut the pane out of it and save it.
+    fn screenshot_for_export(&mut self, image: &egui::ColorImage, pixels_per_point: f32) {
+        let Some(PaneExport {
+            pane,
+            path,
+            rect: Some(rect),
+            asked: true,
+            ..
+        }) = self.export.take()
+        else {
+            return;
+        };
+        let part = export::crop(image, rect, pixels_per_point);
+        self.export_done(pane, &path, export::write_png(&path, &part));
+    }
+
+    /// A pane being saved as a PNG: the screenshot of its frame, or giving
+    /// up when none comes.
+    fn export_tick(&mut self, ctx: &egui::Context) {
+        if self.export.is_some() {
+            let shot = ctx.input(|i| {
+                i.raw.events.iter().find_map(|e| match e {
+                    egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                    _ => None,
+                })
+            });
+            if let Some(image) = shot {
+                self.screenshot_for_export(&image, ctx.pixels_per_point());
+            } else if let Some(e) = &mut self.export {
+                // A pane that isn't drawn, or a screen that can't be read.
+                e.frames += 1;
+                if e.frames > 60 {
+                    let pane = e.pane;
+                    self.export = None;
+                    self.error(format!(
+                        "Couldn't save {}: the pane wasn't drawn for the picture",
+                        pane.title()
+                    ));
+                }
+            }
+        }
+    }
+
+    fn export_done(&mut self, pane: Pane, path: &Path, result: std::io::Result<()>) {
+        match result {
+            Ok(()) => self.info_msg(format!("Saved {} to {}", pane.title(), path.display())),
+            Err(e) => self.error(format!(
+                "Couldn't save {} to {}: {e}",
+                pane.title(),
+                path.display()
+            )),
+        }
     }
 
     /// Average Over for one pane: Readings' time, or one of its own.
@@ -7468,6 +7623,20 @@ fn percentile_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
     Some((lo - pad, hi + pad))
 }
 
+/// A pane being saved as a picture: it's drawn with its name in place of
+/// its toolbar until saved, an SVG from that frame's shapes, a PNG from a
+/// screenshot of it.
+struct PaneExport {
+    pane: Pane,
+    path: PathBuf,
+    /// Where the pane was drawn, once it has been.
+    rect: Option<egui::Rect>,
+    /// Whether the screenshot has been asked for.
+    asked: bool,
+    /// Frames waited, so a picture that can't be taken gives up.
+    frames: u32,
+}
+
 struct PaneBehavior<'a> {
     app: &'a mut TimegrapherApp,
 }
@@ -7480,8 +7649,18 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
         let inner = rect.shrink2(Vec2::new(8.0, 6.0));
+        // Saving the pane as a picture: its name in place of its toolbar,
+        // and what it paints kept for an SVG.
+        let exporting = self.app.export.as_ref().is_some_and(|e| e.pane == *pane);
+        let layer = ui.layer_id();
+        let first = ui
+            .ctx()
+            .graphics(|g| g.get(layer).map_or(0, |l| l.next_idx().0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            if self.app.pane_tools(ui, *pane) {
+            if exporting {
+                self.app.export_heading(ui, *pane);
+                ui.add_space(4.0);
+            } else if self.app.pane_tools(ui, *pane) {
                 ui.add_space(4.0);
             }
             match pane {
@@ -7498,16 +7677,23 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 p => self.app.chart(ui, *p),
             }
         });
+        if exporting {
+            let shapes = ui.ctx().graphics(|g| {
+                g.get(layer)
+                    .map(|l| l.all_entries().skip(first).cloned().collect())
+                    .unwrap_or_default()
+            });
+            self.app
+                .pane_drawn_for_export(ui.ctx(), inner, shapes, pal.card);
+        }
         UiResponse::None
     }
 
     /// A pane averaging over a time of its own names it.
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
-        let title = match self.app.pane_average.get(pane) {
-            Some(&s) => format!("{} · {}", pane.title(), fields::duration(s)),
-            None => pane.title().to_string(),
-        };
-        RichText::new(title).font(theme::semibold(12.5)).into()
+        RichText::new(self.app.pane_heading(*pane))
+            .font(theme::semibold(12.5))
+            .into()
     }
 
     fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile_id: TileId) -> bool {
@@ -7589,6 +7775,8 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         if Pane::CHARTS.contains(pane) {
             ui.add_space(4.0);
             theme::help(ui, pane.title(), help::CHARTS);
+            ui.add_space(6.0);
+            self.app.export_button(ui, *pane);
             ui.add_space(6.0);
             theme::toggle(ui, "Match Strip", &mut self.app.span_of_strip).on_hover_text(
                 "Show the same stretch of time as the paper strip, so the charts line up with \
@@ -7930,6 +8118,8 @@ impl eframe::App for TimegrapherApp {
         }
 
         self.poll();
+
+        self.export_tick(ctx);
 
         // Closing the window with unsaved sound asks first.
         if ctx.input(|i| i.viewport().close_requested())
@@ -8306,6 +8496,119 @@ mod tests {
                 assert!(!out.shapes.is_empty());
             }
         }
+    }
+
+    fn screen() -> egui::RawInput {
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(1280.0, 820.0),
+            )),
+            ..Default::default()
+        }
+    }
+
+    fn export_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tg-app-export-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Export as SVG: the next frame draws the pane with its name in place
+    /// of its toolbar and writes what it painted.
+    #[test]
+    fn a_pane_is_exported_as_an_svg_drawing() {
+        let mut app = synthetic(12.0, 20.0);
+        let ctx = themed();
+        let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        let dir = export_dir("svg");
+        let path = dir.join("Strip.svg");
+        app.start_export(Pane::Strip, path.clone());
+        let out = ctx.run(screen(), |ctx| {
+            app.export_tick(ctx);
+            app.panels(ctx)
+        });
+        assert!(app.export.is_none(), "export still waiting");
+        let doc = std::fs::read_to_string(&path).unwrap();
+        assert!(doc.starts_with("<svg "), "{doc}");
+        assert!(
+            doc.contains(">Paper Strip<") || doc.contains(&format!(">{}<", Pane::Strip.title()))
+        );
+        assert!(
+            doc.contains("<polyline") || doc.contains("<line"),
+            "no lines"
+        );
+        // Its controls aren't in the picture, and the window's frame goes on
+        // as before.
+        assert!(!doc.contains("Export…"), "toolbar drawn into the picture");
+        assert!(
+            painted_text(&out).contains("Export…"),
+            "other panes lost their toolbars"
+        );
+        assert!(matches!(&app.message, Some((m, false)) if m.starts_with("Saved ")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Export as PNG: a screenshot is asked for, and the pane is cut from it.
+    #[test]
+    fn a_pane_is_exported_as_a_png_from_a_screenshot() {
+        let mut app = synthetic(12.0, 20.0);
+        let ctx = themed();
+        let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        let dir = export_dir("png");
+        let path = dir.join("Strip.png");
+        app.start_export(Pane::Strip, path.clone());
+        let out = ctx.run(screen(), |ctx| {
+            app.export_tick(ctx);
+            app.panels(ctx)
+        });
+        let asked = out
+            .viewport_output
+            .values()
+            .flat_map(|v| &v.commands)
+            .any(|c| matches!(c, egui::ViewportCommand::Screenshot(_)));
+        assert!(asked, "no screenshot asked for");
+        let rect = app
+            .export
+            .as_ref()
+            .and_then(|e| e.rect)
+            .expect("pane drawn");
+        // The window as a screen of one colour, the pane's corner marked.
+        let mut image = egui::ColorImage::filled([1280, 820], Color32::from_gray(40));
+        let corner = rect.min.round();
+        image.pixels[corner.y as usize * 1280 + corner.x as usize] = Color32::RED;
+        let mut input = screen();
+        input.events.push(egui::Event::Screenshot {
+            viewport_id: egui::ViewportId::ROOT,
+            user_data: Default::default(),
+            image: std::sync::Arc::new(image),
+        });
+        let _ = ctx.run(input, |ctx| {
+            app.export_tick(ctx);
+            app.panels(ctx)
+        });
+        assert!(app.export.is_none(), "export still waiting");
+        let dec = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).unwrap()));
+        let mut r = dec.read_info().unwrap();
+        let mut buf = vec![0; r.output_buffer_size().unwrap()];
+        let info = r.next_frame(&mut buf).unwrap();
+        assert_eq!(info.width, rect.width().round() as u32);
+        assert_eq!(info.height, rect.height().round() as u32);
+        assert_eq!(&buf[..4], &[255, 0, 0, 255], "not cut at the pane");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A pane that's never drawn gives up with a message, not a wait.
+    #[test]
+    fn an_export_that_cannot_be_drawn_gives_up() {
+        let mut app = synthetic(2.0, 0.0);
+        let ctx = themed();
+        app.start_export(Pane::Strip, export_dir("never").join("x.png"));
+        for _ in 0..61 {
+            let _ = ctx.run(screen(), |ctx| app.export_tick(ctx));
+        }
+        assert!(app.export.is_none());
+        assert!(matches!(&app.message, Some((_, true))));
     }
 
     /// Every piece of text a frame painted.
