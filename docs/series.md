@@ -124,7 +124,12 @@ to turn. With the 48 s shape taken out, folding at 240 s still explains
 the night. The cycle must also
 last at least three readings (2 s windows for the amplitude and the beat
 error) and fit five times in the take (three for
-the period search). The headline leads
+the period search). A cycle at the alias of a period-search line too
+fast for the readings is set aside: readings averaged over 10 s show a
+3.75 s line (a 15-tooth escape wheel at 28,800 bph) at 30 s, and fold
+almost as well at 60 s or 120 s. A whole number of the alias's turns
+still counts when folding there explains more than 1.25 times what the
+alias does, as the same watch's 60 s fourth wheel does. The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,
 the headline adds a sentence. If one side's unlock edges or 2 s windows

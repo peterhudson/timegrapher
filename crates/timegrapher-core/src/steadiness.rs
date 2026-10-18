@@ -1252,7 +1252,41 @@ fn cycle(
         .filter(|c| c.explained >= cfg.periodic_min_explained)
         .map(reduce)
         .filter(|c| c.explained >= cfg.periodic_min_explained)
+        .filter(|c| {
+            // The alias itself is set aside; a whole number of its turns
+            // only when folding there explains no clearly more than the
+            // alias does (a real slow cycle at that period does).
+            alias_of_fast_line(c.period_s, g.step, s.period.as_ref()).is_none_or(|a| {
+                (c.period_s / a - 1.0).abs() >= 0.05
+                    && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
+            })
+        })
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
+}
+
+/// The alias period, when a cycle of `period` in readings `step` apart
+/// is within 5% of a whole number of turns of the alias of a period-search
+/// line too fast for the readings. Readings averaged over `step` sample a
+/// line of frequency ν at 1/`step`, so it shows at |ν − m/`step`| for the
+/// nearest whole m: a 15-tooth escape wheel at 28,800 bph (3.75 s) reads
+/// as a 30 s cycle in 10 s readings, and folds as well at 60 s or 120 s.
+/// The readings alone cannot tell such a cycle from a slow one, so the
+/// caller sets it aside unless folding at its period explains clearly
+/// more than at the alias: the same watch's fourth wheel turns in 60 s,
+/// two turns of that alias, and is real.
+fn alias_of_fast_line(period: f64, step: f64, search: Option<&Period>) -> Option<f64> {
+    let p = search?;
+    let fs = 1.0 / step;
+    std::iter::once(p.period_s)
+        .chain(p.other_periods_s.iter().copied())
+        .filter(|&q| q < 3.0 * step)
+        .find_map(|q| {
+            let nu = 1.0 / q;
+            let alias = (nu - (nu / fs).round() * fs).abs();
+            let k = period * alias;
+            (alias > 0.0 && k.round() >= 1.0 && (k - k.round()).abs() < 0.05 * k.round())
+                .then(|| 1.0 / alias)
+        })
 }
 
 /// ", N turns of a P s cycle" when the cycle holds a shorter one.

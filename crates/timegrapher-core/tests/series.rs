@@ -95,6 +95,54 @@ fn an_escape_wheel_line_faster_than_the_readings_is_named_not_denied() {
 }
 
 #[test]
+fn a_fast_line_aliased_in_the_readings_is_not_a_cycle() {
+    // The 15-tooth escape wheel at 28,800 bph turns in 3.75 s; 10 s
+    // readings average 2.67 turns, so it leaves a 30 s alias in them
+    // ("Rate repeats every 30 s" before the guard).
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run(
+        "alias",
+        900.0,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / 3.75).sin(),
+    );
+    let s = series(&r, SeriesKind::Rate);
+    assert!(s.cycle.is_none(), "{}", s.headline);
+    let p = s.faster_than_readings().expect(&s.headline);
+    assert!((p.period_s - 3.75).abs() < 0.05, "{}", p.period_s);
+    assert!(!s.headline.contains("repeats every 30 s"), "{}", s.headline);
+    assert!(
+        s.headline
+            .to_lowercase()
+            .contains("the beat timing repeats every 3.8 s, the escape wheel's period,"),
+        "{}",
+        s.headline
+    );
+}
+
+#[test]
+fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
+    // The same 3.75 s line, and the fourth wheel's 60 s (two turns of the
+    // 30 s alias): 8 s of every minute 30 s/d slower.
+    let tau = 2.0 * std::f64::consts::PI;
+    let r = run(
+        "alias-and-minute",
+        900.0,
+        |_| 270.0,
+        move |t| 20.0 * (tau * t / 3.75).sin() + if t % 60.0 < 8.0 { -30.0 } else { 0.0 },
+    );
+    let s = series(&r, SeriesKind::Rate);
+    let c = s.cycle.as_ref().expect(&s.headline);
+    assert!(
+        (c.period_s - 60.0).abs() < 2.0,
+        "{} {}",
+        c.period_s,
+        s.headline
+    );
+    assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
+}
+
+#[test]
 fn once_a_minute_fault_is_the_fourth_wheel() {
     // 8 s of every minute: 30 s/d slower and 15° lower.
     let bad = |t: f64| t % 60.0 < 8.0;
