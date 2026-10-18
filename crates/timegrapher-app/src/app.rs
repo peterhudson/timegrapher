@@ -602,8 +602,11 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
 /// beat at 28,800 bph, the widest view in which tick and tock can't wrap
-/// onto each other.
-const WIDTHS: [f64; 7] = [1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5];
+/// onto each other; the wider ones keep a long take's drift from wrapping.
+const WIDTHS: [f64; 16] = [
+    1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 62.5, 100.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0,
+    30_000.0, 60_000.0,
+];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
 /// run.
 const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
@@ -3505,7 +3508,11 @@ impl TimegrapherApp {
                 );
                 ui.label("ms");
                 let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
-                    format!("±{} ms", fields::plain(v))
+                    if v >= 1000.0 {
+                        format!("±{} s", fields::plain(v / 1000.0))
+                    } else {
+                        format!("±{} ms", fields::plain(v))
+                    }
                 });
                 if a || b {
                     self.strip.set_half_width(w);

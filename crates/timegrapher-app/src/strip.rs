@@ -70,7 +70,9 @@ pub struct StripView {
 
 impl StripView {
     pub const MIN_HALF_WIDTH_MS: f64 = 0.1;
-    pub const MAX_HALF_WIDTH_MS: f64 = 250.0;
+    /// Wide enough for a long run-down take to drift by tens of seconds
+    /// without its beats wrapping.
+    pub const MAX_HALF_WIDTH_MS: f64 = 60_000.0;
     pub const MIN_SPAN_S: f64 = 2.0;
     pub const MAX_SPAN_S: f64 = 24.0 * 3600.0;
 
@@ -566,7 +568,11 @@ fn axis_ms(ms: f64) -> String {
         "0 ms".into()
     } else {
         let sign = if ms > 0.0 { "+" } else { "−" };
-        format!("{sign}{}", fmt_ms(ms.abs()))
+        if ms.abs() >= 1000.0 {
+            format!("{sign}{} s", fmt_ms(ms.abs() / 1000.0))
+        } else {
+            format!("{sign}{}", fmt_ms(ms.abs()))
+        }
     }
 }
 
@@ -1057,6 +1063,14 @@ mod tests {
                 assert!((g.time_at(g.pos(3.0, t)) - t).abs() < 1e-3);
             }
         }
+    }
+
+    #[test]
+    fn axis_labels_turn_to_seconds() {
+        assert_eq!(axis_ms(0.0), "0 ms");
+        assert_eq!(axis_ms(-250.0), "−250");
+        assert_eq!(axis_ms(2000.0), "+2.0 s");
+        assert_eq!(axis_ms(-20_000.0), "−20 s");
     }
 
     #[test]

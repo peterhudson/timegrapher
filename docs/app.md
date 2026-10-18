@@ -399,11 +399,12 @@ left (\\). Running **across**, time goes left to right with the newest beats
 on the right, and early is up. The gap between the two lines is the beat
 error. A line that runs off one edge comes back on the other, so the
 strip's width is its zoom and its length sets how much history it shows.
-Type both (a width of ±0.1 to ±250 ms; a length such as `45`, `5 min`,
+Type both (a width of ±0.1 to ±60,000 ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
-widths run from ±1 ms, for a good watch's beat error, to ±62.5 ms, half a
-beat at 28,800 bph and the widest view in which tick and tock can't wrap
-onto each other; the lengths run from 10 s of beats to a two-hour run.
+widths run from ±1 ms, for a good watch's beat error, through ±62.5 ms,
+half a beat at 28,800 bph and the widest view in which tick and tock can't
+wrap onto each other, up to ±60 s, so a long run-down take that drifts by
+many seconds can be shown without wrapping; the lengths run from 10 s of beats to a two-hour run.
 
 On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
