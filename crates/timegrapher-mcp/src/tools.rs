@@ -112,8 +112,8 @@ const LIFT_OR_CALIBRE: Param = p(
     Kind::LiftAngle,
     Arg::Flag("--lift"),
     false,
-    "Lift angle of the calibre in degrees (the calibre's if one is given, else 52). \
-     Amplitude depends on it.",
+    "Lift angle of the calibre in degrees (the calibre's if one is given and the table \
+     has its lift angle, else 52). Amplitude depends on it.",
 );
 const CALIBRE: Param = p(
     "calibre",
@@ -121,8 +121,8 @@ const CALIBRE: Param = p(
     Arg::Flag("--calibre"),
     false,
     "The movement, e.g. \"ETA 2824-2\" or \"Rolex 3235\", to name periodic changes after \
-     its wheels; its lift angle is used where lift_deg is not given. An unknown name gives \
-     an error listing the known ones.",
+     its wheels; its lift angle is used where lift_deg is not given. An unknown name is \
+     an error that suggests a wider search; list_calibres has the known ones.",
 );
 
 /// For tools that read a watch: the calibre fills in what is not given.
@@ -132,7 +132,8 @@ const CALIBRE_READING: Param = p(
     Arg::Flag("--calibre"),
     false,
     "The movement, e.g. \"ETA 2824-2\" or \"Rolex 3235\": its beat rate and lift angle \
-     are used where bph and lift_deg are not given. list_calibres has the known ones.",
+     are used where bph and lift_deg are not given. An unknown name is an error that \
+     suggests a wider search; list_calibres has the known ones.",
 );
 const DEVICE: Param = p(
     "device",
@@ -186,7 +187,8 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::LiftAngle,
                 Arg::Flag("--lift"),
                 false,
-                "Lift angle in degrees (overrides session.toml; 52 if neither gives one).",
+                "Lift angle in degrees (overrides session.toml; else the calibre's if the \
+                 table has it; else 52).",
             ),
             p(
                 "settle_s",
@@ -316,7 +318,8 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Look Up a Calibre",
         description: "The calibre table: each movement's beat rate, lift angle, escape \
             wheel and train, how sure the figures are and their sources. Give a name for \
-            one calibre (an unknown name lists the known ones). Amplitude depends on the \
+            one calibre (an unknown name is an error that suggests a wider search); with no \
+            name, the common calibres and the user's own are listed. Amplitude depends on the \
             lift angle.",
         command: &["calibres"],
         params: &[p(
@@ -324,7 +327,8 @@ pub const TOOLS: &[ToolSpec] = &[
             Kind::Text,
             Arg::Positional,
             false,
-            "A calibre, e.g. \"ETA 2824-2\" (all of them if left out).",
+            "A calibre, e.g. \"ETA 2824-2\" (the common ones and the user's own if left \
+             out).",
         )],
         charts: false,
         read_only: true,
@@ -388,7 +392,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::LiftAngle,
                 Arg::Flag("--lift"),
                 false,
-                "Lift angle in degrees (the calibre's if left out, else 52).",
+                "Lift angle in degrees (the calibre's if left out and the table has it, \
+                 else 52). A session.toml that already has a lift angle keeps it; giving a \
+                 different one is an error.",
             ),
             DEVICE,
             p(

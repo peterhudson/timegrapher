@@ -111,12 +111,17 @@ That route has not been tried with this server yet.
 
 `analyze_recording`, `long_run` and `check_steadiness` accept the custom
 calibre names/aliases and wheel overrides returned by `list_calibres`.
-`analyze_recording` uses catalogue BPH/lift unless explicitly overridden;
-`long_run` and `check_steadiness` use the catalogue train for wheel naming
-and retain their existing BPH/lift defaults. `record_position` and
+`analyze_recording` uses the catalogue's beat rate and lift angle unless
+they are given. `long_run` and `check_steadiness` use the catalogue's train
+to name periodic changes and its lift angle unless one is given; their beat
+rate comes only from `bph` or the sound. Where the catalogue has no lift
+angle for a calibre, 52° is used. `record_position` and
 `run_session` also resolve the same custom catalogue. Existing session
 numeric settings and lift context retain precedence; an unknown manifest
-label stays descriptive, while an explicit unknown calibre is an error.
+label stays descriptive, while an explicit unknown calibre is an error. That
+error suggests `timegrapher calibres --search` with the name; `run_session`'s
+also lists the known names. `list_calibres` with no name lists the common
+calibres and the user's own.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
