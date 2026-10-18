@@ -1197,7 +1197,7 @@ impl TimegrapherApp {
             theme: egui::ThemePreference::System,
             view_end: None,
             replay_speed: 1.0,
-            panes: default_layout(false),
+            panes: default_layout(true),
             show_readings: true,
             charts_to_live: false,
             charts_to_live_now: false,
@@ -10075,6 +10075,29 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// A first start, with nothing saved, has the strip across and laid
+    /// out above the charts, as Across lays it out.
+    #[test]
+    fn a_first_start_lays_the_strip_across() {
+        let fresh = TimegrapherApp::with_devices(Vec::new(), None, false);
+        assert!(fresh.strip.horizontal);
+        // The first row or column above the strip: a column (the strip
+        // over the charts) for Across, a row for Down.
+        let holder = |t: &Tree<Pane>| {
+            let mut id = t.tiles.find_pane(&Pane::Strip)?;
+            loop {
+                id = t.tiles.parent_of(id)?;
+                if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+                    t.tiles.get(id)
+                {
+                    return Some(l.dir);
+                }
+            }
+        };
+        assert_eq!(holder(&fresh.panes), holder(&default_layout(true)));
+        assert_ne!(holder(&fresh.panes), holder(&default_layout(false)));
+    }
+
     #[test]
     fn settings_come_back_as_they_were_left() {
         // A fresh app opens with the defaults the settings describe.
@@ -10087,8 +10110,9 @@ mod tests {
         );
         // Change a few views, keep them, and open a new app with them.
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
-        app.strip.horizontal = true;
-        app.relayout(true);
+        // Down, now that Across is the default: a saved Down stays.
+        app.strip.horizontal = false;
+        app.relayout(false);
         app.sound_opts.scale = profiles::Scale::Decibels;
         app.hist_cumulative = true;
         app.folded.insert("Window".into());
@@ -10097,7 +10121,7 @@ mod tests {
         let json = serde_json::to_string(&app.settings()).unwrap();
         let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
         again.apply_settings(serde_json::from_str(&json).unwrap());
-        assert!(again.strip.horizontal);
+        assert!(!again.strip.horizontal);
         assert_eq!(again.sound_opts.scale, profiles::Scale::Decibels);
         assert!(again.hist_cumulative);
         assert!(again.folded.contains("Window"));
@@ -10127,7 +10151,7 @@ mod tests {
         before.panes = Some(tree);
         again.apply_settings(before);
         assert!(layout_is_whole(&again.panes));
-        assert!(again.strip.horizontal, "the saved arrangement was kept");
+        assert!(!again.strip.horizontal, "the saved arrangement was kept");
         let sound = again.panes.tiles.find_pane(&Pane::Sound).unwrap();
         let steady = again.panes.tiles.find_pane(&Pane::SteadyReadings).unwrap();
         assert_eq!(
@@ -10538,7 +10562,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(base);
     }
 
-    /// A computer that slept mid-take carries on, with the gap a break.
     #[test]
     fn a_take_saved_under_a_former_calibre_name_picks_the_new_one() {
         let c = timegrapher_core::calibres::all()
@@ -10551,6 +10574,7 @@ mod tests {
         assert_eq!(app.cal.recent.first(), Some(&c.calibre));
     }
 
+    /// A computer that slept mid-take carries on, with the gap a break.
     #[test]
     fn a_sleep_becomes_a_break() {
         let (mut app, base) = save_failure_fixture("slept");

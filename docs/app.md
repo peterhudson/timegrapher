@@ -190,18 +190,17 @@ found.
 other windows, minimised, or with the screen locked or switched off: the
 sound is saved and read as it comes in, on a thread of its own, so the
 window shows everything heard as soon as it is back. The exceptions are a
-file dialog (Open, Save, choosing a folder) and Save or Save Again copying
-the take: meanwhile the sound waits in memory, and is saved and read once
-they finish. With **Keep
-Awake** on (it is unless switched off), the app asks the computer not to
-go to sleep on its own while it listens; the screen can still lock and
-switch off as usual. If the system refuses, a note under the switch says
-so. When the sound's own timestamps jump by more than 5 seconds (as when
-the computer sleeps: a laptop's lid closed, Sleep chosen from a menu, or
-Keep Awake off), the app leaves the jump out of the take as a break, as
-after Stop and Resume, keeps listening, and a message gives the length of
-the jump. The app's log notes every ten minutes that listening is still
-going.
+file dialog (Open, Save, choosing a folder) and Save, Save Again or Save
+As copying the take: meanwhile the sound waits in memory, and is saved and
+read once they finish. With **Keep Awake** on (it is unless switched off),
+the app asks the computer not to go to sleep on its own while it listens;
+the screen can still lock and switch off as usual. If the system refuses,
+a note under the switch says so. When the sound's own timestamps jump by
+more than 5 seconds (as when the computer sleeps: a laptop's lid closed,
+Sleep chosen from a menu, or Keep Awake off), the app leaves the jump out
+of the take as a break, as after Stop and Resume, keeps listening, and a
+message gives the length of the jump. The app's log notes every ten
+minutes that listening is still going.
 
 **Positions Test.** The Positions Test pane, a tab beside the Tick
 Tock Profile to begin with (its icon is a die showing six, one face for
@@ -423,9 +422,10 @@ right with the newest beats on the right, and early is up, with the strip
 above the charts. Running **down**, as on tg, the newest beats are at
 the top, a watch on rate draws a vertical line, a gaining watch leans
 right as it rises (/) and a losing one leans left (\\). A direction
-already chosen and saved stays as it was. The gap between the two lines is the beat
-error. A line that runs off one edge comes back on the other, so the
-strip's width is its zoom and its length sets how much history it shows.
+already chosen and saved stays as it was. The gap between the two lines
+is the beat error. A line that runs off one edge comes back on the
+other, so the strip's width is its zoom and its length sets how much
+history it shows.
 Type both (a width of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`,
 `2h` or `1:30:00`) or pick a common value from the list beside each: the
 widths run from ±1 ms, for a good watch's beat error, through ±62.5 ms,

@@ -5,11 +5,12 @@
 //! system has put to sleep on macOS. The window's frames are what save and
 //! read the sound, so with no frames the sound piled up in memory, unsaved,
 //! and the next frame froze the window while it caught up. A thread of its
-//! own now does that work every few tenths of a second while the window is
-//! hidden; the frames share the same app and only show it. Work a frame
-//! does while holding the app (a file dialog, a save copying the take)
-//! holds this thread up too, and the sound waits in memory meanwhile. It
-//! also holds the computer awake while listening, when Keep Awake is on.
+//! own now does that work every few tenths of a second, whether the window
+//! is drawing or not; the frames share the same app and read the sound
+//! too while they draw. Work a frame does while holding the app (a file
+//! dialog, a save copying the take) holds this thread up too, and the
+//! sound waits in memory meanwhile. It also holds the computer awake
+//! while listening, when Keep Awake is on.
 
 use crate::app::TimegrapherApp;
 use crate::applog;
