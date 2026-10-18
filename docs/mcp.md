@@ -34,7 +34,7 @@ installing. The Linux zip has no extension.
    menu.
 4. Start a chat with the **Test My Watch** prompt from the same menu, or
    just ask, e.g. "Here is a recording of my watch, dial up:
-   /Users/you/Recordings/watch_DU.flac. How is it?"
+   /Users/you/Recordings/watch_DU.flac. What do the figures say?"
 
 Claude Desktop asks before running a tool. The extension is not signed, so
 Claude Desktop says so when installing it; that is expected.
