@@ -61,6 +61,9 @@ plus three that name the periodic components after wheels:
 - `--calibre NAME` takes the train from the table of common calibres
   (`crates/timegrapher-core/data/train-wheels.json`): "ETA 2824-2",
   "Rolex 3235", "NH35" and so on. An unknown name lists the known ones.
+  It also sets the lift angle when `--lift` is not given (52° when the
+  table has no lift angle for the calibre); it does not set the beat
+  rate, which `--bph` gives or the recording shows.
 - `--escape-teeth N` sets the escape wheel's teeth. Without it or a
   calibre that gives them, both common escape wheels are named, 15 teeth
   (30 beats a turn) and 20 teeth (40 beats, the ETA 2824 family and
