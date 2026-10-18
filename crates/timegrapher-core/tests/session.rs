@@ -367,6 +367,8 @@ fn amplitude_over_330_is_shown_not_judged() {
 fn positions_are_named_as_the_app_names_them() {
     assert_eq!(Position::H3.display_label(), "Crown Up (CU, 3H)");
     assert_eq!(Position::H12.display_label(), "Crown Right (CR, 12H)");
+    assert_eq!(Position::H9.display_label(), "Crown Down (CD, 9H)");
+    assert_eq!(Position::H6.display_label(), "Crown Left (CL, 6H)");
     assert_eq!(Position::CH.display_label(), "Dial Up (DU)");
     assert_eq!(Position::CB.display_label(), "Dial Down (DD)");
     // The JSON keeps Witschi's code alone.
@@ -461,6 +463,61 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_mask() {
     };
     let m = session::measure_masked(&log, None, &[], &[mask], 80.0, 232.0);
     // The 10 s windows that remain lie wholly on one side of the mask.
-    let p95 = m.rate_p95.expect("rate windows");
+    let (p05, p95) = (
+        m.rate_p05.expect("rate windows"),
+        m.rate_p95.expect("rate windows"),
+    );
+    assert!((p05 - 5.0).abs() < 1.0, "10 s rates reach {p05} s/d");
+    assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
+}
+
+#[test]
+fn no_rate_window_takes_in_the_ragged_edge_after_a_break() {
+    // The same watch, with the audio stopped from 100 s to 203 s of true
+    // time: a break of 103 s at audio second 100. For two seconds after it
+    // the beats run 300 s/d fast, seen only by a window that starts inside
+    // the gap and reaches past its end.
+    let bph = 28_800;
+    let period = 3600.0 / bph as f64 / (1.0 + 5.0 / 86400.0);
+    let brk = timegrapher_core::breaks::Break {
+        audio_s: 100.0,
+        gap_s: 103.0,
+    };
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
+        .filter_map(|k| {
+            let t = k as f64 * period;
+            let fast = (t - 203.0).clamp(0.0, 2.0) * 300.0 / 86400.0;
+            let t = t - if t < 205.0 { fast } else { 0.0 };
+            let audio = if t < 100.0 {
+                t
+            } else if t >= 203.0 {
+                t - brk.gap_s
+            } else {
+                return None;
+            };
+            Some(timegrapher_core::beats::Beat {
+                index: k,
+                time: audio,
+                quality: 1.0,
+            })
+        })
+        .collect();
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 240.0 - brk.gap_s,
+        bph,
+        lift_deg: 52.0,
+        beats,
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+    };
+    let m = session::measure_masked(&log, None, &[brk], &[], 80.0, 129.0);
+    let (p05, p95) = (
+        m.rate_p05.expect("rate windows"),
+        m.rate_p95.expect("rate windows"),
+    );
+    assert!((p05 - 5.0).abs() < 1.0, "10 s rates reach {p05} s/d");
     assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
 }
