@@ -320,7 +320,7 @@ fn readings_table(sn: &Session) -> String {
             let _ = write!(
                 s,
                 r#"<tr><th>{}</th><td>{}</td><td colspan="10">{}</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
-                r.position.label(),
+                r.position.display_label(),
                 wind(r.wind_h),
                 esc(&timegrapher_core::session::no_regular_beat(
                     m.jitter_us,
@@ -334,7 +334,7 @@ fn readings_table(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<tr><th>{}</th><td>{}</td>{}<td class="num">{}</td>{}<td class="num">{} / {}</td>{}<td class="num">{}</td><td class="num">{}</td><td class="num">{} to {}</td><td class="num">{}</td><td class="num">{:.1}%</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
-            r.position.label(),
+            r.position.display_label(),
             wind(r.wind_h),
             cell(signed(m.rate_s_per_day, 1)),
             signed(m.rate_window_median_s_per_day, 1),
@@ -398,7 +398,7 @@ fn reference_table(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<tr><th>{}</th><td class="num">{} <span class="sub">{}</span><br>/ {} <span class="sub">reference as supplied</span></td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
-            r.position.label(),
+            r.position.display_label(),
             signed(m.rate_s_per_day, 1),
             basis,
             signed(f.rate_s_per_day, 1),
@@ -438,7 +438,7 @@ fn cycles_table(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<tr><th>{}</th><td>{}</td><td class="num">{:.2}</td><td class="num">{}</td><td class="num">{:.0}%</td><td class="num">{:.0e}</td><td>{}</td><td class="file">{}</td></tr>"#,
-            r.position.label(),
+            r.position.display_label(),
             c.series,
             c.period_s,
             c.size_text(),
@@ -465,7 +465,7 @@ fn states_lines(sn: &Session) -> String {
         let _ = write!(
             s,
             r#"<p class="states"><b>{}</b> {}; {}. <span class="file">{}</span></p>"#,
-            r.position.label(),
+            r.position.display_label(),
             esc(&line),
             esc(&twostate::describe(&m.rate_states, "rate")),
             esc(&r.label)
@@ -492,7 +492,7 @@ fn shape_table(sn: &Session) -> String {
                 s,
                 r#"<tr><th>{}</th><td>{side}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{:.0}%</td><td class="num">{} / {}</td></tr>"#,
                 if k == 0 {
-                    r.position.label()
+                    r.position.display_label()
                 } else {
                     String::new()
                 },
@@ -568,7 +568,7 @@ pub fn html(sn: &Session) -> String {
 
     body.push_str("<h2>Readings</h2>");
     body.push_str(&readings_table(sn));
-    body.push_str(&format!(r#"<p class="note">Each reading starts after the settling time and runs to the end of the recording (or the measuring time set in the session file). 10 s rates: the 5th to 95th percentile of rate over 10 s windows, a measure of how steady the rate is. Beat error is a size: which beat is longer is not shown, because it depends on the beat the analysis locked on first. Because the settling time is left out{}, these readings can differ by a few seconds per day from the quick check shown while recording.</p>"#, if sn.readings.iter().any(|r| r.measurement.calibrated) { " and the sound card's clock error is corrected where it was logged" } else { "" }));
+    body.push_str(&format!(r#"<p class="note">Each reading starts after the settling time and runs to the end of the recording (or the measuring time set in the session file). 10 s rates: the 5th to 95th percentile of rate over 10 s windows, a measure of how steady the rate is. Beat error is a size: which beat is longer is not shown, because it depends on the beat the analysis locked on first. The settling time is left out, as the quick check <code>record</code> prints leaves it out{}.</p>"#, if sn.readings.iter().any(|r| r.measurement.calibrated) { "; the sound card's clock error is also corrected where it was logged, which that check does not do" } else { "" }));
 
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&r.states));
@@ -578,7 +578,7 @@ pub fn html(sn: &Session) -> String {
             let _ = write!(
                 body,
                 r#"<tr><th>{}</th><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
-                i.position.label(),
+                i.position.display_label(),
                 wind_words(i.from_wind_h),
                 wind_words(i.to_wind_h),
                 signed(Some(i.rate_change), 1),
