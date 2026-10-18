@@ -426,3 +426,41 @@ fn a_masked_stretch_is_left_out_of_the_readings() {
         "left out when nothing is masked"
     );
 }
+
+#[test]
+fn no_rate_window_takes_in_the_ragged_edge_after_a_mask() {
+    // A watch at 5 s/d, 28,800 bph. For two seconds after the mask the
+    // beats run 300 s/d fast: only a window that starts inside the mask
+    // and reaches past its end, fitted on those two seconds alone, sees
+    // that rate without the steady beats around it.
+    let bph = 28_800;
+    let period = 3600.0 / bph as f64 / (1.0 + 5.0 / 86400.0);
+    let mask = (100.0, 203.0);
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
+        .map(|k| {
+            let t = k as f64 * period;
+            let fast = (t - 203.0).clamp(0.0, 2.0) * 300.0 / 86400.0;
+            timegrapher_core::beats::Beat {
+                index: k,
+                time: t - if t < 205.0 { fast } else { 0.0 },
+                quality: 1.0,
+            }
+        })
+        .filter(|b| !(mask.0..mask.1).contains(&b.time))
+        .collect();
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 240.0,
+        bph,
+        lift_deg: 52.0,
+        beats,
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+    };
+    let m = session::measure_masked(&log, None, &[], &[mask], 80.0, 232.0);
+    // The 10 s windows that remain lie wholly on one side of the mask.
+    let p95 = m.rate_p95.expect("rate windows");
+    assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
+}
