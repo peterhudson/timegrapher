@@ -11,6 +11,10 @@ file = "take_part01-001.flac"
 start = 300
 seconds = 45
 
+# The take names the calibre "3235", which the catalogue reads as Rolex's.
+[data.session]
+calibre = "Dandong 3235"
+
 [window]
 size = [1600, 940]
 
