@@ -1,128 +1,156 @@
 # 14. Problems and Reports
 
-This chapter covers what to do when something doesn't work, and how to
-tell the project about a problem, a reading that looks wrong, or an idea.
+When a reading looks wrong, preserve the evidence before changing the
+setup. Save the recording, note the time of the suspect interval, and
+record the beat rate, lift angle, position and winding state. A number
+without its sound and settings is much harder to investigate.
 
-## Common Problems
+## No Input, No Sound, or No Regular Beat
 
-### macOS or Windows won't open the app
+These are different failures:
 
-The builds are not signed with an Apple or Microsoft developer
-certificate, so the system warns you the first time you open each new
-version. On macOS, use **Open Anyway** in System Settings → Privacy &
-Security; on Windows, **More info** then **Run anyway**. Your download's
-**Start Here** page and [Installing and updating](../install.md) give the
-steps.
+| What you see | What to check first |
+| --- | --- |
+| The input is absent or will not open | Connection, permissions, selected device and whether another program has exclusive access |
+| Capture is running but the Peak meter barely moves | Input gain, cable and pickup coupling; confirm that this is the intended microphone |
+| The Peak meter responds, but no regular beat is found | Watch running, correct nominal beat rate, periodic background noise, clipping and poor acoustic contact |
+| Readings appear, but amplitude is absent | Whether Unlock and Drop can be located consistently in the beat profiles; a usable rate does not guarantee a usable lift-time measurement |
 
-### The microphone menu is empty, or the input won't open
+Press **Rescan** after connecting an input. On macOS, check the app's
+Microphone permission in System Settings. On Windows, check microphone
+access for desktop apps in Settings. On Linux, try **System default (via
+PipeWire)** if the sound server already holds the hardware; a **(direct)**
+input may then be unavailable.
 
-- Check that the microphone is plugged in, then press **Rescan**.
-- **macOS**: System Settings → Privacy & Security → Microphone, and turn
-  Timegrapher on.
-- **Windows**: Settings → Privacy & security → Microphone, and turn on
-  *Let desktop apps access your microphone*.
-- **Linux**: choose **System default (via PipeWire)** rather than a
-  **(direct)** device; a direct device can't open while the desktop's
-  sound server holds the card.
-- Close other programs that may be using the microphone.
+If the device stops delivering audio callbacks for about three seconds,
+the app stops listening and displays an error. This is a capture failure,
+not a rule that three seconds of quiet audio stops a recording. See
+[Setting Up the Microphone](03-microphone.md) and
+[No Regular Beat Found](05-readings.md#no-regular-beat-found).
 
-If the input stops or sends no sound for 3 seconds, the app stops
-listening and says why in a red banner above the readings.
+## The Amplitude Looks Wrong
 
-### The readings say "No regular beat found"
+First check the **lift angle** against a credible source for the movement.
+The software cannot recover a missing lift angle from the recording. A
+wrong setting can give a smooth, repeatable, wrong amplitude.
 
-The beats found don't come at regular intervals. Check that the watch is
-running, that it is held firmly against the microphone, that the level is
-up (the **Peak** meter moves with each beat), and that the room is quiet.
-See [Readings](05-readings.md#no-regular-beat-found).
+Then inspect the [Tick Tock Profile](07-sound-of-the-beat.md). Is the Unlock
+marker attached to a plausible first group on both sides? Does it jump
+when the displayed amplitude jumps? Are the peaks clipped? A change in
+holder contact or gain can alter the envelope enough to move a detected
+edge. Reduce clipping and improve coupling, then repeat the measurement
+without changing several things at once.
 
-### The amplitude looks wrong
+If amplitude changes while the profile remains consistent, compare the
+rate, position and winding history. That is a better basis for a
+mechanical investigation than rejecting the reading simply because it
+is outside an expected range. No single amplitude range suits every
+movement and condition.
 
-- Check the **lift angle** under Watch: every amplitude depends on it. See
-  [Calibres and Lift Angles](09-calibres.md).
-- Look for the amber **Clipping** banner: clipping moves the amplitude.
-  Turn the level down. See
-  [Setting Up the Microphone](03-microphone.md#setting-the-level).
-- Look at the [Tick Tock Profile](07-sound-of-the-beat.md): if the Unlock
-  or Drop mark sits somewhere odd, the amplitude built on it is suspect.
+## Two Instruments Disagree on Rate
 
-### The rate differs from another timegrapher's
+Compare the same watch position and state of wind, using comparable
+measurement intervals after settling. A live value and a whole-recording
+average can both be correct for their respective intervals.
 
-Both are timed against their own clocks. A computer's sound card clock is
-typically 10 to 50 ppm off, which moves the rate by 1 to 4 s/d. Measure
-yours once (see [True Clock](05-readings.md#true-clock)). Also check that
-both were measured over the same stretch, in the same position, with the
-watch equally wound.
+Then check the clock basis. Every instrument has a reference clock;
+20 ppm of reference error is about 1.73 s/d. In the desktop app, distinguish
+the sample-clock rate from **True Clock**. A stored correction may belong
+to a different input, sample rate or operating condition. The
+[clock discussion](05-readings.md#true-clock) explains what the calibration
+establishes and what it does not.
 
-### The window doesn't open
+If the discrepancy remains, compare saved audio with explicit settings.
+The [command-line chapter](12-command-line.md#analyze) gives a way to make
+the interval, lift angle and correction unambiguous. Include both
+instruments' settings when reporting the comparison.
 
-The app draws with OpenGL 2.0 or newer. Where that isn't available (a
-virtual machine or remote desktop without 3D graphics, or a missing
-graphics driver), it tries again with a second graphics system (Direct3D
-12 on Windows, Metal on macOS, Vulkan on Linux). If neither works, the app
-says why in its log and, on Windows and macOS, in a message box.
+## A Steadiness Result Seems Implausible
 
-### On Linux, the AppImage says FUSE is missing
+Begin with **Readings Over Time**. Look for handling, position joins,
+gaps, loss of lock, and a marker that changes identity. Then ask whether
+the reported pattern has enough repetitions to be convincing.
 
-Install `libfuse2` (Ubuntu 22.04: `sudo apt install libfuse2`; Ubuntu
-24.04: `sudo apt install libfuse2t64`), or run the AppImage with
-`--appimage-extract-and-run`.
+A peak close to a wheel period is a candidate for investigation. It is
+not a component diagnosis. A **Cycle** plot can fold at a reference period
+even when no significant cycle was detected, and a low Allan-deviation
+point can result from averaging over a cycle. The
+[Steadiness chapter](08a-steadiness.md) explains these cases and the
+individual panes. For unexpected rate-versus-amplitude behaviour, check
+the recording design and bin coverage in [Isochronism](08b-isochronism.md).
+
+## The App Will Not Start
+
+The distributed builds are unsigned. The download's **Start Here** page
+and [Installing and Updating](../install.md) explain the operating-system
+warnings and how to open a build you obtained from the project.
+
+If the window fails to open, graphics support may be the problem,
+especially in a virtual machine or remote session. The app first tries
+OpenGL, then its alternative graphics backend. Keep the error text and
+log when reporting a startup failure.
+
+On Linux, an AppImage that reports missing FUSE can be run with
+`--appimage-extract-and-run`. See the installation guide for the package
+appropriate to your distribution.
 
 ## If the App Closes Unexpectedly
 
-If the app crashes, it writes a record of what happened. The next time it
-starts, a banner offers to help you report it:
+A recorded crash produces a banner at the next start:
 
-![The banner after a crash: The timegrapher closed unexpectedly last time. Make a report? with Make a Report…, Show the Record and Dismiss](images/crash-banner.png)
+![The crash banner offers Make a Report, Show the Record and Dismiss](images/crash-banner.png)
 
-- **Make a Report…** copies the record and opens a new GitHub issue to
-  paste it into.
-- **Show the Record** shows the file.
-- **Dismiss** closes the banner.
+**Show the Record** opens the crash record. **Make a Report…** copies the
+record and opens a GitHub issue form for you to paste it into. **Dismiss**
+closes the banner. Opening the form does not submit a report.
 
-Nothing is sent anywhere by the app itself.
+If a recording was in progress, check the scratch files before starting a
+replacement session; [Sessions and Recordings](11-sessions-and-recordings.md)
+explains how they relate to saved copies. Do not assume that the latest
+seconds were flushed before a crash.
 
-## Report a Problem
+## Make a Useful Report
 
-**Report a Problem…**, in the Help menu and at the right of the status
-line, makes a zip file to attach to a GitHub issue:
+Choose **Report a Problem…** from Help or the status line. Select **Bug**,
+**Reading**, **Setup** or **Idea**, and describe the observation. For a
+measurement issue, a useful note says what you measured, what you expected,
+and why. For example:
 
-1. Choose what kind of problem it is: **Bug**, **Reading** (a figure looks
-   wrong), **Setup** or **Idea**, and say what happened.
-2. **Include the Sound** adds up to five minutes of the sound, cut without
-   changing a sample: the last five minutes of a live session, or five
-   minutes of the recording that is open, chosen with **Ends At**. Drag the
-   handles on the waveform to keep only the part that shows the problem,
-   and **Play** it to check.
-3. Tick that you listened to it and it holds nothing private, such as
-   voices. Then **Save Report…**.
-4. If you made the recording and are happy to share it, tick the box that
-   offers it to the public test corpus under CC0 (no rights reserved).
-5. Saving opens the zip's folder and the matching GitHub form. Attach the
-   zip to the issue.
+> The amplitude changes from about 260° to 310° near 02:15, while the
+> watch remains dial up. Lift angle is set to 55°. The Tick Unlock marker
+> moves at the same time; Tock does not. The attached excerpt includes
+> both sides of the change.
 
-The zip holds the sound excerpt and the command line's analysis of it,
-the app's readings and settings, the log and crash records from the last
-week, and the stored clock corrections, with your home folder, user name
-and computer name removed. **A wrong reading can only be fixed with the
-sound it came from**, so please include the sound when a figure looks
-wrong.
+**Include the Sound** adds an excerpt of up to five minutes. For a live
+session it comes from the latest audio; for an opened recording, use
+**Ends At** and the waveform handles to select the relevant interval.
+Keep enough sound before and after the event to show its context.
 
-From the command line, `timegrapher report` makes the same zip (see
-[The Command Line](12-command-line.md#report) and
-[Reporting a problem](../reports.md)).
+Play the excerpt and check it for voices or other private audio. Confirm
+that you listened, then save the report. Offering your own recording to
+the public test corpus under **CC0** is a separate, optional choice; it is
+not required to report a bug.
 
-### Issues on GitHub
+Saving creates a zip and opens its folder and the relevant GitHub form.
+Review the bundle, attach it to the issue, and submit the issue yourself.
+For a wrong reading, the audio is often the most useful evidence: a
+screenshot alone cannot show which acoustic edge the engine should have
+followed.
 
-The project's [issues page](https://github.com/peterhudson/timegrapher/issues/new/choose)
-has forms for a wrong reading, a bug, an idea, and contributing a recording
-of a watch to the public test corpus.
-[Contributing recordings](../contributing-recordings.md) says what to
-record and how.
+The bundle can include the excerpt, replay analyses, captured app settings
+and readings, recent log and crash files, and stored clock corrections.
+It replaces recognised home-folder, user-name and host-name strings in
+text. That redaction does not remove voices from audio or guarantee that
+every personal detail in a note or filename is anonymous. See
+[Reporting a Problem](../reports.md) for the exact contents and replay
+procedure. `timegrapher report` provides the same general workflow from
+the [command line](12-command-line.md#report).
 
-## Where Things Are Kept
+The project's [issue forms](https://github.com/peterhudson/timegrapher/issues/new/choose)
+cover bugs, readings and suggestions. To contribute a useful reference
+recording, see [Contributing Recordings](../contributing-recordings.md).
 
-The app keeps its settings, logs and your additions in a settings folder:
+## Settings, Logs and Updates
 
 | System | Settings folder |
 | --- | --- |
@@ -130,28 +158,18 @@ The app keeps its settings, logs and your additions in a settings folder:
 | Windows | `%APPDATA%\timegrapher` |
 | Linux | `~/.config/timegrapher` |
 
-In it:
+The folder includes `logs/timegrapher.log` and rotated logs, crash records,
+`calibres.json` for custom catalogue entries, and `clocks.json` for stored
+clock corrections. Saved recordings are wherever you chose to save them.
+These are separate from the application installation.
 
-- `logs/timegrapher.log`: the app's log (the version, the microphone
-  opened, level changes, beat lock gained and lost, position changes and
-  every message the app shows), kept under 1 MB with the two files
-  before it;
-- `crash-<time>.txt`: a record of each crash;
-- `calibres.json`: the wheel periods and custom calibres you added;
-- `clocks.json`: the sound card clock corrections you kept.
-
-Saved takes go wherever you chose when saving. Updating the app keeps all
-of these.
-
-## Updates
-
-With **Check for Updates at Start** on (in the Help menu; on unless you
-turn it off), the app asks GitHub once at start whether a newer version is
-published, and shows a banner with **Download** if so. **Check for
-Updates…** asks at any time. To update, download the new version and set
-it up as the first time: on macOS, replace the app in Applications; on
-Windows and Linux, use the new version's folder and delete the old one. See
-[Installing and updating](../install.md#updating).
+**Help → Check for Updates…** checks the project's releases. **Check for
+Updates at Start** controls the automatic startup check. Download and
+install a newer build using its installation instructions; updating keeps
+your settings and recordings. On macOS, replace the app in Applications;
+on Windows and Linux, use the new version's extracted folder. If you
+also use the Claude Desktop
+extension, update its bundle separately.
 
 ---
 

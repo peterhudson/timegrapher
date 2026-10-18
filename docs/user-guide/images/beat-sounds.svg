@@ -11,9 +11,9 @@
 <line x1="481.7" y1="250" x2="481.7" y2="50" stroke="#5856d6" stroke-width="1.6" stroke-dasharray=""/>
 <text x="486.7" y="46" fill="#5856d6" font-weight="bold">3 Drop</text>
 <line x1="178.3" y1="285" x2="481.7" y2="285" stroke="#1d1d1f" stroke-width="1.3" marker-start="url(#a)" marker-end="url(#a)"/>
-<text x="330.0" y="305" text-anchor="middle" fill="#1d1d1f">Unlock to drop: the time the amplitude is worked out from</text>
-<text x="70" y="30" fill="#1d1d1f" font-weight="bold" font-size="16">One beat, as the microphone hears it</text>
+<text x="330.0" y="305" text-anchor="middle" fill="#1d1d1f">Measured unlock-to-drop time → amplitude estimate</text>
+<text x="70" y="30" fill="#1d1d1f" font-weight="bold" font-size="16">Sound groups within one beat</text>
 <text x="720" y="268" text-anchor="end" fill="#6e6e73" font-size="12">time, a few milliseconds →</text>
-<text x="60" y="155.0" text-anchor="middle" fill="#6e6e73" font-size="12" transform="rotate(-90 60 155.0)">loudness</text>
+<text x="60" y="155.0" text-anchor="middle" fill="#6e6e73" font-size="12" transform="rotate(-90 60 155.0)">envelope strength</text>
 <text x="740" y="30" text-anchor="end" fill="#6e6e73" font-size="12">A sketch, not to scale</text>
 </svg>

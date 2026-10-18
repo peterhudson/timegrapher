@@ -28,12 +28,12 @@
 <path d="M474,160 C490,180 490,218 502,218" fill="none" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
 <path d="M474,140 C488,120 488,90 502,90" fill="none" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
 <rect x="690" y="56" width="110" height="188" rx="8" fill="#fff7ec" stroke="#c45100"/>
-<text x="745" y="104" text-anchor="middle" fill="#1d1d1f">The same</text>
-<text x="745" y="122" text-anchor="middle" fill="#1d1d1f">engine in all</text>
-<text x="745" y="140" text-anchor="middle" fill="#1d1d1f">three: the same</text>
-<text x="745" y="158" text-anchor="middle" fill="#1d1d1f">recording gives</text>
-<text x="745" y="176" text-anchor="middle" fill="#1d1d1f">the same</text>
-<text x="745" y="194" text-anchor="middle" fill="#1d1d1f">figures</text>
+<text x="745" y="104" text-anchor="middle" fill="#1d1d1f">Shared</text>
+<text x="745" y="122" text-anchor="middle" fill="#1d1d1f">measuring</text>
+<text x="745" y="140" text-anchor="middle" fill="#1d1d1f">engine</text>
+<text x="745" y="158" text-anchor="middle" fill="#1d1d1f">Match interval,</text>
+<text x="745" y="176" text-anchor="middle" fill="#1d1d1f">settings and</text>
+<text x="745" y="194" text-anchor="middle" fill="#1d1d1f">clock basis</text>
 <line x1="664" y1="82" x2="688" y2="82" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
 <line x1="664" y1="150" x2="688" y2="150" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>
 <line x1="664" y1="218" x2="688" y2="218" stroke="#6e6e73" stroke-width="1.5" marker-end="url(#a)"/>

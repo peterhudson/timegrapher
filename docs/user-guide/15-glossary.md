@@ -2,153 +2,259 @@
 
 ## Glossary
 
-**Allan deviation**: the scatter of averages of a reading, against how
-long each average is. On independent readings it falls steadily as the
-averaging time grows; see [Steadiness](08-over-time.md#the-views).
+**Allan deviation**: a measure of how successive averages differ, plotted
+against averaging duration. It helps distinguish short-term noise from
+behaviour that stops averaging away. It is not the standard deviation of
+all readings, nor a confidence interval on their mean. See
+[Allan Deviation](08a-steadiness.md#allan-deviation).
 
-**Amplitude**: how far the balance swings each way from rest, in degrees.
-Worked out from the time between the unlock and the drop, and the lift
-angle. See [How a Timegrapher Hears a Watch](01-how-it-works.md#amplitude).
+**Amplitude**: the angular excursion of the balance from equilibrium to
+a turning point, in degrees. Timegrapher estimates it acoustically using
+lift time, beat period and the supplied lift angle. See
+[Amplitude](01-how-it-works.md#amplitude).
 
-**Average Over**: how many seconds of beats each reading is fitted to; 10
-seconds unless you change it. See [Readings](05-readings.md#average-over).
+**Autocorrelation**: similarity between a series and a delayed copy of
+itself, as a function of the delay or **lag**. Repeated positive and
+negative lobes can reveal periodic structure.
 
-**Beat**: one tick of the watch: the balance knocking the lever across,
-once each way in each swing.
+**Average Over**: the interval used for the ordinary displayed readings.
+It does not set the independent analysis windows used in Steadiness and
+Isochronism. See [Average Over](05-readings.md#average-over).
 
-**Beat error**: how unevenly the Tick and the Tock are spaced, in
-milliseconds. Timed from the unlock (the usual reading), and also from
-the drop.
+**Banking**: the limits to the pallet lever's travel. Contact with the
+banking contributes to the final acoustic group of a beat.
 
-**Beat rate**: beats per hour (bph), counting Ticks and Tocks alike:
-28,800 for a balance swinging back and forth 4 times a second.
+**Beat**: one vibration, or half oscillation, of the balance. A complete
+back-and-forth oscillation contains two beats.
 
-**bph**: beats per hour.
+**Beat error**: the departure from equal spacing of alternating beats.
+The reported convention is half the difference between the long and
+short intervals. The main reading uses Unlock when available and the
+drop-based reference as a labelled fallback. See
+[Beat Error](01-how-it-works.md#beat-error).
 
-**Calibre**: the movement's model, such as a maker's number.
+**Beat rate / bph**: the number of beats per hour. A 4 Hz oscillator makes
+eight beats per second, or 28,800 bph. This nominal frequency is distinct
+from the measured gain or loss in s/d.
 
-**CH, CB, 3H, 6H, 9H, 12H**: the Swiss names of the positions: dial up
-(CH), dial down (CB), and for the upright positions the hour that points
-up. See [Positions](10-positions.md#the-six-positions).
+**Calibre**: a movement design or model designation. Catalogue information
+must be checked against the particular version being measured.
 
-**Clipping**: the loudest part of the sound cut flat at the top of the
-input's range. It moves the amplitude and beat error, not the rate.
+**CH, CB, 3H, 6H, 9H, 12H**: Swiss position notation. CH is dial up; CB is
+dial down. For vertical positions, the hour numeral named points upward.
+The correspondence with crown directions assumes a particular crown
+location. See [The Six Positions](10-positions.md#the-six-positions).
 
-**CUSUM**: a running sum of each reading's distance from the mean, which
-drifts away when the level changes.
+**Clipping**: truncation when the signal exceeds the recording system's
+available range. It can alter the envelope and compromise amplitude,
+beat error and, in severe cases, beat detection or rate.
 
-**D**: in a multi-position test, the largest difference between the
-positions' rates.
+**Confidence interval**: an interval constructed to have a stated
+coverage under specified assumptions. The app's ± estimates rely on a
+noise model; they do not include all systematic error or future changes
+in the watch. See [What the ± Means](05-readings.md#what-the--means).
 
-**dBFS**: decibels below the loudest sound the input can carry. 0 dBFS is
-the top; −10 dBFS is a third of the way down in amplitude.
+**CUSUM**: a cumulative sum of departures from a reference level. The
+Steadiness pane uses departures from the whole-series mean, normalised by
+short-term scatter and sample count. It highlights sustained changes;
+its vertical axis is not accumulated time gained.
 
-**Drop**: the third sound of a beat, when the next escape wheel tooth lands
-on the pallet stone. Usually the loudest.
+**Cycle folding**: assigning observations to their phase within a chosen
+period and overlaying successive cycles. A visible folded plot is not,
+by itself, evidence that the period was detected.
+
+**D**: the range of the measured position rates: fastest minus slowest.
+
+**dBFS**: decibels relative to full-scale digital signal amplitude. 0 dBFS
+is full scale; −10 dBFS is about 0.316 of full-scale amplitude. The
+normalised dB scale in the beat profile is a different reference.
+
+**Drop**: mechanically, the escape wheel's free advance after leaving
+one pallet's impulse face and before locking on the opposite pallet.
+The app's **Drop** label names the final acoustic group associated with
+locking and banking, and its detected marker.
 
 **DU, DD, CU, CD, CL, CR**: dial up, dial down, crown up, crown down,
-crown left, crown right.
+crown left and crown right. Record the physical orientation when crown
+location makes the shorthand ambiguous.
 
-**DH, DV**: in a multi-position test, the largest difference between the
-rates of the flat positions (DH) or of the upright ones (DV).
+**DH / DV**: the range of rates within the horizontal positions (DH) or
+within the vertical positions (DV).
 
-**Di**: in a multi-position test, the rate crown left (6H) less the rate
-dial up (CH).
+**Di**: crown-left rate minus dial-up rate, corresponding to 6H minus CH
+with the conventional crown-at-3-o'clock mapping.
 
-**DVH**: in a multi-position test, the mean of the upright positions less
-the mean of the flat ones, for rate and amplitude.
+**DVH**: the mean of the vertical-position results minus the mean of the
+horizontal-position results, calculated for rate and amplitude.
 
-**FFT**: a spectrum: the size of the cycle at each period in a series of
-readings.
+**Envelope**: a representation of the changing strength of an acoustic
+signal. The Tick Tock Profile displays aligned, averaged envelopes,
+not the balance's motion or a direct plot of escapement force.
 
-**Ie**: in a test made at full wind and again later (usually 24 hours),
-the size of the change in the mean rate.
+**FFT**: fast Fourier transform, an algorithm for resolving a sampled
+signal into frequency components. The FFT pane plots component size
+against period. Its units and amplitude convention depend on the series;
+see [FFT](08a-steadiness.md#fft).
 
-**Im**: in a test made at full wind and again later (usually 24 hours),
-the largest change in any position's rate, with crown right left out, as
-NIHS 93-10 takes it.
+**Harmonic**: a component at an integer multiple of a fundamental
+frequency. Twice the frequency means half the period. Several harmonics
+can belong to one non-sinusoidal repeating disturbance.
 
-**Impulse**: the second sound of a beat, when the escape wheel tooth
-pushes the lever.
+**Ie**: the absolute change in mean rate between the full-wind and later
+position tests, using positions present in both.
 
-**Jitter**: how far single beats land from the straight line the rate is
-fitted to, in microseconds. The spread of the dots on the Paper Strip.
+**Im**: the signed rate change with the largest absolute magnitude among
+eligible positions in the two tests; the 12H position is excluded by the
+convention used here. See [Comparing Full Wind and 24 Hours](10-positions.md#full-wind-against-24-hours).
 
-**Lift angle**: the angle the balance turns while it is in contact with
-the lever, set by the calibre's design. The amplitude is worked out from
-it. See [Calibres and Lift Angles](09-calibres.md).
+**Impulse**: energy transferred from an escape-wheel tooth acting on a
+pallet stone's impulse face, through the pallet lever and fork, to the
+balance's impulse pin. **Impulse** in the app is also the label for the
+corresponding acoustic group.
 
-**Ljung–Box test**: a test of whether a series of readings is correlated
-over several lags; a small p-value says the readings are not independent.
+**Impulse pin / roller jewel**: the jewel carried by the balance roller
+that engages with the pallet fork during unlocking and impulse.
 
-**NTP**: the Network Time Protocol, by which computers set their clocks
-from internet time servers.
+**Interquartile range (IQR)**: the interval between the 25th and 75th
+percentiles. In Isochronism it shows the middle half of the observations
+within a bin, not uncertainty in that bin's median.
 
-**Paper Strip**: the trace of one dot per beat, in the style of a printing
-timegrapher. See [The Paper Strip](06-paper-strip.md).
+**Isochronism**: constancy of oscillation period as amplitude changes.
+The app examines the observed relationship between rate and amplitude;
+that relationship alone does not isolate amplitude from other changing
+conditions. See [Isochronism](08b-isochronism.md).
 
-**ppm**: parts per million. A sound card clock 10 ppm off moves a rate by
-0.86 s/d.
+**Jitter**: scatter of individual beat times around a fitted timing model,
+usually expressed in microseconds. It can contain both physical
+variation and uncertainty in detecting the acoustic reference.
 
-**Rate**: how many seconds a day the watch would gain (+) or lose (−), in
-seconds per day (s/d).
+**Lift angle**: the balance's angular travel through the escapement's
+lift action. It is a movement-specific geometric input to the amplitude
+calculation, not an angle measured automatically from the microphone.
 
-**Session**: everything heard since you started listening, or one
-recording opened; also, on the command line, a multi-position test.
+**Ljung–Box test**: a test for serial correlation over a group of lags.
+A small p-value is evidence against the test's uncorrelated reference
+model, not the probability of a mechanical fault.
 
-**Settling**: the seconds after the watch is turned that are left out of
-the readings, while it steadies in its new position: 10 seconds in the
-app, 20 seconds in the Positions Test unless you change it, and 30 seconds
-of each take made by the command line's `record` (and so by Claude
-Desktop's `record_position`).
+**Locking face**: the surface of a pallet stone on which an escape-wheel
+tooth is held between releases. Distinguish it from the impulse face.
 
-**Signal**: how far the typical beat stands above the background noise,
-such as "signal 30×". Noise alone reads about 2×.
+**NTP**: Network Time Protocol, used to synchronise computer clocks. The
+quality of that reference affects calibration against system time.
 
-**Tick, Tock**: the two kinds of beat, one each way of the balance's
-swing. The Tick is the first beat the software hears. Ticks are blue,
-Tocks orange.
+**Oscillation**: one complete back-and-forth motion of the balance,
+containing two vibrations or beats.
 
-**Timing scatter**: how far the beats land from a straight-line fit, as a
-share of a beat. At 2% of a beat or more, no regular beat is found.
+**Paper Strip**: a trace of individual beat timing in the style of a
+printing timegrapher. Its slope follows rate relative to the selected
+reference. See [The Paper Strip](06-paper-strip.md).
 
-**True Clock**: the rate corrected for the sound card's own clock error.
-See [Readings](05-readings.md#true-clock).
+**Period**: the time taken for one repetition. In a spectrum it is the
+reciprocal of frequency: a 60-second period is 1/60 Hz.
 
-**Unlock**: the first sound of a beat, when the pallet stone lets go of
-the escape wheel tooth. The quietest of the three.
+**ppm**: parts per million. A reference-clock error of 10 ppm corresponds
+to about 0.864 s/d of rate error.
 
-**X, XH, XV**: in a multi-position test, the mean rate of all the
-positions (X), of the flat ones (XH, shown as H) and of the upright ones
-(XV, shown as V).
+**Rate**: the measured departure from nominal frequency, expressed as
+seconds gained (+) or lost (−) per day if that behaviour continued.
 
-## Sources
+**Reading-to-reading scatter**: a scale estimated from differences
+between neighbouring readings. It can be much smaller than whole-series
+SD when a level drifts slowly. It is not the uncertainty of the mean.
 
-The guide cites these documents. Where it gives a page, the page is the
-one the app's own texts cite.
+**Residual**: what remains after subtracting a fitted model. Timing
+residuals show beat departures after the overall rate and alternating
+side offset have been accounted for.
 
-- Witschi, *Measuring Technology and Troubleshooting for Watches*,
-  training course, doc. 71.1010D35e, rel. 1.1, 2010: the words early and
-  late for the Paper Strip (p. 6), and the 20, 200 and 400 ms spans of the
-  scope view (p. 12).
-- Witschi, *Testing Methods for Mechanical Watches*, doc. D40e, 2025: the
-  20-second stabilisation time used by the Positions Test (measurement
-  tips, about p. 34) and the multi-position characteristic values.
-- NIHS 93-10: the Im value, the largest change in rate between full wind
-  and 24 hours, with crown right left out.
-- tg, the open-source timegrapher
-  ([github.com/vacaboja/tg](https://github.com/vacaboja/tg)): the reference
-  the engine is checked against. Its beat error is timed from the unlock,
-  its Paper Strip runs down, and its amplitude uses the same formula.
-  Timegrapher contains none of its code. See
-  [Validation](../validation.md).
-- The calibre list's own sources, given with each calibre in
-  [Manage Calibres](09-calibres.md#reading-a-calibres-entry) and in
-  `timegrapher calibres NAME`.
+**Sample clock**: the clock determining the audio sampling rate. It
+provides the immediate time reference for measurements from the audio.
 
-The [watchmaker skill](../../skills/watchmaker/SKILL.md) and its
-reference pages cite the sources it uses to interpret the figures, with
-the page for each.
+**SD**: standard deviation, a measure of spread around the mean. A large
+SD may arise from noise, drift, steps or cycles; it does not identify
+which of those occurred.
+
+**Session**: in the desktop app, a live acquisition or opened recording
+with its associated state. In the command-line `session` command, a set
+of position takes analysed together.
+
+**Settling**: time excluded after changing position before taking a
+measurement. An ordinary position change uses ten seconds; the guided
+Positions Test defaults to twenty seconds and allows adjustment. A new
+session created by CLI `record` or MCP `record_position` defaults to
+thirty seconds per take; existing manifest settings can differ.
+
+**Signal**: the reported ratio of a typical beat's strength to the
+background estimate. It helps assess acquisition, but is not a direct
+signal-to-noise measurement of every feature needed for amplitude.
+
+**Tick / Tock**: the software's names for alternating beats, coloured
+blue and orange. They do not establish which pallet is involved and may
+exchange on reacquisition.
+
+**Timing scatter**: fit residual scatter expressed relative to the beat
+period. Too much scatter prevents a regular-beat result; it is separate
+from amplitude and from the long-term stability of the watch.
+
+**True Clock**: the rate after applying an estimate of sample-clock error.
+The name describes a correction, not a guarantee of absolute accuracy.
+See [True Clock](05-readings.md#true-clock).
+
+**Unlock**: release of the escapement initiated by the balance impulse
+pin moving the pallet fork. The first acoustic group begins with the
+pin's contact with the fork; its detected marker is an acoustic estimate,
+not a direct observation of the tooth leaving the locking face.
+
+**Vibration**: one half oscillation of the balance; one beat.
+
+**X / XH / XV**: the mean rate of all measured positions (X), horizontal
+positions (XH, also shown as H), or vertical positions (XV, also shown as V).
+
+## Sources and Further Reading
+
+The mechanical definitions, measurement conventions and statistical
+methods below have different kinds of evidence. The sources explain the
+principles; the behaviour of this particular app was checked against its
+implementation. A source describing a commercial instrument does not
+establish that Timegrapher has the same performance.
+
+- **Witschi, _Measuring Technology and Troubleshooting for Watches_,
+  training course, document 71.1010D35e, release 1.1 (2010).**
+  [PDF hosted by Welwyn Watches](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf).
+  Printed pp. 5–6 explain the three acoustic groups; p. 7 covers rate,
+  amplitude and beat error. Page references here are the printed numbers,
+  not a PDF viewer's one-based page count.
+- **Horopedia, _Distribution Mechanism — Swiss Lever Escapement_.**
+  [Illustrated mechanical sequence](https://horopedia.org/distribution-mechanism-swiss-lever-escapement/).
+  Particularly useful for separating the tooth's action on the pallet
+  stone, drop, locking and the lever's run to the banking.
+- **Witschi, _Testing Methods for Mechanical Watches_ (2025).**
+  [Official PDF](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf),
+  available from Witschi's [training resources](https://www.witschi.com/en/service/uhrmacherinnen/).
+  Printed p. 28 describes Im and Ie; p. 33 gives practical measurement
+  advice. The NIHS 93-10 convention discussed in this guide is based on
+  Witschi's account; this guide does not reproduce or independently
+  establish compliance with that standard.
+- **W. J. Riley, _Handbook of Frequency Stability Analysis_, NIST Special
+  Publication 1065 (2008).**
+  [NIST PDF](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication1065.pdf).
+  Section 5.2.4 covers overlapping Allan variance. This is background for
+  understanding the statistic, not a claim that the app's watch data are
+  a laboratory frequency standard.
+- **tg, the open-source timegrapher.**
+  [Source repository](https://github.com/vacaboja/tg).
+  The project uses it as an independent measurement comparison; see
+  [Validation](../validation.md) for what was compared and the limits
+  of that evidence.
+- **Movement-specific references.** Each catalogue entry records its
+  own sources. Read them through **Manage Calibres…** or
+  `timegrapher calibres NAME`, particularly when verifying lift angle,
+  tooth counts or a movement variant.
+
+For the implementation's statistical choices and validation, read
+[Measurement Precision](../measurement-precision.md),
+[Time-Series Analysis](../series.md) and [Long Runs](../long-runs.md).
+The [watchmaker skill](../../skills/watchmaker/SKILL.md) has further
+references for interpreting observations in the context of a watch.
 
 ---
 

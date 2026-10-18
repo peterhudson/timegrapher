@@ -1,165 +1,169 @@
 # 11. Sessions and Recordings
 
-Everything the app hears is kept as it comes in. You can save it, open it
-again later, and look back through it, live or not. This chapter covers
-sessions from the microphone, saved takes, and opening recordings made by
-the app or by anything else.
+A saved recording lets you return to a result, inspect the sound behind
+it, or apply a corrected lift angle without asking the watch to repeat
+its behaviour. Save the context with the audio: a file of clear ticks is
+much less useful if its position, winding state or settings are unknown.
 
 ## A Session from the Microphone
 
-A **session** is everything heard since you started listening: the sound,
-the beats, the readings and the positions.
+**Start** or **Listen to a Watch** begins capture. The app retains audio
+and analysis as the session grows. **Stop** releases the microphone and
+keeps the session available for review. **Resume** continues it, and
+**New Session** clears the current session after any required save prompt.
+With the desktop update accompanying this guide, it is also available
+while listening: microphone capture continues into a fresh session. It
+stops a replay. Earlier builds require stopping microphone capture first.
 
-- **Start** (or **Listen to a Watch**) begins a session from the microphone.
-  Opening the app never touches the microphone; only Start does.
-- **Stop** stops listening and lets go of the microphone, so another
-  program can use it, and keeps everything: the readings, strip, charts
-  and the sound so far.
-- **Resume** carries on in the same session. The strip and charts leave the
-  stopped time out, and the readings start from the beats after the stop.
-- **New Session** clears everything for the next watch or position.
-  Pressed while listening, listening carries on into the new session.
+![Stopped microphone controls: Resume, New Session and Save](images/stopped-buttons.png)
 
-![The Watch pane after Stop: Resume, New Session and Save… under the microphone menu](images/stopped-buttons.png)
+A pause is an analysis boundary. Current readings do not reach back across
+it. The strip and charts omit stopped time, so their elapsed time is not
+necessarily the wall-clock time between the first and last capture.
+Keep that distinction in mind for an overnight run or a comparison made
+many hours after winding.
+
+Use the Position control for a position change within one session. A new
+watch is a good reason for a new session, with its identity and settings
+checked afresh.
 
 ### Looking Back
 
-Once you stop, a **Time** slider appears under the readings. Drag it, or
-drag along the Paper Strip, to look back to any moment: the readings, the
-Tick Tock Profile and the Scope all show that moment. Stopped during a
-move's settling time, the Rate card gives the reading from before the move,
-and says so.
+After stopping, use the **Time** slider below the readings or drag along
+the Paper Strip. The cards, profile and Scope follow the selected moment.
+If capture stopped during settling after a move, the app can retain the
+last reading from before the move and labels it accordingly.
 
-![The Time slider under the readings, at the end of a 1 minute 41 second session](images/time-slider.png)
+![Time slider selecting a moment in the captured session](images/time-slider.png)
+
+Steadiness and Isochronism are different: moving the time cursor does not
+restrict them to the selected moment. They analyse the eligible history
+for the chosen position. See [Steadiness](08a-steadiness.md).
 
 ## Saving
 
-Everything heard is kept as it comes in, so you can save at any time,
-listening or stopped:
+You can save while listening or after stopping:
 
-- **Save…** asks for a folder and copies the session into a folder of its
-  own inside it.
-- **Save Again** (Ctrl+S) brings that copy up to date later without asking
-  again.
-- **Save As…** (Ctrl+Shift+S) copies the session to a new folder of your
-  choosing, which Save Again then keeps up to date.
+| Action | Result |
+| --- | --- |
+| **Save…** | Choose a parent folder; the app creates a session folder inside it |
+| **Save Again** / Ctrl+S | Update the previously chosen saved copy |
+| **Save As…** / Ctrl+Shift+S | Make a copy at a new destination and use that destination for subsequent Save Again actions |
 
-Sound that hasn't been saved is never thrown away without asking: New
-Session, opening or replaying a recording, and closing the window all ask
-whether to save it first.
+Use Cmd on macOS. A save captures the session available at that point.
+If recording continues, save again to include the new audio and context.
+A successful earlier save does not mean the destination is continuously
+updated in the background.
+
+New Session, opening or replaying another recording, and closing the app
+prompt before unsaved audio is discarded. Those prompts are useful, but
+saving deliberately is the better way to preserve an important take.
 
 ### What a Saved Take Holds
 
-Each saved take is a folder named after its start time, then the watch's
-name and calibre when they are set, such as
-`2026-10-08T21-30-00_Test-watch_Rolex_3235`. It holds:
+The folder name includes its start time and, when supplied, the watch name
+and calibre. For example:
+`2026-10-08T21-30-00_Test-watch_Rolex_3235`.
 
-| File | Contents |
+| File | Purpose |
 | --- | --- |
-| `audio-001.wav`, … | The sound as captured, in files of at most an hour each; listening again after a pause starts a new file |
-| `clock.csv` | The computer's clock against the sound captured, every 10 seconds, used to correct the sound card's clock in a long run |
-| `session.json` | The watch, position, lift angle, beat rate, input, start and end, position changes, pauses, and the readings at the end |
-| `session.toml` | The session file the command line reads: watch, calibre, lift angle, beat rate, and one entry for each stretch in one position |
-| `positions-test.json` | Only after a Positions Test run just after winding: its results, for the test 24 hours later |
+| `audio-001.wav`, … | Captured sound in segments of at most an hour; resuming after a pause starts a new file |
+| `clock.csv` | Periodic pairs of captured-audio time and computer time, for clock analysis |
+| `session.json` | App context, watch details, positions, pauses and end-of-session readings |
+| `session.toml` | Analysis manifest used by the command line, including recording intervals and settings |
+| `positions-test.json` | Full-wind Positions Test results when available, for a later comparison |
 
-The positions are not in the folder's name; `session.json` and
-`session.toml` say where the watch was and when. Keeping the sound means a
-take can be analysed again later, with a newer version of the software. The
-sound files are brought up to date every 10 seconds, so a take survives the
-program being stopped abruptly.
+Keep the folder together. Copying only the WAV files loses context that
+can affect interpretation. Position is recorded in the manifests rather
+than encoded as a single label in the folder name, since one take can
+contain several positions.
+
+During capture, the app flushes the audio files periodically, approximately
+every ten seconds. This improves recoverability after interruption; it
+is not a guarantee that the last samples or all metadata survive a crash.
 
 ## Opening a Recording
 
-Timegrapher reads **WAV** and **FLAC** recordings, from the app or from any
-other program. Choose **Recording** at the top of the Watch pane, then:
+The app reads **WAV** and **FLAC**. Select **Recording** in the Watch pane
+and use **Open…** or **Open Folder…**. The File menu and welcome screen
+provide equivalent opening actions. You can also enter a path and press
+Enter, or drop a supported file or folder onto the window where the
+desktop supports it. Linux drag-and-drop currently works through X11,
+not Wayland.
 
-- **Open…** (or **Open a Recording…** on the welcome screen, or File →
-  **Open Recording…**, Ctrl+O) opens one file;
-- **Open Folder…** (or **Open a Folder…**, or File → **Open Folder…**)
-  opens a saved take, or a long take saved as a folder of files;
-- or type a path into the box and press Enter.
+Opening a recording analyses the whole input. A progress view reports the
+duration processed and offers **Cancel**.
 
-Dropping a file or folder on the window opens it too, on Windows, macOS
-and Linux desktops that pass dropped files to the app (X11, but not yet
-Wayland).
-
-A recording opens **analysed all at once**, which is how to look back
-through a take. The main area shows how far the analysis has got, in hours
-of sound and time left, with **Cancel**:
-
-![Analysing test-watch-2h (12 files): a progress bar at 12%, 14:06 of 2:00:00 of sound analysed, about 0:26 to go](images/analysing.png)
+![Progress while analysing a folder of recording segments](images/analysing.png)
 
 ### The Watch's Details
 
-When a recording or folder has a `session.toml` beside it (or in it) that
-lists it, opening it takes back the watch's name, the calibre, the lift
-angle, the beat rate and the position stretches, so the strip and charts
-mark them and Steadiness tests each position on its own.
+If an associated `session.toml` lists the input, the app restores its
+watch name, calibre, lift angle, beat rate and position intervals. Check
+these details after opening, especially for folders assembled outside
+the app.
 
-Without one, a recording opens with the settings at their defaults (no
-name or calibre, 52°, the beat rate found, Dial Up), so nothing carries
-over from the last recording, and you set them under Watch. A position
-named as a word of its own in the file or folder name, such as
-`reverso_DU_01.flac`, is taken from the name, and the status line says so.
+Without a matching manifest, defaults apply: no watch name or calibre,
+52° lift angle, automatic beat rate and Dial Up unless a recognised
+position token is found in the file or folder name. For example, `DU`
+in `watch_DU_01.flac` can supply the position. A filename is a useful hint,
+not evidence that the watch was actually held that way.
 
 ### A Folder of Segments
 
-A long take saved as a folder of files (the app's hourly files, or an
-overnight run split into 10-minute FLAC files) opens as one recording. Its
-files are joined end to end in the order its `session.toml` lists them,
-or, without a list, in natural name order, where a run of digits counts as
-a number (`part2` before `part10`). The files' dates never change the
-order, but when a file was written earlier than the one before it, the app
-says so, so a wrongly named file can be spotted.
+Segments open as a single recording. The app follows the order in the
+manifest when one is supplied, otherwise natural filename order:
+`part2` precedes `part10`. File modification dates do not determine order.
+If dates suggest an inconsistency, the app reports it so that you can
+check the sequence.
 
-A sixteen-hour night takes some minutes to analyse; the window shows the
-hours done, the time left and the files in order.
+Natural sorting cannot recover missing metadata. For a folder assembled
+by hand, verify order, continuity and position changes before using its
+long-term plots. Renaming segments carelessly can turn a real timeline
+into an artificial one.
 
 ## Replay
 
-**Replay** plays a recording through the app as if the watch were on the
-microphone: the strip draws, the readings move, and everything works as it
-does live. A folder plays its files one after another.
+**Replay** feeds a recording through the live-style display progressively.
+It does not require the microphone. A folder replays its segments in
+sequence. **Replay Speed** ranges from 0.5× to 16× and controls display
+progress, not the audio time scale used to calculate the watch rate.
 
-- **Replay Speed** runs from half to 16 times the recording's own speed,
-  and can change while it plays. The readings are the same at any speed.
-- **Stop** stops the replay.
-- **Analyse All**, shown during a replay and after it, goes back to the
-  whole recording analysed at once, without opening it again and keeping
-  the settings under Watch.
+**Stop** stops replay. **Analyse All**, available during or after replay,
+returns to full-recording analysis without reopening the file and keeps
+the current Watch settings. Compare the same selected interval when
+checking Replay against Analyse All: a trailing live-style reading and
+a whole-take summary answer different questions.
 
-Replay is a good way to learn the app without a watch on the microphone,
-using the recordings in the project's public
-[test corpus](https://github.com/peterhudson/timegrapher-corpus). The
-screenshots in this guide were made that way.
-
-Replaying or analysing a recording never touches the microphone. Choosing
-**Recording** while a stopped microphone session is in hand keeps that
-session; **Microphone** brings it back.
+Selecting Recording while a stopped microphone session is retained does
+not by itself discard that session; switching back to Microphone restores
+it. Opening another input is the action that may require the save prompt.
 
 ## Long Takes
 
-The app is happy to listen for hours. For the longest runs:
+For a long measurement, establish the signal and settings first, prevent
+sleep, and save early. Keep enough disk space for the raw audio and saved
+copy. Avoid moving the watch, changing input routing or adjusting gain
+midway unless that change is part of the experiment and is recorded.
 
-- Keep the computer from sleeping, and leave other programs off the
-  microphone.
-- Save early with **Save…**; **Save Again** keeps the copy up to date.
-- Measure your sound card's clock once (see
-  [True Clock](05-readings.md#true-clock)), so long-run rates can be
-  corrected onto true time.
-- Open the saved folder later with the command line's `timegrapher long`
-  for a report over hours or days (see
-  [The Command Line](12-command-line.md#long)).
+A continuous run is especially valuable for
+[Isochronism](08b-isochronism.md). For reports over hours or days, the
+command-line [long](12-command-line.md#long) and
+[series](12-command-line.md#series) commands process the saved input in
+bounded memory. A suitable clock log can correct the time basis during
+that analysis.
 
 ## If Saving Fails
 
-If keeping the sound or closing a recording fails, for example because
-the disk is full, capture stops and the app shows the scratch folder it
-was using, with a warning that stays. Copy that folder somewhere outside
-the system's temporary folder before trying to recover anything from it:
-it may hold incomplete sound. Resume and Save are unavailable for that
-session, so an earlier saved take stays as it was. Once the problem is
-fixed, start a new session.
+If writing or finalising captured audio fails, capture stops and the app
+shows the scratch folder with a persistent warning. Copy that folder to
+a safe location before attempting recovery; some files may be incomplete.
+Resume and Save are unavailable for that failed session so an earlier
+saved take is not silently replaced. Resolve the storage problem, then
+start a new session.
+
+When reporting a failure, include the exact message and whether the earlier
+saved copy still opens. See [Problems and Reports](14-problems-and-reports.md).
 
 ---
 

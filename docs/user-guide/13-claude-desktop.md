@@ -1,109 +1,127 @@
 # 13. Claude Desktop
 
-The Claude Desktop extension lets Claude, Anthropic's AI assistant, use
-Timegrapher for you in a chat. You can ask it, in your own words, to check
-your microphone, record your watch in each position, read a recording, or
-explain a figure, and it runs the measurements and talks you through them.
+The Timegrapher extension gives Claude access to the measuring engine on
+your computer. You can ask it to analyse a saved recording, compare
+positions, or guide a test at the bench. It runs a measurement tool and
+receives the result, then explains that result in the conversation.
 
-It is also where **interpretation** lives. The app and the command line
-only measure. The extension carries the
-[watchmaker skill](../../skills/watchmaker/SKILL.md), a guide for AI
-assistants written for this project, which reads the figures against
-published sources (such as Witschi's training documents) and cites each
-source it uses. So if you want to know what the figures mean for your
-watch, this is the place to ask, and you can check every source it gives.
+This can be useful when several observations need to be considered
+together. For example, a periodic change in amplitude may deserve a look
+at the beat profiles, the rate spectrum and a second recording before
+suggesting a mechanical cause. The assistant can help organise that
+investigation. Its explanation is still an interpretation: ask it to
+separate measured facts, assumptions and possible causes.
 
-## What You Need
+## Installing the Extension
 
-- **Claude Desktop** on a Mac or a Windows PC, signed in to your Claude
-  account.
-- The extension, `Timegrapher.mcpb`, in the **Claude Desktop** folder of
-  the macOS or Windows download (on Windows, extract the whole zip first).
-  It holds both the server and the command line tool, so nothing else needs
-  installing. The Linux download has no extension; see
-  [Other Chat Apps](#other-chat-apps).
+Use Claude Desktop on macOS or Windows and the `.mcpb` extension for your
+system from the Timegrapher download: **Claude Desktop/Timegrapher.mcpb**.
+On Windows, extract the whole zip first. The bundle includes both the
+local server and the command-line program. You do not need to build them.
+The Linux download supplies the programs in **Command Line**, but has no
+Claude Desktop extension bundle.
 
-## Install
+In Claude Desktop, open **Settings → Extensions → Advanced settings →
+Install Extension…**, select the `.mcpb`, and follow the installation
+prompts. The extension is unsigned; review its origin and requested
+access. If the tools do not appear, quit and reopen Claude Desktop.
+Organisation policies may restrict local extensions. Anthropic maintains
+the [current installation instructions](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
 
-1. Double-click the `.mcpb` file, or drag it into Claude Desktop's window.
-   Or open Claude Desktop's settings, choose **Extensions**, then
-   **Advanced settings**, then **Install Extension…**, and pick the file.
-2. Choose **Install**. The extension is not signed, so Claude Desktop says
-   so while installing it; that is expected.
-3. The Timegrapher tools appear in the chat's tools menu.
+The Timegrapher tools should then be available in the chat's tools menu.
+The **Test My Watch** prompt starts a guided workflow using the project's
+[watchmaker skill](../../skills/watchmaker/SKILL.md). The skill asks the
+assistant to establish the watch and measurement conditions, use published
+references, and cite the sources behind its interpretation.
 
-## Test a Watch in a Chat
+Tool approval behaviour depends on Claude Desktop's settings and the
+permissions you grant. Check those settings before a session; do not
+assume that every individual operation will always produce a new prompt.
 
-The easiest start is the **Test My Watch** prompt, from the same tools
-menu. It runs the skill's step-by-step test: it asks about the watch and
-its calibre, checks the microphone, has you wind the watch, and then leads
-you through the six positions, telling you how to place the watch each
-time and waiting for you to say it's ready.
+## A Useful First Conversation
 
-Or just ask, for example:
+Start with a saved recording whose conditions you know. Give its **full
+local path**, the position, calibre, lift angle and winding state. For
+example:
 
-> Here is a recording of my watch, dial up:
-> /Users/you/Recordings/watch_DU.flac. What do the figures say?
+> Analyse /Users/you/Recordings/watch_DU.flac. It is a Swiss lever watch
+> at 28,800 bph, lift angle 55°, dial up, recorded ten minutes after full
+> winding. Tell me the measurement settings and clock basis. Then explain
+> what is measured reliably and what needs closer inspection.
 
-> Check my microphone before I start.
+For a longer recording:
 
-> Record my watch in all six positions and give me the results.
+> Check steadiness over this recording. Compare the readings over time,
+> autocorrelation and period search. If you find a candidate cycle, tell
+> me its period, size, how many cycles were observed, and whether it
+> persists through the take. Treat wheel matches as hypotheses.
 
-Claude Desktop asks before running each tool, so nothing runs without you
-seeing it first. Give full paths to recordings and folders.
+For a live positions test, specify the recording and settling durations.
+The guided workflow should explain each orientation and wait for you to
+position the watch before recording it. State unusual crown arrangements
+explicitly; **crown left** is not enough to establish a Swiss hour position
+for every case design.
 
-## What It Can Do
+## The Available Tools
 
-| Tool | What for |
+| Tool | Use |
 | --- | --- |
-| `check_microphone` | Listens a few seconds and states the level, clipping, automatic gain and noise; **uses the microphone**, changes nothing |
-| `list_sound_inputs` | The computer's sound inputs |
-| `record_position` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |
-| `run_session` | A multi-position test from a folder of takes, with the characteristic values; writes `report.html` |
-| `analyze_recording` | Rate, amplitude and beat error of one recording in one position |
-| `tick_tock_profile` | The Tick and Tock sounds with the marks the engine measured |
-| `beat_shape` | Unlock, impulse and drop of each side's beat |
-| `check_steadiness` | How the rate, amplitude and beat error move over a long recording, with the statistics |
-| `long_run` | Rate and amplitude over hours, and the wheel behind a periodic change; writes `report.html` |
-| `check_recording` | A recording's level, clipping, automatic gain and noise |
-| `list_calibres` | A calibre's beat rate, lift angle and train |
-| `make_report_bundle` | A zip for a GitHub issue, saved in your home folder unless you name another |
-| `read_guide` | The watchmaker skill and its pages, for Claude to read |
+| `analyze_recording` | Measure a saved recording's rate, amplitude and beat error |
+| `tick_tock_profile` | Inspect the averaged Tick and Tock envelopes and measured markers |
+| `beat_shape` | Examine the timing and shape of the acoustic groups |
+| `check_steadiness` | Analyse variation, correlation and periodic behaviour in a long recording |
+| `long_run` | Follow a long recording and search for periodic components; write an HTML report |
+| `check_recording` | Check a saved recording's level, clipping and other acquisition conditions |
+| `check_microphone` | Capture a short microphone test and report the input conditions |
+| `record_position` | Record one position into a test folder |
+| `run_session` | Analyse a folder of position takes and write a report |
+| `list_sound_inputs` | Inspect available sound inputs |
+| `list_calibres` | Look up movement settings, train information and sources |
+| `make_report_bundle` | Save a diagnostic bundle locally; specify a destination or it uses the home folder |
+| `read_guide` | Read the watchmaker skill and its reference pages |
 
-Each tool runs the `timegrapher` command line and passes back exactly what
-it prints, so the figures are the same as the app's and the command
-line's for the same recording. In Claude Desktop, several tools also show
-their results as charts in the conversation, drawn the way the app draws
-them: the live readings and paper strip while `record_position` records,
-the readings and Tick and Tock profiles of a recording, a session's
-positions, and the Steadiness views.
+Several tools also display charts in the conversation. These can make a
+pattern easier to discuss, but the chart and the assistant's description
+should agree with the returned measurements.
 
-A calibre you added in the app can be used by name here too.
+The tools call the same command-line engine used elsewhere in Timegrapher.
+Agreement with the desktop app requires matching the **recording interval,
+beat rate, lift angle, averaging and clock correction**. In particular,
+`check_steadiness` and `long_run` use a selected calibre for wheel naming;
+that does not automatically apply its lift angle. Supply the correct
+numeric settings, and have the assistant report what it actually used.
+Custom calibres saved in the app are available to these local tools too.
 
-## What It Never Does
+## What Happens to the Recording
 
-- **It never uploads your recordings.** The tools run on your computer and
-  pass back their measurements as text. Those measurements become part of
-  your chat with Claude, like anything else you write there.
-- **It never changes your computer's sound settings.** `check_microphone`
-  states what it measured; any change is yours to make.
-- **It uses the microphone only** for `record_position` and
-  `check_microphone`, and only for the seconds asked.
-- A report bundle is a file on your computer that you attach to an issue
-  yourself.
+The measuring programs run locally. Their ordinary analysis tools read
+the audio on your computer and return measurements and chart data to the
+chat; they do not upload the audio as part of analysis. Those returned
+results become part of your conversation with the chat service.
 
-## Other Chat Apps
+`check_microphone` and `record_position` capture audio. File-analysis tools
+work on existing recordings; input discovery may query or open devices
+to inspect their capabilities. The microphone check reports sound
+settings rather than changing them.
 
-Any chat app or editor that runs local MCP servers can use the server,
-`timegrapher-mcp`, which is in the download's **Command Line** folder beside
-the command line tool. Give the app its full path as the command, with no
-arguments, and keep `timegrapher` beside it. [The MCP server](../mcp.md) has the details,
-including adding it to Claude Desktop by hand and
-[what to check when it does not work](../mcp.md#when-it-does-not-work).
+A diagnostic bundle can contain audio. Making one saves a local file;
+submitting it to GitHub, attaching a recording to a chat, or sharing a
+report is a separate action. Review and listen to anything you choose to
+share. See [Problems and Reports](14-problems-and-reports.md).
 
-Assistants that can run commands themselves, such as Claude Code, can use
-the `timegrapher` command line directly with the watchmaker skill; see
-[the agent interface](../agent-interface.md).
+## Other Assistants and Updates
+
+A client that supports local MCP servers over standard input/output can
+run `timegrapher-mcp` from the download's **Command Line** folder. Keep
+the matching `timegrapher` executable beside it
+and use the server's full path as the command. The [MCP documentation](../mcp.md)
+gives configuration details. Assistants that can run shell commands can
+use the [command line](12-command-line.md) and watchmaker skill directly.
+
+The extension contains its own binaries. Updating the desktop Timegrapher
+app does not by itself update an already installed extension. Install the
+new extension bundle when updating that route, and compare reported
+versions if two interfaces disagree.
 
 ---
 

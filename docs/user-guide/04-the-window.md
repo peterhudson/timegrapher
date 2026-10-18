@@ -1,146 +1,110 @@
 # 4. The Window
 
-This chapter is a tour of the app's window: where things are, how to get
-help on any of them, and how to arrange the panes the way you like.
+The window is arranged around three tasks: setting up the watch, watching
+its current behaviour, and reviewing the recording. You can rearrange it
+for the job at hand. A wide strip and small profile suit a quick timing
+check; an overnight recording benefits from larger charts and analysis
+panes.
 
-![The whole window while a recording plays: menus and pane icons at the top, the five reading cards, the Watch pane on the left, the Paper Strip in the middle, and the Tick Tock Profile and charts on the right](images/main-window.png)
+![The main window with the Watch pane, reading cards, Paper Strip, profile and charts](images/main-window.png)
 
-From top to bottom:
-
-1. **The menu bar**, with the pane icons beside the menus.
-2. **The readings**: five cards across the top. See
-   [Readings](05-readings.md).
-3. **The time slider**, once you have stopped listening or opened a
-   recording, to look back through the session.
-4. **The panes**: the Watch pane, the Paper Strip, the Tick Tock Profile,
-   the charts and the others described below.
-5. **The status line** along the bottom.
+At the top are the menus, pane icons and reading cards. The panes occupy
+the central area; the status line runs along the bottom. After capture
+stops, or when a recording is opened for analysis, a **Time** slider below
+the readings selects an earlier moment.
 
 ## The Menu Bar
 
-**File**
+| Menu | Main actions |
+| --- | --- |
+| **File** | **Open Recording…**, **Open Folder…**, **Save… / Save Again**, **Save As…**, **New Session** (also while listening), **Quit** |
+| **View** | Show or hide readings and panes, choose Steadiness panes, **Reset Panes**, and select **Appearance** |
+| **Help** | **Check for Updates…**, **Check for Updates at Start**, **Report a Problem…** and, on Linux, **Add to Applications Menu** |
 
-- **Open Recording…** (Ctrl+O) and **Open Folder…** open a recording,
-  analysed all at once. See
-  [Sessions and Recordings](11-sessions-and-recordings.md).
-- **Save…** (Ctrl+S) copies the session into a folder of its own;
-  afterwards it becomes **Save Again**, which brings that copy up to date.
-  **Save As…** (Ctrl+Shift+S) copies it to a new folder.
-- **New Session** clears everything for the next watch. Pressed while
-  listening, listening carries on into the new session.
-- **Quit** (Ctrl+Q).
+The main shortcuts are **Ctrl+O** for Open Recording, **Ctrl+S** for Save
+or Save Again, **Ctrl+Shift+S** for Save As, and **Ctrl+Q** for Quit. Use
+Cmd on macOS.
 
-**View**
+**Appearance: Auto** follows the system's light or dark preference;
+**Light** and **Dark** override it. The update check asks GitHub about
+published releases and offers a link when one is available. Downloading
+and installing remain separate actions. See
+[Problems and Reports](14-problems-and-reports.md#settings-logs-and-updates).
 
-- A tick for the readings and for each pane, to show or hide it.
-- **Steadiness**, a submenu with a tick for each Steadiness view.
-- **Reset Panes** puts every pane back where it started.
-- **Appearance**: **Auto** follows your computer's light or dark setting;
-  **Light** and **Dark** override it.
+## Finding a Pane
 
-**Help**
+The icons beside the menus show or hide panes. Hover for a name; an active
+icon indicates that the pane is shown. They are grouped into the main
+views, Charts, Distributions and Steadiness. The same choices are available
+in View, so you do not need to memorise the icons.
 
-- **Check for Updates…** asks GitHub whether a newer version has been
-  published, and says what it found.
-- **Check for Updates at Start** (on unless you turn it off) makes the
-  same check, quietly, each time the app starts, and shows a banner only
-  when there is a newer version. The banner's **Download** button opens
-  the release's page in your browser; nothing is downloaded or installed
-  by the app. The request carries no account or identifier.
-- **Report a Problem…** makes a report to attach to a GitHub issue. See
-  [Problems and Reports](14-problems-and-reports.md).
-- **Add to Applications Menu** (Linux only) puts the app and its icon in
-  your desktop's applications menu.
-
-## The Pane Icons
-
-Beside the menus is a row of icons, one for each pane. Click an icon to
-show or hide its pane. Rest the pointer on an icon to see the pane's name.
-An icon is lit while its pane is showing. The icons are grouped: the
-panes of the main view first, then **Charts**, **Distributions** and
-**Steadiness**.
-
-## The Panes
-
-| Pane | What it shows | Chapter |
+| Pane | Purpose | Guide |
 | --- | --- | --- |
-| **Watch** | The microphone or recording, and the watch's name, calibre, beat rate, lift angle and position | [3](03-microphone.md), [9](09-calibres.md), [10](10-positions.md) |
-| **Paper Strip** | One dot per beat, the classic timegrapher trace | [6](06-paper-strip.md) |
-| **Tick Tock Profile** | The typical sound of a Tick and of a Tock, with the marks the readings come from | [7](07-sound-of-the-beat.md) |
-| **Scope** | The sound itself, beat by beat | [7](07-sound-of-the-beat.md) |
-| **Rate**, **Amplitude**, **Beat Error** | Each reading over time | [8](08-over-time.md) |
-| **Rate Distribution**, **Amplitude Distribution**, **Beat Error Distribution** | How each reading's values spread (hidden at first) | [8](08-over-time.md) |
-| **Readings Over Time**, **Periods**, **Cycle**, **Autocorrelation**, **Allan Deviation**, **CUSUM**, **FFT** | The Steadiness views: how each reading changes over the session | [8](08-over-time.md) |
-| **Isochronism** | The rate against the amplitude as the watch runs down | [8](08-over-time.md) |
-| **Positions Test** | The guided test through six positions | [10](10-positions.md) |
+| **Watch** | Input, watch identity, calibre, lift angle, beat rate and position | [Microphone](03-microphone.md), [Calibres](09-calibres.md) |
+| **Paper Strip** | Beat timing and fitted-rate overlays | [Paper Strip](06-paper-strip.md) |
+| **Tick Tock Profile** | Combined acoustic envelopes and measured edges | [Sound of the Beat](07-sound-of-the-beat.md) |
+| **Scope** | Individual filtered waveforms | [Sound of the Beat](07-sound-of-the-beat.md#the-scope) |
+| **Rate**, **Amplitude**, **Beat Error** | Ordinary charts against time | [Over Time](08-over-time.md#the-charts) |
+| **Rate Distribution**, **Amplitude Distribution**, **Beat Error Distribution** | Values without their time order | [Distributions](08-over-time.md#distributions) |
+| **Readings Over Time**, **Periods**, **Cycle** | Steadiness data and periodic structure | [Steadiness](08a-steadiness.md) |
+| **Autocorrelation**, **Allan Deviation**, **CUSUM**, **FFT** | Correlation, averaging behaviour, level changes and spectral size | [Steadiness](08a-steadiness.md) |
+| **Isochronism** | Rate versus amplitude and a run-down comparison | [Isochronism](08b-isochronism.md) |
+| **Positions Test** | Guided measurements in six positions | [Positions](10-positions.md) |
 
-### Arranging the Panes
+**Rate** and **Readings Over Time** are different panes. Rate follows the
+chosen chart averaging interval and time navigation. Readings Over Time
+belongs to Steadiness, with fixed analysis intervals and its own data
+selection. The same distinction matters when comparing their amplitude
+and beat-error displays.
 
-- **Move** a pane by dragging its tab: drop it beside, above or below
-  another pane, or onto another pane's tab to stack them as tabs.
-- **Resize** panes by dragging the gaps between them.
-- **Hide** a pane with the **×** on its tab, its icon, or the View menu.
-  It comes back where it was.
-- **Reset Panes** in the View menu puts them all back.
+## Arranging the Panes
 
-The app remembers the arrangement between runs.
+Drag a pane's tab to place it beside, above or below another pane. Drop it
+on another tab area to make a stack of tabs. Drag the boundaries between
+panes to resize them. Use the **×**, an icon or View to hide a pane; showing
+it again restores its place. **View → Reset Panes** restores the default
+layout if an arrangement becomes awkward.
 
-### Toolbars
+For a useful review layout, set the Paper Strip to **Across**, put the
+ordinary charts beneath it, and enable **Match Strip** in their tab bars.
+Keep Tick Tock Profile nearby. A chart event, a bend in the strip and its
+sound can then be inspected together.
 
-Each pane's own settings sit in a toolbar across its top, with the pane's
-**?** at the right. The charts carry theirs in the tab bar. A choice
-between two options, such as **Stacked** and **Beside**, switches to the
-other option wherever you click it, so you can flip back and forth without
-moving the pointer.
+Pane settings sit in their toolbars or tab bars. Two-way controls such
+as **Stacked / Beside** switch between their alternatives. A narrow pane
+may truncate text; hover over a summary to read the full version.
 
-## Help Everywhere: the ? Buttons
+## Help at the Point of Use
 
-Every card and pane has a **?** beside its name:
+Hover over **?** beside a card or pane name for a short explanation.
+Click it for longer help, and click again or elsewhere to close it.
+Individual controls also have hover hints. This guide develops the
+measurement concepts and practical checks behind those brief explanations.
 
-- **Rest the pointer** on it to see the short answer in a line or two.
-- **Click** it to open the whole explanation in place. Click it again, or
-  anywhere else, to close it.
+## The Status Line and Banners
 
-Every setting also shows a short hint when the pointer rests on it. The
-explanations behind the **?** buttons are the app's own reference; this
-guide covers the same ground at more length, with pictures.
+The status line identifies the source, opened audio format, signal ratio,
+amount of captured audio, save state, current messages, beat rate and
+position. It also provides update and report actions. Check it when a
+screen looks plausible but may be showing a different input or recording
+from the one you intended.
 
-## The Status Line
+Banners draw attention to capture failures, clipping, available updates
+or a possible unmarked position change. Read the message itself: an amber
+clipping banner describes the current measurement interval, while a red
+capture error can remain until dismissed or capture restarts.
 
-Along the bottom of the window, from left to right:
+## What Is Remembered
 
-- what the app is listening to or showing, with the sample rate and bit
-  depth the input opened at;
-- **signal**, how far the beats stand above the background (see
-  [Setting Up the Microphone](03-microphone.md#the-signal-figure));
-- how much sound the session holds, and whether it has been saved;
-- any message the app has for you;
-- the beat rate in use and the position;
-- **Check for Updates…** and **Report a Problem…**.
+The app keeps your workspace preferences: window size and position,
+pane arrangement and visibility, appearance, averaging settings,
+strip and profile options, folded control groups and the last microphone
+selection. Calibre short lists and custom entries are also retained.
 
-## Banners
-
-Messages that need your attention appear as banners over the top of the
-main area, so nothing below them moves:
-
-- **red** for a problem, such as an input that stopped; it stays until
-  you dismiss it or start again;
-- **amber** for clipping, above the readings, while the readings include
-  clipped beats;
-- a banner when the app finds a newer version, or asks whether the watch
-  was moved (see [Positions](10-positions.md#when-the-beats-stop)).
-
-## What the App Remembers
-
-Between runs the app keeps your views: the Paper Strip's direction, width,
-length and overlays; the Tick Tock Profile's layout and scale; which panes
-are shown and where; the averaging time; folded groups in the Watch pane;
-the appearance; the last microphone (used again when it is plugged in);
-and the window's size and place.
-
-It keeps nothing about the watch: the lift angle, beat rate, calibre and
-position start fresh each time, because the next watch on the microphone
-may be a different one.
+A fresh launch does not assume that the previous watch is still on the
+microphone. Watch-specific settings such as calibre, lift angle, beat
+rate and position start fresh. Opening a saved session can restore its
+recorded context; see [Sessions and Recordings](11-sessions-and-recordings.md).
 
 ---
 

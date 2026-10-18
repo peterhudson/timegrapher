@@ -1,130 +1,160 @@
 # 7. The Sound of the Beat
 
-The readings are worked out from marks the software places on the sound
-of each beat: where the unlock starts and where the drop starts. Two
-panes show that sound, so you can see what the readings stand on. The
-**Tick Tock Profile** shows the typical beat, averaged; the **Scope** shows
-single beats as they were heard.
+When an amplitude or beat-error reading surprises you, look at the sound
+from which it was measured. **Tick Tock Profile** shows a representative
+beat from each side. **Scope** shows individual filtered waveforms. The
+profile makes the main features easier to see; the Scope reveals how
+much individual beats differ.
+
+These are acoustic views. Their vertical axes describe the recorded
+signal, not the balance's angular motion or the force on a pallet stone.
 
 ## The Tick Tock Profile
 
-![The Tick Tock Profile, stacked: the Tick in blue above the Tock in orange, each with its Unlock and Drop marks, the three sounds dashed, and a line of figures above each plot](images/tick-tock-profile.png)
+![Tick and Tock profiles with measured edges, sound-group markers and the interval used for amplitude](images/tick-tock-profile.png)
 
-The Tick Tock Profile shows the typical sound of the Ticks (blue) and of
-the Tocks (orange) over the averaging time (up to 60 seconds, so it
-describes the same beats as the readings):
+Beats are aligned on their detected timing reference, near the dominant
+drop sound, and combined separately for Tick and Tock. The trace is the
+mean of the middle half of the envelope values at each time point: a
+trimmed mean that reduces the influence of unusually loud or quiet beats.
+The shaded band extends from the 10th to the 90th percentile at each
+point. It shows beat-to-beat variation, not a confidence band for the
+line or a range of balance amplitudes.
 
-- **The line** is the beats' typical loudness at each moment.
-- **The shaded band** is where the middle 80% of beats fall.
-- **Time runs from left to right**, in milliseconds, from before the
-  unlock to after the drop.
-- **Ticks and Tocks share one vertical scale**, so a quieter side shows
-  smaller.
+The horizontal axis is milliseconds within a beat. The vertical axis is
+the signal envelope, a smoothed measure of its size. This is why the
+profile looks like a series of humps while the Scope shows rapid positive
+and negative oscillations.
+
+Both sides share a vertical reference. A quieter Tock remains visibly
+quieter than the Tick. Use the difference to assess coupling and sound
+shape; loudness alone is not a measure of how much energy that side
+imparts to the balance.
 
 ### The Marks
 
-The solid lines are the edges the readings come from:
+The solid markers show the edge detector's estimates:
 
-- **Unlock** (green): where the beat first rises above the noise.
-- **Drop** (indigo): where the drop starts.
-- **Peak** (a thinner indigo line): the drop's loudest point.
+| Marker | Meaning |
+| --- | --- |
+| **Unlock** | Estimated onset of the first sound group |
+| **Drop** | Estimated onset of the dominant drop group |
+| **Drop Peak** | Peak of that group |
 
-The amplitude comes from the time between the Unlock and the Drop, and the
-beat error from the Unlocks.
+The unlock-to-drop interval supplies the amplitude estimate. Unlock
+timing, combined with the alternating beat timing, supplies the usual
+beat-error estimate. These edges are estimates on a combined acoustic
+profile, not directly observed positions of the escapement parts.
 
-The dashed brown lines, **1 Unlock**, **2 Impulse** and **3 Drop**, mark
-where each of the three sounds rises halfway up its own climb. They come
-from a separate measurement of the beat's shape, so they sit near, but not
-exactly on, the solid edges. A dashed line is missing when that sound
-can't be told apart from its neighbour, such as a soft unlock that merges
-into the impulse. The flat dashed line is the noise floor: the level
-before the beat starts.
+The dashed **1 Unlock**, **2 Impulse** and **3 Drop** markers belong to a
+separate description of sound shape. They mark halfway up each sound
+group's rise. They therefore need not coincide with the solid onset
+markers. If a sound cannot be separated from its neighbour, its marker
+may be absent. The horizontal dashed line is the estimated noise floor.
 
-Both kinds of mark are measured on the averaged sound, not on single
-beats.
+The mechanical meaning of these sound groups, including the impulse
+face of the pallet stone, is explained in
+[How a Timegrapher Hears a Watch](01-how-it-works.md#the-three-sounds-of-a-beat).
 
-### The Figures Above Each Plot
+### Reading the Figures
 
-Above each plot is a line of figures, such as:
+At 28,800 bph with a 55° lift angle, a summary above a profile might
+read:
 
-> **Tick** 40 beats · unlock −9.09 ms · drop −0.61 ms · unlock to drop
+> Tick 40 beats · unlock −9.09 ms · drop −0.61 ms · unlock to drop
 > 8.48 ms · amplitude 259°
 
-That is: the number of beats averaged; where the unlock and drop marks
-sit, in milliseconds from that side's own drop; the time from unlock to
-drop; and the amplitude that time gives with the lift angle in use. This
-is where the amplitude on the card comes from. Working it through by hand
-with the formula in
-[How a Timegrapher Hears a Watch](01-how-it-works.md#amplitude) gives the
-same figure.
+The negative times are offsets before the detected beat reference. The
+reference is close to the drop; it is not constrained to coincide with
+the subsequently measured Drop edge. Subtracting the two offsets gives
+8.48 ms, and the lift-time formula gives the profile's amplitude.
+
+The card summarises amplitudes measured in short windows. The profile
+measures edges on the combined waveform for its selected interval. Those
+operations need not give exactly the same amplitude, especially if the
+shape changes within the interval. A persistent large disagreement is a
+reason to inspect shorter intervals and individual beats.
 
 ### The Toolbar
 
-- **Layout**: **Stacked** puts the Tick above the Tock; **Beside** puts
-  them side by side.
-- **Time From**: **Shared** (the default) draws the Tick and Tock on one
-  clock. 0 ms is where a watch in beat would drop, and each side sits half
-  the beat error from it, so the two Drop lines stand the beat error from
-  the drop apart, and the two Unlock lines the beat error from the unlock.
-  **Own Drop** measures each side from its own drop, so both drops sit at
-  0 ms and only the Unlock lines show a difference.
-- **Scale**: **Linear** shows the loudness as the engine measures it;
-  **dB** shows it in decibels below each side's loudest point, which makes
-  the quiet unlock easier to see.
-- **Edges** and **Sounds 1, 2 and 3** switch the solid and dashed marks on
-  and off.
-- **Average Over**: **As Readings** unless you pick a time of its own, up
-  to 60 seconds. A longer time gives a steadier shape.
+- **Layout: Stacked / Beside** places Tick above Tock or alongside it.
+- **Time From: Shared / Own Drop** changes their horizontal alignment.
+  Shared offsets the two sides by half the signed beat-reference error
+  in opposite directions. Own Drop aligns their individual detected beat
+  references at zero, making shape comparisons easier. Despite the name,
+  the measured solid Drop edges can sit slightly away from zero. The
+  summary's numerical offsets remain relative to each side's own
+  reference in either mode.
+- **Scale: Linear / dB** changes the vertical scale. dB expands the quiet
+  detail, especially the unlock. It uses a common reference derived from
+  both profiles' upper envelope bands, not dBFS and not a separate
+  normalisation of each side to 0 dB.
+- **Edges** and **Sounds 1, 2 and 3** show or hide the two sets of markers.
+- **Average Over** follows the Readings card unless a separate interval
+  is selected. The profile uses at most 60 seconds.
+
+Changing these display settings does not alter the captured sound.
 
 ### Looking Back
 
-When you look back through a session with the time slider or the Paper
-Strip, the Tick Tock Profile shows the sound the session kept nearest
-before that moment (it keeps one every 2 seconds). For a recording
-analysed all at once it is worked out from the file when you stop on a
-moment.
+Scrubbing a live-captured session shows the stored profile nearest before
+the selected moment; profiles are retained at two-second intervals. For
+a recording opened with **Analyse All**, the profile is calculated from
+the file when you settle on a moment. This is particularly useful for
+comparing the sound just before and just after a step in amplitude.
 
-### Why Look at It
+### A Practical Check for an Amplitude Jump
 
-The profile is the place to look when a reading seems wrong. The readings
-stand on the Unlock and Drop marks, so if a mark sits somewhere odd (in
-the middle of a rising slope, say, or on a knock in the background), or
-the Tick's and Tock's marks disagree in a way the sound doesn't, the
-readings built on them are suspect. `timegrapher profile` draws the same
-picture from the command line (see
-[The Command Line](12-command-line.md#profile)).
+Suppose Tick amplitude jumps upward while Tock amplitude barely changes.
+First shorten the ordinary chart's averaging interval and locate the
+change. Compare the profiles on either side of it. Has the Tick's Unlock
+marker moved from a small early feature to a larger later one? That
+shortens the measured lift time and raises inferred amplitude even if
+the balance's motion has not changed by that amount.
+
+Next use the Scope with several beats overlaid. Look for a repeated early
+sound, a changing noise floor, clipping or a disturbance. If adjusting
+coupling or gain makes the apparent jump disappear on a repeat recording,
+that is evidence about the measurement. If the same change persists with
+clear, repeatable markers, it deserves a mechanical investigation. The
+profile helps you decide which question to ask next; it cannot identify
+a defective part by itself.
 
 ## The Scope
 
-![The Scope at Span 20 ms with Beats 8: the last eight Ticks drawn over each other in one row and the last eight Tocks in another, lined up on the drop, with the Unlock and Drop marks](images/scope.png)
+![Scope with a 20 ms span and eight beats overlaid for each side](images/scope.png)
 
-The Scope shows the sound itself, beat by beat, as an oscilloscope on the
-microphone would: what the engine heard, high-passed at 1 kHz so hum and
-rumble don't hide it, and not averaged. It is a tab beside the Tick Tock
-Profile.
+The Scope displays individual waveforms, high-pass filtered at 1 kHz to
+reduce low-frequency rumble. It is not the unfiltered saved audio and is
+not the smoothed envelope used in the profile. It starts as a tab beside
+Tick Tock Profile.
 
-**Span** sets how much of each beat it shows. The 20, 200 and 400 ms spans
-are the ones Witschi's training course gives for its scope view (Witschi,
-doc. 71.1010D35e, p. 12):
+**Span** controls the time shown around the detected beat reference:
 
-| Span | Shows |
+| Span | Interval shown |
 | --- | --- |
-| **5 ms** | 3.5 ms before the drop to 1.5 ms after: the drop close up |
-| **10 ms** | 8 ms before the drop to 2 ms after |
-| **20 ms** | 14 ms before the drop to 6 ms after: one whole beat, the Tick and the Tock in rows of their own, lined up on the drop, with the profile's Unlock and Drop marks |
-| **50 ms** | 15 ms before the drop to 35 ms after: the beat and what rings on after it |
-| **One Beat** | From 15 ms before one beat to 15 ms before the next: 125 ms at 28,800 bph, 200 ms at 18,000 |
-| **200 ms** | One row each from 20 ms before the beat to 180 ms after, so the next beat shows too |
-| **400 ms** | Every beat in one grey row, three or four beats at once |
+| **5 ms** | 3.5 ms before to 1.5 ms after; a close view of the drop group |
+| **10 ms** | 8 ms before to 2 ms after |
+| **20 ms** | 14 ms before to 6 ms after; usually the useful starting view of a complete sound group |
+| **50 ms** | 15 ms before to 35 ms after; includes more ringing after the beat |
+| **One Beat** | From 15 ms before one reference to 15 ms before the next |
+| **200 ms** | 20 ms before to 180 ms after; may include the following beat, depending on beat rate |
+| **400 ms** | A continuous grey row containing several beats; how many depends on beat rate |
 
-**Beats** draws the latest 1, 4, 8 or 16 beats over each other, the older
-ones fainter. One beat shows exactly what was heard; several show how
-much the beats vary from one to the next, which the Tick Tock Profile
-averages away. A beat that differs from the rest stands out.
+At 20 ms, Tick and Tock occupy separate rows, with the profile's Unlock
+and Drop markers for reference. Those markers still come from the
+combined profile; they are not new edge measurements on every waveform.
 
-While listening, the Scope shows the latest beats. Looking back, or on a
-recording, it shows the beats up to the moment shown, read from the
-recording.
+**Beats** overlays the latest 1, 4, 8 or 16 beats, with older ones fainter.
+One shows a particular event; several reveal repeatability. A broad band
+of traces may reflect varying timing, signal level or shape. Zooming out
+to a longer span helps separate ringing after one beat from another event.
+
+While listening, the Scope follows the latest beats. When reviewing a
+session it reads the beats up to the selected time from the recording.
+The command-line [profile](12-command-line.md#profile) and
+[shape](12-command-line.md#shape) commands provide saved plots and numerical
+sound-shape measurements for closer comparison.
 
 ---
 

@@ -1,201 +1,198 @@
 # 10. Positions and the Positions Test
 
-A watch runs differently depending on how it lies, because gravity pulls
-on the balance differently in each position. So watchmakers measure a
-watch in several positions, and compare. Timegrapher keeps every position
-apart, and leads you through a test of all six.
+A positional test measures the same watch under different orientations to
+gravity. It can reveal differences that a single dial-up rate conceals.
+To make those differences interpretable, keep winding state, settings,
+settling time and measurement duration comparable, and maintain good
+microphone contact after every turn.
+
+Gravity changes the loading of pivots and the behaviour of an imperfectly
+poised balance and hairspring assembly. A positional difference is useful
+evidence, but the timing table alone does not identify which of those
+mechanisms produced it.
 
 ## The Six Positions
 
-![The six positions: Dial Up and Dial Down lying flat, then Crown Down (9H), Crown Left (6H), Crown Up (3H) and Crown Right (12H) standing upright, with the crown drawn in orange](images/positions.svg)
+![The six test positions, with the crown highlighted](images/positions.svg)
 
-| Position | Short | Swiss name | How the watch lies |
+| Position | App code | Swiss code | Orientation |
 | --- | --- | --- | --- |
-| Dial Up | **DU** | CH | Flat, dial facing up |
-| Dial Down | **DD** | CB | Flat, dial facing down |
-| Crown Up | **CU** | 3H | Upright, crown pointing up |
-| Crown Down | **CD** | 9H | Upright, crown pointing down |
-| Crown Left | **CL** | 6H | Upright, crown pointing left, seen from the dial |
-| Crown Right | **CR** | 12H | Upright, crown pointing right, seen from the dial |
+| Dial Up | **DU** | CH | Dial faces upwards |
+| Dial Down | **DD** | CB | Dial faces downwards |
+| Crown Up | **CU** | 3H | Watch upright, crown upwards |
+| Crown Down | **CD** | 9H | Watch upright, crown downwards |
+| Crown Left | **CL** | 6H | Watch upright, crown left as viewed from the dial |
+| Crown Right | **CR** | 12H | Watch upright, crown right as viewed from the dial |
 
-The Swiss names for the upright positions are the hour on the dial that
-points up: with the crown at 3 o'clock, crown up puts 3 at the top (3H),
-and crown right puts 12 at the top (12H). CH and CB are Witschi's codes for
-dial up and dial down. On pocket watches the same upright positions are
-often called pendant up, down, left and right (PU, PD, PL, PR). The app
-names positions as "Crown Up (CU, 3H)", in words with both codes.
+The hour codes identify the dial numeral pointing upwards. Their mapping
+to crown directions assumes a crown at 3 o'clock. For a crown at another
+location, or a pocket watch described by pendant position, record the
+physical orientation explicitly; do not apply the table's equivalence
+without checking it. The app's combined names use the conventional
+3-o'clock-crown mapping.
 
 ## Setting the Position by Hand
 
-**Position** under Watch says how the watch lies. Changing it is a new
-measurement:
+Select **Position** under Watch when you turn the watch. During capture,
+this starts a new labelled stretch. The strip and charts retain the
+previous stretches, but current readings and profiles start with the
+new position.
 
-- **While listening**, a change of position starts a new stretch. The
-  Paper Strip keeps all its beats, and marks and shades each position's
-  stretch, with a ticker naming the position along it. The charts mark the
-  stretches the same way.
-- **The readings** don't reach back past the change, and the Tick Tock
-  Profile starts again.
-- **The first 10 seconds** in a new position are **settling**: the ticker
-  says Settling, the beats are drawn faintly, and they are left out of the
-  readings, the charts, the Distributions and Steadiness. They are still
-  kept in the sound.
-- **The Distributions and Steadiness** take only the stretches in the
-  position the watch is in now. Dial up for 5 minutes, dial down for 10,
-  then dial up again: the two dial-up stretches are tested together and
-  the dial-down one is left out.
+The first **10 seconds** are excluded as settling time and drawn faintly.
+Their audio is still recorded. This is the ordinary manual-position
+behaviour; the guided Positions Test has its own Settle control.
 
-A saved session records each position's stretch, so
-`timegrapher session` reads the same seconds the app did.
+Distributions and Steadiness select the currently chosen position. If
+you record DU, then DD, then DU again, both DU stretches can contribute.
+That is useful for a positional summary, but is not equivalent to an
+uninterrupted run. See [Steadiness](08a-steadiness.md#which-readings-are-analysed)
+before interpreting its time axis or long-term statistics.
 
 ### When the Beats Stop
 
-When the beats stop for more than 3 seconds while listening and then come
-back, with no change of position marked, the app asks whether the watch was
-moved, with a button for each position and **Not Moved**. The question goes
-by itself a minute later.
+If beats disappear for more than three seconds and then return during
+capture without a marked position change, the app asks whether the watch
+was moved. Choose the new position or **Not Moved**. The prompt expires
+after a minute. A loss of beats may also be a coupling or detection issue;
+the app cannot know from silence alone whether the watch changed position.
 
 ## The Positions Test
 
-The **Positions Test** pane leads you through all six positions, measuring
-each one the same way, and fills in a table as it goes. It is a tab beside
-the Tick Tock Profile to begin with. Before anything is listened to, it
-sits above the welcome card, so a test can start straight away.
+The **Positions Test** pane guides you through six measurements, using
+the same settling and measuring intervals in each. It is initially a tab
+beside Tick Tock Profile and is also offered above the welcome screen.
 
 ### The Toolbar
 
-- **Start Test** (**Start a New Test** once one has finished) starts the
-  test, and starts listening if need be.
-- **Load Full-Wind Results…** loads a test made just after winding, for
-  the test 24 hours later (below).
-- **Settle**: how long the watch settles after each turn before it is
-  measured: 20 seconds unless you change it (5 to 600 s). Witschi's
-  *Testing Methods for Mechanical Watches* (D40e) gives the same 20 s
-  stabilisation time.
-- **Measure**: how long each position is measured: 60 seconds unless you
-  change it (20 to 3600 s).
-- **Save as CSV…**, **Copy** and, after a test just after winding,
-  **Save Results for 24 Hours…** (below).
+**Settle** defaults to 20 seconds and accepts 5–600 seconds. **Measure**
+defaults to 60 seconds and accepts 20–3600 seconds. The app remembers
+these settings. Choose a longer interval when the watch takes time to
+settle or when a short reading would sample only part of a visible cycle.
+Use the same choices for comparisons.
 
-Settle and Measure are kept between runs.
+For context, Witschi's [2025 measurement tips, p. 33](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf)
+specify 20 seconds of stabilisation and at least 40 seconds of measurement
+per position. The app's defaults are consistent with those timings; they
+are not a guarantee that every movement has settled after 20 seconds.
+
+**Start Test** begins a test and starts capture if necessary. After a
+completed test it becomes **Start a New Test**. The toolbar also offers
+**Load Full-Wind Results…**, **Save as CSV…**, **Copy** and, for the first
+half of a paired test, **Save Results for 24 Hours…**.
 
 ### Running the Test
 
-1. Wind the watch fully and put it on the microphone **dial up**.
-2. Click **Start Test**. A banner at the top of the pane names the
-   position and shows a progress bar while the watch settles, then while
-   it is measured.
+1. Wind the watch fully, record that time and place it dial up.
+2. Click **Start Test**. The banner identifies the position and shows
+   progress through settling and measurement.
 
-   ![The Positions Test measuring Dial Up: the banner says Dial Up (1 of 6), Measuring, 55 of 60 s, with Pause, Restart DU Measurement and Stop](images/positions-measuring.png)
+   ![Positions Test measuring Dial Up](images/positions-measuring.png)
 
-3. When the position is measured, the banner says which position to turn
-   the watch to next. Turn it, then press the button naming the position,
-   such as **Start DD Measurement**. Nothing is measured until you press
-   it.
+3. When prompted, turn the watch to the next position, check its seating,
+   and click the named button, such as **Start DD Measurement**. The
+   measured interval does not start while the app is waiting for that
+   confirmation.
 
-   ![The Positions Test after Dial Up: the banner says Turn the watch to Dial Down, with Start DD Measurement, and the table shows Dial Up's rate, difference from the mean, amplitude and beat error](images/positions-turn.png)
+   ![Completed Dial Up result and prompt to start Dial Down](images/positions-turn.png)
 
-4. Repeat for each position, in the app's order: Dial Up, Dial Down,
-   Crown Down, Crown Left, Crown Up, Crown Right.
-5. After the sixth, click **Finish** to read the six together.
+4. Continue through **DU, DD, CD, CL, CU, CR**, the app's order, then click
+   **Finish** after the last measurement.
 
-While it runs:
-
-- **Restart DD Measurement** (naming the position just measured, or the one
-  under way) settles and measures that position again, after a knock for
-  instance.
-- **Pause** holds the test, leaving out what the position measured so
-  far; **Resume** settles and measures it again from the start.
-- **Stop** ends the test and clears its table. The session and its
-  positions stay.
-
-Only the measured seconds in each position count.
+A knock or a poor seating need not spoil the entire test. **Restart
+[position] Measurement** repeats settling and measurement for that
+position. **Pause** discards the position's partial measurement; **Resume**
+starts that position's settling and measurement again. **Stop** ends the
+test and clears its table, while retaining the captured session and
+position history.
 
 ### What the Strip Shows During a Test
 
-From the moment the test starts, the Paper Strip, its position ticker and
-the charts mark the test's phases, each in its own grey:
+The strip and charts distinguish **Before Test**, **Settling**, measured
+position intervals and **Not Used for Positions Test**. The latter
+includes time spent turning the watch, pauses and abandoned partial
+measurements. Beats outside the accepted measurement intervals are faint.
 
-- **Before Test**: the sound before the test began, left plain, with a line
-  where the test begins;
-- **Settling**: each settle, lightly shaded;
-- each position's **measured stretch**, the darkest shade, named by the
-  position;
-- **Not Used for Positions Test**, hatched: the time after a measurement
-  while the watch is being turned, a measurement given up for a restart or
-  a pause, the pause itself, and the part of a position measured when the
-  test was stopped.
+These labels explain the result's selection, not whether the excluded
+audio contains a healthy beat. The sound remains useful for checking a
+transition or understanding why a measurement was restarted. Test marks
+remain until a new test or session.
 
-Beats outside the measured stretches are drawn faintly. The marks stay
-until a new test or a new session.
+## The Results
 
-### The Results
+![Completed six-position table and characteristic values](images/positions-results.png)
 
-![The finished Positions Test: a row for each of the six positions with its rate, difference from the mean, amplitude and beat error, then the mean, the largest difference between the rates, and vertical less horizontal](images/positions-results.png)
+Each row gives rate, **From Mean**, amplitude and beat-error magnitude.
+From Mean is that position's rate minus the mean of the measured positions.
+Rates use the stored input-clock correction when available; confirm the
+clock basis when comparing with the main Rate card's large figure.
 
-The table has a row for each position, named in full ("Crown Up (CU,
-3H)"), with:
+The summary includes:
 
-- its **rate**, in s/d (on the microphone's measured clock, when there is
-  one; see [True Clock](05-readings.md#true-clock));
-- **From Mean**: its rate less the mean of the positions measured;
-- its **amplitude**, in degrees;
-- its **beat error**, in ms (a size).
+| Quantity | Calculation and meaning |
+| --- | --- |
+| **Mean** | Mean of the available positions' values; positions have equal weight |
+| **Largest difference between the positions' rates (D)** | Maximum rate minus minimum rate |
+| **Vertical less horizontal (DVH)** | Mean of the four vertical positions minus mean of the two horizontal positions, for rate and amplitude |
 
-Under the six rows:
+For example, if horizontal rates average +4 s/d and vertical rates average
+−2 s/d, rate DVH is **−6 s/d**. If the fastest position is +8 and the
+slowest −4, D is **12 s/d**. Neither is the uncertainty of the mean.
 
-- **Mean**: the mean of each column;
-- **Largest difference between the positions' rates**, the value
-  watchmakers call D;
-- **Vertical less horizontal**, the mean of the four upright positions less
-  the mean of the two flat ones, for rate and amplitude: the value called
-  DVH;
-- a plain line for each condition found in a position's sound: no regular
-  beat (with its timing scatter), clipping, or less than 10 seconds of
-  beats.
+The equal-position mean is a bench characteristic, not a prediction of
+wrist performance: a wearer does not spend equal time in all six static
+positions. Also check each row before interpreting a small overall mean;
+large positive and negative deviations can cancel.
 
-The figures are the same as `timegrapher session` gives for the same
-stretches of sound (see [The Command Line](12-command-line.md#session)).
-The test gives no verdict, and no pass or fail: the figures are for you to
-judge.
+The app lists detected conditions such as clipping, a short beat span or
+no regular beat. It does not assign pass/fail limits. Use the movement's
+specification and the test conditions for that judgement.
 
-**Save as CSV…** saves the watch's name, calibre, beat rate and lift angle,
-when the test began and its settling and measuring times, then the table,
-the means, the differences and those lines, as a file any spreadsheet
-opens. **Copy** puts the same on the clipboard, with tabs between the
-columns, to paste into a spreadsheet.
+**Save as CSV…** writes the watch identity, settings, test timing, rows,
+summary and conditions. **Copy** places a tab-separated version on the
+clipboard. Save the audio session as well when you want to retain the
+evidence behind the table.
 
 ## Full Wind Against 24 Hours
 
-Watchmakers often compare a watch at full wind with the same watch 24
-hours later, as the mainspring lets down. The Positions Test does both
-halves:
+A paired test compares the same positions at two winding states:
 
-1. **Just after winding**, run the test. When it is done, click **Save
-   Results for 24 Hours…**. (Saving the session keeps the same results too,
-   as `positions-test.json` in its folder.)
-2. **Leave the watch** for 24 hours, neither wound nor worn.
-3. **24 hours later**, click **Load Full-Wind Results…** and pick the file.
-   The pane shows those results as a **Full Wind** table, with when that
-   test began, the watch and the calibre. **Remove** sets them aside.
-4. **Click Start Test** and run the six positions again. The banner names
-   the hours since the full-wind test began.
+1. Run the first test after winding and choose **Save Results for 24
+   Hours…**. Saving that session also keeps `positions-test.json`.
+2. Let the watch run without further winding or wear for the intended
+   interval, recording
+   any interruption or accidental winding.
+3. Choose **Load Full-Wind Results…** and select the earlier results.
+   Confirm the watch, calibre and time shown in the **Full Wind** table.
+   **Remove** sets that reference aside.
+4. Run **Start Test** again with the same settings and order. The banner
+   reports elapsed hours from the earlier test.
 
-As it goes, the pane adds a **Full Wind Against N Hours** table: each
-position's rate and amplitude at full wind and now, and the change; then
-**Im**, the largest change in rate with crown right left out, as NIHS 93-10
-takes it; and **Ie**, the size of the change in the mean rate. Its CSV and
-Copy add the full-wind test's start, the hours since, and that table.
+The additional table shows each position at full wind and later, with
+changes calculated as **later minus earlier**. **Im** is the rate change
+with the largest absolute magnitude among the eligible positions,
+excluding crown right/12H; it retains that change's sign. **Ie** is the
+absolute change in mean rate over the common positions. Witschi describes
+the Im exclusion in its [discussion of NIHS 93-10, p. 28](https://www.witschi.com/wp-content/uploads/firmwares/8Z1UtLGf/20251118_witschi_testing-methods-for-mechanical-watches_en.pdf).
+This guide uses that published explanation, not a claim that the app
+performs a complete standards certification test.
+
+For example, changes of +2, −5 and +3 s/d among the eligible positions
+make Im −5 s/d. Ie can be much smaller if changes cancel in the mean.
+Retain the position rows, not just those two summary values.
+
+A comparison made after 18 or 27 hours is still useful, but record the
+actual interval. Loading a file labelled Full Wind cannot establish that
+the watch was fully wound when those readings were taken.
 
 ## From the Command Line
 
-`timegrapher record` records one position at a time into a test folder,
-and `timegrapher session` reads the folder into a multi-position report in
-the style of Witschi's SEQ mode, with the characteristic values X, D, DV,
-DH, DVH, Di, Im and Ie and the measurements behind each. A session saved by
-the app reads the same way. See
-[The Command Line](12-command-line.md#record) and
-[Test sessions](../sessions.md).
+`timegrapher record` captures positions into a session folder, and
+`timegrapher session` generates an HTML report from its manifest and
+recordings. It also reports X, D, DV, DH, DVH, Di, Im and Ie; the
+[session reference](../sessions.md) defines their selections and
+calculations. An app-saved session carries the corresponding measurement
+intervals, so compare the same stretches and settings when checking the
+two interfaces.
 
 ---
 

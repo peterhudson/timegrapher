@@ -1,215 +1,178 @@
 # 8. Over Time
 
-The reading cards say what the watch is doing now. The panes in this
-chapter say what it has done over the whole session: how each reading
-moved, how its values spread, and whether the changes have a structure,
-such as a cycle that repeats with the turn of a wheel.
+A short reading can be perfectly repeatable and still miss the behaviour
+you care about. A rate might rise and fall once a minute, step after a
+change of position, or drift over a night's run-down. Start by looking at
+that history, then choose the analysis that answers your question.
 
-The screenshots in this chapter come from a two-hour recording of one
-watch lying dial up, opened as a folder and analysed all at once (see
-[Sessions and Recordings](11-sessions-and-recordings.md)).
+| Question | Start here |
+| --- | --- |
+| When did the rate or amplitude change? | The ordinary charts below |
+| How widely do the readings vary, or do they form separate groups? | [Distributions](#distributions) |
+| Does a pattern repeat, and how large is it? | [Steadiness: Periods, Cycle and FFT](08a-steadiness.md) |
+| How long should I average, and is the level drifting? | [Steadiness: Autocorrelation, Allan Deviation and CUSUM](08a-steadiness.md#autocorrelation) |
+| How does rate depend on amplitude during run-down? | [Isochronism](08b-isochronism.md) |
+
+The screenshots here show an earlier two-hour dial-up recording. They
+illustrate the controls and patterns; they are not acceptance limits for
+that watch or another movement.
 
 ## The Charts
 
-![The Rate, Amplitude and Beat Error charts over a two-hour recording, each with its Average Over and Match Strip in its tab bar](images/charts.png)
+![Rate, Amplitude and Beat Error charts over a two-hour recording](images/charts.png)
 
-Three charts, **Rate**, **Amplitude** and **Beat Error**, draw each reading
-against time. Each point is a reading over the averaging time.
+The **Rate**, **Amplitude** and **Beat Error** panes plot readings against
+time. Rate is red, amplitude purple and beat error yellow. Additional
+traces use dashes: the Tick and Tock amplitudes retain their blue and
+orange side cues, and drop-based beat error is a fainter dashed yellow.
+The key appears in the tab bar. Beat error in these ordinary charts is
+shown as a magnitude.
 
-- Each reading keeps its colour across the app: **rate red, amplitude
-  purple, beat error yellow**. A second line of the same reading is told
-  apart by its dashes: the amplitude from the Ticks dashes purple over
-  blue and from the Tocks purple over orange, and the beat error from the
-  drop is a fainter dashed yellow. A chart with more than one line has its
-  key at the right of its tab bar.
-- The beat error is charted as a size, as on its card.
-- The vertical scale runs from the 2nd to the 98th percentile of the
-  values, kept within reach of the median, so neither one glitch nor a few
-  seconds of knocking flattens the lines.
+Each point summarises an interval of beats. At the default **Average
+Over: 10 s**, a sudden change is blended over that interval; a smooth
+curve does not imply that the watch itself changed smoothly. Use a
+shorter interval and the strip to examine a transition.
+
+The automatic vertical range is robust to extreme values, using the
+central part of the distribution and limits around the median. This
+keeps a single knock from flattening the useful trace, but can leave
+extreme excursions outside the visible range. Zoom the vertical axis
+when investigating an event rather than assuming every value is visible.
 
 ### Moving Around
 
-| Action | Does |
+| Action | Result |
 | --- | --- |
-| Mouse wheel | Zooms time around the pointer |
-| Ctrl and the mouse wheel | Zooms the vertical scale |
-| Drag | Pans |
-| Double-click | Fits the whole session again and, while listening, follows new beats |
-| Click a moment | Shows that moment on the Paper Strip and in the readings |
+| Mouse wheel | Zoom time around the pointer |
+| Ctrl + mouse wheel | Zoom the vertical scale |
+| Drag | Pan |
+| Double-click | Fit the session again and follow new data while listening |
+| Click a moment | Select that moment for the readings and Paper Strip |
 
-The three charts' time axes move together. Once a chart has been panned or
-zoomed, a **Follow Live** button (**Show Whole Session** for a recording)
-appears on it and does the same as a double-click. With the pointer
-anywhere over a chart, a vertical line marks that moment and a box lists
-every line's value there.
+On macOS, use Cmd in place of Ctrl. The three charts share their time
+navigation. After panning or zooming, **Follow Live** or **Show Whole
+Session** restores the automatic view. Hovering shows the values near
+the pointer and marks the corresponding time on the other charts.
 
 ### Match Strip
 
-**Match Strip**, in each chart's tab bar, shows the same stretch of time
-as the Paper Strip and moves with it. With the Paper Strip lying across
-and the charts under it, every time axis then lines up, and the pointer's
-moment is marked on all of them. In that mode the strip sets the time, so
-only the vertical scale can be dragged or zoomed. With Match Strip off,
-the charts show the whole session.
+**Match Strip** makes the chart show the Paper Strip's visible time range.
+Set the strip to **Across** and place the charts below it to line up their
+time axes. You can then follow a bend in the strip directly to an
+amplitude or beat-error change.
+
+While Match Strip is on, the strip controls time navigation and the
+chart's mouse controls adjust only its vertical scale. Turn it off for
+independent chart navigation over the session.
 
 ### Average Over
 
-**As Readings** unless you pick a time of its own for the chart. Changing
-the averaging time, or the lift angle, works every point out again, back
-to the start of the session.
+A chart follows the Readings card unless you choose a separate **Average
+Over** in its toolbar. A different value appears in the tab name. Changing
+the interval recalculates its history; changing the lift angle recalculates
+amplitude history as well. These are analysis settings, not edits to the
+saved audio.
 
 ## Distributions
 
-![The Rate, Amplitude and Beat Error Distributions on probability paper: each reading's values against their rank, with a dashed straight line for comparison](images/distributions.png)
+![Probability plots for rate, amplitude and beat error](images/distributions.png)
 
-An average gives one number. The Distributions show how a reading's values
-spread around it, which can show whether the watch keeps to one state or
-moves between two, such as a high and a low amplitude. They are hidden at
-first: turn them on with their icons, under **Distributions** at the top,
-or in the View menu.
+A distribution answers “how often did each value occur?” It deliberately
+forgets their order. A gradual drift from +2 to +12 s/d and repeated
+switching between those values may have similar distributions but very
+different implications at the bench. Always keep a time chart nearby.
 
-Each has its own toolbar:
+Enable **Rate Distribution**, **Amplitude Distribution** and **Beat Error
+Distribution** with their icons or the View menu. Their shared controls
+select the interval and presentation:
 
-- **Time Span**: **Session** covers everything since the session started;
-  **Strip** covers the Paper Strip's length.
-- **Show**:
-  - **Probability** (the default) is a normal probability plot, the
-    probability paper of flood-frequency analysis. Each value is plotted
-    against its rank, on a vertical scale spaced in standard deviations and
-    labelled in percent (Hazen plotting positions). Values from one steady
-    state, scattered about one mean, fall along the dashed straight line,
-    drawn through the median with a slope from the middle half of the
-    values. Two states draw two straighter stretches joined by a bend, or
-    an S across the line; a gap between two clusters shows as a flat step.
-    The ends curling away from the line are a few unusual readings.
-  - **Cumulative** draws the share of values at or below each value on a
-    plain scale: one state rises in one steep stretch, two states rise
-    twice with a flatter stretch between.
-- **Values** (amplitude and beat error): **Readings** counts each reading,
-  averaged over Average Over, as the charts are; **2 s** counts each 2
-  seconds of beats, the finest the engine measures, which catches quicker
-  changes with more scatter. The rate always counts readings.
+| Control | Meaning |
+| --- | --- |
+| **Time Span: Session** | Use eligible readings throughout the session in the currently selected position |
+| **Time Span: Strip** | Restrict those readings to the visible Paper Strip interval |
+| **Show: Probability** | Plot ordered values on a normal-probability scale |
+| **Show: Cumulative** | Plot the fraction at or below each value on a linear percentage scale |
+| **Values: Readings** | Use readings averaged over the chosen interval |
+| **Values: 2 s** | Use the short amplitude or beat-error windows; rate always uses readings |
 
-The scale leaves out the most extreme 0.5% at each end, so a few stray
-readings can't squeeze the rest together. The line above the plot gives
-the count, the median, the middle 80%, the outliers left off and the
-peaks, when there is more than one.
+The Readings option samples at the averaging interval so ordinary
+neighbours do not share beats. That avoids overlap, but it does not make
+the measurements statistically independent if the watch or measurement
+process has memory.
 
-Neither plot keeps the time order, so a slow swing between two states
-shows only as a bend. The strip and the charts show **when** it happens.
+### Probability
+
+The horizontal coordinate is the reading; the vertical coordinate is its
+rank transformed to a normal score, labelled in percentages. If there are
+`n` ordered readings, the plot assigns reading `i` the probability
+`(i − 0.5)/n`, with `i` starting at 1. These are Hazen plotting positions.
+
+An approximately normal distribution gives an approximately straight
+line. The dashed reference passes through the median and takes its spread
+from the middle half of the values. Its slope describes the spread, not
+a change with time.
+
+Curvature tells you that a single normal distribution is an incomplete
+description. A bend or two groups can motivate a search for distinct
+levels. It does **not** establish two mechanical states: skew, a cycle,
+drift, outliers and changing measurement quality can also bend the plot.
+Likewise, a straight line says nothing about time independence; reordering
+the same readings leaves this plot unchanged.
+
+### Cumulative
+
+At any horizontal value, the height is the share of readings at or below
+it. If 90% is reached at +8 s/d, approximately 90% of the included rate
+readings were no greater than +8 s/d. A steep section contains many values
+in a small range; a flat section contains few or none.
+
+A worked example helps: suppose half a take sits around +2 s/d and half
+around +12 s/d, with little time between them. The cumulative plot rises
+near +2, flattens near 50%, then rises again near +12. Use the chart to
+find whether those groups alternate, occur in successive halves of the
+recording, or follow a change in coupling.
+
+### Counts, Tails and Averaging
+
+The summary gives the count, median, middle 80%, values outside the plot
+range and any detected peaks. The horizontal range excludes the outer
+0.5% at each end. Those observations still matter; the summary counts
+them even when they are off the scale.
+
+Compare **Readings** with **2 s** to see what averaging conceals. A broad
+2-second amplitude distribution that narrows at 30 seconds may represent
+rapid scatter, a short cycle, or both. A narrow distribution is not itself
+proof of correct amplitude: the wrong lift angle moves the whole group.
 
 ## Steadiness
 
-The Steadiness views test how the rate, the amplitude and the beat error
-(from the unlock) each change over the session: cycles, steps, trends,
-and how each reading relates to the one before. They are the same tests
-as `timegrapher series` on the command line.
+The seven Steadiness panes retain time order and examine different
+aspects of variation. They begin after about five minutes in one position
+and update in the background as the session grows. Their analysis
+intervals and selected data differ from the ordinary chart controls.
 
-They need about 5 minutes of beats in one position, and say more the
-longer the session: a cycle has to come round several times to count.
-They run over the whole session in the background, again every minute
-while it grows. For a recording, they cover what has been replayed, or all
-of it once it is opened. Rates are on the sound card's clock.
-
-Each view is a pane of its own, with its icon under **Steadiness** at the
-top, so two can sit side by side. At first they are tabs beside the Tick
-Tock Profile, with only **Readings Over Time** shown. **Rate**,
-**Amplitude** and **Beat Error**, in each view's toolbar, choose which
-series it shows.
-
-### What the Tests Say
-
-Each series gets a sentence saying what the tests found, with no verdict
-word or colour: a cycle (named after the wheel whose turn it matches; the
-fourth wheel of most watches turns once a minute), two levels the readings
-switch between, a level that steps and stays, a slow trend, correlation
-between readings, or none of these. Under it are the statistics: the
-number of readings, median, standard deviation, the scatter from one
-reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
-trend and period when found.
-
-For example, on the two-hour recording the Rate's sentence reads:
-
-> Rate repeats every 60 s (the fourth wheel), 11.7 s/d peak to peak. Its
-> level also moves over the take, between +8.4 s/d and +49.7 s/d.
-
-That is a statement of what was measured. Whether a cycle of that size
-matters for this watch is for you, or the
-[watchmaker skill](../../skills/watchmaker/SKILL.md), to judge.
-
-The wheel names come from the calibre. With a calibre picked under Watch,
-cycles are named after its own wheels (see
-[Calibres and Lift Angles](09-calibres.md)); with **Not Set**, after the
-wheels most calibres at that beat rate share.
-
-### The Views
-
-![Readings Over Time for rate, amplitude and beat error over two hours, with the stretches of constant level drawn as lines](images/steadiness-readings.png)
-
-- **Readings Over Time**: every reading in time order (10-second rate
-  readings, 2-second amplitude and beat error readings), with the
-  stretches of constant level the change finder found and, for two
-  states, the two levels dashed.
-- **Periods**: how strongly the readings repeat at each period, on a
-  logarithmic axis, with the 1% false-alarm line dashed, the escape,
-  fourth and centre wheels' periods marked, and the strongest component
-  labelled. **Log Scale** draws the scores on a log scale, so a small peak
-  beside a tall one still shows.
-
-![The Periods view: the period search's score against period from 2 seconds to over half an hour, with a peak at 60 s labelled Fourth Wheel](images/steadiness-periods.png)
-
-- **Cycle**: the readings folded at the cycle the tests found: every cycle
-  as dots and the median shape as a line.
-- **Autocorrelation**: how much a reading resembles the one a lag later,
-  with the band independent readings stay inside dashed, the repeat
-  marked, and the Ljung–Box p-value.
-- **Allan Deviation**: the scatter of averages against the averaging time,
-  on logarithmic axes, against the dashed line independent readings
-  follow. The lowest point is the averaging time that gives the most
-  repeatable reading.
-- **CUSUM**: the running sum of distances from the mean, which stays
-  inside the dashed lines unless the level changes; the largest excursion
-  is labelled.
-- **FFT**: the plain amplitude spectrum of each series, like Witschi's
-  FFT: the size of the sine wave at each period, in the series' own units.
-  The rate's is the swing, peak to peak, it makes in 10-second rate
-  readings, in s/d. **Timing** draws the rate as the beat timing's own
-  spectrum, in milliseconds, instead.
-
-![The FFT view: the size of the cycle at each period for rate, amplitude and beat error, with the tallest point labelled at 60 s, the fourth wheel](images/steadiness-fft.png)
-
-In Periods and FFT each wheel's period is a bold line, and half of it
-(twice a turn) a fainter dashed line marked ×2. The plots don't pan, zoom
-or show values under the pointer.
+[Chapter 8a](08a-steadiness.md) covers **Readings Over Time**, **Periods**,
+**Cycle**, **Autocorrelation**, **Allan Deviation**, **CUSUM** and **FFT**
+individually, with the meaning of their axes, statistics and reference
+lines. It also explains how to investigate a suspected wheel-period
+pattern without treating the wheel label as a diagnosis.
 
 ## Isochronism
 
-The Isochronism pane, a tab beside the Steadiness views, shows how the
-rate changes with the amplitude as the mainspring lets down:
+The Isochronism pane groups rate readings by amplitude and compares the
+start of a run with a later interval. A controlled run-down in one
+position is the useful experiment. Changing position, winding the watch
+or changing microphone contact during the run makes the relationship
+harder to interpret.
 
-- **The curve**: the rate in each 2° band of amplitude (the median as a
-  dot, with a bar over the middle half of the readings), the curve through
-  them, and an upright line where it turns, if it does. It needs the
-  amplitude to fall through at least three 2° bands with 10 readings in
-  each, which a session of some hours from full wind gives.
-- **Full Wind Against 24 Hours Later**: the first half hour of the session
-  against the half hour 24 hours later in one position (or the session's
-  last half hour, if it is shorter): rate, amplitude and beat error, and
-  how much each changed. It needs at least 2 hours.
-
-Until there are 5 minutes of beats in one position, the Steadiness and
-Isochronism panes say so. During a Positions Test they say that the test
-never stays that long in one position.
-
-## Over Days: the Command Line
-
-For runs of many hours or days, `timegrapher long` analyses a recording in
-bounded memory, calibrates the sound card against internet time, and writes
-an HTML report with rate and amplitude over time and the periodic changes
-it found, named after the wheels they match. See
-[The Command Line](12-command-line.md#long) and [Long runs](../long-runs.md).
+[Chapter 8b](08b-isochronism.md) explains the dots, quartile bars, fitted
+curve, slope and turning point, as well as the exact intervals used in
+**Full Wind Against 24 Hours Later**. A shorter take can show a comparison
+under that heading; check whether the second column says **At 24 h** or
+**Last Half Hour**.
 
 ---
 
 Previous: [The Sound of the Beat](07-sound-of-the-beat.md) ·
-Next: [Calibres and Lift Angles](09-calibres.md)
+Continue: [Steadiness](08a-steadiness.md) ·
+Next main chapter: [Calibres and Lift Angles](09-calibres.md)

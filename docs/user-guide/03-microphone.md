@@ -1,158 +1,155 @@
 # 3. Setting Up the Microphone
 
-Every figure Timegrapher reports comes from the sound. A microphone that
-is too loud, too quiet, or turning its own level up and down between
-beats gives figures that describe the microphone as much as the watch.
-This chapter is about getting a clean sound, and about the checks the
-software makes so you can tell when you haven't.
+The useful signal is not just the loud tick. Amplitude depends on locating
+a quiet early sound and the later drop group consistently. A setup that
+produces a convincing rate can still be poor for amplitude or beat error.
+
+Start with stable contact, sufficient headroom and as little processing
+of the sound as possible. Then use the profile to check the result.
 
 ## The Microphone Section of the Watch Pane
 
-The top of the **Watch** pane is the **Microphone** section. Choose
-**Microphone** (rather than **Recording**) to listen live.
+Choose **Microphone** at the top of the Watch pane for live capture.
 
-![The Microphone section while listening: the microphone menu, Stop and Save… buttons, Input Level and the Peak meter reading −9 dBFS](images/microphone-listening.png)
+![Microphone controls, Input Level and the Peak meter](images/microphone-listening.png)
 
-- **The microphone menu** lists the computer's sound inputs. The app looks
-  for them only when you open the menu, press **Rescan** or press
-  **Start**, never when it starts: asking an input what it can do briefly
-  opens it, which could disturb another program recording from it. Until
-  then the menu shows the microphone you used last, or **System Default**.
-- **Rescan** looks for inputs again, after you plug one in.
-- **Start** begins listening. While listening it becomes **Stop**, and
-  after stopping, **Resume**.
-- **Input Level** is the microphone's gain (see below).
-- **Peak** is a meter showing the loudest sample of the last half second,
-  with its level written under it in dBFS: decibels below the loudest
-  sound the input can carry. It has marks at −10 and −6 dBFS. It turns red
-  the moment any sample clips.
-- **Show Every Input** lists everything the system offers, with the
-  system's own names for them.
+| Control | Use |
+| --- | --- |
+| Input menu | Select the microphone; until enumeration, it may show the last selection or **System Default** |
+| **Rescan** | Refresh the input list after connecting a device |
+| **Start**, **Stop**, **Resume** | Acquire the input, release it, or continue the session |
+| **Input Level** | Adjust capture gain where the platform and device support it |
+| **Peak** | Read the largest sample magnitude over the last half second |
+| **Show Every Input** | Include the additional system device names |
 
-The app asks the input for 48 kHz and, where the input offers it, 16-bit
-samples, mixed to one channel. The status line at the bottom of the
-window says what it opened at.
+Opening the input menu, rescanning or starting capture can query audio
+devices. The app avoids doing that automatically at startup because even
+querying a device can briefly open it.
+
+It requests 48 kHz, prefers 16-bit samples where offered, and mixes the
+input to mono. Check the status line for the format actually opened; the
+request and the device's selected format need not be identical.
 
 ### Which Input to Choose on Linux
 
-On Linux the menu offers each microphone in two ways:
+**System default (via PipeWire)** or **via PulseAudio** uses the source
+selected by the desktop sound server and can coexist with other programs.
+Confirm that the desktop has selected the watch microphone rather than
+the laptop microphone or a monitor source.
 
-- **System default (via PipeWire)** (or "via PulseAudio") is whatever
-  input your desktop's sound settings choose, and works alongside other
-  programs. If your timegrapher microphone is set as the desktop's input,
-  choose this.
-- Each sound card's own device, marked **(direct)**, goes straight to the
-  card. It cannot open while the desktop's sound server is using the card.
+A device marked **(direct)** accesses the sound card through ALSA. It may
+be unavailable while the sound server or another program holds it. If a
+direct input fails, try the system input and check the desktop routing.
+On macOS and Windows, select the microphone by name.
 
-On macOS and Windows, choose the microphone by name.
+Avoid acquiring the same input from another recorder during an important
+take unless you have confirmed that sharing works with that configuration.
+For reviewing existing files, use Recording mode, which does not acquire
+the microphone.
 
 ## Setting the Level
 
-The level is right when the beats are well above the background noise
-and the loudest part of each beat stays below the top of the input's
-range.
+The Peak meter is in **dBFS**, decibels relative to digital full scale.
+0 dBFS is the maximum. −10 dBFS corresponds to about 32% of full-scale
+sample amplitude; −6 dBFS is about 50%. The scale is logarithmic, not a
+percentage slider.
 
-- **Too loud**: the loudest part of each beat is cut flat (**clipping**).
-  The peak meter turns red and an amber banner above the readings says
-  **Clipping on 3% of beats** (or whatever share it is). Clipping
-  flattens the drop, which moves where the drop seems to be, so the
-  **amplitude and beat error read wrong**. The rate comes from when the
-  beats arrive, which clipping doesn't change. The banner follows the
-  readings: it shows while the beats being averaged clip and goes when
-  they no longer do.
-- **Too quiet**: the beats sink towards the background. The **signal**
-  figure in the status line (see below) falls, the jitter grows, and in
-  the end no beats are found.
+Aim for clear beats with headroom for the loudest expected event. The
+`doctor` command uses about −10 dBFS as its target when suggesting gain
+changes. This is a useful starting point, not a requirement to make every
+watch reach precisely the same peak.
 
-`timegrapher doctor` (below) suggests a level that puts the loudest
-sample at about −10 dBFS, the meter's first mark, leaving room for a
-louder beat.
+**Clipping** occurs when the input cannot represent the signal's full
+excursion. The waveform is flattened, and the app marks the meter red
+when samples reach its clipping threshold. An amber banner reports the
+share of beats containing clipped samples within the reading interval.
 
-**How to change the level** depends on the computer:
+Clipping can distort the edges used for amplitude and beat error. Rate
+may remain relatively stable because the beat sequence is still clear,
+but it is not immune to distorted timing or failed detection. Reduce gain,
+then check a fresh, unclipped interval. Turning gain down after capture
+cannot repair a clipped recording.
 
-- **Linux**: drag **Input Level** in the Watch pane. The change is made
-  when you let go of the slider. For the system default it sets the sound
-  server's input volume; for a direct device, the card's own capture
-  control. When neither can be set from the app, it says **not adjustable
-  here**, and you set the level in your desktop's sound settings instead.
-- **macOS**: System Settings → Sound → Input, then the input volume.
-- **Windows**: Settings → System → Sound → your microphone's properties,
-  then the input volume.
+At the other extreme, low signal relative to background noise makes edge
+placement uncertain. Increasing digital gain raises both the signal and
+noise; improving contact or reducing vibration can be more effective.
 
-## Automatic Gain
+### Changing Gain
 
-Many inexpensive USB timegrapher microphones arrive with **automatic gain
-control** turned on and the level at maximum. Automatic gain turns the
-level up in the quiet between beats and down again on each beat, which
-reshapes the very sound the amplitude is worked out from.
+On **Linux**, release the **Input Level** slider to apply the change.
+For the system input it controls the sound server's input volume; for a
+direct device it uses an available capture mixer control. If the app says
+**not adjustable here**, use desktop sound settings or the device's
+hardware control.
 
-When the app can see the microphone's automatic gain switch and finds it
-on, the Microphone section says **Automatic gain: on** with a **Turn It
-Off** button. When it is off, the app says nothing about it. On systems
-where the app can't see the switch, `timegrapher doctor` (below) looks
-for the background rising between beats, the sign of automatic gain at
-work, and reports it.
+On **macOS**, use System Settings → Sound → Input. On **Windows**, use
+the input device's properties in System → Sound. The available controls
+depend on the device and driver.
+
+## Automatic Gain and Other Processing
+
+Automatic gain control changes gain as signal level changes. Noise
+suppression, gating and speech-oriented processing can also reshape a
+watch beat or suppress its quiet onset. Disable these features where the
+input or operating system offers them, then check the signal again.
+
+When Timegrapher can read an enabled automatic-gain switch, it shows
+**Automatic gain: on** and **Turn It Off**. Absence of that message is
+not proof that every stage of the input path is unprocessed; the app may
+not have access to a particular control.
+
+`timegrapher doctor` also measures whether the background rises between
+beats. That can support a suspicion of gain control, but the acoustic
+measurement alone does not uniquely identify its cause.
 
 ## The Signal Figure
 
-The status line at the bottom of the window shows **signal**, such as
-"signal 30×": how far the typical beat's peak stands above the typical
-level between beats.
+The status line's **signal**, for example **30×**, compares a typical
+beat peak with the typical level between beats.
 
-![The status line: the input and its format, signal 30×, the sound held so far, the beat rate and the position](images/status-line.png)
+![Status line with the signal ratio, input format, recording duration and position](images/status-line.png)
 
-Noise alone reads about 2×. Below 4×, no beats are logged. The figure
-measures loudness, not the shape of the beat, so hum, a knock or a holder
-that smears the sound are not caught by it.
+Noise alone can give a ratio around 2×, and the engine does not log beats
+below its 4× threshold. This is a linear envelope ratio, not an SNR in dB
+and not a quality percentage. A strong hum, resonant holder or repeated
+knock can still make unsuitable input. Look at the profile and regularity
+of detection as well as the ratio.
 
-## When the Input Stops
+## Checking from the Command Line
 
-If the input can't be opened, stops, or sends no sound for 3 seconds,
-the app stops listening and says why above the readings, rather than
-showing an empty strip.
+`doctor` reports peak and RMS level, clipped samples, beat detection,
+background rise and a quick timing estimate. It can inspect a file
+without acquiring the microphone:
 
-## Checking the Microphone from the Command Line
-
-`timegrapher doctor` listens for a few seconds, or reads a recording, and
-states what it finds: the level, clipping, whether the background rises
-between beats, the signal above the noise, and whether a regular beat was
-found. On Linux it also reads the sound card's mixer controls and names
-the exact setting to change. It changes nothing unless you add
-`--apply`.
-
-Here it is reading a recording that clipped on a few samples:
-
-```text
-$ timegrapher doctor --file test_watch_DU.flac
-Source       test_watch_DU.flac
-Level        peak 0.0 dBFS, RMS -34.0 dBFS, 66 clipped samples
-Ticks        4775 of about 4800 beats at 28800 bph; tick -16.6 dBFS, background -45.1 dBFS
-Signal       32× above the background
-Gap rise     background rises -0.0 dB between ticks
-Quick look   rate +48.8 s/d, beat error 0.1 ms (on the sound card's clock)
-Detected     Clipping: 66 samples (66 samples clipped, peak 0.0 dBFS)
-Changes --apply makes:
-  - The peak is 6 dB above -10 dBFS; no capture control was found on the mixer to set it.
+```sh
+timegrapher doctor --file watch_DU.flac
 ```
 
-Run `timegrapher doctor` with no file to listen to the default input, or
-`timegrapher devices` to list the inputs and `--device NAME` to choose
-one. [The Command Line](12-command-line.md#doctor) has the details.
+For a live setup check, stop capture in the app first if the device cannot
+be shared, then use:
 
-## Good Habits
+```sh
+timegrapher devices
+timegrapher doctor --device "USB"
+```
 
-These come from how the sound reaches the microphone, not from any rule
-about the watch:
+Use the device name reported on your machine. With no `--device`, doctor
+uses the default input. On Linux it can report relevant mixer controls
+and proposed adjustments. It makes those changes only when you supply
+`--apply`; read the proposed changes before using it. See
+[doctor](12-command-line.md#doctor).
 
-- Keep the watch in the same place in the clamp from one measurement to
-  the next, so the sound reaches the pick-up the same way.
-- Keep the table still. Typing, a mouse, a phone buzzing on the table or
-  footsteps on a wooden floor all reach a contact microphone.
-- Measure in the same position for a whole reading. Turning the watch is a
-  new measurement; the app keeps positions apart (see
-  [Positions](10-positions.md)).
-- Close other programs that use the microphone before pressing **Start**,
-  and stop listening before another program starts recording.
+## When Capture Stops
+
+If the input fails or stops delivering audio for three seconds, capture
+stops and a banner explains why. This is different from receiving audio
+containing silence: silence may keep the input running while the readings
+say **No regular beat found**.
+
+For repeatable comparisons, keep the watch's seating and clamping pressure
+consistent, isolate the stand from desk vibration, and avoid typing or
+handling nearby during the measured interval. If you change coupling or
+gain, note it as a change in measurement conditions.
 
 ---
 

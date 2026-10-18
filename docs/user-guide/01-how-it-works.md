@@ -1,161 +1,204 @@
 # 1. How a Timegrapher Hears a Watch
 
-A timegrapher listens to a watch through a microphone pressed against its
-case, picks out each beat, and times the beats against a clock it trusts.
-Everything it reports comes from two things: **when** each beat arrives,
-and **what** each beat sounds like. This chapter explains both, so the
-figures in the rest of the guide make sense.
+A timegrapher measures the timing of sounds from the escapement. It cannot
+see the balance, measure mainspring torque, or inspect a tooth. Yet those
+sounds contain enough information to estimate rate, beat error and
+amplitude, and to follow small changes as the watch runs.
+
+Understanding which event each number represents makes the instrument
+much more useful. It also helps distinguish a change in the watch from a
+change in the way the microphone hears it.
 
 ## The Beat
 
-Inside a mechanical watch the balance wheel swings back and forth on its
-hairspring. Twice in each full swing, once each way, it knocks the lever
-across, the lever lets the escape wheel turn one step, and the escape wheel,
-through the lever, gives the balance a small push to keep it swinging. Each of those
-moments is a **beat**: the "tick" you hear when you hold a watch to your
-ear.
+This guide describes a **Swiss lever escapement**. Its balance and
+hairspring form an oscillator. The balance makes one complete oscillation
+when it travels from one extreme to the other and back again. Each half
+oscillation is a **vibration**, or **beat**. A 4 Hz balance therefore makes
+eight beats per second: 28,800 beats per hour (bph).
 
-The two beats of a swing are made by different parts of the escapement,
-so they sound slightly different and can be timed separately. Timegrapher
-calls them the **Tick** and the **Tock**. The sound alone cannot tell
-which pallet stone made which beat, so the Tick is simply the first beat
-the software hears. Ticks are drawn in blue and Tocks in orange throughout
-the app.
+During most of its arc the balance is free of the escapement. As it
+approaches the middle of its swing, the impulse pin (also called the
+roller jewel) enters the pallet fork. The balance first supplies the
+energy needed to unlock the escapement; the escape wheel then supplies an
+impulse through the pallets and fork to sustain the balance's motion.
+On the next vibration the action repeats in the opposite direction,
+using the other pallet stone.
+
+Timegrapher calls the alternating groups **Tick** and **Tock**, shown in
+blue and orange. These are software labels, assigned when the beat
+sequence is acquired. They do not identify the entry and exit pallets.
+The labels can exchange on a new acquisition.
 
 ## The Three Sounds of a Beat
 
-Listen closely, at the scale of milliseconds, and each beat is three
-sounds in quick succession:
+The familiar tick contains several closely spaced impacts. Timegrapher
+uses the conventional three sound groups:
 
-1. **Unlock**: the pallet stone lets go of the escape wheel tooth.
-2. **Impulse**: the escape wheel tooth pushes the lever, which pushes the
-   balance.
-3. **Drop**: the next escape wheel tooth lands on the other pallet stone.
-   This is usually the loudest of the three.
+1. **Unlock.** The impulse pin contacts the inside of the fork and starts
+   moving the pallet lever. The locking face of the engaged pallet stone
+   moves past the escape-wheel tooth, releasing it. The first acoustic
+   group marks the start of this process, not simply the instant the
+   tooth becomes free.
+2. **Impulse.** The escape-wheel tooth acts on the **impulse face of the
+   pallet stone**. Energy passes through the pallet lever and fork to the
+   impulse pin, and hence to the balance. The second sound group includes
+   contact at the tooth and stone and the fork's contact with the pin.
+3. **Drop and locking.** After the tooth leaves the impulse face, the
+   escape wheel advances freely through the drop angle until another
+   tooth meets the locking face of the opposite pallet stone. The lever
+   completes its travel to the banking. These impacts form the third,
+   usually strongest, sound group, labelled **Drop** in the app.
 
-![A sketch of one beat's loudness over a few milliseconds: a small unlock, a medium impulse and a large drop, with the time from unlock to drop marked](images/beat-sounds.svg)
+Strictly, *drop* is the escape wheel's free movement between release and
+locking, whereas the microphone hears the impacts at its end. Keeping
+that distinction in mind avoids treating an acoustic label as an exact
+mechanical boundary. The three groups need not appear as three clean
+peaks: the case, holder and microphone alter their relative prominence.
 
-The [Tick Tock Profile](07-sound-of-the-beat.md) in the app shows these
-sounds as the software actually heard them, with the unlock and drop it
-measured marked on the plot.
+![Schematic envelope of one beat, showing the Unlock, Impulse and Drop sound groups and the measured unlock-to-drop interval](images/beat-sounds.svg)
+
+Witschi describes the acoustic groups in its [training course, printed
+pp. 5–6](https://www.welwynwatches.co.uk/uploads/9/1/4/3/9143536/witschi_training_course.pdf).
+For the mechanical sequence, including the distinction between drop,
+locking and run to the banking, see Horopedia's [Swiss lever escapement,
+sections 6 and 9](https://horopedia.org/distribution-mechanism-swiss-lever-escapement/).
 
 ## Beat Rate
 
-The **beat rate** is how many beats the watch makes in an hour, counting
-Ticks and Tocks alike, in beats per hour (bph). A balance that swings
-back and forth 4 times a second makes 8 beats a second, which is 28,800
-bph. Other common rates are 21,600 bph (3 swings a second), 18,000 bph
-(2.5) and 36,000 bph (5). The beat rate is fixed by the watch's design.
+**Beat Rate** is the nominal frequency of the movement, expressed in bph.
+**Rate**, discussed next, is its departure from that nominal frequency.
+They answer different questions.
 
-Timegrapher finds the beat rate by itself from the first few seconds of
-beats (**Beat Rate: Auto**), or you can set it. At 28,800 bph a beat is
-due every 125 milliseconds; at 21,600 bph every 166.7 ms.
+| Balance frequency | Beat rate | Nominal time between beats | Full oscillation period |
+| --- | --- | --- | --- |
+| 2.5 Hz | 18,000 bph | 200 ms | 400 ms |
+| 3 Hz | 21,600 bph | 166.67 ms | 333.33 ms |
+| 4 Hz | 28,800 bph | 125 ms | 250 ms |
+| 5 Hz | 36,000 bph | 100 ms | 200 ms |
+
+With **Beat Rate: Auto**, the app chooses the nearest standard beat rate
+from the first usable beats. Check the result against the movement. A
+stable-looking trace at the wrong nominal beat rate is not a valid
+measurement.
 
 ## Rate
 
-The **rate** is how many seconds a day the watch would gain (+) or lose
-(−) if it kept running exactly as it did while it was measured, in seconds
-per day (s/d).
+Rate is the gain or loss the watch would accumulate in a day **if the
+measured behaviour continued**. A reading of +10 s/d means gaining;
+−10 s/d means losing. It is a frequency measurement expressed in familiar
+watchmaking units, not a prediction of tomorrow's performance on the wrist.
 
-A timegrapher does not wait a day to find out. It compares each beat's
-arrival with a perfect clock beating exactly at the beat rate. A watch
-that gains 10 s/d at 28,800 bph brings each beat about 0.015 ms earlier
-than the one before (10 s in 86,400 s, of 125 ms). Over a few seconds of
-beats that adds up to a steady drift, which Timegrapher measures by
-fitting a straight line through the time of every beat. The
-[Paper Strip](06-paper-strip.md) draws that drift.
+If the nominal beat interval is `P₀` and the fitted interval is `P`, then:
 
-The rate is only as good as the clock the beats are timed against. The
-software times them by the computer's sound card, whose own crystal
-typically runs 10 to 50 parts per million off, which moves every rate by
-1 to 4 s/d. tg and other software timegraphers read the rate on the same
-clock. The app can measure your sound card's error and show the rate
-corrected for it, labelled **True Clock**: see
-[Readings](05-readings.md#true-clock).
+```text
+rate = 86,400 × (P₀ / P − 1) s/d
+```
+
+At 28,800 bph, +10 s/d corresponds to an interval about 14.5 microseconds
+shorter than 125 ms. Measuring one interval would be fragile. Timegrapher
+fits many beat times together, with a separate alternating offset for
+Tick and Tock, so beat error does not become a rate error. It also rejects
+poorly matched beats and large timing outliers. The [Paper Strip](06-paper-strip.md)
+lets you inspect the timing pattern behind that fit.
+
+The reference clock matters. Audio samples are timed by the input's
+sample clock, which can differ from true elapsed time. An error of 20 ppm
+introduces about 1.73 s/d of rate error. A perfectly straight trace can
+therefore have a consistently biased rate. [True Clock](05-readings.md#true-clock)
+explains the correction and its limits.
 
 ## Amplitude
 
-The **amplitude** is how far the balance swings each way from its rest
-position, in degrees.
+Amplitude is the balance's angular excursion from its equilibrium
+position to a turning point. A balance at 270° amplitude travels roughly
+540° from one extreme to the other; 270° is not the total arc of an
+oscillation, nor an angle travelled by the pallet lever.
 
-The microphone cannot see the balance, so the amplitude is worked out
-from the sound. While the balance is in contact with the lever, between
-the unlock and the drop, it turns through a fixed angle set by the
-calibre's design: the **lift angle**. The faster the balance swings, the
-less time it spends crossing that angle. So, from the time *t* between
-unlock and drop, the time *T* of one full swing of the balance (two
-beats), and the lift angle *L*:
+Timegrapher infers amplitude from **lift time** and **lift angle**. The
+lift angle is the balance's angular travel through the escapement action,
+set by the movement's geometry. The instrument estimates the corresponding
+time from the first and third sound groups. A balance with a larger
+amplitude crosses this small central arc faster.
 
-> amplitude = *L* ÷ (2 × sin(π × *t* ÷ *T*))
+The calculation models the balance's motion as sinusoidal and the lift
+interval as centred about equilibrium. With amplitude `A`, lift angle
+`L`, lift time `t`, and full oscillation period `T`:
 
-This is the formula Witschi's instruments and tg use. For example, in the
-[Tick Tock Profile](07-sound-of-the-beat.md) screenshot, the Tick's
-unlock-to-drop time is 8.48 ms at 28,800 bph (*T* = 250 ms) with a lift
-angle of 55°: 55 ÷ (2 × sin(π × 8.48 ÷ 250)) ≈ 259°.
+```text
+L = 2 A sin(π t / T)
+A = L / [2 sin(π t / T)]
+```
 
-Two things follow from the formula:
+Use the same units for `t` and `T`; the sine's argument is in radians.
+`L` and `A` may both be in degrees. Notice that `T` is **two beats**, not
+one. This is the model implemented by Timegrapher's
+[amplitude calculation](../../crates/timegrapher-core/src/amplitude.rs).
+It is an acoustic estimate under that model, not an optical observation
+of the turning point.
 
-- **The lift angle matters.** A wrong lift angle moves every amplitude in
-  proportion: 1° of lift angle moves the amplitude by about 4°. The app
-  uses 52° when it doesn't know the calibre and says so beside the
-  reading. [Calibres and Lift Angles](09-calibres.md) explains how to set
-  it, and where the figures come from.
-- **The unlock has to be heard.** The unlock is the quietest of the three
-  sounds. A noisy room, a muffled microphone or a soft unlock makes it
-  harder to place, and the amplitude less certain.
+For the profile pictured in [chapter 7](07-sound-of-the-beat.md),
+`t = 8.48 ms`, `T = 250 ms` and `L = 55°`:
 
-The app shows the amplitude measured from the Ticks and from the Tocks
-separately, as well as their average.
+```text
+A = 55 / [2 sin(π × 8.48 / 250)] ≈ 259°
+```
+
+Two practical consequences follow. First, amplitude scales directly with
+the entered lift angle. Changing 52° to 55° multiplies every result by
+55/52; a displayed 260° becomes 275°. The often quoted “about four degrees
+of amplitude per degree of lift angle” is only a rough example: the
+sensitivity is `A/L`, or five degrees at 260° and 52°.
+
+Second, a misplaced edge can matter considerably. For small lift times,
+`A ≈ L T / (2πt)`, so a 1% error in lift time produces approximately a
+1% error in amplitude in the opposite direction. An unlock detected too
+late makes the interval too short and the inferred amplitude too high.
+Inspect the profile when amplitude changes abruptly, especially if only
+one side changes.
+
+The Swiss lever sound model should not be assumed to work for a co-axial,
+detent, cylinder or other escapement. Detecting a regular beat does not
+validate its amplitude estimate.
 
 ## Beat Error
 
-The **beat error** is how unevenly the Tick and the Tock are spaced, in
-milliseconds. If the balance's rest position sits exactly midway between
-the points where it unlocks the lever each way, the Ticks and Tocks come
-evenly, half a swing apart, and the beat error is zero. If it sits to one
-side, one beat comes a little early and the next a little late.
+Beat error measures the asymmetry between successive Tick-to-Tock and
+Tock-to-Tick intervals. In the convention used here, if those intervals
+are `a` and `b`:
 
-Timegrapher reports the beat error timed from the **unlock**, as tg and
-commercial timegraphers measure it, and beside it, smaller, the beat
-error timed from the beat as a whole, nearer the drop. The two differ
-when the Tick and the Tock take different times from unlock to drop. On
-the Paper Strip the beat error is the gap between the line of Ticks and
-the line of Tocks.
+```text
+beat error = |a − b| / 2
+```
 
-Because which beat is the Tick depends on where the software first locks
-on, the app shows the beat error as a size, without a sign.
+For example, alternating intervals of 124.7 and 125.3 ms give **0.30 ms**
+beat error, not 0.60 ms. Their mean is still 125 ms, so this example has
+zero rate error. The timing fit estimates the same alternating offset
+over many beats rather than relying on one pair.
 
-## Jitter and Other Figures
+The principal reading uses the **unlock** timing. The app also reports a
+value labelled **from the drop**, based on the detected beat reference
+near the dominant sound group. If the two sides have different
+unlock-to-reference delays, the values differ. That difference is useful
+information about the sound and its extraction; it is not automatically
+a second mechanical fault.
 
-Beyond these three, Timegrapher measures things most timegraphers don't:
+The cards show the magnitude because Tick and Tock are arbitrary labels.
+Some advanced analyses retain the sign to preserve changes through zero;
+[Steadiness](08a-steadiness.md#which-readings-are-analysed) explains this.
 
-- **Jitter**: how far single beats land from the straight line the rate is
-  fitted to, in microseconds. It is the spread of the dots on the Paper
-  Strip. The watch, background noise, the microphone and the stand all
-  add to it.
-- **How each figure changes over time**, from a few seconds to many hours,
-  and whether a change repeats with the turn of a particular wheel. See
-  [Over Time](08-over-time.md).
-- **The shape of each beat**: the timing and loudness of the three sounds
-  on each side. See [The Sound of the Beat](07-sound-of-the-beat.md) and
-  `timegrapher shape` in [The Command Line](12-command-line.md).
-- **Positions**: the same figures in each of six positions, and the
-  differences between them that watchmakers use. See
-  [Positions and the Positions Test](10-positions.md).
+## Precision, Stability and Accuracy
 
-## What Every Figure Carries
+These are three different properties. A watch can maintain a very steady
++20 s/d, and a measurement can report a small ± while using the wrong lift
+angle. The ± estimates short-range measurement scatter under a statistical
+model. It does not include every source of error, describe the watch's
+whole range of variation, or guarantee that another measurement will
+fall inside it.
 
-Every figure comes with a **±**: an estimate of how far it could be off
-from the scatter of the beats alone. A longer measurement gives a smaller
-±. The ± is a property of the measurement, not of the watch, and it
-cannot show everything: a wrong lift angle, for instance, moves the
-amplitude without changing its ±. So the app also names, beside each
-reading, anything it knows limits it: a short stretch of beats, missing
-beats, clipped sound, an assumed lift angle. When the beats it finds
-don't come at regular intervals at all, it shows no figures, only
-**No regular beat found**, with the timing scatter it measured.
-
-[Readings](05-readings.md) explains each of these in turn.
+Use the cards for the current result, the strip and profiles to check
+how it was obtained, and the charts and advanced panes to understand how
+it changes. The following chapters connect those views.
 
 ---
 

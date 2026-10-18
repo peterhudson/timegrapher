@@ -1,302 +1,327 @@
 # 12. The Command Line
 
-`timegrapher` is the command line tool. It measures with the same engine
-as the app, on recordings of any length, from a few seconds to days, and
-writes reports you can open in a browser or send by email. It is also how
-AI assistants drive the software (see [Claude Desktop](13-claude-desktop.md)).
+The command-line tool is useful when you want a reproducible analysis,
+a report from several recordings, or numerical data for your own plots.
+It uses the same core engine as the desktop app. Agreement still depends
+on analysing the same interval with the same settings and clock basis:
+a current 10-second card reading and a whole-recording summary need not
+agree on a changing watch.
 
-You don't need it to use the app. It is worth knowing for:
-
-- checking a microphone in detail (`doctor`);
-- measuring the sound card's clock (`clock`);
-- reading a multi-position test into a report (`session`);
-- analysing long runs of hours or days (`long`, `series`);
-- scripts, spreadsheets and other programs (every command has `--json`).
+The examples below use illustrative filenames. Replace them with your
+own paths and use the beat rate and lift angle established for your
+movement. Quote paths and calibre names containing spaces.
 
 ## Finding and Running It
 
-The program comes with the app. Your download's **Start Here** page says
-where it is; in short:
+The release's **Start Here** page identifies the executable. In the
+current folder-based downloads, look in **Command Line**; macOS also
+carries the tool inside the application bundle. From a terminal in the
+tool's folder, run `./timegrapher` on Linux or macOS and
+`.\timegrapher.exe` in Windows PowerShell. The Linux AppImage also accepts
+`./Timegrapher.AppImage cli --help`.
 
-- **macOS**: in the disk image's **Command Line** folder, and inside the
-  app, at `/Applications/Timegrapher.app/Contents/MacOS/timegrapher`. To
-  run it by name from Terminal, link it once:
-
-  ```sh
-  sudo ln -s /Applications/Timegrapher.app/Contents/MacOS/timegrapher /usr/local/bin/timegrapher
-  ```
-
-- **Windows**: `timegrapher.exe`, in the **Command Line** folder of the
-  folder you extracted. Open a terminal there and run `.\timegrapher.exe`.
-- **Linux**: `timegrapher`, in the **Command Line** folder, or inside the
-  AppImage: `./Timegrapher.AppImage cli`.
-
-`timegrapher-mcp`, beside it in the Command Line folder, is the server for
-AI chat apps (see [Claude Desktop](13-claude-desktop.md)). Keep the two
-together if you move them.
-
-Then:
+The examples use `timegrapher` for readability, assuming it is on your
+command search path. Otherwise use the appropriate relative or full path.
+No system-wide installation or privileged symbolic link is required.
 
 ```sh
-timegrapher --help            # the list of commands
-timegrapher analyze --help    # the options of one command
 timegrapher --version
+timegrapher --help
+timegrapher analyze --help
 ```
 
-The examples below were run on recordings from the public
-[test corpus](https://github.com/peterhudson/timegrapher-corpus).
-Their figures illustrate the output and say nothing about the watch.
+Use a subcommand's `--help` as the authority for the installed version.
+The user-facing commands are covered below; the `regress` command is
+intended for engine validation rather than routine watch testing.
 
 ## Common Options
 
-Most commands that read a recording take:
+Many analysis commands accept `--bph`, `--lift`, `--notch` and `--json`,
+but they do not all have identical defaults or support `--calibre`.
+The most consequential distinction is:
 
-| Option | Means |
+| Command | How beat rate and lift angle are obtained |
 | --- | --- |
-| `--calibre NAME` | The movement, from the calibre table (see `calibres`). For `analyze`, `session` and `record`: its beat rate, lift angle and wheels. For `long` and `series`: its wheels only. `profile` and `shape` don't take it |
-| `--bph N` | Beat rate in beats per hour (found from the beats if left out) |
-| `--lift DEG` | Lift angle in degrees. Left out: the calibre's for `analyze`, `session` and `record`, otherwise 52 |
-| `--notch 5000,7000` | Remove steady interference tones at these frequencies, in Hz |
-| `--json` | Print one JSON document instead of text |
+| `analyze` | Explicit `--bph` and `--lift` override the calibre; otherwise use its known values, then detected beat rate/default 52° |
+| `record` | Can use calibre values when numerical settings are absent; records context in the session |
+| `session` | Explicit numerical options override the manifest; the manifest takes precedence over catalogue defaults |
+| `long`, `series` | `--calibre` supplies train associations; give `--lift` separately (default 52°), and `--bph` if you need to fix the nominal rate |
+| `profile`, `shape` | Supply `--lift` and, if needed, `--bph`; these commands do not take `--calibre` |
 
-`--bph` and `--lift` win over the calibre's figures. So for `long`,
-`series`, `profile` and `shape`, give the lift angle with `--lift`.
+`--notch 5000,7000` removes selected steady tones in Hz where supported.
+Use filtering to address an identified interference problem and record
+the settings; changing filters can change the sound from which edges
+are extracted.
+
+Commands that provide `--json` return structured output suitable for
+scripts. Not every command has that option: `synth`, for example, writes
+a recording instead. Check help before adding a shared set of flags to
+every command.
 
 ## analyze
 
-Reads one WAV or FLAC recording in one position and states the rate,
-amplitude, beat error and more:
+Use `analyze` for a summary of one WAV or FLAC recording:
 
-```text
-$ timegrapher analyze test_watch_DU.flac --calibre "Rolex 3235"
-Calibre      Rolex 3235: 28800 bph, lift 55°, as set unless a flag said otherwise
-Duration     600.0 s at 48000 Hz
-Beat rate    28800 bph, 4802 beats found (100.0% of those expected)
-Rate         +47.1 ± 0.7 s/d, corrected for the sound card's clock (19.2 ppm slow, from 8 USB lines in the recording, 0.0 ppm apart); +48.8 s/d on the card's clock
-Beat error   0.27 ± 0.00 ms (from the unlock; 0.11 ms from the drop)
-Jitter       111 us per beat (within 10 s windows)
-Rate spread  30.7 to 75.1 s/d (5th-95th percentile of 10 s windows)
-...
+```sh
+timegrapher analyze watch_DU.flac --calibre "ETA 2824-2"
+timegrapher analyze watch_DU.flac --bph 28800 --lift 52 --json > analysis.json
+timegrapher analyze watch_DU.flac --bph 28800 --lift 52 --beats beats.csv --windows windows.csv
 ```
 
-Each line is a measurement with its ± where it has one. **Rate spread** is
-the range of 10-second rates across the recording. Further lines give the
-amplitude, clipping, the beat's shape and any periodic changes found.
-`--beats beats.csv` writes one row per beat, and `--windows windows.csv`
-the rate, beat error and amplitude over time, for a spreadsheet.
+The output includes rate, amplitude, unlock- and reference-based beat
+error, jitter, beat coverage, clipping and other measurement conditions.
+**Rate spread** describes the distribution of short-window rates over
+the take, not a confidence interval for the overall rate. The CSV options
+export individual beats and window measurements.
+
+Read the clock line. `analyze` can resolve a stored input correction from
+recording provenance or estimate one from suitable USB interference
+lines. `--device` can select a stored input correction and `--card-ppm`
+can supply an explicit value. To make a deliberate comparison on the
+uncorrected sample clock, `--card-ppm 0` supplies an explicit zero correction.
+Do not assume an automatically corrected CLI result should equal the
+large, uncorrected desktop Rate figure.
 
 ## doctor
 
-Checks the microphone: records a few seconds (or reads `--file`) and
-states the level, clipping, whether the background rises between beats
-(automatic gain at work), the signal above the noise and whether a regular
-beat is found. On Linux it reads the sound card's controls and lists the
-exact changes it would make; `--apply` makes them. It changes nothing
-without `--apply`. See
-[Setting Up the Microphone](03-microphone.md#checking-the-microphone-from-the-command-line)
-for an example.
+Use a file to inspect recorded signal quality without opening the input:
 
 ```sh
-timegrapher devices                  # the sound inputs
-timegrapher doctor                   # listen to the default input for 5 seconds
-timegrapher doctor --device "USB"    # a named input
+timegrapher doctor --file watch_DU.flac
 ```
+
+For live setup:
+
+```sh
+timegrapher devices
+timegrapher doctor --device "USB" --seconds 5
+```
+
+`devices` lists the inputs; replace USB with an identifying name from
+that list. `doctor` reports signal level, clipping, beat detection and
+background behaviour. On Linux it can inspect mixer controls and propose
+changes. Only `--apply` applies those changes. See
+[Setting Up the Microphone](03-microphone.md).
 
 ## profile
 
-Draws the Tick and Tock sounds over a stretch of a recording, with the
-unlock, drop and sound marks the engine measured: the same picture as the
-app's Tick Tock Profile.
+Use `profile` to inspect a particular interval and save a plot:
 
-```text
-$ timegrapher profile test_watch_DU.flac --at 60 --lift 55 --svg profile.svg
-Stretch      60.0–70.0 s at 28800 bph, lift angle 55 deg; times in ms from the beat
-Tick         40 beats; unlock -9.18, drop -0.53, peak +0.12; sounds -9.17 / -6.77 / -0.51; amplitude 253 deg
-Tock         40 beats; unlock -9.26, drop -0.53, peak -0.04; sounds -9.26 / -6.36 / -0.48; amplitude 251 deg
+```sh
+timegrapher profile watch_DU.flac --at 60 --span 10 --bph 28800 --lift 52 --svg profile.svg
 ```
 
-`--at` and `--span` choose the stretch; `--svg` saves the picture.
+Here **60–70 seconds** of the recording are selected. The output gives
+both sides' beat counts, measured edge offsets, lift times and inferred
+amplitudes. `--json` includes the envelope and markers. Compare the
+same interval and settings with the desktop profile; see
+[The Sound of the Beat](07-sound-of-the-beat.md).
 
 ## shape
 
-Measures the three sounds of each side's beat across the whole recording:
-when each rises and peaks, the intervals between them, their levels, and
-how often each was found, for the Tick and the Tock separately. The
-figures describe the sound; `timegrapher shape --help` and `--json` name
-each one.
+`shape` measures the acoustic sound groups over a recording: rise and
+peak times, intervals, levels and the share of windows in which features
+were found, separately for Tick and Tock.
+
+```sh
+timegrapher shape watch_DU.flac --bph 28800 --lift 52 --json > shape.json
+```
+
+These are measurements of the recorded sound, not direct measurements
+of locking depth, impulse force or lubrication. Use them to compare
+repeatable changes, then inspect the waveform and movement. The
+[agent interface](../agent-interface.md) documents the fields.
 
 ## calibres
 
-The calibre table: beat rate, lift angle, escape wheel and each wheel's
-time for one turn, with sources and notes, plus anything you added in the
-app.
-
-```text
-$ timegrapher calibres 3235
-Rolex 3235 (Rolex)
-Also matches  3235, 3230, 3255, 3285
-Lift angle    55°
-Escape wheel  20 teeth
-...
+```sh
+timegrapher calibres --search "ETA 2824"
+timegrapher calibres "ETA 2824-2"
 ```
 
-`timegrapher calibres --search "dd 3235"` lists the calibres that match,
-best first. As in the app, read the notes and sources: see
-[Calibres and Lift Angles](09-calibres.md#reading-a-calibres-entry).
+The catalogue includes aliases, known numerical settings, wheel periods,
+sources and your custom entries. Inspect the notes when alternatives
+disagree. See [Calibres and Lift Angles](09-calibres.md).
 
 ## record
 
-Records one position of a test into a test folder, as the app saves a take,
-checks it at once, and adds it to the folder's `session.toml`:
+`record` adds one position to a test folder, captures its audio, checks
+the take and updates `session.toml`:
 
 ```sh
 timegrapher record mywatch/ --position DU --seconds 120 --calibre "ETA 2824-2" --wind-h 0
-timegrapher record mywatch/ --position DD --seconds 120
-...
+timegrapher record mywatch/ --position DD --seconds 120 --wind-h 0
 timegrapher session mywatch/
 ```
 
-It listens only while it runs. The first 30 seconds of each take are left
-out of its readings while the watch settles. When no regular beat is found,
-or the beats clip, it says so, and keeps the take.
+Turn the watch and establish contact before starting each command. It
+listens only for the requested duration. A newly created session uses
+30 seconds of settling at the start of each take; an existing manifest
+can specify a different interval. Allow enough recording time after that
+settling period. The immediate quick check caps its settling exclusion
+at half the take when the take is very short, so check the reported
+interval rather than assuming it matches a later session report.
+
+A take with clipping or no
+regular beat is retained with those conditions reported; recording
+success does not imply measurement quality.
+
+`--wind-h` records hours since winding. Supply the actual state for each
+recording rather than relying on filenames. `--file` exercises the same
+workflow from an existing recording without the microphone.
 
 ## session
 
-Reads one watch measured in several positions (and, optionally, at full
-wind and 24 hours later) into a multi-position report in the style of
-Witschi's SEQ mode. Give it a folder of recordings, or a folder made by
-`record` or the app.
+`session` combines positions and winding states into a report:
 
 ```sh
-timegrapher session --init six-positions/    # writes session.toml to check and edit
-timegrapher session six-positions/
+timegrapher session mywatch/
 ```
 
-`--init` guesses each recording's position from its file name
-(`watch_DU.flac`, `watch_CL.flac` and so on); check them, and add the
-watch, calibre, lift angle and `wind_h` (the hours since full wind). Then:
+For an existing folder that has no manifest, initialise one and inspect
+it before analysis:
 
-```text
-Watch        Test watch, calibre Rolex 3235; 28800 bph, lift angle 55 deg
-
-Position          Wind                  Rate   Amp    BE  drop  Jitter      10 s rates
-                                         s/d   deg    ms    ms      us             s/d
-Dial Up (CH)      not given            +48.6   252  0.27  0.11     110        +31..+75
-Dial Down (CB)    not given            +43.6   241  0.05  0.19     155        +21..+57
-Crown Down (9H)   not given            +25.2   233  0.15  0.20     161        +10..+34
-Crown Left (6H)   not given            +66.9   236  0.21  0.31     157        +39..+84
-Crown Up (3H)     not given            -15.8   224  0.30  0.27     111         -24..-7
-Crown Right (12H) not given            -19.2   231  0.25  0.03     114         -24..-9
-...
-At full wind          X +24.9 s/d (H +46.1, V +14.3); D 86.1 s/d, 27 deg; DVH -31.8 s/d, -15 deg; Di +18.3 s/d
+```sh
+timegrapher session --init six-positions/
 ```
 
-(Some columns are left out here.) The summary goes on to the characteristic
-values (X the mean rate, D the largest difference, DVH vertical less
-horizontal, and with a 24-hour half, Im and Ie), any two-state behaviour
-in a position, and any periodic change found. It writes `report.html`,
-one self-contained page to open in any browser or attach to an email,
-with `summary.json` and `readings.csv` beside it, in `session_report/`.
+Check each guessed position, the watch identity, settings, settling
+intervals and `wind_h` values. Then run `session` on that folder. By default
+it writes `report.html`, `summary.json` and `readings.csv` to
+`session_report/`. The HTML is self-contained and can be opened locally
+or shared as a file.
 
-[Test sessions](../sessions.md) explains the session file and each value
-in full.
+The report includes individual readings and characteristic values such
+as mean rate X, positional range D, vertical-minus-horizontal DVH and,
+when suitable paired data exist, Im and Ie. It also reports conditions
+and detected patterns. The [session reference](../sessions.md) explains
+the exact selections. A missing position changes what can be compared;
+it is not a zero-valued measurement.
 
 ## long
 
-Analyses a long recording, hours to days, in bounded memory: rate and
-amplitude over time, the sound card calibrated against internet time, and
-periodic changes named after the wheel whose turn they match. It writes an
-HTML report.
+Use `long` for a long recording or folder of segments, processed in
+bounded memory. It reports timing and amplitude trends and periodic
+components with possible wheel associations, and writes an HTML report.
 
-```text
-$ timegrapher long test-watch-2h --clock test-watch-2h/clock.csv --calibre "Rolex 3235" --lift 55
-Recording    2:00:00 at 48000 Hz, 28800 bph, 57585 beats (100.0% clean)
-Clock        sound card 19.67 ppm slower than NTP time, so uncorrected rates read 1.70 s/d fast; corrected from 119 entries, 36.0 ms rms
-Rate         +16.54 s/d over the run; 18 s slices from 1.3 to 51.8 s/d (5th-95th pct)
-Beat error   0.31 ms (from the unlock; 0.17 ms from the drop)
-Amplitude    249 deg median; slices from 241 to 255 deg (lift angle 55 deg)
-Periodic changes in amplitude:
-      60.01 s ±0.50   swing 6.6 deg p-p      explains  24%  false alarm 7e-52    matches the fourth wheel
-...
-Report       test-watch-2h/take_part01-001_long/report.html
+```sh
+timegrapher long overnight/ --bph 28800 --lift 52 --calibre "ETA 2824-2" --clock overnight/clock.csv --out overnight-report/
 ```
 
-(Some lines are shortened here.) `--clock` reads the `clock.csv` a saved
-take carries, to correct the sound card's clock. For `long`, give the lift
-angle with `--lift`: the calibre names the wheels. [Long runs](../long-runs.md)
-explains the report and the search.
+The explicit `--clock` log takes precedence over other clock sources.
+Without a log, stored or USB-derived corrections may be available; read
+the reported basis. A log must belong to the recording's audio timeline.
+Omit the option if there is no suitable log.
+
+`--calibre` supplies train periods here; it does **not** replace the
+separate `--lift` setting. A reported match to a wheel's period is an
+association to investigate, not proof that the wheel is faulty. See
+[Long runs](../long-runs.md) and
+[Steadiness](08a-steadiness.md#periods).
 
 ## series
 
-The same tests as the app's Steadiness views, on a recording or folder:
-correlation between readings, level changes, a trend, a cycle and two
-levels, each stated with its statistics.
+`series` performs the analyses behind the Steadiness and Isochronism
+panes:
 
-```text
-$ timegrapher series test-watch-2h --calibre "Rolex 3235" --lift 55
-Rate repeats every 60 s (the fourth wheel), 11.7 s/d peak to peak. Its level also moves over the take, between +6.7 s/d and +48.0 s/d.
-  rate           717 readings of 10 s (3 left out as more than 6 σ from their 5-minute level); median 12.62, sd 17.37, reading to reading 7.24 s/d
-  ...
-  cycle          60.0 s (fourth wheel), 11.69 s/d p-p, explains 18% (found by the autocorrelation)
+```sh
+timegrapher series overnight/ --bph 28800 --lift 52 --calibre "ETA 2824-2"
+timegrapher series overnight/ --bph 28800 --lift 52 --wind-h 0 --json > series.json
+timegrapher series overnight/ --bph 28800 --lift 52 --json --views > series-with-plots.json
 ```
 
-`series` corrects the rate for the sound card's clock, from a kept
-correction or the recording's USB timing, as `analyze` does. The app's
-Steadiness views use the sound card's own clock, so the same take's rate
-levels there differ by the clock error: 1.7 s/d for this one, compared
-with [the app's figures](08-over-time.md#steadiness). See
-[Structure in time](../series.md).
+The summary describes correlation, cycles, levels and trends with their
+statistics. JSON also contains the isochronism bins, wind-down comparison,
+rate–amplitude relationship and spectral support. `--views` adds arrays
+for reconstructing the plots and increases output size.
+
+`--reading` changes the rate-reading interval from its 10-second default;
+this also changes the common interval used for the statistical summaries.
+`--wind-h` supplies hours since full wind when recording began.
+`--stretch-min` controls the additional distribution summaries by time
+stretch. `--clock` supplies a matching clock log. This command has no
+`--device` or `--card-ppm` option; otherwise it resolves correction from
+recording provenance and available USB lines. Inspect the top-level
+`clock` field when comparing it with the desktop panes, which use the
+sample clock.
+
+See [Steadiness](08a-steadiness.md), [Isochronism](08b-isochronism.md)
+and the detailed [series reference](../series.md).
 
 ## clock
 
-Measures and keeps each sound input's clock error, so rates can be
-corrected onto true time (see [True Clock](05-readings.md#true-clock)):
+Clock calibration compares audio time with the computer's system time,
+which must itself be well synchronised. No watch is needed for this
+comparison.
 
 ```sh
-timegrapher clock measure --save          # 20 minutes; nothing needs to be on the microphone
-timegrapher clock list                    # the corrections kept, and where
+timegrapher clock measure --save
+timegrapher clock list
 timegrapher clock from-log --device "USB" take/clock.csv take/audio-001.wav --save
-timegrapher clock set "USB" 19.3          # a known error, ppm slow
+timegrapher clock set "USB" 19.3
 timegrapher clock forget "USB"
 ```
 
-The computer's clock must be kept by internet time (NTP). Once kept, the
-app, `analyze` and `long` use the correction for that input.
+`measure` captures for 20 minutes by default; `--save` stores the result.
+`from-log` uses an existing capture log and recording. `set` stores a
+known error in **ppm slow**, negative if fast. Use it only for a value
+you have established for that input. `forget` removes that input's stored
+correction. The store is shared with the app.
+
+A fixed correction is useful for offset; it cannot track changing clock
+error throughout a long run. See [True Clock](05-readings.md#true-clock).
 
 ## report
 
-Makes a zip to attach to a GitHub issue: an excerpt of the recording, what
-was measured, the system, clock corrections and logs, with your home
-folder, user name and computer name removed. It never opens the
-microphone. See [Problems and Reports](14-problems-and-reports.md).
+`report` creates a local zip for investigating a problem:
 
 ```sh
-timegrapher report recording.flac --at 120 --span 300 --kind reading --note "Amplitude jumps at 2 minutes"
+timegrapher report watch_DU.flac --at 120 --span 300 --kind reading --note "Amplitude changes near 150 seconds"
 ```
+
+The excerpt starts at 120 seconds and spans up to 300 seconds of available
+audio. The bundle includes context and analysis, with common identifying
+paths and names redacted. Listen to included audio and inspect the bundle
+before sharing it; audio is not anonymised by removing paths. The command
+does not upload the zip or open the microphone.
+
+`report --replay BUNDLE` reruns a bundle's recorded analysis commands with
+the installed build for comparison. See [Reporting a problem](../reports.md).
 
 ## update
 
-Asks GitHub once whether a newer version has been published. Nothing is
-downloaded or installed, and no account or identifier is sent.
-
-```text
-$ timegrapher update
-Timegrapher 0.4.2 is up to date: no release has been published yet.
-```
+`timegrapher update` checks GitHub for a published release and reports
+whether one is newer than the installed build. It does not install it.
+Use the release's instructions to update the app and accompanying tools
+together.
 
 ## synth
 
-Writes a synthetic recording with a known rate, beat error and amplitude,
-for trying the tools: `timegrapher synth test.wav`. `--fault-period 60`
-adds a change that repeats like a wheel turning once a minute.
+`synth` creates test audio with specified parameters. It is useful for
+learning the views without a physical watch:
+
+```sh
+timegrapher synth example.wav --duration 600 --bph 28800 --rate 5 --amplitude 270 --beat-error 0.4 --fault-period 60
+timegrapher series example.wav --bph 28800 --lift 52
+```
+
+The repeating disturbance in this example is synthetic. Successful
+recovery of its pattern checks an analysis path; it does not validate
+all real escapement sounds or identify a real damaged tooth. `synth`
+does not take `--json`.
 
 ## For Programs and Agents
 
-Every command takes `--json` and prints one JSON document with a `schema`
-field (such as `timegrapher.analyze/2`), the software version and the input
-it read. Exit codes: 0 success, 1 error (and 3 from `regress`, the
-project's own regression check). The
-[agent interface](../agent-interface.md) documents every field.
+JSON-producing commands include a schema identifier and software version.
+Keep these with exported results, along with settings and clock context.
+The [agent interface](../agent-interface.md) documents the output contracts
+and command-specific errors. Normal operation uses exit code 0 for
+success; runtime failures and command-line usage errors are nonzero.
+`regress` also uses code 3 when validation requirements are not met.
+
+The guide's numerical examples explain conventions. For your bench notes,
+retain the actual output from your installed version and the recording
+that produced it.
 
 ---
 
