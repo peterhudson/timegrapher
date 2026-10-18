@@ -672,7 +672,7 @@ function profileView(doc) {
 
 const STEADY_VIEWS = [
   ["readings", "Readings", "Every reading in time order, with the stretches of constant level the change finder split them into, and the two levels when there are two states"],
-  ["periods", "Periods", "How strongly the readings repeat at each period, from the period search: a peak above the dashed line is a real cycle, labelled with the wheel whose turn it matches"],
+  ["periods", "Periods", "How strongly the series repeats at each period, from the period search: the dashed line is the score a period needs for the search to list it, and the strongest line it lists is labelled with its period and with the wheel whose turn it matches, when it matches one; the headline names any cycle the tests found"],
   ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, and their median shape as the line"],
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near half its period. Both axes are logarithmic"],
@@ -895,7 +895,7 @@ function steadyPlot(s, view, doc) {
     }
     case "cycle": {
       const f = v.fold;
-      if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found: nothing repeats in these readings.");
+      if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found to fold these readings at.");
       const bins = f.profile.length, at = (b) => (b + 0.5) / bins * f.period_s;
       const dots = [];
       for (const row of f.raster || []) row.forEach((y, b) => { if (Number.isFinite(y)) dots.push([at(b), y]); });
