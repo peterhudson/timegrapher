@@ -113,7 +113,8 @@ from the microphone check to six positions fully wound and the same six
 - Record at least 60 s per position; 2 minutes is better. Dial up first.
 - For a proper check, six positions in the desktop app's order: dial
   up, dial down, crown down, crown left, crown up, crown right (its
-  Positions Test settles 20 s and measures 60 s each; docs/app.md).
+  Positions Test settles 20 s and measures 60 s each unless its Settle
+  and Measure settings are changed; docs/app.md).
   Witschi's 2010 training course (p. 53) measures the verticals first
   (6H, 9H, 12H, 3H), then dial up and dial down; its 2025 *Testing
   methods* (doc. D40e, about p. 33; the page is approximate) starts dial
@@ -318,8 +319,8 @@ the program can reproduce it.
 1. **Rule out the set-up first**, as always: `clipping` in the output, the
    lift angle and beat rate, auto gain, a loose clamp. A `series` finding
    `measurement_split`, or `unlock_hopping` true, points at the tool
-   before the watch. Re-test once with the
-   set-up fixed. If the problem goes away, there is nothing to report.
+   before the watch. Re-test once with the set-up fixed. If the problem
+   goes away, there is nothing to report.
 2. **Make the report**: `timegrapher report RECORDING --at S --lift N
    --note "..."`. Use the recording that shows the problem: a file, or the
    folder the app saved. Set `--at` to just before the problem shows. Pass
@@ -380,15 +381,14 @@ and if one decides your verdict, say so.
 
 Lead with the verdict in one line, and how sure it is, without waiting
 to be asked: give each figure's ± (`se`) and, over positions or a run,
-its spread. Then the two or three
-numbers that decided it, what each means, and what you'd do next. Use the person's
-words, not jargon; when you must use a term (amplitude, beat error, lift
-angle, calibre, clipping, auto gain) say what it is the first time, and
-tell a newcomer that not knowing is fine: the program finds the beat
-rate, and you'll say what an unknown lift angle costs. In another
-language, keep the readings apart: use the person's own word for beat
-error, and in Spanish don't call it "error de marcha", which is the
-rate. Give a reason for every
-recommendation. If the measurement isn't good enough to judge, say so and
-say how to get a better one, rather than guessing.
+its spread. Then the two or three numbers that decided it, what each
+means, and what you'd do next. Use the person's words, not jargon; when
+you must use a term (amplitude, beat error, lift angle, calibre,
+clipping, auto gain) say what it is the first time, and tell a newcomer
+that not knowing is fine: the program finds the beat rate, and you'll
+say what an unknown lift angle costs. In another language, keep the
+readings apart: use the person's own word for beat error, and in Spanish
+don't call it "error de marcha", which is the rate. Give a reason for
+every recommendation. If the measurement isn't good enough to judge, say
+so and say how to get a better one, rather than guessing.
 

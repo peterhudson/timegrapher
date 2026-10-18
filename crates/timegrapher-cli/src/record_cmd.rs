@@ -444,7 +444,17 @@ impl Feed {
         });
         let tmp = self.path.with_extension("tmp");
         if fs::write(&tmp, doc.to_string()).is_ok() {
-            let _ = fs::rename(&tmp, &self.path);
+            // Windows refuses the swap while another program (a virus
+            // scanner, say) holds either file open; try again briefly
+            // rather than lose the second's readings.
+            for k in 0..5 {
+                if k > 0 {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                if fs::rename(&tmp, &self.path).is_ok() {
+                    break;
+                }
+            }
         }
     }
 }

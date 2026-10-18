@@ -29,8 +29,8 @@ apart:
    locking face, and the fork comes against its banking. The loudest.
 
 Unlock to drop is the time the balance takes to pass through the lift
-angle, which is how amplitude is measured. At 28,800 vph and 52° lift it's
-about 7.7 ms at 270°, 8.7 ms at 240° and 10.4 ms at 200°. At 18,000 vph,
+angle, which is how amplitude is measured. At 28,800 bph and 52° lift it's
+about 7.7 ms at 270°, 8.7 ms at 240° and 10.4 ms at 200°. At 18,000 bph,
 multiply by 1.6. (From `t = (T/π)·asin(L / 2A)` with T the full
 oscillation period.)
 
@@ -38,10 +38,12 @@ oscillation period.)
 are delivered by alternate stones, the entry and the exit pallet. A fault
 on one stone, or on one side of the fork, shows on every other beat only.
 Call the two sides the **Tick** (even beats) and the **Tock** (odd
-beats) when talking to people; `shape` labels them "even" and "odd" and
-`profile` labels them `a` and `b`. The program can't tell which is
-physically the tick, nor which is the entry stone and which the exit; that depends on where in
-the swing the recording started. What it can tell you is that the two
+beats) when talking to people, as the text of `shape` and `profile`
+does. In the files the keys stay as they were: `even` and `odd` in
+`shape`'s JSON and `--templates` file, `a` and `b` in `profile`'s JSON.
+The program can't tell which is physically the tick, nor which is the
+entry stone and which the exit; that depends on where in the swing the
+recording started. What it can tell you is that the two
 differ. To see where the engine put the unlock and drop marks on each
 side, run `profile` (see [cli-reference.md](cli-reference.md#profile)).
 
@@ -63,9 +65,9 @@ shape.
 
 ## Reading the output
 
-Columns: **even** and **odd** are medians over 2-second windows (the better
-reading of timing, as amplitude changes smear the whole-recording
-average); **even all** and **odd all** are measured on the
+Columns: **Tick** and **Tock** are medians over 2-second windows (the
+better reading of timing, as amplitude changes smear the whole-recording
+average); **Tick all** and **Tock all** are measured on the
 whole-recording averaged tick (where faint extra events show best). Times
 are milliseconds from the unlock edge.
 

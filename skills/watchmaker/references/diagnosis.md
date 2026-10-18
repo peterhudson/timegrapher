@@ -100,7 +100,7 @@ tick shape see [tick-shape.md](tick-shape.md).
 | --- | --- |
 | Tick and Tock amplitude differ by well over 20° on a clean signal (splits up to about 20° were common on the project's clean recordings; docs/validation.md, "Tick and Tock amplitudes apart") | Asymmetry between entry and exit pallet: lock or drop unequal, one stone set differently, or simply a large beat error; judge it only when the beat error is small |
 | Late dots on one side, scatter below the line; amplitude low | Dry or gummed pallet stones or escape wheel (Witschi: clean the escapement or replace the escape wheel) |
-| A smooth wave with the escape wheel's period (3.75 s at 28,800 vph with 15 teeth; 5 s at 21,600; 6 s at 18,000) | Escape wheel out of round, bent arbor or a pivot problem; a damaged escape tooth gives a sharp blip instead of a wave |
+| A smooth wave with the escape wheel's period (3.75 s at 28,800 bph with 15 teeth; 5 s at 21,600; 6 s at 18,000) | Escape wheel out of round, bent arbor or a pivot problem; a damaged escape tooth gives a sharp blip instead of a wave |
 | Long gap unlock-to-impulse (deep lock); low amplitude | Lock too deep: energy lost in unlocking (Witschi "escapement fitting strong") |
 | Unlock and impulse almost on top of each other, unlock faint | Lock too shallow: risk of the escapement tripping (Witschi "escapement fitting weak") |
 | Steps in the trace, amplitude over about 320–330°, a double tick | Knocking (overbanking): the impulse pin hits the outside of the fork horn. Mainspring too strong, or fork and banking geometry. Watchmaker; it can damage the escapement |
@@ -149,7 +149,7 @@ see [long-runs.md](long-runs.md).
 
 | Wheel | One turn | Notes |
 | --- | --- | --- |
-| Escape wheel | 2 × teeth beats: 3.75 s at 28,800 vph (15 teeth) | Most escape wheels have 15 teeth; Witschi says 15–21 |
+| Escape wheel | 2 × teeth beats: 3.75 s at 28,800 bph (15 teeth) | Most escape wheels have 15 teeth; Witschi's *Testing methods for mechanical watches* (2025, doc. D40e, its "escape wheel out of round" fault) gives 15–21 |
 | Fourth wheel (seconds wheel) | 60 s | Carries the seconds hand on centre-seconds and most small-seconds calibres. The commonest periodic culprit |
 | Third wheel | Calibre-specific, often around 7–10 min | Depends on centre wheel teeth and third pinion leaves; give it with `--wheel` if known |
 | Centre wheel | 60 min | Carries the minute hand (direct-drive calibres; check for indirect) |

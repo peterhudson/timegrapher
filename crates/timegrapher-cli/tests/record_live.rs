@@ -35,9 +35,11 @@ fn a_live_take_keeps_its_readings_in_the_file() {
         .unwrap();
     assert!(out.status.success());
     let feed = dir.join("live.json");
-    // Short, to keep the test quick: the live readings start after about
-    // 4 s, though the take is too short for its check to hear a watch.
-    let seconds = 6.0;
+    // Short, to keep the test quick, though the take is too short for its
+    // check to hear a watch. The live readings start after about 4 s and
+    // the file is written once a second, so 10 s leaves six mid-take
+    // writes to see: 6 s left two, and a run on Windows saw neither.
+    let seconds = 10.0;
     let mut child = bin()
         .args([
             "record",
@@ -57,7 +59,7 @@ fn a_live_take_keeps_its_readings_in_the_file() {
     // Read the file while the take runs, as the MCP server does.
     let mut seen_mid_take = None;
     while child.try_wait().unwrap().is_none() {
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(100));
         if let Some(d) = fs::read_to_string(&feed)
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())

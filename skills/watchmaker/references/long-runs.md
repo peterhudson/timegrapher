@@ -123,7 +123,7 @@ logger is in [setup-and-microphone.md](setup-and-microphone.md#recording).
 This is a real run from this project, and a good example of how to reason,
 not a solved case.
 
-**The watch.** Rolex calibre 3235 (Yacht-Master), 28,800 vph, dial up, 2
+**The watch.** Rolex calibre 3235 (Yacht-Master), 28,800 bph, dial up, 2
 hours, C-Media USB stand fixed to no clipping, clock log kept.
 
 **What `long` found.**
