@@ -2,7 +2,7 @@
 //! envelope, so an agent can tell what it is reading and where it came from.
 //!
 //! The `schema` field names the kind of document and its version
-//! (`timegrapher.analyze/1`). Within a version, fields are only ever added;
+//! (`timegrapher.analyze/2`). Within a version, fields are only ever added;
 //! a change that would break a reader bumps the version. See
 //! `docs/agent-interface.md`.
 
