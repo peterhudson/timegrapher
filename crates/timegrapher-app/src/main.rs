@@ -17,6 +17,7 @@
 
 mod app;
 mod applog;
+mod awake;
 mod calibre_ui;
 mod desktop;
 mod fields;
@@ -24,6 +25,7 @@ mod guided;
 mod help;
 mod isochronism;
 mod profiles;
+mod pump;
 mod report;
 mod scope;
 mod session;
@@ -237,7 +239,9 @@ fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>, analyse: bool)
             if let Some(s) = &saved {
                 cc.egui_ctx.set_theme(s.theme);
             }
-            Ok(Box::new(app::TimegrapherApp::new(file, analyse, saved)))
+            Ok(Box::new(pump::Shell::new(app::TimegrapherApp::new(
+                file, analyse, saved,
+            ))))
         }),
     );
     let built = FRAME_BUILT.load(std::sync::atomic::Ordering::Relaxed);

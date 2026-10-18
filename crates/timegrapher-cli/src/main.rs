@@ -189,7 +189,8 @@ enum Command {
         /// Beat rate in beats per hour (guessed if omitted).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees (default: the calibre's, else 52).
+        /// Lift angle in degrees (default: the calibre's; 52 without a
+        /// calibre or when the table has no lift angle for it).
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
@@ -200,7 +201,8 @@ enum Command {
         highpass: f64,
         /// The movement, to name periodic components after its wheels and
         /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
-        /// 3235"; an unknown name lists the known ones).
+        /// 3235"; a name not in the catalogue is an error that points to
+        /// `timegrapher calibres --search`).
         #[arg(long)]
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:
@@ -236,7 +238,8 @@ enum Command {
         /// Beat rate in beats per hour (guessed if omitted).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees (default: the calibre's, else 52).
+        /// Lift angle in degrees (default: the calibre's; 52 without a
+        /// calibre or when the table has no lift angle for it).
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
@@ -247,7 +250,8 @@ enum Command {
         highpass: f64,
         /// The movement, to name periodic components after its wheels and
         /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
-        /// 3235"; an unknown name lists the known ones).
+        /// 3235"; a name not in the catalogue is an error that points to
+        /// `timegrapher calibres --search`).
         #[arg(long)]
         calibre: Option<String>,
         /// Escape wheel teeth, used to name periodic components (default:

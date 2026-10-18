@@ -170,7 +170,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 7750, 49°)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Lift angle: 49° in the AWCI table, 50° is also widely used. The centre wheel is off centre and the motion work is driven through an intermediate wheel, so its period is left out. Escape wheel tooth count not found. Some early 7750s ran at 21,600 vph; this entry is the 28,800 version. 'Daytona 4130' clones built on a 7750 base use this train plus extra wheels to move the small seconds to 6."
+    "notes": "Lift angle: 49° in the AWCI table, 50° is also widely used. The centre wheel is off centre and the motion work is driven through an intermediate wheel, so its period is left out. Escape wheel tooth count not found. Some early 7750s ran at 21,600 bph; this entry is the 28,800 version. 'Daytona 4130' clones built on a 7750 base use this train plus extra wheels to move the small seconds to 6."
   },
   {
     "calibre": "Unitas 6497-2",
@@ -231,7 +231,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 6497, 44°)"
     ],
     "confidence": "derived from tooth counts",
-    "notes": "The only calibre here with a published train: escape 15 teeth on a 10-leaf pinion, fourth 120/8, third 60/10, centre 80 teeth (centre pinion and barrel not found, so the barrel is left out). The counts fit 21,600 vph, the -2 versions. The -1 versions run at 18,000 vph with a train not found; they are not in this entry. 56 h power reserve."
+    "notes": "The only calibre here with a published train: escape 15 teeth on a 10-leaf pinion, fourth 120/8, third 60/10, centre 80 teeth (centre pinion and barrel not found, so the barrel is left out). The counts fit 21,600 bph, the -2 versions. The -1 versions run at 18,000 bph with a train not found; they are not in this entry. 56 h power reserve."
   },
   {
     "calibre": "Seagull ST36",
@@ -900,7 +900,7 @@
       "https://forum.replica-watch.info/threads/the-ap-questions-thread-all-the-questions-you-want-to-ask-about-ap-but-were-afraid-to.10880676/page-4 (older replicas on a Miyota 9015 at 28,800 vph)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "60 h, hacking. AP publishes no lift angle; 53° is the clone timegrapher guide's. Whether the seconds are driven directly was not found. Clones sold as '3120': see SA3120; older AP replicas built on a Miyota 9015 run at 28,800 vph and match that entry."
+    "notes": "60 h, hacking. AP publishes no lift angle; 53° is the clone timegrapher guide's. Whether the seconds are driven directly was not found. Clones sold as '3120': see SA3120; older AP replicas built on a Miyota 9015 run at 28,800 bph and match that entry."
   },
   {
     "calibre": "Audemars Piguet 4302",
@@ -1009,7 +1009,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Audemars-Piguet 2121, 56°, 19800 vph)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Ultra-thin, built on the Jaeger-LeCoultre 920, 19,800 vph, 40 h; the 2121 adds a date to the 2120. AP lists hours and minutes only, while Caliber Corner's 920 page shows a seconds hand; no seconds wheel is named. Lift angle 56° from WatchGuy, Watchmaking Tools, the lift-angle sheet.",
+    "notes": "Ultra-thin, built on the Jaeger-LeCoultre 920, 19,800 bph, 40 h; the 2121 adds a date to the 2120. AP lists hours and minutes only, while Caliber Corner's 920 page shows a seconds hand; no seconds wheel is named. Lift angle 56° from WatchGuy, Watchmaking Tools, the lift-angle sheet.",
     "lift_angle_deg": 56.0
   },
   {
@@ -1048,7 +1048,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "The 3120 clones from APS and ZF run at 21,600 vph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry."
+    "notes": "The 3120 clones from APS and ZF run at 21,600 bph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry."
   },
   {
     "calibre": "SA4302",
@@ -1085,7 +1085,7 @@
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "An all-in-one clone of the 4302 at 28,800 vph, about 65 to 70 h. Earlier ZF versions used a Miyota 9015 instead."
+    "notes": "An all-in-one clone of the 4302 at 28,800 bph, about 65 to 70 h. Earlier ZF versions used a Miyota 9015 instead."
   },
   {
     "calibre": "APS 4401",
@@ -2617,11 +2617,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Audemars Piguet 5007, 38°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 38° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 38° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Audemars Piguet 5007 (19,800 vph, 38°)",
+    "calibre": "Audemars Piguet 5007 (19,800 bph, 38°)",
     "maker": "Audemars Piguet",
+    "former_names": [
+      "Audemars Piguet 5007 (19,800 vph, 38°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 38.0,
     "wheels": [
@@ -2636,7 +2639,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Audemars-Piguet 5007, 38°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 38° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 38° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Audemars Piguet SB 5/7”",
@@ -2765,11 +2768,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (AUDEMARS-PIGUET Rond, 21030 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,031 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,031 bph (the lift-angle sheet)."
   },
   {
-    "calibre": "Audemars Piguet Rond 6/7” (21,031 vph)",
+    "calibre": "Audemars Piguet Rond 6/7” (21,031 bph)",
     "maker": "Audemars Piguet",
+    "former_names": [
+      "Audemars Piguet Rond 6/7” (21,031 vph)"
+    ],
     "bph": 21031,
     "wheels": [
       {
@@ -2782,7 +2788,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (AUDEMARS-PIGUET Rond, 21031.1 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,030 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,030 bph (the lift-angle sheet)."
   },
   {
     "calibre": "Aurore 10",
@@ -9314,11 +9320,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Bulova 11ANAC, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANAC (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANAC (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANAC (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -9332,7 +9341,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Bulova 11 ANAC, 51°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Bulova 11 ANACB",
@@ -9351,11 +9360,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Bulova 11ANACB, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANACB (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANACB (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANACB (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -9369,7 +9381,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Bulova 11 ANACB, 51°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Bulova 11 ANACD",
@@ -9388,11 +9400,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Bulova 11ANACD, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (Watchmaking Tools)."
   },
   {
-    "calibre": "Bulova 11 ANACD (21,600 vph, 51°)",
+    "calibre": "Bulova 11 ANACD (21,600 bph, 51°)",
     "maker": "Bulova",
+    "former_names": [
+      "Bulova 11 ANACD (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -9406,7 +9421,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Bulova 11 ANACD, 51°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Bulova 11 AOAC",
@@ -12318,11 +12333,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Citizen 20, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools); 21,600 vph and 54° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, Watchmaking Tools); 21,600 bph and 54° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 20 (21,600 vph, 52°)",
+    "calibre": "Citizen 20 (21,600 bph, 52°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 20 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -12337,11 +12355,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Citizen 20, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 54° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, the lift-angle sheet); 21,600 bph and 54° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 20 (21,600 vph, 54°)",
+    "calibre": "Citizen 20 (21,600 bph, 54°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 20 (21,600 vph, 54°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 54.0,
     "wheels": [
@@ -12355,7 +12376,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (CITIZEN 20, 54°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, the lift-angle sheet); 21,600 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Citizen 31",
@@ -12374,11 +12395,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Citizen 31, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools); 21,600 vph and 50° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, Watchmaking Tools); 21,600 bph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 31 (21,600 vph, 52°)",
+    "calibre": "Citizen 31 (21,600 bph, 52°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 31 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -12393,11 +12417,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Citizen 31, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 50° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, the lift-angle sheet); 21,600 bph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Citizen 31 (21,600 vph, 50°)",
+    "calibre": "Citizen 31 (21,600 bph, 50°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 31 (21,600 vph, 50°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -12411,7 +12438,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (CITIZEN 31, 50°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet); 21,600 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, the lift-angle sheet); 21,600 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Citizen 50",
@@ -14440,11 +14467,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Citizen 7220, 36°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,880 vph and 36° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,880 bph and 36° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Citizen 7220 (28,880 vph, 36°)",
+    "calibre": "Citizen 7220 (28,880 bph, 36°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 7220 (28,880 vph, 36°)"
+    ],
     "bph": 28880,
     "lift_angle_deg": 36.0,
     "wheels": [
@@ -14459,7 +14489,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Citizen 7220, 36°, 28880 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 36° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 36° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Citizen 7230/ 7248/7250",
@@ -14495,11 +14525,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Citizen 7270, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 32,600 vph and 46° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 32,600 bph and 46° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Citizen 7270 (32,600 vph, 46°)",
+    "calibre": "Citizen 7270 (32,600 bph, 46°)",
     "maker": "Citizen",
+    "former_names": [
+      "Citizen 7270 (32,600 vph, 46°)"
+    ],
     "bph": 32600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -14514,7 +14547,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Citizen 7270, 46°, 32600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Citizen 7280",
@@ -16348,11 +16381,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2369, 51°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2369 (18,000 vph, 52°)",
+    "calibre": "Enicar 2369 (18,000 bph, 52°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2369 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -16366,7 +16402,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2369, 52°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 51° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 51° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2370",
@@ -18899,11 +18935,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2840, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2840 (21,600 vph, 53°)",
+    "calibre": "Enicar 2840 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2840 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -18917,7 +18956,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2840, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2850",
@@ -18953,11 +18992,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2851, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2851 (21,600 vph, 53°)",
+    "calibre": "Enicar 2851 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2851 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -18971,7 +19013,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2851, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2852",
@@ -19007,11 +19049,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2853, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2853 (21,600 vph, 53°)",
+    "calibre": "Enicar 2853 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2853 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19025,7 +19070,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2853, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2858",
@@ -19061,11 +19106,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2859, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2859 (21,600 vph, 53°)",
+    "calibre": "Enicar 2859 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2859 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19079,7 +19127,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2859, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2870",
@@ -19115,11 +19163,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2871, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2871 (21,600 vph, 53°)",
+    "calibre": "Enicar 2871 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2871 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19133,7 +19184,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2871, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2872",
@@ -19169,11 +19220,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2873, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2873 (21,600 vph, 53°)",
+    "calibre": "Enicar 2873 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2873 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19187,7 +19241,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2873, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2878",
@@ -19223,11 +19277,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2879, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (Watchmaking Tools)."
   },
   {
-    "calibre": "Enicar 2879 (21,600 vph, 53°)",
+    "calibre": "Enicar 2879 (21,600 bph, 53°)",
     "maker": "Enicar",
+    "former_names": [
+      "Enicar 2879 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -19241,7 +19298,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2879, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Enicar 2890",
@@ -19477,11 +19534,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Favre Leuba 510, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 510 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 510 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 510 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19507,11 +19567,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Favre Leuba 511, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 511 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 511 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 511 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19537,11 +19600,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Favre Leuba 520, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 520 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 520 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 520 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19567,11 +19633,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Favre Leuba 570, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 570 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 570 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 570 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -19597,11 +19666,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Favre Leuba 590, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Favre-Leuba 590 (19,800 vph, 50°)",
+    "calibre": "Favre-Leuba 590 (19,800 bph, 50°)",
     "maker": "Favre-Leuba",
+    "former_names": [
+      "Favre-Leuba 590 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -22140,11 +22212,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Fleurier 6700, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6700 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6700 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6700 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22159,7 +22234,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Fleurier [FEF] 6700, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Fleurier 6701",
@@ -22178,11 +22253,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Fleurier 6701, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6701 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6701 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6701 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22197,7 +22275,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Fleurier [FEF] 6701, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Fleurier 6710",
@@ -22254,11 +22332,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Fleurier 6720, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6720 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6720 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6720 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22273,7 +22354,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Fleurier [FEF] 6720, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Fleurier 6721",
@@ -22292,11 +22373,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Fleurier 6721, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Fleurier 6721 (28,800 vph, 53°)",
+    "calibre": "Fleurier 6721 (28,800 bph, 53°)",
     "maker": "Fleurier",
+    "former_names": [
+      "Fleurier 6721 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -22311,7 +22395,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Fleurier [FEF] 6721, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Fleurier 6764",
@@ -23007,11 +23091,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Girard Perregaux 26, 49°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 26 (21,600 vph, 52°)",
+    "calibre": "Girard Perregaux 26 (21,600 bph, 52°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 26 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -23025,7 +23112,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (GIRARD PERREGAUX 26, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 49° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 49° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Girard Perregaux 30-33",
@@ -23565,11 +23652,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Girard Perregaux 442, 52°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 442 (19,800 vph, 50°)",
+    "calibre": "Girard Perregaux 442 (19,800 bph, 50°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 442 (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -23583,7 +23673,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (GIRARD PERREGAUX 442, 50°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Girard Perregaux 461",
@@ -23754,11 +23844,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Girard Perregaux 810, 51°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Girard Perregaux 810 (21,600 vph, 52°)",
+    "calibre": "Girard Perregaux 810 (21,600 bph, 52°)",
     "maker": "Girard Perregaux",
+    "former_names": [
+      "Girard Perregaux 810 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -23772,7 +23865,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (GIRARD PERREGAUX 810, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Girard Perregaux 820",
@@ -24782,11 +24875,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 44, 60°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 56° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 56° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 44 (19,800 vph, 56°)",
+    "calibre": "IWC 44 (19,800 bph, 56°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 44 (19,800 vph, 56°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 56.0,
     "wheels": [
@@ -24800,7 +24896,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 44, 56°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 60° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 60° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 45",
@@ -24819,11 +24915,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 45, 51°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "IWC 45 (21,600 vph, 51°)",
+    "calibre": "IWC 45 (21,600 bph, 51°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 45 (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -24838,7 +24937,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 45, 51°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 51° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 51° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "IWC 50",
@@ -24861,11 +24960,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 51, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 51 (18,000 vph, 50°)",
+    "calibre": "IWC 51 (18,000 bph, 50°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 51 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -24891,11 +24993,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 60, 48°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 60 (18,000 vph, 46°)",
+    "calibre": "IWC 60 (18,000 bph, 46°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 60 (18,000 vph, 46°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -24933,11 +25038,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 62, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 62 (18,000 vph, 40°)",
+    "calibre": "IWC 62 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 62 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -24963,11 +25071,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 67, 38°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 37° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 37° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 67 (18,000 vph, 37°)",
+    "calibre": "IWC 67 (18,000 bph, 37°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 67 (18,000 vph, 37°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 37.0,
     "wheels": [
@@ -25012,11 +25123,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 83, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 83 (18,000 vph, 41°)",
+    "calibre": "IWC 83 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 83 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25054,11 +25168,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 88, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 88 (18,000 vph, 41°)",
+    "calibre": "IWC 88 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 88 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25091,11 +25208,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 89, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 89 (18,000 vph, 41°)",
+    "calibre": "IWC 89 (18,000 bph, 41°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 89 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -25109,7 +25229,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 89, 41°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 42° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 42° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 91",
@@ -25151,11 +25271,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 95, 41°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 95 (18,000 vph, 40°)",
+    "calibre": "IWC 95 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 95 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25169,7 +25292,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 95, 40°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 96",
@@ -25181,11 +25304,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 96, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 44° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 44° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 96 (18,000 vph, 44°)",
+    "calibre": "IWC 96 (18,000 bph, 44°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 96 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -25218,11 +25344,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 97, 41°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 97 (18,000 vph, 40°)",
+    "calibre": "IWC 97 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 97 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25236,7 +25365,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 97, 40°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 98",
@@ -25255,11 +25384,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 98, 41°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 98 (18,000 vph, 40°)",
+    "calibre": "IWC 98 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 98 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25273,7 +25405,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 98, 40°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 171",
@@ -25292,11 +25424,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 171, 56°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 61° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 61° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 171 (18,000 vph, 61°)",
+    "calibre": "IWC 171 (18,000 bph, 61°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 171 (18,000 vph, 61°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 61.0,
     "wheels": [
@@ -25310,7 +25445,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 171, 61°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 56° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 56° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 185",
@@ -25492,11 +25627,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 442, 56°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 57° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 57° (the lift-angle sheet)."
   },
   {
-    "calibre": "IWC 442 (21,600 vph, 57°)",
+    "calibre": "IWC 442 (21,600 bph, 57°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 442 (21,600 vph, 57°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 57.0,
     "wheels": [
@@ -25510,7 +25648,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 442, 57°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 56° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 56° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "IWC 852",
@@ -25522,11 +25660,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 852, 56°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 54° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 54° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 852 (19,800 vph, 54°)",
+    "calibre": "IWC 852 (19,800 bph, 54°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 852 (19,800 vph, 54°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 54.0,
     "wheels": [
@@ -25722,11 +25863,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 9520, 40°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 40° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 9520 (18,000 vph, 40°)",
+    "calibre": "IWC 9520 (18,000 bph, 40°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 9520 (18,000 vph, 40°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 40.0,
     "wheels": [
@@ -25741,7 +25885,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 9520, 40°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 8,000 vph and 40° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 8,000 bph and 40° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "IWC 9521",
@@ -26209,11 +26353,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 846, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "IWC 846 (28,800 vph, 52°)",
+    "calibre": "IWC 846 (28,800 bph, 52°)",
     "maker": "IWC",
+    "former_names": [
+      "IWC 846 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -26227,7 +26374,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 846, 52°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
     "calibre": "Jaeger-LeCoultre 9\"",
@@ -28295,7 +28442,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 13.15, 54°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 51° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 51° (Watchmaking Tools)."
   },
   {
     "calibre": "Longines 13.15V",
@@ -28426,7 +28573,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 14.17, 55°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 54° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 54° (Watchmaking Tools)."
   },
   {
     "calibre": "Longines 15.18",
@@ -28560,11 +28707,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 19 ASD, 50°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 50° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 50° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 19 ASD (19,800 vph, 50°)",
+    "calibre": "Longines 19 ASD (19,800 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 19 ASD (19,800 vph, 50°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28579,7 +28729,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 19ASD, 50°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
   },
   {
     "calibre": "Longines 22 A",
@@ -28627,11 +28777,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 22 L, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 22 L (18,000 vph, 50°)",
+    "calibre": "Longines 22 L (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 22 L (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28645,7 +28798,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 22L, 50°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
     "calibre": "Longines 22 LS",
@@ -28656,11 +28809,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 22 LS, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 22 LS (18,000 vph, 50°)",
+    "calibre": "Longines 22 LS (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 22 LS (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28764,11 +28920,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 25.17, 47°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 25.17 (18,000 vph, 50°)",
+    "calibre": "Longines 25.17 (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 25.17 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -28782,7 +28941,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 25.17, 50°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 47° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 47° (the lift-angle sheet)."
   },
   {
     "calibre": "Longines 25.17 ABC",
@@ -28793,11 +28952,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 25.17 ABC, 47°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Longines 25.17 ABC (18,000 vph, 50°)",
+    "calibre": "Longines 25.17 ABC (18,000 bph, 50°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 25.17 ABC (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -29190,11 +29352,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 320, 49°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 51° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 51° (the lift-angle sheet)."
   },
   {
-    "calibre": "Longines 320 (21,600 vph, 51°)",
+    "calibre": "Longines 320 (21,600 bph, 51°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 320 (21,600 vph, 51°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [
@@ -29208,7 +29373,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (LONGINES 320, 51°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 49° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 49° (Watchmaking Tools)."
   },
   {
     "calibre": "Longines 322",
@@ -29513,11 +29678,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Longines 430, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Longines 430 (36,000 vph, 52°)",
+    "calibre": "Longines 430 (36,000 bph, 52°)",
     "maker": "Longines",
+    "former_names": [
+      "Longines 430 (36,000 vph, 52°)"
+    ],
     "bph": 36000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -29532,7 +29700,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Longines 430, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Longines 431",
@@ -31261,7 +31429,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (MARTEL 730, 44°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 43° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 43° (Watchmaking Tools)."
   },
   {
     "calibre": "Martel 830",
@@ -31290,7 +31458,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (MARTEL 830, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 48° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 48° (Watchmaking Tools)."
   },
   {
     "calibre": "Martel 613",
@@ -32206,11 +32374,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Movado 138, 50°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 52° (Watchmaking Tools, the lift-angle sheet)."
   },
   {
-    "calibre": "Movado 138 (28,800 vph, 52°)",
+    "calibre": "Movado 138 (28,800 bph, 52°)",
     "maker": "Movado",
+    "former_names": [
+      "Movado 138 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32225,7 +32396,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Movado 138, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
   },
   {
     "calibre": "Movado 154",
@@ -32316,11 +32487,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Movado 275, 50°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Movado 275 (28,800 vph, 52°)",
+    "calibre": "Movado 275 (28,800 bph, 52°)",
     "maker": "Movado",
+    "former_names": [
+      "Movado 275 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32334,7 +32508,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (MOVADO 275, 52°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 50° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
   },
   {
     "calibre": "Movado 312",
@@ -32809,11 +32983,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 245, 57°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Omega 245 (19,800 vph, 52°)",
+    "calibre": "Omega 245 (19,800 bph, 52°)",
     "maker": "Omega",
+    "former_names": [
+      "Omega 245 (19,800 vph, 52°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -32827,7 +33004,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (OMEGA 245, 52°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 57° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 57° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Omega 250 a 252",
@@ -34132,11 +34309,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Oris 695, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Oris 695 (21,600 vph, 46°)",
+    "calibre": "Oris 695 (21,600 bph, 46°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 695 (21,600 vph, 46°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -34151,7 +34331,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Oris 695, 46°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Oris 700",
@@ -34246,11 +34426,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Oris 705, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 46° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 46° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Oris 705 (21,600 vph, 46°)",
+    "calibre": "Oris 705 (21,600 bph, 46°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 705 (21,600 vph, 46°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -34265,7 +34448,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Oris 705, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Oris 710",
@@ -34360,11 +34543,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Oris 725, 44°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 44° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 44° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Oris 725 (21,600 vph, 44°)",
+    "calibre": "Oris 725 (21,600 bph, 44°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 725 (21,600 vph, 44°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -34379,7 +34565,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Oris 725, 44°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 44° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 44° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Oris 730",
@@ -34493,11 +34679,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Oris 742, 53°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Oris 742 (21,600 vph, 53°)",
+    "calibre": "Oris 742 (21,600 bph, 53°)",
     "maker": "Oris",
+    "former_names": [
+      "Oris 742 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -34512,7 +34701,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Oris 742, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Oris 800",
@@ -34766,11 +34955,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Patek Philippe 13.5-320, 49°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Patek Philippe 13.5-320 (21,600 vph, 52°)",
+    "calibre": "Patek Philippe 13.5-320 (21,600 bph, 52°)",
     "maker": "Patek Philippe",
+    "former_names": [
+      "Patek Philippe 13.5-320 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -34784,7 +34976,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (PATEK PHlLIPPE 13.5-320, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 49° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 49° (WatchGuy, Watchmaking Tools, the lift-angle sheet)."
   },
   {
     "calibre": "Patek Philippe 25750",
@@ -35046,11 +35238,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Patek Philippe 17-170, 44°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
-    "calibre": "Patek Philippe 17” 170 (18,000 vph, 46°)",
+    "calibre": "Patek Philippe 17” 170 (18,000 bph, 46°)",
     "maker": "Patek Philippe",
+    "former_names": [
+      "Patek Philippe 17” 170 (18,000 vph, 46°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 46.0,
     "wheels": [
@@ -35064,7 +35259,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (PATEK PHlLIPPE 17” 170, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 44° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 44° (Watchmaking Tools)."
   },
   {
     "calibre": "Patek Philippe 17” 250",
@@ -35364,11 +35559,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Peseux 7001, 52°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "Peseux 7001 (21,600 vph, 52°)",
+    "calibre": "Peseux 7001 (21,600 bph, 52°)",
     "maker": "Peseux",
+    "former_names": [
+      "Peseux 7001 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -35383,7 +35581,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Peseux [P] 7001, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Peseux 7010",
@@ -36484,11 +36682,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Frederic Piguet 7020, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, Watchmaking Tools)."
   },
   {
-    "calibre": "Frederic Piguet 7020 (21,600 vph, 52°)",
+    "calibre": "Frederic Piguet 7020 (21,600 bph, 52°)",
     "maker": "Frederic Piguet",
+    "former_names": [
+      "Frederic Piguet 7020 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -36503,7 +36704,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Frederic Piguet 7020, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Poljot 2612",
@@ -36906,11 +37107,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Record Geneve 109, 45°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
-    "calibre": "Record 109 (18,000 vph, 50°)",
+    "calibre": "Record 109 (18,000 bph, 50°)",
     "maker": "Record",
+    "former_names": [
+      "Record 109 (18,000 vph, 50°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 50.0,
     "wheels": [
@@ -37098,11 +37302,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Record Geneve 022-18, 46°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
-    "calibre": "Record 022-18 (18,000 vph, 41°)",
+    "calibre": "Record 022-18 (18,000 bph, 41°)",
     "maker": "Record",
+    "former_names": [
+      "Record 022-18 (18,000 vph, 41°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 41.0,
     "wheels": [
@@ -39198,11 +39405,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (RONDA 1413, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 1413 (21,600 vph, 52°)",
+    "calibre": "Ronda 1413 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 1413 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39216,7 +39426,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Ronda 1413, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
     "calibre": "Ronda 1415",
@@ -39253,11 +39463,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (RONDA 1513, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 1513 (21,600 vph, 52°)",
+    "calibre": "Ronda 1513 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 1513 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39271,7 +39484,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Ronda 1513, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
     "calibre": "Ronda 1515",
@@ -39459,11 +39672,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (RONDA 6061, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 6061 (21,600 vph, 52°)",
+    "calibre": "Ronda 6061 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 6061 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39477,7 +39693,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Ronda 6061, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
     "calibre": "Ronda 6063",
@@ -39514,11 +39730,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (RONDA 6065, 46°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Ronda 6065 (21,600 vph, 52°)",
+    "calibre": "Ronda 6065 (21,600 bph, 52°)",
     "maker": "Ronda",
+    "former_names": [
+      "Ronda 6065 (21,600 vph, 52°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -39532,7 +39751,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Ronda 6065, 52°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 46° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 46° (the lift-angle sheet)."
   },
   {
     "calibre": "Ronda 7013",
@@ -42978,11 +43197,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5150, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5150 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5150 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5150 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -42997,7 +43219,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5150, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5151",
@@ -43016,11 +43238,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5151, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5151 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5151 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5151 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43035,7 +43260,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5151, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5152",
@@ -43054,11 +43279,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5152, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5152 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5152 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5152 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43073,7 +43301,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5152, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5153",
@@ -43092,11 +43320,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5153, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5153 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5153 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5153 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43111,7 +43342,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5153, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5154",
@@ -43130,11 +43361,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5154, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5154 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5154 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5154 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43149,7 +43383,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5154, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5156",
@@ -43168,11 +43402,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 5156, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, the lift-angle sheet)."
   },
   {
-    "calibre": "A. Schild 5156 (28,800 vph, 53°)",
+    "calibre": "A. Schild 5156 (28,800 bph, 53°)",
     "maker": "A. Schild",
+    "former_names": [
+      "A. Schild 5156 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -43187,7 +43424,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 5156, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "A. Schild 5200",
@@ -43462,11 +43699,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 6 ¾, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 6 ¾ (36,000 vph)",
+    "calibre": "Seiko 6 ¾ (36,000 bph)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 6 ¾ (36,000 vph)"
+    ],
     "bph": 36000,
     "wheels": [
       {
@@ -43479,7 +43719,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 6 ¾, 36000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph (the lift-angle sheet)."
   },
   {
     "calibre": "Seiko 11 ½",
@@ -43512,11 +43752,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 12 ½, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 12 ½ (36,000 vph)",
+    "calibre": "Seiko 12 ½ (36,000 bph)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 12 ½ (36,000 vph)"
+    ],
     "bph": 36000,
     "wheels": [
       {
@@ -43529,7 +43772,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 12 ½, 36000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph (the lift-angle sheet)."
   },
   {
     "calibre": "Seiko 1100",
@@ -43928,11 +44171,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 2706, 49°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 47.8° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 47.8° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 2706 (28,800 vph, 47.8°)",
+    "calibre": "Seiko 2706 (28,800 bph, 47.8°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 2706 (28,800 vph, 47.8°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 47.8,
     "wheels": [
@@ -43946,7 +44192,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 2706, 47.8°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 49° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 49° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Seiko 2906",
@@ -43965,11 +44211,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 2906, 49°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 47.8° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 47.8° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 2906 (28,800 vph, 47.8°)",
+    "calibre": "Seiko 2906 (28,800 bph, 47.8°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 2906 (28,800 vph, 47.8°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 47.8,
     "wheels": [
@@ -43983,7 +44232,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 2906, 47.8°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 49° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 49° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Seiko 4006",
@@ -44002,11 +44251,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4006, 58.4°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 58.5° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 58.5° (Watchmaking Tools)."
   },
   {
-    "calibre": "Seiko 4006 (19,800 vph, 58.5°)",
+    "calibre": "Seiko 4006 (19,800 bph, 58.5°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 4006 (19,800 vph, 58.5°)"
+    ],
     "bph": 19800,
     "lift_angle_deg": 58.5,
     "wheels": [
@@ -44020,7 +44272,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4006, 58.5°, 19800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 58.4° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 58.4° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Seiko 5206",
@@ -44077,11 +44329,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 5246, 53°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 52° (the lift-angle sheet)."
   },
   {
-    "calibre": "Seiko 5246 (28,800 vph, 52°)",
+    "calibre": "Seiko 5246 (28,800 bph, 52°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 5246 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -44095,7 +44350,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 5246, 52°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 53° (WatchGuy, Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 53° (WatchGuy, Watchmaking Tools)."
   },
   {
     "calibre": "Seiko 5606",
@@ -44321,7 +44576,7 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (SEIKO 6159, 52.36°, 36000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 52.4° (WatchGuy); 36,000 vph and 52.5° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 52.4° (WatchGuy); 36,000 bph and 52.5° (Watchmaking Tools)."
   },
   {
     "calibre": "Seiko 6159 (52.4°)",
@@ -44332,11 +44587,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6159, 52.4°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52.36° (the lift-angle sheet); 36,000 vph and 52.5° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph and 52.36° (the lift-angle sheet); 36,000 bph and 52.5° (Watchmaking Tools)."
   },
   {
-    "calibre": "Seiko 6159 (36,000 vph, 52.5°)",
+    "calibre": "Seiko 6159 (36,000 bph, 52.5°)",
     "maker": "Seiko",
+    "former_names": [
+      "Seiko 6159 (36,000 vph, 52.5°)"
+    ],
     "bph": 36000,
     "lift_angle_deg": 52.5,
     "wheels": [
@@ -44350,7 +44608,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6159, 52.5°, 36000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52.36° (the lift-angle sheet); 52.4° (WatchGuy)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph and 52.36° (the lift-angle sheet); 52.4° (WatchGuy)."
   },
   {
     "calibre": "Seiko 6300",
@@ -46585,8 +46843,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "Unitas 6497 (18,000 vph, 44°)",
+    "calibre": "Unitas 6497 (18,000 bph, 44°)",
     "maker": "Unitas",
+    "former_names": [
+      "Unitas 6497 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -46602,11 +46863,14 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Unitas 6497, 44°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 44° (this project's checked entry, Unitas 6497-2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 44° (this project's checked entry, Unitas 6497-2)."
   },
   {
-    "calibre": "Unitas 6498 (18,000 vph, 44°)",
+    "calibre": "Unitas 6498 (18,000 bph, 44°)",
     "maker": "Unitas",
+    "former_names": [
+      "Unitas 6498 (18,000 vph, 44°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 44.0,
     "wheels": [
@@ -46622,7 +46886,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Unitas 6498, 44°, 18000 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 44° (this project's checked entry, Unitas 6497-2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 44° (this project's checked entry, Unitas 6497-2)."
   },
   {
     "calibre": "Unitas 6500",
@@ -48862,8 +49126,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "Valjoux 7750 (28,800 vph, 52°)",
+    "calibre": "Valjoux 7750 (28,800 bph, 52°)",
     "maker": "Valjoux",
+    "former_names": [
+      "Valjoux 7750 (28,800 vph, 52°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -48878,7 +49145,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Valjoux 7750, 52°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 49° (this project's checked entry, Valjoux 7750)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 49° (this project's checked entry, Valjoux 7750)."
   },
   {
     "calibre": "Valjoux 7750-1",
@@ -50680,11 +50947,14 @@
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ZODIAC 10, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52.4° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52.4° (Watchmaking Tools)."
   },
   {
-    "calibre": "Zodiac 10 (21,600 vph, 52.4°)",
+    "calibre": "Zodiac 10 (21,600 bph, 52.4°)",
     "maker": "Zodiac",
+    "former_names": [
+      "Zodiac 10 (21,600 vph, 52.4°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 52.4,
     "wheels": [
@@ -50698,7 +50968,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zodiac 10, 52.4°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 21,600 vph and 52° (WatchGuy, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 21,600 bph and 52° (WatchGuy, the lift-angle sheet)."
   },
   {
     "calibre": "Zodiac 18",
@@ -51105,7 +51375,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Zodiac AS 1855, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 36,000 vph and 52° (Watchmaking Tools, the lift-angle sheet)."
+    "notes": "Sources disagree; kept as separate entries. Others give 36,000 bph and 52° (Watchmaking Tools, the lift-angle sheet)."
   },
   {
     "calibre": "A. Schild 1001",
@@ -52922,7 +53192,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Certina 410, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 50° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 50° (Watchmaking Tools)."
   },
   {
     "calibre": "Certina 411",
@@ -56144,8 +56414,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "ETA 2824 (21,600 vph, 53°)",
+    "calibre": "ETA 2824 (21,600 bph, 53°)",
     "maker": "ETA",
+    "former_names": [
+      "ETA 2824 (21,600 vph, 53°)"
+    ],
     "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -56160,7 +56433,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 2824, 53°, 21600 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 50° (this project's checked entry, ETA 2824-2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 50° (this project's checked entry, ETA 2824-2)."
   },
   {
     "calibre": "ETA 2825",
@@ -56649,8 +56922,11 @@
     "confidence": "published list"
   },
   {
-    "calibre": "ETA 2892 (28,800 vph, 53°)",
+    "calibre": "ETA 2892 (28,800 bph, 53°)",
     "maker": "ETA",
+    "former_names": [
+      "ETA 2892 (28,800 vph, 53°)"
+    ],
     "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [
@@ -56665,7 +56941,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 2892, 53°, 28800 vph)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 51° (this project's checked entry, ETA 2892-A2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 51° (this project's checked entry, ETA 2892-A2)."
   },
   {
     "calibre": "ETA 2892A2 (52°)",
@@ -56676,7 +56952,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 2892A2, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 51° (this project's checked entry, ETA 2892-A2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 51° (this project's checked entry, ETA 2892-A2)."
   },
   {
     "calibre": "ETA 2893-2",
@@ -56743,7 +57019,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 7750, 52°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 49° (this project's checked entry, Valjoux 7750)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 49° (this project's checked entry, Valjoux 7750)."
   },
   {
     "calibre": "ETA 853",
@@ -58046,7 +58322,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 401, 56°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 19,800 vph and 54° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 19,800 bph and 54° (Watchmaking Tools)."
   },
   {
     "calibre": "IWC 79350",
@@ -60686,11 +60962,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 367, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 367 (18,000 vph, 52°)",
+    "calibre": "Roamer 367 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 367 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -60733,7 +61012,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 371, 55°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 372",
@@ -60762,7 +61041,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 372, 55°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 389",
@@ -60791,7 +61070,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 389, 56°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 400",
@@ -60856,7 +61135,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 407, 43°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 408",
@@ -60885,7 +61164,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 408, 43°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 41° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 420",
@@ -60914,7 +61193,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 420, 55°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 422",
@@ -60925,11 +61204,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 422, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 422 (18,000 vph, 52°)",
+    "calibre": "Roamer 422 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 422 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -60972,7 +61254,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 423, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
     "calibre": "Roamer 424",
@@ -61057,11 +61339,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 450, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 450 (18,000 vph, 52°)",
+    "calibre": "Roamer 450 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 450 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -61086,11 +61371,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (MST 451, 49°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 52° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 52° (Watchmaking Tools)."
   },
   {
-    "calibre": "Roamer 451 (18,000 vph, 52°)",
+    "calibre": "Roamer 451 (18,000 bph, 52°)",
     "maker": "Roamer",
+    "former_names": [
+      "Roamer 451 (18,000 vph, 52°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [
@@ -63247,7 +63535,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Patek-Philippe 324SC, 51°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 52° (this project's checked entry, Patek Philippe 324 S C)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 52° (this project's checked entry, Patek Philippe 324 S C)."
   },
   {
     "calibre": "Peseux 170",
@@ -65025,7 +65313,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3235, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 55° (this project's checked entry, Rolex 3235)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 55° (this project's checked entry, Rolex 3235)."
   },
   {
     "calibre": "Rolex 3255 (53°)",
@@ -65036,7 +65324,7 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3255, 53°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 vph and 55° (this project's checked entry, Rolex 3235)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 55° (this project's checked entry, Rolex 3235)."
   },
   {
     "calibre": "Rolex 500",
@@ -67023,11 +67311,14 @@
       "https://watchguy.co.uk/cgi-bin/lift_angles (Universal Geneve 281, 42°)"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 18,000 vph and 45° (Watchmaking Tools)."
+    "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 45° (Watchmaking Tools)."
   },
   {
-    "calibre": "Universal Geneve 281 (18,000 vph, 45°)",
+    "calibre": "Universal Geneve 281 (18,000 bph, 45°)",
     "maker": "Universal Geneve",
+    "former_names": [
+      "Universal Geneve 281 (18,000 vph, 45°)"
+    ],
     "bph": 18000,
     "lift_angle_deg": 45.0,
     "wheels": [
@@ -74899,7 +75190,7 @@
       "https://en.seagullwatch.com/products/skeleton-movement-tydsk-st6103k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1701",
@@ -74920,7 +75211,7 @@
       "https://en.seagullwatch.com/products/small-second-movement-ty2706-st1701: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1700",
@@ -74941,7 +75232,7 @@
       "https://en.seagullwatch.com/products/small-second-movement-ty2705-st1700: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1612",
@@ -74962,7 +75253,7 @@
       "https://en.seagullwatch.com/products/hands-date-movement-ty2806-st1612: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2500",
@@ -74983,7 +75274,7 @@
       "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2500-st2500: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1601K1",
@@ -75004,7 +75295,7 @@
       "https://en.seagullwatch.com/products/skeleton-movement-ty2808-st1601k1: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2551K",
@@ -75025,7 +75316,7 @@
       "https://en.seagullwatch.com/products/skeleton-movement-ty2551sk-st2551k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2625",
@@ -75046,7 +75337,7 @@
       "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2625-st2625: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2502K",
@@ -75067,7 +75358,7 @@
       "https://en.seagullwatch.com/products/skeleton-movement-ty2500sk-st2502k: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2502",
@@ -75088,7 +75379,7 @@
       "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2502-st2502: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2100",
@@ -75109,7 +75400,7 @@
       "https://en.seagullwatch.com/products/hands-date-movement-ty2100-st2100: maker's page, \"Frequency: 28800 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST8000",
@@ -75130,7 +75421,7 @@
       "https://en.seagullwatch.com/products/tourbillon-movement-ty800-st8000: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1818",
@@ -75151,7 +75442,7 @@
       "https://en.seagullwatch.com/products/multifunction-moon-phase-movement-ty1818-st1818: maker's page, \"Frequency: 28800 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2108",
@@ -75172,7 +75463,7 @@
       "https://en.seagullwatch.com/products/multifunction-moon-phase-movement-ty2108-st2108: maker's page, \"Frequency: 28800 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2553JK1",
@@ -75193,7 +75484,7 @@
       "https://en.seagullwatch.com/products/skeleton-movement-ty2553jk1-st2553jk1: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST2505",
@@ -75214,7 +75505,7 @@
       "https://en.seagullwatch.com/products/open-heart-flywheel-movement-ty2505-st2505: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST1812",
@@ -75235,7 +75526,7 @@
       "https://en.seagullwatch.com/products/hands-date-movement-ty2661-st1812: maker's page, \"Frequency: 28800 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST8006",
@@ -75256,7 +75547,7 @@
       "https://en.seagullwatch.com/products/tourbillon-movement-ty805-st8005-copy: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST8003",
@@ -75277,7 +75568,7 @@
       "https://en.seagullwatch.com/products/tourbillon-movement-ty803-st8003: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST8002",
@@ -75298,7 +75589,7 @@
       "https://en.seagullwatch.com/products/tourbillon-movement-ty802-st8002: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Seagull ST8001",
@@ -75319,7 +75610,7 @@
       "https://en.seagullwatch.com/products/tourbillon-movement-ty801-st8001: maker's page, \"Frequency: 21600 (no unit stated on page)\""
     ],
     "confidence": "maker's page",
-    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as vph."
+    "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
   },
   {
     "calibre": "Hangzhou HZ8230A",

@@ -79,10 +79,12 @@ Periodic components in amplitude:
 
 Options: `--bph` (guessed if omitted), `--lift` (degrees),
 `--notch 5000,7000` (remove steady interference tones), `--escape-teeth`,
-`--calibre NAME` (the movement's beat rate, lift angle and wheels from the
-calibre table where `--bph` and `--lift` give none; `session` takes it the
-same way, `record` for the beat rate and lift angle, and `long` and
-`series` for the lift angle and wheels but not the beat rate),
+`--calibre NAME` (the movement's beat rate, lift angle and escape wheel
+teeth from the calibre table where `--bph`, `--lift` and `--escape-teeth`
+give none, and its wheels; `session` takes it the same way, with the
+session file also winning over the calibre, `record` for the beat rate and
+lift angle, and `long` and `series` for the lift angle and wheels but not
+the beat rate),
 `--beats beats.csv` (one row per beat), `--windows windows.csv` (rate,
 beat error and amplitude over time, and where each side's unlock and drop
 sat in each 2 s window, ms from the beat time), `--json`.

@@ -21,7 +21,7 @@ body:
     id: watch
     attributes:
       label: Watch and calibre
-      placeholder: "Seiko SKX007, 7S26, 21,600 vph"
+      placeholder: "Seiko SKX007, 7S26, 21,600 bph"
     validations:
       required: true
   - type: input

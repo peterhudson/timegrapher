@@ -812,7 +812,7 @@ fn print_summary(s: &Session) {
     );
     println!();
     println!(
-        "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  Recording",
+        "{:<21} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  Recording",
         "Position",
         "Wind",
         "Rate",
@@ -826,7 +826,7 @@ fn print_summary(s: &Session) {
         "Reference"
     );
     println!(
-        "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}",
+        "{:<21} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}",
         "", "", "s/d", "deg", "ms", "ms", "us", "s/d", "%", "%", "s/d, deg, ms"
     );
     for rd in &s.readings {
@@ -846,8 +846,8 @@ fn print_summary(s: &Session) {
         let clock = if m.calibrated { "" } else { " (card clock)" };
         if !m.watch_heard {
             println!(
-                "{:<17} {:<18} {:<62} {:>17}  {}{clock}",
-                rd.position.label(),
+                "{:<21} {:<18} {:<62} {:>17}  {}{clock}",
+                rd.position.display_label(),
                 wind(rd.wind_h),
                 session::no_regular_beat(m.jitter_us, rd.bph),
                 rf,
@@ -856,8 +856,8 @@ fn print_summary(s: &Session) {
             continue;
         }
         println!(
-            "{:<17} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  {}{clock}",
-            rd.position.label(),
+            "{:<21} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  {}{clock}",
+            rd.position.display_label(),
             wind(rd.wind_h),
             signed(m.rate_s_per_day, 1),
             opt(m.amplitude_deg, 0),
@@ -878,13 +878,11 @@ fn print_summary(s: &Session) {
         "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
     );
     println!(
-        "Readings leave out the settling time at the start of each position{}, so they can differ by a few s/d from the quick check shown while recording.",
-        if s.readings.iter().any(|r| r.measurement.calibrated) {
-            " and correct the sound card's clock where it was logged"
-        } else {
-            ""
-        }
+        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (30 s when the file has none, where this report uses 20 s) and none of --settle, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
     );
+    if s.readings.iter().any(|r| r.measurement.calibrated) {
+        println!("The sound card's clock is corrected where a clock log or card_ppm is given.");
+    }
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
             "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
@@ -894,8 +892,8 @@ fn print_summary(s: &Session) {
     for rd in s.readings.iter().filter(|r| r.measurement.watch_heard) {
         let m = &rd.measurement;
         println!(
-            "States       {:<17} {}; {}",
-            rd.position.label(),
+            "States       {:<21} {}; {}",
+            rd.position.display_label(),
             twostate::describe(&m.amplitude_states, "amplitude"),
             twostate::describe(&m.rate_states, "rate")
         );
@@ -921,7 +919,7 @@ fn print_summary(s: &Session) {
     for i in &r.isochronism {
         println!(
             "Isochronism  {} {} s/d from {} to {} ({} deg, beat error {} ms)",
-            i.position.label(),
+            i.position.display_label(),
             signed(Some(i.rate_change), 1),
             wind_state(i.from_wind_h).trim_start_matches("at "),
             wind_state(i.to_wind_h).trim_start_matches("at "),

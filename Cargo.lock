@@ -3923,11 +3923,15 @@ dependencies = [
  "egui_plot",
  "egui_tiles",
  "hound",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
  "rfd",
  "serde",
  "serde_json",
  "timegrapher-core",
  "toml",
+ "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]

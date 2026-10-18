@@ -98,7 +98,7 @@ That route has not been tried with this server yet.
 | `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
 | `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
 | `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics |
-| `long_run` | `long` | Rate and amplitude over hours and the wheel behind a periodic change; writes `report.html` |
+| `long_run` | `long` | Rate and amplitude over hours and the periodic changes that point at a wheel of the train; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
 | `record_position` | `record` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |

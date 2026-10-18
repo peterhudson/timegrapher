@@ -1335,6 +1335,35 @@ fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
 }
 
 fn headline(s: &SeriesCheck, mean: f64) -> String {
+    let text = lead_text(s, mean);
+    // The steady and correlated headlines carry the line in place of
+    // "no cycle"; any other lead without a cycle gets it as a sentence.
+    match s.lead {
+        Lead::TooShort | Lead::Steady | Lead::Wandering | Lead::Periodic => text,
+        _ => match fast_line(s, &every_text(s.step_s)) {
+            Some(line) => {
+                let mut c = line.chars();
+                let line: String = c
+                    .next()
+                    .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+                format!("{text} {line}.")
+            }
+            None => text,
+        },
+    }
+}
+
+fn every_text(sec: f64) -> String {
+    if sec >= 5400.0 {
+        format!("{:.1} h", sec / 3600.0)
+    } else if sec >= 120.0 {
+        format!("{:.0} min", sec / 60.0)
+    } else {
+        format!("{sec:.0} s")
+    }
+}
+
+fn lead_text(s: &SeriesCheck, mean: f64) -> String {
     let k = s.series;
     let name = k.name();
     let cap = {
@@ -1342,26 +1371,26 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
         c.next()
             .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
     };
-    let every = |sec: f64| {
-        if sec >= 5400.0 {
-            format!("{:.1} h", sec / 3600.0)
-        } else if sec >= 120.0 {
-            format!("{:.0} min", sec / 60.0)
-        } else {
-            format!("{sec:.0} s")
-        }
-    };
+    let every = every_text;
     let step = every(s.step_s);
     match s.lead {
         // check_series states the too-short case, with its rule, before
         // the tests run.
         Lead::TooShort => s.headline.clone(),
-        Lead::Steady => format!(
-            "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
-            s.readings,
-            k.fmt(s.median.unwrap_or(mean)),
-            k.fmt_size(s.short_term_sd.unwrap_or(0.0))
-        ),
+        Lead::Steady => match fast_line(s, &step) {
+            None => format!(
+                "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no cycle, level change, trend or correlation between readings detected.",
+                s.readings,
+                k.fmt(s.median.unwrap_or(mean)),
+                k.fmt_size(s.short_term_sd.unwrap_or(0.0))
+            ),
+            Some(line) => format!(
+                "{cap}: {} {step} readings, median {}, ±{} from one reading to the next; no level change, trend or correlation between readings detected; {line}.",
+                s.readings,
+                k.fmt(s.median.unwrap_or(mean)),
+                k.fmt_size(s.short_term_sd.unwrap_or(0.0))
+            ),
+        },
                 Lead::Periodic => match (&s.cycle, &s.two_state) {
             (Some(p), _) => format!(
                 "{cap} repeats every {}{}{}, {} peak to peak.",
@@ -1463,12 +1492,54 @@ fn headline(s: &SeriesCheck, mean: f64) -> String {
                     a.max_excess
                 ));
             }
-            format!(
-                "Successive {step} {name} readings are correlated ({}); no cycle, level change or trend detected.",
-                parts.join("; ")
-            )
+            match fast_line(s, &step) {
+                None => format!(
+                    "Successive {step} {name} readings are correlated ({}); no cycle, level change or trend detected.",
+                    parts.join("; ")
+                ),
+                Some(line) => format!(
+                    "Successive {step} {name} readings are correlated ({}); no level change or trend detected; {line}.",
+                    parts.join("; ")
+                ),
+            }
         }
     }
+}
+
+impl SeriesCheck {
+    /// The period search's line when no cycle shows in the readings and
+    /// the line turns in under three readings, so they cannot show it.
+    pub fn faster_than_readings(&self) -> Option<&Period> {
+        self.period
+            .as_ref()
+            .filter(|p| self.cycle.is_none() && p.period_s < 3.0 * self.step_s)
+    }
+}
+
+/// The period search's line when it is too fast for the readings to show
+/// as a cycle (under three readings a turn): without it, a headline that
+/// says "no cycle" would contradict the period search on the same series.
+/// For the rate the search reads the beat timing, so its size is the
+/// timing swing.
+fn fast_line(s: &SeriesCheck, step: &str) -> Option<String> {
+    let p = s.faster_than_readings()?;
+    let what = match s.series {
+        SeriesKind::Rate => "the beat timing".to_string(),
+        k => format!("the {}", k.name()),
+    };
+    let wheel = p
+        .wheel
+        .as_ref()
+        .map_or(String::new(), |w| format!(", the {w}'s period"));
+    let size = if p.size >= 0.1 {
+        format!("{:.2}", p.size)
+    } else {
+        format!("{:.3}", p.size)
+    };
+    Some(format!(
+        "{what} repeats every {:.1} s{wheel}, {size} {} peak to peak; {step} readings are too coarse to show it",
+        p.period_s, p.size_unit
+    ))
 }
 
 fn findings(s: &SeriesCheck) -> Option<Finding> {

@@ -20,9 +20,9 @@ use egui_plot::{GridMark, Line, LineStyle, Plot, Points};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use timegrapher_core::beats::STANDARD_BPH;
-use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
+use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
@@ -64,6 +64,13 @@ struct ClockTrack {
 }
 
 impl ClockTrack {
+    /// Start timing afresh, after a gap the clock can't be timed across.
+    fn restart(&mut self, sample_rate: u32) {
+        self.tracker = timegrapher_core::clock::ClockTracker::new(sample_rate);
+        self.next_s = CLOCK_MEASURE_S;
+        self.fit = None;
+    }
+
     /// Count a block of audio that arrived at `at`, fitting once a minute.
     fn push(&mut self, samples: usize, at: std::time::SystemTime) {
         self.tracker.push(samples, at);
@@ -389,8 +396,8 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
 }
 
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
-     position. Listening carries on into the new session; a replay stops. Unsaved sound is \
-     asked about first.";
+     position. Listening carries on into the new session, unless closing the kept sound \
+     fails; a replay stops. Unsaved sound is asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
      settings, to analyse again later. The first time it asks where: the take goes in a \
      folder of its own, named for its time and watch, inside the folder you choose. After \
@@ -598,6 +605,24 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
     (99.9, "99.9%"),
 ];
 
+/// Silence between two of the microphone's blocks longer than this, by
+/// the system clock, is the computer having slept.
+const SLEPT_S: f64 = 5.0;
+
+/// The seconds the computer slept before block `b`, which came after a
+/// block that arrived at `before`; `None` if it didn't.
+fn slept(before: Option<std::time::SystemTime>, b: &Block, sample_rate: u32) -> Option<f64> {
+    let block_s = b.samples.len() as f64 / sample_rate.max(1) as f64;
+    let gap = b.at.duration_since(before?).ok()?.as_secs_f64() - block_s;
+    (gap > SLEPT_S).then_some(gap)
+}
+
+/// The longest a frame spends saving and reading sound that has come in;
+/// any more waits for the next frame.
+const FRAME_BUDGET: Duration = Duration::from_millis(20);
+/// The same for [`TimegrapherApp::pump`], which runs off the window's
+/// thread and only holds the window up while it works.
+pub(crate) const PUMP_BUDGET: Duration = Duration::from_millis(50);
 /// Averaging times offered for the readings, seconds.
 const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
@@ -765,6 +790,14 @@ pub struct TimegrapherApp {
     guided_measure_s: f64,
     /// Look for a newer release each time the app starts.
     check_at_start: bool,
+    /// Keep the computer from sleeping on its own while listening.
+    keep_awake: bool,
+    /// Why the computer isn't being kept awake although asked, set by the
+    /// listening thread.
+    pub(crate) awake_fault: Option<String>,
+    /// Why the listening thread didn't start, if it didn't: then sound is
+    /// only taken while the window draws.
+    pub(crate) pump_fault: Option<String>,
     /// The check at start is still to be made (on the first frame, which
     /// has the context it repaints).
     check_pending: bool,
@@ -906,6 +939,12 @@ pub struct TimegrapherApp {
     /// When the microphone was opened and when it last sent audio.
     opened_at: Instant,
     audio_at: Option<Instant>,
+    /// When the microphone's last block arrived, by the system clock, to
+    /// tell when the computer slept between two blocks.
+    block_at: Option<std::time::SystemTime>,
+    /// When the sound was last taken in, to tell when nothing ran at all
+    /// (the computer asleep, a dialog open) from an input gone quiet.
+    polled_at: Instant,
 }
 
 impl TimegrapherApp {
@@ -954,6 +993,7 @@ impl TimegrapherApp {
             short_removed: self.cal.short_removed.clone(),
             pane_average: self.pane_average.iter().map(|(&p, &s)| (p, s)).collect(),
             check_updates: self.check_at_start,
+            keep_awake: self.keep_awake,
         }
     }
 
@@ -990,8 +1030,10 @@ impl TimegrapherApp {
             short_removed,
             pane_average,
             check_updates,
+            keep_awake,
         } = s;
         self.check_at_start = check_updates;
+        self.keep_awake = keep_awake;
         // Readings' time first: setting it drops every pane's own.
         if AVERAGES.contains(&average_s) {
             self.set_average(average_s);
@@ -1109,6 +1151,9 @@ impl TimegrapherApp {
             guided_settle_s: guided::SETTLE_S,
             guided_measure_s: guided::MEASURE_S,
             check_at_start: true,
+            keep_awake: true,
+            awake_fault: None,
+            pump_fault: None,
             check_pending: false,
             average_s: 10.0,
             watch: String::new(),
@@ -1182,6 +1227,8 @@ impl TimegrapherApp {
             all_inputs: false,
             opened_at: Instant::now(),
             audio_at: None,
+            block_at: None,
+            polled_at: Instant::now(),
         };
         if let Some(f) = file {
             // A folder of segments can only be analysed at once.
@@ -1300,7 +1347,7 @@ impl TimegrapherApp {
         }
     }
 
-    fn running(&self) -> bool {
+    pub(crate) fn running(&self) -> bool {
         self.capture.is_some()
     }
 
@@ -1383,6 +1430,7 @@ impl TimegrapherApp {
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
+                self.block_at = None;
                 self.session.listen();
                 self.clock = clocks.get(&c.label).cloned();
                 self.clock_track = Some(ClockTrack {
@@ -1454,6 +1502,7 @@ impl TimegrapherApp {
                 }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
+                self.block_at = None;
                 self.view_end = None;
                 self.message = None;
                 // A pause is no break in the sound to ask about.
@@ -2183,12 +2232,62 @@ impl TimegrapherApp {
 
     /// Take in whatever audio has arrived.
     fn poll(&mut self) {
+        self.poll_for(FRAME_BUDGET);
+    }
+
+    /// Save and read the sound that has come in, for up to `budget`, so a
+    /// backlog never holds up the window for long. Returns the blocks of
+    /// sound taken.
+    fn poll_for(&mut self, budget: Duration) -> usize {
+        let started = Instant::now();
+        // After a while with nothing run, the input gets the usual grace
+        // before it counts as quiet.
+        if self.polled_at.elapsed() > Duration::from_secs(2) && self.audio_at.is_some() {
+            self.audio_at = Some(started);
+        }
+        self.polled_at = started;
+        let mut taken = 0;
         let mut ended = false;
         let mut failure = None;
         if let (Some(cap), Some(live)) = (self.capture.as_ref(), self.live.as_mut()) {
             loop {
-                match cap.rx.try_recv() {
+                if taken > 0 && started.elapsed() > budget {
+                    break;
+                }
+                let event = cap.rx.try_recv();
+                if matches!(event, Ok(Event::Audio(_))) {
+                    taken += 1;
+                }
+                match event {
                     Ok(Event::Audio(b)) => {
+                        if !cap.is_file {
+                            if let Some(gap) = slept(self.block_at, &b, live.sample_rate()) {
+                                // The computer slept: carry on, as after a
+                                // pause, with the time between out.
+                                if let Ok(Err(e)) = self.session.pause(live.duration_s()) {
+                                    failure = Some(CaptureFailure::Recording(e.to_string()));
+                                    break;
+                                }
+                                if self.session.resume(&cap.label).is_ok() {
+                                    live.skip(gap);
+                                    self.session.resumed_at(live.duration_s());
+                                }
+                                if let Some(t) = self.clock_track.as_mut() {
+                                    t.restart(live.sample_rate());
+                                }
+                                self.last_beat_seen = 0.0;
+                                self.move_prompt = None;
+                                let m = format!(
+                                    "The sound's timestamps jumped by {}, as they do when the \
+                                     computer sleeps. The jump is left out of the take as a \
+                                     break, and listening carries on.",
+                                    fields::duration(gap.round())
+                                );
+                                applog::warn(&m);
+                                self.message = Some((m, false));
+                            }
+                            self.block_at = Some(b.at);
+                        }
                         if let Some(r) = self.session.recorder.as_mut() {
                             if let Err(e) = r.write(&b) {
                                 failure = Some(CaptureFailure::Recording(e.to_string()));
@@ -2337,6 +2436,27 @@ impl TimegrapherApp {
                 }
             }
         }
+        taken
+    }
+
+    /// Keep listening while the window isn't drawing: save and read the
+    /// sound that has come in. Called from [`crate::pump`]'s thread.
+    pub(crate) fn pump(&mut self) -> usize {
+        if self.capture.is_none() {
+            return 0;
+        }
+        self.poll_for(PUMP_BUDGET)
+    }
+
+    /// Whether to hold the computer awake now: listening to the
+    /// microphone, with Keep Awake on.
+    pub(crate) fn wants_awake(&self) -> bool {
+        self.keep_awake && self.running() && self.session.mic()
+    }
+
+    /// Seconds of sound heard so far in this session, for the log.
+    pub(crate) fn heard_s(&self) -> f64 {
+        self.live.as_ref().map_or(0.0, |l| l.duration_s())
     }
 
     fn show_log(
@@ -3493,6 +3613,34 @@ impl TimegrapherApp {
             &mut self.all_inputs,
             "List every device the system offers in the microphone menu, with its id",
         );
+        theme::switch_row(
+            ui,
+            "Keep Awake",
+            &mut self.keep_awake,
+            "While listening, stop the computer going to sleep on its own, so a long take \
+             isn't cut short. The screen can still lock and switch off.",
+        );
+        let pal = theme::pal(ui);
+        if let (true, Some(e)) = (self.keep_awake, &self.awake_fault) {
+            ui.label(
+                RichText::new(format!(
+                    "The computer isn't being kept awake: {e}. It may sleep on its own \
+                     during a long take."
+                ))
+                .small()
+                .color(pal.warn),
+            );
+        }
+        if let Some(e) = &self.pump_fault {
+            ui.label(
+                RichText::new(format!(
+                    "Sound is taken only while the window is showing: the thread that \
+                     takes it otherwise didn't start ({e})."
+                ))
+                .small()
+                .color(pal.warn),
+            );
+        }
     }
 
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
@@ -5860,8 +6008,10 @@ impl TimegrapherApp {
                 170.0
             }
             .min(right.height());
-            let top = egui::Rect::from_min_size(right.min, Vec2::new(right.width(), h));
-            let inner = card(ui, top);
+            // Below the welcome or the watch prompt, which come first.
+            let bottom =
+                egui::Rect::from_min_max(egui::pos2(right.left(), right.bottom() - h), right.max);
+            let inner = card(ui, bottom);
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                 if self.pane_tools(ui, Pane::PositionsTest) {
                     ui.add_space(4.0);
@@ -5869,11 +6019,8 @@ impl TimegrapherApp {
                 self.positions_pane(ui);
             });
             right = egui::Rect::from_min_max(
-                egui::pos2(
-                    right.left(),
-                    (top.bottom() + theme::GAP).min(right.bottom()),
-                ),
-                right.max,
+                right.min,
+                egui::pos2(right.right(), (bottom.top() - theme::GAP).max(right.top())),
             );
         }
         ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| rest(self, ui));
@@ -10325,6 +10472,112 @@ mod tests {
         let (m, error) = app.message.clone().expect("the close error is shown");
         assert!(error, "{m}");
         assert!(m.contains("pause"), "{m}");
+        drop(tx);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// With the window drawing no frames at all (a locked screen, a
+    /// minimised window), the sound is still saved and read as it comes in.
+    #[test]
+    fn listening_carries_on_without_frames() {
+        let (mut app, base) = save_failure_fixture("no-frames");
+        let tx = queued_capture(&mut app, &base);
+        let before = app.heard_s();
+        let saved_before = app.session.recorder.as_ref().unwrap().duration_s();
+        let shell = crate::pump::Shell::new(app);
+        // 30 s of sound in the 20 ms blocks a microphone sends.
+        for k in 0..1500u64 {
+            tx.send(Event::Audio(timegrapher_core::capture::Block {
+                samples: vec![0.0; 960],
+                at: std::time::UNIX_EPOCH + Duration::from_millis(2000 + 20 * k),
+            }))
+            .unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let (heard, saved) = {
+                let a = shell.app();
+                (
+                    a.heard_s(),
+                    a.session.recorder.as_ref().unwrap().duration_s(),
+                )
+            };
+            if heard - before >= 30.0 - 1e-6 && saved - saved_before >= 30.0 - 1e-6 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "heard {heard} s and saved {saved} s without frames"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        drop(shell);
+        drop(tx);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// A backlog is taken a frame's worth at a time, so the window never
+    /// freezes while it catches up.
+    #[test]
+    fn a_backlog_is_taken_in_slices() {
+        let (mut app, base) = save_failure_fixture("backlog");
+        let tx = queued_capture(&mut app, &base);
+        for k in 0..3000u64 {
+            tx.send(Event::Audio(timegrapher_core::capture::Block {
+                samples: vec![0.0; 960],
+                at: std::time::UNIX_EPOCH + Duration::from_millis(2000 + 20 * k),
+            }))
+            .unwrap();
+        }
+        let first = app.poll_for(Duration::from_millis(1));
+        assert!((1..3000).contains(&first), "took {first} blocks at once");
+        let mut taken = first;
+        while taken < 3000 {
+            let n = app.poll_for(Duration::from_millis(200));
+            assert!(n > 0);
+            taken += n;
+        }
+        assert!(app.running());
+        drop(tx);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// A computer that slept mid-take carries on, with the gap a break.
+    #[test]
+    fn a_sleep_becomes_a_break() {
+        let (mut app, base) = save_failure_fixture("slept");
+        let tx = queued_capture(&mut app, &base);
+        let block = |ms: u64| {
+            Event::Audio(timegrapher_core::capture::Block {
+                samples: vec![0.0; 960],
+                at: std::time::UNIX_EPOCH + Duration::from_millis(ms),
+            })
+        };
+        for k in 0..50 {
+            tx.send(block(2000 + 20 * k)).unwrap();
+        }
+        // Everything queued, however long it takes.
+        while app.poll_for(Duration::from_secs(60)) > 0 {}
+        let heard = app.heard_s();
+        assert!(app.session.recorder.as_ref().unwrap().breaks().is_empty());
+        // An hour asleep, then the sound runs on.
+        let woke = 2000 + 20 * 49 + 3_600_000;
+        for k in 0..50 {
+            tx.send(block(woke + 20 * k)).unwrap();
+        }
+        while app.poll_for(Duration::from_secs(60)) > 0 {}
+        assert!(app.running());
+        let breaks = app.session.recorder.as_ref().unwrap().breaks();
+        assert_eq!(breaks.len(), 1);
+        assert!(
+            (breaks[0].gap_s - 3600.0).abs() < 0.05,
+            "{}",
+            breaks[0].gap_s
+        );
+        assert!((app.heard_s() - heard - 3601.0).abs() < 0.05);
+        let (m, error) = app.message.clone().unwrap();
+        assert!(!error);
+        assert!(m.contains("timestamps jumped by"), "{m}");
         drop(tx);
         let _ = std::fs::remove_dir_all(base);
     }

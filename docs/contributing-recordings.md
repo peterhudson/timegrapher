@@ -25,7 +25,7 @@ In order:
    same watch, with a photo of its screen. This gives a second opinion
    that does not come from tg.
 2. **Beat rates other than 28,800**: 18,000, 19,800, 21,600 and 36,000
-   vph, and older 18,000 vph watches with a soft tick.
+   bph, and older 18,000 bph watches with a soft tick.
 3. **Different microphones**: piezo clips, contact microphones, phone
    headsets, cheap USB pickups, and the level that worked.
 4. **Hard conditions**: a noisy room, a watch that clips the input, a

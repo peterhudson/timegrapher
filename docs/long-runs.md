@@ -37,7 +37,7 @@ folder next to the recording (`--out` to choose):
 | `report.html` | The report: rate and amplitude over the run, the period searches, and for each component found its average cycle and a raster with one row per cycle. Self-contained; open it in a browser. |
 | `summary.json` | The figures in the printed summary. |
 | `beats.csv` | Every beat: number, time on the sound card's clock, calibrated time, match quality. Re-analysis needs only this and `amplitude.csv`. |
-| `amplitude.csv` | Amplitude of even and odd beats, and beat error from the drop and from the unlock, in 2 s windows. |
+| `amplitude.csv` | Amplitude of the Tick and the Tock (columns `even_deg` and `odd_deg`), and beat error from the drop and from the unlock, in 2 s windows. |
 | `slices.csv` | Rate, beat error (from the drop and from the unlock) and amplitude in slices of about 1/400 of the run. |
 | `folds.csv` | The average cycle of each component found. |
 
@@ -60,14 +60,15 @@ plus three that name the periodic components after wheels:
 
 - `--calibre NAME` takes the train from the table of common calibres
   (`crates/timegrapher-core/data/train-wheels.json`): "ETA 2824-2",
-  "Rolex 3235", "NH35" and so on. An unknown name lists the known ones.
+  "Rolex 3235", "NH35" and so on. A name not in the catalogue is an error
+  that points to `timegrapher calibres --search NAME`.
   It also sets the lift angle when `--lift` is not given (52° when the
   table has no lift angle for the calibre); it does not set the beat
   rate, which `--bph` gives or the recording shows.
 - `--escape-teeth N` sets the escape wheel's teeth. Without it or a
   calibre that gives them, both common escape wheels are named, 15 teeth
   (30 beats a turn) and 20 teeth (40 beats, the ETA 2824 family and
-  Rolex's): at 28,800 vph 3.75 s and 5 s, and the line the recording
+  Rolex's): at 28,800 bph 3.75 s and 5 s, and the line the recording
   shows picks one.
 - `--wheel "third wheel=450"` (repeatable) names another wheel whose turn
   period you know.
@@ -181,7 +182,7 @@ eight phase bins), so 2 s on the 0.25 s grid, 8 s on the 1 s grid of runs
 over 12 hours, and 16 s for amplitude. With fewer bins per turn, a period
 that is a whole number of bins folds onto a few fixed phases, and the slow
 wander the trend leaves behind reads as a cycle. On a 16 h run, the
-21,600 vph escape wheel's 5 s read 10.8 ms that way, where the beats show
+21,600 bph escape wheel's 5 s read 10.8 ms that way, where the beats show
 0.5 ms.
 
 ## Limits

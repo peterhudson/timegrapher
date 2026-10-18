@@ -110,7 +110,7 @@ impl UserCalibres {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(format!("{}: {e}", path.display())),
         };
-        let u: UserCalibres =
+        let mut u: UserCalibres =
             serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         if u.schema != SCHEMA {
             return Err(format!(
@@ -119,7 +119,18 @@ impl UserCalibres {
                 u.schema
             ));
         }
+        u.follow_renames();
         Ok(u)
+    }
+
+    /// Move periods entered under a name the table has since changed onto
+    /// the entry's current name, so they stay with their calibre.
+    fn follow_renames(&mut self) {
+        for w in &mut self.wheels {
+            if let Some(now) = calibres::renamed(&w.calibre) {
+                w.calibre = now.into();
+            }
+        }
     }
 
     /// Write the file at `path`, creating its folder; a half-written file
@@ -500,6 +511,24 @@ mod tests {
         v.remove_custom("My Movement");
         assert_eq!(v.wheels.len(), 1);
         assert!(v.custom.is_empty());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn periods_saved_under_a_former_name_follow_the_rename() {
+        let dir = std::env::temp_dir().join(format!("tg-user-renamed-{}", std::process::id()));
+        let path = dir.join("calibres.json");
+        let mut u = UserCalibres::default();
+        u.set_wheel("ETA 2824 (21,600 vph, 53°)", "third wheel", 75.0, None);
+        u.save(&path).unwrap();
+        let u = UserCalibres::load(&path).unwrap();
+        assert_eq!(u.wheels[0].calibre, "ETA 2824 (21,600 bph, 53°)");
+        let cat = Catalog::new(&u);
+        let e = cat.find("ETA 2824 (21,600 vph, 53°)").unwrap();
+        assert!(cat
+            .slots(e)
+            .iter()
+            .any(|s| s.name == "third wheel" && s.origin == Origin::User));
         std::fs::remove_dir_all(dir).ok();
     }
 

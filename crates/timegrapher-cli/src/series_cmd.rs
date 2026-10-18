@@ -44,6 +44,10 @@ pub fn run(o: Options) -> Result<(), String> {
         let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
         info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
     }
+    // Once the recordings open, so a run that fails on them says only why.
+    if let Some(note) = resolved_train.lift_default_note(o.lift) {
+        eprintln!("{note}");
+    }
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
@@ -250,7 +254,11 @@ fn print_text(r: &Report, calibrated: bool) {
         }
     }
     if r.findings.is_empty() {
-        println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
+        if r.series.iter().any(|s| s.faster_than_readings().is_some()) {
+            println!("\nNo two levels, level change, trend or correlation between readings detected in any series, and no cycle the readings can show.");
+        } else {
+            println!("\nNo cycle, two levels, level change, trend or correlation between readings detected in any series.");
+        }
     }
 }
 

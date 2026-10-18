@@ -185,10 +185,13 @@ the letter forms match in any case; 3H, 6H, 9H and 12H only in capitals,
 so that `_2h` or `_12h` (a duration) is not taken for a position.
 
 Witschi's codes count round the dial with the crown at 3 o'clock, so crown
-up is 3H and crown right 12H. The report names each position in words with
-the code beside it: "Crown Up (3H)", "Dial Down (CB)". (The app names
-the crown positions with both codes, "Crown Up (CU, 3H)", and the dial
-positions with the common one, "Dial Down (DD)".)
+up is 3H and crown right 12H. The report's tables and the text table
+name each position as the app does: in words with the common code, and
+Witschi's beside it for the crown positions: "Crown Up (CU, 3H)", "Dial
+Down (DD)". A finding's `evidence`, shown as it is in the JSON and in
+the findings of the summary and the report, keeps Witschi's code alone:
+"Crown Up (3H)", "Dial Down (CB)"; the charts, the facts line and the
+Im line ("excluding 12H") show Witschi's codes.
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
@@ -203,7 +206,7 @@ After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 of the recording or for `measure_s`:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
-  corrected for the sound card's clock when the recording has a clock log
+  corrected for the sound card's clock when the session file names a clock log
   or the session gives `card_ppm`;
 - beat error measured from the unlock, as tg and bench timegraphers do
   (median of the 2 s windows); this is the value the report shows first.
@@ -228,10 +231,16 @@ of the recording or for `measure_s`:
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
 
-The quick check `record` prints while recording skips the same settling
-time and reads the same stretch on the sound card's clock, as this report
-reads the session file `record` writes (which names no clock log), so the
-two agree.
+The quick check `record` prints while recording skips the session
+file's `settle_s` (30 s when the file has none) and reads the rest on the
+sound card's clock, so it agrees with this report on a session file
+`record` creates (which sets `settle_s = 30` and names no clock log). It
+can differ where a reading uses what the check does not: `--settle`, a
+reading's own `settle_s`, `measure_s`, `start_s` or `end_s`, a clock log
+or `card_ppm`, the 20 s default on a file with no `settle_s`, or a
+restart in listening within the take, where this report fits the reading
+in pieces between the restarts (still one row) and the check fits it
+whole.
 
 Repeat readings in the same position and state of wind are averaged.
 

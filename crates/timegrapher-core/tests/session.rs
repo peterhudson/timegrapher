@@ -362,3 +362,14 @@ fn amplitude_over_330_is_shown_not_judged() {
     only_facts(&rep);
     assert!(!rep.findings.iter().any(|f| f.evidence.contains("335")));
 }
+
+#[test]
+fn positions_are_named_as_the_app_names_them() {
+    assert_eq!(Position::H3.display_label(), "Crown Up (CU, 3H)");
+    assert_eq!(Position::H12.display_label(), "Crown Right (CR, 12H)");
+    assert_eq!(Position::CH.display_label(), "Dial Up (DU)");
+    assert_eq!(Position::CB.display_label(), "Dial Down (DD)");
+    // The JSON keeps Witschi's code alone.
+    assert_eq!(Position::H3.label(), "Crown Up (3H)");
+    assert_eq!(Position::CB.label(), "Dial Down (CB)");
+}

@@ -29,6 +29,11 @@ pub struct Calibre {
     /// train, clones, and the names the session files use.
     #[serde(default)]
     pub family: Vec<String>,
+    /// Names the entry went by in earlier versions of the table, so a
+    /// saved pick or a take that names one still finds it. Not shown and
+    /// not searched.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub former_names: Vec<String>,
     /// Common and modern: in the short list the app offers first. The
     /// rest (uncommon and vintage calibres) appear when the list is
     /// expanded or searched.
@@ -130,7 +135,7 @@ pub fn key(s: &str) -> String {
 }
 
 /// The calibre called `name`: its full name, its name without the
-/// maker, or one of its family names.
+/// maker, one of its family names or a name it had before.
 pub fn find(name: &str) -> Option<&'static Calibre> {
     let k = key(name);
     if k.is_empty() {
@@ -140,7 +145,17 @@ pub fn find(name: &str) -> Option<&'static Calibre> {
         key(&c.calibre) == k
             || key(c.calibre.strip_prefix(c.maker.as_str()).unwrap_or("")) == k
             || c.family.iter().any(|f| key(f) == k)
+            || c.former_names.iter().any(|f| key(f) == k)
     })
+}
+
+/// The current name of a table entry once called `name`, when the table
+/// has renamed it; `None` for a name still in use or not in the table.
+pub fn renamed(name: &str) -> Option<&'static str> {
+    all()
+        .iter()
+        .find(|c| c.former_names.iter().any(|f| f == name))
+        .map(|c| c.calibre.as_str())
 }
 
 /// Calibres in the table that answer `query`, best first: see [`rank`].
@@ -222,7 +237,10 @@ mod tests {
     fn table_parses_and_names_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for c in all() {
-            for n in std::iter::once(&c.calibre).chain(&c.family) {
+            for n in std::iter::once(&c.calibre)
+                .chain(&c.family)
+                .chain(&c.former_names)
+            {
                 assert!(seen.insert(key(n)), "{n} is in the table twice");
             }
             assert!(!c.sources.is_empty(), "{} has no source", c.calibre);
@@ -294,6 +312,18 @@ mod tests {
         assert!(find("3235").is_some());
         assert!(find("").is_none());
         assert!(find("no such calibre").is_none());
+    }
+
+    #[test]
+    fn variant_rows_say_bph_and_their_old_names_still_resolve() {
+        assert!(all().iter().all(|c| !c.calibre.contains("vph")));
+        let old = "ETA 2824 (21,600 vph, 53°)";
+        let c = find(old).expect("the old name finds the row");
+        assert_eq!(c.calibre, "ETA 2824 (21,600 bph, 53°)");
+        assert_eq!(renamed(old), Some("ETA 2824 (21,600 bph, 53°)"));
+        assert_eq!(renamed("ETA 2824-2"), None);
+        // Only renamed rows carry former names, and none matches a search.
+        assert!(search("vph").is_empty());
     }
 
     #[test]

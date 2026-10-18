@@ -18,7 +18,7 @@ authoritative list of fields; this page covers what an agent reads.
 build has them):
 
 ```
-timegrapher calibres [NAME] [--json]       the built-in calibre table: vph, lift angle, escape wheel teeth, wheel turn periods, sources
+timegrapher calibres [NAME] [--json]       the built-in calibre table: bph, lift angle, escape wheel teeth, wheel turn periods, sources
 timegrapher calibres --search QUERY        the calibres that answer QUERY, best first (a name, another name or the maker: "dd 3235", "AP 3120")
 timegrapher analyze FILE --calibre NAME    beat rate, lift angle and wheel names from the table; --bph, --lift, --escape-teeth win
 timegrapher session FOLDER --calibre NAME  the same for a session: the flag, then session.toml, then the calibre, then the defaults
@@ -49,7 +49,7 @@ then the command's own fields alongside them:
 
 ```json
 {
-  "schema": "timegrapher.analyze/1",
+  "schema": "timegrapher.analyze/2",
   "software": { "name": "timegrapher", "version": "0.1.0", "os": "linux", "arch": "x86_64" },
   "input": {
     "files": [ { "path": "dialup.wav", "recording": { "...": "from dialup.wav.json if present" } } ],
@@ -291,15 +291,20 @@ two sides; report that rather than the amplitude.
 ## long
 
 ```
-timegrapher long FILES... [--clock LOG] [--bph N] [--lift DEG] [--notch HZ,...]
+timegrapher long FILES... [--clock LOG] [--device NAME] [--card-ppm PPM]
+                 [--bph N] [--lift DEG] [--notch HZ,...]
                  [--highpass HZ] [--escape-teeth N] [--wheel "NAME=SECONDS"]...
-                 [--out DIR] [--json]
+                 [--calibre NAME] [--out DIR] [--json]
 ```
 
 `FILES` are read as one continuous recording in the order given; a folder
 stands for its WAV and FLAC files in name order. `--clock` is the
-sound-card calibration log; `--wheel` names another wheel by its period
-(repeatable). Output folder (default `<recording>_long/` beside it):
+sound-card calibration log; without one, `--device` corrects with the
+clock error stored for that input and `--card-ppm` for a card that many
+ppm slow (negative if fast); `--wheel` names another wheel by its period
+(repeatable); `--calibre` names periodic changes after that movement's
+wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
+is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
 (`start_s,end_s,true_start_s,even_deg,odd_deg`), `slices.csv`
@@ -339,7 +344,9 @@ Is the take steady? Reads rate, amplitude and beat error in time order
 rate against the amplitude, always given) and `findings[]` (`code`,
 `series`, `title`, `evidence`) (`series/2`).
 `--calibre` names periodic changes after that movement's wheels; an
-unknown name lists the calibres the program knows. Same input as `long`.
+unknown name lists the calibres the program knows. The lift angle is
+`--lift`, else the calibre's when `--calibre` is given, else 52°. Same
+input as `long`.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
