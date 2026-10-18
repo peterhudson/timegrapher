@@ -220,7 +220,7 @@ clock, as `session` does, so the check and the report agree on a take
 null when no regular beat is found or that stretch is too short to hear
 the watch on its own. Every take is added to `FOLDER/session.toml`
 (written on the first take with the watch, calibre, bph, lift and
-`settle_s = 30`, then appended to, comments and all) with its position,
+`settle_s = 30.0`, then appended to, comments and all) with its position,
 `wind_h` when given, and start time, and a comment line above the entry
 for each fact worth seeing there ("No regular beat found (timing scatter
 X ms, Y% of a beat)", "N% of beats clipped"); the exit code is 0. Whether

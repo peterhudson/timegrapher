@@ -385,6 +385,24 @@ pub fn measure_with_breaks(
     measure_masked(log, clock, breaks, &[], from_s, to_s)
 }
 
+/// A listed break's gap on true time: from the last sound before the
+/// pause to the first after it. A clock fit that found the pause itself
+/// places it at its first log line after the resume, a block or so after
+/// the listed break, and maps the sound before that line to before the
+/// gap; the gap then ends at that line.
+fn gap_ends(clock: Option<&ClockFit>, b: &Break, map: &impl Fn(f64) -> f64) -> Option<(f64, f64)> {
+    let start = map(b.audio_s - 1e-6);
+    let resume = clock
+        .and_then(|c| {
+            c.breaks.iter().find(|c| {
+                c.audio_s >= b.audio_s && c.audio_s - b.audio_s <= crate::breaks::JUMP_MATCH_S
+            })
+        })
+        .map_or(b.audio_s, |c| c.audio_s);
+    let end = map(resume);
+    (end > start).then_some((start, end))
+}
+
 /// [`measure_with_breaks`] leaving out stretches masked by hand (cleaned
 /// with [`masked_spans`]). Each mask, like each break's gap, is cut at
 /// both ends, so no fit, 10 s window or two-state sample reaches into
@@ -403,14 +421,18 @@ pub fn measure_masked(
     let from_s = from_s.clamp(0.0, to_s);
     let masked_s = masked_within(masked, from_s, to_s);
     let map = crate::longrun::true_time(clock, breaks);
-    let mut cuts = crate::longrun::cuts(clock, breaks);
     // Cut at both ends of each gap and each mask: a window or sample that
     // reaches into one from either side, taking in a ragged edge of
-    // beats, is dropped, so nothing is averaged across a gap or a mask.
-    cuts.extend(breaks.iter().flat_map(|b| {
-        let end = map(b.audio_s);
-        [end - b.gap_s + 1e-6, end - 1e-6]
-    }));
+    // beats, is dropped, so nothing is averaged across a gap or a mask. A
+    // break with no gap keeps its single cut.
+    let mut cuts: Vec<f64> = breaks
+        .iter()
+        .zip(crate::longrun::cuts(clock, breaks))
+        .flat_map(|(b, cut)| match gap_ends(clock, b, &map) {
+            Some((start, end)) if b.gap_s > 2e-6 => vec![start, end - 1e-6],
+            _ => vec![cut],
+        })
+        .collect();
     cuts.extend(
         masked
             .iter()

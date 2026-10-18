@@ -521,3 +521,117 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_break() {
     assert!((p05 - 5.0).abs() < 1.0, "10 s rates reach {p05} s/d");
     assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
 }
+
+#[test]
+fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
+    // The pause of the break test, as an app take saves it: the break is
+    // listed at the frame where the sound resumes, and the clock log, a
+    // line every 10 s and one per block around the pause, writes its
+    // first line after the pause one 10 ms block later, with the frames
+    // counted to the end of that block. The clock fit puts its own break
+    // at that line.
+    let bph = 28_800;
+    let period = 3600.0 / bph as f64 / (1.0 + 5.0 / 86400.0);
+    let (pause_s, gap_s, block_s) = (100.0, 103.0, 0.01);
+    let brk = timegrapher_core::breaks::Break {
+        audio_s: pause_s,
+        gap_s,
+    };
+    let mut lines: Vec<(f64, f64)> = (1..=10)
+        .map(|i| (i as f64 * 10.0, i as f64 * 10.0))
+        .collect();
+    lines.extend((0..4).map(|i| {
+        let a = pause_s + block_s + i as f64 * 10.0;
+        (a, a + gap_s)
+    }));
+    let clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
+    assert_eq!(clock.breaks.len(), 1);
+    assert!((clock.breaks[0].audio_s - (pause_s + block_s)).abs() < 1e-9);
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
+        .filter_map(|k| {
+            let t = k as f64 * period;
+            let fast = (t - 203.0).clamp(0.0, 2.0) * 300.0 / 86400.0;
+            let t = t - if t < 205.0 { fast } else { 0.0 };
+            let audio = if t < pause_s {
+                t
+            } else if t >= pause_s + gap_s {
+                t - gap_s
+            } else {
+                return None;
+            };
+            Some(timegrapher_core::beats::Beat {
+                index: k,
+                time: audio,
+                quality: 1.0,
+            })
+        })
+        .collect();
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 240.0 - gap_s,
+        bph,
+        lift_deg: 52.0,
+        beats,
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+    };
+    let m = session::measure_masked(&log, Some(&clock), &[brk], &[], 80.0, 129.0);
+    let (p05, p95) = (
+        m.rate_p05.expect("rate windows"),
+        m.rate_p95.expect("rate windows"),
+    );
+    assert!((p05 - 5.0).abs() < 1.0, "10 s rates reach {p05} s/d");
+    assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
+}
+
+#[test]
+fn a_break_with_no_gap_keeps_its_single_cut() {
+    // A restart with no time lost, as a jump the analysis found: from a
+    // beat on, the sound runs 3 ms late and the watch at 10 s/d, not 5.
+    // Only that one cut splits the fit, and every beat is in it.
+    let bph = 28_800;
+    let period = |r: f64| 3600.0 / bph as f64 / (1.0 + r / 86400.0);
+    let at = 500;
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..960)
+        .map(|k| timegrapher_core::beats::Beat {
+            index: k,
+            time: if k < at {
+                k as f64 * period(5.0)
+            } else {
+                at as f64 * period(5.0) + 0.003 + (k - at) as f64 * period(10.0)
+            },
+            quality: 1.0,
+        })
+        .collect();
+    let jump = beats[at as usize].time;
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 120.0,
+        bph,
+        lift_deg: 52.0,
+        beats: beats.clone(),
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+    };
+    let brk = timegrapher_core::breaks::Break {
+        audio_s: jump,
+        gap_s: 0.0,
+    };
+    let m = session::measure_masked(&log, None, &[brk], &[], 20.0, 110.0);
+    let inside: Vec<_> = beats
+        .iter()
+        .filter(|b| b.time >= 20.0 && b.time < 110.0)
+        .copied()
+        .collect();
+    let want = timegrapher_core::timing::fit_pieces(&inside, bph, &[jump - 1e-6]).unwrap();
+    let rate = m.rate_s_per_day.expect("rate");
+    assert!(
+        (rate - want.rate_s_per_day).abs() < 1e-9,
+        "rate {rate} s/d, one cut gives {} s/d",
+        want.rate_s_per_day
+    );
+}
