@@ -152,7 +152,7 @@ pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), S
     }
     println!(
         "{:<26} {:>7}  {:>5}  {:>6}  {:>6}  Also matches",
-        "Calibre", "vph", "Lift", "Escape", "Wheels"
+        "Calibre", "bph", "Lift", "Escape", "Wheels"
     );
     let dash = || "-".to_string();
     for e in &list {
@@ -212,7 +212,7 @@ fn print_one(cat: &Catalog, e: Entry) {
         println!("Added by you  (not in the shipped table)");
     }
     match e.bph() {
-        Some(b) => println!("Beat rate     {b} vph"),
+        Some(b) => println!("Beat rate     {b} bph"),
         None => println!("Beat rate     not given"),
     }
     match e.lift_angle_deg() {

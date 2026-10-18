@@ -497,7 +497,7 @@
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3255, 55°)"
     ],
     "confidence": "measured",
-    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on the project's reference 3235 is the fourth wheel."
+    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on the project's reference 3235 is the fourth wheel. WatchGuy's list gives 53° for the 3235 and 3255; that figure is kept as its own entry, \"Rolex 3235 (53°)\"."
   },
   {
     "calibre": "Dandong 3235",

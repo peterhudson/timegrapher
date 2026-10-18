@@ -51,8 +51,10 @@ pub struct Calibre {
     #[serde(default)]
     pub wheels: Vec<TrainWheel>,
     pub sources: Vec<String>,
-    /// How the train periods are known: "published", "derived from
-    /// tooth counts", "derived from the beat rate" or "measured".
+    /// The best basis in the entry: "published", "derived from tooth
+    /// counts", "derived from the beat rate", "measured", "published list"
+    /// (imported from a public lift-angle list) or "maker's page" (from the
+    /// maker's own specification page).
     pub confidence: String,
     #[serde(default)]
     pub notes: Option<String>,
