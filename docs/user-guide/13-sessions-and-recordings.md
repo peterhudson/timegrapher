@@ -140,10 +140,29 @@ it. Opening another input is the action that may require the save prompt.
 
 ## Long Takes
 
-For a long measurement, establish the signal and settings first, prevent
-sleep, and save early. Keep enough disk space for the raw audio and saved
-copy. Avoid moving the watch, changing input routing or adjusting gain
-midway unless that change is part of the experiment and is recorded.
+For a long measurement, establish the signal and settings first, and
+save early. Keep enough disk space for the raw audio and saved copy.
+Avoid moving the watch, changing input routing or adjusting gain midway
+unless that change is part of the experiment and is recorded.
+
+**Keep Awake**, under Microphone in the Watch pane, is on unless you
+switch it off. While the app listens it asks the computer not to go to
+sleep on its own; the screen can still lock and switch off. If the
+system refuses, a note under the switch says so, and the computer may
+sleep during the take.
+
+Listening carries on while the window is hidden behind other windows,
+minimised, or with the screen locked or off: the sound is saved and read
+as it arrives, and the window shows everything heard once it is back.
+While a file dialog is open (Open, Save, choosing a folder), the sound
+waits in memory and is saved and read when the dialog closes.
+
+If the computer does sleep (a laptop's lid closed, Sleep chosen from a
+menu, or Keep Awake off), the sound's timestamps jump when it wakes. A
+jump of more than 5 seconds is left out of the take as a break, as after
+Stop and Resume, and listening carries on. A message gives the length:
+"The sound's timestamps jumped by …, as they do when the computer
+sleeps."
 
 A continuous run is especially valuable for
 [Isochronism](10-isochronism.md). For reports over hours or days, the

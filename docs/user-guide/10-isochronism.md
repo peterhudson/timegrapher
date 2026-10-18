@@ -18,8 +18,8 @@ For a useful run-down, wind the watch fully, place it in one position and
 record it continuously without winding or wearing it. Record the start
 time, winding state, position, lift angle, microphone arrangement and
 anything else that could affect the result. Keep contact and temperature
-as consistent as practical. Prevent the computer from sleeping and save
-the session early.
+as consistent as practical. Leave **Keep Awake** on so the computer
+doesn't sleep, and save the session early.
 
 Start with the ordinary Rate and Amplitude charts. Confirm that the
 amplitude estimate is credible and that the recording covers a meaningful

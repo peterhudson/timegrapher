@@ -21,6 +21,7 @@ Choose **Microphone** at the top of the Watch pane for live capture.
 | **Input Level** | Adjust capture gain where the platform and device support it |
 | **Peak** | Read the largest sample magnitude over the last half second |
 | **Show Every Input** | Include the additional system device names |
+| **Keep Awake** | While listening, stop the computer going to sleep on its own (on unless switched off); the screen can still lock and switch off |
 
 Opening the input menu, rescanning or starting capture can query audio
 devices. The app avoids doing that automatically at startup because even
