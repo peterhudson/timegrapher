@@ -1376,9 +1376,10 @@ fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
 fn headline(s: &SeriesCheck, mean: f64) -> String {
     let text = lead_text(s, mean);
     // The steady and correlated headlines carry the line in place of
-    // "no cycle"; any other lead without a cycle gets it as a sentence.
+    // "no cycle"; any other lead gets it as a sentence, beside a slower
+    // cycle as one the series "also" repeats.
     match s.lead {
-        Lead::TooShort | Lead::Steady | Lead::Wandering | Lead::Periodic => text,
+        Lead::TooShort | Lead::Steady | Lead::Wandering => text,
         _ => match fast_line(s) {
             Some(line) => {
                 let mut c = line.chars();
@@ -1546,14 +1547,14 @@ fn lead_text(s: &SeriesCheck, mean: f64) -> String {
 }
 
 impl SeriesCheck {
-    /// The period search's line when no cycle shows in the readings and
-    /// the line turns in under three of the readings cycles are folded in
-    /// (the 2 s windows for the amplitude and beat error), so they cannot
-    /// show it.
+    /// The period search's line when it turns in under three of the
+    /// readings cycles are folded in (the 2 s windows for the amplitude and
+    /// beat error), so they cannot show it, whether or not they show a
+    /// slower cycle.
     pub fn faster_than_readings(&self) -> Option<&Period> {
         self.period
             .as_ref()
-            .filter(|p| self.cycle.is_none() && p.period_s < 3.0 * self.cycle_step_s)
+            .filter(|p| p.period_s < 3.0 * self.cycle_step_s)
     }
 }
 
@@ -1578,8 +1579,9 @@ fn fast_line(s: &SeriesCheck) -> Option<String> {
         "deg" => format!("{:.2}°", p.size),
         u => format!("{:.2} {u}", p.size),
     };
+    let also = if s.cycle.is_some() { " also" } else { "" };
     Some(format!(
-        "{what} repeats every {:.1} s{wheel}, {size} peak to peak; {} readings are too coarse to show it",
+        "{what}{also} repeats every {:.1} s{wheel}, {size} peak to peak; {} readings are too coarse to show it",
         p.period_s,
         every_text(s.cycle_step_s)
     ))

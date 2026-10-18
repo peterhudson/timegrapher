@@ -140,6 +140,18 @@ fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
         s.headline
     );
     assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
+    // The period search's line, under three readings, is named beside it.
+    let p = s.faster_than_readings().expect(&s.headline);
+    assert!(
+        s.headline.contains(&format!(
+            ". The beat timing also repeats every {:.1} s",
+            p.period_s
+        )) && s
+            .headline
+            .ends_with("10 s readings are too coarse to show it."),
+        "{}",
+        s.headline
+    );
 }
 
 #[test]
