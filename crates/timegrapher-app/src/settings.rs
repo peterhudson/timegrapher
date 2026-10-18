@@ -61,6 +61,8 @@ pub struct Settings {
     pub pane_average: Vec<(Pane, f64)>,
     /// Look for a newer release each time the app starts.
     pub check_updates: bool,
+    /// Keep the computer from sleeping on its own while listening.
+    pub keep_awake: bool,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -114,6 +116,7 @@ impl Default for Settings {
             short_removed: Vec::new(),
             pane_average: Vec::new(),
             check_updates: true,
+            keep_awake: true,
         }
     }
 }

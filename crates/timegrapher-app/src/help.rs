@@ -125,8 +125,10 @@ pub const AMPLITUDE: &[&str] = &[
      solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
      only as right as the lift angle under Watch.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
-     its 2-second pieces alone. It is precision, not accuracy: 1° of lift angle moves \
-     the amplitude about 4°, so a lift angle that is a little out matters more.",
+     its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
+     with the lift angle in proportion (1° of lift moves it about 5° at 260° with a \
+     52° lift, less at lower amplitudes), so a lift angle that is a little out matters \
+     more.",
     "Tick and Tock are the amplitude measured from each kind of beat alone.",
     "Anything the ± can't show (a lift angle assumed, clipped beats, a short stretch) \
      is named beside the title.",

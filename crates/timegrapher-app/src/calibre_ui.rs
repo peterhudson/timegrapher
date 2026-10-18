@@ -904,7 +904,7 @@ impl Calibres {
                     let mut text = e.name().to_string();
                     if *with_maker {
                         if let Some(m) = e.maker() {
-                            text = format!("{m} {text}");
+                            text = with_maker_name(m, &text);
                         }
                     }
                     if e.name() == current {
@@ -1301,9 +1301,85 @@ fn period_field(
     out
 }
 
+/// A calibre's name with its maker in front, unless the name already
+/// starts with the maker under one of its names ("Rolex 3235", not "Rolex
+/// Rolex 3235"; "Seagull ST36", not "Tianjin Seagull Seagull ST36").
+fn with_maker_name(maker: &str, name: &str) -> String {
+    let starts_with = |word: &str| {
+        !word.is_empty()
+            && name
+                .get(..word.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(word))
+            && name[word.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric())
+    };
+    if maker_words(maker).iter().any(|w| starts_with(w)) {
+        name.to_string()
+    } else {
+        format!("{maker} {name}")
+    }
+}
+
+/// The names a maker goes by: its own, its other names, and the parts of
+/// a name like "Peacock (Dandong)".
+fn maker_words(maker: &str) -> Vec<&str> {
+    let mut words = calibres::maker_names(maker);
+    if let Some((outer, inner)) = maker.split_once(" (") {
+        words.push(outer);
+        words.push(inner.trim_end_matches(')'));
+    }
+    words
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_maker_is_named_once() {
+        assert_eq!(with_maker_name("Rolex", "Rolex 3235"), "Rolex 3235");
+        assert_eq!(with_maker_name("Rolex", "rolex 3235"), "rolex 3235");
+        assert_eq!(with_maker_name("ETA", "2824-2"), "ETA 2824-2");
+        // A name that only begins with the same letters is a different word.
+        assert_eq!(
+            with_maker_name("Seiko", "SeikoMatic 6218"),
+            "Seiko SeikoMatic 6218"
+        );
+        // Under another of the maker's names.
+        assert_eq!(
+            with_maker_name("Tianjin Seagull", "Seagull ST36"),
+            "Seagull ST36"
+        );
+    }
+
+    #[test]
+    fn no_row_in_the_table_names_its_maker_twice() {
+        let mut twice = Vec::new();
+        for c in calibres::all() {
+            let row = with_maker_name(&c.maker, &c.calibre);
+            let words: Vec<String> = row
+                .split(|ch: char| !ch.is_alphanumeric())
+                .filter(|w| !w.is_empty())
+                .map(str::to_lowercase)
+                .collect();
+            let repeated = maker_words(&c.maker).iter().any(|name| {
+                name.split(|ch: char| !ch.is_alphanumeric())
+                    .filter(|w| w.len() > 2)
+                    .any(|w| words.iter().filter(|x| **x == w.to_lowercase()).count() > 1)
+            });
+            if repeated {
+                twice.push(row);
+            }
+        }
+        assert!(
+            twice.is_empty(),
+            "{} rows: {:?}",
+            twice.len(),
+            &twice[..twice.len().min(10)]
+        );
+    }
 
     fn store_fixture(label: &str) -> (PathBuf, PathBuf) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

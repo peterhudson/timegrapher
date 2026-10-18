@@ -36,24 +36,25 @@ others: drag it by its tab, or hide it and bring it back from its icon or
 the View menu. At its top, **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
-new session), **Save…**
+new session, unless closing the kept sound fails), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
-peak meter and Show Every Input. For a recording: **Open…**, **Open
-Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
-being analysed, and **Analyse All**) and **Replay Speed**. Below, under
-**Watch**: name, calibre, beat rate, lift angle and position. Opening a
-recording, by **Open…**, **Open Folder…**, a path typed into the box and
-Enter, or the command line, analyses it all at once, which is how a
-watchmaker looks back through a take; **Replay** plays a file through as if
-live (a folder's files one after the other, in the order it is analysed
-in, with the watch from its session file), at **Replay Speed** (from half to 16 times its own speed, changeable
-while it plays; the readings are the same at any speed), and **Analyse
-All**, shown during a replay and after it, goes back to the whole
-recording analysed at once without opening it again, keeping the settings
-chosen under Watch. Dropping a file or folder on the window opens it too
-where the desktop passes drops to the app (Windows, macOS and X11; not
-Wayland). Clicking a group's name, such as Watch, folds it away to its
-caption, and clicking it again opens it.
+peak meter, Show Every Input and **Keep Awake** (see Long takes, below).
+For a recording: **Open…**, **Open Folder…**, the path box, **Replay** (or
+**Stop**, **Cancel** while one is being analysed, and **Analyse All**) and
+**Replay Speed**. Below, under **Watch**: name, calibre, beat rate, lift
+angle and position. Opening a recording, by **Open…**, **Open Folder…**, a
+path typed into the box and Enter, or the command line, analyses it all at
+once, which is how a watchmaker looks back through a take; **Replay**
+plays a file through as if live (a folder's files one after the other, in
+the order it is analysed in, with the watch from its session file), at
+**Replay Speed** (from half to 16 times its own speed, changeable while it
+plays; the readings are the same at any speed), and **Analyse All**, shown
+during a replay and after it, goes back to the whole recording analysed at
+once without opening it again, keeping the settings chosen under Watch.
+Dropping a file or folder on the window opens it too where the desktop
+passes drops to the app (Windows, macOS and X11; not Wayland). Clicking a
+group's name, such as Watch, folds it away to its caption, and clicking it
+again opens it.
 
 When viewing a recording analysed as a whole, known jumps in its beat log also
 bound each reading. Saved position and settling boundaries add to those cuts;
@@ -179,6 +180,22 @@ timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 had a regular beat after its first few seconds, the cards and charts give
 way to one card saying the same; they appear once a regular beat is
 found.
+
+**Long takes.** Listening carries on while the window is hidden behind
+other windows, minimised, or with the screen locked or switched off: the
+sound is saved and read as it comes in, on a thread of its own, so the
+window shows everything heard as soon as it is back. The one exception is
+a file dialog (Open, Save, choosing a folder): while one is open the sound
+waits in memory, and is saved and read once the dialog closes. With **Keep
+Awake** on (it is unless switched off), the app asks the computer not to
+go to sleep on its own while it listens; the screen can still lock and
+switch off as usual. If the system refuses, a note under the switch says
+so. When the sound's own timestamps jump by more than 5 seconds (as when
+the computer sleeps: a laptop's lid closed, Sleep chosen from a menu, or
+Keep Awake off), the app leaves the jump out of the take as a break, as
+after Stop and Resume, keeps listening, and a message gives the length of
+the jump. The app's log notes every ten minutes that listening is still
+going.
 
 **Positions Test.** The Positions Test pane, a tab beside the Tick
 Tock Profile to begin with (its icon is a watch dial up and two on their
@@ -535,7 +552,8 @@ shows. The plots don't pan, zoom or show values under the pointer.
 direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement, the
 distribution settings, the averaging time, folded groups in the Watch pane, the
-appearance, the last microphone (used again when it is plugged in) and the
+appearance, Keep Awake, the last microphone (used again when it is
+plugged in) and the
 window's size and place. Nothing about the watch is kept: the lift angle,
 beat rate and position start fresh, since the next watch on the pickup may
 differ. **Reset Panes** puts the panes back as they started.
@@ -754,18 +772,20 @@ readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
 stop. **New Session** clears everything for the next watch or position;
-pressed while listening, listening carries on into the new session. Everything heard is kept as it comes in, so
-**Save…** can be pressed at any time, running or stopped: it asks for a
-folder and copies the session into a folder of its own inside it.
-**Save Again** (Ctrl+S) later brings that copy up to date without asking
-again, and **Save As…** (Ctrl+Shift+S) copies the session to a new folder
-of your choosing, which Save Again then keeps up to date. Sound that hasn't been saved is never thrown away
-without asking: New Session, opening or replaying a recording, and
-closing the window ask whether to save it first. The microphone's own
-settings are kept aside while recordings are open and come back with
-**Microphone**. Once stopped, the time slider shows for a microphone
-session too; stopped during a move's settling time, the rate card gives
-the reading from before the move and says so.
+pressed while listening, listening carries on into the new session
+(unless closing the kept sound fails: see Recording stopped, below).
+Everything heard is kept as it comes in, so **Save…** can be pressed at
+any time, running or stopped: it asks for a folder and copies the session
+into a folder of its own inside it. **Save Again** (Ctrl+S) later brings
+that copy up to date without asking again, and **Save As…** (Ctrl+Shift+S)
+copies the session to a new folder of your choosing, which Save Again then
+keeps up to date. Sound that hasn't been saved is never thrown away
+without asking: New Session, opening or replaying a recording, and closing
+the window ask whether to save it first. The microphone's own settings are
+kept aside while recordings are open and come back with **Microphone**.
+Once stopped, the time slider shows for a microphone session too; stopped
+during a move's settling time, the rate card gives the reading from before
+the move and says so.
 
 Each saved recording is a folder named after the start time, then the
 watch's name and the calibre when they are set by the first save
@@ -846,7 +866,9 @@ beat rate.
 ## Recording stopped: recovery files retained
 
 If keeping the sound or closing a recording fails, capture stops and the
-app shows the scratch folder with a persistent warning. Those files may
+app shows the scratch folder in a warning that stays for as long as that
+session does; after New Session it can be dismissed, and the next Start
+clears it. Those files may
 contain incomplete audio or clock information. Resume, Save and Save Again
 are unavailable for that session so an earlier saved take stays unchanged.
 This is different from an input disconnect alone, which can still be resumed.
