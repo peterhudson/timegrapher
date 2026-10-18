@@ -12,8 +12,7 @@ and analysis as the session grows. **Stop** releases the microphone and
 keeps the session available for review. **Resume** continues it, and
 **New Session** clears the current session after any required save prompt.
 It is also available while listening: microphone capture continues into
-a fresh session. It stops a replay. Builds up to 0.4.2 require stopping
-microphone capture first.
+a fresh session. It stops a replay.
 
 ![Stopped microphone controls: Resume, New Session and Save](images/stopped-buttons.png)
 

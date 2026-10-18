@@ -103,8 +103,7 @@ folder continuously follows new audio.
 **Stop** releases the microphone while retaining the session for review.
 **Resume** continues that session; **New Session** prepares a separate
 one. New Session also works while listening: capture continues into the
-new session (a replay stops). Builds before this change, up to 0.4.2,
-ask you to stop listening first. The
+new session (a replay stops). The
 app asks about unsaved audio before discarding it. See
 [Sessions and Recordings](11-sessions-and-recordings.md) for the timeline
 and file details.

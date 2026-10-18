@@ -84,9 +84,7 @@ single rate number cannot describe.
 
 **Parallel Guides** extends that slope across the strip as faint red
 lines. Compare the trace with them to see local departures. Rate Line and
-Parallel Guides switch independently in the desktop update accompanying
-this guide. Earlier builds tie the guides to Rate Line and limit strip
-width to ±250 ms.
+Parallel Guides switch on and off independently.
 
 ### Draw Over the Strip
 
