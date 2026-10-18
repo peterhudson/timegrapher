@@ -27,11 +27,15 @@ pub fn install() -> std::io::Result<PathBuf> {
     .unwrap_or(running);
     let icons = data.join("icons/hicolor/512x512/apps");
     std::fs::create_dir_all(&icons)?;
-    std::fs::write(icons.join("timegrapher.png"), ICON)?;
+    let icon = icons.join("timegrapher.png");
+    std::fs::write(&icon, ICON)?;
     let apps = data.join("applications");
     std::fs::create_dir_all(&apps)?;
     let entry = apps.join("timegrapher.desktop");
-    std::fs::write(&entry, entry_text(&exe.display().to_string()))?;
+    std::fs::write(
+        &entry,
+        entry_text(&exe.display().to_string(), &icon.display().to_string()),
+    )?;
     Ok(entry)
 }
 
@@ -46,6 +50,8 @@ fn appimage(
     exe: &std::path::Path,
 ) -> Option<PathBuf> {
     let dir = PathBuf::from(dir?);
+    // current_exe() resolves links, so the mount point must be too.
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     if !dir.is_absolute() || !exe.starts_with(&dir) {
         return None;
     }
@@ -54,8 +60,11 @@ fn appimage(
         .filter(|p| p.is_absolute() && p.is_file())
 }
 
-/// The menu entry for an executable at `exe`.
-fn entry_text(exe: &str) -> String {
+/// The menu entry for an executable at `exe`, with its icon at `icon`.
+/// The icon is named by its full path rather than looked up by name: the
+/// task bar found it by name, but KDE's window title bar didn't, and drew
+/// Wayland's generic icon there.
+fn entry_text(exe: &str, icon: &str) -> String {
     // Exec quotes the path, so spaces in it are kept.
     let quoted = format!("\"{}\"", exe.replace('\\', "\\\\").replace('"', "\\\""));
     format!(
@@ -64,7 +73,7 @@ fn entry_text(exe: &str) -> String {
          Name=Timegrapher\n\
          Comment=Measure a mechanical watch's rate, amplitude and beat error from a microphone\n\
          Exec={quoted} %f\n\
-         Icon=timegrapher\n\
+         Icon={icon}\n\
          StartupWMClass=timegrapher\n\
          Categories=Utility;Science;\n\
          Terminal=false\n"
@@ -77,9 +86,15 @@ mod tests {
 
     #[test]
     fn the_entry_runs_this_executable_and_names_the_icon() {
-        let e = entry_text("/home/a b/timegrapher-app");
+        let e = entry_text(
+            "/home/a b/timegrapher-app",
+            "/home/a b/.local/share/icons/hicolor/512x512/apps/timegrapher.png",
+        );
         assert!(e.contains("Exec=\"/home/a b/timegrapher-app\" %f"), "{e}");
-        assert!(e.contains("Icon=timegrapher\n"));
+        assert!(
+            e.contains("Icon=/home/a b/.local/share/icons/hicolor/512x512/apps/timegrapher.png\n"),
+            "{e}"
+        );
         assert!(e.contains("StartupWMClass=timegrapher\n"));
     }
 
@@ -97,17 +112,10 @@ mod tests {
         assert_eq!(appimage(some(&file), None, &exe), None);
         // Started by an AppImage, not run from one.
         assert_eq!(appimage(some(&file), some(mount), &elsewhere), None);
-        assert_eq!(
-            appimage(Some("Timegrapher.AppImage".into()), some(mount), &exe),
-            None
-        );
-        assert_eq!(
-            appimage(
-                Some("/no/such/Timegrapher.AppImage".into()),
-                some(mount),
-                &exe
-            ),
-            None
-        );
+        // A file that is there, named relative to the tests' folder.
+        assert!(std::path::Path::new("Cargo.toml").is_file());
+        assert_eq!(appimage(Some("Cargo.toml".into()), some(mount), &exe), None);
+        let missing = file.parent().unwrap().join("no-such.AppImage");
+        assert_eq!(appimage(some(&missing), some(mount), &exe), None);
     }
 }

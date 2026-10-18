@@ -904,7 +904,7 @@ impl Calibres {
                     let mut text = e.name().to_string();
                     if *with_maker {
                         if let Some(m) = e.maker() {
-                            text = format!("{m} {text}");
+                            text = with_maker_name(m, &text);
                         }
                     }
                     if e.name() == current {
@@ -1301,9 +1301,38 @@ fn period_field(
     out
 }
 
+/// A calibre's name with its maker in front, unless the name already
+/// starts with it ("Rolex 3235", not "Rolex Rolex 3235").
+fn with_maker_name(maker: &str, name: &str) -> String {
+    let starts = name
+        .get(..maker.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(maker))
+        && name[maker.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+    if starts {
+        name.to_string()
+    } else {
+        format!("{maker} {name}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_maker_is_named_once() {
+        assert_eq!(with_maker_name("Rolex", "Rolex 3235"), "Rolex 3235");
+        assert_eq!(with_maker_name("Rolex", "rolex 3235"), "rolex 3235");
+        assert_eq!(with_maker_name("ETA", "2824-2"), "ETA 2824-2");
+        // A name that only begins with the same letters is a different word.
+        assert_eq!(
+            with_maker_name("Seiko", "SeikoMatic 6218"),
+            "Seiko SeikoMatic 6218"
+        );
+    }
 
     fn store_fixture(label: &str) -> (PathBuf, PathBuf) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

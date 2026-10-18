@@ -22,3 +22,15 @@ egui_plot = "0.34"
 rfd = "0.15"
 claxon = "0.4"
 hound = "3.5"
+
+# Keeping the computer awake during a take (see src/awake.rs), with
+# crates the lock already holds.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSObject"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }

@@ -98,7 +98,7 @@ pub struct Capture {
     /// A replayed file's speed, times its own, as f32 bits.
     speed: Arc<AtomicU32>,
     #[cfg(feature = "capture")]
-    _stream: Option<cpal::Stream>,
+    _stream: Option<device::Held>,
 }
 
 impl Capture {
@@ -618,18 +618,20 @@ mod device {
         let format = supported.sample_format();
         let config: cpal::StreamConfig = supported.config();
         let (tx, rx) = channel();
-        let stream = match format {
-            SampleFormat::I16 => build::<i16>(dev, &config, tx),
-            SampleFormat::U16 => build::<u16>(dev, &config, tx),
-            SampleFormat::I32 => build::<i32>(dev, &config, tx),
-            SampleFormat::F32 => build::<f32>(dev, &config, tx),
-            SampleFormat::I8 => build::<i8>(dev, &config, tx),
-            SampleFormat::U8 => build::<u8>(dev, &config, tx),
-            SampleFormat::F64 => build::<f64>(dev, &config, tx),
-            other => return Err(format!("unsupported sample format {other}")),
-        }
-        .map_err(|e| e.to_string())?;
-        stream.play().map_err(|e| e.to_string())?;
+        let (dev, cfg) = (dev.clone(), config.clone());
+        let stream = Held::start(move || {
+            match format {
+                SampleFormat::I16 => build::<i16>(&dev, &cfg, tx),
+                SampleFormat::U16 => build::<u16>(&dev, &cfg, tx),
+                SampleFormat::I32 => build::<i32>(&dev, &cfg, tx),
+                SampleFormat::F32 => build::<f32>(&dev, &cfg, tx),
+                SampleFormat::I8 => build::<i8>(&dev, &cfg, tx),
+                SampleFormat::U8 => build::<u8>(&dev, &cfg, tx),
+                SampleFormat::F64 => build::<f64>(&dev, &cfg, tx),
+                other => return Err(format!("unsupported sample format {other}")),
+            }
+            .map_err(|e| e.to_string())
+        })?;
         let rec = Recorded {
             device: info.clone(),
             sample_rate: config.sample_rate,
@@ -690,13 +692,69 @@ mod device {
         ))
     }
 
+    /// A stream kept on a thread of its own, so that what holds it can move
+    /// between threads, which some systems' streams can't. Dropping it
+    /// stops the stream and waits until it has.
+    pub struct Held {
+        stop: Option<std::sync::mpsc::Sender<()>>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Held {
+        /// Build a stream with `make` on a new thread and start it.
+        pub(crate) fn start(
+            make: impl FnOnce() -> Result<cpal::Stream, String> + Send + 'static,
+        ) -> Result<Held, String> {
+            let (ready_tx, ready_rx) = channel();
+            let (stop, stop_rx) = channel::<()>();
+            let thread = std::thread::Builder::new()
+                .name("audio stream".into())
+                .spawn(move || {
+                    let stream = make().and_then(|s| {
+                        s.play().map_err(|e| e.to_string())?;
+                        Ok(s)
+                    });
+                    match stream {
+                        Ok(s) => {
+                            let _ = ready_tx.send(Ok(()));
+                            // Until the holder lets go.
+                            let _ = stop_rx.recv();
+                            drop(s);
+                        }
+                        Err(e) => {
+                            let _ = ready_tx.send(Err(e));
+                        }
+                    }
+                })
+                .map_err(|e| e.to_string())?;
+            let ready = ready_rx
+                .recv()
+                .map_err(|_| "the audio stream's thread stopped".to_string())
+                .and_then(|r| r);
+            let held = Held {
+                stop: Some(stop),
+                thread: Some(thread),
+            };
+            ready.map(|()| held)
+        }
+    }
+
+    impl Drop for Held {
+        fn drop(&mut self) {
+            drop(self.stop.take());
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
     /// Sound playing on the default output. Dropping it stops the sound.
     pub struct Playback {
         /// Samples of the source played so far.
         played: Arc<std::sync::atomic::AtomicUsize>,
         len: usize,
         rate: u32,
-        _stream: cpal::Stream,
+        _stream: Held,
     }
 
     impl Playback {
@@ -735,16 +793,19 @@ mod device {
             channels: config.channels.max(1) as usize,
             played: played.clone(),
         };
-        let stream = match supported.sample_format() {
-            SampleFormat::F32 => build_output::<f32>(&dev, &config, feed),
-            SampleFormat::I16 => build_output::<i16>(&dev, &config, feed),
-            SampleFormat::U16 => build_output::<u16>(&dev, &config, feed),
-            SampleFormat::I32 => build_output::<i32>(&dev, &config, feed),
-            SampleFormat::F64 => build_output::<f64>(&dev, &config, feed),
-            other => return Err(format!("unsupported output format {other}")),
-        }
-        .map_err(|e| e.to_string())?;
-        stream.play().map_err(|e| e.to_string())?;
+        let format = supported.sample_format();
+        let cfg = config.clone();
+        let stream = Held::start(move || {
+            match format {
+                SampleFormat::F32 => build_output::<f32>(&dev, &cfg, feed),
+                SampleFormat::I16 => build_output::<i16>(&dev, &cfg, feed),
+                SampleFormat::U16 => build_output::<u16>(&dev, &cfg, feed),
+                SampleFormat::I32 => build_output::<i32>(&dev, &cfg, feed),
+                SampleFormat::F64 => build_output::<f64>(&dev, &cfg, feed),
+                other => return Err(format!("unsupported output format {other}")),
+            }
+            .map_err(|e| e.to_string())
+        })?;
         Ok(Playback {
             played,
             len: samples.len(),

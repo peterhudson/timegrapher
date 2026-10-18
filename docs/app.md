@@ -36,9 +36,9 @@ others: drag it by its tab, or hide it and bring it back from its icon or
 the View menu. At its top, **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
-new session), **Save…**
+new session, unless closing the kept sound fails), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
-peak meter and Show Every Input. For a recording: **Open…**, **Open
+peak meter, Show Every Input and **Keep Awake** (see Long takes, below). For a recording: **Open…**, **Open
 Folder…**, the path box, **Replay** (or **Stop**, **Cancel** while one is
 being analysed, and **Analyse All**) and **Replay Speed**. Below, under
 **Watch**: name, calibre, beat rate, lift angle and position. Opening a
@@ -179,6 +179,18 @@ timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 had a regular beat after its first few seconds, the cards and charts give
 way to one card saying the same; they appear once a regular beat is
 found.
+
+**Long takes.** Listening carries on whatever the window is doing:
+hidden behind other windows, minimised, or with the screen locked or
+switched off. The sound is saved and read as it comes in, so the window
+shows everything heard as soon as it is back, with nothing to catch up on.
+With **Keep Awake** on (it is unless switched off), the app asks the
+computer not to go to sleep on its own while it listens; the screen can
+still lock and switch off as usual. A computer that sleeps anyway (a
+laptop's lid closed, Sleep chosen from a menu, or Keep Awake off) carries
+on listening when it wakes: the time asleep is left out of the take as a
+break, as after Stop and Resume, and a message says how long it was. The
+app's log notes every ten minutes that listening is still going.
 
 **Positions Test.** The Positions Test pane, a tab beside the Tick
 Tock Profile to begin with (its icon is a watch dial up and two on their
@@ -754,7 +766,8 @@ readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
 stop. **New Session** clears everything for the next watch or position;
-pressed while listening, listening carries on into the new session. Everything heard is kept as it comes in, so
+pressed while listening, listening carries on into the new session
+(unless closing the kept sound fails: see Recording stopped, below). Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it.
 **Save Again** (Ctrl+S) later brings that copy up to date without asking
@@ -846,7 +859,9 @@ beat rate.
 ## Recording stopped: recovery files retained
 
 If keeping the sound or closing a recording fails, capture stops and the
-app shows the scratch folder with a persistent warning. Those files may
+app shows the scratch folder in a warning that stays for as long as that
+session does; after New Session it can be dismissed, and the next Start
+clears it. Those files may
 contain incomplete audio or clock information. Resume, Save and Save Again
 are unavailable for that session so an earlier saved take stays unchanged.
 This is different from an input disconnect alone, which can still be resumed.
