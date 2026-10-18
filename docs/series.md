@@ -20,6 +20,7 @@ detect, and adds a sentence for the others:
 | a trend | the start and end level and the change per hour |
 | correlation between readings | the lag-1 correlation, the Ljung–Box p, how long the correlation lasts, and the Allan excess |
 | none of these | the number of readings, the median and the reading-to-reading scatter |
+| a period search line faster than the readings | added to the "none of these" and correlation headlines in place of "no cycle": the period, the wheel whose turn it matches, the size peak to peak (for the rate, the beat timing's swing in ms) and that the readings are too coarse to show it, e.g. "the beat timing repeats every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings are too coarse to show it" |
 | too few readings | N readings over N s (it needs 30 over 120 s) |
 
 The thresholds are detection thresholds, stated with each test below
