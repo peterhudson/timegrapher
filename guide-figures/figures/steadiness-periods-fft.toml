@@ -1,0 +1,25 @@
+# Chapter 9, Steadiness: a rate that repeats with the fourth wheel, seen
+# in the strip's rate line, as a peak in Periods and a spike in the FFT.
+output = "steadiness-periods-fft.png"
+
+layout = ["row", [0.2, "Watch"], [0.8, ["column",
+    [0.45, "Strip"],
+    [0.55, ["row", [0.5, "SteadyPeriods"], [0.5, "SteadyFft"]]],
+]]]
+
+[data]
+corpus = "dd3235_DU_30min"
+
+[window]
+size = [1600, 940]
+
+[settings]
+overlays = [false, true, false]
+rate_line = false
+rate_guides = false
+periods_log = true
+
+[settings.strip]
+half_width_ms = 250.0
+span_s = 300.0
+horizontal = true
