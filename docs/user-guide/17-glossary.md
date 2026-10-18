@@ -139,6 +139,10 @@ model, not the probability of a mechanical fault.
 **Locking face**: the surface of a pallet stone on which an escape-wheel
 tooth is held between releases. Distinguish it from the impulse face.
 
+**Masked stretch**: a part of a take left out of every reading by **Mask**
+on the Paper Strip. It is cut like a pause and kept in a saved take's
+`session.toml`. See [Mask and Unmask All](06-paper-strip.md#mask-and-unmask-all).
+
 **NTP**: Network Time Protocol, used to synchronise computer clocks. The
 quality of that reference affects calibration against system time.
 

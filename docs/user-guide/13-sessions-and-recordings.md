@@ -69,7 +69,7 @@ watch name and calibre, with spaces turned into underscores. For example:
 | `audio-001.wav`, … | Captured sound in segments of at most an hour; resuming after a pause starts a new file |
 | `clock.csv` | Periodic pairs of captured-audio time and computer time, for clock analysis |
 | `session.json` | App context, watch details, positions, pauses and end-of-session readings |
-| `session.toml` | Analysis manifest used by the command line, including recording intervals and settings |
+| `session.toml` | Analysis manifest used by the command line, including recording intervals, masked stretches and settings |
 | `positions-test.json` | Full-wind Positions Test results when available, for a later comparison |
 
 Keep the folder together. Copying only the WAV files loses context that

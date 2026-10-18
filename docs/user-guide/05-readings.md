@@ -181,6 +181,7 @@ for its explanation. Typical examples are:
 | **lift angle 52°, the default (calibre not set)** | Confirm the movement's lift angle before relying on amplitude |
 | **21600 bph heard** | Compare the detected rate with the one selected under Watch |
 | **2 pauses** | Check which uninterrupted stretches support the result |
+| **8 s masked out** | Part of the averaging time was masked on the [Paper Strip](06-paper-strip.md#mask-and-unmask-all) and left out |
 | **input clock not measured** | The rate can include sample-clock error; see [True Clock](#true-clock) |
 
 These are observations about the measurement, not movement tolerances.

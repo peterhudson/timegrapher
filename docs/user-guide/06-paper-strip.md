@@ -98,14 +98,37 @@ An amplitude overlay is useful when a timing bend and an amplitude change
 seem to occur together. Follow that observation into the separate charts
 and profile before assigning a cause.
 
-### Auto-Centre, Centre and Clear
+### Auto-Centre and Centre
 
 **Auto-Centre** keeps the newest beats near the centre; dragging across
 the trace turns it off. **Centre** centres the newest beats once.
-**Clear**, available while listening, restarts the readings and strip.
-Use it deliberately: it changes the displayed analysis history, whereas
-Centre only moves the view. It is not the command for saving or starting
-a separate recording.
+
+### Mask and Unmask All
+
+**Mask** leaves a stretch of the take out of the readings, such as a bump
+of the stand during a long take. With Mask on, drag along the strip over
+the beats you want left out: that stretch is masked, shaded on the strip
+and labelled **Masked**. A drag shorter than half a second is ignored, as
+a slip of the mouse. Click a masked stretch to bring it back, or
+**Unmask All** to bring them all back. While any are masked, the toolbar
+says how many there are and how long they add up to, for example
+"2 stretches masked, 41 s in all".
+
+A masked stretch is cut like a pause. No reading reaches across it and
+nothing is read inside it; the charts, the whole-take figures, the
+distributions, the Steadiness views and a Positions Test all leave its
+beats out. A reading whose averaging time takes in masked sound says so
+beside its card's title, for example **8 s masked out** (under 0.05 s it
+says nothing; the command line's JSON still lists it).
+
+Masking is a choice about what the readings include, so make it for a
+reason you could state, and say so when you share the result. A take
+saved from the app keeps its masked stretches, and they come back masked
+when it is opened or replayed; the command line's `session` leaves them
+out too. A recording opened from disk can't be saved from the app, so
+masking one only changes what the app shows until it is closed. Mask
+turns off, and nothing is masked, when a new take, New Session or another
+recording starts.
 
 ### Average Over
 
@@ -121,6 +144,8 @@ reading overlays. The beat dots themselves remain individual beats.
 | Ctrl + mouse wheel, or pinch | Change timing width |
 | Drag along time | Review an earlier interval, including during capture |
 | Drag across time's direction | Shift the timing trace |
+| Drag along time, with **Mask** on | Mask that stretch instead of moving the view |
+| Click a masked stretch | Bring it back |
 | Double-click | Return to the newest beats and centre them |
 
 Use Cmd on macOS. Hovering shows the recording time and marks the same
