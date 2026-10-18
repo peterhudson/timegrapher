@@ -42,6 +42,14 @@ Or copy the **Command Line** folder somewhere you keep and run
 `./timegrapher --help` there. Keep `timegrapher-mcp` beside `timegrapher`:
 the server runs it.
 
+Programs copied off the disk image meet the same check as the app. If macOS
+says it cannot verify `timegrapher` or `timegrapher-mcp`, click **Done**,
+then **Open Anyway** in **System Settings**, **Privacy & Security**, as in
+step 3 above; each of the two programs asks once. Or clear the check for
+both at once in Terminal: type `xattr -dr com.apple.quarantine ` (with the
+space at the end), drag your copied **Command Line** folder onto the
+Terminal window, and press Return.
+
 ## Add It to Claude Desktop
 
 Double-click **Claude Desktop/Timegrapher.mcpb**, or drag it into Claude

@@ -417,9 +417,10 @@ impl Calibres {
     /// Manage Calibres… under the menu, lined up with it.
     pub fn manage_button(&mut self, ui: &mut egui::Ui, current: &str) {
         ui.horizontal(|ui| {
-            ui.add_space(theme::LABEL_W);
+            // Where the row's control starts: past the name and the gap.
+            ui.add_space(theme::LABEL_W + ui.spacing().item_spacing.x);
             if ui
-                .small_button("Manage Calibres…")
+                .button("Manage Calibres…")
                 .on_hover_text(MANAGE_HINT)
                 .clicked()
             {

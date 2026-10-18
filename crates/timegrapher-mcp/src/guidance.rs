@@ -217,7 +217,7 @@ file's full path. Say Tick and Tock to people; in the JSON, even/a is the Tick a
 pub const PROMPT_NAME: &str = "test_my_watch";
 pub const PROMPT_TITLE: &str = "Test My Watch";
 pub const PROMPT_DESCRIPTION: &str =
-    "Walk me through testing my watch at home and tell me whether it needs a service.";
+    "Walk me through a multi-position test of my watch at home and explain the readings.";
 
 /// The skill's own prompt, unchanged, after a note on where its files and
 /// commands are here.
