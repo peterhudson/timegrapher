@@ -89,7 +89,7 @@ impl Default for Settings {
             strip: StripView {
                 half_width_ms: 10.0,
                 span_s: 30.0,
-                horizontal: false,
+                horizontal: true,
             },
             rate_line: true,
             rate_guides: true,

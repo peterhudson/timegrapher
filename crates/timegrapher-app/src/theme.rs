@@ -51,6 +51,10 @@ pub struct Palette {
     pub trace_amplitude: Color32,
     pub trace_rate: Color32,
     pub trace_beat_error: Color32,
+    /// Two colours only the pane buttons use: the Paper Strip's dancer and
+    /// the Positions Test's die.
+    pub pink: Color32,
+    pub teal: Color32,
 }
 
 const fn c(x: core_palette::Rgb) -> Color32 {
@@ -58,7 +62,7 @@ const fn c(x: core_palette::Rgb) -> Color32 {
 }
 
 /// The core palette (shared with the MCP server's charts) in egui's colours.
-const fn from_core(p: &core_palette::Palette) -> Palette {
+const fn from_core(p: &core_palette::Palette, pink: Color32, teal: Color32) -> Palette {
     Palette {
         window: c(p.window),
         card: c(p.card),
@@ -83,11 +87,21 @@ const fn from_core(p: &core_palette::Palette) -> Palette {
         trace_amplitude: c(p.trace_amplitude),
         trace_rate: c(p.trace_rate),
         trace_beat_error: c(p.trace_beat_error),
+        pink,
+        teal,
     }
 }
 
-pub const DARK: Palette = from_core(&core_palette::DARK);
-pub const LIGHT: Palette = from_core(&core_palette::LIGHT);
+pub const DARK: Palette = from_core(
+    &core_palette::DARK,
+    Color32::from_rgb(0xff, 0x37, 0x5f),
+    Color32::from_rgb(0x40, 0xc8, 0xe0),
+);
+pub const LIGHT: Palette = from_core(
+    &core_palette::LIGHT,
+    Color32::from_rgb(0xd3, 0x0f, 0x45),
+    Color32::from_rgb(0x0e, 0x7c, 0x86),
+);
 
 pub fn palette(dark: bool) -> &'static Palette {
     if dark {
@@ -874,236 +888,40 @@ pub enum Icon {
     Fft,
     Isochronism,
     Positions,
-    Chart,
-    Distribution,
+    RateChart,
+    AmplitudeChart,
+    BeatErrorChart,
+    RateDistribution,
+    AmplitudeDistribution,
+    BeatErrorDistribution,
 }
 
-/// A square button with an icon, filled while `on`. The icon is drawn in
-/// `color`, faded while off.
+/// A square button with an icon. While `on` it is a chip tinted in `color`
+/// with the icon in full colour; while off the icon is a faint grey, so the
+/// panes that show stand out at a glance.
 pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Response {
     let p = pal(ui);
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
-    let fill = if on {
-        p.raised
+    let radius = CornerRadius::same(CONTROL_RADIUS);
+    if on {
+        ui.painter().rect(
+            rect.shrink(0.5),
+            radius,
+            color.gamma_multiply(0.16),
+            Stroke::new(1.0_f32, color.gamma_multiply(0.45)),
+            egui::StrokeKind::Inside,
+        );
     } else if resp.hovered() {
-        p.control_hover
-    } else {
-        Color32::TRANSPARENT
-    };
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), fill);
+        ui.painter().rect_filled(rect, radius, p.control_hover);
+    }
     let c = if on {
         color
     } else {
-        color.gamma_multiply(0.45)
+        p.text_tertiary.gamma_multiply(0.75)
     };
-    draw_icon(ui.painter(), rect.shrink(6.0), icon, c);
+    crate::icons::draw(ui.painter(), rect.shrink(4.0), icon, c);
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), on, "")
     });
     resp
-}
-
-/// Draw an icon in the square `r`.
-pub fn draw_icon(painter: &egui::Painter, r: egui::Rect, icon: Icon, c: Color32) {
-    let s = Stroke::new(1.5_f32, c);
-    let at = |x: f32, y: f32| egui::pos2(r.left() + x * r.width(), r.top() + y * r.height());
-    let line = |pts: &[(f32, f32)]| {
-        let pts: Vec<egui::Pos2> = pts.iter().map(|&(x, y)| at(x, y)).collect();
-        painter.add(egui::Shape::line(pts, s));
-    };
-    match icon {
-        // A watch case with its crown, and two hands.
-        Icon::Watch => {
-            let c0 = at(0.45, 0.5);
-            let rad = 0.4 * r.width();
-            painter.circle_stroke(c0, rad, s);
-            line(&[(0.85, 0.5), (0.97, 0.5)]);
-            line(&[(0.45, 0.5), (0.45, 0.25)]);
-            line(&[(0.45, 0.5), (0.62, 0.6)]);
-        }
-        // Three cards side by side.
-        Icon::Readings => {
-            for i in 0..3 {
-                let x = i as f32 * 0.36;
-                painter.rect_stroke(
-                    egui::Rect::from_min_max(at(x, 0.2), at(x + 0.28, 0.8)),
-                    1.5,
-                    s,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-        // Two slanting rows of dots, as on a paper strip.
-        Icon::Strip => {
-            for i in 0..5 {
-                let t = i as f32 / 4.0;
-                painter.circle_filled(at(0.1 + 0.8 * t, 0.35 - 0.2 * t + 0.1), 1.3, c);
-                painter.circle_filled(at(0.1 + 0.8 * t, 0.75 - 0.2 * t + 0.1), 1.3, c);
-            }
-        }
-        // A beat's envelope: a small bump, a big one, a smaller one.
-        Icon::Profile => line(&[
-            (0.0, 0.85),
-            (0.15, 0.85),
-            (0.22, 0.6),
-            (0.3, 0.85),
-            (0.42, 0.85),
-            (0.52, 0.15),
-            (0.62, 0.85),
-            (0.75, 0.85),
-            (0.82, 0.5),
-            (0.9, 0.85),
-            (1.0, 0.85),
-        ]),
-        // A burst of oscillation.
-        Icon::Scope => {
-            let pts: Vec<(f32, f32)> = (0..=24)
-                .map(|i| {
-                    let t = i as f32 / 24.0;
-                    let env = (-((t - 0.45) * 4.0).powi(2)).exp();
-                    (t, 0.5 - 0.42 * env * (t * 40.0).sin())
-                })
-                .collect();
-            line(&pts)
-        }
-        // Readings scattering about a level, with a step.
-        Icon::Steadiness => {
-            line(&[
-                (0.0, 0.62),
-                (0.12, 0.5),
-                (0.24, 0.66),
-                (0.36, 0.54),
-                (0.48, 0.6),
-                (0.56, 0.3),
-                (0.68, 0.4),
-                (0.8, 0.26),
-                (0.9, 0.38),
-                (1.0, 0.3),
-            ]);
-        }
-        // A low floor with two peaks standing out of it.
-        Icon::Periods => line(&[
-            (0.0, 0.85),
-            (0.15, 0.8),
-            (0.25, 0.85),
-            (0.32, 0.2),
-            (0.39, 0.85),
-            (0.55, 0.8),
-            (0.66, 0.85),
-            (0.72, 0.5),
-            (0.78, 0.85),
-            (1.0, 0.82),
-        ]),
-        // One cycle's shape with the cycles' dots about it.
-        Icon::Cycle => {
-            let pts: Vec<(f32, f32)> = (0..=16)
-                .map(|i| {
-                    let t = i as f32 / 16.0;
-                    (t, 0.5 - 0.3 * (t * std::f32::consts::TAU).sin())
-                })
-                .collect();
-            line(&pts);
-            for (x, y) in [
-                (0.1, 0.25),
-                (0.3, 0.12),
-                (0.45, 0.6),
-                (0.7, 0.9),
-                (0.9, 0.62),
-            ] {
-                painter.circle_filled(at(x, y), 1.2, c);
-            }
-        }
-        // Stems from a baseline, dying away.
-        Icon::Autocorrelation => {
-            line(&[(0.0, 0.6), (1.0, 0.6)]);
-            for (i, h) in [0.5_f32, 0.3, -0.15, 0.12, -0.08, 0.05]
-                .into_iter()
-                .enumerate()
-            {
-                let x = 0.05 + i as f32 * 0.18;
-                line(&[(x, 0.6), (x, 0.6 - h)]);
-            }
-        }
-        // Falling, then turning up again.
-        Icon::Allan => {
-            let pts: Vec<(f32, f32)> = (0..=12)
-                .map(|i| {
-                    let t = i as f32 / 12.0;
-                    (t, 0.2 + 1.9 * (t - 0.6).powi(2))
-                })
-                .collect();
-            line(&pts);
-            for t in [0.0_f32, 0.3, 0.6, 0.9] {
-                painter.circle_filled(at(t, 0.2 + 1.9 * (t - 0.6).powi(2)), 1.3, c);
-            }
-        }
-        // A tent: the running sum rises to the step and falls after it.
-        Icon::Cusum => line(&[
-            (0.0, 0.8),
-            (0.15, 0.65),
-            (0.3, 0.5),
-            (0.5, 0.2),
-            (0.65, 0.4),
-            (0.8, 0.6),
-            (1.0, 0.85),
-        ]),
-        // Bars of a spectrum, one standing tall.
-        Icon::Fft => {
-            for (i, h) in [0.2_f32, 0.3, 0.85, 0.25, 0.4, 0.15, 0.2]
-                .into_iter()
-                .enumerate()
-            {
-                let x = 0.04 + i as f32 * 0.15;
-                line(&[(x, 0.92), (x, 0.92 - h)]);
-            }
-        }
-        // Rate against amplitude: a curve that turns.
-        Icon::Isochronism => {
-            let pts: Vec<(f32, f32)> = (0..=16)
-                .map(|i| {
-                    let t = i as f32 / 16.0;
-                    (t, 0.25 + 2.2 * (t - 0.55).powi(2))
-                })
-                .collect();
-            line(&pts);
-            for t in [0.15_f32, 0.4, 0.65, 0.9] {
-                painter.circle_filled(at(t, 0.25 + 2.2 * (t - 0.55).powi(2)), 1.4, c);
-            }
-        }
-        // A watch turned through its positions: the case seen dial up, and
-        // two more, edge on, on their sides.
-        Icon::Positions => {
-            painter.circle_stroke(at(0.27, 0.5), 0.24 * r.width(), s);
-            line(&[(0.27, 0.5), (0.27, 0.34)]);
-            for x in [0.66_f32, 0.9] {
-                painter.rect_stroke(
-                    egui::Rect::from_min_max(at(x - 0.07, 0.24), at(x + 0.07, 0.76)),
-                    1.5,
-                    s,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-        // A line over time.
-        Icon::Chart => line(&[
-            (0.0, 0.7),
-            (0.2, 0.45),
-            (0.4, 0.55),
-            (0.6, 0.25),
-            (0.8, 0.4),
-            (1.0, 0.2),
-        ]),
-        // Bars of a distribution.
-        Icon::Distribution => {
-            for (i, h) in [0.25_f32, 0.55, 0.85, 0.6, 0.3].into_iter().enumerate() {
-                let x = i as f32 * 0.2;
-                painter.rect_filled(
-                    egui::Rect::from_min_max(at(x + 0.03, 1.0 - h), at(x + 0.17, 1.0)),
-                    0.0,
-                    c,
-                );
-            }
-        }
-    }
 }

@@ -23,6 +23,7 @@ mod desktop;
 mod fields;
 mod guided;
 mod help;
+mod icons;
 mod isochronism;
 mod profiles;
 mod pump;
