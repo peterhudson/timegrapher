@@ -253,9 +253,16 @@ fn series(doc: &Value) -> Option<String> {
         say("sd", "SD");
         say("short_term_sd", "reading to reading");
         let h = h.trim_end_matches('.');
-        // A headline with no structure found already gives the readings
-        // and their median.
-        lines.push(if facts.is_empty() || h.contains(" readings") {
+        // The steady headline already gives the readings, their median and
+        // their scatter ("Rate: 360 10 s readings, median ..."), and the
+        // too-short one says there are too few. Other headlines may name
+        // readings too ("10 s readings are too coarse to show it") without
+        // giving these figures, so the count is the key, not the word.
+        let stated = s["readings"]
+            .as_u64()
+            .zip(s["step_s"].as_f64())
+            .is_some_and(|(n, step)| h.contains(&format!("{n} {step:.0} s ")));
+        lines.push(if facts.is_empty() || stated || h.contains("too few") {
             format!("- {h}.")
         } else {
             format!("- {h} ({}).", facts.join("; "))
@@ -513,6 +520,37 @@ mod tests {
              Detected:\n\
              - Rate repeats every 60 min"
         );
+    }
+
+    #[test]
+    fn a_headline_naming_readings_still_gets_the_figures_unless_it_gives_them() {
+        let one = |headline: &str| {
+            let doc = json!({
+                "schema": "timegrapher.series/2",
+                "series": [{ "series": "rate", "unit": "s/d", "readings": 360, "step_s": 10.0,
+                    "median": 3.1, "sd": 1.24, "short_term_sd": 0.9, "headline": headline }],
+            });
+            lead(&doc, &Map::new()).unwrap()
+        };
+        let figures = "(360 readings of 10 s; median 3.10 s/d; SD 1.24 s/d; reading to \
+                       reading 0.90 s/d)";
+        // A level change with the period search's fast line, and correlated
+        // readings: the word "readings" is there, the figures are not.
+        for h in [
+            "Rate steps from +2.0 s/d to +4.0 s/d at 30 min. The beat timing repeats every \
+             5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings are too \
+             coarse to show it.",
+            "Successive 10 s rate readings are correlated (lag-1 correlation 0.40); no \
+             cycle, level change or trend detected.",
+        ] {
+            assert!(one(h).contains(figures), "{}", one(h));
+        }
+        // The steady headline gives them itself.
+        let steady = one(
+            "Rate: 360 10 s readings, median +3.1 s/d, ±0.9 s/d from one reading to the \
+             next; no cycle, level change, trend or correlation between readings detected.",
+        );
+        assert!(!steady.contains("readings of 10 s"), "{steady}");
     }
 
     #[test]
