@@ -151,6 +151,25 @@ at the top skips those parts. A `tolerance` line or a `[limits]` table,
 which session files written before `timegrapher.session/2` carry, is read
 and ignored: the report judges nothing against a tolerance.
 
+A recording's `masked` list leaves stretches out of its reading: each an
+`[start, end]` pair in seconds into the file or folder (the sound's own
+seconds, which leave out any pause), such as `masked = [[600.0, 612.5]]`
+for a bump of the stand. The app writes it when stretches were masked on
+its Paper Strip. A masked stretch is cut like a break: its beats and the
+amplitude windows reaching into it are left out, no fit or window
+reaches across it, the beats expected and the time listened to leave out
+its seconds, and the reading's `measurement` gives `masked_s` (the masked
+seconds inside the measured stretch) and the caveat `masked`
+(`seconds`). The seconds measured (`measured_s` in `readings.csv`, the
+report's Measured column and the `measurement_short` finding) leave out
+the masked seconds, and the beat shape is measured on unmasked sound: the
+first unmasked minute after settling, else the longest unmasked stretch;
+when everything after settling is masked there is no shape. The app
+lists every masked stretch on every recording; each counts only the part
+inside its own stretch. Overlapping pairs are joined; a pair whose end
+is not after its start is ignored. Builds from before `masked` refuse a
+session file that has it, as they refuse any field they don't know.
+
 One continuous take that moved through several positions is listed once
 per position, each entry naming the same file or folder with `start_s`
 and `end_s` (seconds into the recording; left out means its start or
@@ -227,7 +246,8 @@ of the recording or for `measure_s`:
   mean with the headline and tg's median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
-- beat shape (as `shape`) on the first 60 s after settling;
+- beat shape (as `shape`) on the first 60 s after settling, or on
+  unmasked sound when the recording has `masked` (see above);
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
 

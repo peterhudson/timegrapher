@@ -373,3 +373,56 @@ fn positions_are_named_as_the_app_names_them() {
     assert_eq!(Position::H3.label(), "Crown Up (3H)");
     assert_eq!(Position::CB.label(), "Dial Down (CB)");
 }
+
+#[test]
+fn a_masked_stretch_is_left_out_of_the_readings() {
+    // A bump of the stand: the beats run 400 s/d fast for ten seconds.
+    let cfg = SynthConfig {
+        duration_s: 60.0,
+        rate_s_per_day: 5.0,
+        snr_db: 26.0,
+        ..Default::default()
+    };
+    let path = temp_wav("masked");
+    let bump = |t: f64| {
+        if (30.0..40.0).contains(&t) {
+            400.0
+        } else {
+            0.0
+        }
+    };
+    write_wav(&path, &generate(&cfg, |_| 280.0, bump)).unwrap();
+    let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    std::fs::remove_file(&path).ok();
+    let whole = session::measure(&log, None, 20.0, f64::INFINITY);
+    let masked = session::masked_spans(&[[29.0, 41.0], [40.0, 41.5], [9.0, 8.0]]);
+    assert_eq!(masked, [(29.0, 41.5)], "cleaned and joined");
+    session::mask_log(&mut log, &masked);
+    let m = session::measure_masked(&log, None, &[], &masked, 20.0, f64::INFINITY);
+    assert!(
+        close(m.rate_s_per_day, 5.0, 3.0),
+        "masked {:?}, whole {:?}",
+        m.rate_s_per_day,
+        whole.rate_s_per_day
+    );
+    assert!(
+        !close(whole.rate_s_per_day, 5.0, 3.0),
+        "{:?}",
+        whole.rate_s_per_day
+    );
+    assert!((m.masked_s - 12.5).abs() < 1e-9);
+    assert!(m
+        .caveats
+        .contains(&timegrapher_core::measure::Caveat::Masked { seconds: 12.5 }));
+    assert!(!m
+        .caveats
+        .iter()
+        .any(|c| matches!(c, timegrapher_core::measure::Caveat::BeatsMissing { .. })));
+    let json = serde_json::to_value(&m).unwrap();
+    assert_eq!(json["masked_s"], 12.5);
+    assert_eq!(
+        serde_json::to_value(&whole).unwrap().get("masked_s"),
+        None,
+        "left out when nothing is masked"
+    );
+}

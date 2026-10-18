@@ -100,6 +100,12 @@ pub struct StripInput {
     pub reset: bool,
     /// The time under the pointer, for the cursor shared with the charts.
     pub hover_t: Option<f64>,
+    /// With the Mask tool on: a stretch dragged over, start and end, to
+    /// mask out of the readings.
+    pub mask: Option<(f64, f64)>,
+    /// With the Mask tool on: a click at this time, to bring back the
+    /// masked stretch there.
+    pub unmask_at: Option<f64>,
 }
 
 impl Default for StripInput {
@@ -111,6 +117,8 @@ impl Default for StripInput {
             width_factor: 1.0,
             reset: false,
             hover_t: None,
+            mask: None,
+            unmask_at: None,
         }
     }
 }
@@ -276,6 +284,12 @@ pub struct Extras<'a> {
     /// included. Not empty once a test has begun: the strip then shades
     /// by the test's phases in place of every other position.
     pub measured: &'a [(f64, f64)],
+    /// Stretches masked out of the readings: start and end. They are
+    /// shaded and their beats drawn faintly.
+    pub masked: &'a [(f64, f64)],
+    /// The Mask tool is on: dragging along the strip masks a stretch in
+    /// place of looking back, and a click brings one back.
+    pub masking: bool,
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -589,6 +603,59 @@ fn axis_ms(ms: f64) -> String {
     }
 }
 
+/// Shade the masked stretches across the plotting area `r` between
+/// `oldest` and `end`, each named "Masked" at its start where there is
+/// room, and the stretch being dragged over (`dragging`) more strongly.
+/// `at` places a time on the time axis; `horizontal` when time runs
+/// across.
+#[allow(clippy::too_many_arguments)]
+fn paint_masked(
+    painter: &egui::Painter,
+    r: Rect,
+    masked: &[(f64, f64)],
+    dragging: Option<(f64, f64)>,
+    oldest: f64,
+    end: f64,
+    at: impl Fn(f64) -> Pos2,
+    horizontal: bool,
+    vis: &egui::Visuals,
+) {
+    let painter = painter.with_clip_rect(r);
+    let band = |a: f64, b: f64| {
+        let (p, q) = (at(a.max(oldest)), at(b.min(end)));
+        if horizontal {
+            Rect::from_x_y_ranges(p.x.min(q.x)..=p.x.max(q.x), r.y_range())
+        } else {
+            Rect::from_x_y_ranges(r.x_range(), p.y.min(q.y)..=p.y.max(q.y))
+        }
+    };
+    let ink = vis.weak_text_color();
+    let font = FontId::proportional(11.0);
+    for &(a, b) in masked.iter().filter(|m| m.1 > oldest && m.0 < end) {
+        let rect = band(a, b);
+        painter.rect_filled(rect, 0.0, ink.gamma_multiply(0.14));
+        let name = painter.layout_no_wrap("Masked".into(), font.clone(), ink);
+        let room = if horizontal {
+            rect.width()
+        } else {
+            rect.height()
+        };
+        if room > name.size().x + 8.0 || (!horizontal && room > name.size().y + 4.0) {
+            painter.galley(rect.min + Vec2::splat(3.0), name, ink);
+        }
+    }
+    if let Some((a, b)) = dragging {
+        let rect = band(a, b);
+        painter.rect_filled(rect, 0.0, ink.gamma_multiply(0.28));
+        painter.rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0_f32, ink),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
 /// Draw the strip for the beats up to `end_s` and report what the mouse
 /// did to it: the wheel zooms the length, Ctrl and the wheel (or a pinch)
 /// zooms the width, dragging along the time axis looks back, dragging
@@ -661,7 +728,11 @@ pub fn draw_strip(
         horizontal: view.horizontal,
     };
     let mut input = StripInput::default();
-    let d = resp.drag_delta();
+    let d = if extras.masking {
+        Vec2::ZERO
+    } else {
+        resp.drag_delta()
+    };
     if view.horizontal {
         input.time_shift_s = -(d.x / r.width().max(1.0)) as f64 * view.span_s;
         input.lead_shift_ms = -(d.y / (r.height() / 2.0).max(1.0)) as f64 * view.half_width_ms;
@@ -684,7 +755,35 @@ pub fn draw_strip(
         .hover_pos()
         .filter(|p| r.contains(*p))
         .map(|p| g.time_at(p));
-    if resp.dragged() {
+    // The Mask tool: where a drag began, kept between frames, and the
+    // stretch it covers so far.
+    let mut masking_now: Option<(f64, f64)> = None;
+    if extras.masking {
+        let id = resp.id.with("mask-from");
+        let at = |p: Option<Pos2>| p.map(|p| g.time_at(p).clamp(oldest, end_s));
+        if resp.drag_started() {
+            if let Some(t) = at(resp.interact_pointer_pos()) {
+                ui.data_mut(|d| d.insert_temp(id, t));
+            }
+        }
+        let from: Option<f64> = ui.data(|d| d.get_temp(id));
+        if let (Some(a), Some(b)) = (from, at(resp.interact_pointer_pos())) {
+            masking_now = Some((a.min(b), a.max(b)));
+        }
+        if resp.drag_stopped() {
+            input.mask = masking_now;
+            ui.data_mut(|d| d.remove::<f64>(id));
+        } else if resp.clicked() {
+            input.unmask_at = at(resp.interact_pointer_pos());
+        }
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(if view.horizontal {
+                egui::CursorIcon::ResizeColumn
+            } else {
+                egui::CursorIcon::ResizeRow
+            });
+        }
+    } else if resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
 
@@ -783,6 +882,17 @@ pub fn draw_strip(
         view.horizontal,
         false,
         !test,
+        &vis,
+    );
+    paint_masked(
+        &painter,
+        r,
+        extras.masked,
+        masking_now,
+        oldest,
+        end_s,
+        |t| g.pos(0.0, t),
+        view.horizontal,
         &vis,
     );
     if !extras.bands.is_empty() {
@@ -889,8 +999,10 @@ pub fn draw_strip(
         }
         let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
         let mut c = colors[b.index.rem_euclid(2) as usize];
-        // Faint while the watch settles after a move.
-        if extras.settles.iter().any(|s| b.time > s.0 && b.time <= s.1) {
+        // Faint while the watch settles after a move, or masked out.
+        if extras.settles.iter().any(|s| b.time > s.0 && b.time <= s.1)
+            || extras.masked.iter().any(|m| b.time >= m.0 && b.time <= m.1)
+        {
             c = c.gamma_multiply(0.3);
         }
         painter.circle_filled(p, radius, c);

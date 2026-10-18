@@ -67,6 +67,9 @@ pub enum Caveat {
     ShortSpan { span_s: f64 },
     /// The take was paused or resumed inside the stretch.
     Breaks { count: usize },
+    /// Stretches of the take were masked out of the readings by hand;
+    /// `seconds` is their total within the stretch.
+    Masked { seconds: f64 },
 }
 
 impl Caveat {
@@ -81,6 +84,7 @@ impl Caveat {
             Caveat::LiftUnknown => 5,
             Caveat::ClockUnknown => 6,
             Caveat::Breaks { .. } => 7,
+            Caveat::Masked { .. } => 8,
         }
     }
 }

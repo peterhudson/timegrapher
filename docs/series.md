@@ -23,6 +23,16 @@ detect, and adds a sentence for the others:
 | a period search line faster than the readings | the period, the wheel whose turn it matches, the size peak to peak and that the readings are too coarse to show it, e.g. "the beat timing repeats every 5.0 s, the escape wheel's period, 0.24 ms peak to peak; 10 s readings are too coarse to show it". The "none of these" and correlation headlines carry it in place of "no cycle"; the cycle, two levels, level change and trend headlines add it as a sentence of its own ("The beat timing also repeats every 5.0 s, …" beside a slower cycle). For the rate a line under 30 s is the beat timing's swing in ms, and a slower one (with `--reading 20` or longer) the rate's swing in s/d; "faster than the readings" means under three of the readings cycles are looked for in: the 2 s windows for the amplitude and beat error, the readings for the rate |
 | too few readings | N readings over N s (it needs 30 over 120 s) |
 
+After these, the headline names the period search's lines it has not
+named yet, as a last sentence: "The amplitude's period search also finds
+45 s (7.37° peak to peak)." Only the search's strongest line has a size;
+the others are given by period, in seconds. A line counts as named when
+it is within the resolution (the period squared over the take, at least
+1%) of the cycle or the shorter cycle inside it, or when it is the fast line above. The
+search lists only lines that pass its own significance test, so the
+sentence adds no threshold. When it follows a lead that would say "no
+cycle … detected", the lead leaves cycles out of that list.
+
 The thresholds are detection thresholds, stated with each test below
 (a false-alarm chance, a share of the variance explained); none is a
 tolerance for a watch.
@@ -144,7 +154,16 @@ finds in the beat timing as a line of three readings or longer (within
 the period squared over the take, at least 1%: the search's own rule for
 matching a wheel) always counts, and is not reduced to a shorter
 fraction that lands on the alias or its turns: at 19,800 bph a 15-tooth escape wheel turns in 5.45 s,
-which aliases to exactly the fourth wheel's 60 s. The headline leads
+which aliases to exactly the fourth wheel's 60 s. At a turn and a half
+or more of an alias the fold holds the alias as well, so the cycle's share and
+size are given net of the alias's own fold (the readings less their
+mean shape at the alias), and it must still explain 10%: on the 28,800
+bph watch with a 15-tooth escape wheel, a 60 s fourth wheel of 2 s/d
+peak to peak beside a 30 s alias of 2 s/d is given its own 2 s/d, not
+the fold's larger swing, and a 60 s line the search lists with nothing
+of its own in the readings is no cycle (the headline then
+names it from the search). On the alias itself the two cannot be parted,
+and the size is the fold's. The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,
 the headline adds a sentence. If one side's unlock edges or 2 s windows

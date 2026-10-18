@@ -68,7 +68,7 @@ they do not replace them. Earlier and later pieces remain available to inspect.
 When a replay has matching saved position history, its position bands and
 settling intervals are restored in recorded-audio time. Readings do not span a
 saved move or settling end. Choosing a position filters that history rather
-than adding a new move; **Clear** clears readings but keeps the saved boundaries.
+than adding a new move. Stretches the take masked out come back masked.
 A plain recording without matching position history still allows manual moves.
 
 Every other pane's own settings sit in a toolbar across the top of the
@@ -447,7 +447,32 @@ the session (live or not), dragging across slides the trace, and a double
 click returns to the newest beats and centres them. **Auto-Centre** keeps
 the newest beats on the centre line all the time, so the older ones slide
 away from it as the rate wanders; sliding the trace by hand turns it off.
-**Centre** centres once; **Clear** starts the readings and the strip again.
+**Centre** centres once.
+
+**Mask** leaves stretches out of the readings, such as a bump of the
+stand in a long take: with it on, dragging along the strip over the beats
+masks that stretch (one under half a second is left alone, as a slip of
+the mouse), and clicking a masked stretch brings it back; **Unmask All**
+brings them all back. Masked stretches are shaded and named on the strip,
+and the toolbar says how many there are and how long they add up to.
+They are cut like a pause: no reading reaches across one, nothing is
+read inside one, and the charts, the whole-take figures, the
+distributions (their 2-second stretches too), the steadiness tests and a
+Positions Test leave their beats out; a Positions Test's positions are
+read again when what is masked changes. A reading whose averaging time
+takes in masked sound says how many seconds were masked, unless it is
+under 0.05 s; the reading Report a Problem sends, and `timegrapher`'s
+JSON, keep the caveat and its seconds even then.
+A take saved from a session in the app keeps every masked stretch
+(`masked` on each recording of its `session.toml`, in seconds of the
+saved sound; see [sessions.md](sessions.md)), so `timegrapher session`
+leaves them out too, and all of them come back masked when the saved
+take is opened or replayed. A recording opened from disk can't be saved
+from the app, so masking one changes only what the app shows until it is
+closed. Report a Problem sends the masked stretches with its details.
+While Mask is on, dragging along the strip masks instead of sliding the
+trace. Mask turns off, and nothing is masked, when a new take, New
+Session or another recording starts.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
 unlock and from the drop) over time. Each reading keeps its colour across
