@@ -175,7 +175,8 @@ pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Optio
 }
 
 /// The beat error's readings as `steadiness::check` lays them out for its
-/// period search: the 2 s windows on true time, each pause left empty, so
+/// period search: the 2 s windows, on true time with each pause left
+/// empty when the take has pauses, so
 /// the Periods view draws the search that listed the lines it labels.
 fn beat_error_check_grid(log: &BeatLog, long: &LongReport) -> Grid {
     let aw = &log.amplitude_windows;
@@ -269,31 +270,43 @@ pub fn period_span(searches: &[Option<Search>; 3]) -> Option<(f64, f64)> {
         .filter(|(a, b)| a < b)
 }
 
-/// Indices of a curve's `values` thinned to at most `max`, first and last
-/// kept: the lowest and highest of each stretch, in order, so a narrow
-/// peak keeps its top however many periods the search tried.
-fn spread_extremes(values: &[f64], max: usize) -> Vec<usize> {
-    let n = values.len();
+/// Indices of a period search's curve thinned to at most `max`, first
+/// and last kept: the axis is cut into equal slices of log period, as the
+/// FFT's thinning cuts it, and each slice keeps its lowest and highest
+/// score, in order, so a narrow peak keeps its top wherever it sits.
+fn spread_extremes(period_s: &[f64], score: &[f64], max: usize) -> Vec<usize> {
+    let n = period_s.len().min(score.len());
     if n <= max || max < 4 {
         return spread(n, max);
     }
-    let buckets = (max - 2) / 2;
-    let mut keep = vec![0];
-    for b in 0..buckets {
-        let lo = 1 + b * (n - 2) / buckets;
-        let hi = 1 + (b + 1) * (n - 2) / buckets;
-        if lo >= hi {
+    let slices = (max - 2) / 2;
+    let (a, b) = (period_s[0].ln(), period_s[n - 1].ln());
+    let mut lows: Vec<Option<usize>> = vec![None; slices];
+    let mut highs: Vec<Option<usize>> = vec![None; slices];
+    for i in 1..n - 1 {
+        let f = if a == b {
+            0.0
+        } else {
+            (period_s[i].ln() - a) / (b - a)
+        };
+        if !f.is_finite() {
             continue;
         }
-        let by = |i: &usize, j: &usize| values[*i].total_cmp(&values[*j]);
-        let min = (lo..hi).min_by(by).unwrap();
-        let max = (lo..hi).max_by(by).unwrap();
-        keep.push(min.min(max));
-        if min != max {
-            keep.push(min.max(max));
+        let k = ((f * slices as f64) as usize).min(slices - 1);
+        if lows[k].is_none_or(|l| score[i] < score[l]) {
+            lows[k] = Some(i);
+        }
+        if highs[k].is_none_or(|h| score[i] > score[h]) {
+            highs[k] = Some(i);
         }
     }
-    keep.push(n - 1);
+    let mut keep: Vec<usize> = std::iter::once(0)
+        .chain(lows.into_iter().flatten())
+        .chain(highs.into_iter().flatten())
+        .chain(std::iter::once(n - 1))
+        .collect();
+    keep.sort_unstable();
+    keep.dedup();
     keep
 }
 
@@ -328,14 +341,18 @@ pub fn views(
         })
         .collect();
     let grids = grids_with_breaks(log, rate_s, &cuts);
-    let mut searches = searches(&grids, long, lc);
     // The beat error's search on the grid the tests searched, pauses and
     // all, so its strongest line is the one the label names.
-    if searches[2].is_some() {
-        let mut g = beat_error_check_grid(log, long);
-        g.t0 = 0.0;
-        searches[2] = Some(longterm::analyse(&g, lc).search);
-    }
+    let readings = grids[2].y.iter().filter(|v| v.is_finite()).count();
+    let searches = [
+        Some(long.timing.search.clone()),
+        Some(long.amplitude.search.clone()),
+        (readings >= 30).then(|| {
+            let mut g = beat_error_check_grid(log, long);
+            g.t0 = 0.0;
+            longterm::analyse(&g, lc).search
+        }),
+    ];
     let folds = folds(&grids, report, lc);
     let series = (0..3)
         .map(|i| {
@@ -351,8 +368,7 @@ pub fn views(
                 .as_ref()
                 .filter(|s| !s.period_s.is_empty())
                 .map(|s| {
-                    let n = s.period_s.len().min(s.score.len());
-                    let keep = spread_extremes(&s.score[..n], MAX_PERIODS);
+                    let keep = spread_extremes(&s.period_s, &s.score, MAX_PERIODS);
                     SearchView {
                         period_s: keep.iter().map(|&k| s.period_s[k]).collect(),
                         score: keep.iter().map(|&k| s.score[k]).collect(),
@@ -464,20 +480,23 @@ mod tests {
     }
 
     #[test]
-    fn thinning_keeps_a_narrow_peak() {
-        let mut score = vec![0.0; 20_000];
-        score[12_345] = 9.0;
-        score[12_346] = 4.0;
-        let keep = spread_extremes(&score, MAX_PERIODS);
+    fn thinning_keeps_a_narrow_peak_anywhere_on_the_log_axis() {
+        // A 12 h search's periods, longest first, with narrow lines at
+        // about 2 h and 1 h, where an even split of the indices puts both
+        // in one wide stretch.
+        let n = 87_363;
+        let period_s: Vec<f64> = (0..n).map(|i| 262_144.0 / (19 + i) as f64).collect();
+        let mut score = vec![0.5; n];
+        score[17] = 9.0;
+        score[54] = 6.0;
+        let keep = spread_extremes(&period_s, &score, MAX_PERIODS);
         assert!(keep.len() <= MAX_PERIODS, "{}", keep.len());
         assert!(keep.windows(2).all(|w| w[0] < w[1]));
-        assert_eq!((keep[0], *keep.last().unwrap()), (0, 19_999));
-        assert!(keep.contains(&12_345));
-        // Evenly spaced, the same peak would fall between the kept periods.
-        assert!(!spread(score.len(), MAX_PERIODS).contains(&12_345));
+        assert_eq!((keep[0], *keep.last().unwrap()), (0, n - 1));
+        assert!(keep.contains(&17) && keep.contains(&54), "{keep:?}");
         // A short curve is kept whole.
         assert_eq!(
-            spread_extremes(&score[..10], MAX_PERIODS),
+            spread_extremes(&period_s[..10], &score[..10], MAX_PERIODS),
             (0..10).collect::<Vec<_>>()
         );
     }
@@ -486,6 +505,8 @@ mod tests {
     fn the_beat_errors_search_runs_on_the_tests_grid_with_its_pauses() {
         let cfg = SynthConfig {
             duration_s: 120.0,
+            beat_error_ms: 0.8,
+            beat_error_drift_ms_per_s: 0.01,
             ..Default::default()
         };
         let audio = generate(&cfg, |_| 270.0, |_| 0.0);
@@ -510,7 +531,7 @@ mod tests {
         };
         let aw = &log.amplitude_windows;
         let step = aw[0].end_s - aw[0].start_s;
-        // A 6 s pause between two windows half way through.
+        // A 6 s pause half way through, inside one window.
         let mid = aw[aw.len() / 2].start_s - 0.5 * step;
         let breaks = [crate::breaks::Break {
             audio_s: mid,
@@ -526,6 +547,26 @@ mod tests {
         let same = |a: f64, b: f64| a == b || (a.is_nan() && b.is_nan());
         assert!(same(g1.y[k + 3], g0.y[k]));
         assert!(same(g1.y[k - 1], g0.y[k - 1]));
+
+        // The tests' own beat-error spectrum comes from this grid, and not
+        // from the readings' grid without the pause.
+        let check = Config::default();
+        let report = steadiness::check(&log, None, &paused, &lc, &check);
+        let tests = report
+            .spectra
+            .iter()
+            .find(|s| s.series == "beat_error")
+            .expect("beat error spectrum");
+        let tests = serde_json::to_value(tests).unwrap();
+        let spectrum_of = |mut g: Grid| {
+            g.t0 = 0.0;
+            let d = longterm::analyse(&g, &lc).detrended;
+            let s =
+                crate::spectrum::amplitude_spectrum(&d, "beat_error", "ms", 1.0, check.max_points);
+            serde_json::to_value(s.expect("spectrum")).unwrap()
+        };
+        assert_eq!(spectrum_of(g1), tests);
+        assert_ne!(spectrum_of(grids(&log, 10.0)[2].clone()), tests);
     }
 
     /// The app's own test take: ten minutes of a watch whose rate swings
