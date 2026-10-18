@@ -203,6 +203,21 @@ impl ResolvedTrain {
             .unwrap_or(crate::calibres_cmd::DEFAULT_LIFT_DEG)
     }
 
+    /// What `lift_deg` fell back on, said as `analyze` says it, when
+    /// neither `--lift` nor the calibre gave a lift angle.
+    pub(crate) fn lift_default_note(&self, flag: Option<f64>) -> Option<String> {
+        let why = match (flag, &self.calibre) {
+            (Some(_), _) => return None,
+            (None, Some(c)) if c.lift_angle_deg.is_some() => return None,
+            (None, Some(_)) => "the calibre's lift angle is not in the table",
+            (None, None) => "calibre not set",
+        };
+        Some(format!(
+            "note: lift {}°, the default; {why}",
+            crate::calibres_cmd::DEFAULT_LIFT_DEG
+        ))
+    }
+
     /// Analyze's existing explicit escape-teeth override wins over named wheels.
     pub(crate) fn analysis_wheels(&self, bph: u32) -> Vec<Wheel> {
         let mut wheels = self.wheels(bph);
@@ -289,6 +304,9 @@ pub fn run(
     let resolved_train = train.resolve()?;
     let mut cfg = cfg.clone();
     cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(lift);
+    if let Some(note) = resolved_train.lift_default_note(lift) {
+        eprintln!("{note}");
+    }
     let cfg = &cfg;
     let files = expand_dirs(files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
@@ -930,6 +948,30 @@ mod catalogue_tests {
         .resolve_with(&user)
         .unwrap();
         assert_eq!(none.lift_deg(None), crate::calibres_cmd::DEFAULT_LIFT_DEG);
+        assert_eq!(
+            none.lift_default_note(None).as_deref(),
+            Some("note: lift 52°, the default; calibre not set")
+        );
+        assert_eq!(named.lift_default_note(None), None);
+        assert_eq!(none.lift_default_note(Some(50.0)), None);
+    }
+
+    #[test]
+    fn a_calibre_without_a_lift_figure_falls_back_and_says_so() {
+        let mut user = user();
+        user.custom[0].lift_angle_deg = None;
+        let train = Train {
+            calibre: Some("workshop a"),
+            escape_teeth: None,
+        }
+        .resolve_with(&user)
+        .unwrap();
+        assert_eq!(train.lift_deg(None), crate::calibres_cmd::DEFAULT_LIFT_DEG);
+        assert_eq!(train.lift_deg(Some(48.0)), 48.0);
+        assert_eq!(
+            train.lift_default_note(None).as_deref(),
+            Some("note: lift 52°, the default; the calibre's lift angle is not in the table")
+        );
     }
 
     #[test]

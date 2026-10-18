@@ -37,6 +37,9 @@ pub fn run(o: Options) -> Result<(), String> {
     let resolved_train = o.train.resolve()?;
     let mut stream_cfg = o.stream.clone();
     stream_cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(o.lift);
+    if let Some(note) = resolved_train.lift_default_note(o.lift) {
+        eprintln!("{note}");
+    }
     let files = crate::long::expand_dirs(o.files)?;
     let file = files.first().ok_or("no recording given")?.as_path();
     let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
