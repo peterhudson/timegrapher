@@ -1472,12 +1472,12 @@ impl TimegrapherApp {
         }
     }
 
-    /// Forget this session (after asking, if its sound isn't saved), ready
-    /// to start another.
     /// Clear everything for the next watch or position. Listening to the
     /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
         let listening = self.running() && self.session.mic();
+        // Cleared first, so an error from closing the kept sound stays shown.
+        self.message = None;
         self.stop();
         self.session.discard_recording();
         self.session.clear();
@@ -1488,7 +1488,6 @@ impl TimegrapherApp {
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.source_label.clear();
-        self.message = None;
         if listening {
             self.start_microphone();
         }
@@ -3580,34 +3579,36 @@ impl TimegrapherApp {
              the Rate Line.",
         );
         let overlays = &mut self.overlays;
-        // The name and its three switches kept together, on one line.
+        let lines = [
+            (
+                "Amplitude",
+                "The amplitude readings as a purple line against the same time, on their own \
+                 scale",
+            ),
+            (
+                "Rate",
+                "The rate readings as a red line against the same time, on their own scale",
+            ),
+            (
+                "Beat Error",
+                "The beat error readings, from the unlock, as a yellow line against the same \
+                 time, on their own scale",
+            ),
+        ];
+        // The name stays on one line with the first switch; the others
+        // wrap to the next line when the pane is narrow.
         theme::row(
             ui,
-            "Draw over the strip",
-            Some("Readings drawn as lines over the beats against the same time, each on its own scale"),
-            |ui| {
-            for (i, (name, hint)) in [
-                (
-                    "Amplitude",
-                    "The amplitude readings as a purple line against the same time, on their \
+            "Draw Over the Strip",
+            Some(
+                "Readings drawn as lines over the beats against the same time, each on its \
                  own scale",
-                ),
-                (
-                    "Rate",
-                    "The rate readings as a red line against the same time, on their own scale",
-                ),
-                (
-                    "Beat Error",
-                    "The beat error readings, from the unlock, as a yellow line against the same \
-                 time, on their own scale",
-                ),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                theme::switch_row(ui, name, &mut overlays[i], hint);
-            }
-        });
+            ),
+            |ui| theme::switch_row(ui, lines[0].0, &mut overlays[0], lines[0].1),
+        );
+        for (i, (name, hint)) in lines.into_iter().enumerate().skip(1) {
+            theme::switch_row(ui, name, &mut overlays[i], hint);
+        }
         theme::switch_row(
             ui,
             "Auto-Centre",

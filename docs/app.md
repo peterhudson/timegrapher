@@ -387,7 +387,7 @@ lines at the same slope across the whole strip, one per grid step, since
 the eye judges whether lines are parallel far better than it judges a
 slope; dots that bend away from the guides show the rate changing. The
 guides show with or without the Rate Line. Under
-**Draw over the strip**, amplitude (purple, on by default), rate (red)
+**Draw Over the Strip**, amplitude (purple, on by default), rate (red)
 and beat error (yellow) readings can be drawn as lines against the same
 time, each on its own scale, whose ends are written in its colour above
 the strip (beside it when the strip lies across), as some versions of tg
@@ -749,8 +749,8 @@ listening and lets go of the microphone, so another program can use it
 readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
-stop. **New session**, shown while stopped, clears everything for the
-next watch or position. Everything heard is kept as it comes in, so
+stop. **New session** clears everything for the next watch or position;
+pressed while listening, listening carries on into the new session. Everything heard is kept as it comes in, so
 **Save…** can be pressed at any time, running or stopped: it asks for a
 folder and copies the session into a folder of its own inside it.
 **Save Again** (Ctrl+S) later brings that copy up to date without asking

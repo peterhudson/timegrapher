@@ -784,7 +784,7 @@ pub fn draw_strip(
     let colors = side_colors(dark);
     let mut at = Pos2::new(r.left(), outer.top() + 3.0);
     let mut keys: Vec<(&str, Color32)> = vec![("Tick", colors[0]), ("Tock", colors[1])];
-    if extras.rate_line.is_some() {
+    if extras.line && extras.rate_line.is_some() {
         keys.push(("Rate Line", pal.trace_rate));
     }
     for (o, _) in &overlays {
