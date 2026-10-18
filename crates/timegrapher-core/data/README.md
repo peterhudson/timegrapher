@@ -20,6 +20,7 @@ A JSON array, one object per calibre:
 | `calibre` | Name shown to the user, e.g. "ETA 2824-2" |
 | `maker` | Maker, or "(clone)" for a copy |
 | `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
+| `former_names` | Names the row had in earlier versions of the table (the 97 variant rows were first named with "vph"); they still match, with or without the maker, but are not searched or shown in the app. Left out when there are none |
 | `common` | `true` for common and modern calibres, the short list the app offers first; uncommon and vintage ones (most of the imported list) leave it out and appear when the list is expanded or searched |
 | `bph` | Beats per hour, where a source gives it |
 | `escape_teeth` | Escape wheel teeth, only where there is evidence |
@@ -168,7 +169,8 @@ plus these:
   come from two guides by one author on a watch forum (one on clone
   movements, one on lift angles) and teardown threads, cited by URL per
   entry; the escape wheel of a clone resting on them alone is marked
-  inferred.
+  inferred, and each clone entry's notes say which of its claims rest on
+  those guides alone, or on one other source alone.
 - **Lift angles** are what sources give. Rolex, AP and Patek publish
   none, so theirs are the figures timegrapher users work with (Rolex 31xx
   and 4130 52°, 32xx and 4131 55° with a reported Rolex revision of the
