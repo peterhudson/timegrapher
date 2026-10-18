@@ -169,8 +169,11 @@ plus these:
   come from two guides by one author on a watch forum (one on clone
   movements, one on lift angles) and teardown threads, cited by URL per
   entry; the escape wheel of a clone resting on them alone is marked
-  inferred, and each clone entry's notes say which of its claims rest on
-  those guides alone, or on one other source alone.
+  inferred. Each clone entry's notes say where its lift angle, and
+  whether it is a true clone, a part clone or a hybrid, rest on those
+  guides alone or on one other source alone. Other remarks in clone
+  notes (power reserves, factory prefixes, related calibres) mostly
+  rest on a single source, often those guides, and most are not marked.
 - **Lift angles** are what sources give. Rolex, AP and Patek publish
   none, so theirs are the figures timegrapher users work with (Rolex 31xx
   and 4130 52°, 32xx and 4131 55° with a reported Rolex revision of the
