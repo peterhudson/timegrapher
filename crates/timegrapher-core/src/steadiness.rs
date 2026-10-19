@@ -273,6 +273,8 @@ pub struct Cycle {
     /// Share of the detrended variance the cycle's shape explains, above
     /// what noise alone would give.
     pub explained: f64,
+    /// Where the period was found; for a cycle moved to half the period
+    /// found (an odd number of readings a turn), where that period was.
     pub source: CycleSource,
     /// A wheel whose turn is within 6% of the period.
     pub wheel: Option<String>,
@@ -1138,7 +1140,7 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
                 .as_ref()
                 .map_or(String::new(), |w| format!(" (the {w})")),
             inner_text(c),
-            k.fmt_size(c.peak_to_peak),
+            k.fmt_size(c.peak_to_peak)
         ));
     }
     let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
@@ -1323,20 +1325,7 @@ fn cycle(
             }
         })
         .filter(|c| c.explained >= cfg.periodic_min_explained)
-        .filter(|c| {
-            // The alias itself is set aside; a whole number of its turns
-            // only when folding there explains no clearly more than the
-            // alias does (a real slow cycle at that period does). A cycle
-            // the period search also finds in the beat timing, where it is
-            // slow enough to need no readings, is real however it aliases.
-            slow_search_line(c.period_s, g.step, d.span(), s.period.as_ref())
-                || alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()).is_none_or(
-                    |a| {
-                        (c.period_s / a - 1.0).abs() >= 0.05
-                            && c.explained > 1.25 * fold(&d, refine(&d, a, 0.03)).0
-                    },
-                )
-        })
+        .filter(|c| clears_alias(c.period_s, c.explained, &d, s.period.as_ref()))
         .map(|mut c| {
             // At a turn and a half or more of an alias, the fold holds the
             // alias too: its share and size are given net of the alias's own
@@ -1353,6 +1342,174 @@ fn cycle(
         })
         .filter(|c| c.explained >= cfg.periodic_min_explained)
         .max_by(|a, b| a.explained.total_cmp(&b.explained))
+        .map(|c| half_cycle(&c, &d, s.period.as_ref(), wheels, cfg).unwrap_or(c))
+}
+
+/// Whether a cycle of `period` stands apart from a fast line's alias.
+/// The alias itself is set aside, and so is a whole number of its turns
+/// unless the cycle explains clearly more than folding at the alias does
+/// (a real slow cycle at that period does). A cycle the period search
+/// also finds in the beat timing, where it is slow enough to need no
+/// readings, is real however it aliases.
+fn clears_alias(period: f64, explained: f64, d: &Grid, search: Option<&Period>) -> bool {
+    slow_search_line(period, d.step, d.span(), search)
+        || alias_of_fast_line(period, d.step, d.span(), search).is_none_or(|a| {
+            (period / a - 1.0).abs() >= 0.05 && explained > 1.25 * fold(d, refine(d, a, 0.03)).0
+        })
+}
+
+/// The cycle at half of `c`'s period, when the readings repeat there.
+///
+/// Folded at a period of an odd number of readings, n, the readings fall
+/// in the same groups as at half of it: reading k is at phase k/n of the
+/// one and 2k/n of the other, and with n odd both visit the same n
+/// phases, in another order (a 45 s cycle in 10 s readings can be found
+/// at 90 s, nine readings a turn). Which of the two the readings follow
+/// shows in the shape's harmonics: a shape that repeats at half the
+/// period has its variance in the even ones. The cycle moves to half its
+/// period when sines at the half and the quarter explain 85% or more of
+/// what all n phases explain (sines at every harmonic up to n/2; at seven
+/// readings, where the quarter is under two readings and cannot be told
+/// from the third, the half alone), and the
+/// moved cycle then explains 10% or more on its own and clears a fast
+/// line's alias as any cycle must. A line the period search lists at an
+/// odd harmonic, or a listed fast line's alias there, is a line of its
+/// own sharing those phases (a 30 s line, or the 30 s alias of a 3.75 s
+/// escape wheel, a third of 90 s) and is left out of the n phases first.
+/// A cycle the search lists at its own period stays.
+///
+/// The moved cycle's period is half the period found, which the fold
+/// pinned to under half a reading; its share and size are those of the
+/// two sines, since a fold at 4.5 readings a turn puts readings of
+/// different phases in one bin and reads low. Net of a fast line's alias
+/// at a turn and a half or more of it, as for any cycle.
+fn half_cycle(
+    c: &Cycle,
+    d: &Grid,
+    search: Option<&Period>,
+    wheels: &[Wheel],
+    cfg: &Config,
+) -> Option<Cycle> {
+    let p = c.period_s;
+    let n = p / d.step;
+    // Only a period known to under half a reading has one whole number of
+    // readings to be odd.
+    let tol = (p * p / d.span()).max(0.01 * p) / d.step;
+    let odd = tol < 0.5 && (n - n.round()).abs() <= tol && n.round() as i64 % 2 == 1;
+    let listed = |q| slow_search_line(q, d.step, d.span(), search);
+    if !odd || n.round() < 7.0 || listed(p) {
+        return None;
+    }
+    let own = |q: f64| {
+        listed(q)
+            || alias_of_fast_line(q, d.step, d.span(), search)
+                .is_some_and(|a| (q / a - 1.0).abs() < 0.05)
+    };
+    let h = n.round() as usize / 2;
+    let phases: Vec<f64> = (1..=h)
+        .filter(|&k| k % 2 == 0 || k == 1 || !own(p / k as f64))
+        .map(|k| p / k as f64)
+        .collect();
+    let t = p / 2.0;
+    // At seven readings a turn the quarter (1.75 readings) cannot be told
+    // from the third in the readings, so the half is fitted alone.
+    let half_sines: &[f64] = if t / 2.0 < 2.0 * d.step {
+        &[t]
+    } else {
+        &[t, t / 2.0]
+    };
+    let (all, _) = sine_fit(d, &phases, p);
+    let (half, mut ptp) = sine_fit(d, half_sines, t);
+    if all <= 0.0 || half < 0.85 * all || !clears_alias(t, half, d, search) {
+        return None;
+    }
+    let mut explained = half;
+    if let Some(a) = alias_of_fast_line(t, d.step, d.span(), search) {
+        if t / a >= 1.25 {
+            let (rest, kept) = without_fold(d, refine(d, a, 0.03));
+            let (e, size) = sine_fit(&rest, half_sines, t);
+            explained = e * kept;
+            ptp = size;
+        }
+    }
+    (explained >= cfg.periodic_min_explained).then(|| Cycle {
+        period_s: t,
+        peak_to_peak: ptp,
+        explained,
+        source: c.source,
+        wheel: wheel_for(t, wheels),
+        inner_period_s: None,
+        inner_explained: None,
+        turns: None,
+    })
+}
+
+/// Least squares fit of a mean and a sine at each of `periods`: the share
+/// of the readings' variance it explains, less what noise alone would give
+/// (two per sine over the readings), and its peak to peak over one `turn`.
+fn sine_fit(d: &Grid, periods: &[f64], turn: f64) -> (f64, f64) {
+    let tau = 2.0 * std::f64::consts::PI;
+    let m = 1 + 2 * periods.len();
+    let row = |t: f64| {
+        let mut r = vec![1.0; m];
+        for (j, &q) in periods.iter().enumerate() {
+            let x = tau * t / q;
+            r[1 + 2 * j] = x.cos();
+            r[2 + 2 * j] = x.sin();
+        }
+        r
+    };
+    let pts: Vec<(f64, f64)> =
+        d.y.iter()
+            .enumerate()
+            .filter(|(_, v)| v.is_finite())
+            .map(|(i, &v)| (d.time(i) - d.t0, v))
+            .collect();
+    let n = pts.len();
+    if n < 2 * m {
+        return (0.0, 0.0);
+    }
+    // Normal equations, solved by elimination with partial pivoting.
+    let mut a = vec![vec![0.0; m + 1]; m];
+    for &(t, v) in &pts {
+        let r = row(t);
+        for i in 0..m {
+            for j in 0..m {
+                a[i][j] += r[i] * r[j];
+            }
+            a[i][m] += r[i] * v;
+        }
+    }
+    for col in 0..m {
+        let piv = (col..m)
+            .max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))
+            .unwrap_or(col);
+        a.swap(col, piv);
+        if a[col][col].abs() <= 1e-9 * n as f64 {
+            return (0.0, 0.0);
+        }
+        let pivot = a[col].clone();
+        for (i, r) in a.iter_mut().enumerate() {
+            if i != col {
+                let k = r[col] / pivot[col];
+                for (x, p) in r.iter_mut().zip(&pivot).skip(col) {
+                    *x -= k * p;
+                }
+            }
+        }
+    }
+    let b: Vec<f64> = (0..m).map(|i| a[i][m] / a[i][i]).collect();
+    let fit = |t: f64| row(t).iter().zip(&b).map(|(r, b)| r * b).sum::<f64>();
+    let mean = pts.iter().map(|p| p.1).sum::<f64>() / n as f64;
+    let total: f64 = pts.iter().map(|p| (p.1 - mean).powi(2)).sum();
+    let between: f64 = pts.iter().map(|p| (fit(p.0) - mean).powi(2)).sum();
+    if total <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let curve: Vec<f64> = (0..200).map(|i| fit(turn * i as f64 / 200.0)).collect();
+    let hi = curve.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let lo = curve.iter().copied().fold(f64::INFINITY, f64::min);
+    (between / total - (m - 1) as f64 / n as f64, hi - lo)
 }
 
 /// The cycle folded at `period`.
@@ -3018,5 +3175,175 @@ mod tests {
             w.headline
         );
         assert!(w.beat_error_change_ms.unwrap().abs() < 1e-9);
+    }
+
+    /// Two hours of 10 s rate readings, detrended: unit noise and sines
+    /// of (period, amplitude), each with its own phase.
+    fn sines(seed: u64, parts: &[(f64, f64)]) -> Grid {
+        let tau = 2.0 * std::f64::consts::PI;
+        let mut z = Noise(seed);
+        let y: Vec<f64> = (0..720)
+            .map(|i| {
+                let t = 10.0 * (i as f64 + 0.5);
+                5.0 + z.next()
+                    + parts
+                        .iter()
+                        .enumerate()
+                        .map(|(j, &(p, a))| a * (tau * t / p + 0.3 + 0.9 * j as f64).sin())
+                        .sum::<f64>()
+            })
+            .collect();
+        longterm::detrend(&grid(y, 10.0), 1800.0)
+    }
+
+    /// `half_cycle` of the cycle found at 90 s, nine readings a turn.
+    fn from_90(d: &Grid, search: Option<&Period>) -> Option<Cycle> {
+        from_at(d, 90.0, search)
+    }
+
+    fn from_at(d: &Grid, p: f64, search: Option<&Period>) -> Option<Cycle> {
+        let c = cycle_at(d, refine(d, p, 0.01), CycleSource::Autocorrelation, &[]);
+        half_cycle(&c, d, search, &[], &Config::default())
+    }
+
+    #[test]
+    fn a_cycle_found_at_twice_its_period_moves_to_its_own() {
+        // 90 s is nine 10 s readings, so folding at 90 s and at 45 s puts
+        // the readings in the same groups. A 45 s cycle, a sine or one with
+        // a 22.5 s harmonic, moves to 45 s with the size of its two sines;
+        // a 90 s sine, and an even mix of 90 s and 45 s, stay.
+        for seed in 0..8 {
+            for (parts, ptp) in [
+                (vec![(45.0, 0.8)], 1.6),
+                (vec![(45.0, 0.8), (22.5, 0.4)], 0.0),
+            ] {
+                let d = sines(100 + seed, &parts);
+                let c = from_90(&d, None).unwrap_or_else(|| panic!("seed {seed}: {parts:?}"));
+                assert!((c.period_s - 45.0).abs() < 0.5, "seed {seed}: {c:?}");
+                let tau = 2.0 * std::f64::consts::PI;
+                let curve: Vec<f64> = (0..450)
+                    .map(|i| {
+                        let t = i as f64 / 10.0;
+                        parts
+                            .iter()
+                            .enumerate()
+                            .map(|(j, &(p, a))| a * (tau * t / p + 0.3 + 0.9 * j as f64).sin())
+                            .sum::<f64>()
+                    })
+                    .collect();
+                let truth = if ptp > 0.0 {
+                    ptp
+                } else {
+                    curve.iter().copied().fold(f64::MIN, f64::max)
+                        - curve.iter().copied().fold(f64::MAX, f64::min)
+                };
+                assert!(
+                    (c.peak_to_peak / truth - 1.0).abs() < 0.1,
+                    "seed {seed}: {:.2} against {truth:.2}",
+                    c.peak_to_peak
+                );
+            }
+            for parts in [vec![(90.0, 0.8)], vec![(90.0, 0.8), (45.0, 0.8)]] {
+                let d = sines(200 + seed, &parts);
+                assert!(from_90(&d, None).is_none(), "seed {seed}: {parts:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_listed_line_sharing_the_phases_is_left_out_of_them() {
+        // A 45 s cycle beside a 30 s line, a third of 90 s: the 30 s line
+        // shares the nine phases, so unlisted it keeps the cycle at 90 s;
+        // listed by the period search, it is a line of its own.
+        for seed in 0..8 {
+            let d = sines(300 + seed, &[(45.0, 0.8), (30.0, 0.8)]);
+            assert!(from_90(&d, None).is_none(), "seed {seed}");
+            let mut line = search_line(5.0, 0.3, "ms", Some("escape wheel"));
+            line.other_periods_s = vec![30.0];
+            let c = from_90(&d, Some(&line)).unwrap_or_else(|| panic!("seed {seed}"));
+            assert!((c.period_s - 45.0).abs() < 0.5, "seed {seed}: {c:?}");
+        }
+    }
+
+    #[test]
+    fn at_seven_readings_a_turn_the_half_is_fitted_alone() {
+        // 70 s is seven readings, and its quarter (17.5 s) cannot be told
+        // from its third (23.33 s) in them. A 70 s cycle beside a listed
+        // 23.33 s line stays at 70 s; a 35 s cycle beside it moves, sized
+        // by its own sine.
+        let mut line = search_line(5.0, 0.3, "ms", Some("escape wheel"));
+        line.other_periods_s = vec![70.0 / 3.0];
+        for seed in 0..16 {
+            for size in [0.8, 1.2, 1.6] {
+                let d = sines(800 + seed, &[(70.0, 0.8), (70.0 / 3.0, size)]);
+                assert!(
+                    from_at(&d, 70.0, Some(&line)).is_none(),
+                    "seed {seed}, {size}"
+                );
+            }
+            let d = sines(900 + seed, &[(35.0, 0.8), (70.0 / 3.0, 0.8)]);
+            let c = from_at(&d, 70.0, Some(&line)).unwrap_or_else(|| panic!("seed {seed}"));
+            assert!((c.period_s - 35.0).abs() < 0.5, "seed {seed}: {c:?}");
+            assert!(
+                (c.peak_to_peak / 1.6 - 1.0).abs() < 0.3,
+                "seed {seed}: {c:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_cycle_does_not_move_onto_a_fast_lines_alias() {
+        // An 8.18 s line reads as a 45 s alias in 10 s readings: a 45 s
+        // cycle found at 90 s stays there when the search lists that line.
+        let fast = 1.0 / (0.1 + 1.0 / 45.0);
+        let line = search_line(fast, 0.3, "ms", None);
+        for seed in 0..8 {
+            let d = sines(400 + seed, &[(45.0, 0.8)]);
+            assert!(from_90(&d, None).is_some(), "seed {seed}");
+            assert!(from_90(&d, Some(&line)).is_none(), "seed {seed}");
+        }
+    }
+
+    #[test]
+    fn a_fast_lines_alias_sharing_the_phases_is_left_out_of_them() {
+        // A 45 s cycle beside a listed 3.75 s escape-wheel line, whose 30 s
+        // alias (a third of 90 s) is half the cycle's size and not listed
+        // itself: the alias is left out of the nine phases and the cycle
+        // moves; a 90 s and 45 s mix beside the same line stays.
+        let line = search_line(3.75, 0.3, "ms", Some("escape wheel"));
+        for seed in 0..8 {
+            let d = sines(600 + seed, &[(45.0, 0.8), (30.0, 0.4)]);
+            let c = from_90(&d, Some(&line)).unwrap_or_else(|| panic!("seed {seed}"));
+            assert!((c.period_s - 45.0).abs() < 0.5, "seed {seed}: {c:?}");
+            let d = sines(700 + seed, &[(90.0, 0.8), (45.0, 0.8), (30.0, 0.4)]);
+            assert!(from_90(&d, Some(&line)).is_none(), "seed {seed}");
+        }
+    }
+
+    #[test]
+    fn the_headline_names_a_cycle_found_at_twice_its_period_at_its_own() {
+        // Through the whole check: a 45 s cycle beside a listed 3.75 s
+        // line's 30 s alias half its size reads as 45 s; a 90 s cycle
+        // beside the same alias as 90 s.
+        let tau = 2.0 * std::f64::consts::PI;
+        for seed in 0..8 {
+            for (p, name) in [(45.0, "every 45 s"), (90.0, "every 90 s")] {
+                let mut z = Noise(500 + seed);
+                let y: Vec<f64> = (0..720)
+                    .map(|i| {
+                        let t = 10.0 * (i as f64 + 0.5);
+                        5.0 + 0.8 * (tau * t / p + 0.3).sin()
+                            + 0.4 * (tau * t / 30.0 + 1.2).sin()
+                            + z.next()
+                    })
+                    .collect();
+                let s = rate_check(y, 3.75, &[]);
+                assert!(
+                    s.headline.starts_with(&format!("Rate repeats {name}")),
+                    "{p} s, seed {seed}: {}",
+                    s.headline
+                );
+            }
+        }
     }
 }

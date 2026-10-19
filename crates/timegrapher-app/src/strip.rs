@@ -103,9 +103,12 @@ pub struct StripInput {
     /// With the Mask tool on: a stretch dragged over, start and end, to
     /// mask out of the readings.
     pub mask: Option<(f64, f64)>,
-    /// With the Mask tool on: a click at this time, to bring back the
-    /// masked stretch there.
+    /// A right click at this time, or a click with the Mask tool on, to
+    /// bring back the masked stretch there.
     pub unmask_at: Option<f64>,
+    /// With the Mask tool on: an edge of a masked stretch dragged, the
+    /// stretch as it was and as it is now.
+    pub reshape: Option<((f64, f64), (f64, f64))>,
 }
 
 impl Default for StripInput {
@@ -119,6 +122,7 @@ impl Default for StripInput {
             hover_t: None,
             mask: None,
             unmask_at: None,
+            reshape: None,
         }
     }
 }
@@ -235,7 +239,7 @@ fn joined(points: &[&[f64; 2]], gap_s: f64) -> Vec<([f64; 2], [f64; 2])> {
 impl Overlay {
     /// The scale's ends: the values in view with a little room either side.
     fn range(&self, from_s: f64, to_s: f64) -> Option<(f64, f64)> {
-        let mut vals: Vec<f64> = self
+        let vals: Vec<f64> = self
             .points
             .iter()
             .filter(|p| p[0] >= from_s && p[0] <= to_s && p[1].is_finite())
@@ -244,11 +248,9 @@ impl Overlay {
         if vals.is_empty() {
             return None;
         }
-        // The 2nd to 98th percentile, so a few stray readings (the first
-        // seconds of a session, say) don't squash the rest flat.
-        vals.sort_by(f64::total_cmp);
-        let at = |q: f64| vals[((vals.len() - 1) as f64 * q).round() as usize];
-        let (lo, hi) = (at(0.02), at(0.98));
+        // Every value in view fits, as on the charts.
+        let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let mid = (lo + hi) / 2.0;
         let half = ((hi - lo) * 0.55).max(self.min_span / 2.0);
         Some((mid - half, mid + half))
@@ -603,6 +605,19 @@ fn axis_ms(ms: f64) -> String {
     }
 }
 
+/// The masked stretch with an edge within a few points of `p` along the
+/// time axis: its start and end, and whether the edge is its start.
+fn edge_near(masked: &[(f64, f64)], p: Pos2, g: &Geom) -> Option<(f64, f64, bool)> {
+    let along = |q: Pos2| if g.horizontal { q.x } else { q.y };
+    let gap = |t: f64| (along(g.pos(0.0, t)) - along(p)).abs();
+    masked
+        .iter()
+        .flat_map(|&(a, b)| [(a, b, true, gap(a)), (a, b, false, gap(b))])
+        .filter(|e| e.3 <= 5.0)
+        .min_by(|x, y| x.3.total_cmp(&y.3))
+        .map(|(a, b, start, _)| (a, b, start))
+}
+
 /// Shade the masked stretches across the plotting area `r` between
 /// `oldest` and `end`, each named "Masked" at its start where there is
 /// room, and the stretch being dragged over (`dragging`) more strongly.
@@ -755,28 +770,66 @@ pub fn draw_strip(
         .hover_pos()
         .filter(|p| r.contains(*p))
         .map(|p| g.time_at(p));
+    let at = |p: Option<Pos2>| p.map(|p| g.time_at(p).clamp(oldest, end_s));
+    // A right click on a masked stretch brings it back, Mask on or off.
+    if resp.secondary_clicked() {
+        input.unmask_at = at(resp.interact_pointer_pos());
+    }
     // The Mask tool: where a drag began, kept between frames, and the
-    // stretch it covers so far.
+    // stretch it covers so far. A drag that begins on the edge of a masked
+    // stretch moves that edge instead.
     let mut masking_now: Option<(f64, f64)> = None;
+    let mut reshaping: Option<(f64, f64)> = None;
     if extras.masking {
         let id = resp.id.with("mask-from");
-        let at = |p: Option<Pos2>| p.map(|p| g.time_at(p).clamp(oldest, end_s));
+        let edge_id = resp.id.with("mask-edge");
         if resp.drag_started() {
-            if let Some(t) = at(resp.interact_pointer_pos()) {
-                ui.data_mut(|d| d.insert_temp(id, t));
+            if let Some(p) = resp.interact_pointer_pos() {
+                match edge_near(extras.masked, p, &g) {
+                    Some(e) => ui.data_mut(|d| d.insert_temp(edge_id, e)),
+                    None => {
+                        if let Some(t) = at(Some(p)) {
+                            ui.data_mut(|d| d.insert_temp(id, t));
+                        }
+                    }
+                }
             }
         }
         let from: Option<f64> = ui.data(|d| d.get_temp(id));
-        if let (Some(a), Some(b)) = (from, at(resp.interact_pointer_pos())) {
+        let edge: Option<(f64, f64, bool)> = ui.data(|d| d.get_temp(edge_id));
+        let now = at(resp.interact_pointer_pos());
+        if let (Some(a), Some(b)) = (from, now) {
             masking_now = Some((a.min(b), a.max(b)));
         }
+        if let (Some((a, b, start)), Some(t)) = (edge, now) {
+            // The other edge stays put; dragging past it turns the
+            // stretch round.
+            let fixed = if start { b } else { a };
+            reshaping = Some((a, b));
+            masking_now = Some((fixed.min(t), fixed.max(t)));
+        }
         if resp.drag_stopped() {
-            input.mask = masking_now;
-            ui.data_mut(|d| d.remove::<f64>(id));
+            match (edge, masking_now) {
+                (Some((a, b, _)), Some(new)) => input.reshape = Some(((a, b), new)),
+                _ => input.mask = masking_now,
+            }
+            ui.data_mut(|d| {
+                d.remove::<f64>(id);
+                d.remove::<(f64, f64, bool)>(edge_id);
+            });
         } else if resp.clicked() {
             input.unmask_at = at(resp.interact_pointer_pos());
         }
-        if resp.hovered() {
+        let on_edge = resp
+            .hover_pos()
+            .is_some_and(|p| edge_near(extras.masked, p, &g).is_some());
+        if resp.hovered() && (on_edge || edge.is_some()) {
+            ui.ctx().set_cursor_icon(if view.horizontal {
+                egui::CursorIcon::ResizeHorizontal
+            } else {
+                egui::CursorIcon::ResizeVertical
+            });
+        } else if resp.hovered() {
             ui.ctx().set_cursor_icon(if view.horizontal {
                 egui::CursorIcon::ResizeColumn
             } else {
@@ -884,10 +937,17 @@ pub fn draw_strip(
         !test,
         &vis,
     );
+    // The stretch whose edge is being dragged is drawn as it will be.
+    let masked: Vec<(f64, f64)> = extras
+        .masked
+        .iter()
+        .copied()
+        .filter(|&m| Some(m) != reshaping)
+        .collect();
     paint_masked(
         &painter,
         r,
-        extras.masked,
+        &masked,
         masking_now,
         oldest,
         end_s,
@@ -1195,6 +1255,35 @@ mod tests {
             for t in [40.0, 55.5, 100.0] {
                 assert!((g.time_at(g.pos(3.0, t)) - t).abs() < 1e-3);
             }
+        }
+    }
+
+    /// A drag that begins within a few points of a masked stretch's edge
+    /// takes that edge, the nearer one when two are close.
+    #[test]
+    fn an_edge_is_found_under_the_pointer() {
+        for horizontal in [false, true] {
+            let g = Geom {
+                r: Rect::from_min_size(Pos2::new(50.0, 20.0), Vec2::new(400.0, 300.0)),
+                half: 10.0,
+                span: 60.0,
+                end: 100.0,
+                horizontal,
+            };
+            let m = [(50.0, 60.0), (60.5, 70.0)];
+            assert_eq!(
+                edge_near(&m, g.pos(2.0, 50.0), &g),
+                Some((50.0, 60.0, true))
+            );
+            assert_eq!(
+                edge_near(&m, g.pos(-4.0, 70.0), &g),
+                Some((60.5, 70.0, false))
+            );
+            assert_eq!(
+                edge_near(&m, g.pos(0.0, 60.1), &g),
+                Some((50.0, 60.0, false))
+            );
+            assert_eq!(edge_near(&m, g.pos(0.0, 55.0), &g), None);
         }
     }
 
