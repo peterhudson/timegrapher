@@ -309,7 +309,8 @@ pub fn sound_server() -> Option<&'static str> {
     }
 }
 
-/// Fixes on macOS and Windows: which setting to change, in words.
+/// Notes on macOS and Windows, where no command is offered: what the check
+/// found and where the setting it concerns is, in words.
 pub fn other_fixes(check: &SignalCheck, os: &str) -> Vec<Fix> {
     let mut fixes = Vec::new();
     let mut fix = |issue, description: String| {

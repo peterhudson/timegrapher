@@ -370,8 +370,9 @@ fn font_attrs(f: &egui::FontId) -> String {
     format!(r#"{family} font-size="{}""#, n(f.size))
 }
 
-/// Text as one `<text>` a row, a `<tspan>` for each run of one style, each
-/// placed where egui laid its first letter.
+/// Text as a `<text>` for each run of one style in a row, each placed where
+/// egui laid its first letter. No `<tspan>`: SVG Tiny, all that some
+/// viewers read (Qt's among them), doesn't place one by its own x and y.
 fn text(out: &mut String, t: &TextShape) {
     let job = &t.galley.job;
     // Which section each letter of the text belongs to, so the laid-out
@@ -417,7 +418,6 @@ fn text(out: &mut String, t: &TextShape) {
         if runs.iter().all(|(_, _, txt)| txt.trim().is_empty()) {
             continue;
         }
-        let _ = write!(out, r#"<text xml:space="preserve"{transform}>"#);
         for (s, pos, txt) in runs {
             let Some(section) = job.sections.get(s) else {
                 continue;
@@ -435,15 +435,15 @@ fn text(out: &mut String, t: &TextShape) {
             }
             let _ = write!(
                 out,
-                r#"<tspan x="{}" y="{}" {}{}>{}</tspan>"#,
+                r#"<text xml:space="preserve" x="{}" y="{}" {}{}{transform}>{}</text>"#,
                 n(pos.x),
                 n(pos.y),
                 font_attrs(&f.font_id),
                 paint("fill", color),
                 escape(&txt),
             );
+            out.push('\n');
         }
-        out.push_str("</text>\n");
     }
 }
 
@@ -548,6 +548,10 @@ mod tests {
         );
         assert!(s.contains(r#"fill-opacity="0.5""#), "{s}");
         assert!(s.contains("Rate &lt;s/day&gt;"), "{s}");
+        // Each run of text placed on its own <text>, which SVG Tiny viewers
+        // read too.
+        assert!(!s.contains("tspan"), "{s}");
+        assert!(s.contains(r#"<text xml:space="preserve" x=""#), "{s}");
         assert!(s.contains(r##"fill="#c81e28""##), "text colour: {s}");
         assert!(s.contains(r#"font-size="12""#), "{s}");
         assert!(!s.contains("#00ff00"), "outside shape kept: {s}");

@@ -644,8 +644,9 @@ pub fn acf(y: &[f64], max_lag: usize) -> Vec<f64> {
 }
 
 /// Overlapping Allan deviation of a series of averages (frequency-type
-/// data) at octave multiples of one reading. A block counts when at
-/// least three quarters of its readings exist.
+/// data) at octave multiples of one reading. A block counts only when
+/// every one of its readings exists: one at the edge of a gap is left
+/// out, not averaged over what is left.
 pub fn allan(y: &[f64], step: f64) -> Vec<(f64, f64, usize)> {
     let n = y.len();
     let mut sum = vec![0.0; n + 1];
@@ -657,7 +658,7 @@ pub fn allan(y: &[f64], step: f64) -> Vec<(f64, f64, usize)> {
     }
     let block = |a: usize, m: usize| {
         let c = cnt[a + m] - cnt[a];
-        (4 * c >= 3 * m).then(|| (sum[a + m] - sum[a]) / c as f64)
+        (c == m).then(|| (sum[a + m] - sum[a]) / c as f64)
     };
     let mut out = Vec::new();
     let mut m = 1;
@@ -1380,8 +1381,9 @@ fn clears_alias(period: f64, explained: f64, d: &Grid, search: Option<&Period>) 
 ///
 /// The moved cycle's period is half the period found, which the fold
 /// pinned to under half a reading; its share and size are those of the
-/// two sines, since a fold at 4.5 readings a turn puts readings of
-/// different phases in one bin and reads low. Net of a fast line's alias
+/// fitted sines (one at seven readings a turn, else two), since a fold
+/// at 4.5 readings a turn puts readings of different phases in one bin
+/// and reads low. Net of a fast line's alias
 /// at a turn and a half or more of it, as for any cycle.
 fn half_cycle(
     c: &Cycle,
@@ -2037,7 +2039,7 @@ pub fn check(
     cfg: &Config,
 ) -> Report {
     let map = crate::longrun::true_time(clock, &long.breaks);
-    let cuts = crate::longrun::cuts(clock, &long.breaks);
+    let gaps = crate::longrun::gaps(clock, &long.breaks);
     let beats: Vec<Beat> = log
         .beats
         .iter()
@@ -2047,10 +2049,20 @@ pub fn check(
         })
         .collect();
 
-    // Rate readings; none reaches across a break.
+    // Rate readings; none reaches across a break, and none is taken from
+    // part of its span: each of its 2 s stretches (the amplitude
+    // windows' length) must hold beats, so a reading at the edge of a gap
+    // or a masked stretch is left out, not averaged over what is left.
     let r = cfg.rate_reading_s;
+    let astep = log
+        .amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
     let mut wins = timing::windows(&beats, log.bph, r, r);
-    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
+    wins.retain(|w| {
+        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
+            && covered(&beats, w.start_s, w.end_s, astep)
+    });
     let rate_grid = match wins.first() {
         Some(w0) => {
             let t0 = w0.start_s;
@@ -2080,7 +2092,6 @@ pub fn check(
 
     // Amplitude and beat error windows.
     let aw = &log.amplitude_windows;
-    let astep = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
     let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
         let Some(w0) = aw.first() else {
             return Grid {
@@ -2268,8 +2279,22 @@ pub fn check(
     }
 }
 
+/// Whether every stretch of `part` seconds from `start` to `end` holds a
+/// beat (`beats` sorted by time).
+fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
+    let k = ((end - start) / part).round().max(1.0) as usize;
+    let len = (end - start) / k as f64;
+    (0..k).all(|j| {
+        let a = start + j as f64 * len;
+        let i = beats.partition_point(|b| b.time < a);
+        beats.get(i).is_some_and(|b| b.time < a + len)
+    })
+}
+
 /// Average the windows of `fine` into `n` readings of `step` seconds
-/// from `t0`. A reading needs at least half its windows.
+/// from `t0`. A reading needs every one of its windows: one at the edge
+/// of a gap or a masked stretch, or with a window missing, is left out
+/// rather than taken from part of its span.
 fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
     let mut sum = vec![0.0; n];
     let mut count = vec![0usize; n];
@@ -2280,14 +2305,22 @@ fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
             count[b as usize] += 1;
         }
     }
-    let need = ((step / fine.step / 2.0).ceil() as usize).max(1);
+    // The windows whose middles fall in each reading: all of them must be
+    // there. At a reading length that isn't a whole number of windows,
+    // readings hold one window more or fewer in turn.
+    let need = |b: usize| {
+        let lo = (t0 + b as f64 * step - fine.t0) / fine.step;
+        let hi = lo + step / fine.step;
+        ((hi - 0.5).ceil() - (lo - 0.5).ceil()).max(1.0) as usize
+    };
     Grid {
         t0,
         step,
         y: sum
             .iter()
             .zip(&count)
-            .map(|(s, &c)| if c >= need { s / c as f64 } else { f64::NAN })
+            .enumerate()
+            .map(|(b, (s, &c))| if c >= need(b) { s / c as f64 } else { f64::NAN })
             .collect(),
     }
 }
@@ -3345,5 +3378,65 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn no_reading_is_taken_from_part_of_its_span() {
+        // Five 2 s windows a 10 s reading: one missing (the edge of a gap
+        // or a mask) leaves the reading out.
+        let mut fine = grid(vec![1.0; 15], 2.0);
+        fine.y[7] = f64::NAN;
+        let r = rebin(&fine, 0.0, 10.0, 3);
+        assert_eq!(r.y[0], 1.0);
+        assert!(r.y[1].is_nan(), "{:?}", r.y);
+        assert_eq!(r.y[2], 1.0);
+        // At 15 s, readings hold seven and eight windows in turn: an hour
+        // of whole windows keeps every reading, and one missing window
+        // loses only its own.
+        let mut fine = grid(vec![1.0; 1800], 2.0);
+        let r = rebin(&fine, 0.0, 15.0, 240);
+        assert!(r.y.iter().all(|v| *v == 1.0), "{:?}", r.y);
+        fine.y[100] = f64::NAN;
+        let r = rebin(&fine, 0.0, 15.0, 240);
+        let lost: Vec<usize> = (0..240).filter(|&b| r.y[b].is_nan()).collect();
+        assert_eq!(lost, vec![13]);
+        // Rate readings: beats in each 2 s of the 10 s, or none.
+        let beats: Vec<Beat> = (0..160)
+            .filter(|&i| !(80..96).contains(&i))
+            .map(|index| Beat {
+                time: index as f64 * 0.125,
+                index,
+                quality: 1.0,
+            })
+            .collect();
+        assert!(covered(&beats, 0.0, 10.0, 2.0));
+        assert!(!covered(&beats, 10.0, 20.0, 2.0));
+        // Allan deviation: a block with a reading missing is left out.
+        let mut y: Vec<f64> = (0..64).map(|i| (i % 2) as f64).collect();
+        y[5] = f64::NAN;
+        let whole = allan(&y, 1.0);
+        let four = whole.iter().find(|a| a.0 == 4.0).unwrap();
+        // 57 pairs of 4-reading blocks, less the 6 with reading 5 in
+        // either block: 51, or 12 independent (3 of 4 readings used to
+        // be enough, keeping all 57).
+        assert_eq!(four.2, 12, "{whole:?}");
+        // A break with 1 s of no sound after 300 s of audio: a window
+        // reaching 0.3 s into the gap misses the cut halfway through it
+        // but is left out; one ending or starting at an edge is whole.
+        let breaks = [crate::breaks::Break {
+            audio_s: 300.0,
+            gap_s: 1.0,
+        }];
+        let gaps = crate::longrun::gaps(None, &breaks);
+        assert!(
+            (gaps[0].0 - 300.0).abs() < 1e-5 && gaps[0].1 == 301.0,
+            "{gaps:?}"
+        );
+        let cut = crate::longrun::cuts(None, &breaks)[0];
+        assert!(!(290.3 < cut && cut < 300.3));
+        assert!(crate::longrun::touches_gap(&gaps, 290.3, 300.3));
+        assert!(crate::longrun::touches_gap(&gaps, 300.8, 310.8));
+        assert!(!crate::longrun::touches_gap(&gaps, 290.0, 300.0));
+        assert!(!crate::longrun::touches_gap(&gaps, 301.0, 311.0));
     }
 }

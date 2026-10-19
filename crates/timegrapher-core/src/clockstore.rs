@@ -11,7 +11,8 @@
 //! Inputs are keyed by the name they are opened by. Under PipeWire or
 //! PulseAudio the system's default input is one name whatever card is
 //! behind it, so a correction stored for it holds only while the same
-//! card stays the default.
+//! card stays the default: a new card made the default is read with the
+//! old card's correction until that entry is forgotten or replaced.
 
 use crate::clock::ClockFit;
 use serde::{Deserialize, Serialize};

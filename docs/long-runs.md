@@ -118,11 +118,15 @@ straight on across each break while the clock jumps. `long`, `series` and
 older takes from the step in `clock.csv`, and read each stretch on its own:
 the clock fit takes the gap out before fitting, so a pause no longer reads
 as a huge sound-card error; rate and beat error are fitted per stretch and
-combined weighted by beats; no 10 s window or slice reaches across a
-break; and the period search and Steadiness run on true time, so a gap is
-a missing stretch. The JSON lists the breaks as `breaks`. `analyze` on a
-single file does not look for breaks, so read a paused take with `long`,
-`series` or `session`.
+combined weighted by beats; no 10 s window or slice reaches into a
+break's gap from either side (a slice that would is left empty, rate,
+beat error and amplitude alike, rather than read from part of its
+span), and the gap runs from the last sound before the pause to where
+the clock log shows it took up again, so sound inside it belongs to
+neither stretch; and the period search and Steadiness run on true time,
+so a gap is a missing stretch. The JSON lists the breaks as `breaks`.
+`analyze` on a single file does not look for breaks, so read a paused
+take with `long`, `series` or `session`.
 
 ## How the search works
 

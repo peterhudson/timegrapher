@@ -201,3 +201,30 @@ fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
         assert_eq!(m.breaks.len(), 1);
     }
 }
+
+#[test]
+fn the_clock_takes_the_listed_break() {
+    // Logged as the recorder does: the first entry after the resume comes
+    // a block (here 1 s) after the listed frame, so the log alone puts the
+    // gap there and the audio in between reads as before it.
+    let dir = std::env::temp_dir().join(format!("tg-breaks-clock-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, mut pairs, join_s) = take(&dir);
+    let i = pairs.iter().position(|q| q.0 == join_s).unwrap();
+    pairs[i].0 += 1.0;
+    pairs[i].1 += 1.0 * (1.0 + 20e-6);
+    let mut clock = ClockFit::new(&pairs).unwrap();
+    assert!((clock.breaks[0].audio_s - (join_s + 1.0)).abs() < 1e-6);
+    let before = clock.map(join_s + 0.5);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(found.len(), 1);
+    assert!(
+        (clock.breaks[0].audio_s - join_s).abs() < 1e-6,
+        "{:?}",
+        clock.breaks
+    );
+    let after = clock.map(join_s + 0.5);
+    assert!((after - before - GAP_S).abs() < 0.01, "{before} {after}");
+    assert!((clock.map(join_s - 0.5) - (join_s - 0.5) * (1.0 + 20e-6)).abs() < 0.01);
+}

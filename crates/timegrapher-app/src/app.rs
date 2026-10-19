@@ -106,6 +106,9 @@ use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 enum Confirm {
     NewSession,
     Quit,
+    /// Start listening to the microphone, over a recording whose masks
+    /// changed.
+    Microphone,
     /// Open a recording (analysed whole, or replayed when `replay`).
     Open {
         path: PathBuf,
@@ -408,13 +411,19 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
 }
 
 const MASK_HINT: &str = "Leave stretches out of the readings, such as a bump of the stand: \
-     with Mask on, drag along the strip over the beats to mask them, and click a masked \
-     stretch to bring it back. A take saved from the app keeps them; masking a recording \
-     opened from disk lasts until it is closed.";
+     with Mask on, drag along the strip over the beats to mask them, drag a masked \
+     stretch's edge to move it, and click a masked stretch to bring it back. A right click \
+     on one brings it back too, Mask on or off. Stretches that overlap join into one. A take \
+     saved from the app keeps them; a recording opened from disk keeps them once Save Masks \
+     is used.";
 const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
      .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
      of its controls.";
+const SAVE_MASKS_HINT: &str = "Save the masked stretches to the recording's session file, so \
+     they come back when it is opened again; nothing else in the file changes. A recording \
+     with no session file gets one, which makes its folder a take: refused where the folder \
+     holds other recordings, or a session file that doesn't list the recording.";
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
      position. Listening carries on into the new session, unless closing the kept sound \
      fails; a replay stops. Unsaved sound is asked about first.";
@@ -654,7 +663,25 @@ const WIDTHS: [f64; 16] = [
 ];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
 /// run.
-const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
+/// The strip's lengths, then Fit, which stands for the whole session.
+const SPANS: [f64; 8] = [
+    10.0,
+    30.0,
+    60.0,
+    300.0,
+    1800.0,
+    3600.0,
+    7200.0,
+    f64::INFINITY,
+];
+
+fn span_label(v: f64) -> String {
+    if v.is_infinite() {
+        "Fit".into()
+    } else {
+        fields::duration(v)
+    }
+}
 /// Lift angles offered, degrees.
 const LIFTS: [f64; 6] = [44.0, 49.0, 50.0, 52.0, 53.0, 55.0];
 /// Most points kept on a chart when it is rebuilt from the whole session.
@@ -700,7 +727,7 @@ fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
     let mut out = Vec::new();
     let mut t = step;
     while t <= end + 1e-9 {
-        out.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
+        out.push(TrendPoint::of(t, &live.reading_at(t, seconds), seconds));
         t += step;
     }
     out
@@ -731,7 +758,24 @@ struct TrendPoint {
 }
 
 impl TrendPoint {
-    fn of(t: f64, r: &LiveReading) -> Self {
+    /// The reading at `t` over `seconds`; a reading over less than nine
+    /// tenths of its averaging time (just after the start or a break) has
+    /// no values, since it isn't the average the chart is of.
+    fn of(t: f64, r: &LiveReading, seconds: f64) -> Self {
+        // The beats' span falls up to a beat short of the time they cover.
+        let covered = r.span_s + r.bph.map_or(0.0, |b| 3600.0 / b as f64);
+        if covered < 0.9 * seconds {
+            return TrendPoint {
+                t,
+                rate: None,
+                amplitude: None,
+                amplitude_a: None,
+                amplitude_b: None,
+                beat_error_unlock: None,
+                beat_error_drop: None,
+                heard: false,
+            };
+        }
         TrendPoint {
             t,
             rate: r.rate_s_per_day,
@@ -854,6 +898,10 @@ pub struct TimegrapherApp {
     /// Stretches masked out of the readings on the strip, start and end in
     /// the session's seconds, sorted and apart. Saved with the take.
     masked: Vec<(f64, f64)>,
+    /// For a recording opened from disk: the stretches its session file
+    /// masked when it was opened or last saved to, so a change can be
+    /// asked about before it is thrown away. None for a microphone session.
+    opened_masks: Option<Vec<(f64, f64)>>,
     /// The strip's Mask tool is on: dragging along it masks a stretch, and
     /// a click on a masked one brings it back.
     masking: bool,
@@ -976,6 +1024,15 @@ pub struct TimegrapherApp {
     sound_opts: profiles::Options,
     sound_history: Vec<(f64, Profiles)>,
     sound_at: Option<(f64, Profiles)>,
+    /// The jumps in the live sound's beats as of the last pass, to see a
+    /// new one.
+    jumps_seen: Vec<f64>,
+    /// Masks on the recording on show let go by the answer to the ask
+    /// before listening, so starting doesn't ask again.
+    masks_let_go: bool,
+    /// The Positions Test to begin once the ask before listening is
+    /// answered: just after winding (`None`) or the 24 hour half.
+    guided_after_ask: Option<Option<guided::FullWind>>,
     sound_job: Option<(f64, std::sync::mpsc::Receiver<Profiles>)>,
     /// Offer every input the system lists, not just one per microphone.
     all_inputs: bool,
@@ -1207,6 +1264,7 @@ impl TimegrapherApp {
             other_trends: Default::default(),
             strip_points: None,
             masked: Vec::new(),
+            opened_masks: None,
             masking: false,
             confirm: None,
             opened_path: String::new(),
@@ -1272,6 +1330,9 @@ impl TimegrapherApp {
             sound_opts: profiles::Options::default(),
             sound_history: Vec::new(),
             sound_at: None,
+            jumps_seen: Vec::new(),
+            masks_let_go: false,
+            guided_after_ask: None,
             sound_job: None,
             all_inputs: false,
             opened_at: Instant::now(),
@@ -1450,10 +1511,30 @@ impl TimegrapherApp {
         }
     }
 
+    /// Listen, the masks on the recording on show saved or let go: and
+    /// begin the Positions Test when that is what asked. They stay on show
+    /// until listening starts, so a microphone that fails to open leaves
+    /// them to save.
+    fn listen_after_ask(&mut self) {
+        self.masks_let_go = true;
+        match self.guided_after_ask.take() {
+            Some(half) => self.start_guided(half),
+            None => self.start_microphone(),
+        }
+        self.masks_let_go = false;
+    }
+
     /// Listen to the microphone: carry on the paused session if there is
     /// one, else start a new one.
     fn start_microphone(&mut self) {
+        let let_go = std::mem::take(&mut self.masks_let_go);
         if self.refuse_faulted_recording() {
+            return;
+        }
+        // Listening replaces the recording on show: changed masks on it
+        // are asked about first.
+        if !let_go && self.masks_unsaved() {
+            self.confirm = Some(Confirm::Microphone);
             return;
         }
         if self.can_resume() {
@@ -1478,6 +1559,7 @@ impl TimegrapherApp {
                 ));
                 // A new take: nothing of it masked yet.
                 self.masked.clear();
+                self.opened_masks = None;
                 self.masking = false;
                 self.reset_session(
                     c.sample_rate,
@@ -1595,6 +1677,7 @@ impl TimegrapherApp {
         self.session.clear();
         self.live = None;
         self.masked.clear();
+        self.opened_masks = None;
         self.masking = false;
         self.clear_trends();
         self.sound_history.clear();
@@ -1659,6 +1742,93 @@ impl TimegrapherApp {
         self.session.recording_fault().is_some()
             || self.unsaved_s() > 5.0
             || self.metadata_unsaved()
+            || self.masks_unsaved()
+    }
+
+    /// A recording opened from disk whose masked stretches have changed
+    /// since it was opened or last saved to.
+    fn masks_unsaved(&self) -> bool {
+        !self.session.mic()
+            && self
+                .opened_masks
+                .as_ref()
+                .is_some_and(|m| *m != self.masked)
+    }
+
+    /// Save the masked stretches of the recording opened from disk to its
+    /// session file, so they come back when it is opened again. A take's
+    /// session file keeps everything else it says, comments too, and only
+    /// its `masked` changes on the entries for what was opened. A lone file,
+    /// or a folder with no session file, gets a new one, as a take
+    /// recorded here with the same settings would have, which makes its
+    /// folder a take; refused where the folder holds other recordings.
+    fn save_masks(&mut self) {
+        let path = PathBuf::from(&self.opened_path);
+        let masked: Vec<[f64; 2]> = self.masked.iter().map(|&(a, b)| [a, b]).collect();
+        let saved = match read_manifest(&path) {
+            Ok(Some(_)) => save_masks_to_take(&path, &masked),
+            Ok(None) => self.new_take_file(&path, &masked),
+            Err(e) => Err(e),
+        };
+        match saved {
+            Ok(file) => {
+                self.opened_masks = Some(self.masked.clone());
+                self.info_msg(format!("Saved the masked stretches to {}.", file.display()));
+            }
+            Err(e) => self.error(format!("Couldn't save the masked stretches: {e}")),
+        }
+    }
+
+    /// A new session file for `path`, a lone file or a folder with none,
+    /// listing it with `masked`: what saving a take recorded here writes.
+    fn new_take_file(&self, path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, String> {
+        // The whole folder, as the recorder lists a take's sound: a lone
+        // file is the whole of its folder's take (see `lists`).
+        let dir = if path.is_dir() {
+            path.to_path_buf()
+        } else {
+            path.parent()
+                .ok_or_else(|| format!("{} has no folder", path.display()))?
+                .to_path_buf()
+        };
+        let file = ".".to_string();
+        let target = dir.join(MANIFEST);
+        if target.exists() {
+            return Err(format!(
+                "{} doesn't list {}, so it is left as it is.",
+                target.display(),
+                capture_label(path)
+            ));
+        }
+        if !path.is_dir() {
+            let others = recordings_in(&dir)?
+                .into_iter()
+                .filter(|f| f.file_name() != path.file_name())
+                .count();
+            if others > 0 {
+                return Err(format!(
+                    "saving them makes {} a take of {} alone, but it holds {others} other {}. \
+                     Move the recording into a folder of its own first.",
+                    dir.display(),
+                    capture_label(path),
+                    if others == 1 {
+                        "recording"
+                    } else {
+                        "recordings"
+                    }
+                ));
+            }
+        }
+        let mut m = self.manifest_header();
+        m.recordings = vec![RecordingEntry {
+            file,
+            position: Some(self.position.code().into()),
+            masked: masked.to_vec(),
+            ..Default::default()
+        }];
+        let text = toml::to_string_pretty(&m).map_err(|e| e.to_string())?;
+        write_replacing(&target, &text)?;
+        Ok(target)
     }
 
     /// Save Again: the sound so far into the take saved before, with no
@@ -1837,17 +2007,7 @@ impl TimegrapherApp {
     /// one entry per stretch in one position, in seconds into the sound
     /// saved, which `timegrapher session` reads as well.
     fn take_manifest(&self) -> Manifest {
-        let mut m = Manifest {
-            watch: (!self.watch.trim().is_empty()).then(|| self.watch.trim().to_string()),
-            calibre: (!self.calibre.is_empty()).then(|| self.calibre.clone()),
-            bph: self.bph.or(self.live.as_ref().and_then(|l| l.bph())),
-            lift: Some(self.lift_deg),
-            lift_known: Some(self.lift_known()),
-            ..Default::default()
-        };
-        if let Some(w) = self.cal.custom_wheels(&self.calibre) {
-            m.wheels = w.into_iter().collect();
-        }
+        let mut m = self.manifest_header();
         // The stretches masked out, in the saved sound's own time. Every
         // entry lists them all, so each comes back when the take is opened
         // or replayed, even one in a settling gap; `timegrapher session`
@@ -1903,6 +2063,24 @@ impl TimegrapherApp {
         m
     }
 
+    /// What a take's session file says about the watch: its name, calibre
+    /// (with the wheels of a custom one), beat rate and lift angle, and
+    /// whether that lift was chosen or assumed.
+    fn manifest_header(&self) -> Manifest {
+        let mut m = Manifest {
+            watch: (!self.watch.trim().is_empty()).then(|| self.watch.trim().to_string()),
+            calibre: (!self.calibre.is_empty()).then(|| self.calibre.clone()),
+            bph: self.bph.or(self.live.as_ref().and_then(|l| l.bph())),
+            lift: Some(self.lift_deg),
+            lift_known: Some(self.lift_known()),
+            ..Default::default()
+        };
+        if let Some(w) = self.cal.custom_wheels(&self.calibre) {
+            m.wheels = w.into_iter().collect();
+        }
+        m
+    }
+
     /// Take what a session file says about a recording: the watch, its
     /// calibre (a custom one is added to Your Calibres from its wheels),
     /// the lift angle and beat rate. Returns the positions it lists through
@@ -1935,6 +2113,7 @@ impl TimegrapherApp {
         // What the take masked out; its seconds are the strip's.
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.masked = timegrapher_core::session::masked_spans(&masked);
+        self.opened_masks = Some(self.masked.clone());
         let mut listed: Vec<(f64, Option<f64>, Position)> = entries
             .iter()
             .filter_map(|e| {
@@ -1966,7 +2145,7 @@ impl TimegrapherApp {
     /// sound from a microphone session is not thrown away without asking
     /// first.
     fn open_recording(&mut self, path: &Path, replay: bool, ask: bool) {
-        if ask && self.session.mic() && self.needs_save_confirmation() {
+        if ask && (self.session.mic() || self.masks_unsaved()) && self.needs_save_confirmation() {
             self.confirm = Some(Confirm::Open {
                 path: path.to_path_buf(),
                 replay,
@@ -2082,6 +2261,7 @@ impl TimegrapherApp {
     /// the last take's watch, with its position from the file's name when
     /// it carries one (reverso_DU_…), and a note saying so.
     fn fresh_setup(&mut self, path: &Path, files: &[PathBuf]) {
+        self.opened_masks = Some(Vec::new());
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
         let from_name =
@@ -2400,6 +2580,26 @@ impl TimegrapherApp {
                             self.clipped_at = Some(Instant::now());
                         }
                         if live.push(&b.samples) {
+                            // A jump the beats' timing shows is found a second
+                            // or two after it: the points read since reached
+                            // across it, so they go.
+                            let jumps = live.jumps();
+                            if jumps != self.jumps_seen.as_slice() {
+                                let recent = live.duration_s() - 10.0;
+                                let new = jumps
+                                    .iter()
+                                    .copied()
+                                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
+                                    .reduce(f64::min);
+                                if let Some(j) = new {
+                                    self.trend.retain(|p| p.t <= j);
+                                    for t in self.other_trends.values_mut() {
+                                        t.retain(|p| p.t <= j);
+                                    }
+                                    self.sound_history.retain(|h| h.0 <= j);
+                                }
+                                self.jumps_seen = jumps.to_vec();
+                            }
                             // While the watch settles after a move nothing is
                             // read; then the readings start afresh.
                             match self.session.settling_now(live.duration_s()) {
@@ -2414,10 +2614,11 @@ impl TimegrapherApp {
                             if !self.session.replay_reading_allowed(r.time_s) {
                                 continue;
                             }
-                            self.trend.push(TrendPoint::of(r.time_s, &r));
+                            self.trend
+                                .push(TrendPoint::of(r.time_s, &r, self.average_s));
                             for (&k, t) in self.other_trends.iter_mut() {
                                 let o = live.reading(k as f64 / 1000.0);
-                                t.push(TrendPoint::of(o.time_s, &o));
+                                t.push(TrendPoint::of(o.time_s, &o, k as f64 / 1000.0));
                             }
                             let p = live.tick_profiles();
                             let due = self
@@ -2644,6 +2845,22 @@ impl TimegrapherApp {
         self.set_masked(v);
     }
 
+    /// Move the edges of the masked stretch `was` to those of `now`; one
+    /// left under half a second is brought back. Stretches it now
+    /// overlaps join it.
+    fn reshape_mask(&mut self, was: (f64, f64), now: (f64, f64)) {
+        let Some(i) = self.masked.iter().position(|&m| m == was) else {
+            return;
+        };
+        let mut v = self.masked.clone();
+        v.remove(i);
+        let (a, b) = (now.0.max(0.0), now.1.min(self.latest_s().max(0.0)));
+        if b - a >= 0.5 {
+            v.push((a, b));
+        }
+        self.set_masked(v);
+    }
+
     /// Bring back the masked stretch over `t`, if there is one.
     fn unmask_at(&mut self, t: f64) {
         let v: Vec<(f64, f64)> = self
@@ -2695,6 +2912,13 @@ impl TimegrapherApp {
         let mean = pts.iter().map(|p| p.1).sum::<f64>() / n;
         let sd = (pts.iter().map(|p| (p.1 - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
         Some((mean, sd, span))
+    }
+
+    /// Show the whole session so far along the strip, ending at its latest
+    /// beat.
+    fn fit_strip(&mut self) {
+        self.view_end = None;
+        self.strip.set_span(self.latest_s());
     }
 
     fn end_s(&self) -> f64 {
@@ -2829,6 +3053,7 @@ impl TimegrapherApp {
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         let metadata = self.metadata_unsaved();
+        let masks = self.masks_unsaved();
         let fault = self.session.recording_fault().map(|f| f.description());
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_width(360.0);
@@ -2837,12 +3062,17 @@ impl TimegrapherApp {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
+                    Confirm::Microphone => "Start listening without saving?",
                 })
                 .font(theme::semibold(15.0)),
             );
             ui.add_space(4.0);
             ui.label(if let Some(fault) = &fault {
                 fault.clone()
+            } else if masks {
+                "Changes to the masked stretches haven't been saved to the recording's session \
+                 file and will be thrown away."
+                    .to_string()
             } else if metadata && self.unsaved_s() <= 0.0 {
                 "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
             } else if metadata {
@@ -2852,13 +3082,16 @@ impl TimegrapherApp {
             });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if fault.is_none() && ui.add(theme::primary(ui, "Save…")).clicked() {
+                let save = if masks { "Save Masks" } else { "Save…" };
+                if fault.is_none() && ui.add(theme::primary(ui, save)).clicked() {
                     choice = Some(0);
                 }
                 let go = match (&fault, &what) {
                     (Some(_), Confirm::Quit) => "Leave Files and Quit",
                     (Some(_), _) => "Leave Files and Continue",
-                    (None, Confirm::NewSession | Confirm::Open { .. }) => "Don't Save",
+                    (None, Confirm::NewSession | Confirm::Open { .. } | Confirm::Microphone) => {
+                        "Don't Save"
+                    }
                     (None, Confirm::Quit) => "Quit Without Saving",
                 };
                 if ui
@@ -2876,6 +3109,12 @@ impl TimegrapherApp {
             });
         });
         match choice {
+            Some(0) if masks => {
+                self.save_masks();
+                if self.needs_save_confirmation() {
+                    return; // saving failed
+                }
+            }
             Some(0) => {
                 // Saved before: the rest goes to the same copy.
                 self.save_again();
@@ -2886,6 +3125,7 @@ impl TimegrapherApp {
             Some(1) => {}
             Some(_) => {
                 self.confirm = None;
+                self.guided_after_ask = None;
                 return;
             }
             None => return,
@@ -2894,6 +3134,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
+            Confirm::Microphone => self.listen_after_ask(),
             Confirm::Quit => {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -3953,6 +4194,8 @@ impl TimegrapherApp {
             "Length",
             Some(
                 "Time shown along the strip, such as 30 s, 5 min or 2 h. \
+                 Fit shows the whole session so far, up to its latest beat, or its last \
+                 24 hours when it is longer. \
                  The mouse wheel on the strip changes it too.",
             ),
             |ui| {
@@ -3965,8 +4208,10 @@ impl TimegrapherApp {
                     &DURATION,
                     66.0,
                 );
-                let b = fields::presets(ui, "span-presets", &mut s, &SPANS, fields::duration);
-                if a || b {
+                let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
+                if b && s.is_infinite() {
+                    self.fit_strip();
+                } else if a || b {
                     self.strip.set_span(s);
                 }
             },
@@ -4072,6 +4317,21 @@ impl TimegrapherApp {
                 .clicked()
             {
                 self.set_masked(Vec::new());
+            }
+            // A recording opened from disk keeps its masks in its session
+            // file once saved.
+            if self.opened_masks.is_some()
+                && !self.session.mic()
+                && ui
+                    .add_enabled(self.masks_unsaved(), egui::Button::new("Save Masks"))
+                    .on_hover_text(SAVE_MASKS_HINT)
+                    .on_disabled_hover_text(
+                        "The masked stretches haven't changed since the recording was opened \
+                         or last saved",
+                    )
+                    .clicked()
+            {
+                self.save_masks();
             }
         });
         if !self.masked.is_empty() {
@@ -4209,7 +4469,16 @@ impl TimegrapherApp {
         ui.separator();
         let saved = self.session.saved_to().is_some();
         let can_save = self.session.allows(Action::Save);
-        if ui
+        if self.masks_unsaved() {
+            if ui
+                .button("Save Masks")
+                .on_hover_text(SAVE_MASKS_HINT)
+                .clicked()
+            {
+                ui.close();
+                self.save_masks();
+            }
+        } else if ui
             .add_enabled(
                 can_save,
                 egui::Button::new(if saved { "Save Again" } else { "Save…" })
@@ -5697,6 +5966,11 @@ impl TimegrapherApp {
                 self.resume_microphone();
             } else {
                 self.start_microphone();
+                if self.confirm == Some(Confirm::Microphone) {
+                    // The test begins once the masks are answered for.
+                    self.guided_after_ask = Some(half);
+                    return;
+                }
             }
         }
         if !self.running() {
@@ -6391,7 +6665,7 @@ impl TimegrapherApp {
         let mut t = key.0 as f64 * step;
         while t <= (key.1 as f64 * step).min(live.duration_s()) + 1e-9 {
             if t > 0.0 && self.session.replay_reading_allowed(t) {
-                pts.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
+                pts.push(TrendPoint::of(t, &live.reading_at(t, seconds), seconds));
             }
             t += step;
         }
@@ -6842,6 +7116,9 @@ impl TimegrapherApp {
         if let Some(t) = input.unmask_at {
             self.unmask_at(t);
         }
+        if let Some((was, now)) = input.reshape {
+            self.reshape_mask(was, now);
+        }
         if input.span_factor != 1.0 {
             self.strip.set_span(self.strip.span_s * input.span_factor);
         }
@@ -7261,8 +7538,7 @@ impl TimegrapherApp {
             // (below), instead of only when the pointer is on a line.
             .show_x(false)
             .show_y(false);
-        // Scale to the 2nd to 98th percentile of the lines, so that one
-        // glitch doesn't flatten them.
+        // Scale to hold every point of the lines.
         let window = self.chart_window();
         if window.is_some() && self.strip.horizontal {
             // Leave the room the strip keeps for its overlays' scales, so the
@@ -7276,7 +7552,7 @@ impl TimegrapherApp {
             .flat_map(|s| s.pts.iter().copied())
             .filter(|p| window.is_none_or(|(a, b)| p[0] >= a && p[0] <= b))
             .collect();
-        let y_range = percentile_range(&all);
+        let y_range = data_range(&all);
         if let Some((lo, hi)) = y_range {
             plot = plot.default_y_bounds(lo, hi);
         }
@@ -7313,19 +7589,23 @@ impl TimegrapherApp {
             }
             for l in series {
                 let w = if l.main { 1.8_f32 } else { 1.2_f32 };
-                if let Some(c) = l.under {
+                // Broken where there is no reading (a masked stretch, a
+                // pause, beats not found), not drawn straight across.
+                for seg in segments(&l.pts) {
+                    if let Some(c) = l.under {
+                        p.line(
+                            Line::new(format!("{} gaps", l.name), seg.clone())
+                                .color(c)
+                                .width(w),
+                        );
+                    }
                     p.line(
-                        Line::new(format!("{} gaps", l.name), l.pts.clone())
-                            .color(c)
+                        Line::new(l.name.clone(), seg)
+                            .color(l.color)
+                            .style(l.style)
                             .width(w),
                     );
                 }
-                p.line(
-                    Line::new(l.name, l.pts)
-                        .color(l.color)
-                        .style(l.style)
-                        .width(w),
-                );
             }
             let (hovered, clicked) = {
                 let r = p.response();
@@ -7441,6 +7721,29 @@ impl TimegrapherApp {
     }
 }
 
+/// The usual spacing of points sorted by x: the median gap.
+fn spacing(points: &[[f64; 2]]) -> f64 {
+    let mut gaps: Vec<f64> = points.windows(2).map(|w| w[1][0] - w[0][0]).collect();
+    gaps.sort_by(f64::total_cmp);
+    gaps.get(gaps.len() / 2).copied().unwrap_or(f64::INFINITY)
+}
+
+/// Points sorted by x in runs, split wherever one is missing: a gap of
+/// more than half again their usual spacing.
+fn segments(points: &[[f64; 2]]) -> Vec<Vec<[f64; 2]>> {
+    let gap = 1.5 * spacing(points);
+    let mut out: Vec<Vec<[f64; 2]>> = Vec::new();
+    for (i, &p) in points.iter().enumerate() {
+        if i == 0 || p[0] - points[i - 1][0] > gap {
+            out.push(Vec::new());
+        }
+        if let Some(seg) = out.last_mut() {
+            seg.push(p);
+        }
+    }
+    out
+}
+
 /// The value of the point nearest `x` in points sorted by x, unless the
 /// nearest is far off (a gap in the line).
 fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
@@ -7453,11 +7756,7 @@ fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
                 .abs()
                 .total_cmp(&(points[b][0] - x).abs())
         })?;
-    // The usual spacing of the points: the median gap.
-    let mut gaps: Vec<f64> = points.windows(2).map(|w| w[1][0] - w[0][0]).collect();
-    gaps.sort_by(f64::total_cmp);
-    let spacing = gaps.get(gaps.len() / 2).copied().unwrap_or(f64::INFINITY);
-    ((points[near][0] - x).abs() <= 3.0 * spacing).then_some(points[near][1])
+    ((points[near][0] - x).abs() <= 3.0 * spacing(points)).then_some(points[near][1])
 }
 
 /// The break before the beats newer than `seen`, from and to, when it is
@@ -7599,27 +7898,17 @@ fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
     }
 }
 
-/// The 2nd to 98th percentile of the values, padded a little.
-fn percentile_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
-    if points.len() < 2 {
-        return None;
-    }
-    let mut ys: Vec<f64> = points.iter().map(|p| p[1]).collect();
-    ys.sort_by(f64::total_cmp);
-    let q = |f: f64| ys[((ys.len() - 1) as f64 * f).round() as usize];
-    let (mut lo, mut hi) = (q(0.02), q(0.98));
-    // A burst of glitches longer than 2% of the points (a few seconds of
-    // knocking on a short window) still mustn't set the scale: nothing
-    // further than 8 robust spreads from the middle counts.
-    let mid = q(0.5);
-    let mut dev: Vec<f64> = ys.iter().map(|y| (y - mid).abs()).collect();
-    dev.sort_by(f64::total_cmp);
-    let sigma = 1.4826 * dev[(dev.len() - 1) / 2];
-    if sigma > 0.0 {
-        lo = lo.max(mid - 8.0 * sigma);
-        hi = hi.min(mid + 8.0 * sigma);
-    }
-    let pad = ((hi - lo) * 0.15).max(0.05);
+/// From the lowest value to the highest, padded a little, so every point
+/// drawn is inside the chart.
+fn data_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
+    let (lo, hi) = points
+        .iter()
+        .map(|p| p[1])
+        .filter(|y| y.is_finite())
+        .fold(None, |r: Option<(f64, f64)>, y| {
+            Some(r.map_or((y, y), |(lo, hi)| (lo.min(y), hi.max(y))))
+        })?;
+    let pad = ((hi - lo) * 0.08).max(0.05);
     Some((lo - pad, hi + pad))
 }
 
@@ -7905,14 +8194,10 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let m: Manifest =
         toml::from_str(&text).map_err(|e| format!("Can't read {}: {e}", file.display()))?;
-    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
-    };
     let entries: Vec<RecordingEntry> = m
         .recordings
         .iter()
-        .filter(|e| same(&dir.join(&e.file), path))
+        .filter(|e| lists(&dir, &e.file, path))
         .cloned()
         .collect();
     if entries.is_empty() {
@@ -7921,6 +8206,96 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
     m.validate_analysis_inputs()
         .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
     Ok(Some((m, entries)))
+}
+
+/// Whether a session file in `dir` whose entry names `file` lists `path`:
+/// the same file or folder, or the whole folder when `path` is the only
+/// recording in it, as a take saved for a lone file lists it.
+fn lists(dir: &Path, file: &str, path: &Path) -> bool {
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    let named = dir.join(file);
+    same(&named, path)
+        || (!path.is_dir()
+            && named.is_dir()
+            && path.parent().is_some_and(|p| same(p, &named))
+            && recordings_in(&named).is_ok_and(|f| f.len() == 1 && same(&f[0], path)))
+}
+
+/// Set `masked` on the entries of the session file beside `path` that
+/// list it, leaving the rest of the file as it was, comments and keys this
+/// app doesn't read too. Returns the session file.
+fn save_masks_to_take(path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, String> {
+    let dir = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .ok_or_else(|| format!("{} has no folder", path.display()))?
+            .to_path_buf()
+    };
+    let file = dir.join(MANIFEST);
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
+    let listed = |t: &dyn toml_edit::TableLike| {
+        t.get("file")
+            .and_then(|f| f.as_str())
+            .is_some_and(|f| lists(&dir, f, path))
+    };
+    let mut spans = toml_edit::Array::new();
+    for m in masked {
+        spans.push(toml_edit::Array::from_iter([m[0], m[1]]));
+    }
+    let set = |t: &mut dyn toml_edit::TableLike| {
+        if masked.is_empty() {
+            t.remove("masked");
+        } else {
+            t.insert("masked", toml_edit::value(spans.clone()));
+        }
+    };
+    let mut changed = 0;
+    match doc.get_mut("recording") {
+        Some(toml_edit::Item::ArrayOfTables(tables)) => {
+            for t in tables.iter_mut().filter(|t| listed(*t)) {
+                set(t);
+                changed += 1;
+            }
+        }
+        Some(toml_edit::Item::Value(toml_edit::Value::Array(entries))) => {
+            for t in entries.iter_mut().filter_map(|v| v.as_inline_table_mut()) {
+                if listed(t) {
+                    set(t);
+                    changed += 1;
+                }
+            }
+        }
+        _ => {}
+    }
+    if changed == 0 {
+        return Err(format!(
+            "{} doesn't list {}",
+            file.display(),
+            capture_label(path)
+        ));
+    }
+    write_replacing(&file, &doc.to_string())?;
+    Ok(file)
+}
+
+/// Write `text` to `target` through a file beside it, renamed over it once
+/// whole, so a failed write never leaves half a file.
+fn write_replacing(target: &Path, text: &str) -> Result<(), String> {
+    let name = format!(".{}.saving", file_name(target));
+    let temp = target.with_file_name(name);
+    std::fs::write(&temp, text)
+        .and_then(|()| std::fs::rename(&temp, target))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            format!("{}: {e}", target.display())
+        })
 }
 
 /// How the files in a folder are put together, said where a folder is
@@ -8066,10 +8441,12 @@ impl TimegrapherApp {
         {
             self.save_recording();
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S)))
-            && self.session.allows(Action::Save)
-        {
-            self.save_again();
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S))) {
+            if self.masks_unsaved() {
+                self.save_masks();
+            } else if self.session.allows(Action::Save) {
+                self.save_again();
+            }
         }
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::Q))) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -8428,7 +8805,7 @@ mod tests {
         for b in audio.samples.chunks(960) {
             if live.push(b) {
                 let r = live.reading(app.average_s);
-                app.trend.push(TrendPoint::of(r.time_s, &r));
+                app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
             }
         }
         app.poll();
@@ -8457,7 +8834,7 @@ mod tests {
         for b in noise.chunks(960) {
             if live.push(b) {
                 let r = live.reading(app.average_s);
-                app.trend.push(TrendPoint::of(r.time_s, &r));
+                app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
             }
         }
         let after = app.reading().unwrap();
@@ -9705,7 +10082,7 @@ mod tests {
             for b in audio.samples.chunks(960) {
                 if live.push(b) {
                     let r = live.reading(app.average_s);
-                    app.trend.push(TrendPoint::of(r.time_s, &r));
+                    app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
                 }
             }
         };
@@ -9797,6 +10174,263 @@ mod tests {
         assert!(app.masked.is_empty());
         assert!(heard(&app) > 0);
         assert!(stretches(&app) > 0);
+    }
+
+    /// A masked stretch's edges move, and one moved over another joins it
+    /// for good; one moved to nothing comes back.
+    #[test]
+    fn a_masked_stretch_can_be_reshaped() {
+        let mut app = synthetic(60.0, 0.0);
+        app.set_masked(vec![(10.0, 15.0), (30.0, 40.0)]);
+        app.reshape_mask((30.0, 40.0), (25.0, 40.0));
+        assert_eq!(app.masked, [(10.0, 15.0), (25.0, 40.0)]);
+        app.reshape_mask((10.0, 15.0), (10.0, 28.0));
+        assert_eq!(app.masked, [(10.0, 40.0)], "joined");
+        app.reshape_mask((99.0, 100.0), (1.0, 2.0));
+        assert_eq!(app.masked, [(10.0, 40.0)], "no such stretch");
+        app.reshape_mask((10.0, 40.0), (10.0, 10.2));
+        assert!(app.masked.is_empty());
+    }
+
+    #[test]
+    fn fit_shows_the_whole_session() {
+        let mut app = synthetic(40.0, 0.0);
+        app.view_end = Some(10.0);
+        app.fit_strip();
+        assert_eq!(app.view_end, None);
+        assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
+        assert!(app.latest_s() > 35.0);
+    }
+
+    /// A recording of `seconds` written to `dir/name`, opened and analysed
+    /// whole in a new app.
+    fn opened_recording(dir: &Path, name: &str, seconds: f64) -> TimegrapherApp {
+        std::fs::create_dir_all(dir).unwrap();
+        let path = dir.join(name);
+        if !path.exists() {
+            let cfg = SynthConfig {
+                duration_s: seconds,
+                ..Default::default()
+            };
+            let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+            timegrapher_core::audio::write_wav(&path, &audio).unwrap();
+        }
+        reopened(&path)
+    }
+
+    fn reopened(path: &Path) -> TimegrapherApp {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.start_batch(path);
+        let t = Instant::now();
+        while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+            app.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(app.live.is_some(), "{:?}", app.message);
+        app
+    }
+
+    /// Masks on a lone recording are asked about, and saved to a new
+    /// session file that makes its folder a take, written as a take
+    /// recorded here with the same settings would be; they come back when
+    /// it is opened again.
+    #[test]
+    fn masks_on_a_lone_recording_are_saved_beside_it() {
+        let base = std::env::temp_dir().join(format!("tg-app-mask-lone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = opened_recording(&base, "reverso_DD.wav", 30.0);
+        assert!(!app.needs_save_confirmation(), "nothing changed yet");
+        app.mask(10.0, 14.0);
+        assert!(app.masks_unsaved());
+        app.open_recording(&base.join("reverso_DD.wav"), false, true);
+        assert!(
+            matches!(app.confirm, Some(Confirm::Open { .. })),
+            "asked first"
+        );
+        app.confirm = None;
+        app.save_masks();
+        assert!(!app.masks_unsaved());
+        let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
+        let m: Manifest = toml::from_str(&text).unwrap();
+        // What the recorder writes for a take with these settings: the
+        // default lift is written as assumed, not chosen.
+        let mut want = app.manifest_header();
+        want.recordings = vec![RecordingEntry {
+            file: ".".into(),
+            position: Some("DD".into()),
+            masked: vec![[10.0, 14.0]],
+            ..Default::default()
+        }];
+        assert_eq!(text, toml::to_string_pretty(&want).unwrap());
+        assert_eq!(m.lift_known, Some(false));
+        assert_eq!(m.calibre, None);
+        // The app reads the folder, and the file in it, as a take.
+        for open in [base.clone(), base.join("reverso_DD.wav")] {
+            let again = reopened(&open);
+            assert_eq!(again.masked, [(10.0, 14.0)]);
+            assert_eq!(again.position, Position::DialDown);
+            assert!(!again.needs_save_confirmation());
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Starting the microphone, or a Positions Test, over a recording whose
+    /// masks changed asks first, and keeps them until listening starts.
+    #[test]
+    fn listening_asks_before_unsaved_masks_go() {
+        let base = std::env::temp_dir().join(format!("tg-app-mask-mic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = opened_recording(&base, "a.wav", 12.0);
+        app.mask(2.0, 5.0);
+        app.start_microphone();
+        assert!(matches!(app.confirm, Some(Confirm::Microphone)));
+        assert_eq!(app.masked, [(2.0, 5.0)], "nothing let go yet");
+        // A Positions Test asked for waits on the same answer.
+        app.confirm = None;
+        app.start_guided(None);
+        assert!(matches!(app.confirm, Some(Confirm::Microphone)));
+        assert_eq!(app.guided_after_ask, Some(None));
+        // Answered, with an input that can't be opened: the masks stay on
+        // show, still to save.
+        app.devices_listed = true;
+        app.device = Some("no such input".into());
+        app.confirm = None;
+        app.listen_after_ask();
+        assert!(!app.running());
+        assert_eq!(app.masked, [(2.0, 5.0)]);
+        assert!(app.masks_unsaved());
+        assert_eq!(app.guided_after_ask, None);
+        assert!(!app.masks_let_go);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A lone recording beside others isn't made a take of: saving its
+    /// masks is refused and nothing is written.
+    #[test]
+    fn masks_are_not_saved_into_a_folder_of_other_recordings() {
+        let base = std::env::temp_dir().join(format!("tg-app-mask-others-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        opened_recording(&base, "a.wav", 12.0);
+        let mut app = opened_recording(&base, "b.wav", 12.0);
+        app.mask(2.0, 5.0);
+        app.save_masks();
+        assert!(app.masks_unsaved(), "still unsaved");
+        assert!(!base.join(MANIFEST).exists());
+        let said = app
+            .message
+            .as_ref()
+            .map(|m| m.0.clone())
+            .unwrap_or_default();
+        assert!(said.contains("1 other recording"), "{said}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Saving masks to a take changes only `masked` on the entries for what
+    /// was opened: comments, keys this app doesn't read and other entries
+    /// stay, and the file still reads as the take it was.
+    #[test]
+    fn masks_saved_to_a_take_leave_the_rest_of_its_file() {
+        let base = std::env::temp_dir().join(format!("tg-app-mask-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let original = "# A hand-written note\n\
+            watch = \"Test\"\n\
+            lift = 52.0\n\
+            owner = \"kept\" # and its note\n\n\
+            [[recording]]\n\
+            file = \"take.wav\"\n\
+            position = \"CU\"\n\
+            masked = [[1.0, 2.0]]\n\n\
+            [[recording]]\n\
+            file = \"other.wav\"\n\
+            position = \"CD\"\n";
+        std::fs::write(base.join(MANIFEST), original).unwrap();
+        let mut app = opened_recording(&base, "take.wav", 20.0);
+        assert_eq!(app.masked, [(1.0, 2.0)]);
+        app.mask(6.0, 9.5);
+        app.save_masks();
+        assert!(!app.masks_unsaved());
+        let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
+        assert_eq!(
+            text,
+            original.replace("[[1.0, 2.0]]", "[[1.0, 2.0], [6.0, 9.5]]"),
+            "only the masks changed"
+        );
+        let (_, entries) = read_manifest(&base.join("take.wav")).unwrap().unwrap();
+        assert_eq!(entries[0].masked, [[1.0, 2.0], [6.0, 9.5]]);
+        // Every mask brought back: the key goes.
+        app.set_masked(Vec::new());
+        app.save_masks();
+        let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
+        assert_eq!(text, original.replace("masked = [[1.0, 2.0]]\n", ""));
+        assert!(!base.join(".session.toml.saving").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// After a masked stretch the charts stay empty until nine tenths of an
+    /// averaging time of beats has been heard again: no reading over the
+    /// few beats just past the mask, and no line drawn across it.
+    #[test]
+    fn readings_resume_nine_tenths_of_an_average_after_a_mask() {
+        let mut app = synthetic(60.0, 0.0);
+        app.mask(20.0, 30.0);
+        let after: Vec<_> = app
+            .trend
+            .iter()
+            .filter(|p| p.t > 20.0 && p.rate.is_some())
+            .map(|p| p.t)
+            .collect();
+        assert!(!after.is_empty());
+        assert!(
+            after.iter().all(|&t| t >= 30.0 + 0.9 * app.average_s),
+            "{after:?}"
+        );
+        let points: Vec<[f64; 2]> = app
+            .trend
+            .iter()
+            .filter_map(|p| Some([p.t, p.rate?]))
+            .collect();
+        let parts = segments(&points);
+        assert_eq!(parts.len(), 2, "one line each side of the mask");
+        assert!(parts[0].last().unwrap()[0] < 20.0);
+    }
+
+    /// On a slow beat (12,000 bph) and a short average the beats' span falls up to a
+    /// beat short of the averaging time; that still counts as covered, so
+    /// clean readings aren't left off the chart.
+    #[test]
+    fn slow_beats_fill_a_short_average() {
+        let cfg = SynthConfig {
+            duration_s: 30.0,
+            bph: 12000,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut live = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let points = trend_over(&live, 2.0);
+        // The last point, at the newest sound, isn't settled yet.
+        let end = live.duration_s() - 1.0;
+        let late: Vec<_> = points.iter().filter(|p| p.t > 8.0 && p.t < end).collect();
+        assert!(!late.is_empty());
+        // None left off that the engine read.
+        let left_off: Vec<f64> = late
+            .iter()
+            .filter(|p| p.rate.is_none() && live.reading_at(p.t, 2.0).rate_s_per_day.is_some())
+            .map(|p| p.t)
+            .collect();
+        assert!(left_off.is_empty(), "{left_off:?} of {}", late.len());
+    }
+
+    #[test]
+    fn a_line_breaks_where_its_points_stop() {
+        let pts = [[0.0, 1.0], [1.0, 1.0], [2.0, 1.0], [10.0, 1.0], [11.0, 1.0]];
+        let parts = segments(&pts);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[1], [[10.0, 1.0], [11.0, 1.0]]);
+        assert_eq!(segments(&[]).len(), 0);
     }
 
     /// Masked stretches are saved in the take's own seconds, which leave
@@ -10896,13 +11530,16 @@ mod tests {
         assert_eq!(t.active, Some(sound));
     }
 
-    /// A burst of glitches doesn't set a chart's scale.
+    /// A chart's scale holds every point, a glitch too.
     #[test]
-    fn a_glitch_burst_does_not_set_the_scale() {
+    fn the_scale_holds_every_point() {
         let mut pts: Vec<[f64; 2]> = (0..60).map(|i| [i as f64, 5.0 + (i % 5) as f64]).collect();
         pts.extend((60..66).map(|i| [i as f64, 800.0]));
-        let (lo, hi) = percentile_range(&pts).unwrap();
-        assert!(lo < 5.0 && hi > 9.0 && hi < 40.0, "{lo} {hi}");
+        let (lo, hi) = data_range(&pts).unwrap();
+        assert!(lo < 5.0 && hi > 800.0, "{lo} {hi}");
+        assert_eq!(data_range(&[]), None);
+        let (lo, hi) = data_range(&[[0.0, 3.0]]).unwrap();
+        assert!(lo < 3.0 && hi > 3.0);
     }
 
     #[test]
