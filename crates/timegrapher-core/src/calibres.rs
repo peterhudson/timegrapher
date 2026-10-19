@@ -365,7 +365,7 @@ mod tests {
         // Bare clone names cannot safely choose a train manufacturer.
         assert!(find("3235 (clone)").is_none());
         assert!(find("32xx").is_none());
-        for name in ["VR3235", "SH3235", "VR32xx", "SH3285", "VR3285", "SH3285-2"] {
+        for name in ["SH3235", "SH3285", "SH3285-2"] {
             let c = find(name).unwrap();
             assert_eq!(c.escape_teeth, None, "{name}");
             assert!(c
@@ -381,6 +381,79 @@ mod tests {
         for name in ["VR3230", "VR3255", "SH3230", "SH3255", "SH32xx"] {
             assert!(find(name).is_none(), "{name}");
         }
+    }
+
+    #[test]
+    fn vr32xx_has_its_own_train_and_explicit_escape_inference() {
+        for name in ["VR3235", "VR32xx", "VR3285"] {
+            let c = find(name).unwrap();
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            for (n, t, p, period) in [
+                ("barrel", 100, None, 18000.0),
+                ("centre wheel", 80, Some(20), 3600.0),
+                ("third wheel", 99, Some(12), 540.0),
+                ("fourth wheel", 120, Some(11), 60.0),
+                ("escape wheel", 20, Some(10), 5.0),
+            ] {
+                let w = wheel(n);
+                assert_eq!(
+                    (w.teeth, w.pinion, w.period_s),
+                    (Some(t), p, period),
+                    "{name}: {n}"
+                );
+            }
+            assert_eq!(c.escape_teeth, Some(20));
+            assert!(wheel("escape wheel")
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("INFERRED"));
+            assert!(wheel("escape wheel")
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("no VR escape-wheel photograph"));
+            // The measured second-to-fourth ratio is exactly 60.
+            assert_eq!((80.0 / 12.0) * (99.0 / 11.0), 60.0);
+            assert_eq!(search(name)[0].calibre, c.calibre);
+        }
+        assert_ne!(
+            find("VR3235").unwrap().calibre,
+            find("SH3235").unwrap().calibre
+        );
+        assert_ne!(
+            find("VR3285").unwrap().calibre,
+            find("SH3285").unwrap().calibre
+        );
+        for name in [
+            "SH3235",
+            "SH3285",
+            "SH3285-2",
+            "Rolex 3235",
+            "DD3235",
+            "JH3235",
+        ] {
+            assert!(
+                find(name)
+                    .unwrap()
+                    .sources
+                    .iter()
+                    .all(|s| !s.contains("vr32xx-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            find("DD3235")
+                .unwrap()
+                .wheels
+                .iter()
+                .find(|w| w.name == "barrel")
+                .unwrap()
+                .period_s,
+            25200.0
+        );
+        assert_eq!(find("VR3235").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("VR3285").unwrap().lift_angle_deg, None);
     }
 
     #[test]

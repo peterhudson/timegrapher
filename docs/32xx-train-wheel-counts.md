@@ -28,11 +28,11 @@ Rolex, Dandong and Jinghe 32xx movements**, including 3230, 3235, 3255 and
 3285. That family applicability is contributor testimony accompanying
 the photographs; the images themselves show one component set.
 
-**VR32xx and SH32xx are excluded.** They have different train configurations
-and await their own photographs and counts. The existing VR3235/SH3235
-and SH3285/VR3285 catalogue entries retain their previous known periods,
-without importing any tooth counts, third-wheel, barrel or escape-wheel
-periods from this contribution.
+**VR32xx and SH32xx are excluded from this contribution.** VR32xx now has
+[its own photographs and counts](vr32xx-train-wheel-counts.md), including a
+five-hour barrel and an explicitly inferred escape pair. VR and SH
+catalogue identities are separated; SH32xx still awaits independent
+evidence. Neither inherits the complete train documented here.
 
 ## Derivation and cross-checks
 
