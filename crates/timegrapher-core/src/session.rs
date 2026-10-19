@@ -385,9 +385,34 @@ pub fn measure_with_breaks(
     measure_masked(log, clock, breaks, &[], from_s, to_s)
 }
 
+/// A listed break's gap on true time: from the last sound before the
+/// pause to the first after it. A clock fit that found the pause itself
+/// places it at a log line near the listed break (the recorder's first
+/// line after the resume, a block or so later) and steps the time there,
+/// so the gap starts before the earlier of the two and ends at the
+/// later.
+fn gap_ends(clock: Option<&ClockFit>, b: &Break, map: &impl Fn(f64) -> f64) -> Option<(f64, f64)> {
+    let resume = clock
+        .and_then(|c| {
+            c.breaks
+                .iter()
+                .filter(|c| (c.audio_s - b.audio_s).abs() <= crate::breaks::JUMP_MATCH_S)
+                .min_by(|x, y| {
+                    (x.audio_s - b.audio_s)
+                        .abs()
+                        .total_cmp(&(y.audio_s - b.audio_s).abs())
+                })
+        })
+        .map_or(b.audio_s, |c| c.audio_s);
+    let start = map(b.audio_s.min(resume) - 1e-6);
+    let end = map(b.audio_s.max(resume));
+    (end > start).then_some((start, end))
+}
+
 /// [`measure_with_breaks`] leaving out stretches masked by hand (cleaned
-/// with [`masked_spans`]): they are cut like breaks at both ends, so no
-/// fit, 10 s window or two-state sample reaches into one, their beats and amplitude windows are left out,
+/// with [`masked_spans`]). Each mask, like each break's gap, is cut at
+/// both ends, so no fit, 10 s window or two-state sample reaches into
+/// one; the masks' beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
 pub fn measure_masked(
@@ -401,11 +426,29 @@ pub fn measure_masked(
     let to_s = to_s.min(log.duration_s);
     let from_s = from_s.clamp(0.0, to_s);
     let masked_s = masked_within(masked, from_s, to_s);
-    let map = crate::longrun::true_time(clock, breaks);
-    let mut cuts = crate::longrun::cuts(clock, breaks);
-    // Cut at both ends of each mask: a window or sample that reaches
-    // into a mask from either side, taking in a ragged edge of beats, is
-    // dropped, so nothing is averaged across a mask.
+    // The recorder writes a gap under 0 s when its timestamps put the
+    // first sound after a pause before the last one before it; true time
+    // does not run backwards, so such a gap is taken as 0 s.
+    let on_time: Vec<Break> = breaks
+        .iter()
+        .map(|b| Break {
+            gap_s: b.gap_s.max(0.0),
+            ..*b
+        })
+        .collect();
+    let map = crate::longrun::true_time(clock, &on_time);
+    // Cut at both ends of each gap and each mask: a window or sample that
+    // reaches into one from either side, taking in a ragged edge of
+    // beats, is dropped, so nothing is averaged across a gap or a mask. A
+    // break with no gap keeps its single cut.
+    let mut cuts: Vec<f64> = on_time
+        .iter()
+        .zip(crate::longrun::cuts(clock, &on_time))
+        .flat_map(|(b, cut)| match gap_ends(clock, b, &map) {
+            Some((start, end)) if b.gap_s > 2e-6 => vec![start, end - 1e-6],
+            _ => vec![cut],
+        })
+        .collect();
     cuts.extend(
         masked
             .iter()
@@ -460,7 +503,7 @@ pub fn measure_masked(
             })
         })
         .collect();
-    let gaps: f64 = breaks
+    let gaps: f64 = on_time
         .iter()
         .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
         .map(|b| b.gap_s)

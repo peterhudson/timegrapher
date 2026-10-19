@@ -155,10 +155,13 @@ A recording's `masked` list leaves stretches out of its reading: each an
 `[start, end]` pair in seconds into the file or folder (the sound's own
 seconds, which leave out any pause), such as `masked = [[600.0, 612.5]]`
 for a bump of the stand. The app writes it when stretches were masked on
-its Paper Strip. A masked stretch is cut like a break: its beats and the
-amplitude windows reaching into it are left out, no fit or window
-reaches across it, the beats expected and the time listened to leave out
-its seconds, and the reading's `measurement` gives `masked_s` (the masked
+its Paper Strip. A masked stretch is cut at both ends, as the gap of a
+restart in listening is: its beats and the amplitude windows reaching
+into it are left out, and no fit, 10 s window or two-state sample reaches
+into it from either side, so the few beats at its edge that fill no
+whole 10 s window are left out of the 10 s rates rather than averaged
+across it. The beats expected and the time listened to leave out its
+seconds, and the reading's `measurement` gives `masked_s` (the masked
 seconds inside the measured stretch) and the caveat `masked`
 (`seconds`). The seconds measured (`measured_s` in `readings.csv`, the
 report's Measured column and the `measurement_short` finding) leave out
@@ -226,7 +229,10 @@ of the recording or for `measure_s`:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock when the session file names a clock log
-  or the session gives `card_ppm`;
+  or the session gives `card_ppm`. A reading with a mask or a restart in
+  listening is cut at both ends of each: each stretch between cuts is
+  fitted on its own, a stretch whose beats span under 10 s is left out,
+  and the rest are combined weighted by their beats;
 - beat error measured from the unlock, as tg and bench timegraphers do
   (median of the 2 s windows); this is the value the report shows first.
   The beat error from the drop (the same fit as the rate) is
@@ -240,9 +246,9 @@ of the recording or for `measure_s`:
   and Tock `amplitude_odd_deg`);
 - jitter, and the median and the 5th to 95th percentile of rate in 10 s
   windows: how steady the rate is. The headline rate is the fit over
-  every beat, the average the hands keep; where the rate wanders with
-  dips (the Yacht-Master crown left), the 10 s median sits a few s/d
-  above it, as tg's median reading sits above its mean, so compare tg's
+  every beat (over the stretches between cuts, as above), the average the
+  hands keep; where the rate wanders with dips (the Yacht-Master crown
+  left), the 10 s median sits a few s/d above it, as tg's median reading sits above its mean, so compare tg's
   mean with the headline and tg's median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
@@ -251,13 +257,14 @@ of the recording or for `measure_s`:
 - whether amplitude and rate sit at two levels the watch switches
   between (see [Two states](#two-states)).
 
-The quick check `record` prints while recording skips the session
-file's `settle_s` (30 s when the file has none) and reads the rest on the
-sound card's clock, so it agrees with this report on a session file
-`record` creates (which sets `settle_s = 30` and names no clock log). It
-can differ where a reading uses what the check does not: `--settle`, a
-reading's own `settle_s`, `measure_s`, `start_s` or `end_s`, a clock log
-or `card_ppm`, the 20 s default on a file with no `settle_s`, or a
+The quick check `record` prints while recording skips the `settle_s` of
+the session folder's `session.toml` (30 s when the file has none) and
+reads the rest on the sound card's clock, so it agrees with this report
+on a session file `record` creates (which sets `settle_s = 30.0` and
+names no clock log). It can differ where a reading uses what the check
+does not: `--settle`, `--bph`, `--lift` or `--calibre`, a reading's own
+`settle_s`, `measure_s`, `start_s` or `end_s`, a clock log or
+`card_ppm`, the 20 s default on a file with no `settle_s`, or a
 restart in listening within the take, where this report fits the reading
 in pieces between the restarts (still one row) and the check fits it
 whole.
