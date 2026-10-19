@@ -317,6 +317,73 @@ mod tests {
     }
 
     #[test]
+    fn counted_32xx_train_resolves_for_covered_makers_and_lift_variants() {
+        let mut names = vec![
+            "Rolex 32xx".to_string(),
+            "DD32xx".to_string(),
+            "Dandong 32xx".to_string(),
+            "JH32xx".to_string(),
+            "Jinghe 32xx".to_string(),
+            "VS3235".to_string(),
+            "Rolex 3235 (53°)".to_string(),
+            "Rolex 3255 (53°)".to_string(),
+        ];
+        for number in [3230, 3235, 3255, 3285] {
+            for prefix in ["", "Rolex ", "DD", "Dandong ", "JH", "Jinghe "] {
+                names.push(format!("{prefix}{number}"));
+            }
+        }
+        for name in names {
+            let c = find(&name).unwrap_or_else(|| panic!("missing {name}"));
+            assert_eq!(c.bph, Some(28800), "{name}");
+            assert_eq!(c.escape_teeth, Some(20), "{name}");
+            for (wheel, period, teeth, pinion) in [
+                ("barrel", 25200.0, 98, None),
+                ("centre wheel", 3600.0, 80, Some(14)),
+                ("third wheel", 540.0, 99, Some(12)),
+                ("fourth wheel", 60.0, 120, Some(11)),
+                ("escape wheel", 5.0, 20, Some(10)),
+            ] {
+                let w = c.wheels.iter().find(|w| w.name == wheel).unwrap();
+                assert_eq!(
+                    (w.period_s, w.teeth, w.pinion),
+                    (period, Some(teeth), pinion),
+                    "{name}: {wheel}"
+                );
+            }
+            let expected_lift = if name.contains("53°") { 53.0 } else { 55.0 };
+            assert_eq!(c.lift_angle_deg, Some(expected_lift), "{name}");
+            assert!(c
+                .sources
+                .iter()
+                .any(|s| s.contains("32xx-train-wheel-counts.md")));
+        }
+    }
+
+    #[test]
+    fn counted_32xx_train_does_not_leak_into_vr_sh_or_ambiguous_clones() {
+        // Bare clone names cannot safely choose a train manufacturer.
+        assert!(find("3235 (clone)").is_none());
+        assert!(find("32xx").is_none());
+        for name in ["VR3235", "SH3235", "VR32xx", "SH3285", "VR3285", "SH3285-2"] {
+            let c = find(name).unwrap();
+            assert_eq!(c.escape_teeth, None, "{name}");
+            assert!(c
+                .wheels
+                .iter()
+                .all(|w| w.teeth.is_none() && w.pinion.is_none()));
+            for wheel in ["third wheel", "barrel", "escape wheel"] {
+                assert!(c.wheels.iter().all(|w| w.name != wheel), "{name}: {wheel}");
+            }
+            assert_eq!(search(name)[0].calibre, c.calibre, "{name}");
+        }
+        // Other VR/SH names have no measured entry yet, not a DD/JH fallback.
+        for name in ["VR3230", "VR3255", "SH3230", "SH3255", "SH32xx"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+    }
+
+    #[test]
     fn finds_by_name_family_and_session_names() {
         let c = find("ETA 2824-2").expect("ETA 2824-2");
         assert_eq!(c.bph, Some(28800));
