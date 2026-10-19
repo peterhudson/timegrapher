@@ -32,8 +32,9 @@ pub struct SeriesViews {
     pub fold: Option<FoldView>,
 }
 
-/// The readings the tests were made on, in time order: 10 s rate readings,
-/// and 2 s windows for the amplitude and the beat error from the unlock.
+/// The readings the tests were made on, in time order on the tests' time
+/// (the clock's, with each pause's gap): 10 s rate readings, and 2 s
+/// windows for the amplitude and the beat error from the unlock.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Readings {
     /// Length of each reading, seconds.
@@ -174,35 +175,77 @@ pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Optio
     ]
 }
 
-/// The beat error's readings as `steadiness::check` lays them out for its
-/// period search: the 2 s windows, on true time with each pause left
-/// empty when the take has pauses, so
-/// the Periods view draws the search that listed the lines it labels.
-fn beat_error_check_grid(log: &BeatLog, long: &LongReport) -> Grid {
+/// The three series' readings as `steadiness::check` lays them out: on
+/// true time (the clock's mapping, and each pause's gap when the take has
+/// pauses), with no rate reading across a pause and each gap left empty.
+/// The views draw, search and fold these, so they show the readings the
+/// tests were made on.
+fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
+    let clock = long.clock.as_ref();
+    let map = crate::longrun::true_time(clock, &long.breaks);
+    let cuts = crate::longrun::cuts(clock, &long.breaks);
+    let beats: Vec<_> = log
+        .beats
+        .iter()
+        .map(|b| crate::beats::Beat {
+            time: map(b.time),
+            ..*b
+        })
+        .collect();
+    let mut wins = timing::windows(&beats, log.bph, rate_s, rate_s);
+    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
+    let rate = match (wins.first(), wins.last()) {
+        (Some(w0), Some(last)) => {
+            let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
+            let mut y = vec![f64::NAN; n];
+            for w in &wins {
+                let i = ((w.start_s - w0.start_s) / rate_s).round() as usize;
+                if i < n {
+                    y[i] = w.fit.rate_s_per_day;
+                }
+            }
+            Grid {
+                t0: w0.start_s,
+                step: rate_s,
+                y,
+            }
+        }
+        _ => Grid {
+            t0: 0.0,
+            step: rate_s,
+            y: Vec::new(),
+        },
+    };
     let aw = &log.amplitude_windows;
     let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
-    let Some(w0) = aw.first() else {
-        return Grid {
-            t0: 0.0,
-            step,
-            y: Vec::new(),
+    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
+        let (Some(w0), Some(last)) = (aw.first(), aw.last()) else {
+            return Grid {
+                t0: 0.0,
+                step,
+                y: Vec::new(),
+            };
         };
-    };
-    let map = crate::longrun::true_time(long.clock.as_ref(), &long.breaks);
-    let pos = |t: f64| if long.breaks.is_empty() { t } else { map(t) };
-    let n = ((pos(aw.last().unwrap().start_s) - pos(w0.start_s)) / step).round() as usize + 1;
-    let mut y = vec![f64::NAN; n];
-    for w in aw {
-        let i = ((pos(w.start_s) - pos(w0.start_s)) / step).round() as usize;
-        if i < n {
-            y[i] = w.beat_error_unlock_ms.unwrap_or(f64::NAN);
+        let pos = |t: f64| if long.breaks.is_empty() { t } else { map(t) };
+        let n = ((pos(last.start_s) - pos(w0.start_s)) / step).round() as usize + 1;
+        let mut y = vec![f64::NAN; n];
+        for w in aw {
+            let i = ((pos(w.start_s) - pos(w0.start_s)) / step).round() as usize;
+            if i < n {
+                y[i] = f(w).unwrap_or(f64::NAN);
+            }
         }
-    }
-    Grid {
-        t0: map(w0.start_s),
-        step,
-        y,
-    }
+        Grid {
+            t0: map(w0.start_s),
+            step,
+            y,
+        }
+    };
+    [
+        rate,
+        grid_of(&|w| w.mean()),
+        grid_of(&|w| w.beat_error_unlock_ms),
+    ]
 }
 
 /// Where a series' fold period came from.
@@ -251,9 +294,23 @@ pub fn folds(
                     .max_by(|a, b| a.period_s.total_cmp(&b.period_s))
                     .map(|w| (w.period_s, FoldFrom::Wheel(w.name.clone())))
             })?;
-        let bins = ((period / g.step).round() as usize).clamp(6, 40);
-        Some((longterm::fold(g, period, bins), from))
+        Some((longterm::fold(g, period, phase_bins(period, g.step)), from))
     })
+}
+
+/// Phase bins for the Cycle view: one per phase the readings fall on, so
+/// no bin mixes two phases and the drawn cycle keeps its size. A 45 s
+/// cycle read every 10 s comes back to the same phase every 90 s, after 9
+/// readings at 9 phases. Where the phases do not repeat within 40, the
+/// readings cover the cycle densely and it is cut at one bin per reading,
+/// 6 to 40.
+fn phase_bins(period: f64, step: f64) -> usize {
+    let r = period / step;
+    (1..)
+        .map(|m| m as f64 * r)
+        .take_while(|x| x.round() <= 40.0)
+        .find(|x| (x - x.round()).abs() < 0.05)
+        .map_or((r.round() as usize).clamp(6, 40), |x| x.round() as usize)
 }
 
 /// The periods the searches cover between them, log10 seconds.
@@ -273,7 +330,8 @@ pub fn period_span(searches: &[Option<Search>; 3]) -> Option<(f64, f64)> {
 /// Indices of a period search's curve thinned to at most `max`, first
 /// and last kept: the axis is cut into equal slices of log period, as the
 /// FFT's thinning cuts it, and each slice keeps its lowest and highest
-/// score, in order, so a narrow peak keeps its top wherever it sits.
+/// score, in order. A narrow peak keeps its top unless a taller one shares
+/// its slice (on a 12 h search each slice spans about 3% of period).
 fn spread_extremes(period_s: &[f64], score: &[f64], max: usize) -> Vec<usize> {
     let n = period_s.len().min(score.len());
     if n <= max || max < 4 {
@@ -330,17 +388,7 @@ pub fn views(
     lc: &LongConfig,
     rate_s: f64,
 ) -> Views {
-    // No reading reaches across a pause, as in the tests. The readings
-    // stay on the log's own time, so the pauses cut them without a gap.
-    let cuts: Vec<_> = long
-        .breaks
-        .iter()
-        .map(|b| crate::breaks::Break {
-            audio_s: b.audio_s,
-            gap_s: 0.0,
-        })
-        .collect();
-    let grids = grids_with_breaks(log, rate_s, &cuts);
+    let grids = check_grids(log, long, rate_s);
     // The beat error's search on the grid the tests searched, pauses and
     // all, so its strongest line is the one the label names.
     let readings = grids[2].y.iter().filter(|v| v.is_finite()).count();
@@ -348,7 +396,7 @@ pub fn views(
         Some(long.timing.search.clone()),
         Some(long.amplitude.search.clone()),
         (readings >= 30).then(|| {
-            let mut g = beat_error_check_grid(log, long);
+            let mut g = grids[2].clone();
             g.t0 = 0.0;
             longterm::analyse(&g, lc).search
         }),
@@ -480,6 +528,29 @@ mod tests {
     }
 
     #[test]
+    fn the_cycle_is_folded_one_bin_per_reading_phase() {
+        assert_eq!(phase_bins(45.0, 10.0), 9);
+        assert_eq!(phase_bins(60.0, 10.0), 6);
+        assert_eq!(phase_bins(30.0, 10.0), 3);
+        assert_eq!(phase_bins(600.0, 2.0), 40);
+        assert_eq!(phase_bins(42.7, 10.0), 6);
+        // A 45 s cycle read every 10 s keeps its size: its readings' peak
+        // to peak, at 9 phases 40 degrees apart.
+        let g = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..360)
+                .map(|i| (std::f64::consts::TAU * (i as f64 * 10.0 + 2.5) / 45.0).sin())
+                .collect(),
+        };
+        let f = longterm::fold(&g, 45.0, phase_bins(45.0, 10.0));
+        let max = f.profile.iter().copied().fold(f64::MIN, f64::max);
+        let min = f.profile.iter().copied().fold(f64::MAX, f64::min);
+        let want = 2.0 * (80f64.to_radians()).sin();
+        assert!(((max - min) / want - 1.0).abs() < 0.01, "{}", max - min);
+    }
+
+    #[test]
     fn thinning_keeps_a_narrow_peak_anywhere_on_the_log_axis() {
         // A 12 h search's periods, longest first, with narrow lines at
         // about 2 h and 1 h, where an even split of the indices puts both
@@ -489,11 +560,17 @@ mod tests {
         let mut score = vec![0.5; n];
         score[17] = 9.0;
         score[54] = 6.0;
+        // And one among the short periods, where a slice holds thousands
+        // of points.
+        score[80_000] = 7.0;
         let keep = spread_extremes(&period_s, &score, MAX_PERIODS);
         assert!(keep.len() <= MAX_PERIODS, "{}", keep.len());
         assert!(keep.windows(2).all(|w| w[0] < w[1]));
         assert_eq!((keep[0], *keep.last().unwrap()), (0, n - 1));
-        assert!(keep.contains(&17) && keep.contains(&54), "{keep:?}");
+        assert!(
+            keep.contains(&17) && keep.contains(&54) && keep.contains(&80_000),
+            "{keep:?}"
+        );
         // A short curve is kept whole.
         assert_eq!(
             spread_extremes(&period_s[..10], &score[..10], MAX_PERIODS),
@@ -539,8 +616,8 @@ mod tests {
         }];
         let plain = longrun::analyse(&log, None, &lc);
         let paused = longrun::analyse_with_breaks(&log, None, &breaks, &lc);
-        let g0 = beat_error_check_grid(&log, &plain);
-        let g1 = beat_error_check_grid(&log, &paused);
+        let g0 = check_grids(&log, &plain, 10.0)[2].clone();
+        let g1 = check_grids(&log, &paused, 10.0)[2].clone();
         assert_eq!(g1.y.len(), g0.y.len() + 3, "the pause is left empty");
         let k = aw.iter().position(|w| w.start_s > mid).unwrap();
         assert!(g1.y[k..k + 3].iter().all(|v| v.is_nan()));
@@ -565,8 +642,21 @@ mod tests {
                 crate::spectrum::amplitude_spectrum(&d, "beat_error", "ms", 1.0, check.max_points);
             serde_json::to_value(s.expect("spectrum")).unwrap()
         };
-        assert_eq!(spectrum_of(g1), tests);
+        assert_eq!(spectrum_of(g1.clone()), tests);
         assert_ne!(spectrum_of(grids(&log, 10.0)[2].clone()), tests);
+
+        // The views draw and fold these readings, on the tests' time: the
+        // readings after the pause sit its gap later than the audio puts
+        // them, as the tests' grid has them.
+        let v = views(&log, &report, &paused, &lc, 10.0);
+        let be = &v.series[2].readings;
+        let want: Vec<f64> = (0..g1.y.len())
+            .filter(|&j| g1.y[j].is_finite())
+            .map(|j| g1.time(j))
+            .collect();
+        assert_eq!(be.t_s, want);
+        let at = |t: f64| be.t_s.iter().any(|&x| (x - t).abs() < 1e-9);
+        assert!(at(g0.time(k) + 3.0 * step) && !at(g0.time(k)));
     }
 
     /// The app's own test take: ten minutes of a watch whose rate swings
