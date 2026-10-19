@@ -320,8 +320,8 @@ pub fn folds(
 }
 
 /// Phase bins for the Cycle view: one per phase the readings fall on, so
-/// the drawn cycle keeps its size (at a period of exactly a whole or half
-/// whole number of readings, rounding can still split a phase between two
+/// the drawn cycle keeps its size (at a period of exactly a half whole
+/// number of readings, rounding can still split a phase between two
 /// neighbouring bins). A 45 s
 /// cycle read every 10 s comes back to the same phase every 90 s, after 9
 /// readings at 9 phases. A repeat is taken only within two turns: phases
