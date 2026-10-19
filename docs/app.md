@@ -207,7 +207,29 @@ a note under the switch says so. When the sound's own timestamps jump by
 more than 5 seconds (as when the computer sleeps: a laptop's lid closed,
 Sleep chosen from a menu, or Keep Awake off), the app leaves the jump out
 of the take as a break, as after Stop and Resume, keeps listening, and a
-message gives the length of the jump. The app's log notes every ten
+message gives the length of the jump. A shorter hole (a dropout in the
+sound, or a knock that costs part of a beat) shows in the beats. It is a
+jump when the first beat heard after it is more than a quarter of a beat
+off the count, when it follows a stretch too quiet to follow, or when the
+timing of both sides steps by more than 4 ms, and by about the same, as a
+whole recording's reading finds one. A step is found ten or more beats
+after it, and the chart points read since are dropped; after a silent hole
+one can show up to 4 s after the sound returns, even when no beat was
+lost, as the silence leaves the 4 s of sound the beats are found in. No
+reading or amplitude window reaches across a jump. Tick and Tock are then
+told apart by their sound, the first 16 good beats of each side after the
+jump against up to 32 before, so they keep their names. Until they are,
+the beat error, each side's amplitude and the Tick Tock sound are left
+out, and so they are in a stretch between two jumps too close together to
+check. When the two sounds are too alike to tell, or fewer than 16 good
+beats a side were heard before the jump, the sides follow the count, as in
+a whole recording and at the start of every session. A hole that costs
+close to an odd number of beats can leave no step to see, and then Tick
+and Tock swap unseen: within 4 ms more than the beat error of it, or three
+times the beat error if that is more (4.5 ms at a 0.5 ms beat error, 9 ms
+at 3 ms), as in a whole recording, or anywhere within a quarter of a beat
+of it when the beats just after the hole are too ragged to show the step.
+The same check follows a change of position. The app's log notes every ten
 minutes that listening is still going.
 
 **Positions Test.** The Positions Test pane, a tab beside the Tick
@@ -488,19 +510,20 @@ leaves them out too, and all of them come back masked when the saved
 take is opened or replayed. Masks on a recording opened from disk are
 kept by **Save Masks** (beside **Unmask All**, in the File menu while
 they're unsaved, or Ctrl+S, Cmd+S on a Mac), and New Session, opening
-another recording or quitting asks first when they've changed. On a take
-it changes only `masked` on the session file's entries for what was
-opened, written whole through a file beside it; comments and everything
-else stay as they were. A lone file, or a folder with no session file,
-gets a new `session.toml` with what saving a take recorded here would
-write for the same settings (its one entry is the whole folder), which
-makes its folder a take that the app and `timegrapher session` open as
-one; opening the file itself then reads it too. It is refused, saying
-why, when the folder holds other recordings, or a session file that
-doesn't list what was opened. Report a Problem sends the masked stretches with its details.
-While Mask is on, dragging along the strip masks instead of sliding the
-trace. Mask turns off, and nothing is masked, when a new take, New
-Session or another recording starts.
+another recording, starting the microphone (or a Positions Test with it)
+or quitting asks first when they've changed; they stay on show until
+listening starts. On a take it changes only `masked` on the session file's
+entries for what was opened, written whole through a file beside it;
+comments and everything else stay as they were. A lone file, or a folder
+with no session file, gets a new `session.toml` with what saving a take
+recorded here would write for the same settings (its one entry is the
+whole folder), which makes its folder a take that the app and
+`timegrapher session` open as one; opening the file itself then reads it
+too. It is refused, saying why, when the folder holds other recordings, or
+a session file that doesn't list what was opened. Report a Problem sends
+the masked stretches with its details. While Mask is on, dragging along
+the strip masks instead of sliding the trace. Mask turns off, and nothing
+is masked, when a new take, New Session or another recording starts.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
 unlock and from the drop) over time. Each reading keeps its colour across

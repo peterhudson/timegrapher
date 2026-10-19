@@ -165,6 +165,57 @@ pub struct LiveAnalyzer {
     masked: Vec<(f64, f64)>,
     /// Whether the sound card's clock is corrected, for the caveats.
     clock_known: bool,
+    /// The sound of the latest good beats on each side (even, odd), newest
+    /// last: what Tick and Tock sounded like, to tell them apart after a
+    /// jump.
+    side_snips: [VecDeque<Snip>; 2],
+    /// A jump whose sides are still to be checked: its time, and the sound
+    /// of each side's good beats since.
+    side_check: Option<(f64, [Vec<Snip>; 2])>,
+    /// Stretches, start and end in seconds, whose sides were never told
+    /// apart: between two jumps too close for a check. Readings that name
+    /// a side are left out in them.
+    unsided: Vec<(f64, f64)>,
+}
+
+/// A good beat's envelope window, by the beat's time.
+type Snip = (f64, Vec<f32>);
+
+/// Good beats of each side kept to compare the sides by, before a jump
+/// and after it.
+const SIDE_SNIPS: usize = 2 * beats::MIN_SIDE_BEATS;
+
+/// Good beats looked at for a step in their timing ([`beats::jumps`]) on
+/// each pass: enough for its typical intervals, and the beats around a
+/// step.
+const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
+
+/// The median sound of each side's beats, each scaled to a peak of 1, or
+/// `None` when either side has fewer than [`beats::MIN_SIDE_BEATS`].
+fn side_sounds_of<'a>(
+    even: impl Iterator<Item = &'a Snip>,
+    odd: impl Iterator<Item = &'a Snip>,
+) -> Option<beats::SideSounds> {
+    fn side<'a>(v: impl Iterator<Item = &'a Snip>) -> Option<Vec<f32>> {
+        let v: Vec<&[f32]> = v.map(|s| s.1.as_slice()).collect();
+        let len = v.iter().map(|s| s.len()).min()?;
+        if v.len() < beats::MIN_SIDE_BEATS || len == 0 {
+            return None;
+        }
+        let mut w: Vec<f32> = (0..len)
+            .map(|i| median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
+            .collect();
+        let top = w.iter().copied().fold(0.0f32, f32::max);
+        if top <= 0.0 {
+            return None;
+        }
+        w.iter_mut().for_each(|x| *x /= top);
+        Some(w)
+    }
+    Some(beats::SideSounds {
+        even: side(even)?,
+        odd: side(odd)?,
+    })
 }
 
 impl LiveAnalyzer {
@@ -185,6 +236,9 @@ impl LiveAnalyzer {
             next_amp_s: None,
             profiles: [None, None],
             snippets: VecDeque::new(),
+            side_snips: [VecDeque::new(), VecDeque::new()],
+            side_check: None,
+            unsided: Vec::new(),
             snr: None,
             quiet_passes: 0,
             logged_bph: None,
@@ -279,6 +333,9 @@ impl LiveAnalyzer {
         self.quiet_passes = 0;
         self.intrinsic_breaks.clear();
         self.breaks.clear();
+        self.side_snips = [VecDeque::new(), VecDeque::new()];
+        self.side_check = None;
+        self.unsided.clear();
     }
 
     /// Start a new stretch now, for a new position: the beats so far are
@@ -288,6 +345,9 @@ impl LiveAnalyzer {
     pub fn new_stretch(&mut self) {
         let now = self.duration_s();
         self.breaks.push(now);
+        // The count across the handling is a guess: the sides are checked
+        // by their sound once the watch is heard again.
+        self.check_sides_from(now);
         self.profiles = [None, None];
         self.snippets.clear();
         self.next_amp_s = None;
@@ -298,6 +358,136 @@ impl LiveAnalyzer {
     /// Known jumps and stretch boundaries, seconds, oldest first.
     pub fn breaks(&self) -> &[f64] {
         &self.breaks
+    }
+
+    /// The jumps in the beats alone, seconds, oldest first: those found
+    /// listening, or in the beat log a recording was read into.
+    pub fn jumps(&self) -> &[f64] {
+        &self.intrinsic_breaks
+    }
+
+    /// Whether Tick and Tock are told apart at `t` seconds: false from a
+    /// jump until the beats after it have been compared with those before
+    /// by their sound, and in a stretch between two jumps too close for
+    /// that. Readings that name a side are left out there.
+    pub fn sides_known_at(&self, t: f64) -> bool {
+        !self.side_check.as_ref().is_some_and(|c| c.0 <= t)
+            && !self.unsided.iter().any(|&(a, b)| a <= t && t < b)
+    }
+
+    /// A jump in the beats at `t` seconds: no reading or amplitude window
+    /// reaches across it, and the sides after it are checked by their
+    /// sound. One found by its timing within a second of a break already
+    /// made is that break, as a whole file's reading has it.
+    fn jump_at(&mut self, t: f64, by_timing: bool) {
+        let near = if by_timing { 1.0 } else { 1e-9 };
+        if self.breaks.iter().any(|&b| (b - t).abs() < near) {
+            return;
+        }
+        for v in [&mut self.intrinsic_breaks, &mut self.breaks] {
+            v.push(t);
+            v.sort_by(f64::total_cmp);
+        }
+        // The amplitude's windows start again from it.
+        self.amp.retain(|w| !(w.start_s < t && w.end_s > t));
+        // A grid not yet started (after a new position) starts no earlier
+        // than the settled beats, so no window reaches back across that
+        // break either.
+        match self.next_amp_s {
+            None => self.next_amp_s = Some(t.max(self.settled_to)),
+            Some(s) if s < t => self.next_amp_s = Some(t),
+            Some(_) => {}
+        }
+        self.check_sides_from(t);
+    }
+
+    /// Start checking the sides of the beats from `t` against those before,
+    /// once enough of them are heard. A check still owed from an earlier
+    /// jump moves here, and the stretch between the two is never told
+    /// apart. Without enough good beats a side before, the count stands.
+    fn check_sides_from(&mut self, t: f64) {
+        match self.side_check.take() {
+            Some((t0, got)) if t0 < t => {
+                self.never_sided(t0, t);
+                let got = got.map(|g| g.into_iter().filter(|s| s.0 >= t).collect());
+                self.side_check = Some((t, got));
+            }
+            Some((t0, got)) => {
+                // Found after a later jump: the sound before is cut back to
+                // this one, and the stretch between can't be told apart.
+                self.never_sided(t, t0);
+                self.side_snips
+                    .iter_mut()
+                    .for_each(|s| s.retain(|x| x.0 < t));
+                let known = self
+                    .side_snips
+                    .iter()
+                    .all(|s| s.len() >= beats::MIN_SIDE_BEATS);
+                self.side_check = known.then_some((t0, got));
+            }
+            None => {
+                let known = self
+                    .side_snips
+                    .iter()
+                    .all(|s| s.iter().filter(|x| x.0 < t).count() >= beats::MIN_SIDE_BEATS);
+                if known {
+                    let got = self.side_snips.each_mut().map(|s| {
+                        let k = s.partition_point(|x| x.0 < t);
+                        s.split_off(k).into()
+                    });
+                    self.side_check = Some((t, got));
+                }
+            }
+        }
+    }
+
+    /// The stretch from `a` to `b` seconds is never told apart: readings
+    /// that name a side are left out in it, and its sounds join neither
+    /// side's profile.
+    fn never_sided(&mut self, a: f64, b: f64) {
+        self.unsided.push((a, b));
+        self.snippets.retain(|s| !(a <= s.0 && s.0 < b));
+    }
+
+    /// Once the beats after a jump have enough of each side, compare their
+    /// sound with the sides' before ([`beats::side_margin`]); when they
+    /// match the other way round, number every beat from the jump on one
+    /// further, which swaps the sides back, as a whole file is read. Too
+    /// alike to tell, the count stands.
+    fn settle_sides(&mut self) {
+        if self
+            .side_check
+            .as_ref()
+            .is_none_or(|(_, got)| got.iter().any(|g| g.len() < beats::MIN_SIDE_BEATS))
+        {
+            return;
+        }
+        let Some((t, mut got)) = self.side_check.take() else {
+            return;
+        };
+        let [even, odd] = &self.side_snips;
+        let was = side_sounds_of(even.iter(), odd.iter());
+        let now = side_sounds_of(got[0].iter(), got[1].iter());
+        let swapped = matches!(
+            (&was, &now),
+            (Some(b), Some(a)) if beats::side_margin(b, a) <= -beats::SIDE_MARGIN_MIN
+        );
+        if swapped {
+            for b in self.beats.iter_mut().filter(|b| b.time >= t) {
+                b.index += 1;
+            }
+            for s in self.snippets.iter_mut().filter(|s| s.0 >= t) {
+                s.1 = !s.1;
+            }
+            for w in self.amp.iter_mut().filter(|w| w.start_s >= t) {
+                w.swap_sides();
+            }
+            got.swap(0, 1);
+        }
+        self.side_snips = got.map(|g| {
+            let skip = g.len().saturating_sub(SIDE_SNIPS);
+            g.into_iter().skip(skip).collect()
+        });
     }
 
     /// Replace caller-supplied position/settling boundaries, retaining known
@@ -401,16 +591,23 @@ impl LiveAnalyzer {
     }
 
     fn pass(&mut self) {
+        // The audio is lent out for the pass, which changes the rest.
+        let buf = std::mem::take(&mut self.buf);
+        self.pass_on(&buf);
+        self.buf = buf;
+    }
+
+    fn pass_on(&mut self, buf: &[f32]) {
         let fs = self.fs;
-        let win = ((self.cfg.window_s * fs).ceil() as usize).min(self.buf.len());
+        let win = ((self.cfg.window_s * fs).ceil() as usize).min(buf.len());
         // Wait for most of a window before the first pass.
         if (win as f64) < 0.75 * self.cfg.window_s * fs {
             return;
         }
-        let x = &self.buf[self.buf.len() - win..];
-        let off = (self.buf0 + (self.buf.len() - win) as u64) as f64 / fs;
+        let x = &buf[buf.len() - win..];
+        let off = (self.buf0 + (buf.len() - win) as u64) as f64 / fs;
         let end = self.total as f64 / fs;
-        let a = &self.cfg.analysis;
+        let a = &self.cfg.analysis.clone();
         let env = envelope(x, fs, &a.envelope);
 
         let (bph, local) = match (&self.template, self.bph) {
@@ -455,8 +652,6 @@ impl LiveAnalyzer {
             self.next_amp_s = None;
             return;
         }
-        self.quiet_passes = 0;
-
         // Number this pass's beats on from the last settled beat.
         let Some(anchor) = local.iter().position(|b| {
             let t = b.time + off;
@@ -465,12 +660,22 @@ impl LiveAnalyzer {
             self.settled_to = to;
             return;
         };
+        let resumed = self.quiet_passes > 0;
+        self.quiet_passes = 0;
+        let anchor_t = local[anchor].time + off;
         let anchor_index = match self.beats.last() {
             Some(last) => {
-                last.index
-                    + ((local[anchor].time + off - last.time) / beat)
-                        .round()
-                        .max(1.0) as i64
+                let count = (anchor_t - last.time) / beat;
+                let n = count.round().max(1.0);
+                // Off the count by more than a quarter of a beat, or after
+                // a stretch too quiet to follow: the watch's phase moved
+                // across a hole (a dropout, a knock that cost a beat), so
+                // the count is a guess. It is a jump.
+                let index = last.index + n as i64;
+                if resumed || (count - n).abs() > 0.25 {
+                    self.jump_at(anchor_t, false);
+                }
+                index
             }
             None => 0,
         };
@@ -501,10 +706,43 @@ impl LiveAnalyzer {
             }
             if b.quality > 0.4 {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
-                    self.snippets
-                        .push_back((t, b.index.rem_euclid(2) == 0, w.to_vec()));
+                    let even = b.index.rem_euclid(2) == 0;
+                    self.snippets.push_back((t, even, w.to_vec()));
+                    if b.quality > 0.5 {
+                        let side = usize::from(!even);
+                        let snip = (t, w.to_vec());
+                        match &mut self.side_check {
+                            Some((_, got)) => got[side].push(snip),
+                            None => {
+                                let kept = &mut self.side_snips[side];
+                                kept.push_back(snip);
+                                if kept.len() > SIDE_SNIPS {
+                                    kept.pop_front();
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+        // A step in the beats' timing within a quarter of a beat of the
+        // count (a hole that cost close to a whole number of beats) is a
+        // jump too, found as a whole file's reading finds one.
+        let good: Vec<Beat> = {
+            let mut g: Vec<Beat> = self
+                .beats
+                .iter()
+                .rev()
+                .take(2 * JUMP_LOOK)
+                .filter(|b| b.quality > 0.4)
+                .take(JUMP_LOOK)
+                .copied()
+                .collect();
+            g.reverse();
+            g
+        };
+        for p in beats::jumps(&good, &[]) {
+            self.jump_at(good[p].time, true);
         }
         if self.beats.len() > self.cfg.max_beats {
             let cut = self.beats.len() - self.cfg.max_beats;
@@ -549,10 +787,14 @@ impl LiveAnalyzer {
         } else if self.next_amp_s.is_none() {
             self.next_amp_s = Some(start);
         }
+        // After the windows, so those of this pass follow a swap too.
+        self.settle_sides();
         let span = self.profile_span();
         while self.snippets.front().is_some_and(|f| f.0 < to - span) {
             self.snippets.pop_front();
         }
+        // Until the sides are told apart there is no Tick or Tock to show.
+        let sided = self.side_check.is_none();
         self.profiles = [Side::A, Side::B].map(|side| {
             let even = side == Side::A;
             let w: Vec<&[f32]> = self
@@ -561,7 +803,7 @@ impl LiveAnalyzer {
                 .filter(|s| s.1 == even)
                 .map(|s| s.2.as_slice())
                 .collect();
-            profile::from_snippets(&w, fs, side, 2.0 * beat, &a.amplitude)
+            profile::from_snippets(&w, fs, side, 2.0 * beat, &a.amplitude).filter(|_| sided)
         });
         self.settled_to = to;
     }
@@ -648,6 +890,9 @@ impl LiveAnalyzer {
         let watch_heard = !measure::regularity_assessed(listened_s)
             || bph.is_some_and(|b| crate::beats::watch_heard(jitter_us, b));
         let heard = |v: Option<f64>| v.filter(|_| watch_heard);
+        // Figures that name a side wait until the sides are told apart.
+        let sided = self.sides_known_at(end_s);
+        let sided = |v: Option<f64>| heard(v).filter(|_| sided);
         let clipped_fraction = (hi > lo).then(|| clipped_beats as f64 / (hi - lo) as f64);
         // The rate's ± from 10 s windows over the run so far (the latest
         // unbroken run of beats, back to a break, up to RATE_RUN_S), scaled
@@ -691,12 +936,12 @@ impl LiveAnalyzer {
             time_s: end_s,
             bph,
             rate_s_per_day: heard(fit.map(|f| f.rate_s_per_day)),
-            beat_error_ms: heard(fit.map(|f| f.beat_error_ms)),
-            beat_error_unlock_ms: heard(med(&|w| w.beat_error_unlock_ms)),
+            beat_error_ms: sided(fit.map(|f| f.beat_error_ms)),
+            beat_error_unlock_ms: sided(med(&|w| w.beat_error_unlock_ms)),
             amplitude_deg: heard(med(&|w| w.mean())),
             amplitude_error_deg: heard(amplitude_error_deg),
-            amplitude_even_deg: heard(med(&|w| w.even_deg)),
-            amplitude_odd_deg: heard(med(&|w| w.odd_deg)),
+            amplitude_even_deg: sided(med(&|w| w.even_deg)),
+            amplitude_odd_deg: sided(med(&|w| w.odd_deg)),
             jitter_us,
             timing_scatter_fraction,
             beats_used: fit.map_or(0, |f| f.beats_used),
@@ -706,7 +951,7 @@ impl LiveAnalyzer {
             clipped_fraction,
             watch_heard,
             rate_error_s_per_day: assessment.confidence.and_then(|c| c.rate.se),
-            beat_error_unlock_error_ms: assessment.confidence.and_then(|c| c.beat_error.se),
+            beat_error_unlock_error_ms: sided(assessment.confidence.and_then(|c| c.beat_error.se)),
             caveats,
         }
     }
@@ -743,6 +988,168 @@ fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
 mod tests {
     use super::*;
     use crate::synth::{generate, SynthConfig};
+
+    /// A hole in the sound that costs `lost_s` of the watch's beating (a
+    /// USB dropout, a knock that loses a beat) after `silence_s` of
+    /// silence, at 20 s in, heard live from a watch whose Tock sounds
+    /// unlike its Tick. Returns the analyzer and the reading at each pass,
+    /// with the breaks known then.
+    fn through_a_hole(
+        bph: u32,
+        silence_s: f64,
+        lost_s: f64,
+    ) -> (LiveAnalyzer, Vec<(LiveReading, usize)>) {
+        let piece = |duration_s: f64, seed: u64| {
+            generate(
+                &SynthConfig {
+                    bph,
+                    duration_s,
+                    rate_s_per_day: 10.0,
+                    beat_error_ms: 0.6,
+                    // A louder unlock on the Tock.
+                    odd_gains: Some([0.9, 0.25, 1.0]),
+                    seed,
+                    ..Default::default()
+                },
+                |_| 270.0,
+                |_| 0.0,
+            )
+        };
+        // A watch beating on from where the first piece stopped (a whole
+        // number of beats in), heard again after the silence and `lost_s`
+        // more.
+        let a = piece(HOLE_AT_S, 1);
+        let b = piece(16.0, 2);
+        let fs = a.sample_rate as f64;
+        let mut samples = a.samples;
+        samples.extend(std::iter::repeat_n(0.0, (silence_s * fs) as usize));
+        samples.extend_from_slice(&b.samples[(lost_s * fs) as usize..]);
+        let mut live = LiveAnalyzer::new(a.sample_rate, LiveConfig::default());
+        let mut readings = Vec::new();
+        for chunk in samples.chunks(960) {
+            if live.push(chunk) {
+                readings.push((live.reading(2.0), live.breaks().len()));
+            }
+        }
+        (live, readings)
+    }
+
+    const HOLE_AT_S: f64 = 20.0;
+
+    /// The sides keep their names across a hole: the beat error after it,
+    /// by the beats' timing, by the unlock and on every amplitude window,
+    /// matches the one before. A hole that moved the watch's phase is one
+    /// jump, or two where passes straddling it call a second, and no
+    /// amplitude window reaches across one. Readings that name a side are
+    /// left out from a jump until its sides are checked.
+    fn check_hole(bph: u32, silence_s: f64, lost_s: f64) {
+        let (live, passes) = through_a_hole(bph, silence_s, lost_s);
+        let readings: Vec<&LiveReading> = passes.iter().map(|p| &p.0).collect();
+        let case = format!("{bph} bph, {silence_s} s silent, {lost_s} s lost");
+        let back = HOLE_AT_S + silence_s;
+        let side = |from: f64, to: f64| {
+            let run: Vec<_> = live
+                .beats()
+                .iter()
+                .filter(|b| b.time >= from && b.time < to)
+                .copied()
+                .collect();
+            timing::beat_error_ms(&run).expect("beat error")
+        };
+        let (before, after) = (side(5.0, HOLE_AT_S - 1.0), side(back + 6.0, f64::INFINITY));
+        assert!(
+            before.abs() > 0.4 && (before - after).abs() < 0.1,
+            "{case}: beat error {before} then {after}"
+        );
+        let unlock = |r: &&LiveReading| r.beat_error_unlock_ms;
+        let was = readings
+            .iter()
+            .filter(|r| (10.0..HOLE_AT_S - 1.0).contains(&r.time_s))
+            .find_map(unlock)
+            .expect("an unlock beat error before");
+        let late: Vec<f64> = readings
+            .iter()
+            .filter(|r| r.time_s >= back + 6.0)
+            .filter_map(unlock)
+            .collect();
+        assert!(
+            !late.is_empty() && late.iter().all(|v| v.signum() == was.signum()),
+            "{case}: unlock beat error {was} then {late:?}"
+        );
+        let breaks = live.breaks();
+        for w in live.amplitude_windows() {
+            assert!(
+                !breaks.iter().any(|&b| w.start_s < b && w.end_s > b),
+                "{case}: window {}-{} across {breaks:?}",
+                w.start_s,
+                w.end_s
+            );
+            if w.start_s >= back + 6.0 {
+                if let Some(v) = w.beat_error_unlock_ms {
+                    assert_eq!(v.signum(), was.signum(), "{case}: window at {}", w.start_s);
+                }
+            }
+        }
+        // Found when the beats are found again, within a pass window and
+        // the few beats a step in their timing needs. Where the phase didn't
+        // move, the beats of passes straddling the silence can still step
+        // as the silence leaves the window: at most one jump, checked like
+        // any other.
+        let recovery = back..back + LiveConfig::default().window_s + 1.0;
+        let jumps = if lost_s == 0.0 { 0..=1 } else { 1..=2 };
+        assert!(
+            jumps.contains(&breaks.len()) && breaks.iter().all(|b| recovery.contains(b)),
+            "{case}: {breaks:?}"
+        );
+        if breaks.is_empty() {
+            return;
+        }
+        // Once the jump is found, the sides are not yet told apart: no
+        // figure that names a side is read.
+        let found = passes
+            .iter()
+            .find(|p| p.1 > 0)
+            .map(|p| p.0.time_s)
+            .expect("a pass after the jump");
+        let early: Vec<&LiveReading> = passes
+            .iter()
+            .filter(|p| p.1 > 0 && p.0.time_s < found + 1.0)
+            .map(|p| &p.0)
+            .collect();
+        for r in early {
+            assert!(
+                r.beat_error_ms.is_none()
+                    && r.beat_error_unlock_ms.is_none()
+                    && r.amplitude_even_deg.is_none()
+                    && r.amplitude_odd_deg.is_none(),
+                "{case}: at {} {r:?}",
+                r.time_s
+            );
+        }
+        assert!(
+            live.sides_known_at(live.duration_s()),
+            "{case}: sides never checked"
+        );
+    }
+
+    #[test]
+    fn a_short_silent_hole_keeps_the_sides() {
+        for lost_s in [0.0, 0.04, 0.0625, 0.09] {
+            check_hole(28_800, 1.0, lost_s);
+        }
+    }
+
+    #[test]
+    fn a_hole_of_about_a_beat_keeps_the_sides() {
+        check_hole(28_800, 0.0, 0.11);
+        check_hole(28_800, 0.0, 0.14);
+    }
+
+    #[test]
+    fn a_silent_hole_of_about_a_beat_more_keeps_the_sides() {
+        check_hole(28_800, 1.0, 0.11);
+        check_hole(18_000, 0.0, 0.17);
+    }
 
     fn feed(a: &mut LiveAnalyzer, x: &[f32]) {
         for block in x.chunks(480) {

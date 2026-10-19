@@ -106,6 +106,9 @@ use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 enum Confirm {
     NewSession,
     Quit,
+    /// Start listening to the microphone, over a recording whose masks
+    /// changed.
+    Microphone,
     /// Open a recording (analysed whole, or replayed when `replay`).
     Open {
         path: PathBuf,
@@ -1021,6 +1024,15 @@ pub struct TimegrapherApp {
     sound_opts: profiles::Options,
     sound_history: Vec<(f64, Profiles)>,
     sound_at: Option<(f64, Profiles)>,
+    /// The jumps in the live sound's beats as of the last pass, to see a
+    /// new one.
+    jumps_seen: Vec<f64>,
+    /// Masks on the recording on show let go by the answer to the ask
+    /// before listening, so starting doesn't ask again.
+    masks_let_go: bool,
+    /// The Positions Test to begin once the ask before listening is
+    /// answered: just after winding (`None`) or the 24 hour half.
+    guided_after_ask: Option<Option<guided::FullWind>>,
     sound_job: Option<(f64, std::sync::mpsc::Receiver<Profiles>)>,
     /// Offer every input the system lists, not just one per microphone.
     all_inputs: bool,
@@ -1318,6 +1330,9 @@ impl TimegrapherApp {
             sound_opts: profiles::Options::default(),
             sound_history: Vec::new(),
             sound_at: None,
+            jumps_seen: Vec::new(),
+            masks_let_go: false,
+            guided_after_ask: None,
             sound_job: None,
             all_inputs: false,
             opened_at: Instant::now(),
@@ -1496,10 +1511,30 @@ impl TimegrapherApp {
         }
     }
 
+    /// Listen, the masks on the recording on show saved or let go: and
+    /// begin the Positions Test when that is what asked. They stay on show
+    /// until listening starts, so a microphone that fails to open leaves
+    /// them to save.
+    fn listen_after_ask(&mut self) {
+        self.masks_let_go = true;
+        match self.guided_after_ask.take() {
+            Some(half) => self.start_guided(half),
+            None => self.start_microphone(),
+        }
+        self.masks_let_go = false;
+    }
+
     /// Listen to the microphone: carry on the paused session if there is
     /// one, else start a new one.
     fn start_microphone(&mut self) {
+        let let_go = std::mem::take(&mut self.masks_let_go);
         if self.refuse_faulted_recording() {
+            return;
+        }
+        // Listening replaces the recording on show: changed masks on it
+        // are asked about first.
+        if !let_go && self.masks_unsaved() {
+            self.confirm = Some(Confirm::Microphone);
             return;
         }
         if self.can_resume() {
@@ -2545,6 +2580,26 @@ impl TimegrapherApp {
                             self.clipped_at = Some(Instant::now());
                         }
                         if live.push(&b.samples) {
+                            // A jump the beats' timing shows is found a second
+                            // or two after it: the points read since reached
+                            // across it, so they go.
+                            let jumps = live.jumps();
+                            if jumps != self.jumps_seen.as_slice() {
+                                let recent = live.duration_s() - 10.0;
+                                let new = jumps
+                                    .iter()
+                                    .copied()
+                                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
+                                    .reduce(f64::min);
+                                if let Some(j) = new {
+                                    self.trend.retain(|p| p.t <= j);
+                                    for t in self.other_trends.values_mut() {
+                                        t.retain(|p| p.t <= j);
+                                    }
+                                    self.sound_history.retain(|h| h.0 <= j);
+                                }
+                                self.jumps_seen = jumps.to_vec();
+                            }
                             // While the watch settles after a move nothing is
                             // read; then the readings start afresh.
                             match self.session.settling_now(live.duration_s()) {
@@ -3007,6 +3062,7 @@ impl TimegrapherApp {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
+                    Confirm::Microphone => "Start listening without saving?",
                 })
                 .font(theme::semibold(15.0)),
             );
@@ -3033,7 +3089,9 @@ impl TimegrapherApp {
                 let go = match (&fault, &what) {
                     (Some(_), Confirm::Quit) => "Leave Files and Quit",
                     (Some(_), _) => "Leave Files and Continue",
-                    (None, Confirm::NewSession | Confirm::Open { .. }) => "Don't Save",
+                    (None, Confirm::NewSession | Confirm::Open { .. } | Confirm::Microphone) => {
+                        "Don't Save"
+                    }
                     (None, Confirm::Quit) => "Quit Without Saving",
                 };
                 if ui
@@ -3067,6 +3125,7 @@ impl TimegrapherApp {
             Some(1) => {}
             Some(_) => {
                 self.confirm = None;
+                self.guided_after_ask = None;
                 return;
             }
             None => return,
@@ -3075,6 +3134,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
+            Confirm::Microphone => self.listen_after_ask(),
             Confirm::Quit => {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -5906,6 +5966,11 @@ impl TimegrapherApp {
                 self.resume_microphone();
             } else {
                 self.start_microphone();
+                if self.confirm == Some(Confirm::Microphone) {
+                    // The test begins once the masks are answered for.
+                    self.guided_after_ask = Some(half);
+                    return;
+                }
             }
         }
         if !self.running() {
@@ -10206,6 +10271,36 @@ mod tests {
             assert_eq!(again.position, Position::DialDown);
             assert!(!again.needs_save_confirmation());
         }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Starting the microphone, or a Positions Test, over a recording whose
+    /// masks changed asks first, and keeps them until listening starts.
+    #[test]
+    fn listening_asks_before_unsaved_masks_go() {
+        let base = std::env::temp_dir().join(format!("tg-app-mask-mic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = opened_recording(&base, "a.wav", 12.0);
+        app.mask(2.0, 5.0);
+        app.start_microphone();
+        assert!(matches!(app.confirm, Some(Confirm::Microphone)));
+        assert_eq!(app.masked, [(2.0, 5.0)], "nothing let go yet");
+        // A Positions Test asked for waits on the same answer.
+        app.confirm = None;
+        app.start_guided(None);
+        assert!(matches!(app.confirm, Some(Confirm::Microphone)));
+        assert_eq!(app.guided_after_ask, Some(None));
+        // Answered, with an input that can't be opened: the masks stay on
+        // show, still to save.
+        app.devices_listed = true;
+        app.device = Some("no such input".into());
+        app.confirm = None;
+        app.listen_after_ask();
+        assert!(!app.running());
+        assert_eq!(app.masked, [(2.0, 5.0)]);
+        assert!(app.masks_unsaved());
+        assert_eq!(app.guided_after_ask, None);
+        assert!(!app.masks_let_go);
         let _ = std::fs::remove_dir_all(&base);
     }
 
