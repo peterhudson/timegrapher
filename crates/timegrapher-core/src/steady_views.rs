@@ -1,12 +1,15 @@
-//! What the app's Steadiness pane draws behind each headline, as data: the
+//! What the Steadiness pane draws behind each headline, as data: the
 //! readings the tests were made on, each series' period search, and each
 //! series folded at a cycle. The Autocorrelation, Allan Deviation and CUSUM
 //! views come with the statistics themselves ([`crate::steadiness`]); these
 //! are the Readings, Periods and Cycle views, so a chart outside the app can
 //! draw the same thing.
 //!
-//! The grids, searches and folds are worked out as the app's pane works
-//! them out; only the output is thinned, so a day's take stays small.
+//! The grids are the ones `steadiness::check` builds (on true time when the
+//! take has pauses or a clock fit; on the app's own takes, with no clock
+//! fit and only zero-length breaks, the app's pane builds the same grids);
+//! the searches and folds are the app's, and only the output is thinned, so
+//! a day's take stays small.
 
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
@@ -301,14 +304,14 @@ pub fn folds(
 /// Phase bins for the Cycle view: one per phase the readings fall on, so
 /// no bin mixes two phases and the drawn cycle keeps its size. A 45 s
 /// cycle read every 10 s comes back to the same phase every 90 s, after 9
-/// readings at 9 phases. Where the phases do not repeat within 40, the
-/// readings cover the cycle densely and it is cut at one bin per reading,
-/// 6 to 40.
+/// readings at 9 phases. A repeat is taken only within two turns: phases
+/// that repeat later are too many for each bin to hold enough readings, so
+/// the cycle is cut at one bin per reading, 6 to 40.
 fn phase_bins(period: f64, step: f64) -> usize {
     let r = period / step;
-    (1..)
+    (1..=2)
         .map(|m| m as f64 * r)
-        .take_while(|x| x.round() <= 40.0)
+        .filter(|x| x.round() <= 40.0)
         .find(|x| (x - x.round()).abs() < 0.05)
         .map_or((r.round() as usize).clamp(6, 40), |x| x.round() as usize)
 }
@@ -534,16 +537,19 @@ mod tests {
         assert_eq!(phase_bins(30.0, 10.0), 3);
         assert_eq!(phase_bins(600.0, 2.0), 40);
         assert_eq!(phase_bins(42.7, 10.0), 6);
+        assert_eq!(phase_bins(41.4, 10.0), 6);
+        assert_eq!(phase_bins(58.0, 10.0), 6);
         // A 45 s cycle read every 10 s keeps its size: its readings' peak
-        // to peak, at 9 phases 40 degrees apart.
+        // to peak, at 9 phases 40 degrees apart. 45.003 s keeps each phase
+        // off a bin edge, where rounding would split it across two bins.
         let g = Grid {
             t0: 0.0,
             step: 10.0,
             y: (0..360)
-                .map(|i| (std::f64::consts::TAU * (i as f64 * 10.0 + 2.5) / 45.0).sin())
+                .map(|i| (std::f64::consts::TAU * (i as f64 * 10.0 + 2.5) / 45.003).sin())
                 .collect(),
         };
-        let f = longterm::fold(&g, 45.0, phase_bins(45.0, 10.0));
+        let f = longterm::fold(&g, 45.003, phase_bins(45.003, 10.0));
         let max = f.profile.iter().copied().fold(f64::MIN, f64::max);
         let min = f.profile.iter().copied().fold(f64::MAX, f64::min);
         let want = 2.0 * (80f64.to_radians()).sin();
@@ -657,6 +663,79 @@ mod tests {
         assert_eq!(be.t_s, want);
         let at = |t: f64| be.t_s.iter().any(|&x| (x - t).abs() < 1e-9);
         assert!(at(g0.time(k) + 3.0 * step) && !at(g0.time(k)));
+    }
+
+    #[test]
+    fn the_rate_readings_are_the_tests_readings_across_a_pause() {
+        let cfg = SynthConfig {
+            duration_s: 300.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let log = BeatLog {
+            sample_rate: live.sample_rate(),
+            duration_s: live.duration_s(),
+            bph: live.bph().expect("beat rate"),
+            lift_deg: live.config().analysis.amplitude.lift_deg,
+            beats: live.beats().to_vec(),
+            amplitude_windows: live.amplitude_windows().to_vec(),
+            clipped_beats: live.clipped_beats().to_vec(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+        };
+        let lc = LongConfig {
+            wheels: default_wheels(log.bph),
+            ..Default::default()
+        };
+        let plain = longrun::analyse(&log, None, &lc);
+        // A 30 s pause 3 s into a rate reading, half way through.
+        let g = &check_grids(&log, &plain, 10.0)[0];
+        let mid = g.t0 + 15.0 * g.step + 3.0;
+        let breaks = [crate::breaks::Break {
+            audio_s: mid,
+            gap_s: 30.0,
+        }];
+        let paused = longrun::analyse_with_breaks(&log, None, &breaks, &lc);
+        let report = steadiness::check(&log, None, &paused, &lc, &Config::default());
+        let tests = report
+            .distributions
+            .overall
+            .iter()
+            .find(|d| d.series == "rate" && d.values == "readings")
+            .expect("rate readings");
+        let v = views(&log, &report, &paused, &lc, 10.0);
+        let r = &v.series[0].readings;
+        assert_eq!(r.stride, 1);
+        assert_eq!(r.t_s.len(), tests.n);
+        let mut sorted = r.values.clone();
+        sorted.sort_by(f64::total_cmp);
+        let n = sorted.len();
+        let median = if n % 2 == 1 {
+            sorted[n / 2]
+        } else {
+            0.5 * (sorted[n / 2 - 1] + sorted[n / 2])
+        };
+        assert!(
+            (median - tests.median).abs() < 1e-9,
+            "{median} {}",
+            tests.median
+        );
+        // The log-time readings, cut only where the pause sits, differ, so
+        // this test bites.
+        let cuts = [crate::breaks::Break {
+            audio_s: mid,
+            gap_s: 0.0,
+        }];
+        let log_time = grids_with_breaks(&log, 10.0, &cuts)[0]
+            .y
+            .iter()
+            .filter(|v| v.is_finite())
+            .count();
+        assert_ne!(log_time, tests.n);
     }
 
     /// The app's own test take: ten minutes of a watch whose rate swings
