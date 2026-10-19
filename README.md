@@ -155,6 +155,10 @@ that repeats like a bad tooth.
 
 Validation against tg is in [docs/validation.md](docs/validation.md).
 
+Numbered microscope photographs and gear-ratio calculations for the Rolex,
+Dandong and Jinghe 32xx train are in
+[docs/32xx-train-wheel-counts.md](docs/32xx-train-wheel-counts.md).
+
 ## Reporting problems and sharing recordings
 
 Open an [issue](https://github.com/peterhudson/timegrapher/issues/new/choose):

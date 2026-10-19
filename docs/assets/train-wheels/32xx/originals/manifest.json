@@ -1,0 +1,32 @@
+[
+  {
+    "original_filename": "Escape Wheel.JPG",
+    "file": "escape-wheel.jpg",
+    "sha256": "07896fa0c4ea9855b78931f65a7e5b633f15ca99e5b30a16c6e579d206ffe7aa"
+  },
+  {
+    "original_filename": "Fourth Wheel (bottom).JPG",
+    "file": "fourth-wheel-bottom.jpg",
+    "sha256": "ccc17a9e53e1a291e18d15ce3b14b7396806623c67fc00e238233a2dafdd7aa4"
+  },
+  {
+    "original_filename": "Fourth Wheel (top).JPG",
+    "file": "fourth-wheel-top.jpg",
+    "sha256": "fdd4b0b14806250047e4de4198c0666ea576f40fafc7f7ebca533261cceda3f2"
+  },
+  {
+    "original_filename": "Mainspring.JPG",
+    "file": "barrel.jpg",
+    "sha256": "5b1c8511b8ae33046cb6174d7f7db95925c59038edd15fe0f80807528460c727"
+  },
+  {
+    "original_filename": "Second Wheel.JPG",
+    "file": "second-wheel.jpg",
+    "sha256": "fa4b1dcd87048f7e1bb812267041ba639cd3a8642cf31796a3e473b83fd5196b"
+  },
+  {
+    "original_filename": "Thrid Wheel.JPG",
+    "file": "third-wheel.jpg",
+    "sha256": "7e8c8c186a6245f9aed9d8f7c346b6b5f28d279c442220c7ee19b1b934e628bb"
+  }
+]
