@@ -2,9 +2,9 @@
 
 Peter Hudson supplied four microscope photographs from a VR32xx movement
 on 2026-10-19. The counted wheels give a **540-second third wheel** and a
-**18,000-second (5-hour) barrel**. The escape pair is **inferred as 20 teeth
-and 10 pinion leaves**, giving a **5-second rotation**, with Peter's explicit
-approval. No VR escape-wheel photograph was supplied.
+**18,000-second (5-hour) barrel**. The accepted escape-pair specification is **20 teeth
+and 10 pinion leaves**, giving a **5-second rotation**, as confirmed for
+database use by Peter. No VR escape-wheel photograph was supplied.
 
 ## Counts and periods
 
@@ -14,7 +14,7 @@ approval. No VR escape-wheel photograph was supplied.
 | Second wheel | 80 | 20 | 3600 | Photographed; one-hour period supplied |
 | Third wheel | 99 | 12 | 540 | Photographed; corrected filename |
 | Fourth wheel | 120 | 11 | 60 | Photographed; one-minute period supplied |
-| Escape wheel | **20** | **10** | **5** | **INFERRED, not photographed** |
+| Escape wheel | **20** | **10** | **5** | Accepted specification; comparison evidence |
 
 The barrel period is the drum's running period, not the winding-arbor
 period or the power reserve. Wheel and pinion on each rigid arbor share
@@ -41,13 +41,13 @@ The numbered figures use the confirmed mechanical roles.
 barrel 100 → second pinion 20
 second wheel 80 → third pinion 12
 third wheel 99 → fourth pinion 11
-fourth wheel 120 → escape pinion 10 [inferred]
+fourth wheel 120 → escape pinion 10
 
 T_second = 3600 s                  [contributor constraint]
 T_third  = 3600 × 12/80 = 540 s
 T_fourth = 540 × 11/99 = 60 s      [matches seconds-hand constraint]
 T_barrel = 3600 × 100/20 = 18000 s
-T_escape = 60 × 10/120 = 5 s      [conditional on inferred pinion]
+T_escape = 60 × 10/120 = 5 s
 ```
 
 The second-to-fourth speed increase is `(80/12) × (99/11) = 60` exactly.
@@ -55,17 +55,17 @@ Using the original, reversed labels would instead give
 `(80/11) × (120/12) = 800/11`, inconsistent with the supplied one-hour
 second and one-minute fourth wheel.
 
-### Why the escape-pair inference is accepted
+### Basis for the accepted escape pair
 
 Both the photographed [31xx set](31xx-train-wheel-counts.md) and the
 [genuine/DD/Jinghe 32xx family evidence](32xx-train-wheel-counts.md) show
 **20 escape teeth and a 10-leaf pinion**. Their fourth wheels also have
-120 teeth and rotate once per minute. Thus the proposed VR pair agrees
+120 teeth and rotate once per minute. Thus the accepted VR pair agrees
 with **both** comparison families, not just one.
 
 At 28,800 beats per hour, eight beats occur each second. A lever escape
 wheel advances one tooth pitch in two beats, so a 20-tooth escape wheel
-requires `2 × 20 / 8 = 5 seconds` per turn. The proposed 10-leaf pinion
+requires `2 × 20 / 8 = 5 seconds` per turn. The 10-leaf pinion
 independently gives `60 × 10/120 = 5 seconds` from the fourth wheel.
 
 This agreement does not uniquely measure the missing pair. If E is the
@@ -73,10 +73,10 @@ escape tooth count and p its pinion leaves, the constraints imply
 `E/4 = p/2`, or **E = 2p**. Other integer pairs could satisfy that equation.
 The 20/10 choice additionally uses the contributor's visual recollection
 that the escape wheel resembles a 31xx or 32xx, the matching counted
-comparison pairs, and his explicit authorization to accept that inference.
-It remains labelled **INFERRED** in the database and here. A future photo
-can replace the inference with a direct count; no synthetic escape-wheel
-image is presented as evidence.
+comparison pairs, and his explicit instruction to treat 20/10 as the standard VR32xx
+specification. The database uses this accepted pair without a provisional
+label. Its provenance remains comparison-based: no VR escape-wheel
+photograph was supplied, and it is not represented as a direct count.
 
 ## Scope and database changes
 
@@ -95,7 +95,7 @@ physical parts interchangeability.
 The genuine/DD/Jinghe 32xx family remains separate: its 98-tooth barrel
 and 14-leaf second pinion give a seven-hour barrel. The VR train's
 100-tooth barrel and 20-leaf second pinion give five hours, despite matching
-third/fourth periods and the assumed escape pair. Neither complete train
+third/fourth periods and the accepted escape pair. Neither complete train
 should be used as a blanket replacement for the other.
 
 ## Evidence assets

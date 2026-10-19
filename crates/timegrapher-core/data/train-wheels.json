@@ -887,7 +887,7 @@
         "name": "escape wheel",
         "period_s": 5,
         "teeth": 20,
-        "basis": "INFERRED 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor explicitly approved this assumption; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
+        "basis": "Accepted 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor accepted this as the standard VR32xx configuration; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
         "pinion": 10
       },
       {
@@ -899,10 +899,10 @@
     "sources": [
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a hybrid of the 3135 and 3235, about 40 h)",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
-      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and approved escape-pair inference, 2026-10-19)"
+      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and accepted escape-pair specification, 2026-10-19)"
     ],
-    "confidence": "derived from tooth counts; inferred escape pair",
-    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are explicitly INFERRED, not photographed, with contributor approval based on agreement with both measured Rolex-derived families. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
+    "confidence": "derived from tooth counts; accepted escape pair",
+    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are accepted as the standard VR32xx specification by the contributor, based on agreement with both measured Rolex-derived families; the VR escape wheel was not photographed. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
     "escape_teeth": 20
   },
   {
@@ -78531,7 +78531,7 @@
         "name": "escape wheel",
         "period_s": 5,
         "teeth": 20,
-        "basis": "INFERRED 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor explicitly approved this assumption; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
+        "basis": "Accepted 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor accepted this as the standard VR32xx configuration; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
         "pinion": 10
       },
       {
@@ -78542,10 +78542,10 @@
     ],
     "sources": [
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (closer to genuine than the VR3235; balance, pallet fork and escape wheel not to genuine spec)",
-      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and approved escape-pair inference, 2026-10-19)"
+      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and accepted escape-pair specification, 2026-10-19)"
     ],
-    "confidence": "derived from tooth counts; inferred escape pair",
-    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are explicitly INFERRED, not photographed, with contributor approval based on agreement with both measured Rolex-derived families. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
+    "confidence": "derived from tooth counts; accepted escape pair",
+    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are accepted as the standard VR32xx specification by the contributor, based on agreement with both measured Rolex-derived families; the VR escape wheel was not photographed. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
     "escape_teeth": 20
   }
 ]

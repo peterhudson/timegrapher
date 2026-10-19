@@ -278,6 +278,6 @@ Three-hertz, Power+ and ambiguous clone identities are excluded.
 ## VR32xx microscope contribution
 
 [VR32xx evidence](../../../docs/vr32xx-train-wheel-counts.md) establishes the
-100 / 80:20 / 99:12 / 120:11 train and five-hour barrel. The missing 20:10
-escape pair is an explicitly approved inference from both comparison
-families, not a photograph. VR and SH aliases are separated.
+100 / 80:20 / 99:12 / 120:11 train and five-hour barrel. The 20:10 escape pair
+is the contributor-accepted standard specification, supported by both
+comparison families. Its source note records that it was not photographed. VR and SH aliases are separated.

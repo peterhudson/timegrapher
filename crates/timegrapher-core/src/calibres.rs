@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn vr32xx_has_its_own_train_and_explicit_escape_inference() {
+    fn vr32xx_has_its_own_train_and_accepted_escape_pair() {
         for name in ["VR3235", "VR32xx", "VR3285"] {
             let c = find(name).unwrap();
             let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
@@ -407,7 +407,7 @@ mod tests {
                 .basis
                 .as_deref()
                 .unwrap()
-                .contains("INFERRED"));
+                .contains("Accepted 20/10 escape pair"));
             assert!(wheel("escape wheel")
                 .basis
                 .as_deref()
