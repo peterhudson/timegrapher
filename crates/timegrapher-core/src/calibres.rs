@@ -384,6 +384,98 @@ mod tests {
     }
 
     #[test]
+    fn counted_2824_train_reconciles_cannon_mesh_and_scopes_variants() {
+        let covered: Vec<_> = all()
+            .iter()
+            .filter(|c| {
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("2824-train-wheel-counts.md"))
+            })
+            .collect();
+        assert_eq!(covered.len(), 39);
+        for c in covered {
+            assert_eq!(c.bph, Some(28800), "{}", c.calibre);
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            let third = wheel("third wheel");
+            let cannon = wheel("cannon pinion");
+            assert_eq!(third.period_s, 600.0);
+            assert_eq!(
+                cannon.period_s,
+                third.period_s * cannon.teeth.unwrap() as f64 / third.pinion.unwrap() as f64
+            );
+            assert!((wheel("centre wheel").period_s - 46200.0 / 13.0).abs() < 1e-9);
+            assert!((wheel("barrel").period_s - 4666200.0 / 221.0).abs() < 1e-9);
+            assert_eq!(wheel("escape wheel").pinion, Some(9));
+            if c.calibre != "ETA 2824-2" {
+                assert!(third
+                    .basis
+                    .as_deref()
+                    .unwrap()
+                    .contains("INFERRED family transfer"));
+            }
+        }
+        for name in [
+            "ETA 2801-2",
+            "ETA 2804-2",
+            "ETA 2826-2",
+            "2834-2",
+            "2836-2",
+            "SW240-1",
+            "SW215-1",
+            "SW288-1 M b",
+            "SW400-1 b",
+            "TY2130",
+            "ST2100",
+            "ST2108",
+            "PT5000",
+            "STP1-11",
+            "P024",
+            "HZ6300",
+            "VAL24",
+            "SH3135 (ETA 2824 base)",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("2824-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        for c in all().iter().filter(|c| c.bph != Some(28800)) {
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("2824-train-wheel-counts.md")),
+                "{}",
+                c.calibre
+            );
+        }
+        for name in [
+            "ETA 2824 (21,600 bph, 53°)",
+            "ETA 2826",
+            "ETA 2892-A2",
+            "SH3135",
+            "VR3235",
+        ] {
+            assert!(
+                find(name)
+                    .unwrap()
+                    .sources
+                    .iter()
+                    .all(|s| !s.contains("2824-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        for name in ["SW200-2", "SW200-2 Power+", "SW200-1 S", "SW400-1 AJ"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+        assert_eq!(find("STP1-11").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("ETA 2824-2").unwrap().lift_angle_deg, Some(50.0));
+    }
+
+    #[test]
     fn counted_4130_train_keeps_maker_scope_and_inference_provenance() {
         for name in [
             "4130",
