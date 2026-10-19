@@ -180,13 +180,14 @@ pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Optio
 
 /// The three series' readings as `steadiness::check` lays them out: on
 /// true time (the clock's mapping, and each pause's gap when the take has
-/// pauses), with no rate reading across a pause and each gap left empty.
+/// pauses), each gap left empty, and no rate reading that touches a gap or
+/// lacks beats in any of its 2 s stretches.
 /// The views draw, search and fold these, so they show the readings the
 /// tests were made on.
 fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
     let clock = long.clock.as_ref();
     let map = crate::longrun::true_time(clock, &long.breaks);
-    let cuts = crate::longrun::cuts(clock, &long.breaks);
+    let gaps = crate::longrun::gaps(clock, &long.breaks);
     let beats: Vec<_> = log
         .beats
         .iter()
@@ -195,8 +196,13 @@ fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
             ..*b
         })
         .collect();
+    let aw = &log.amplitude_windows;
+    let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
     let mut wins = timing::windows(&beats, log.bph, rate_s, rate_s);
-    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
+    wins.retain(|w| {
+        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
+            && covered(&beats, w.start_s, w.end_s, step)
+    });
     let rate = match (wins.first(), wins.last()) {
         (Some(w0), Some(last)) => {
             let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
@@ -219,8 +225,6 @@ fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
             y: Vec::new(),
         },
     };
-    let aw = &log.amplitude_windows;
-    let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
     let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
         let (Some(w0), Some(last)) = (aw.first(), aw.last()) else {
             return Grid {
@@ -249,6 +253,19 @@ fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
         grid_of(&|w| w.mean()),
         grid_of(&|w| w.beat_error_unlock_ms),
     ]
+}
+
+/// Whether every stretch of `part` seconds from `start` to `end` holds a
+/// beat (`beats` sorted by time), as `steadiness::check` asks of a rate
+/// reading.
+fn covered(beats: &[crate::beats::Beat], start: f64, end: f64, part: f64) -> bool {
+    let k = ((end - start) / part).round().max(1.0) as usize;
+    let len = (end - start) / k as f64;
+    (0..k).all(|j| {
+        let a = start + j as f64 * len;
+        let i = beats.partition_point(|b| b.time < a);
+        beats.get(i).is_some_and(|b| b.time < a + len)
+    })
 }
 
 /// Where a series' fold period came from.
@@ -724,18 +741,22 @@ mod tests {
             "{median} {}",
             tests.median
         );
-        // The log-time readings, cut only where the pause sits, differ, so
+        // Cutting only at the pause's middle, as the tests did before,
+        // keeps readings that reach into the pause from either side, so
         // this test bites.
-        let cuts = [crate::breaks::Break {
-            audio_s: mid,
-            gap_s: 0.0,
-        }];
-        let log_time = grids_with_breaks(&log, 10.0, &cuts)[0]
-            .y
+        let map = longrun::true_time(None, &paused.breaks);
+        let cut = longrun::cuts(None, &paused.breaks);
+        let beats: Vec<_> = log
+            .beats
             .iter()
-            .filter(|v| v.is_finite())
-            .count();
-        assert_ne!(log_time, tests.n);
+            .map(|b| crate::beats::Beat {
+                time: map(b.time),
+                ..*b
+            })
+            .collect();
+        let mut wins = timing::windows(&beats, log.bph, 10.0, 10.0);
+        wins.retain(|w| !cut.iter().any(|&c| w.start_s < c && c < w.end_s));
+        assert!(wins.len() > tests.n, "{} {}", wins.len(), tests.n);
     }
 
     /// The app's own test take: ten minutes of a watch whose rate swings
