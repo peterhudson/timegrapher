@@ -82,8 +82,10 @@ impl View {
             }
             View::Periods => {
                 "How strongly the readings repeat at each period, from the period search: \
-                 a peak above the dashed line is a real cycle, labelled with the wheel whose \
-                 turn it matches"
+                 the horizontal dashed line is the score a period needs for the search to list it, and \
+                 the strongest line it lists is labelled with its period and with the wheel \
+                 whose turn it matches, when it matches one; the headline names any cycle \
+                 the tests found"
             }
             View::Cycle => {
                 "The readings folded at the cycle the tests found: every cycle's readings as \
@@ -150,14 +152,17 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         clipped_beats: live.clipped_beats().to_vec(),
         // Not counted live; the tests don't use it.
         clipped_samples: 0,
-        // Imported jumps, current position/settling boundaries and the
-        // start of each masked stretch are all known cuts, not extra
+        // Imported jumps, current position/settling boundaries and both
+        // ends of each masked stretch are all known cuts, not extra
         // elapsed time or newly detected jumps.
         jumps: live.breaks().to_vec(),
     };
-    // Stretches masked by hand are left out, each one a cut.
+    // Stretches masked by hand are left out, cut at both ends: no reading
+    // reaches across one, and none takes in a ragged edge of beats beside
+    // one (a 10 s reading over the end of a mask would have only the beats
+    // after it).
     timegrapher_core::session::mask_log(&mut log, masked);
-    log.jumps.extend(masked.iter().map(|m| m.0));
+    log.jumps.extend(masked.iter().flat_map(|m| [m.0, m.1]));
     log.jumps.sort_by(f64::total_cmp);
     log.jumps.dedup();
     Some(log)
@@ -793,7 +798,7 @@ fn row(
         }
         View::Cycle => {
             let Some(f) = &s.folds[i] else {
-                return note(ui, "No cycle found: nothing repeats in these readings.");
+                return note(ui, "No cycle found to fold these readings at.");
             };
             let bins = f.profile.len();
             let x = |b: usize| (b as f64 + 0.5) / bins as f64 * f.period_s;
@@ -1507,6 +1512,20 @@ mod tests {
         assert_eq!(derived.clipped_beats, live.clipped_beats());
         assert_eq!(derived.duration_s, live.duration_s());
         assert_eq!(derived.clipped_samples, 0, "not counted live, unchanged");
+    }
+
+    /// Both ends of a masked stretch are cuts, so no 10-second reading
+    /// downstream reaches across one or takes in a ragged edge beside one.
+    #[test]
+    fn a_masked_stretch_is_cut_at_both_ends() {
+        let mut live = LiveAnalyzer::from_log(context_log(), LiveConfig::default());
+        live.set_masked(&[(20.0, 33.5)]);
+        let derived = log_of(&live).unwrap();
+        assert_eq!(derived.jumps, [20.0, 33.5, 60.03]);
+        assert!(derived
+            .beats
+            .iter()
+            .all(|b| !(20.0..33.5).contains(&b.time)));
     }
 
     #[test]
