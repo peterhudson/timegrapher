@@ -617,21 +617,24 @@ fn a_break_with_no_gap_keeps_its_single_cut() {
         clipped_samples: 0,
         jumps: Vec::new(),
     };
-    let brk = timegrapher_core::breaks::Break {
-        audio_s: jump,
-        gap_s: 0.0,
-    };
-    let m = session::measure_masked(&log, None, &[brk], &[], 20.0, 110.0);
     let inside: Vec<_> = beats
         .iter()
         .filter(|b| b.time >= 20.0 && b.time < 110.0)
         .copied()
         .collect();
     let want = timegrapher_core::timing::fit_pieces(&inside, bph, &[jump - 1e-6]).unwrap();
-    let rate = m.rate_s_per_day.expect("rate");
-    assert!(
-        (rate - want.rate_s_per_day).abs() < 1e-9,
-        "rate {rate} s/d, one cut gives {} s/d",
-        want.rate_s_per_day
-    );
+    // A gap under 0 s, as the recorder can write, is taken as none.
+    for gap_s in [0.0, -0.2] {
+        let brk = timegrapher_core::breaks::Break {
+            audio_s: jump,
+            gap_s,
+        };
+        let m = session::measure_masked(&log, None, &[brk], &[], 20.0, 110.0);
+        let rate = m.rate_s_per_day.expect("rate");
+        assert!(
+            (rate - want.rate_s_per_day).abs() < 1e-9,
+            "gap {gap_s} s: rate {rate} s/d, one cut gives {} s/d",
+            want.rate_s_per_day
+        );
+    }
 }
