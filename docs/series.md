@@ -163,7 +163,32 @@ peak to peak beside a 30 s alias of 2 s/d is given its own 2 s/d, not
 the fold's larger swing, and a 60 s line the search lists with nothing
 of its own in the readings is no cycle (the headline then
 names it from the search). On the alias itself the two cannot be parted,
-and the size is the fold's. The headline leads
+and the size is the fold's.
+
+Folded at a period of an odd number of readings, n, the readings fall
+in the same groups as at half of it: reading k is at phase k/n of the
+one and 2k/n of the other, and with n odd both visit the same n phases,
+in another order. So a 45 s cycle in 10 s readings can be found at
+90 s, nine readings a turn. Which of the two the readings follow shows
+in the shape's harmonics: a shape that repeats at half the period has
+its variance in the even ones. When the period is known to under half
+a reading (so that one whole number of readings is within the
+resolution) and is seven readings or more, the cycle moves to half its
+period if sines at the half and the quarter explain 85% or more of what
+all n phases explain (sines at every harmonic up to n/2). At seven
+readings a turn the quarter is under two readings and cannot be told
+from the third in them, so the half is fitted alone. A line the
+period search lists at an odd harmonic, such as a 30 s line beside
+90 s, or a listed fast line's alias there, such as the 30 s alias of a
+3.75 s escape wheel, is a line of its own sharing those phases and is
+left out of the n phases first; a cycle the search lists at its own
+period stays. The moved cycle's share and size are those of the sines
+(a fold at 4.5 readings a turn puts readings of different phases in one
+bin and reads low), and it must still explain 10% and clear a fast line's alias, net
+of it at a turn and a half or more, as any cycle must. Its source is
+where the period it was moved from was found.
+
+The headline leads
 with two levels, then a cycle, then level changes or a trend, then
 correlation between readings. When the take shows more than the lead,
 the headline adds a sentence. If one side's unlock edges or 2 s windows
