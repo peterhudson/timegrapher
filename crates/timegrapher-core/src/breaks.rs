@@ -127,6 +127,21 @@ pub fn of_files(
     for_take(json.as_ref().filter(|_| whole), clock, sample_rate)
 }
 
+/// [`of_files`], with the clock fit's breaks moved to the listed ones
+/// ([`crate::clock::ClockFit::place_breaks`]), so the clock and the breaks
+/// put each gap at the same audio second.
+pub fn of_files_on_clock(
+    files: &[&std::path::Path],
+    clock: Option<&mut crate::clock::ClockFit>,
+    sample_rate: u32,
+) -> Vec<Break> {
+    let listed = of_files(files, clock.as_deref(), sample_rate);
+    if let Some(c) = clock {
+        c.place_breaks(&listed);
+    }
+    listed
+}
+
 /// How near a jump in the beats must be to a listed break to be that break,
 /// seconds: the beats can take a second or two to be found again after it.
 pub const JUMP_MATCH_S: f64 = 5.0;
