@@ -741,22 +741,40 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "inferred: Rolex's escapement patent uses a standard 20-tooth Swiss lever as its baseline (its own design has 24 teeth); not confirmed for this calibre"
+        "pinion": 10,
+        "basis": "derived: 20 photographed escape teeth at 28800 bph give 5 s; 10 pinion leaves counted in the least-sharp detail image, also consistent with 120:10 fourth-to-escape ratio"
       },
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived: carries the small seconds"
+        "teeth": 120,
+        "pinion": 12,
+        "basis": "derived: 5 s escape wheel and photographed 120:10 mesh give 60 s. Receiving pinion 12 is INFERRED from the supplied 96/12 third wheel and one-hour second wheel; it is hidden, not directly counted. The separate 30-tooth steel gear on this arbor drives the clutch"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 480,
+        "teeth": 96,
+        "pinion": 12,
+        "basis": "derived: photographed second wheel 90 drives this 12-leaf pinion; 3600 x 12 / 90 = 480 s. Identity is consistent with a 12-leaf fourth receiving pinion, not independently proved by the inferred ratio"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 90,
+        "pinion": 15,
+        "basis": "contributor constraint: photographed second (minute-driving) wheel turns once per hour. Centre wheel is the catalogue slot name, not a claim that this arbor occupies the movement centre"
       },
       {
         "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived: carries the minute hand"
+        "basis": "derived: carries the minute hand; retained separately from the photographed second wheel"
       },
       {
         "name": "barrel",
         "period_s": 25200,
-        "basis": "published: one barrel turn every 7 h (Caliber Corner)"
+        "teeth": 105,
+        "basis": "derived: photographed 105-tooth barrel drives 15-leaf second pinion; 3600 x 105 / 15 = 25200 s (7 h). This is the drum rotation period, not power reserve"
       },
       {
         "name": "balance",
@@ -765,20 +783,21 @@
       }
     ],
     "sources": [
+      "docs/4130-train-wheel-counts.md (Peter Hudson, 2026-10-19: DD4130 microscope photographs; contributor reports matching counts and periods for genuine Rolex 4130 and SH4130; fourth receiving pinion inferred)",
+      "https://forum.uurwerkherstellers.nl/downloads/rolex4130.pdf (Rolex Technical Information No. 61, May 2000, printed pp. 5-7: 28800 bph, 20 escape teeth, 7 h barrel, 52 degree lift angle and clutch layout)",
       "https://calibercorner.com/rolex-caliber-4130/",
       "https://www.watch-wiki.net/doku.php?id=rolex_4130",
       "https://patents.google.com/patent/US8529122",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "72 h power reserve. Lift 52° per the clone timegrapher guide and Caliber Corner; this project has also reported its 4130 takes at 55°. The centre of the movement carries the chronograph seconds, so the going train's centre wheel is not named; the minute hand's cannon pinion turns once an hour."
+    "confidence": "derived from tooth counts",
+    "notes": "72 h nominal power reserve. Rolex Technical Information No. 61 (May 2000), printed p. 5, publishes 52 degree lift, 28800 bph, 20 escape teeth and one barrel turn per 7 h. Photographed DD4130 counts and derived periods are applied to Rolex 4130 and SH4130 on Peter Hudson's stated applicability; only the DD4130 set was photographed. The fourth receiving pinion is inferred as 12 leaves, while its separate clutch-drive gear is directly counted at 30 teeth. The 96/12 third wheel fits the train but its identity is not independently established by inferring that hidden pinion. Clutch input 30, output 70 and chronograph seconds counter 70 are documented separately; the output and counter rotate once per minute only when engaged. No propagation to 4131, 4030 or 7750-based Daytona homages."
   },
   {
     "calibre": "Dandong 4130",
     "maker": "Peacock (Dandong)",
     "family": [
-      "DD4130",
-      "4130 (clone)"
+      "DD4130"
     ],
     "common": true,
     "bph": 28800,
@@ -790,17 +809,40 @@
         "name": "escape wheel",
         "period_s": 5.0,
         "teeth": 20,
-        "basis": "measured: a 5 s rate cycle on the bench (daytona4130_DU_30min)"
+        "pinion": 10,
+        "basis": "derived: 20 photographed escape teeth at 28800 bph give 5 s; 10 pinion leaves counted in the least-sharp detail image, also consistent with 120:10 fourth-to-escape ratio"
       },
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived: carries the small seconds"
+        "teeth": 120,
+        "pinion": 12,
+        "basis": "derived: 5 s escape wheel and photographed 120:10 mesh give 60 s. Receiving pinion 12 is INFERRED from the supplied 96/12 third wheel and one-hour second wheel; it is hidden, not directly counted. The separate 30-tooth steel gear on this arbor drives the clutch"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 480,
+        "teeth": 96,
+        "pinion": 12,
+        "basis": "derived: photographed second wheel 90 drives this 12-leaf pinion; 3600 x 12 / 90 = 480 s. Identity is consistent with a 12-leaf fourth receiving pinion, not independently proved by the inferred ratio"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 90,
+        "pinion": 15,
+        "basis": "contributor constraint: photographed second (minute-driving) wheel turns once per hour. Centre wheel is the catalogue slot name, not a claim that this arbor occupies the movement centre"
       },
       {
         "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived: carries the minute hand"
+        "basis": "derived: carries the minute hand; retained separately from the photographed second wheel"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 105,
+        "basis": "derived: photographed 105-tooth barrel drives 15-leaf second pinion; 3600 x 105 / 15 = 25200 s (7 h). This is the drum rotation period, not power reserve"
       },
       {
         "name": "balance",
@@ -809,12 +851,76 @@
       }
     ],
     "sources": [
+      "docs/4130-train-wheel-counts.md (Peter Hudson, 2026-10-19: DD4130 microscope photographs; contributor reports matching counts and periods for genuine Rolex 4130 and SH4130; fourth receiving pinion inferred)",
+      "https://forum.uurwerkherstellers.nl/downloads/rolex4130.pdf (Rolex Technical Information No. 61, May 2000, printed pp. 5-7: 28800 bph, 20 escape teeth, 7 h barrel, 52 degree lift angle and clutch layout)",
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a true clone, compatible with genuine parts)",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
     ],
-    "confidence": "measured",
-    "notes": "Taken as the 4130's train; the barrel is left out because the clone's power reserve is not documented. The Shanghai SH4130's balance bridge, pallet fork and escape wheel are not to genuine spec, and 7750-based 'Daytona' clones use the Valjoux 7750 train instead: neither matches this entry. That it is a true clone, the SH4130 remark and its 52° lift angle rest only on one author's two forum guides (on clone movements and on lift angles); the bench recordings support the 20-tooth escape wheel."
+    "confidence": "derived from tooth counts",
+    "notes": "Existing 52 degree lift setting retained from the forum timegrapher guide; the photo contribution establishes gear counts, not lift geometry. Earlier bench recordings independently showed a 5 s rate cycle. The ambiguous 4130 (clone) alias is removed: select DD4130 or SH4130 explicitly. Photographed DD4130 counts and derived periods are applied to Rolex 4130 and SH4130 on Peter Hudson's stated applicability; only the DD4130 set was photographed. The fourth receiving pinion is inferred as 12 leaves, while its separate clutch-drive gear is directly counted at 30 teeth. The 96/12 third wheel fits the train but its identity is not independently established by inferring that hidden pinion. Clutch input 30, output 70 and chronograph seconds counter 70 are documented separately; the output and counter rotate once per minute only when engaged. No propagation to 4131, 4030 or 7750-based Daytona homages."
+  },
+  {
+    "calibre": "SH4130",
+    "maker": "Shanghai (clone)",
+    "family": [
+      "Shanghai 4130"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "small seconds at 6 (fourth wheel)",
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "teeth": 20,
+        "pinion": 10,
+        "basis": "derived: 20 photographed escape teeth at 28800 bph give 5 s; 10 pinion leaves counted in the least-sharp detail image, also consistent with 120:10 fourth-to-escape ratio"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "pinion": 12,
+        "basis": "derived: 5 s escape wheel and photographed 120:10 mesh give 60 s. Receiving pinion 12 is INFERRED from the supplied 96/12 third wheel and one-hour second wheel; it is hidden, not directly counted. The separate 30-tooth steel gear on this arbor drives the clutch"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 480,
+        "teeth": 96,
+        "pinion": 12,
+        "basis": "derived: photographed second wheel 90 drives this 12-leaf pinion; 3600 x 12 / 90 = 480 s. Identity is consistent with a 12-leaf fourth receiving pinion, not independently proved by the inferred ratio"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 90,
+        "pinion": 15,
+        "basis": "contributor constraint: photographed second (minute-driving) wheel turns once per hour. Centre wheel is the catalogue slot name, not a claim that this arbor occupies the movement centre"
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "derived: carries the minute hand; retained separately from the photographed second wheel"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 105,
+        "basis": "derived: photographed 105-tooth barrel drives 15-leaf second pinion; 3600 x 105 / 15 = 25200 s (7 h). This is the drum rotation period, not power reserve"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "docs/4130-train-wheel-counts.md (Peter Hudson, 2026-10-19: DD4130 microscope photographs; contributor reports matching counts and periods for genuine Rolex 4130 and SH4130; fourth receiving pinion inferred)"
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "Added from Peter Hudson's report that SH4130 shares these counts and periods. No SH4130 component photographs or lift-angle measurement were supplied; lift angle is left unspecified. Matching gear ratios do not establish genuine-part interchangeability or identical escapement geometry. Photographed DD4130 counts and derived periods are applied to Rolex 4130 and SH4130 on Peter Hudson's stated applicability; only the DD4130 set was photographed. The fourth receiving pinion is inferred as 12 leaves, while its separate clutch-drive gear is directly counted at 30 teeth. The 96/12 third wheel fits the train but its identity is not independently established by inferring that hidden pinion. Clutch input 30, output 70 and chronograph seconds counter 70 are documented separately; the output and counter rotate once per minute only when engaged. No propagation to 4131, 4030 or 7750-based Daytona homages."
   },
   {
     "calibre": "Rolex 4131",

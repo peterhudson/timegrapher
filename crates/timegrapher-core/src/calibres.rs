@@ -384,6 +384,51 @@ mod tests {
     }
 
     #[test]
+    fn counted_4130_train_keeps_maker_scope_and_inference_provenance() {
+        for name in [
+            "4130",
+            "Rolex 4130",
+            "DD4130",
+            "Dandong 4130",
+            "SH4130",
+            "Shanghai 4130",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            assert_eq!(wheel("third wheel").period_s, 480.0, "{name}");
+            assert_eq!(wheel("barrel").period_s, 25200.0, "{name}");
+            // The extra 30-tooth clutch drive must not be stored as the
+            // receiving pinion, which would make the going-train ratio wrong.
+            let fourth = wheel("fourth wheel");
+            assert_eq!(fourth.pinion, Some(12), "{name}");
+            assert!(fourth.basis.as_deref().unwrap().contains("INFERRED"));
+            assert!(c
+                .sources
+                .iter()
+                .any(|s| s.contains("4130-train-wheel-counts.md")));
+            // Stopped chronograph output has no unconditional turn period.
+            assert!(c
+                .wheels
+                .iter()
+                .all(|w| !w.name.contains("clutch") && !w.name.contains("chronograph")));
+        }
+        // Matching train counts do not establish an SH lift angle.
+        assert_eq!(find("SH4130").unwrap().lift_angle_deg, None);
+        assert_eq!(find("Rolex 4130").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("DD4130").unwrap().lift_angle_deg, Some(52.0));
+        assert!(find("4130 (clone)").is_none());
+        for name in ["Rolex 4131", "DD4131", "SH4131", "Valjoux 7750"] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("4130-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn finds_by_name_family_and_session_names() {
         let c = find("ETA 2824-2").expect("ETA 2824-2");
         assert_eq!(c.bph, Some(28800));

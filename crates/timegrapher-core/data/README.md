@@ -19,7 +19,7 @@ A JSON array, one object per calibre:
 | --- | --- |
 | `calibre` | Name shown to the user, e.g. "ETA 2824-2" |
 | `maker` | Maker, or "(clone)" for a copy |
-| `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "4130 (clone)") |
+| `family` | Other names that match: sister calibres with the same train, the names this project's session files use (e.g. "3235", "DD4130") |
 | `former_names` | Names the row had in earlier versions of the table (the 97 variant rows were first named with "vph"); they still match, with or without the maker, but are not searched or shown in the app. Left out when there are none |
 | `common` | `true` for common and modern calibres, the short list the app offers first; uncommon and vintage ones (most of the imported list) leave it out and appear when the list is expanded or searched |
 | `bph` | Beats per hour, where a source gives it |
@@ -128,8 +128,11 @@ into this table with the issue as their source.
   seconds are driven indirectly and the fourth wheel's own period is not
   known): 60 s when it carries the seconds hand.
 - **centre wheel**: 3600 s where it sits at the centre and carries the
-  minute hand. Where the great wheel is off centre (ETA 2824-2, Valjoux
-  7750) its period is not known, and the **cannon pinion**, which carries
+  minute hand. For the photographed 4130, this slot names the second wheel
+  even though
+  it is off centre; its 3600 s constraint is supplied by the contributor.
+  Where the great wheel is off centre and its period is unknown
+  (ETA 2824-2, Valjoux 7750), the **cannon pinion**, which carries
   the minute hand, is listed at 3600 s instead.
 - **third wheel** and **barrel**: only from tooth counts or a published
   ratio: third = fourth × third-wheel teeth / fourth-pinion leaves, barrel
@@ -153,17 +156,33 @@ Manufacturer-specific aliases are used for clones. The ambiguous
 DD/JH/VR/SH designation. VR32xx and SH32xx retain their previous known
 periods and receive none of these counts. Their independent photo sets
 are pending, as are contributions for ETA 2824 and its clones, Rolex 31xx
-and its clones, and Rolex 413x and its clones. Future contributions must
+and its clones, and further Rolex 413x variants. Future contributions must
 state which makers and variants they cover rather than propagate counts
 by a shared calibre number alone.
+
+[4130 train and chronograph counts](../../../docs/4130-train-wheel-counts.md)
+contain twelve numbered figures and ten originals from a DD4130, contributed
+by Peter Hudson on 2026-10-19. He reports matching counts and periods for
+genuine Rolex 4130 and SH4130; the latter now has its own entry. The train
+is barrel 105, second 90/15, third 96/12, fourth 120/12, escape 20/10.
+**The fourth receiving pinion's 12 leaves are inferred**, not directly
+counted. The supplied third-wheel identity is consistent with that inference,
+not independently proved by it. The derived periods are 25200, 3600, 480,
+60 and 5 seconds respectively. The separate 30:30 and 70:70 chronograph
+meshes are documented with engagement state rather than added as unconditional
+runtime periods. Existing 4131 entries are unchanged; 7750-based homages
+are excluded. The ambiguous `4130 (clone)` alias is removed; select an
+explicit manufacturer. No SH4130 lift angle is inferred from tooth counts.
 
 ## How far to trust it
 
 Tooth counts are rarely published. Only the Unitas 6497-2 / 6498-2 has a
 full published train (escape 15 on a 10-leaf pinion, fourth 120/8, third
-60/10, centre 80). The 32xx photo contribution above now supplies a complete
-counted train including the barrel, with family coverage confirmed by the
-contributor. Other entries rest on the beat rate and layout, plus these:
+60/10, centre 80). The 32xx and 4130 photo contributions above supply train
+counts including
+the barrels, with applicability reported by the contributor and the hidden
+4130 fourth pinion explicitly marked as inferred. Other entries rest on the
+beat rate and layout, plus these:
 
 - **20-tooth escape wheels at 28,800 bph.** The ETA 2824-2's escape wheel
   is documented with 20 teeth. Rolex's own escapement patent (US8529122)
@@ -172,7 +191,9 @@ contributor. Other entries rest on the beat rate and layout, plus these:
   project (Rolex 3235, Dandong 3235 and 4130, Patek 324 clone, Peacock
   SL1258) shows a rate cycle of exactly 5.00 s locked to 40 beats. The 32xx
   photo contribution now directly counts 20 teeth, with its stated coverage
-  of Rolex, Dandong and Jinghe. Other Rolex calibres retain their earlier
+  of Rolex, Dandong and Jinghe. The 4130 contribution also counts 20 teeth;
+  Rolex's own 4130 manual
+  independently specifies 20. Other Rolex calibres retain their earlier
   inferred counts and recorded clones their measured basis (the Dandong
   3235 recorded here carries a genuine escape wheel).
   The 2892-A2, 7750, Miyota 9015 and the Seiko 21,600 bph calibres have
@@ -181,9 +202,13 @@ contributor. Other entries rest on the beat rate and layout, plus these:
   Rolex, Dandong and Jinghe 32xx: 25,200 s (7 h), from the photographed
   98-tooth barrel and 14-leaf second pinion. This supersedes the provisional
   Rolex 3235 period of 22,050 s from a reading of SJX's 98:16 ratio.
-  Rolex 4130: 7 h, from Caliber Corner.
+  Rolex, Dandong and SH4130: 7 h from the photographed 105:15 ratio and
+  contributor applicability; Rolex's 4130 technical manual independently
+  publishes the seven-hour drum period. This is distinct from power reserve.
 - **Clones.** The 32xx contribution explicitly covers Dandong and Jinghe
-  and excludes VR32xx and SH32xx. For the older sources, a clone is given
+  and excludes VR32xx and SH32xx. The 4130 contribution covers DD4130 and
+  SH4130, without claiming equivalent lift geometry or interchangeable parts.
+  For the older sources, a clone is given
   the original's train, escape wheel
   included, only where it is described as a true clone that takes genuine
   parts (DD3235 and DD3285, JH3235, VR3135, DD4130), or whose maker says
@@ -198,9 +223,11 @@ contributor. Other entries rest on the beat rate and layout, plus these:
   guides alone or on one other source alone. Other remarks in clone
   notes (power reserves, factory prefixes, related calibres) mostly
   rest on a single source, often those guides, and most are not marked.
-- **Lift angles** are what sources give. Rolex, AP and Patek publish
-  none, so theirs are the figures timegrapher users work with (Rolex 31xx
-  and 4130 52°, 32xx and 4131 55° with a reported Rolex revision of the
+- **Lift angles** are what sources give. The Rolex 4130 technical manual
+  publishes 52°. For the other Rolex,
+  AP and Patek entries the figures here come from secondary sources or
+  bench settings (Rolex 31xx 52°, 32xx and 4131 55° with a reported Rolex
+  revision of the
   32xx to 53°, AP 3120 53°, AP 4302 52°, Patek 324 52°). The SH4131
   has a T-shaped pallet fork, not the 4131's; it is set at 52°, as the
   31xx, whose fork geometry it resembles (a bench setting, not a
