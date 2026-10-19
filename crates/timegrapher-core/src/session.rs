@@ -389,8 +389,8 @@ pub fn measure_with_breaks(
 /// pause to the first after it. A clock fit that found the pause itself
 /// places it at a log line near the listed break (the recorder's first
 /// line after the resume, a block or so later) and steps the time there,
-/// so the gap starts before the earlier of the two and ends at the clock
-/// fit's break.
+/// so the gap starts before the earlier of the two and ends at the
+/// later.
 fn gap_ends(clock: Option<&ClockFit>, b: &Break, map: &impl Fn(f64) -> f64) -> Option<(f64, f64)> {
     let resume = clock
         .and_then(|c| {
@@ -405,7 +405,7 @@ fn gap_ends(clock: Option<&ClockFit>, b: &Break, map: &impl Fn(f64) -> f64) -> O
         })
         .map_or(b.audio_s, |c| c.audio_s);
     let start = map(b.audio_s.min(resume) - 1e-6);
-    let end = map(resume);
+    let end = map(b.audio_s.max(resume));
     (end > start).then_some((start, end))
 }
 

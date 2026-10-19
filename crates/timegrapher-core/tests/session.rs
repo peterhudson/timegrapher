@@ -547,43 +547,66 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
     let clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
     assert_eq!(clock.breaks.len(), 1);
     assert!((clock.breaks[0].audio_s - (pause_s + block_s)).abs() < 1e-9);
-    let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
-        .filter_map(|k| {
-            let t = k as f64 * period;
-            let fast = (t - 203.0).clamp(0.0, 2.0) * 300.0 / 86400.0;
-            let t = t - if t < 205.0 { fast } else { 0.0 };
-            let audio = if t < pause_s {
-                t
-            } else if t >= pause_s + gap_s {
-                t - gap_s
-            } else {
-                return None;
-            };
-            Some(timegrapher_core::beats::Beat {
-                index: k,
-                time: audio,
-                quality: 1.0,
+    // Then the same with a second pause of 0.3 s at 207 s of true time,
+    // 4 s of sound after the first: too short for the clock fit to find,
+    // so only its listed break marks it.
+    for short in [None, Some(0.3)] {
+        let short_at = pause_s + gap_s + 4.0;
+        let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
+            .filter_map(|k| {
+                let t = k as f64 * period;
+                let fast = (t - 203.0).clamp(0.0, 2.0) * 300.0 / 86400.0;
+                let t = t - if t < 205.0 { fast } else { 0.0 };
+                let audio = if t < pause_s {
+                    t
+                } else if t < pause_s + gap_s {
+                    return None;
+                } else {
+                    match short {
+                        Some(g) if t >= short_at + g => t - gap_s - g,
+                        Some(_) if t >= short_at => return None,
+                        _ => t - gap_s,
+                    }
+                };
+                Some(timegrapher_core::beats::Beat {
+                    index: k,
+                    time: audio,
+                    quality: 1.0,
+                })
             })
-        })
-        .collect();
-    let log = timegrapher_core::stream::BeatLog {
-        sample_rate: 44_100,
-        duration_s: 240.0 - gap_s,
-        bph,
-        lift_deg: 52.0,
-        beats,
-        amplitude_windows: Vec::new(),
-        clipped_beats: Vec::new(),
-        clipped_samples: 0,
-        jumps: Vec::new(),
-    };
-    let m = session::measure_masked(&log, Some(&clock), &[brk], &[], 80.0, 129.0);
-    let (p05, p95) = (
-        m.rate_p05.expect("rate windows"),
-        m.rate_p95.expect("rate windows"),
-    );
-    assert!((p05 - 5.0).abs() < 1.0, "10 s rates reach {p05} s/d");
-    assert!((p95 - 5.0).abs() < 1.0, "10 s rates reach {p95} s/d");
+            .collect();
+        let mut breaks = vec![brk];
+        breaks.extend(short.map(|g| timegrapher_core::breaks::Break {
+            audio_s: short_at - gap_s,
+            gap_s: g,
+        }));
+        let log = timegrapher_core::stream::BeatLog {
+            sample_rate: 44_100,
+            duration_s: 240.0 - gap_s - short.unwrap_or(0.0),
+            bph,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+        };
+        let m = session::measure_masked(&log, Some(&clock), &breaks, &[], 80.0, 129.0);
+        let (p05, p95) = (
+            m.rate_p05.expect("rate windows"),
+            m.rate_p95.expect("rate windows"),
+        );
+        let rate = m.rate_s_per_day.expect("rate");
+        assert!(
+            (p05 - 5.0).abs() < 1.0,
+            "{short:?}: 10 s rates reach {p05} s/d"
+        );
+        assert!(
+            (p95 - 5.0).abs() < 1.0,
+            "{short:?}: 10 s rates reach {p95} s/d"
+        );
+        assert!((rate - 5.0).abs() < 1.0, "{short:?}: rate {rate} s/d");
+    }
 }
 
 #[test]

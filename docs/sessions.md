@@ -231,8 +231,8 @@ of the recording or for `measure_s`:
   corrected for the sound card's clock when the session file names a clock log
   or the session gives `card_ppm`. A reading with a mask or a restart in
   listening is cut at both ends of each: each stretch between cuts is
-  fitted on its own, a stretch under 10 s is left out, and the rest are
-  combined weighted by their beats;
+  fitted on its own, a stretch whose beats span under 10 s is left out,
+  and the rest are combined weighted by their beats;
 - beat error measured from the unlock, as tg and bench timegraphers do
   (median of the 2 s windows); this is the value the report shows first.
   The beat error from the drop (the same fit as the rate) is
@@ -247,9 +247,8 @@ of the recording or for `measure_s`:
 - jitter, and the median and the 5th to 95th percentile of rate in 10 s
   windows: how steady the rate is. The headline rate is the fit over
   every beat (over the stretches between cuts, as above), the average the
-  hands keep; where the rate wanders with
-  dips (the Yacht-Master crown left), the 10 s median sits a few s/d
-  above it, as tg's median reading sits above its mean, so compare tg's
+  hands keep; where the rate wanders with dips (the Yacht-Master crown
+  left), the 10 s median sits a few s/d above it, as tg's median reading sits above its mean, so compare tg's
   mean with the headline and tg's median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
