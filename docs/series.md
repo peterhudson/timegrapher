@@ -50,11 +50,17 @@ minutes.
 
 All three series are tested on readings of the same length, the rate's.
 The amplitude and the beat error are measured in 2 s windows; the
-windows that fall in each rate reading are averaged into one reading (a
-reading needs at least half its windows). Testing a 2 s series and a
-10 s series side by side would compare different things: a 2 s window
-is noisier, but it also keeps wander that a 10 s reading averages away,
-so the same wander can show as correlation in one series and not in the
+windows that fall in each rate reading are averaged into one reading.
+No reading is averaged over part of its span: an amplitude or beat
+error reading needs every 2 s window its span holds, and a rate reading
+needs beats in each 2 s piece of it and must not reach into a break's
+gap from either side, so a reading at the edge of a gap or a masked
+stretch, or with a window missing, is left out rather than averaged
+over what is left. The Allan deviation's averages need every reading of
+their block for the same reason. Testing a 2 s series and a 10 s series
+side by side would compare different things: a 2 s window is noisier,
+but it also keeps wander that a 10 s reading averages away, so the same
+wander can show as correlation in one series and not in the
 other. The headlines name the reading length.
 
 Readings stepped every 10 s cannot show a change faster than 20 s, and a
@@ -184,9 +190,9 @@ period search lists at an odd harmonic, such as a 30 s line beside
 left out of the n phases first; a cycle the search lists at its own
 period stays. The moved cycle's share and size are those of the sines
 (a fold at 4.5 readings a turn puts readings of different phases in one
-bin and reads low), and it must still explain 10% and clear a fast line's alias, net
-of it at a turn and a half or more, as any cycle must. Its source is
-where the period it was moved from was found.
+bin and reads low), and it must still explain 10% and clear a fast
+line's alias, net of it at a turn and a half or more, as any cycle must.
+Its source is where the period it was moved from was found.
 
 The headline leads
 with two levels, then a cycle, then level changes or a trend, then

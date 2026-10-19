@@ -119,7 +119,14 @@ pub fn true_time<'a>(clock: Option<&'a ClockFit>, breaks: &'a [Break]) -> impl F
         if clock_has_gaps {
             base
         } else {
-            base + crate::breaks::wall(breaks, t) - t
+            // A negative gap (the first sound after a pause stamped
+            // before the last one before it) would step true time back and
+            // overlap the two sides, so it counts as none.
+            base + breaks
+                .iter()
+                .filter(|b| b.audio_s <= t)
+                .map(|b| b.gap_s.max(0.0))
+                .sum::<f64>()
         }
     }
 }
@@ -132,6 +139,63 @@ pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
         .iter()
         .map(|b| map(b.audio_s) - 0.5 * b.gap_s - 1e-6)
         .collect()
+}
+
+/// Each break's gap on [`true_time`], from the last sound before the
+/// pause to the first after it. A reading reaching into one from either
+/// side holds only part of its span, so it is left out (see
+/// [`touches_gap`]).
+///
+/// A clock fit with the pauses in places its own break at its first log
+/// line after the resume, up to a block after the break's frame, so the
+/// gap ends at that break where one is within
+/// [`crate::breaks::JUMP_MATCH_S`] after; the sound between the two lies
+/// in the gap. A break of zero or negative length is a point.
+pub fn gaps(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<(f64, f64)> {
+    let map = true_time(clock, breaks);
+    let clock_breaks = clock.map_or(&[][..], |c| &c.breaks[..]);
+    breaks
+        .iter()
+        .map(|b| {
+            if b.gap_s <= 0.0 {
+                let p = map(b.audio_s);
+                return (p, p);
+            }
+            let start = map(b.audio_s - 1e-6);
+            let resume = clock_breaks
+                .iter()
+                .map(|c| c.audio_s)
+                .find(|&c| c >= b.audio_s && c - b.audio_s <= crate::breaks::JUMP_MATCH_S)
+                .unwrap_or(b.audio_s);
+            (start, map(resume).max(start))
+        })
+        .collect()
+}
+
+/// Where per-stretch fits cut, on true time: each stretch ends where its
+/// gap starts and the next starts where it ends, so sound inside a gap
+/// (the first block after a resume, before the clock log's break) belongs
+/// to neither. A point gap is one cut.
+pub fn piece_cuts(gaps: &[(f64, f64)]) -> Vec<f64> {
+    let mut cuts: Vec<f64> = gaps
+        .iter()
+        .flat_map(|&(a, b)| {
+            if b > a + 2e-6 {
+                vec![a - 1e-6, b - 1e-6]
+            } else {
+                vec![a - 1e-6]
+            }
+        })
+        .collect();
+    cuts.sort_by(f64::total_cmp);
+    cuts
+}
+
+/// Whether a stretch from `start` to `end` on true time reaches into, or
+/// across, any of `gaps`.
+pub fn touches_gap(gaps: &[(f64, f64)], start: f64, end: f64) -> bool {
+    gaps.iter()
+        .any(|&(a, b)| start < b - 1e-6 && end > a + 1e-6)
 }
 
 pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> LongReport {
@@ -150,7 +214,8 @@ pub fn analyse_with_breaks(
     cfg: &LongConfig,
 ) -> LongReport {
     let map = true_time(clock, breaks);
-    let cuts = cuts(clock, breaks);
+    let gaps = gaps(clock, breaks);
+    let cuts = piece_cuts(&gaps);
     let beats: Vec<Beat> = log
         .beats
         .iter()
@@ -230,6 +295,8 @@ pub fn analyse_with_breaks(
         .collect();
 
     // Slices for the overview: about 400 over the run, 10 s to 10 min each.
+    // A slice reaching into a gap holds part of its span only and reads
+    // nothing.
     let slice_s = (duration / 400.0).clamp(10.0, 600.0).round();
     let mut slices = Vec::new();
     let mut jitters = Vec::new();
@@ -241,24 +308,25 @@ pub fn analyse_with_breaks(
         while bi < beats.len() && beats[bi].time < e {
             bi += 1;
         }
-        let w = if cuts.iter().any(|&c| s < c && c < e) {
-            None
-        } else {
+        let whole = !touches_gap(&gaps, s, e);
+        let w = if whole {
             timing::fit(&beats[b0..bi], log.bph)
+        } else {
+            None
         };
         if let Some(f) = w {
             jitters.push(f.jitter_us);
         }
         let mut amps = Vec::new();
         while ai < at.len() && at[ai] < e {
-            if at[ai] >= s {
+            if at[ai] >= s && whole {
                 amps.push(av[ai]);
             }
             ai += 1;
         }
         let mut unlocks = Vec::new();
         while ui < ut.len() && ut[ui] < e {
-            if ut[ui] >= s {
+            if ut[ui] >= s && whole {
                 unlocks.push(uv[ui]);
             }
             ui += 1;
@@ -282,7 +350,7 @@ pub fn analyse_with_breaks(
     }
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
-    let listened = duration - breaks.iter().map(|b| b.gap_s).sum::<f64>();
+    let listened = duration - breaks.iter().map(|b| b.gap_s.max(0.0)).sum::<f64>();
     let expected = listened * log.bph as f64 / 3600.0;
     LongReport {
         duration_s: duration,
@@ -311,5 +379,123 @@ pub fn analyse_with_breaks(
         timing,
         amplitude,
         rate_components,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_gap_runs_to_the_clock_fits_own_break() {
+        // Lines as the recorder writes them: every 10 s, at a block's last
+        // frame. The first after a 30 s pause at 300 s of audio comes with
+        // the first 0.1 s block, so the clock fit's break is at 300.1 s.
+        let k = 1.0 + 20e-6;
+        let mut pairs: Vec<(f64, f64)> = (0..=30)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
+            .collect();
+        pairs.extend((0..30).map(|i| {
+            let t = 300.1 + i as f64 * 10.0;
+            (t, 1.79e9 + t * k + 30.0)
+        }));
+        let clock = ClockFit::new(&pairs).unwrap();
+        assert_eq!(clock.breaks.len(), 1, "{:?}", clock.breaks);
+        assert!((clock.breaks[0].audio_s - 300.1).abs() < 1e-9);
+        let breaks = [Break {
+            audio_s: 300.0,
+            gap_s: 30.0,
+        }];
+        let map = true_time(Some(&clock), &breaks);
+        let gaps = gaps(Some(&clock), &breaks);
+        let (a, b) = gaps[0];
+        // From the last sound before the pause to the clock's resume, so
+        // the 0.1 s of sound mapped before the jump lies in the gap.
+        assert!((a - map(300.0 - 1e-6)).abs() < 1e-6, "{gaps:?}");
+        assert!((b - map(300.1)).abs() < 1e-6, "{gaps:?}");
+        assert!((b - a - 30.1).abs() < 0.01, "{gaps:?}");
+        // The old middle cut fell 15 s before the pause, in the sound.
+        let mid = cuts(Some(&clock), &breaks)[0];
+        assert!(mid < a - 10.0, "{mid} {a}");
+        // A reading ending at the pause is whole; one taking in the ragged
+        // 0.1 s after it is not; one starting at the resume is whole.
+        assert!(!touches_gap(&gaps, a - 10.0, a));
+        assert!(touches_gap(&gaps, map(300.05), map(300.05) + 10.0));
+        assert!(!touches_gap(&gaps, b, b + 10.0));
+        // A jump of no known length is a point.
+        let jump = [Break {
+            audio_s: 100.0,
+            gap_s: 0.0,
+        }];
+        let p = super::gaps(None, &jump)[0];
+        assert_eq!(p.0, p.1);
+    }
+
+    #[test]
+    fn a_negative_gap_counts_as_none() {
+        // Beats every 0.2 s straight through a jump at 100 s listed with
+        // a gap of -0.2 s: true time must not step back, so the rate is
+        // the one fitted with the single cut at the jump.
+        let breaks = [Break {
+            audio_s: 100.0,
+            gap_s: -0.2,
+        }];
+        let map = true_time(None, &breaks);
+        assert_eq!(map(100.0), 100.0);
+        assert_eq!(map(150.0), 150.0);
+        let beats: Vec<Beat> = (0..1000)
+            .map(|index| Beat {
+                time: map(index as f64 * 0.2 * (1.0 + 1e-5)),
+                index,
+                quality: 1.0,
+            })
+            .collect();
+        let gaps = super::gaps(None, &breaks);
+        let cuts = piece_cuts(&gaps);
+        assert_eq!(cuts, vec![map(100.0) - 1e-6]);
+        let ours = timing::fit_pieces(&beats, 18000, &cuts).unwrap();
+        let single = timing::fit_pieces(&beats, 18000, &[100.0 - 1e-6]).unwrap();
+        assert!((ours.rate_s_per_day - single.rate_s_per_day).abs() < 1e-9);
+        assert!((ours.rate_s_per_day + 0.864).abs() < 0.01, "{ours:?}");
+    }
+
+    #[test]
+    fn sound_inside_a_gap_opens_no_stretch() {
+        // Recorder-shaped lines with two 30 s pauses, at 300 s and 306 s
+        // of audio, each first line after a resume one 0.1 s block late.
+        // A beat lands in each of those blocks; the 5.9 s between the
+        // pauses is under the 10 s floor, so only the first and last
+        // stretches count.
+        let k = 1.0 + 20e-6;
+        let line = |t: f64, gap: f64| (t, 1.79e9 + t * k + gap);
+        let mut pairs: Vec<(f64, f64)> = (0..=30).map(|i| line(i as f64 * 10.0, 0.0)).collect();
+        pairs.push(line(300.1, 30.0));
+        pairs.extend((0..30).map(|i| line(306.1 + i as f64 * 10.0, 60.0)));
+        let clock = ClockFit::new(&pairs).unwrap();
+        assert_eq!(clock.breaks.len(), 2, "{:?}", clock.breaks);
+        let breaks = [
+            Break {
+                audio_s: 300.0,
+                gap_s: 30.0,
+            },
+            Break {
+                audio_s: 306.0,
+                gap_s: 30.0,
+            },
+        ];
+        let map = true_time(Some(&clock), &breaks);
+        let beats: Vec<Beat> = (0..3000)
+            .map(|index| Beat {
+                time: map(index as f64 * 0.2 + 0.05),
+                index,
+                quality: 1.0,
+            })
+            .collect();
+        let cuts = piece_cuts(&super::gaps(Some(&clock), &breaks));
+        assert_eq!(cuts.len(), 4, "{cuts:?}");
+        let all = timing::fit_pieces(&beats, 18000, &cuts).unwrap();
+        let first = timing::fit(&beats[..1500], 18000).unwrap();
+        let last = timing::fit(&beats[1531..], 18000).unwrap();
+        assert_eq!(all.beats_used, first.beats_used + last.beats_used);
     }
 }
