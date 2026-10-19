@@ -173,7 +173,9 @@ not independently proved by it. The derived periods are 25200, 3600, 480,
 meshes are documented with engagement state rather than added as unconditional
 runtime periods. Existing 4131 entries are unchanged; 7750-based homages
 are excluded. The ambiguous `4130 (clone)` alias is removed; select an
-explicit manufacturer. No SH4130 lift angle is inferred from tooth counts.
+explicit manufacturer. Rolex, Dandong and SH4130 all specify **52°** lift:
+Rolex publishes this value, and Peter separately confirms the same angle
+for all 4130 variants. It is not inferred from tooth counts.
 
 [31xx train counts](../../../docs/31xx-train-wheel-counts.md) contain nine
 numbered figures and five originals from the VR31xx photo set, contributed
@@ -223,7 +225,8 @@ beat rate and layout, plus these:
 - **Clones.** The 31xx contribution covers DD/VS and VR, excluding SH31xx.
   The 32xx contribution explicitly covers Dandong and Jinghe
   and excludes VR32xx and SH32xx. The 4130 contribution covers DD4130 and
-  SH4130, without claiming equivalent lift geometry or interchangeable parts.
+  SH4130; Peter separately confirms that both share the genuine 52° lift
+  angle. Matching counts do not establish parts interchangeability.
   For the older sources, a clone is given
   the original's train, escape wheel
   included, only where it is described as a true clone that takes genuine

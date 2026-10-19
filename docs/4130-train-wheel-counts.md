@@ -37,7 +37,8 @@ Peter reports that these counts and periods also match **genuine Rolex
 and escapement construction. The photographs directly document DD4130;
 extension to the other two is contributor-supplied applicability, not
 three independently photographed trains. Matching counts do not prove
-parts interchangeability, tooth form, material or lift-angle equivalence.
+parts interchangeability, tooth form or material. Separately, Peter confirms
+that all 4130 variants share the genuine Rolex 4130 lift angle: **52°**.
 
 This contribution updates Rolex 4130 and Dandong 4130 and adds SH4130.
 It does **not** extend the counts to Rolex/DD/SH4131, Rolex 4030, or
@@ -119,8 +120,10 @@ going train. The second-to-fourth speed increase is
 
 The Rolex manual's printed page 5 (PDF page 7) independently specifies
 28,800 bph, 20 escape teeth and a seven-hour barrel revolution. It also
-publishes a 52° lift angle for genuine 4130. The existing Rolex and Dandong
-52° settings remain; no SH4130 lift angle is inferred from matching teeth.
+publishes a 52° lift angle for genuine 4130. All three catalogue entries
+(Rolex 4130, Dandong 4130 and SH4130) use **52°**, based on Peter's separate
+confirmation on 2026-10-19 that the clones share the genuine lift angle.
+This applicability comes from that confirmation, not from tooth counts.
 
 ## Database representation
 

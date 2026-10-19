@@ -412,8 +412,8 @@ mod tests {
                 .iter()
                 .all(|w| !w.name.contains("clutch") && !w.name.contains("chronograph")));
         }
-        // Matching train counts do not establish an SH lift angle.
-        assert_eq!(find("SH4130").unwrap().lift_angle_deg, None);
+        // Lift applicability was separately confirmed by the contributor.
+        assert_eq!(find("SH4130").unwrap().lift_angle_deg, Some(52.0));
         assert_eq!(find("Rolex 4130").unwrap().lift_angle_deg, Some(52.0));
         assert_eq!(find("DD4130").unwrap().lift_angle_deg, Some(52.0));
         assert!(find("4130 (clone)").is_none());
