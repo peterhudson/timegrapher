@@ -429,6 +429,69 @@ mod tests {
     }
 
     #[test]
+    fn counted_31xx_train_distinguishes_second_wheel_from_cannon_pinion() {
+        let mut names = vec![
+            "Rolex 31xx".to_string(),
+            "Rolex 3131".to_string(),
+            "DD31xx".to_string(),
+            "VS31xx".to_string(),
+            "Dandong 31xx".to_string(),
+            "VR31xx".to_string(),
+        ];
+        for number in [3130, 3135, 3186, 3187] {
+            for prefix in ["", "Rolex ", "DD", "VS", "Dandong ", "VR"] {
+                names.push(format!("{prefix}{number}"));
+            }
+        }
+        for name in names {
+            let c = find(&name).unwrap_or_else(|| panic!("missing {name}"));
+            assert_eq!(c.bph, Some(28800), "{name}");
+            assert_eq!(c.escape_teeth, Some(20), "{name}");
+            for (wheel, period, teeth, pinion) in [
+                ("barrel", 18000.0, Some(100), None),
+                ("centre wheel", 2160.0, Some(81), Some(12)),
+                ("third wheel", 320.0, Some(96), Some(12)),
+                ("fourth wheel", 60.0, Some(120), Some(18)),
+                ("escape wheel", 5.0, Some(20), Some(10)),
+                ("cannon pinion", 3600.0, None, None),
+            ] {
+                let w = c.wheels.iter().find(|w| w.name == wheel).unwrap();
+                assert_eq!(
+                    (w.period_s, w.teeth, w.pinion),
+                    (period, teeth, pinion),
+                    "{name}: {wheel}"
+                );
+            }
+            assert!(c
+                .sources
+                .iter()
+                .any(|s| s.contains("31xx-train-wheel-counts.md")));
+        }
+        assert_eq!(find("DD3135").unwrap().lift_angle_deg, None);
+        assert_eq!(find("Rolex 3135").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("VR3135").unwrap().lift_angle_deg, Some(52.0));
+        // A shared number/family must not assign these measurements to SH,
+        // 32xx/4130 variants, or the initially mistyped AP 3120.
+        for name in ["SH3135", "VR3235", "SH3235", "DD3235", "DD4130", "AP 3120"] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("31xx-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        assert!(find("SH3135")
+            .unwrap()
+            .wheels
+            .iter()
+            .all(|w| w.teeth.is_none() && w.pinion.is_none()));
+        for name in ["31xx", "SH31xx", "DD3120", "VR3120"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+    }
+
+    #[test]
     fn finds_by_name_family_and_session_names() {
         let c = find("ETA 2824-2").expect("ETA 2824-2");
         assert_eq!(c.bph, Some(28800));

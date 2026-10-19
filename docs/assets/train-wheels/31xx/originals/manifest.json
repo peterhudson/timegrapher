@@ -1,0 +1,37 @@
+[
+  {
+    "original_filename": "Barrel.JPG",
+    "saved_filename": "barrel.jpg",
+    "sha256": "c5ade41cd98e662a90e7c21722f8baa090e6b38dd24b28c9c06bc3151f53b01f",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Second Wheel.JPG",
+    "saved_filename": "second-wheel.jpg",
+    "sha256": "97f4f52d4d352f1ee4da8d8290743d547c1f8d9de9293abb412cb984db43f93f",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Thrid Wheel.JPG",
+    "saved_filename": "third-wheel.jpg",
+    "sha256": "c7f104eaf7eade072b1c0374da4f1c0685ab3652f7cdd82234576af699eb5c37",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Fourth Wheel.JPG",
+    "saved_filename": "fourth-wheel.jpg",
+    "sha256": "931fadec0ef94f16cca2bcd974efed49ff7b37fee99a7f3751fbfad40e07b72b",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Escape Wheel.JPG",
+    "saved_filename": "escape-wheel.jpg",
+    "sha256": "36c2b2bd5c182b55c8fdeff4bdd6bff9e828f47feb0fa23fe6f69cffb1e90c48",
+    "width": 2592,
+    "height": 1944
+  }
+]
