@@ -17,7 +17,7 @@ seconds = 45
 calibre = "Dandong 3235"
 
 [window]
-size = [1700, 800]
+size = [1880, 800]
 
 [settings]
 overlays = [false, false, false]

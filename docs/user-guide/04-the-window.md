@@ -77,8 +77,10 @@ may truncate text; hover over a summary to read the full version.
 ## Exporting a Pane
 
 Every pane except Watch has **Export…** in its toolbar; a chart has it in
-its tab bar. It saves the pane as a picture, as it is on the screen: a
-PNG file. A name with no ending is saved as a PNG. In the picture, the
+its tab bar. It saves the pane as a picture. The file name's ending
+chooses the kind: `.png` saves the pane as it is on the screen, and
+`.svg` saves a drawing whose lines and text stay sharp at any size, for
+a report or a printed page. A name with no ending is saved as a PNG. In the picture, the
 pane's name (with its own averaging time, if it has one) and a chart's
 key take the place of its controls, so the picture says what it shows
 without the buttons around it.

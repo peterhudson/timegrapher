@@ -71,7 +71,9 @@ small separations and bends; a wide width makes a fast or slow trace
 wrap less often.
 
 **Length** is the visible duration. Enter seconds or a duration such as
-`5 min`, `2h` or `1:30:00`, or choose a preset. Choose width and length
+`5 min`, `2h` or `1:30:00`, or choose a preset. The last preset, **Fit**,
+sets the length to the whole session so far (its last 24 hours when it
+is longer) and shows it up to the latest beat. Choose width and length
 together: a long trace at very narrow width may wrap so often that its
 underlying pattern becomes hard to follow.
 
@@ -109,15 +111,23 @@ the trace turns it off. **Centre** centres the newest beats once.
 of the stand during a long take. With Mask on, drag along the strip over
 the beats you want left out: that stretch is masked, shaded on the strip
 and labelled **Masked**. A drag shorter than half a second is ignored, as
-a slip of the mouse. Click a masked stretch to bring it back, or
-**Unmask All** to bring them all back. While any are masked, the toolbar
+a slip of the mouse. With Mask on, drag a masked stretch's edge to move it. Click a
+masked stretch to bring it back (right-click works with Mask on or off),
+or **Unmask All** to bring them all back. Stretches that overlap, by
+masking or by moving an edge, join into one. While any are masked, the toolbar
 says how many there are and how long they add up to, for example
 "2 stretches masked, 0:41 in all".
 
 ![Five seconds of a recording masked on the strip, shaded and labelled Masked, with the toolbar's count](images/paper-strip-masked.png)
 
-A masked stretch is cut like a pause. No reading reaches across it and
-nothing is read inside it; the charts, the whole-take figures, the
+A masked stretch is cut like a pause, at both ends. No reading reaches
+across it and nothing is read inside it. A chart's line breaks there and
+comes back once nine tenths of an averaging time of beats has been heard
+after it, as at the start of a session. The Steadiness tests leave out
+any 10-second rate reading that takes in either end of a mask; a
+10-second amplitude or beat-error reading there is still made from the
+2-second stretches outside the mask when they fill at least half of it.
+Otherwise the charts, the whole-take figures, the
 distributions, the Steadiness views and a Positions Test all leave its
 beats out. A reading whose averaging time takes in masked sound says so
 beside its card's title, for example **8 s masked out** (under 0.05 s it
@@ -127,8 +137,17 @@ Masking is a choice about what the readings include, so make it for a
 reason you could state, and say so when you share the result. A take
 saved from the app keeps its masked stretches, and they come back masked
 when it is opened or replayed; the command line's `session` leaves them
-out too. A recording opened from disk can't be saved from the app, so
-masking one only changes what the app shows until it is closed. Mask
+out too.
+
+Masks on a recording opened from disk are kept with **Save Masks**,
+beside Unmask All (also in the File menu while they are unsaved, or
+Ctrl+S, Cmd+S on a Mac). New Session, opening another recording or
+quitting asks first when they have changed. On a saved take this changes
+only the masked stretches in its `session.toml`. A lone file, or a folder
+with no session file, gets a new `session.toml`, which makes its folder
+a take that the app and `timegrapher session` open as one. Saving is
+refused, with the reason, when the folder holds other recordings or a
+session file that doesn't list what was opened. Mask
 turns off, and nothing is masked, when a new take, New Session or another
 recording starts.
 
@@ -147,7 +166,8 @@ reading overlays. The beat dots themselves remain individual beats.
 | Drag along time | Review an earlier interval, including during capture |
 | Drag across time's direction | Shift the timing trace |
 | Drag along time, with **Mask** on | Mask that stretch instead of moving the view |
-| Click a masked stretch | Bring it back |
+| Drag a masked stretch's edge, with **Mask** on | Move that edge |
+| Click a masked stretch, or right-click it with Mask on or off | Bring it back |
 | Double-click | Return to the newest beats and centre them |
 
 Use Cmd on macOS. Hovering shows the recording time and marks the same
