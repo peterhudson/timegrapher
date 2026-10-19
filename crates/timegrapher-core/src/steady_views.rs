@@ -6,10 +6,11 @@
 //! draw the same thing.
 //!
 //! The grids are the ones `steadiness::check` builds (on true time when the
-//! take has pauses or a clock fit; on the app's own takes, with no clock
-//! fit and only zero-length breaks, the app's pane builds the same grids);
-//! the searches and folds are the app's, and only the output is thinned, so
-//! a day's take stays small.
+//! take has pauses or a clock fit). On the app's own takes, with no clock
+//! fit and only zero-length breaks, the app's pane builds the same grids,
+//! except that its rate readings keep one with a 2 s stretch holding no
+//! beats, which the tests leave out. The searches and folds are the app's,
+//! and only the output is thinned, so a day's take stays small.
 
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
@@ -319,7 +320,9 @@ pub fn folds(
 }
 
 /// Phase bins for the Cycle view: one per phase the readings fall on, so
-/// no bin mixes two phases and the drawn cycle keeps its size. A 45 s
+/// the drawn cycle keeps its size (at a period of exactly a whole or half
+/// whole number of readings, rounding can still split a phase between two
+/// neighbouring bins). A 45 s
 /// cycle read every 10 s comes back to the same phase every 90 s, after 9
 /// readings at 9 phases. A repeat is taken only within two turns: phases
 /// that repeat later are too many for each bin to hold enough readings, so
@@ -693,7 +696,7 @@ mod tests {
         for b in audio.samples.chunks(4800) {
             live.push(b);
         }
-        let log = BeatLog {
+        let mut log = BeatLog {
             sample_rate: live.sample_rate(),
             duration_s: live.duration_s(),
             bph: live.bph().expect("beat rate"),
@@ -712,6 +715,10 @@ mod tests {
         // A 30 s pause 3 s into a rate reading, half way through.
         let g = &check_grids(&log, &plain, 10.0)[0];
         let mid = g.t0 + 15.0 * g.step + 3.0;
+        // Beats lost for 3 s, 3 s into reading 5, with no break listed: the
+        // tests leave that reading out, so the views must too.
+        let lost = g.t0 + 5.0 * g.step + 3.0;
+        log.beats.retain(|b| !(lost..lost + 3.0).contains(&b.time));
         let breaks = [crate::breaks::Break {
             audio_s: mid,
             gap_s: 30.0,
@@ -754,6 +761,13 @@ mod tests {
                 ..*b
             })
             .collect();
+        // Without the 2 s check, reading 5 would be kept.
+        let gaps = longrun::gaps(None, &paused.breaks);
+        let outside = timing::windows(&beats, log.bph, 10.0, 10.0)
+            .iter()
+            .filter(|w| !longrun::touches_gap(&gaps, w.start_s, w.end_s))
+            .count();
+        assert_eq!(outside, tests.n + 1);
         let mut wins = timing::windows(&beats, log.bph, 10.0, 10.0);
         wins.retain(|w| !cut.iter().any(|&c| w.start_s < c && c < w.end_s));
         assert!(wins.len() > tests.n, "{} {}", wins.len(), tests.n);
