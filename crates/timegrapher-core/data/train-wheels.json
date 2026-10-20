@@ -451,7 +451,11 @@
       "3235",
       "3230",
       "3255",
-      "3285"
+      "3285",
+      "Rolex 3230",
+      "Rolex 3255",
+      "Rolex 3285",
+      "Rolex 32xx"
     ],
     "common": true,
     "bph": 28800,
@@ -461,24 +465,37 @@
     "wheels": [
       {
         "name": "escape wheel",
-        "period_s": 5.0,
+        "period_s": 5,
         "teeth": 20,
-        "basis": "inferred, with the bench: SJX says Chronergy keeps the escape wheel's tooth count, Rolex's patent uses a standard 20-tooth lever as its baseline, and a 5.00 s cycle shows on the Yacht-Master 42"
+        "pinion": 10,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "teeth": 120,
+        "pinion": 11,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "pinion": 12,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "teeth": 80,
+        "pinion": 14,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "barrel",
-        "period_s": 22050,
-        "basis": "derived from SJX's 98:16 train ratio, read as barrel teeth to centre pinion leaves"
+        "period_s": 25200,
+        "teeth": 98,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "balance",
@@ -488,16 +505,17 @@
     ],
     "sources": [
       "https://calibercorner.com/rolex-caliber-3235/",
-      "https://watchesbysjx.com/2021/05/rolex-chronergy-analysis.html (Chronergy keeps the tooth count; 98:16 ratio)",
+      "https://watchesbysjx.com/2021/05/rolex-chronergy-analysis.html (Chronergy keeps the tooth count; previous 98:16 barrel-ratio interpretation superseded by the photo contribution)",
       "https://patents.google.com/patent/US8529122",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "https://www.rolexforums.com/archive/index.php/t-701731.html (lift 55°, later 53°)",
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
       "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3235, 55°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3255, 55°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3255, 55°)",
+      "docs/32xx-train-wheel-counts.md (Peter Hudson, 2026-10-19: microscope tooth counts and confirmation that the train applies to all genuine Rolex, Dandong and Jinghe 32xx; excludes VR32xx and SH32xx)"
     ],
-    "confidence": "measured",
-    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The barrel period rests on one reading of SJX's ratio; treat it as provisional. The 60 s amplitude dip on the project's reference 3235 is the fourth wheel. WatchGuy's list gives 53° for the 3235 and 3255; that figure is kept as its own entry, \"Rolex 3235 (53°)\"."
+    "confidence": "derived from tooth counts",
+    "notes": "Chronergy escapement, about 70 h. Lift angle: 55° (perhaps 58°) is what this project and clone timegrapher guides use; watchmakers report Rolex's documents were revised to 53° for the 32xx, reportedly with no part change. The photographed 98-tooth barrel and 14-leaf second pinion give 25,200 s (7 h), superseding the provisional 98:16 reading (22,050 s). The 60 s amplitude dip on the project's reference 3235 is the fourth wheel. WatchGuy's list gives 53° for the 3235 and 3255; that figure is kept as its own entry, \"Rolex 3235 (53°)\". Train counts and periods apply to all genuine Rolex, Dandong and Jinghe 32xx (3230, 3235, 3255, 3285), as confirmed by Peter Hudson with his 2026-10-19 photo contribution. They do not apply to VR32xx or SH32xx. The centre wheel here is the photographed second wheel that drives the cannon pinion."
   },
   {
     "calibre": "Dandong 3235",
@@ -505,8 +523,14 @@
     "family": [
       "DD3235",
       "VS3235",
-      "3235 (clone)",
-      "DD3285"
+      "DD3285",
+      "DD3230",
+      "DD3255",
+      "DD32xx",
+      "Dandong 3230",
+      "Dandong 3255",
+      "Dandong 3285",
+      "Dandong 32xx"
     ],
     "common": true,
     "bph": 28800,
@@ -516,19 +540,37 @@
     "wheels": [
       {
         "name": "escape wheel",
-        "period_s": 5.0,
+        "period_s": 5,
         "teeth": 20,
-        "basis": "measured: a 5.00 s rate cycle locked to 40 beats on the bench (dd3235_DU_30min, a DD3235 fitted with a genuine balance complete, pallet fork and escape wheel); the clone's own escape wheel is taken to have the same count because the parts interchange"
+        "pinion": 10,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "teeth": 120,
+        "pinion": 11,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "pinion": 12,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "teeth": 80,
+        "pinion": 14,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 98,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "balance",
@@ -540,16 +582,25 @@
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (genuine parts swap in; 70+ h; the replicas' escape wheels are solid; the DD3285 is a true clone)",
       "https://forum.replica-watch.info/threads/jh3235-free-sprung-movement-tear-down.11040479/ (larger pallet stones than the genuine fork; no Chronergy escape wheel)",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
-      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)"
+      "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
+      "docs/32xx-train-wheel-counts.md (Peter Hudson, 2026-10-19: microscope tooth counts and confirmation that the train applies to all genuine Rolex, Dandong and Jinghe 32xx; excludes VR32xx and SH32xx)"
     ],
-    "confidence": "measured",
-    "notes": "A true clone of the 3235, so its train is taken as the 3235's. Its own escape wheel is solid, not the skeletonised Chronergy one, and its pallet fork uses larger stones than the genuine one, so the 55° lift angle may not be exact. About 70 h; the barrel is still left out because its ratio is not documented. The DD3285 GMT is built on it (confirmed by a watchmaker who has serviced many). That it is a true clone, and its 55° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles), and the DD3285 note on one watchmaker's word with no published source; the bench recordings support the 20-tooth escape wheel, and a teardown thread the larger pallet stones."
+    "confidence": "derived from tooth counts",
+    "notes": "About 70 h power reserve. Its pallet fork uses larger stones than the genuine one, so the 55° lift angle, drawn from the existing forum guides, may not be exact. The earlier bench recording dd3235_DU_30min used a genuine balance complete, pallet fork and escape wheel and showed a 5.00 s rate cycle. The photographed escape wheel now provides a direct 20-tooth count. The ambiguous alias \"3235 (clone)\" has been removed: select an explicit DD, JH, VR or SH designation. Train counts and periods apply to all genuine Rolex, Dandong and Jinghe 32xx (3230, 3235, 3255, 3285), as confirmed by Peter Hudson with his 2026-10-19 photo contribution. They do not apply to VR32xx or SH32xx. The centre wheel here is the photographed second wheel that drives the cannon pinion."
   },
   {
     "calibre": "JH3235",
     "maker": "Shanghai Jinghe (clone)",
     "family": [
-      "JH32xx"
+      "JH32xx",
+      "JH3230",
+      "JH3255",
+      "JH3285",
+      "Jinghe 3230",
+      "Jinghe 3235",
+      "Jinghe 3255",
+      "Jinghe 3285",
+      "Jinghe 32xx"
     ],
     "common": true,
     "bph": 28800,
@@ -559,19 +610,37 @@
     "wheels": [
       {
         "name": "escape wheel",
-        "period_s": 5.0,
+        "period_s": 5,
         "teeth": 20,
-        "basis": "inferred: a true clone, generally part interchangeable with genuine parts"
+        "pinion": 10,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "teeth": 120,
+        "pinion": 11,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "pinion": 12,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "teeth": 80,
+        "pinion": 14,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 98,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
       },
       {
         "name": "balance",
@@ -582,10 +651,11 @@
     "sources": [
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (free sprung, flat hairspring, pallet jewel appears to be in the genuine skewed position)",
       "https://forum.replica-watch.info/threads/jh3235-free-sprung-movement-tear-down.11040479/ (a true clone, generally part interchangeable with genuine parts; a genuine balance ran in it after an end-shake adjustment)",
-      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
+      "docs/32xx-train-wheel-counts.md (Peter Hudson, 2026-10-19: microscope tooth counts and confirmation that the train applies to all genuine Rolex, Dandong and Jinghe 32xx; excludes VR32xx and SH32xx)"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "A true 32xx clone with a free-sprung balance and a flat hairspring, not the 31xx/32xx hybrid VR3235. Its own escape wheel is not the skeletonised Chronergy one and, as on the Dandong, its pallet stones are larger than the genuine ones, so the 55° lift angle may not be exact. It has a shock setting for the escape wheel. Power reserve not documented. Its 55° lift angle rests only on one author's two forum guides (on clone movements and on lift angles); the teardown thread is the second source for its being a true clone."
+    "confidence": "derived from tooth counts",
+    "notes": "A 32xx clone with a free-sprung balance and flat hairspring. Its pallet stones are larger than the genuine ones, so the 55° lift angle may not be exact; that setting still rests on the existing forum guides. It has a shock setting for the escape wheel. Power reserve not documented. Train counts and periods apply to all genuine Rolex, Dandong and Jinghe 32xx (3230, 3235, 3255, 3285), as confirmed by Peter Hudson with his 2026-10-19 photo contribution. They do not apply to VR32xx or SH32xx. The centre wheel here is the photographed second wheel that drives the cannon pinion."
   },
   {
     "calibre": "VR3235",
@@ -65308,23 +65378,111 @@
     "calibre": "Rolex 3235 (53°)",
     "maker": "Rolex",
     "lift_angle_deg": 53.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3235, 53°)"
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "pinion": 10,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "pinion": 11,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "pinion": 12,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 80,
+        "pinion": 14,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 98,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
     ],
-    "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 55° (this project's checked entry, Rolex 3235)."
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3235, 53°)",
+      "docs/32xx-train-wheel-counts.md (Peter Hudson, 2026-10-19: microscope tooth counts and confirmation that the train applies to all genuine Rolex, Dandong and Jinghe 32xx; excludes VR32xx and SH32xx)"
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "The 53° lift angle from WatchGuy is retained as a separate setting from the main 55° entry. Lift-angle disagreement does not change the photographed train counts or rotation periods. Train counts and periods apply to all genuine Rolex, Dandong and Jinghe 32xx (3230, 3235, 3255, 3285), as confirmed by Peter Hudson with his 2026-10-19 photo contribution. They do not apply to VR32xx or SH32xx. The centre wheel here is the photographed second wheel that drives the cannon pinion.",
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre (fourth wheel)"
   },
   {
     "calibre": "Rolex 3255 (53°)",
     "maker": "Rolex",
     "lift_angle_deg": 53.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3255, 53°)"
+    "wheels": [
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "pinion": 10,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "pinion": 11,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "pinion": 12,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 80,
+        "pinion": 14,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "barrel",
+        "period_s": 25200,
+        "teeth": 98,
+        "basis": "derived from photographed tooth counts; family applicability confirmed by Peter Hudson, 2026-10-19; see docs/32xx-train-wheel-counts.md"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
     ],
-    "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 55° (this project's checked entry, Rolex 3235)."
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3255, 53°)",
+      "docs/32xx-train-wheel-counts.md (Peter Hudson, 2026-10-19: microscope tooth counts and confirmation that the train applies to all genuine Rolex, Dandong and Jinghe 32xx; excludes VR32xx and SH32xx)"
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "The 53° lift angle from WatchGuy is retained as a separate setting from the main 55° entry. Lift-angle disagreement does not change the photographed train counts or rotation periods. Train counts and periods apply to all genuine Rolex, Dandong and Jinghe 32xx (3230, 3235, 3255, 3285), as confirmed by Peter Hudson with his 2026-10-19 photo contribution. They do not apply to VR32xx or SH32xx. The centre wheel here is the photographed second wheel that drives the cannon pinion.",
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre (fourth wheel)"
   },
   {
     "calibre": "Rolex 500",

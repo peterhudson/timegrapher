@@ -139,28 +139,52 @@ Where both a wheel's teeth and the next pinion's leaves are given, the
 unit tests check the two periods agree. A wheel whose period is not known
 is left out rather than guessed.
 
+## Microscope photo contributions
+
+[32xx train counts](../../../docs/32xx-train-wheel-counts.md) contain nine
+numbered images, six original photographs, and the complete ratio checks.
+Peter Hudson contributed the photos and confirmed applicability to all
+genuine Rolex, Dandong and Jinghe 32xx on 2026-10-19. The covered rows,
+including the separate Rolex 53° settings, carry the counted wheel teeth
+and pinion leaves with `confidence` "derived from tooth counts".
+
+Manufacturer-specific aliases are used for clones. The ambiguous
+`3235 (clone)` alias was removed; saved selections using it need an explicit
+DD/JH/VR/SH designation. VR32xx and SH32xx retain their previous known
+periods and receive none of these counts. Their independent photo sets
+are pending, as are contributions for ETA 2824 and its clones, Rolex 31xx
+and its clones, and Rolex 413x and its clones. Future contributions must
+state which makers and variants they cover rather than propagate counts
+by a shared calibre number alone.
+
 ## How far to trust it
 
 Tooth counts are rarely published. Only the Unitas 6497-2 / 6498-2 has a
 full published train (escape 15 on a 10-leaf pinion, fourth 120/8, third
-60/10, centre 80). Everything else rests on the beat rate and the layout,
-plus these:
+60/10, centre 80). The 32xx photo contribution above now supplies a complete
+counted train including the barrel, with family coverage confirmed by the
+contributor. Other entries rest on the beat rate and layout, plus these:
 
 - **20-tooth escape wheels at 28,800 bph.** The ETA 2824-2's escape wheel
   is documented with 20 teeth. Rolex's own escapement patent (US8529122)
   uses a standard 20-tooth Swiss lever as its baseline (its own design
   has 24 teeth), SJX reports that Chronergy kept the old tooth count, and every 28,800 bph watch recorded in this
   project (Rolex 3235, Dandong 3235 and 4130, Patek 324 clone, Peacock
-  SL1258) shows a rate cycle of exactly 5.00 s locked to 40 beats. So the
-  Rolex calibres and the clones are entered with 20 teeth: "inferred" for
-  the genuine Rolex calibres, "measured" for the clones recorded here
-  (the Dandong 3235 recorded here carries a genuine escape wheel).
+  SL1258) shows a rate cycle of exactly 5.00 s locked to 40 beats. The 32xx
+  photo contribution now directly counts 20 teeth, with its stated coverage
+  of Rolex, Dandong and Jinghe. Other Rolex calibres retain their earlier
+  inferred counts and recorded clones their measured basis (the Dandong
+  3235 recorded here carries a genuine escape wheel).
   The 2892-A2, 7750, Miyota 9015 and the Seiko 21,600 bph calibres have
   no escape wheel entry because no count was found.
 - **Barrels.** Rolex 3135: 5 h, from SJX's 5:1 barrel to minute ratio.
-  Rolex 3235: 22,050 s, from SJX's 98:16 ratio read as barrel teeth to
-  centre-pinion leaves (provisional). Rolex 4130: 7 h, from Caliber Corner.
-- **Clones.** A clone is given the original's train, escape wheel
+  Rolex, Dandong and Jinghe 32xx: 25,200 s (7 h), from the photographed
+  98-tooth barrel and 14-leaf second pinion. This supersedes the provisional
+  Rolex 3235 period of 22,050 s from a reading of SJX's 98:16 ratio.
+  Rolex 4130: 7 h, from Caliber Corner.
+- **Clones.** The 32xx contribution explicitly covers Dandong and Jinghe
+  and excludes VR32xx and SH32xx. For the older sources, a clone is given
+  the original's train, escape wheel
   included, only where it is described as a true clone that takes genuine
   parts (DD3235 and DD3285, JH3235, VR3135, DD4130), or whose maker says
   nearly all parts interchange (DD4131). Design clones and hybrids
