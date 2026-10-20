@@ -1,7 +1,7 @@
 //! Two-state finder: does a series (amplitude or rate) sit at two levels
 //! and switch between them, or is it one level with noise and slow wander?
 //!
-//! The samples are first reduced to block medians (10 s by default), so
+//! The samples are first reduced to block medians (10 s by default, or as long as the samples when they are longer), so
 //! that one bad window cannot make a state, and a running median over
 //! ±5 minutes is taken off, so that the slow fall of amplitude as the
 //! mainspring runs down does not read as two levels. The blocks are then
@@ -25,6 +25,10 @@
 //! - for amplitude, whether one side, Tick or Tock, carries the split
 //!   alone, and whether the beat error from the unlock jumps between the
 //!   levels while the beat error from the drop stays put.
+//!
+//! Each block keeps its place in the take, so a block that is missing
+//! (masked, in a gap, too thin) is time that passed: switches, stays and
+//! lags are not counted across it as if the blocks beside it touched.
 //!
 //! What the levels mean for the watch is not decided here.
 
@@ -174,6 +178,10 @@ fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
 }
 
 struct Block {
+    /// Which `block_s` stretch of the take the block is, from its start:
+    /// blocks that are missing (masked, in a gap, too thin) leave holes
+    /// in these numbers.
+    k: i64,
     value: f64,
     tick: Option<f64>,
     tock: Option<f64>,
@@ -183,10 +191,10 @@ struct Block {
     tock_edge: Option<f64>,
 }
 
-fn blocks(samples: &[Sample], p: &Params) -> Vec<Block> {
+fn blocks(samples: &[Sample], p: &Params) -> (Vec<Block>, f64) {
     let mut vals: Vec<f64> = samples.iter().map(|s| s.value).collect();
     if vals.is_empty() {
-        return Vec::new();
+        return (Vec::new(), p.block_s);
     }
     let med = median(&mut vals);
     let mut dev: Vec<f64> = samples.iter().map(|s| (s.value - med).abs()).collect();
@@ -199,18 +207,27 @@ fn blocks(samples: &[Sample], p: &Params) -> Vec<Block> {
         .map(|s| s.end_s - s.start_s)
         .fold(f64::NAN, f64::min)
         .max(1e-3);
-    let need = ((0.6 * p.block_s / len).floor() as usize).max(1);
+    // Samples longer than a block (rate readings of more than 10 s, as
+    // `series --reading` gives) are a block each: the blocks are as long
+    // as the samples, and side by side when the samples are.
+    let block_s = if len > p.block_s + 1e-6 {
+        len
+    } else {
+        p.block_s
+    };
+    let need = ((0.6 * block_s / len).floor() as usize).max(1);
     let mut out = Vec::new();
     let mut i = 0;
     while i < kept.len() {
-        let k = (kept[i].start_s / p.block_s).floor();
+        let k = (kept[i].start_s / block_s).floor();
         let mut j = i;
-        while j < kept.len() && (kept[j].start_s / p.block_s).floor() == k {
+        while j < kept.len() && (kept[j].start_s / block_s).floor() == k {
             j += 1;
         }
         let b = &kept[i..j];
         if b.len() >= need {
             out.push(Block {
+                k: k as i64,
                 value: median_of(b.iter().map(|s| s.value)).unwrap(),
                 tick: median_of(b.iter().filter_map(|s| s.tick)),
                 tock: median_of(b.iter().filter_map(|s| s.tock)),
@@ -222,7 +239,7 @@ fn blocks(samples: &[Sample], p: &Params) -> Vec<Block> {
         }
         i = j;
     }
-    out
+    (out, block_s)
 }
 
 /// Fit of two Gaussians of one width: means, width, weights, log
@@ -315,14 +332,14 @@ fn split_alone(pairs: &[(f64, f64)], p: &Params) -> Option<bool> {
 
 /// Look for two states in `samples`, in time order.
 pub fn find(samples: &[Sample], p: &Params) -> TwoState {
-    let b = blocks(samples, p);
+    let (b, block_s) = blocks(samples, p);
     let n = b.len();
     let mut out = TwoState {
         fitted: false,
         repeats: false,
         two_levels: false,
         blocks: n,
-        block_s: p.block_s,
+        block_s,
         low: f64::NAN,
         high: f64::NAN,
         low_share: 0.0,
@@ -354,12 +371,18 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         out.high = out.low;
         return out;
     }
-    // Take the slow wander off, keeping the series' own median.
-    let h = (p.detrend_s / p.block_s).round() as usize;
+    // Take the slow wander off, keeping the series' own median. The
+    // running median, the switches, the stays and the lags all go by each
+    // block's place in the take, so a hole in the blocks is time that
+    // passed, not two blocks side by side.
+    let k: Vec<i64> = b.iter().map(|b| b.k).collect();
+    let h = (p.detrend_s / block_s).round() as i64;
     let mid = median(&mut x.clone());
     let y: Vec<f64> = (0..n)
         .map(|i| {
-            let mut w = x[i.saturating_sub(h)..(i + h + 1).min(n)].to_vec();
+            let lo = k.partition_point(|&j| j < k[i] - h);
+            let hi = k.partition_point(|&j| j <= k[i] + h);
+            let mut w = x[lo..hi].to_vec();
             x[i] - median(&mut w) + mid
         })
         .collect();
@@ -377,8 +400,13 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         .collect();
     let n_high = high.iter().filter(|&&s| s).count();
     out.low_share = 1.0 - n_high as f64 / n as f64;
-    out.switches = high.windows(2).filter(|w| w[0] != w[1]).count();
-    out.switch_every_s = n as f64 * p.block_s / out.switches.max(1) as f64;
+    // Next to each other in the take: a change of state across a hole is
+    // not a timed switch.
+    let next = |i: usize| k[i] == k[i - 1] + 1;
+    out.switches = (1..n)
+        .filter(|&i| next(i) && high[i] != high[i - 1])
+        .count();
+    out.switch_every_s = n as f64 * block_s / out.switches.max(1) as f64;
     out.spread = (0..3).all(|k| {
         let part = &high[k * n / 3..(k + 1) * n / 3];
         let h = part.iter().filter(|&&s| s).count() as f64 / part.len() as f64;
@@ -387,7 +415,7 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     let mut runs: (Vec<usize>, Vec<usize>) = (Vec::new(), Vec::new());
     let mut len = 1;
     for i in 1..=n {
-        if i == n || high[i] != high[i - 1] {
+        if i == n || high[i] != high[i - 1] || !next(i) {
             if high[i - 1] {
                 runs.1.push(len);
             } else {
@@ -402,7 +430,7 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
         if v.is_empty() {
             0.0
         } else {
-            v.iter().sum::<usize>() as f64 / v.len() as f64 * p.block_s
+            v.iter().sum::<usize>() as f64 / v.len() as f64 * block_s
         }
     };
     out.dwell_low_s = mean_run(&runs.0);
@@ -431,18 +459,26 @@ pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     out.tock_unlock_ms = pair(&|b| b.tock_edge);
 
     // Regularity: the first clear peak of the state sequence's
-    // autocorrelation, from two blocks up to a third of the take.
+    // autocorrelation, from two blocks up to a third of the take. Each lag
+    // is a time apart: only blocks that far apart in the take are paired,
+    // so a lag that holes leave few pairs for scores low.
     let m = 1.0 - out.low_share;
     let z: Vec<f64> = high.iter().map(|&s| f64::from(u8::from(s)) - m).collect();
     let z0: f64 = z.iter().map(|v| v * v).sum();
     if z0 > 0.0 {
-        let ac: Vec<f64> = (0..=(n / 3).min(60))
-            .map(|l| z[l..].iter().zip(&z).map(|(a, b)| a * b).sum::<f64>() / z0)
+        let span = (k[n - 1] - k[0] + 1) as usize;
+        let ac: Vec<f64> = (0..=(span / 3).min(60) as i64)
+            .map(|l| {
+                (0..n)
+                    .filter_map(|i| k.binary_search(&(k[i] + l)).ok().map(|j| z[i] * z[j]))
+                    .sum::<f64>()
+                    / z0
+            })
             .collect();
         let peak = (2..ac.len().saturating_sub(1))
             .find(|&l| ac[l] >= 0.25 && ac[l] >= ac[l - 1] && ac[l] >= ac[l + 1]);
         if let Some(l) = peak {
-            out.period_s = Some(l as f64 * p.block_s);
+            out.period_s = Some(l as f64 * block_s);
             out.regularity = ac[l];
         }
     }
@@ -646,6 +682,67 @@ mod tests {
         assert!(r.switching_levels(), "{r:?}");
         assert!((r.low - 293.0).abs() < 2.0 && (r.high - 312.0).abs() < 2.0);
         assert!(r.switches >= 20);
+    }
+
+    #[test]
+    fn holes_in_the_blocks_are_time_that_passed() {
+        // Low, low, high, high, one 10 s block each: a 40 s pattern. The
+        // same 120 blocks heard 30 s apart, with 20 s holes between them,
+        // are a 120 s pattern in the take, with no two blocks side by side.
+        let block = |i: usize, every: f64| {
+            let v = if i % 4 < 2 { 280.0 } else { 310.0 };
+            let v = v + 0.1 * ((i * 7) % 5) as f64;
+            Sample {
+                start_s: i as f64 * every,
+                end_s: i as f64 * every + 10.0,
+                value: v,
+                ..Default::default()
+            }
+        };
+        let dense: Vec<Sample> = (0..120).map(|i| block(i, 10.0)).collect();
+        let r = find(&dense, &Params::default());
+        assert_eq!(r.period_s, Some(40.0), "{r:?}");
+        assert!((r.dwell_low_s - 20.0).abs() < 2.0, "{r:?}");
+        let sparse: Vec<Sample> = (0..120).map(|i| block(i, 30.0)).collect();
+        let r = find(&sparse, &Params::default());
+        assert_eq!(r.period_s, Some(120.0), "{r:?}");
+        assert_eq!(r.switches, 0, "{r:?}");
+        assert!((r.dwell_low_s - 10.0).abs() < 1e-9, "{r:?}");
+        assert!(!r.two_levels, "{r:?}");
+    }
+
+    #[test]
+    fn readings_longer_than_a_block_sit_side_by_side() {
+        // The irregular switching above, read as 30 s rate readings back
+        // to back, as `series --reading 30` gives: each reading is a
+        // block, and the blocks touch.
+        let dwell = [60.0, 90.0, 40.0, 130.0, 70.0, 50.0, 110.0, 80.0];
+        let edges: Vec<f64> = dwell
+            .iter()
+            .cycle()
+            .scan(0.0, |t, d| {
+                *t += d;
+                Some(*t)
+            })
+            .take(200)
+            .collect();
+        let mut seed = 7;
+        let s: Vec<Sample> = (0..450)
+            .map(|j| {
+                let t = j as f64 * 30.0;
+                let k = edges.iter().filter(|&&e| e <= t + 15.0).count();
+                let v = if k.is_multiple_of(2) { 312.0 } else { 293.0 };
+                Sample {
+                    start_s: t,
+                    end_s: t + 30.0,
+                    value: v + 3.0 * noise(&mut seed),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let r = find(&s, &Params::default());
+        assert_eq!(r.block_s, 30.0, "{r:?}");
+        assert!(r.two_levels && r.switches >= 20, "{r:?}");
     }
 
     #[test]
