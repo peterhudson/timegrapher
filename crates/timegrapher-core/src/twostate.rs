@@ -1,11 +1,12 @@
 //! Two-state finder: does a series (amplitude or rate) sit at two levels
 //! and switch between them, or is it one level with noise and slow wander?
 //!
-//! The samples are first reduced to block medians (10 s by default, or as long as the samples when they are longer), so
-//! that one bad window cannot make a state, and a running median over
-//! ±5 minutes is taken off, so that the slow fall of amplitude as the
-//! mainspring runs down does not read as two levels. The blocks are then
-//! fitted with one Gaussian and with a mixture of two of equal width.
+//! The samples are first reduced to block medians (10 s by default, or
+//! as long as the samples when they are longer), so that one bad window
+//! cannot make a state, and a running median over ±5 minutes is taken
+//! off, so that the slow fall of amplitude as the mainspring runs down
+//! does not read as two levels. The blocks are then fitted with one
+//! Gaussian and with a mixture of two of equal width.
 //!
 //! Two levels are reported only when all of these hold:
 //! - the mixture wins by BIC by at least 10 (Kass and Raftery's "very
