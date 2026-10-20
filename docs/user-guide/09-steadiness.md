@@ -54,6 +54,13 @@ interval, or the Readings card's **Average Over**. Its inputs are:
 | Cycle | 10-second rate readings; 2-second amplitude and unlock beat-error windows |
 | Periods and FFT | Beat-timing residuals for the rate-related search; short-window amplitude and unlock beat error for the other series |
 
+No reading is averaged over part of its span. A 10-second amplitude or
+beat-error reading needs every 2-second window it spans, and a rate
+reading needs beats in each 2-second piece and must not reach into a
+pause or a masked stretch from either side. A reading at such an edge,
+or with a window missing, is left out, so expect a few fewer readings
+beside each pause and mask.
+
 This explains why the amplitude dots can look noisier than the statistics
 above them suggest. The plot and the statistical summary deliberately use
 different time resolutions.
@@ -283,8 +290,9 @@ Allan deviation(τ) = sqrt(mean((x̄₂ − x̄₁)²) / 2)
 ```
 
 The app uses overlapping placements of those adjacent blocks, at 10, 20,
-40, 80 seconds and successive doublings. It accepts blocks with at least
-three quarters of their readings present. Longer averaging times have
+40, 80 seconds and successive doublings. A block's average needs every
+reading in it, so a block that takes in a pause, a mask or a missing
+reading is left out. Longer averaging times have
 fewer effectively distinct comparisons, so the far right of a short
 recording deserves less weight.
 

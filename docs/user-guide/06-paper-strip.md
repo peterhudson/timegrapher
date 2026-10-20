@@ -123,11 +123,12 @@ says how many there are and how long they add up to, for example
 A masked stretch is cut like a pause, at both ends. No reading reaches
 across it and nothing is read inside it. A chart's line breaks there and
 comes back once nine tenths of an averaging time of beats has been heard
-after it, as at the start of a session. The Steadiness tests leave out
-any 10-second rate reading that takes in either end of a mask; a
-10-second amplitude or beat-error reading there is still made from the
-2-second stretches outside the mask when they fill at least half of it.
-Otherwise the charts, the whole-take figures, the
+after it, as at the start of a session. The Steadiness tests use only
+readings whose whole span was heard: a 10-second rate reading must not
+reach into a mask from either side and needs beats in each 2-second
+piece, and an amplitude or beat-error reading needs every 2-second window
+it spans. So a few readings at each edge of a mask, as of a pause, are
+left out rather than averaged over what is left. Otherwise the charts, the whole-take figures, the
 distributions, the Steadiness views and a Positions Test all leave its
 beats out. A reading whose averaging time takes in masked sound says so
 beside its card's title, for example **8 s masked out** (under 0.05 s it
@@ -141,8 +142,9 @@ out too.
 
 Masks on a recording opened from disk are kept with **Save Masks**,
 beside Unmask All (also in the File menu while they are unsaved, or
-Ctrl+S, Cmd+S on a Mac). New Session, opening another recording or
-quitting asks first when they have changed. On a saved take this changes
+Ctrl+S, Cmd+S on a Mac). New Session, opening another recording,
+starting the microphone or a Positions Test, or quitting asks first when
+they have changed, offering **Save Masks**, **Don't Save** or **Cancel**. On a saved take this changes
 only the masked stretches in its `session.toml`. A lone file, or a folder
 with no session file, gets a new `session.toml`, which makes its folder
 a take that the app and `timegrapher session` open as one. Saving is

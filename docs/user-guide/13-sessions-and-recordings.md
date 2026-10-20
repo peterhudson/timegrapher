@@ -164,6 +164,18 @@ Stop and Resume, and listening carries on. A message gives the length:
 "The sound's timestamps jumped by …, as they do when the computer
 sleeps."
 
+A shorter hole, such as a dropout in the sound or a knock that costs
+part of a beat, shows in the beats rather than the timestamps. The app
+treats it as a jump too: no reading or amplitude window reaches across
+it, and Tick and Tock are told apart again by their sound, so a dropout
+does not swap their names. For a few seconds after such a jump, while
+the sides are checked, the beat error, each side's amplitude and the
+Tick Tock Profile stay blank. When the two sides sound too alike to tell
+apart, they keep the names the beat count gives them, as at the start of
+every session. A hole that costs close to an odd number of beats can
+leave no step to see, and then the names can swap unnoticed; the
+[app reference](../app.md) gives the limits.
+
 A continuous run is especially valuable for
 [Isochronism](10-isochronism.md). For reports over hours or days, the
 command-line [long](14-command-line.md#long) and
