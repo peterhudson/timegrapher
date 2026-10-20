@@ -1,0 +1,2728 @@
+{
+  "research_date": "2026-10-19",
+  "scope": "Public-source research; illustrated escape counts, no bench measurements",
+  "count_observations": [
+    {
+      "source_id": "m82-drawing",
+      "part": "032-106",
+      "teeth": 15,
+      "method": "Manual count of outer escape-tooth tips in manufacturer illustration; pinion not counted",
+      "location": {
+        "original_dimensions": [
+          2481,
+          3508
+        ],
+        "crop_xyxy": [
+          1450,
+          2380,
+          1610,
+          2500
+        ]
+      }
+    },
+    {
+      "source_id": "m90-drawing",
+      "part": "032-991",
+      "teeth": 20,
+      "method": "Manual count of outer escape-tooth tips in manufacturer illustration; pinion not counted",
+      "location": {
+        "original_dimensions": [
+          2481,
+          3508
+        ],
+        "crop_xyxy": [
+          1170,
+          2680,
+          1340,
+          2790
+        ]
+      }
+    },
+    {
+      "source_id": "nh3",
+      "part": "0251 383",
+      "teeth": 15,
+      "method": "Manual count of outer escape-tooth tips in manufacturer illustration; pinion not counted",
+      "location": {
+        "pdf_page": 11,
+        "render_long_side_px": 4000,
+        "crop_xyxy": [
+          1190,
+          1140,
+          1440,
+          1320
+        ]
+      }
+    },
+    {
+      "source_id": "7s-c",
+      "part": "0251 300 / 0251 013",
+      "teeth": 15,
+      "method": "Manual count of outer escape-tooth tips in manufacturer illustration; pinion not counted",
+      "location": {
+        "pdf_page": 6,
+        "render_long_side_px": 3500,
+        "crop_xyxy": [
+          960,
+          1040,
+          1200,
+          1180
+        ]
+      }
+    },
+    {
+      "source_id": "6r35",
+      "part": "0251 283",
+      "teeth": 15,
+      "method": "Manual count of outer escape-tooth tips in manufacturer illustration; pinion not counted",
+      "location": {
+        "pdf_page": 7,
+        "render_long_side_px": 4000,
+        "crop_xyxy": [
+          900,
+          1050,
+          1170,
+          1240
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "id": "m82-drawing",
+      "url": "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "sha256": "20fcc47f025fed60ec88f53e36ee68eefa76ba3bd3fe5a03465c82b70e5c5e7a",
+      "detail": "8215 exploded view, escape wheel 032-106"
+    },
+    {
+      "id": "m90-drawing",
+      "url": "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "sha256": "4a1a4856aeb128a9fdf6f11e2cbfeca3e0c13a0688f06002df5f80af5dcd2d8c",
+      "detail": "9015 exploded view, escape wheel 032-991"
+    },
+    {
+      "id": "nh3",
+      "url": "https://www.timemodule.com/upload/category/24/technical_guide/NH35_TG.pdf",
+      "sha256": "0cd2c8b82e392b6daed4306b4b679b97ff2b3d9cbcc9dcb75ccada806dd4a8b0",
+      "detail": "Version 04; PDF p2 frequency, p11 escape 0251 383; covers NH34A/35A/36A/37A/38A/39A"
+    },
+    {
+      "id": "nh7",
+      "url": "https://www.timemodule.com/upload/category/29/technical_guide/NH70_TG.pdf",
+      "sha256": "dd35f8821dd7b76534bb9f99b259876da11e94cb428156814689e6f5e7e07623",
+      "detail": "Version 02; PDF p2 frequency, p6 escape 0251 383; NH70A/71A/72A"
+    },
+    {
+      "id": "7s-c",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "sha256": "070f4ed409d66be47049aed658c776b22335bb6406f1a206f42a416d43cc0177",
+      "detail": "p1 frequency and lift; p6 shared escape illustration labels 0251300 (7S26C) and 0251013 (7S36C)"
+    },
+    {
+      "id": "4r-b",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/4R35B_4R36A.pdf",
+      "sha256": "b068e79b2a3c8c996302e04a297d64b291951175d00d7e88d5a58f6f46182941",
+      "detail": "p1 21600 bph and 53 degrees; p7 escape 0251 300"
+    },
+    {
+      "id": "6r35",
+      "url": "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "sha256": "dca307e73915e689c3ac5fc0d427d2bf57c37adef21cda344ad71eff5bf68c47",
+      "detail": "Seiko-authored guide; p1 frequency, p2 revision differences, p7 escape 0251 283"
+    },
+    {
+      "id": "4R35A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/4R35A.pdf",
+      "sha256": "02acb1c2272f76931f56d5857f2be8089fb18bc144173410afc1582d6aa81b7b",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "4R37A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/4R37A.pdf",
+      "sha256": "dcacf7275af457b9ef7b8e24ea92a7a601c97daf27262f54905a0eedc8189e03",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "4R38A_4R39A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/4R38A_4R39A.pdf",
+      "sha256": "472569b208841bdd9522de316ec9dd2a9fc96be9b0e7033570444831d3eaffbe",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "7S26A&7S36A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/7S26A%267S36A.pdf",
+      "sha256": "ef300820e31336dcffbc0f5f83df4b4544ebc13eca6588b1e85a482b4cecdc80",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "7S26B_36B",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/7S26B_36B.pdf",
+      "sha256": "704798a594f3334beaa6441d8b53a46e67d0d1b3b4da92d5bcde082253c9c5ba",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "7S25C_35C",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/7S25C_35C.pdf",
+      "sha256": "18929bfdbc516bfefb694a48c38df49be1d76b820ab5abc9b77fe519a034743a",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "6R15AB",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/6R15AB.pdf",
+      "sha256": "f6c9fc66dfd134347b9aa14e824afcc782c3895f3de7993c0b4479480df672c9",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "6R15CD",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/6R15CD.pdf",
+      "sha256": "0b53ef8e748c8ac4235b788a3322f0c8e1dd46a63a3cdf250e1bc616862fae0e",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "6R31A_38A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/6R31A_38A.pdf",
+      "sha256": "81f5d52d12212041b7af565cb36530e49d89b99480fea71a525e38e6371ffc24",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "6R54A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/6R54A.pdf",
+      "sha256": "621f704813340c2b25d7270cc09ff949d55201949b203313aeffc8aaf319f820",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "6R55A",
+      "url": "https://seikoserviceusa.com/uploads/datasheets/6R55A.pdf",
+      "sha256": "69b216d0f624d6641f3adb9489a6c2cec9a2321b4c71d0c5447c7e935f76ced7",
+      "detail": "Manufacturer technical guide; frequency on first page and escape-wheel part identity in parts list"
+    },
+    {
+      "id": "m82-old",
+      "url": "https://om-mechanics.com/brochures/Miyota%208205%2C%208215%2C%20820A%2C%20821A.pdf",
+      "sha256": "97041c29d7cec87cecb3500d6c8afec1e74d1482b7777a095760b72af1a3c2a0",
+      "detail": "Miyota-authored 8205/8215/820A/821A guide, PDF p5 escape 032-106"
+    },
+    {
+      "id": "m91-old",
+      "url": "https://okta.ua/files/pdf/14902832299122.pdf",
+      "sha256": "3b157e8433dd9e321a46b1a2b7691ee171f6bf6b87a8649ed93943a25d0cf1bc",
+      "detail": "Miyota-authored 91xx guide: p1 frequency and lift; p8 parts columns 9110/9120/9122/9130/9132 list 032-991"
+    },
+    {
+      "id": "m8205",
+      "url": "https://miyotamovement.com/uploads/product/product_TvxEGAeFoUYWz4bghI.pdf",
+      "sha256": "76c73ce57697d29ec1a59213c0ee666273c1b1243a936966edf48505ae7e4ebf",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec8205",
+      "url": "https://miyotamovement.com/product/8205/",
+      "sha256": "ece9d6baeb2c4aa247ce67d8d62dad9d136d704584adfcc5f6d8b15bf1a86dd8",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m8215",
+      "url": "https://miyotamovement.com/uploads/product/product_PveYk926HfOtdLJUux.pdf",
+      "sha256": "fdafef819f8d0f3d91e4062072ce13a05beb20a4a61b96c6e2415500281657ad",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec8215",
+      "url": "https://miyotamovement.com/product/8215/",
+      "sha256": "a245f13d7251b85a4a3edb8e0434744ea1d4423fa13405a51a08327c6ea94bd1",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m8217",
+      "url": "https://miyotamovement.com/uploads/product/product_LXM6qyfebUrJGPd2Wt.pdf",
+      "sha256": "ad27780319a2ac271ae149d346d7ce81f51051503faad81278d55c611e56775d",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec8217",
+      "url": "https://miyotamovement.com/product/8217/",
+      "sha256": "8dab774d7580ac57a6f0f3f8caa4f32690be68a0236016f8f6e9e16c5122f6bf",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m82S0",
+      "url": "https://miyotamovement.com/uploads/product/product_gU0rAmM5LGXtPq9KNs.pdf",
+      "sha256": "6304a24be7492eb30e260b7b4efc6a76cdef8879ea387520b8b001dae03330ac",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec82S0",
+      "url": "https://miyotamovement.com/product/82S0/",
+      "sha256": "07f17caebf17a6cc7413a9f58dd65e6f283e455172c75f48f24cdd7302b6d1ed",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m82S5",
+      "url": "https://miyotamovement.com/uploads/product/product_2yRTar1xdWYso6U03I.pdf",
+      "sha256": "113cde8dc67a923d23a5de5e5d7764eb1cc28e8b8edee179f034f570d4bda4d3",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec82S5",
+      "url": "https://miyotamovement.com/product/82S5/",
+      "sha256": "eb78eb47147dd71e1c9e2fcb485e21d32d30d28c995d5f349c78c4430de3347d",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m82S7",
+      "url": "https://miyotamovement.com/uploads/product/product_9H3Tv1IMaunDXC8l5Q.pdf",
+      "sha256": "4068ecda007c84e76e2b6abf40dcdc93cb83be6eaafbdc91b10023d6f764a535",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec82S7",
+      "url": "https://miyotamovement.com/product/82S7/",
+      "sha256": "62b1e328003dee732b0126a0580bb2a5e319efc68826faa99be9341f073755ec",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m8N24",
+      "url": "https://miyotamovement.com/uploads/product/product_QaE6hImY4jtXPOVc0d.pdf",
+      "sha256": "6c25fa00d3221eb42b2a370f468efed8fa65886dc62c46b71d129f26e4a038f2",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec8N24",
+      "url": "https://miyotamovement.com/product/8N24/",
+      "sha256": "4224ba716e933347d4faf489b9b221fca435a04f0e9a21fe666346b02fe50d71",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m8N40",
+      "url": "https://miyotamovement.com/uploads/product/product_qmOgyeLMnrFbtjpXca.pdf",
+      "sha256": "a09ad1b08d4d59528059618e13962223c1400fa0590e88c6d196ec59d4c21fcb",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec8N40",
+      "url": "https://miyotamovement.com/product/8N40/",
+      "sha256": "b0bf35f384dc1933595ec306bce5e710f98ca8191c08808f150e9b8d2fbb6c07",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9015",
+      "url": "https://miyotamovement.com/uploads/product/product_6VYkM4Gnta0BQXiULu.pdf",
+      "sha256": "7097238a181bb9fc1086937b6e4f82768b0ab22b7a06c8ac6dcb377bdc63e227",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9015",
+      "url": "https://miyotamovement.com/product/9015/",
+      "sha256": "4d369a0d1a00d555b3bafd035f1cda70c973d85abb74dadb61856ce780a30b53",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9039",
+      "url": "https://miyotamovement.com/uploads/product/product_5QPkALupsnd4cVrOJ2.pdf",
+      "sha256": "e675b678d87e4453038eb725b0fbbd621f8ddd93f956bfc394676590e99a8423",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9039",
+      "url": "https://miyotamovement.com/product/9039/",
+      "sha256": "3171ba760a3f2d31963ecef8b7e6ea6b3bc7b9a823c4d67cd71e82f234818392",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m90S5",
+      "url": "https://miyotamovement.com/uploads/product/product_2UcVxZDJMtkysqIT8n.pdf",
+      "sha256": "b6f5d073eddc6324d64f8f76f17c2328eebb5f1a21acb5b7a09e6d2b5ee49998",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec90S5",
+      "url": "https://miyotamovement.com/product/90S5/",
+      "sha256": "5ead763cf510f6e0501d391e08a0f127c25125e77a2d93359d56936bb965d364",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9075",
+      "url": "https://miyotamovement.com/uploads/product/product_awnkd0rbXJcW2B3ExM.pdf",
+      "sha256": "a51f2798aa9264d5a9592796af272788930994bec5e3e8e57baa1462f617ba13",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9075",
+      "url": "https://miyotamovement.com/product/9075/",
+      "sha256": "c751ccda6678b51ef1bd4b384cea89d5fd1acfc89c65a97c87d6b113f28950a8",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9100",
+      "url": "https://miyotamovement.com/uploads/product/product_UBQeqRTPnGZfFvmzhb.pdf",
+      "sha256": "d475eab0cfe45cbe39f50495eb29c459626b1bc8bdc66c17e94dd421bb232a38",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9100",
+      "url": "https://miyotamovement.com/product/9100/",
+      "sha256": "5d290e8e8c778fbc09b9d2c6ea638cf8e2681c13f9f238c0b3e1f479835f59d5",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9120",
+      "url": "https://miyotamovement.com/uploads/product/product_km15LoNxh3vrwSDby2.pdf",
+      "sha256": "ac4c431a68b021d19d9e3dc35c3ba92cb9d523d34b6c901c66d0fdc4187ae5d1",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9120",
+      "url": "https://miyotamovement.com/product/9120/",
+      "sha256": "e38e087f1aeaebe6770ace9a0cfdea0ee8fe7e5563e9de0463381de73592e857",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9122",
+      "url": "https://miyotamovement.com/uploads/product/product_aL8clTPp29BOtEdu5Q.pdf",
+      "sha256": "10c6e7d826f4e8ed9c2aac6c4fa0422fe2ec8e0ba9b31cfe6540e53ada03f611",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9122",
+      "url": "https://miyotamovement.com/product/9122/",
+      "sha256": "aac98a04322b30a67502deabbce3f0b1fe7b3336958814e403128ca036f75194",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m9132",
+      "url": "https://miyotamovement.com/uploads/product/product_T6BnSucmEWXdkVYPbo.pdf",
+      "sha256": "fb66cb29e835c13ce3a85716715d6dcc0674f11bfbb33a3d508832460ec306de",
+      "detail": "Manufacturer parts list; escape identity and distinct centre/fourth/barrel part numbers"
+    },
+    {
+      "id": "spec9132",
+      "url": "https://miyotamovement.com/product/9132/",
+      "sha256": "05b9d140af1ba11eb5012af9e670831f406e7a328d285a5523ece28560220578",
+      "detail": "Manufacturer product page; vibration frequency and hand layout"
+    },
+    {
+      "id": "m82S3",
+      "url": "https://miyotamovement.com/jp/uploads/product/product_mdJPIt0ujKZCpRLNix.pdf",
+      "sha256": "fac8258771e97c19e9a677ca3e717ddc28dae551f08901b83861e2576d4964b4",
+      "detail": "Miyota 82S3 parts list, escape 032-106; not assigned periods until a frequency source is checked"
+    }
+  ],
+  "coverage": [
+    {
+      "calibre": "Seiko NH35A",
+      "family": [
+        "NH35",
+        "NH36",
+        "NH36A",
+        "NH34",
+        "NH34A",
+        "NH37",
+        "NH37A",
+        "NH38",
+        "NH38A",
+        "NH39",
+        "NH39A"
+      ],
+      "escape_assembly": "0251 383",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "nh3"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko NH70A",
+      "family": [
+        "NH70",
+        "NH71",
+        "NH71A",
+        "NH72",
+        "NH72A"
+      ],
+      "escape_assembly": "0251 383",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "nh3",
+        "nh7"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R35A",
+      "family": [
+        "4R35A"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4R35A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R35B",
+      "family": [
+        "4R35B",
+        "4R35",
+        "Seiko 4R35"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4r-b"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R36A",
+      "family": [
+        "4R36A",
+        "4R36",
+        "Seiko 4R36"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4r-b"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R37A",
+      "family": [
+        "4R37A",
+        "4R37",
+        "Seiko 4R37"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4R37A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R38A",
+      "family": [
+        "4R38A",
+        "4R38",
+        "Seiko 4R38"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4R38A_4R39A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 4R39A",
+      "family": [
+        "4R39A",
+        "4R39",
+        "Seiko 4R39"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "4R38A_4R39A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S26",
+      "family": [
+        "7S26",
+        "7S36"
+      ],
+      "escape_assembly": "0251 300 (7S26); 0251 013 (7S36)",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7S26A&7S36A",
+        "7S26B_36B",
+        "7s-c"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S26A",
+      "family": [
+        "7S26A"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S26A&7S36A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S26B",
+      "family": [
+        "7S26B"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S26B_36B"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S26C",
+      "family": [
+        "7S26C"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7s-c"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S36A",
+      "family": [
+        "7S36A"
+      ],
+      "escape_assembly": "0251 013",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S26A&7S36A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S36B",
+      "family": [
+        "7S36B"
+      ],
+      "escape_assembly": "0251 013",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S26B_36B"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S36C",
+      "family": [
+        "7S36C"
+      ],
+      "escape_assembly": "0251 013",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7s-c"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S25C",
+      "family": [
+        "7S25C"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S25C_35C"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 7S35C",
+      "family": [
+        "7S35C"
+      ],
+      "escape_assembly": "0251 013",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "7S25C_35C"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R35",
+      "family": [
+        "6R35"
+      ],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R35A",
+      "family": [],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R15",
+      "family": [
+        "6R15"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "6R15AB",
+        "6R15CD"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R15A",
+      "family": [
+        "6R15A"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "6R15AB"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R15B",
+      "family": [
+        "6R15B"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "6R15AB"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R15C",
+      "family": [
+        "6R15C"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "6R15CD"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R15D",
+      "family": [
+        "6R15D"
+      ],
+      "escape_assembly": "0251 300",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "7s-c",
+        "6R15CD"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R31A",
+      "family": [
+        "6R31A",
+        "6R31",
+        "Seiko 6R31"
+      ],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35",
+        "6R31A_38A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R38A",
+      "family": [
+        "6R38A",
+        "6R38",
+        "Seiko 6R38"
+      ],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35",
+        "6R31A_38A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R54A",
+      "family": [
+        "6R54A",
+        "6R54",
+        "Seiko 6R54"
+      ],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35",
+        "6R54A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Seiko 6R55A",
+      "family": [
+        "6R55A",
+        "6R55",
+        "Seiko 6R55"
+      ],
+      "escape_assembly": "0251 283",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "6r35",
+        "6R55A"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 8215",
+      "family": [
+        "8215",
+        "8205",
+        "821A",
+        "8217",
+        "820A"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m8215",
+        "spec8215",
+        "m8205",
+        "m8217",
+        "m82-old"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 82S0",
+      "family": [
+        "82S0"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m82S0",
+        "spec82S0"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 82S5",
+      "family": [
+        "82S5"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m82S5",
+        "spec82S5"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 82S7",
+      "family": [
+        "82S7"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m82S7",
+        "spec82S7"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 8N24",
+      "family": [
+        "8N24"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m8N24",
+        "spec8N24"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 8N40",
+      "family": [
+        "8N40"
+      ],
+      "escape_assembly": "032-106",
+      "escape_teeth": 15,
+      "bph": 21600,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m82-drawing",
+        "m8N40",
+        "spec8N40"
+      ],
+      "unresolved": [
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 9015",
+      "family": [
+        "9015",
+        "9039",
+        "90S5"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m9015",
+        "spec9015",
+        "m9039",
+        "spec9039",
+        "m90S5",
+        "spec90S5"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota 9075",
+      "family": [
+        "9075"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m9075",
+        "spec9075"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9100",
+      "family": [
+        "9100",
+        "Miyota 9100"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old",
+        "m9100",
+        "spec9100"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9110",
+      "family": [
+        "9110",
+        "Miyota 9110"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9120",
+      "family": [
+        "9120",
+        "Miyota 9120"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old",
+        "m9120",
+        "spec9120"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9122",
+      "family": [
+        "9122",
+        "Miyota 9122"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old",
+        "m9122",
+        "spec9122"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9130",
+      "family": [
+        "9130",
+        "Miyota 9130"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    },
+    {
+      "calibre": "Miyota (Citizen) 9132",
+      "family": [
+        "9132",
+        "Miyota 9132"
+      ],
+      "escape_assembly": "032-991",
+      "escape_teeth": 20,
+      "bph": 28800,
+      "escape_period_s": 5.0,
+      "source_ids": [
+        "m90-drawing",
+        "m91-old",
+        "m9132",
+        "spec9132"
+      ],
+      "unresolved": [
+        "off-centre centre wheel",
+        "third wheel",
+        "barrel",
+        "pinion leaf counts"
+      ]
+    }
+  ],
+  "audit_before": [
+    {
+      "calibre": "Seiko NH35A",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "fourth wheel",
+        "centre wheel",
+        "balance"
+      ],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 6R35",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "fourth wheel",
+        "centre wheel",
+        "balance"
+      ],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S26",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "fourth wheel",
+        "centre wheel",
+        "balance"
+      ],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota 8215",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "seconds pinion",
+        "centre wheel",
+        "balance"
+      ],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota 9015",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "fourth wheel",
+        "centre wheel",
+        "balance"
+      ],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 6 ¾",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6 ¾ (36,000 bph)",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 11 ½",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 12 ½",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 12 ½ (36,000 bph)",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 1100",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 1104",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 1500",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 1520",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 1700",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2100",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2104",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2118",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2202",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2205",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2206",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2220",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2406",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2409",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2415",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2418",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2419",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2501",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2505",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2517",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2706",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2706 (28,800 bph, 47.8°)",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2906",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 2906 (28,800 bph, 47.8°)",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4006",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4006 (19,800 bph, 58.5°)",
+      "bph": 19800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5206",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5245",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5246",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5246 (28,800 bph, 52°)",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5606",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5619",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5626",
+      "bph": 28800,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6105",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6106",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6109",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6117",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6118",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6119",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6138",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6139",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159 (52.4°)",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159 (36,000 bph, 52.5°)",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6300",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6308",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6309",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6319",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7005",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7006",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7009",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7016",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7018",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7019",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7025",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8800A",
+      "bph": 18000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8800B",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8800C",
+      "bph": 18000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8800D",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8800F",
+      "bph": 36000,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9100",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9110",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9120",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9122",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9130",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Miyota (Citizen) 9132",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4006A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4006A (58.5°)",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4205A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4205B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4205C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4206A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4206B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4206C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4207A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4207B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4207C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4208A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4208B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4225A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4225B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4227A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4227B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4502A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4R15A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4R16A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4R35A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4R35B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4R36A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4R37A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4R38A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4R39A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 4S12",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 4S15",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5207",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5208",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5209",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5210",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5211",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5212",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5213",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5214",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5215",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5216",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5217",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5218",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5219",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5220",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5221",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5222",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5223",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5224",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5225",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5226",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5227",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5228",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5229",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5230",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5231",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5232",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5233",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5234",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5235",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5236",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5237",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5238",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5239",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5240",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5241",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5242",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5243",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5244",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 5646",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6105B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6106C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6117A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6117B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6119C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6139A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6139B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6156A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159A (52.5°)",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6159B (52.5°)",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6245",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6309A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6R15A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 6R15B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 6R15C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 6R20A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6R21A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6R24A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6R35A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7002",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7009A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 719",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7S25A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7S25C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S26A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S26B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S26C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S35A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 7S35C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S36B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S36C",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "updated with manufacturer evidence"
+    },
+    {
+      "calibre": "Seiko 7S55B",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8R28A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 8R39A",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko NH05",
+      "bph": null,
+      "escape_teeth": null,
+      "known_wheels": [],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6138A",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    },
+    {
+      "calibre": "Seiko 6138B",
+      "bph": 21600,
+      "escape_teeth": null,
+      "known_wheels": [
+        "balance"
+      ],
+      "disposition": "unchanged; no sufficiently specific new train evidence established"
+    }
+  ],
+  "excluded": [
+    {
+      "calibres": [
+        "Miyota 8200",
+        "Miyota 8315",
+        "Miyota 82S3",
+        "Seiko NH05",
+        "Seiko 6309",
+        "Seiko 7002",
+        "Seiko 7009",
+        "Seiko 6R20",
+        "Seiko 6R21",
+        "Seiko 6R24"
+      ],
+      "reason": "No complete evidence chain for escape identity plus frequency/count in this contribution. No broad family transfer."
+    }
+  ]
+}

@@ -1518,114 +1518,139 @@
       "NH36A",
       "NH34",
       "NH34A",
+      "NH37",
+      "NH37A",
       "NH38",
       "NH38A",
       "NH39",
-      "4R35",
-      "4R36",
-      "Seiko 4R35",
-      "Seiko 4R36"
+      "NH39A"
     ],
     "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
-    "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
+    "seconds": "centre, direct",
     "wheels": [
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 383. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
       },
       {
         "name": "balance",
-        "period_s": 0.333333,
-        "basis": "derived from the beat rate"
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
       }
     ],
     "sources": [
       "https://www.cousinsuk.com/pdf/skus/9271_nh34m.pdf (SII technical guide: 21,600 vph, lift 53°, 41 h)",
       "https://calibercorner.com/seiko-caliber-4r36/",
-      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft (direct seconds on the 7S26)"
+      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft (direct seconds on the 7S26)",
+      "https://www.timemodule.com/upload/category/24/technical_guide/NH35_TG.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "The parts list has a 'second reduction wheel' whose place in the train is not shown, so the third wheel's period cannot be read off. Direct seconds is taken from the 7S26 it grew from. Escape wheel tooth count not found: 15 teeth would give 5.0 s, but it is left out."
+    "confidence": "derived from tooth counts",
+    "notes": "NH3 technical guide covers the listed NH variants. Its second reduction wheel belongs to automatic winding, not the going train. Different hand-height parts are listed separately in the guide. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted.",
+    "escape_teeth": 15
   },
   {
     "calibre": "Seiko 6R35",
     "maker": "Seiko",
     "family": [
-      "6R35",
-      "6R15",
-      "Seiko 6R15",
-      "6R"
+      "6R35"
     ],
     "common": true,
     "bph": 21600,
     "lift_angle_deg": 53,
-    "seconds": "centre",
+    "seconds": "centre, direct",
     "wheels": [
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
       },
       {
         "name": "balance",
-        "period_s": 0.333333,
-        "basis": "derived from the beat rate"
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
       }
     ],
     "sources": [
       "https://cousinsuk.com/pdf/skus/9509_6r35.pdf (Seiko technical guide: 21,600 vph, lift 53°, 70 h)",
-      "https://calibercorner.com/seiko-caliber-6r15/ (21,600 vph, 53°, 50 h)"
+      "https://calibercorner.com/seiko-caliber-6r15/ (21,600 vph, 53°, 50 h)",
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "The 6R35's third wheel has the same part number as the NH35's (0231 070); its escape wheel differs (0251 283 against 0251 383). Escape tooth count not found."
+    "confidence": "derived from tooth counts",
+    "notes": "6R35 is separate from 6R15: escape, pallet, balance and barrel differ. The broad 6R alias is removed. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted.",
+    "escape_teeth": 15
   },
   {
     "calibre": "Seiko 7S26",
     "maker": "Seiko",
     "family": [
       "7S26",
-      "7S36",
-      "7S"
+      "7S36"
     ],
     "common": true,
     "bph": 21600,
-    "seconds": "centre, direct (fourth wheel arbor through the centre pinion)",
+    "seconds": "centre, direct",
     "wheels": [
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300 (7S26); 0251 013 (7S36). Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
       },
       {
         "name": "balance",
-        "period_s": 0.333333,
-        "basis": "derived from the beat rate"
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
       }
     ],
     "sources": [
       "https://reference.grail-watch.com/movement/7s26",
-      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft"
+      "https://watchrepairtalk.com/topic/28443-let-me-try-this-again-question-about-two-center-wheels-and-where-the-hands-attach-to-the-cannon-pinion-and-inner-shaft",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26A%267S36A.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26B_36B.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "41 h. No lift angle found in a Seiko document (53° as the rest of the family is the usual setting). Escape tooth count not found."
+    "confidence": "derived from tooth counts",
+    "notes": "A/B/C escape identities are documented separately. 53-degree lift is explicitly published in the C guide; generic selection uses that setting. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted.",
+    "escape_teeth": 15,
+    "lift_angle_deg": 53
   },
   {
     "calibre": "Miyota 8215",
@@ -1635,73 +1660,103 @@
       "8205",
       "821A",
       "8217",
-      "8200"
+      "820A"
     ],
     "common": true,
     "bph": 21600,
     "lift_angle_deg": 49,
-    "seconds": "centre, indirect (a seconds pinion with a friction spring)",
+    "seconds": "centre, indirect",
     "wheels": [
       {
         "name": "seconds pinion",
         "period_s": 60,
-        "basis": "derived: the seconds hand turns once a minute"
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
       },
       {
         "name": "balance",
-        "period_s": 0.333333,
-        "basis": "derived from the beat rate"
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
       }
     ],
     "sources": [
       "https://calibercorner.com/miyota-caliber-8215",
       "https://www.watchrepairtalk.com/topic/20273-citizenmiyota-8200-lift-angle/ (lift 49°)",
       "https://calibercorner.com/stuttering-seconds-hand-explained",
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 8215, 49°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 8215, 49°)",
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_PveYk926HfOtdLJUux.pdf",
+      "https://miyotamovement.com/product/8215/",
+      "https://miyotamovement.com/uploads/product/product_TvxEGAeFoUYWz4bghI.pdf",
+      "https://miyotamovement.com/uploads/product/product_LXM6qyfebUrJGPd2Wt.pdf",
+      "https://om-mechanics.com/brochures/Miyota%208205%2C%208215%2C%20820A%2C%20821A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "Lift 49° as given by Caliber Corner and Watchguy UK; 52° is only a timegrapher default. The seconds are driven indirectly, so the fourth wheel's period is not the seconds hand's and is left out. 42 h. Wide positional spread is normal for the type."
+    "confidence": "derived from tooth counts",
+    "notes": "8215/8205/821A/820A/8217 share escape 032-106. Indirect seconds establish only the seconds-pinion period: they do not prove that the fourth wheel has either a different or identical period. Existing 49-degree lift setting retained. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted.",
+    "escape_teeth": 15
   },
   {
     "calibre": "Miyota 9015",
     "maker": "Miyota (Citizen)",
     "family": [
       "9015",
-      "9039"
+      "9039",
+      "90S5"
     ],
     "common": true,
     "bph": 28800,
     "lift_angle_deg": 51,
-    "seconds": "centre (described as direct drive)",
+    "seconds": "centre, direct",
     "wheels": [
       {
         "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
       },
       {
-        "name": "centre wheel",
+        "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
       },
       {
         "name": "balance",
         "period_s": 0.25,
-        "basis": "derived from the beat rate"
+        "basis": "Derived from 28800 bph: two beats per oscillation."
       }
     ],
     "sources": [
       "https://miyotamovement.com/jp/uploads/product/product_VFYbHra8C0WGl4Nge3.pdf (Miyota spec: 28,800 vph, 51°, 42 h)",
       "https://calibercorner.com/miyota-caliber-9015/",
-      "https://calibercorner.com/miyota-caliber-9039/ (no date, 28,800 vph, 51°)"
+      "https://calibercorner.com/miyota-caliber-9039/ (no date, 28,800 vph, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://miyotamovement.com/uploads/product/product_6VYkM4Gnta0BQXiULu.pdf",
+      "https://miyotamovement.com/product/9015/",
+      "https://miyotamovement.com/uploads/product/product_5QPkALupsnd4cVrOJ2.pdf",
+      "https://miyotamovement.com/product/9039/",
+      "https://miyotamovement.com/uploads/product/product_2UcVxZDJMtkysqIT8n.pdf",
+      "https://miyotamovement.com/product/90S5/",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "Escape wheel tooth count not found (20 teeth would give 5.0 s, 15 teeth 3.75 s), so it is left out. The 90S5 is a newer variant with no data found and is not listed."
+    "confidence": "derived from tooth counts",
+    "notes": "9015/9039/90S5 use the same escape assembly. The former one-hour centre-wheel entry is replaced by the cannon pinion: the off-centre centre wheel has no established period. Existing 51-degree lift setting retained. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted.",
+    "escape_teeth": 20
   },
   {
     "calibre": "Seagull ST19",
@@ -60647,62 +60702,274 @@
   {
     "calibre": "Miyota (Citizen) 9100",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9100, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9100, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "https://miyotamovement.com/uploads/product/product_UBQeqRTPnGZfFvmzhb.pdf",
+      "https://miyotamovement.com/product/9100/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9100",
+      "Miyota 9100"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Miyota (Citizen) 9110",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9110, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9110, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9110",
+      "Miyota 9110"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Miyota (Citizen) 9120",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9120, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9120, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "https://miyotamovement.com/uploads/product/product_km15LoNxh3vrwSDby2.pdf",
+      "https://miyotamovement.com/product/9120/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9120",
+      "Miyota 9120"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Miyota (Citizen) 9122",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9122, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9122, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "https://miyotamovement.com/uploads/product/product_aL8clTPp29BOtEdu5Q.pdf",
+      "https://miyotamovement.com/product/9122/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9122",
+      "Miyota 9122"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Miyota (Citizen) 9130",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9130, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9130, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9130",
+      "Miyota 9130"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Miyota (Citizen) 9132",
     "maker": "Miyota (Citizen)",
-    "lift_angle_deg": 51.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9132, 51°)"
+    "lift_angle_deg": 51,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 9132, 51°)",
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://okta.ua/files/pdf/14902832299122.pdf",
+      "https://miyotamovement.com/uploads/product/product_T6BnSucmEWXdkVYPbo.pdf",
+      "https://miyotamovement.com/product/9132/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "9132",
+      "Miyota 9132"
+    ],
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "91xx manufacturer guide specifies 28800 bph and 51-degree lift. Escape assembly matches 9015; barrel and other components differ. Cannon pinion carries the one-hour period. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Moeris 10 1/2",
@@ -66306,68 +66573,270 @@
   {
     "calibre": "Seiko 4R35A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 52,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R35A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R35A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R35A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R35A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R35A"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4R35B",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R35B, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R35B, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R35B, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R35B_4R36A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R35B",
+      "4R35",
+      "Seiko 4R35"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4R36A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R36A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R36A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R36A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R35B_4R36A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R36A",
+      "4R36",
+      "Seiko 4R36"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4R37A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R37A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R37A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R37A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R37A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R37A",
+      "4R37",
+      "Seiko 4R37"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4R38A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R38A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R38A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R38A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R38A_4R39A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R38A",
+      "4R38",
+      "Seiko 4R38"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4R39A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R39A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R39A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R39A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/4R38A_4R39A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "4R39A",
+      "4R39",
+      "Seiko 4R39"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific Seiko guide. 4R35A retains its published 52-degree lift; later listed 4R revisions specify 53 degrees. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 4S12",
@@ -66972,35 +67441,131 @@
   {
     "calibre": "Seiko 6R15A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R15A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15AB.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "6R15A"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific 6R15 technical guide. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 6R15B",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R15B, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15B, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15B, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15AB.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "6R15B"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific 6R15 technical guide. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 6R15C",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R15C, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15C, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R15C, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15CD.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "6R15C"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific 6R15 technical guide. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 6R20A",
@@ -67038,12 +67603,40 @@
   {
     "calibre": "Seiko 6R35A",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R35A, 53°)"
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R35A, 53°)",
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "6R35A technical-guide illustration supplies its own count. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7002",
@@ -67091,45 +67684,173 @@
   {
     "calibre": "Seiko 7S25C",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S25C, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S25C, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S25C, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S25C_35C.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S25C"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S26A",
     "maker": "Seiko",
     "lift_angle_deg": 53.0,
-    "wheels": [],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S26A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S26A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S26A, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26A%267S36A.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S26A"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S26B",
     "maker": "Seiko",
     "lift_angle_deg": 53.0,
-    "wheels": [],
-    "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S26B, 53°)"
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
     ],
-    "confidence": "published list"
+    "sources": [
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S26B, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26B_36B.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S26B"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S26C",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S26C, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S26C, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S26C, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S26C"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S35A",
@@ -67145,35 +67866,131 @@
   {
     "calibre": "Seiko 7S35C",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 013. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S35C, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S35C, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S35C, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S25C_35C.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S35C"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S36B",
     "maker": "Seiko",
     "lift_angle_deg": 53.0,
-    "wheels": [],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 013. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S36B, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S36B, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S36B, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26B_36B.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S36B"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S36C",
     "maker": "Seiko",
-    "lift_angle_deg": 53.0,
-    "wheels": [],
+    "lift_angle_deg": 53,
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 013. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S36C, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S36C, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S36C, 53°)",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "docs/seiko-miyota-train-research.md"
     ],
-    "confidence": "published list"
+    "confidence": "derived from tooth counts",
+    "family": [
+      "7S36C"
+    ],
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
     "calibre": "Seiko 7S55B",
@@ -78547,5 +79364,639 @@
     "confidence": "derived from tooth counts; accepted escape pair",
     "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are accepted as the standard VR32xx specification by the contributor, based on agreement with both measured Rolex-derived families; the VR escape wheel was not photographed. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
     "escape_teeth": 20
+  },
+  {
+    "calibre": "Seiko NH70A",
+    "maker": "Seiko (SII)",
+    "family": [
+      "NH70",
+      "NH71",
+      "NH71A",
+      "NH72",
+      "NH72A"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 383. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://www.timemodule.com/upload/category/24/technical_guide/NH35_TG.pdf",
+      "https://www.timemodule.com/upload/category/29/technical_guide/NH70_TG.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "NH70/71/72 use the documented escape assembly; finishes and some other components differ. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 7S36A",
+    "maker": "Seiko",
+    "family": [
+      "7S36A"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 013. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/7S26A%267S36A.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific escape-part mapping. Existing lift-angle provenance is retained unless this revision guide supplies it. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R15",
+    "maker": "Seiko",
+    "family": [
+      "6R15"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15AB.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15CD.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Covers documented 6R15 A/B/C/D escape assembly only. Barrel and fourth-wheel revisions prevent transferring a complete train. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R15D",
+    "maker": "Seiko",
+    "family": [
+      "6R15D"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 300. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://seikoserviceusa.com/uploads/datasheets/7S26C_36C.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R15CD.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Revision-specific 6R15 technical guide. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R31A",
+    "maker": "Seiko",
+    "family": [
+      "6R31A",
+      "6R31",
+      "Seiko 6R31"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R31A_38A.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Current Seiko guide explicitly lists the same escape assembly at 21600 bph. No barrel-period transfer from 6R35. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R38A",
+    "maker": "Seiko",
+    "family": [
+      "6R38A",
+      "6R38",
+      "Seiko 6R38"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R31A_38A.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Current Seiko guide explicitly lists the same escape assembly at 21600 bph. No barrel-period transfer from 6R35. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R54A",
+    "maker": "Seiko",
+    "family": [
+      "6R54A",
+      "6R54",
+      "Seiko 6R54"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R54A.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Current Seiko guide explicitly lists the same escape assembly at 21600 bph. No barrel-period transfer from 6R35. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Seiko 6R55A",
+    "maker": "Seiko",
+    "family": [
+      "6R55A",
+      "6R55",
+      "Seiko 6R55"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 0251 283. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://cousinsuk.com/pdf/skus/9509_6r35.pdf",
+      "https://seikoserviceusa.com/uploads/datasheets/6R55A.pdf",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "lift_angle_deg": 53,
+    "seconds": "centre, direct",
+    "notes": "Current Seiko guide explicitly lists the same escape assembly at 21600 bph. No barrel-period transfer from 6R35. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 8200",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "8200"
+    ],
+    "common": false,
+    "bph": 21600,
+    "lift_angle_deg": 49,
+    "seconds": "centre, indirect (a seconds pinion with a friction spring)",
+    "wheels": [
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "basis": "derived: the seconds hand turns once a minute"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://calibercorner.com/miyota-caliber-8215",
+      "https://www.watchrepairtalk.com/topic/20273-citizenmiyota-8200-lift-angle/ (lift 49°)",
+      "https://calibercorner.com/stuttering-seconds-hand-explained",
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Miyota 8215, 49°)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Separated from the 8215 alias during the 2026-10-19 audit. Existing hand periods and lift setting retained, but no escape count transferred without a calibre-specific manufacturer parts source."
+  },
+  {
+    "calibre": "Miyota 82S0",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "82S0"
+    ],
+    "wheels": [
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_gU0rAmM5LGXtPq9KNs.pdf",
+      "https://miyotamovement.com/product/82S0/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, indirect",
+    "notes": "Escape identity and frequency checked in this calibre’s own parts list and product page. No lift angle transferred from 8215. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 82S5",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "82S5"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_2yRTar1xdWYso6U03I.pdf",
+      "https://miyotamovement.com/product/82S5/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "small seconds, fourth-wheel arbor",
+    "notes": "Escape identity and frequency checked in this calibre’s own parts list and product page. No lift angle transferred from 8215. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 82S7",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "82S7"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_9H3Tv1IMaunDXC8l5Q.pdf",
+      "https://miyotamovement.com/product/82S7/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "small seconds, fourth-wheel arbor",
+    "notes": "Escape identity and frequency checked in this calibre’s own parts list and product page. No lift angle transferred from 8215. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 8N24",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "8N24"
+    ],
+    "wheels": [
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_QaE6hImY4jtXPOVc0d.pdf",
+      "https://miyotamovement.com/product/8N24/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "centre, indirect",
+    "notes": "Escape identity and frequency checked in this calibre’s own parts list and product page. No lift angle transferred from 8215. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 8N40",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "8N40"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "15 teeth counted in manufacturer illustration; escape assembly 032-106. Applied only at 21600 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 15
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "Derived from 21600 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_moQeV8byx0JPUZStgs.jpg",
+      "https://miyotamovement.com/uploads/product/product_qmOgyeLMnrFbtjpXca.pdf",
+      "https://miyotamovement.com/product/8N40/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 21600,
+    "escape_teeth": 15,
+    "seconds": "small seconds, fourth-wheel arbor",
+    "notes": "Escape identity and frequency checked in this calibre’s own parts list and product page. No lift angle transferred from 8215. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Miyota 9075",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "9075"
+    ],
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "Derived from the seconds hand carried by this arbor; not from beat rate alone."
+      },
+      {
+        "name": "cannon pinion",
+        "period_s": 3600,
+        "basis": "Derived from the minute-hand/cannon-pinion arbor during normal running."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5.0,
+        "basis": "20 teeth counted in manufacturer illustration; escape assembly 032-991. Applied only at 28800 bph. See docs/seiko-miyota-train-research.md.",
+        "teeth": 20
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "Derived from 28800 bph: two beats per oscillation."
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/uploads/product/product_cAzkTHoO04Nhn9rI86.jpg",
+      "https://miyotamovement.com/uploads/product/product_awnkd0rbXJcW2B3ExM.pdf",
+      "https://miyotamovement.com/product/9075/",
+      "docs/seiko-miyota-train-research.md"
+    ],
+    "confidence": "derived from tooth counts",
+    "common": true,
+    "bph": 28800,
+    "escape_teeth": 20,
+    "seconds": "centre, direct",
+    "notes": "GMT variant has its own fourth wheel and cannon-pinion parts; only the documented escape count and hand-arbor periods are transferred. No lift angle inferred from 9015. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   }
 ]
