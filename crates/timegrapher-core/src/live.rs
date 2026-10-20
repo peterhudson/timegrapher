@@ -1184,6 +1184,7 @@ mod tests {
             clipped_beats: vec![],
             clipped_samples: 0,
             jumps: vec![60.03],
+            sided: Vec::new(),
         }
     }
 
@@ -1617,6 +1618,7 @@ mod tests {
             clipped_beats: a.clipped_beats().to_vec(),
             clipped_samples: 0,
             jumps: Vec::new(),
+            sided: Vec::new(),
         };
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();

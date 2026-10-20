@@ -511,6 +511,7 @@ mod tests {
             clipped_beats: vec![],
             clipped_samples: 0,
             jumps: vec![15.0, 30.0],
+            sided: Vec::new(),
         };
         let legacy = grids(&log, 10.0)[0].clone();
         let breaks: Vec<_> = log
@@ -627,6 +628,7 @@ mod tests {
             clipped_beats: live.clipped_beats().to_vec(),
             clipped_samples: 0,
             jumps: Vec::new(),
+            sided: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),
@@ -803,6 +805,7 @@ mod tests {
             clipped_beats: live.clipped_beats().to_vec(),
             clipped_samples: 0,
             jumps: Vec::new(),
+            sided: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),

@@ -186,12 +186,12 @@ pub fn with_jumps(listed: Vec<Break>, jumps: &[f64]) -> Vec<Break> {
 }
 
 /// True seconds from the start of the take for audio second `t`, adding
-/// the gaps of the breaks before it.
+/// the gaps of the breaks before it (a negative gap counts as none).
 pub fn wall(breaks: &[Break], t: f64) -> f64 {
     t + breaks
         .iter()
         .filter(|b| b.audio_s <= t)
-        .map(|b| b.gap_s)
+        .map(|b| b.gap_s.max(0.0))
         .sum::<f64>()
 }
 
@@ -206,15 +206,19 @@ pub fn piece(breaks: &[Break], t: f64) -> usize {
 }
 
 /// Make beat numbers run on across the breaks as the watch did: each
-/// stretch after a break is renumbered by the beats the gap held, rounded
-/// to keep the sides, and turned over by one beat where its sides came out
-/// the other way round (told by the sign of its beat error against the
-/// first stretch's, when both are clear of zero). Amplitude windows that
-/// span a break are dropped, and those of a turned stretch swap sides.
+/// stretch after a break is renumbered by the beats the gap held (none for
+/// a negative gap), rounded to keep the sides. Where the side sounds told
+/// the sides apart at a jump within [`JUMP_MATCH_S`] of the break (`sided`,
+/// [`crate::stream::BeatLog`]'s), the numbers already keep them; elsewhere
+/// the stretch is turned over by one beat where its sides came out the
+/// other way round, told by the sign of its beat error against the first
+/// stretch's when both are clear of zero. Amplitude windows that span a
+/// break are dropped, and those of a turned stretch swap sides.
 pub fn renumber(
     beats: &mut [Beat],
     windows: &mut Vec<AmplitudeWindow>,
     breaks: &[Break],
+    sided: &[f64],
     bph: u32,
 ) {
     if breaks.is_empty() {
@@ -236,8 +240,10 @@ pub fn renumber(
     let mut shift = 0i64;
     for (k, b) in breaks.iter().enumerate() {
         let k = k + 1;
-        shift += 2 * (b.gap_s / (2.0 * period)).round() as i64;
-        let turned = matches!((first, be[k]), (Some(a), Some(c)) if a.signum() != c.signum());
+        shift += 2 * (b.gap_s.max(0.0) / (2.0 * period)).round() as i64;
+        let heard = sided.iter().any(|&j| (j - b.audio_s).abs() <= JUMP_MATCH_S);
+        let turned =
+            !heard && matches!((first, be[k]), (Some(a), Some(c)) if a.signum() != c.signum());
         let s = shift + i64::from(turned);
         let end = breaks.get(k).map_or(f64::INFINITY, |n| n.audio_s);
         for beat in beats

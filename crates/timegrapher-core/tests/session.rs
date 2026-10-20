@@ -460,6 +460,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_mask() {
         clipped_beats: Vec::new(),
         clipped_samples: 0,
         jumps: Vec::new(),
+        sided: Vec::new(),
     };
     let m = session::measure_masked(&log, None, &[], &[mask], 80.0, 232.0);
     // The 10 s windows that remain lie wholly on one side of the mask.
@@ -512,6 +513,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_break() {
         clipped_beats: Vec::new(),
         clipped_samples: 0,
         jumps: Vec::new(),
+        sided: Vec::new(),
     };
     let m = session::measure_masked(&log, None, &[brk], &[], 80.0, 129.0);
     let (p05, p95) = (
@@ -590,6 +592,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
             clipped_beats: Vec::new(),
             clipped_samples: 0,
             jumps: Vec::new(),
+            sided: Vec::new(),
         };
         let m = session::measure_masked(&log, Some(&clock), &breaks, &[], 80.0, 129.0);
         let (p05, p95) = (
@@ -639,6 +642,7 @@ fn a_break_with_no_gap_keeps_its_single_cut() {
         clipped_beats: Vec::new(),
         clipped_samples: 0,
         jumps: Vec::new(),
+        sided: Vec::new(),
     };
     let inside: Vec<_> = beats
         .iter()

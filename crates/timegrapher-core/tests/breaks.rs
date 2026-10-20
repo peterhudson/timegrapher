@@ -92,7 +92,13 @@ fn a_take_with_a_pause_reads_as_one_watch() {
     assert_eq!(found.len(), 1);
     assert!((found[0].audio_s - join_s).abs() < 1e-6);
     assert!((found[0].gap_s - GAP_S).abs() < 1e-9);
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &found, log.bph);
+    breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
 
     // Rate on the card's clock is 10 s/d; corrected for 20 ppm slow, 8.3.
     let want = (1.0 + 10.0 / 86400.0) / (1.0 + 20e-6) * 86400.0 - 86400.0;
@@ -194,7 +200,13 @@ fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
             "{first_s}: beat error {before} then {after}"
         );
 
-        breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &found, log.bph);
+        breaks::renumber(
+            &mut log.beats,
+            &mut log.amplitude_windows,
+            &found,
+            &log.sided,
+            log.bph,
+        );
         let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
         let r = m.rate_s_per_day.expect("rate");
         assert!((r - 10.0).abs() < 0.3, "{first_s}: session rate {r}");
@@ -227,4 +239,83 @@ fn the_clock_takes_the_listed_break() {
     let after = clock.map(join_s + 0.5);
     assert!((after - before - GAP_S).abs() < 0.01, "{before} {after}");
     assert!((clock.map(join_s - 0.5) - (join_s - 0.5) * (1.0 + 20e-6)).abs() < 0.01);
+}
+
+#[test]
+fn a_real_change_of_beat_error_sign_keeps_its_sides() {
+    // Two stretches joined out of phase, the beat error -0.6 ms before
+    // the join and +0.6 ms after. The Tock sounds unlike the Tick, so the
+    // side sounds tell the sides apart at the jump, and renumbering keeps
+    // the change of sign rather than turning the second stretch over.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.6, 1);
+    let b = piece(90.0, 0.6, 2);
+    let fs = a.sample_rate;
+    let join_s = a.samples.len() as f64 / fs as f64;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert_eq!(log.sided.len(), 1, "{:?}", log.sided);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    let be = |from: f64, to: f64| {
+        let run: Vec<_> = log
+            .beats
+            .iter()
+            .filter(|b| b.time >= from && b.time < to)
+            .copied()
+            .collect();
+        timegrapher_core::timing::beat_error_ms(&run).unwrap()
+    };
+    let (before, after) = (be(5.0, join_s - 1.0), be(join_s + 5.0, 175.0));
+    // The sides keep their names, so the sign turns over at the join.
+    assert!(
+        before * after < 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
+        "{before} {after}"
+    );
+}
+
+#[test]
+fn a_negative_pause_moves_no_beat_numbers_back() {
+    // A pause the recorder logged as -0.2 s counts as none: the beats
+    // after it number on from those before, as with no gap at all.
+    let period = 3600.0 / 28800.0;
+    let mut beats: Vec<timegrapher_core::beats::Beat> = (0..960)
+        .map(|k| timegrapher_core::beats::Beat {
+            index: k,
+            time: k as f64 * period,
+            quality: 1.0,
+        })
+        .collect();
+    let gap = |gap_s: f64| breaks::Break {
+        audio_s: 60.0,
+        gap_s,
+    };
+    let mut zero = beats.clone();
+    breaks::renumber(&mut zero, &mut Vec::new(), &[gap(0.0)], &[], 28800);
+    breaks::renumber(&mut beats, &mut Vec::new(), &[gap(-0.2)], &[], 28800);
+    let idx = |v: &[timegrapher_core::beats::Beat]| v.iter().map(|b| b.index).collect::<Vec<_>>();
+    assert_eq!(idx(&beats), idx(&zero));
+    assert_eq!(beats[480].index, 480);
+    assert_eq!(breaks::wall(&[gap(-0.2)], 70.0), 70.0);
 }

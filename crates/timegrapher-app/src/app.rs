@@ -11217,6 +11217,7 @@ mod tests {
                 clipped_beats: vec![],
                 clipped_samples: 0,
                 jumps: vec![60.03],
+                sided: Vec::new(),
             };
             let original: Vec<_> = log
                 .beats
@@ -11393,6 +11394,7 @@ mod tests {
             clipped_beats: vec![],
             clipped_samples: 0,
             jumps: vec![],
+            sided: Vec::new(),
         };
         app.live = Some(LiveAnalyzer::from_log(log, app.live_config()));
         app.session.replay();

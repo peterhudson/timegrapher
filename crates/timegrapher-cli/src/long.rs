@@ -380,7 +380,13 @@ pub fn run(
         breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
         &log.jumps,
     );
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &breaks,
+        &log.sided,
+        log.bph,
+    );
     let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
