@@ -2039,30 +2039,8 @@ pub fn check(
     cfg: &Config,
 ) -> Report {
     let map = crate::longrun::true_time(clock, &long.breaks);
-    let gaps = crate::longrun::gaps(clock, &long.breaks);
-    let beats: Vec<Beat> = log
-        .beats
-        .iter()
-        .map(|b| Beat {
-            time: map(b.time),
-            ..*b
-        })
-        .collect();
-
-    // Rate readings; none reaches across a break, and none is taken from
-    // part of its span: each of its 2 s stretches (the amplitude
-    // windows' length) must hold beats, so a reading at the edge of a gap
-    // or a masked stretch is left out, not averaged over what is left.
     let r = cfg.rate_reading_s;
-    let astep = log
-        .amplitude_windows
-        .first()
-        .map_or(2.0, |w| w.end_s - w.start_s);
-    let mut wins = timing::windows(&beats, log.bph, r, r);
-    wins.retain(|w| {
-        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
-            && covered(&beats, w.start_s, w.end_s, astep)
-    });
+    let wins = rate_windows(log, clock, &long.breaks, r);
     let rate_grid = match wins.first() {
         Some(w0) => {
             let t0 = w0.start_s;
@@ -2092,6 +2070,7 @@ pub fn check(
 
     // Amplitude and beat error windows.
     let aw = &log.amplitude_windows;
+    let astep = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
     let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
         let Some(w0) = aw.first() else {
             return Grid {
@@ -2279,9 +2258,42 @@ pub fn check(
     }
 }
 
+/// The rate readings [`check`] tests, `r` seconds each, on true time.
+/// None reaches into a break's gap, and none is taken from part of its
+/// span: each of its 2 s stretches (the amplitude windows' length) must
+/// hold beats, so a reading at the edge of a gap or a masked stretch is
+/// left out, not averaged over what is left.
+pub(crate) fn rate_windows(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    r: f64,
+) -> Vec<timing::WindowFit> {
+    let map = crate::longrun::true_time(clock, breaks);
+    let gaps = crate::longrun::gaps(clock, breaks);
+    let beats: Vec<Beat> = log
+        .beats
+        .iter()
+        .map(|b| Beat {
+            time: map(b.time),
+            ..*b
+        })
+        .collect();
+    let astep = log
+        .amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    let mut wins = timing::windows(&beats, log.bph, r, r);
+    wins.retain(|w| {
+        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
+            && covered(&beats, w.start_s, w.end_s, astep)
+    });
+    wins
+}
+
 /// Whether every stretch of `part` seconds from `start` to `end` holds a
 /// beat (`beats` sorted by time).
-fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
+pub(crate) fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
     let k = ((end - start) / part).round().max(1.0) as usize;
     let len = (end - start) / k as f64;
     (0..k).all(|j| {
