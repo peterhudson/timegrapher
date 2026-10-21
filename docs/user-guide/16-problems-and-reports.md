@@ -165,7 +165,8 @@ clock corrections. Saved recordings are wherever you chose to save them.
 These are separate from the application installation.
 
 **Help → Check for Updates…** checks the project's releases. **Check for
-Updates at Start** controls the automatic startup check. Download and
+Updates at Start**, in Settings under General, controls the automatic
+startup check. Download and
 install a newer build using its installation instructions; updating keeps
 your settings and recordings. On macOS, replace the app in Applications;
 on Windows and Linux, use the new version's extracted folder. If you

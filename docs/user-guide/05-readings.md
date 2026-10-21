@@ -97,6 +97,16 @@ sample-clock drift can compromise the correction. Recheck it when the
 input configuration changes. A stored correction is a fixed offset;
 a long recording's clock log can support a correction that follows drift.
 
+**Settings**, under **Sound Card Clock**, lists each input's kept
+correction: its error in ppm and in s/d, the day it was measured, how,
+and over how long. **Forget** removes one after asking, naming the input,
+its error and the day; getting it back takes 20 minutes or more of
+listening. It is removed for the app, the command line and the Claude
+Desktop tools alike, which all read the same `clocks.json`. Rates from
+that input are then on its own clock again, and the True Clock line goes
+until the clock is timed and kept afresh. Forget a correction after
+changing the microphone or sound card behind an input's name.
+
 In the current app, **Steadiness and Isochronism remain on the sample
 clock**. Positions Test results can use the stored correction. The command
 line can also apply a correction automatically or from a supplied log,

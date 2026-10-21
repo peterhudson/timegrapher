@@ -18,18 +18,37 @@ the readings selects an earlier moment.
 | Menu | Main actions |
 | --- | --- |
 | **File** | **Open Recording…**, **Open Folder…**, **Save… / Save Again**, **Save As…**, **Save Analysis Only…**, **New Session** (also while listening), **Quit** |
-| **View** | Show or hide readings and panes, choose Steadiness panes, **Reset Panes**, and select **Appearance** |
-| **Help** | **Check for Updates…**, **Check for Updates at Start**, **Report a Problem…** and, on Linux, **Add to Applications Menu** |
+| **Edit** | **Settings…** |
+| **View** | Show or hide readings and panes, choose Steadiness panes, and **Reset Panes** |
+| **Help** | **Check for Updates…**, **Report a Problem…** and, on Linux, **Add to Applications Menu** |
 
 The main shortcuts are **Ctrl+O** for Open Recording, **Ctrl+S** for Save
-or Save Again, **Ctrl+Shift+S** for Save As, and **Ctrl+Q** for Quit. Use
-Cmd on macOS.
+or Save Again, **Ctrl+Shift+S** for Save As, **Ctrl+,** for Settings and
+**Ctrl+Q** for Quit. Use Cmd on macOS.
 
-**Appearance: Auto** follows the system's light or dark preference;
-**Light** and **Dark** override it. The update check asks GitHub about
-published releases and offers a link when one is available. Downloading
-and installing remain separate actions. See
+Beside the menus is a row of pane icons, one for each pane, that show or
+hide it, with a gear at the end that opens Settings. The update check
+asks GitHub about published releases and offers a link when one is
+available. Downloading and installing remain separate actions. See
 [Problems and Reports](16-problems-and-reports.md#settings-logs-and-updates).
+
+## Settings
+
+**Settings…** in the Edit menu, **Ctrl+,** (**Cmd+,** on macOS) or the
+gear opens the Settings window over the app. It has three sections:
+
+| Section | What it holds |
+| --- | --- |
+| **General** | **Appearance** and **Check for Updates at Start** |
+| **Calibres** | The calibre catalogue, described in [Calibres](11-calibres.md#manage-calibres) |
+| **Sound Card Clock** | Each input's kept clock correction, with **Forget**; see [True Clock](05-readings.md#true-clock) |
+
+It opens at the section last used while the app has been running.
+**Done**, Escape or a click outside closes it. **Appearance: Auto**
+follows the system's light or dark preference; **Light** and **Dark**
+override it. What belongs to the watch on show (its calibre, lift angle,
+beat rate and position) and to the microphone (input, level, Show Every
+Input, Keep Awake) stays in the Watch pane, beside what it sets.
 
 ## Finding a Pane
 

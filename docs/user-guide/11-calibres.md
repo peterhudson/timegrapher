@@ -36,11 +36,13 @@ a fresh launch does not assume it is still the same watch.
 
 ![Searching Manage Calibres for 3235](images/manage-calibres-search.png)
 
-**All**, **Short List** and **Yours** filter the catalogue. The search
+**Manage Calibres…**, at the foot of the calibre menu and as a button
+under it, opens Settings at **Calibres**. **All**, **Short List** and
+**Yours** filter the catalogue. The search
 matches words against the calibre number, aliases and maker names, so a
 maker qualifier can distinguish movements sharing a number. Select an
 entry to inspect it; **Use for This Watch** applies it. **Done**, Escape
-or a click outside closes the window.
+or a click outside closes Settings.
 
 ### Reading a Calibre's Entry
 
