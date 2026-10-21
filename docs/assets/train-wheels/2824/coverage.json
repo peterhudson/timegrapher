@@ -1,0 +1,299 @@
+[
+  {
+    "calibre": "ETA 2824-2",
+    "aliases": [
+      "2824",
+      "2824-2 (clone)",
+      "2836-2",
+      "2834-2",
+      "ETA 2824-2 (28800 bph)"
+    ],
+    "basis": "derived from tooth counts"
+  },
+  {
+    "calibre": "Sellita SW200-1",
+    "aliases": [
+      "SW200",
+      "SW200-1",
+      "SW220",
+      "SW220-1",
+      "SW240",
+      "SW240-1",
+      "SW200-1 a",
+      "SW200-1 b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Seagull ST2130",
+    "aliases": [
+      "ST2130",
+      "TY2130"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW 210-1",
+    "aliases": [
+      "SW210-1",
+      "SW215-1",
+      "SW210-1 a",
+      "SW210-1 b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Seagull ST2100",
+    "aliases": [
+      "TY2100",
+      "ST2100"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Seagull ST2108",
+    "aliases": [
+      "TY2108",
+      "ST2108"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "ETA 2801-2",
+    "aliases": [],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "ETA 2804-2",
+    "aliases": [],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "ETA 2826-2",
+    "aliases": [],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW260-1",
+    "aliases": [
+      "SW260-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW261-1",
+    "aliases": [
+      "SW261-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW266-1",
+    "aliases": [
+      "SW266-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW290-1",
+    "aliases": [
+      "SW290-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW221-1",
+    "aliases": [
+      "SW221-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW280-1",
+    "aliases": [
+      "SW280-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW285-1",
+    "aliases": [
+      "SW285-1",
+      "SW285-1 a",
+      "SW285-1 b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW288-1",
+    "aliases": [
+      "SW288-1",
+      "SW288-1 a",
+      "SW288-1 b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW270-1",
+    "aliases": [
+      "SW270-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW279-1",
+    "aliases": [
+      "SW279-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW216-1",
+    "aliases": [
+      "SW216-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW219-1",
+    "aliases": [
+      "SW219-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW261-1 M",
+    "aliases": [
+      "SW261-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW266-1 M",
+    "aliases": [
+      "SW266-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW220-1 M",
+    "aliases": [
+      "SW220-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW240-1 M",
+    "aliases": [
+      "SW240-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW221-1 M",
+    "aliases": [
+      "SW221-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW280-1 M",
+    "aliases": [
+      "SW280-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW285-1 M",
+    "aliases": [
+      "SW285-1 M",
+      "SW285-1 M a",
+      "SW285-1 M b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW288-1 M",
+    "aliases": [
+      "SW288-1 M",
+      "SW288-1 M a",
+      "SW288-1 M b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW270-1 M",
+    "aliases": [
+      "SW270-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW279-1 M",
+    "aliases": [
+      "SW279-1 M"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW400-1",
+    "aliases": [
+      "SW400-1",
+      "SW400-1 a",
+      "SW400-1 b"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Sellita SW461-1",
+    "aliases": [
+      "SW461-1"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "HK Precision PT5000",
+    "aliases": [
+      "PT5000",
+      "HKPT PT5000"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "STP1-11",
+    "aliases": [
+      "STP 1-11 (2824 base)"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Soprod P024",
+    "aliases": [
+      "P024"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Hangzhou 6300",
+    "aliases": [
+      "HZ6300",
+      "CTK6300"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "Valanvron VAL24",
+    "aliases": [
+      "VAL24"
+    ],
+    "basis": "inferred family transfer"
+  },
+  {
+    "calibre": "SH31xx (ETA 2824 base)",
+    "aliases": [
+      "SH3135 (ETA 2824 base)",
+      "SH31xx (decorated ETA 2824)"
+    ],
+    "basis": "inferred family transfer"
+  }
+]
