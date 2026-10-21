@@ -729,6 +729,11 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
 }
 
 /// One pallet stone's beat shape, from `shape`.
+///
+/// An analysis-only take stores this in its `timegrapher.analysis/1` file
+/// ([`crate::analysis_take`]). A field added later must be an `Option`, so
+/// that a file saved before it existed still reads, the field as not
+/// measured; nothing missing is filled in with a value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSide {
     pub i12_ms: Option<f64>,
@@ -744,6 +749,8 @@ pub struct ShapeSide {
     pub extra_post: Vec<(f64, f64)>,
 }
 
+/// Both sides' beat shapes. Stored in an analysis-only take, so a field
+/// added later must be an `Option`, as for [`ShapeSide`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
     /// Seconds of audio the shape was measured on.
@@ -1354,6 +1361,31 @@ pub struct KnownFault {
 #[cfg(test)]
 mod manifest_input_tests {
     use super::*;
+
+    #[test]
+    fn a_stored_shape_missing_an_optional_field_reads_it_as_not_measured() {
+        // As an analysis-only take saved before an `Option` field existed
+        // would hold it: the field reads as none, and nothing else changes.
+        let mut v = serde_json::json!({
+            "measured_s": 30.0,
+            "even": {
+                "i12_ms": 2.5, "i13_ms": 6.0, "ratio13": 0.4, "ratio23": 0.7,
+                "noise_ratio": 0.1, "sound1_found": 0.9,
+                "extra_pre": [[1.5, 0.2]], "extra_post": [],
+            },
+        });
+        v["odd"] = v["even"].clone();
+        v["odd"].as_object_mut().unwrap().remove("ratio23");
+        let s: ShapeSummary = serde_json::from_value(v).unwrap();
+        assert_eq!(s.odd.ratio23, None);
+        assert_eq!(s.even.ratio23, Some(0.7));
+        assert_eq!(s.odd.sound1_found, 0.9);
+        assert_eq!(s.odd.extra_pre, vec![(1.5, 0.2)]);
+        // A field that is not an `Option` is never filled in.
+        let mut w = serde_json::to_value(&s).unwrap();
+        w["odd"].as_object_mut().unwrap().remove("sound1_found");
+        assert!(serde_json::from_value::<ShapeSummary>(w).is_err());
+    }
 
     #[test]
     fn consumed_manifest_domains_reject_invalid_scalars() {

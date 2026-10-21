@@ -169,8 +169,10 @@ session loads the store before querying/opening devices or replacing its
 current context; load errors stop the start and are shown. A resumed session
 retains its already-selected correction even if the store has changed. Keeping
 a measured correction changes the app's selected correction only after a
-successful save. No correction is selected when a valid store has no matching
-input. Fix an invalid store explicitly; these operations do not repair it.
+successful save. Forgetting it in the app's Settings (Sound Card Clock)
+removes the entry from the store and, when it is the input listening now,
+clears the app's selected correction too. No correction is selected when a
+valid store has no matching input. Fix an invalid store explicitly; these operations do not repair it.
 
 `analyze` adds the corrected rate beside the card's: with `--card-ppm N`,
 `--device NAME`, or a stored entry for the input the recording names, its
