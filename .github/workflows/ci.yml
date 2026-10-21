@@ -2,9 +2,10 @@ name: CI
 
 # Every push to main and every pull request runs all five jobs. A pull
 # request that only edits or adds Markdown nothing compiles in or tests read
-# is a light run: each job still reports, with its offline Python tests, and
-# skips the Rust build, tests and corpus checks (.github/ci/changes.py). The
-# watchmaker skill and the docs the MCP server compiles in always run in full.
+# is a light run (.github/ci/changes.py): all five jobs still run and report,
+# the test jobs run only their offline Python tests, regress skips its corpus
+# and engine steps, and mcp-renderer runs as usual. The watchmaker skill and
+# the docs the MCP server compiles in always run in full.
 on:
   push:
     branches: [main]
@@ -31,7 +32,8 @@ jobs:
     timeout-minutes: 45
     # No debug info in CI's release builds, as release.yml already builds the
     # downloads (Cargo.toml's [profile.release] keeps debug = 1 for local
-    # builds). The build is faster and its cache under half the size.
+    # builds). Measured locally, a warm build of the tests was about 9%
+    # faster and the target folder under half the size.
     # rust-cache keys on CARGO_* variables, so this gets a cache of its own.
     env:
       CARGO_PROFILE_RELEASE_DEBUG: "0"

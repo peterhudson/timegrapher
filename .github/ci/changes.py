@@ -9,9 +9,10 @@ Everything but a pull request is a full run. A pull request is a light run
 only when every file it changes is Markdown that nothing compiles in and no
 test reads, edited or added in place: never a deletion or rename, never the
 watchmaker skill, packaging, or a document the MCP server compiles in
-(MCP_DOCS, kept equal to guidance.rs by the offline tests). A light run
-keeps the five CI jobs and their offline Python tests, and skips the Rust
-toolchain, build, tests and corpus checks.
+(MCP_DOCS, kept equal to guidance.rs by the offline tests). In a light run
+all five CI jobs still run and report: the test jobs run only their offline
+Python tests, regress skips its corpus and engine steps, and mcp-renderer
+runs as usual. If git fails, this exits with an error and the job fails.
 """
 
 import subprocess
