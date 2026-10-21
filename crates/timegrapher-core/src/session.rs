@@ -385,30 +385,6 @@ pub fn measure_with_breaks(
     measure_masked(log, clock, breaks, &[], from_s, to_s)
 }
 
-/// A listed break's gap on true time: from the last sound before the
-/// pause to the first after it. A clock fit that found the pause itself
-/// places it at a log line near the listed break (the recorder's first
-/// line after the resume, a block or so later) and steps the time there,
-/// so the gap starts before the earlier of the two and ends at the
-/// later.
-fn gap_ends(clock: Option<&ClockFit>, b: &Break, map: &impl Fn(f64) -> f64) -> Option<(f64, f64)> {
-    let resume = clock
-        .and_then(|c| {
-            c.breaks
-                .iter()
-                .filter(|c| (c.audio_s - b.audio_s).abs() <= crate::breaks::JUMP_MATCH_S)
-                .min_by(|x, y| {
-                    (x.audio_s - b.audio_s)
-                        .abs()
-                        .total_cmp(&(y.audio_s - b.audio_s).abs())
-                })
-        })
-        .map_or(b.audio_s, |c| c.audio_s);
-    let start = map(b.audio_s.min(resume) - 1e-6);
-    let end = map(b.audio_s.max(resume));
-    (end > start).then_some((start, end))
-}
-
 /// [`measure_with_breaks`] leaving out stretches masked by hand (cleaned
 /// with [`masked_spans`]). Each mask, like each break's gap, is cut at
 /// both ends, so no fit, 10 s window or two-state sample reaches into
@@ -423,8 +399,9 @@ pub fn measure_masked(
     from_s: f64,
     to_s: f64,
 ) -> Measurement {
-    let to_s = to_s.min(log.duration_s);
-    let from_s = from_s.clamp(0.0, to_s);
+    // A reversed or out-of-range stretch reads as an empty one.
+    let to_s = to_s.min(log.duration_s).max(0.0);
+    let from_s = from_s.max(0.0).min(to_s);
     let masked_s = masked_within(masked, from_s, to_s);
     // The recorder writes a gap under 0 s when its timestamps put the
     // first sound after a pause before the last one before it; true time
@@ -444,9 +421,17 @@ pub fn measure_masked(
     let mut cuts: Vec<f64> = on_time
         .iter()
         .zip(crate::longrun::cuts(clock, &on_time))
-        .flat_map(|(b, cut)| match gap_ends(clock, b, &map) {
-            Some((start, end)) if b.gap_s > 2e-6 => vec![start, end - 1e-6],
-            _ => vec![cut],
+        .flat_map(|(b, cut)| {
+            // The gap on true time, from the last sound before the pause
+            // to the first after it. The gap's end is taken from the
+            // listed break, so a clock fit that found the pause must have
+            // its break moved there (`breaks::of_files_on_clock`).
+            let (start, end) = (map(b.audio_s - 1e-6), map(b.audio_s));
+            if b.gap_s > 2e-6 && end > start {
+                vec![start, end - 1e-6]
+            } else {
+                vec![cut]
+            }
         })
         .collect();
     cuts.extend(
@@ -455,6 +440,21 @@ pub fn measure_masked(
             .filter(|&&(a, b)| b > from_s && a < to_s)
             .flat_map(|&(a, b)| [map(a), map(b)]),
     );
+    // A step the clock log holds that no listed pause was placed on (a
+    // system clock step, or a dropout the recorder did not list) is cut
+    // at both ends too.
+    if let Some(c) = clock {
+        cuts.extend(
+            c.breaks
+                .iter()
+                .filter(|cb| {
+                    !on_time
+                        .iter()
+                        .any(|b| (b.audio_s - cb.audio_s).abs() < 1e-9)
+                })
+                .flat_map(|cb| [map(cb.audio_s - 1e-6), map(cb.audio_s) - 1e-6]),
+        );
+    }
     cuts.sort_by(f64::total_cmp);
     let apart = |w: &timing::WindowFit| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s);
     let beats: Vec<Beat> = log
@@ -487,12 +487,22 @@ pub fn measure_masked(
         .filter(|w| !masked.iter().any(|&(a, b)| w.start_s < b && w.end_s > a))
         .collect();
     let amps: Vec<f64> = amp.iter().filter_map(|w| w.mean()).collect();
+    // The windows' place in the take: their audio seconds plus the gaps
+    // before them, so a pause is a hole in the two-state blocks, as it is
+    // for the rate samples on true time.
+    let placed = |t: f64| {
+        t + on_time
+            .iter()
+            .filter(|b| b.audio_s <= t)
+            .map(|b| b.gap_s)
+            .sum::<f64>()
+    };
     let amp_samples: Vec<twostate::Sample> = amp
         .iter()
         .filter_map(|w| {
             Some(twostate::Sample {
-                start_s: w.start_s,
-                end_s: w.end_s,
+                start_s: placed(w.start_s),
+                end_s: placed(w.end_s),
                 value: w.mean()?,
                 tick: w.even_deg,
                 tock: w.odd_deg,
@@ -505,9 +515,24 @@ pub fn measure_masked(
         .collect();
     let gaps: f64 = on_time
         .iter()
-        .filter(|b| b.audio_s > from_s && b.audio_s < to_s)
+        // A pause at the stretch's end is in `map(to_s)`, as one at its
+        // start is in `map(from_s)`.
+        .filter(|b| b.audio_s > from_s && b.audio_s <= to_s)
         .map(|b| b.gap_s)
         .sum();
+    // The gaps `map` puts between the first and the last beat read: a
+    // pause at either end of the stretch is outside them.
+    let read = |t: f64| t >= from_s && t < to_s && !in_mask(masked, t);
+    let first_s = log.beats.iter().map(|b| b.time).find(|&t| read(t));
+    let last_s = log.beats.iter().rev().map(|b| b.time).find(|&t| read(t));
+    let gaps_between: f64 = match (first_s, last_s) {
+        (Some(a), Some(b)) => on_time
+            .iter()
+            .filter(|g| g.audio_s > a && g.audio_s <= b)
+            .map(|g| g.gap_s)
+            .sum(),
+        _ => 0.0,
+    };
     let span = map(to_s) - map(from_s) - gaps - masked_s;
     let expected = span * log.bph as f64 / 3600.0;
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
@@ -574,7 +599,7 @@ pub fn measure_masked(
             clipped_fraction: m.clipped_fraction,
             span_s: match (beats.first(), beats.last()) {
                 (Some(a), Some(b)) => {
-                    b.time - a.time - gaps - masked_within(masked, a.time, b.time)
+                    b.time - a.time - gaps_between - masked_within(masked, a.time, b.time)
                 }
                 _ => 0.0,
             },

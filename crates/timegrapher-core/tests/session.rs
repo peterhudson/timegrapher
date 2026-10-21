@@ -548,9 +548,12 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
         let a = pause_s + block_s + i as f64 * 10.0;
         (a, a + gap_s)
     }));
-    let clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
+    let mut clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
     assert_eq!(clock.breaks.len(), 1);
     assert!((clock.breaks[0].audio_s - (pause_s + block_s)).abs() < 1e-9);
+    // As `session` reads it: the clock fit's break moved to the listed one.
+    clock.place_breaks(&[brk]);
+    assert!((clock.breaks[0].audio_s - pause_s).abs() < 1e-9);
     // Then the same with a second pause of 0.3 s at 207 s of true time,
     // 4 s of sound after the first: too short for the clock fit to find,
     // so only its listed break marks it.
@@ -667,5 +670,171 @@ fn a_break_with_no_gap_keeps_its_single_cut() {
             "gap {gap_s} s: rate {rate} s/d, one cut gives {} s/d",
             want.rate_s_per_day
         );
+    }
+}
+
+#[test]
+fn a_pause_at_either_end_of_a_reading_is_no_missing_beat() {
+    // Every beat heard, 60 s either side of a pause of 1,000 s at audio
+    // second 60, as when a position change is written at a pause. A
+    // reading that ends or starts at the pause, or spans it, expects only
+    // the beats of the time it listened.
+    let bph = 28_800;
+    let period = 3600.0 / bph as f64;
+    let gap_s = 1000.0;
+    let brk = timegrapher_core::breaks::Break {
+        audio_s: 60.0,
+        gap_s,
+    };
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..960)
+        .map(|k| timegrapher_core::beats::Beat {
+            index: k + if k >= 480 { (gap_s / period) as i64 } else { 0 },
+            time: k as f64 * period,
+            quality: 1.0,
+        })
+        .collect();
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 120.0,
+        bph,
+        lift_deg: 52.0,
+        beats,
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
+    };
+    // No clock, a steady correction, and a clock log that holds the pause
+    // with its break moved to the listed one, as `session` reads it.
+    let lines: Vec<(f64, f64)> = (0..=12)
+        .map(|i| {
+            let a = i as f64 * 10.0;
+            (a, a + if a >= 60.0 { gap_s } else { 0.0 })
+        })
+        .collect();
+    let mut logged = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
+    logged.place_breaks(&[brk]);
+    let clocks = [None, session::fixed_clock(0.0, 120.0), Some(logged)];
+    for (c, clock) in clocks.iter().enumerate() {
+        for (from, to) in [(0.0, 60.0), (60.0, 120.0), (0.0, 120.0)] {
+            let m = session::measure_masked(&log, clock.as_ref(), &[brk], &[], from, to);
+            assert!(
+                m.clean_fraction > 0.99,
+                "clock {c}, {from}-{to} s: {} of the beats expected",
+                m.clean_fraction
+            );
+            assert!(
+                !m.caveats.iter().any(|k| matches!(
+                    k,
+                    timegrapher_core::measure::Caveat::BeatsMissing { .. }
+                        | timegrapher_core::measure::Caveat::ShortSpan { .. }
+                )),
+                "clock {c}, {from}-{to} s: {:?}",
+                m.caveats
+            );
+        }
+    }
+}
+
+#[test]
+fn a_reversed_stretch_reads_as_empty_rather_than_panicking() {
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 60.0,
+        bph: 28_800,
+        lift_deg: 52.0,
+        beats: (0..480)
+            .map(|k| timegrapher_core::beats::Beat {
+                index: k,
+                time: k as f64 * 0.125,
+                quality: 1.0,
+            })
+            .collect(),
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
+    };
+    for (from, to) in [(0.0, -20.0), (-20.0, -19.0), (30.0, 10.0)] {
+        let m = session::measure_masked(&log, None, &[], &[], from, to);
+        assert!(m.rate_s_per_day.is_none(), "{from}-{to} s");
+        assert_eq!(m.beats, 0, "{from}-{to} s");
+    }
+    // A start that is not a number reads from the start.
+    let m = session::measure_masked(&log, None, &[], &[], f64::NAN, 10.0);
+    assert!(m.beats > 0);
+}
+
+#[test]
+fn a_clock_step_no_listed_pause_explains_is_cut() {
+    // The system clock steps 1 s forward at audio second 98 with no pause
+    // in the sound: the log has a line at the step, so the clock fit's
+    // break sits there, and no listed break moves it. The beats run on
+    // unbroken, so one fit across the step reads the 1 s as the watch
+    // falling behind. First with nothing listed, the log running to 160 s;
+    // then with a listed pause of 0.3 s at 100 s, too short for the clock
+    // fit, the log ending at 100 s.
+    let bph = 28_800;
+    let period = 3600.0 / bph as f64 / (1.0 + 5.0 / 86400.0);
+    for short in [None, Some(0.3)] {
+        let mut lines: Vec<(f64, f64)> = (0..10)
+            .map(|i| (i as f64 * 10.0, i as f64 * 10.0))
+            .collect();
+        lines.push((98.0, 99.0));
+        let end = if short.is_some() { 100.0 } else { 160.0 };
+        lines.extend(
+            (0..)
+                .map(|i| 100.0 + i as f64 * 10.0)
+                .take_while(|&a| a <= end)
+                .map(|a| (a, a + 1.0)),
+        );
+        let mut clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
+        let listed: Vec<timegrapher_core::breaks::Break> = short
+            .iter()
+            .map(|&gap_s| timegrapher_core::breaks::Break {
+                audio_s: 100.0,
+                gap_s,
+            })
+            .collect();
+        clock.place_breaks(&listed);
+        // The step's break, and no other: the short listed pause has no log
+        // entry after it for the clock fit to take a break at.
+        assert_eq!(clock.breaks.len(), 1, "{:?}", clock.breaks);
+        assert!((clock.breaks[0].audio_s - 98.0).abs() < 1e-9);
+        assert!((clock.breaks[0].gap_s - 1.0).abs() < 1e-6);
+        let g = short.unwrap_or(0.0);
+        let beats: Vec<timegrapher_core::beats::Beat> = (0..(156.0 / period) as i64)
+            .filter_map(|k| {
+                let t = k as f64 * period;
+                if (100.0..100.0 + g).contains(&t) {
+                    return None;
+                }
+                Some(timegrapher_core::beats::Beat {
+                    index: k,
+                    time: if t < 100.0 { t } else { t - g },
+                    quality: 1.0,
+                })
+            })
+            .collect();
+        let log = timegrapher_core::stream::BeatLog {
+            sample_rate: 44_100,
+            duration_s: 156.0 - g,
+            bph,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+        };
+        let m = session::measure_masked(&log, Some(&clock), &listed, &[], 80.0, 150.0);
+        let rate = m.rate_s_per_day.expect("rate");
+        assert!((rate - 5.0).abs() < 0.01, "{short:?}: rate {rate} s/d");
     }
 }
