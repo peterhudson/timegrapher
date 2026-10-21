@@ -727,7 +727,14 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
 }
 
 /// One pallet stone's beat shape, from `shape`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// An analysis-only take stores this in its `timegrapher.analysis/1` file
+/// ([`crate::analysis_take`]), so a field missing from a file saved
+/// earlier reads as its default (none, 0 or empty) rather than refusing
+/// the take. A field added later should be an `Option`, so that a missing
+/// one reads as not measured.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ShapeSide {
     pub i12_ms: Option<f64>,
     pub i13_ms: Option<f64>,
@@ -742,7 +749,11 @@ pub struct ShapeSide {
     pub extra_post: Vec<(f64, f64)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Both sides' beat shapes. Stored in an analysis-only take, so a field
+/// missing from a file saved earlier reads as its default, as for
+/// [`ShapeSide`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ShapeSummary {
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
@@ -1352,6 +1363,41 @@ pub struct KnownFault {
 #[cfg(test)]
 mod manifest_input_tests {
     use super::*;
+
+    #[test]
+    fn a_stored_shape_missing_fields_still_reads() {
+        // As an analysis-only take saved before a field existed would hold
+        // it: some fields of a side, none of the other.
+        let v = serde_json::json!({
+            "measured_s": 30.0,
+            "even": { "i12_ms": 2.5, "sound1_found": 0.9 },
+        });
+        let s: ShapeSummary = serde_json::from_value(v).unwrap();
+        assert_eq!(s.measured_s, 30.0);
+        assert_eq!(s.even.i12_ms, Some(2.5));
+        assert_eq!(s.even.sound1_found, 0.9);
+        assert!(s.even.i13_ms.is_none() && s.even.extra_pre.is_empty());
+        assert!(s.odd.i12_ms.is_none() && s.odd.extra_post.is_empty());
+        // A whole one reads back as written.
+        let whole = ShapeSummary {
+            measured_s: 12.0,
+            even: ShapeSide {
+                ratio13: Some(0.4),
+                extra_pre: vec![(1.5, 0.2)],
+                ..Default::default()
+            },
+            odd: ShapeSide {
+                sound1_found: 1.0,
+                ..Default::default()
+            },
+        };
+        let back: ShapeSummary =
+            serde_json::from_value(serde_json::to_value(&whole).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&back).unwrap(),
+            serde_json::to_value(&whole).unwrap()
+        );
+    }
 
     #[test]
     fn consumed_manifest_domains_reject_invalid_scalars() {
