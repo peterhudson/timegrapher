@@ -337,7 +337,7 @@ pub fn run(
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let clock = match &fixed {
+    let mut clock = match &fixed {
         Some((ppm, _)) => session::fixed_clock(*ppm, total_s),
         None => clock,
     };
@@ -377,10 +377,16 @@ pub fn run(
     lc.wheels.extend(extra);
     let mut log = log;
     let breaks = breaks::with_jumps(
-        breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
+        breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
         &log.jumps,
     );
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &breaks,
+        &log.sided,
+        log.bph,
+    );
     let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;

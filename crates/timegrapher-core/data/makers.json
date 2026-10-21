@@ -559,5 +559,38 @@
     "sources": [
       "Hangzhou Watch Co. (杭州手表有限公司) assembly drawings name its calibres HZ8230A, HZ8220A"
     ]
+  },
+  {
+    "maker": "HK Precision",
+    "aliases": [
+      "HKPT"
+    ],
+    "sources": [
+      "https://www.geckota.com/pages/movements"
+    ]
+  },
+  {
+    "maker": "Swiss Technology Production",
+    "aliases": [
+      "STP",
+      "SwissTP"
+    ],
+    "sources": [
+      "https://www.boschett-timepieces.com/docu/Boschett-Cave-Dweller-B03-3-03.pdf"
+    ]
+  },
+  {
+    "maker": "Soprod",
+    "aliases": [],
+    "sources": [
+      "https://watchguy.co.uk/tmp/automatique_soprod_p024_especificaciones_tecnicas.pdf"
+    ]
+  },
+  {
+    "maker": "Valanvron",
+    "aliases": [],
+    "sources": [
+      "https://sourcing.hktdc.com/en/Product-Detail/Swiss-Made-Automatic-Watch-Movement-1X09EEAK"
+    ]
   }
 ]

@@ -144,61 +144,15 @@ pub fn generate(
     let mut x = vec![0.0f64; n];
     let mut rng = Rng::new(cfg.seed);
     let nominal = 3600.0 / cfg.bph as f64;
-    let blen = (0.004 * fs) as usize;
     let mut t = 0.05;
     let mut k = 0u64;
     while t < cfg.duration_s - 0.05 {
-        let amp = amp_fn(t);
-        let osc = 2.0 * nominal;
-        let mut tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
-        let side = if k.is_multiple_of(2) { 0.5 } else { -0.5 };
-        if k.is_multiple_of(2) {
-            tud += cfg.even_unlock_lead_s;
-        }
-        // The drop is the reference point; the unlock comes tud earlier.
         let beat_error = cfg.beat_error_ms + cfg.beat_error_drift_ms_per_s * t;
-        let drop = t + side * beat_error / 1000.0;
-        let [mut s1, mut s2, mut s3] = cfg.sounds;
-        if let Some([g1, g2, g3]) = cfg.odd_gains.filter(|_| k % 2 == 1) {
-            (s1.gain, s2.gain, s3.gain) = (g1, g2, g3);
-        }
-        let impulse_at = match cfg.odd_impulse_at {
-            Some(a) if k % 2 == 1 => a,
-            _ => cfg.impulse_at,
-        };
-        let mut events = vec![
-            (drop - tud, s1),
-            (drop - (1.0 - impulse_at) * tud, s2),
-            (drop, s3),
-        ];
-        if let Some(e) = cfg.extra.filter(|e| e.even == k.is_multiple_of(2)) {
-            events.push((drop + e.offset_s, e.sound));
-        }
-        for (te, snd) in events {
-            let (gain, fc, tau) = (snd.gain, snd.freq_hz, snd.decay_s);
-            let i0 = (te * fs).round() as isize;
-            let ph = rng.next_f64() * 2.0 * std::f64::consts::PI;
-            let g = gain * (1.0 + cfg.gain_jitter * rng.normal()).max(0.0);
-            for j in 0..blen {
-                let idx = i0 + j as isize;
-                if idx < 0 || idx as usize >= n {
-                    continue;
-                }
-                let tt = j as f64 / fs;
-                x[idx as usize] += g
-                    * (-tt / tau).exp()
-                    * (1.0 - (-tt / 0.00005).exp())
-                    * (2.0 * std::f64::consts::PI * fc * tt + ph).sin();
+        render_beat(cfg, k, t, amp_fn(t), beat_error, &mut rng, |i, v| {
+            if let Some(s) = usize::try_from(i).ok().and_then(|i| x.get_mut(i)) {
+                *s += v;
             }
-        }
-        if let Some(r) = cfg.rub.filter(|r| r.even == k.is_multiple_of(2)) {
-            let i0 = ((drop + 0.001) * fs).round() as isize;
-            for j in 0..(r.length_s * fs) as isize {
-                if let Some(v) = usize::try_from(i0 + j).ok().and_then(|i| x.get_mut(i)) {
-                    *v += r.gain * rng.normal();
-                }
-            }
-        }
+        });
         let rate = cfg.rate_s_per_day + rate_fn(t);
         t += nominal * (1.0 - rate / 86400.0);
         k += 1;
@@ -212,5 +166,109 @@ pub fn generate(
     Audio {
         samples,
         sample_rate: cfg.sample_rate,
+    }
+}
+
+/// The sounds of beat `k`, whose drop is nominally at `t`, at amplitude
+/// `amp` (degrees) and beat error `beat_error` (ms): each sample added
+/// as `add(sample index, value)`.
+pub(crate) fn render_beat(
+    cfg: &SynthConfig,
+    k: u64,
+    t: f64,
+    amp: f64,
+    beat_error: f64,
+    rng: &mut Rng,
+    mut add: impl FnMut(isize, f64),
+) {
+    let fs = cfg.sample_rate as f64;
+    let nominal = 3600.0 / cfg.bph as f64;
+    let blen = (0.004 * fs) as usize;
+    let osc = 2.0 * nominal;
+    let mut tud = osc / std::f64::consts::PI * (cfg.lift_deg / (2.0 * amp)).asin();
+    let side = if k.is_multiple_of(2) { 0.5 } else { -0.5 };
+    if k.is_multiple_of(2) {
+        tud += cfg.even_unlock_lead_s;
+    }
+    // The drop is the reference point; the unlock comes tud earlier.
+    let drop = t + side * beat_error / 1000.0;
+    let [mut s1, mut s2, mut s3] = cfg.sounds;
+    if let Some([g1, g2, g3]) = cfg.odd_gains.filter(|_| k % 2 == 1) {
+        (s1.gain, s2.gain, s3.gain) = (g1, g2, g3);
+    }
+    let impulse_at = match cfg.odd_impulse_at {
+        Some(a) if k % 2 == 1 => a,
+        _ => cfg.impulse_at,
+    };
+    let mut events = vec![
+        (drop - tud, s1),
+        (drop - (1.0 - impulse_at) * tud, s2),
+        (drop, s3),
+    ];
+    if let Some(e) = cfg.extra.filter(|e| e.even == k.is_multiple_of(2)) {
+        events.push((drop + e.offset_s, e.sound));
+    }
+    for (te, snd) in events {
+        let (gain, fc, tau) = (snd.gain, snd.freq_hz, snd.decay_s);
+        let i0 = (te * fs).round() as isize;
+        let ph = rng.next_f64() * 2.0 * std::f64::consts::PI;
+        let g = gain * (1.0 + cfg.gain_jitter * rng.normal()).max(0.0);
+        for j in 0..blen {
+            let tt = j as f64 / fs;
+            add(
+                i0 + j as isize,
+                g * (-tt / tau).exp()
+                    * (1.0 - (-tt / 0.00005).exp())
+                    * (2.0 * std::f64::consts::PI * fc * tt + ph).sin(),
+            );
+        }
+    }
+    if let Some(r) = cfg.rub.filter(|r| r.even == k.is_multiple_of(2)) {
+        let i0 = ((drop + 0.001) * fs).round() as isize;
+        for j in 0..(r.length_s * fs) as isize {
+            add(i0 + j, r.gain * rng.normal());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// FNV-1a over the 16-bit samples `write_wav` would write.
+    fn wav_hash(audio: &Audio) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for &s in &audio.samples {
+            let v = (s.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+            for b in v.to_le_bytes() {
+                h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        h
+    }
+
+    #[test]
+    fn the_default_output_is_unchanged() {
+        // Pinned on main before render_beat(): plain `synth` must write
+        // the same sound, with and without a rub.
+        let cfg = SynthConfig {
+            duration_s: 10.0,
+            ..Default::default()
+        };
+        let plain = generate(&cfg, |_| 270.0, |_| 0.0);
+        let rub = SynthConfig {
+            rub: Some(Rub {
+                even: true,
+                length_s: 0.003,
+                gain: 0.05,
+            }),
+            duration_s: 10.0,
+            ..Default::default()
+        };
+        let rubbed = generate(&rub, |t| 270.0 - t, |t| t / 10.0);
+        assert_eq!(
+            (wav_hash(&plain), wav_hash(&rubbed)),
+            (2769891825584145652, 18026172536521054176)
+        );
     }
 }

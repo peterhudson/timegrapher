@@ -866,8 +866,11 @@ impl LiveAnalyzer {
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
         let a0 = self.amp.partition_point(|w| w.end_s <= from);
         let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
+        // Nor a window that reaches back across the latest break: a jump
+        // in a recording read whole falls inside one.
         let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)]
             .iter()
+            .filter(|w| w.start_s >= latest_break - 1e-9)
             .filter(|w| {
                 !self
                     .masked
@@ -925,6 +928,7 @@ impl LiveAnalyzer {
                 span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
                 listened_s,
                 breaks: 0,
+                sides_by_count: 0,
                 average_s: Some(average_s),
             },
         );
@@ -1181,6 +1185,115 @@ mod tests {
             clipped_beats: vec![],
             clipped_samples: 0,
             jumps: vec![60.03],
+            sided: Vec::new(),
+            by_count: Vec::new(),
+        }
+    }
+
+    /// A recording read whole keeps its jumps as breaks: no reading after
+    /// one uses an amplitude window that started before it.
+    #[test]
+    fn a_window_across_a_jump_in_a_read_recording_is_left_out() {
+        let mut log = viewer_phase_log(10.0, 10.0);
+        let win = |a: f64, deg: f64| AmplitudeWindow {
+            start_s: a,
+            end_s: a + 2.0,
+            even_deg: Some(deg),
+            odd_deg: Some(deg),
+            beat_error_ms: None,
+            beat_error_unlock_ms: None,
+            even_unlock_ms: None,
+            odd_unlock_ms: None,
+            even_drop_ms: None,
+            odd_drop_ms: None,
+        };
+        // The jump is at 60.03 s: the window from 60 s reaches across it.
+        log.amplitude_windows = vec![win(58.0, 280.0), win(60.0, 350.0), win(62.0, 280.0)];
+        let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        assert_eq!(a.reading_at(62.5, 2.0).amplitude_deg, None);
+        assert_eq!(a.reading_at(64.0, 4.0).amplitude_deg, Some(280.0));
+        assert_eq!(a.reading_at(60.0, 2.0).amplitude_deg, Some(280.0));
+    }
+
+    /// Steady beats for `seconds`: a watch whose Tock sounds unlike its
+    /// Tick, and a live analyzer fed the first `fed` seconds of them.
+    fn steady_live(seconds: f64, fed: f64) -> (LiveAnalyzer, Vec<f32>) {
+        let audio = generate(
+            &SynthConfig {
+                duration_s: seconds,
+                beat_error_ms: 0.6,
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        let mut live = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+        let k = (fed * audio.sample_rate as f64) as usize;
+        feed(&mut live, &audio.samples[..k]);
+        (live, audio.samples[k..].to_vec())
+    }
+
+    /// A jump found by the beats' timing after a new position, from before
+    /// it, starts no amplitude window that reaches back across the new
+    /// position's break.
+    #[test]
+    fn a_late_jump_after_a_new_position_keeps_windows_off_its_break() {
+        let (mut live, rest) = steady_live(40.0, 30.0);
+        live.new_stretch();
+        let stretch = live.duration_s();
+        // Off the 2-second grid: a fresh grid from the jump would put a
+        // window across the break.
+        live.jump_at(stretch - 1.5, true);
+        assert_eq!(live.next_amp_s, Some(live.settled_to));
+        feed(&mut live, &rest);
+        let breaks = live.breaks().to_vec();
+        assert!(breaks.contains(&stretch), "{breaks:?}");
+        assert!(live
+            .amplitude_windows()
+            .iter()
+            .any(|w| w.start_s >= stretch));
+        for w in live.amplitude_windows() {
+            assert!(
+                !breaks.iter().any(|&b| w.start_s < b && w.end_s > b),
+                "window {}-{} across {breaks:?}",
+                w.start_s,
+                w.end_s
+            );
+        }
+    }
+
+    /// The beats of a stretch between two jumps too close to check join
+    /// neither side's Tick Tock profile, whichever of the two is found
+    /// first.
+    #[test]
+    fn an_unchecked_stretch_joins_no_profile() {
+        for later_first in [false, true] {
+            let (mut live, rest) = steady_live(45.0, 30.0);
+            live.set_profile_span(MAX_PROFILE_S);
+            let now = live.duration_s();
+            let (t1, t2) = (now - 2.0, now - 1.0);
+            let between = |live: &LiveAnalyzer| {
+                live.snippets
+                    .iter()
+                    .filter(|s| t1 <= s.0 && s.0 < t2)
+                    .count()
+            };
+            assert!(between(&live) > 0);
+            let (a, b) = if later_first { (t2, t1) } else { (t1, t2) };
+            live.jump_at(a, false);
+            assert!(live.side_check.is_some(), "a check from the first jump");
+            live.jump_at(b, false);
+            assert!(!live.sides_known_at(t1 + 0.5));
+            assert_eq!(between(&live), 0, "kept for the profiles");
+            // Once the sides are told apart again, the profiles are made of
+            // the kept sounds alone.
+            feed(&mut live, &rest);
+            assert!(live.side_check.is_none(), "sides settled");
+            assert_eq!(between(&live), 0);
+            let used: usize = live.tick_profiles().iter().flatten().map(|p| p.beats).sum();
+            assert!(used > 0);
+            assert_eq!(used, live.snippets.len());
         }
     }
 
@@ -1507,6 +1620,8 @@ mod tests {
             clipped_beats: a.clipped_beats().to_vec(),
             clipped_samples: 0,
             jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
         };
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();

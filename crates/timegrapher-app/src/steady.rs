@@ -14,6 +14,7 @@ use egui_plot::{
     GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoint, Points, Text, VLine,
 };
 use serde::{Deserialize, Serialize};
+use timegrapher_core::beats::Beat;
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
@@ -156,6 +157,8 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         // ends of each masked stretch are all known cuts, not extra
         // elapsed time or newly detected jumps.
         jumps: live.breaks().to_vec(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
     };
     // Stretches masked by hand are left out, cut at both ends: no reading
     // reaches across one, and none takes in a ragged edge of beats beside
@@ -199,6 +202,8 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
         clipped_beats: Vec::new(),
         clipped_samples: log.clipped_samples,
         jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
     };
     // The last kept span's end and last beat (time, number), joined.
     let mut prev: Option<(f64, f64, i64)> = None;
@@ -316,7 +321,15 @@ pub fn compute_with(
     stage.store(2, Relaxed);
     let report = steadiness::check(log, None, &long, &lc, &cfg);
     stage.store(3, Relaxed);
-    let grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
+    let mut grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
+    // The tests leave out a rate reading with a 2-second stretch that holds
+    // no beat (a dropout with no listed break, or the edge of a masked
+    // stretch); so do the views drawn beside them.
+    let part = log
+        .amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    drop_partial_readings(&mut grids[0], &log.beats, part);
     let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
     let folds = steady_views::folds(&grids, &report, &lc);
@@ -335,6 +348,25 @@ pub fn compute_with(
         period_span,
         wheels: lc.wheels,
         upto_s: log.duration_s,
+    }
+}
+
+/// Blank each reading of `grid` with a `part`-second stretch of its span
+/// that holds none of `beats`: it would be taken from part of its span.
+fn drop_partial_readings(grid: &mut Grid, beats: &[Beat], part: f64) {
+    let step = grid.step;
+    let k = (step / part).round().max(1.0) as usize;
+    let len = step / k as f64;
+    for i in 0..grid.y.len() {
+        let start = grid.t0 + i as f64 * step;
+        let whole = (0..k).all(|j| {
+            let a = start + j as f64 * len;
+            let p = beats.partition_point(|b| b.time < a);
+            beats.get(p).is_some_and(|b| b.time < a + len)
+        });
+        if !whole {
+            grid.y[i] = f64::NAN;
+        }
     }
 }
 
@@ -1486,6 +1518,8 @@ mod tests {
             clipped_beats: vec![1.0, 12.0, 41.0, 61.0, 80.0],
             clipped_samples: 17,
             jumps: vec![60.03],
+            sided: Vec::new(),
+            by_count: Vec::new(),
         }
     }
 
@@ -1632,6 +1666,42 @@ mod tests {
                 assert_eq!(w.mean(), Some(270.0));
             }
         }
+    }
+
+    /// A rate reading over a dropout with no listed break is left out of
+    /// the views, as the tests leave it out.
+    #[test]
+    fn views_leave_out_a_rate_reading_over_a_dropout() {
+        let period = 0.125 / (1.0 + 10.0 / 86400.0);
+        let beats: Vec<Beat> = (0..1600)
+            .map(|index| Beat {
+                index,
+                time: index as f64 * period,
+                quality: 1.0,
+            })
+            // Nothing heard over the 2 s stretch from 34 s, inside the 10 s
+            // reading from 30 s.
+            .filter(|b| !(33.9..36.1).contains(&b.time))
+            .collect();
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 200.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+        };
+        let raw = steady_views::grids_with_breaks(&log, 10.0, &[]);
+        let at = |g: &Grid, t: f64| g.y[((t - g.t0) / g.step).floor() as usize];
+        assert!(at(&raw[0], 34.5).is_finite(), "kept without the check");
+        let s = compute(&log, None);
+        assert!(at(&s.grids[0], 34.5).is_nan());
+        assert!(at(&s.grids[0], 54.5).is_finite());
     }
 
     #[test]

@@ -313,6 +313,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             },
             listened_s: duration,
             breaks: cuts.len(),
+            sides_by_count: log.by_count.len(),
             average_s: None,
         },
     );
@@ -336,10 +337,11 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         },
         watch_heard,
         overall,
-        beat_error_unlock_ms: median_of(
+        beat_error_unlock_ms: timing::median_signed(
             amplitude_windows
                 .iter()
                 .filter_map(|w| w.beat_error_unlock_ms),
+            timing::sign_turns(&beats, bph, &cuts),
         ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),

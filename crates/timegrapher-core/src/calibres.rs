@@ -247,6 +247,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn seiko_miyota_research_resolves_variants_without_broad_family_transfers() {
+        for name in [
+            "NH34A", "NH37", "NH39A", "NH70", "NH71A", "NH72", "4R35A", "4R35B", "4R36", "4R37A",
+            "4R38A", "4R39A", "7S26A", "7S26B", "7S26C", "7S36A", "7S36B", "7S36C", "7S25C",
+            "7S35C", "6R15", "6R15D", "6R35A", "6R31", "6R38", "6R54", "6R55", "8215", "821A",
+            "820A", "8217", "82S0", "82S5", "82S7", "8N24", "8N40", "9015", "9039", "90S5", "9075",
+            "9100", "9110", "9120", "9122", "9130", "9132",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            let escape = c.wheels.iter().find(|w| w.name == "escape wheel").unwrap();
+            assert_eq!(escape.period_s, 5.0, "{name}");
+            assert_eq!(escape.teeth, c.escape_teeth, "{name}");
+            assert_eq!(
+                c.escape_teeth,
+                Some(if c.bph == Some(28800) { 20 } else { 15 })
+            );
+            assert!(escape
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("manufacturer illustration"));
+            assert!(escape.pinion.is_none(), "unmeasured escape pinion: {name}");
+        }
+        assert!(find("6R").is_none());
+        assert!(find("7S").is_none());
+        for name in [
+            "Miyota 8200",
+            "Seiko NH05",
+            "Seiko 6R20A",
+            "Seiko 6R21A",
+            "Seiko 6R24A",
+        ] {
+            let c = find(name).unwrap();
+            assert!(
+                c.escape_teeth.is_none(),
+                "unverified family transfer: {name}"
+            );
+        }
+        assert_eq!(find("4R35").unwrap().calibre, "Seiko 4R35B");
+        assert_eq!(find("4R35A").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("4R35B").unwrap().lift_angle_deg, Some(53.0));
+        assert_ne!(find("6R15").unwrap().calibre, find("6R35").unwrap().calibre);
+    }
+
+    #[test]
+    fn miyota_hand_periods_do_not_invent_unknown_train_periods() {
+        for name in ["8215", "82S0", "8N24"] {
+            let c = find(name).unwrap();
+            assert!(c
+                .wheels
+                .iter()
+                .any(|w| w.name == "seconds pinion" && w.period_s == 60.0));
+            assert!(!c.wheels.iter().any(|w| w.name == "fourth wheel"));
+        }
+        for name in [
+            "9015", "9039", "90S5", "9075", "9100", "9110", "9120", "9122", "9130", "9132",
+        ] {
+            let c = find(name).unwrap();
+            assert!(c
+                .wheels
+                .iter()
+                .any(|w| w.name == "cannon pinion" && w.period_s == 3600.0));
+            assert!(!c
+                .wheels
+                .iter()
+                .any(|w| matches!(w.name.as_str(), "centre wheel" | "third wheel" | "barrel")));
+        }
+    }
+
+    #[test]
     fn table_parses_and_names_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for c in all() {
@@ -365,7 +435,7 @@ mod tests {
         // Bare clone names cannot safely choose a train manufacturer.
         assert!(find("3235 (clone)").is_none());
         assert!(find("32xx").is_none());
-        for name in ["VR3235", "SH3235", "VR32xx", "SH3285", "VR3285", "SH3285-2"] {
+        for name in ["SH3235", "SH3285", "SH3285-2"] {
             let c = find(name).unwrap();
             assert_eq!(c.escape_teeth, None, "{name}");
             assert!(c
@@ -379,6 +449,279 @@ mod tests {
         }
         // Other VR/SH names have no measured entry yet, not a DD/JH fallback.
         for name in ["VR3230", "VR3255", "SH3230", "SH3255", "SH32xx"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+    }
+
+    #[test]
+    fn vr32xx_has_its_own_train_and_accepted_escape_pair() {
+        for name in ["VR3235", "VR32xx", "VR3285"] {
+            let c = find(name).unwrap();
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            for (n, t, p, period) in [
+                ("barrel", 100, None, 18000.0),
+                ("centre wheel", 80, Some(20), 3600.0),
+                ("third wheel", 99, Some(12), 540.0),
+                ("fourth wheel", 120, Some(11), 60.0),
+                ("escape wheel", 20, Some(10), 5.0),
+            ] {
+                let w = wheel(n);
+                assert_eq!(
+                    (w.teeth, w.pinion, w.period_s),
+                    (Some(t), p, period),
+                    "{name}: {n}"
+                );
+            }
+            assert_eq!(c.escape_teeth, Some(20));
+            assert!(wheel("escape wheel")
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("Accepted 20/10 escape pair"));
+            assert!(wheel("escape wheel")
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("no VR escape-wheel photograph"));
+            // The measured second-to-fourth ratio is exactly 60.
+            assert_eq!((80.0 / 12.0) * (99.0 / 11.0), 60.0);
+            assert_eq!(search(name)[0].calibre, c.calibre);
+        }
+        assert_ne!(
+            find("VR3235").unwrap().calibre,
+            find("SH3235").unwrap().calibre
+        );
+        assert_ne!(
+            find("VR3285").unwrap().calibre,
+            find("SH3285").unwrap().calibre
+        );
+        for name in [
+            "SH3235",
+            "SH3285",
+            "SH3285-2",
+            "Rolex 3235",
+            "DD3235",
+            "JH3235",
+        ] {
+            assert!(
+                find(name)
+                    .unwrap()
+                    .sources
+                    .iter()
+                    .all(|s| !s.contains("vr32xx-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            find("DD3235")
+                .unwrap()
+                .wheels
+                .iter()
+                .find(|w| w.name == "barrel")
+                .unwrap()
+                .period_s,
+            25200.0
+        );
+        assert_eq!(find("VR3235").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("VR3285").unwrap().lift_angle_deg, None);
+    }
+
+    #[test]
+    fn counted_2824_train_reconciles_cannon_mesh_and_scopes_variants() {
+        let covered: Vec<_> = all()
+            .iter()
+            .filter(|c| {
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("2824-train-wheel-counts.md"))
+            })
+            .collect();
+        assert_eq!(covered.len(), 39);
+        for c in covered {
+            assert_eq!(c.bph, Some(28800), "{}", c.calibre);
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            let third = wheel("third wheel");
+            let cannon = wheel("cannon pinion");
+            assert_eq!(third.period_s, 600.0);
+            assert_eq!(
+                cannon.period_s,
+                third.period_s * cannon.teeth.unwrap() as f64 / third.pinion.unwrap() as f64
+            );
+            assert!((wheel("centre wheel").period_s - 46200.0 / 13.0).abs() < 1e-9);
+            assert!((wheel("barrel").period_s - 4666200.0 / 221.0).abs() < 1e-9);
+            assert_eq!(wheel("escape wheel").pinion, Some(9));
+            if c.calibre != "ETA 2824-2" {
+                assert!(third
+                    .basis
+                    .as_deref()
+                    .unwrap()
+                    .contains("INFERRED family transfer"));
+            }
+        }
+        for name in [
+            "ETA 2801-2",
+            "ETA 2804-2",
+            "ETA 2826-2",
+            "2834-2",
+            "2836-2",
+            "SW240-1",
+            "SW215-1",
+            "SW288-1 M b",
+            "SW400-1 b",
+            "TY2130",
+            "ST2100",
+            "ST2108",
+            "PT5000",
+            "STP1-11",
+            "P024",
+            "HZ6300",
+            "VAL24",
+            "SH3135 (ETA 2824 base)",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("2824-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        for c in all().iter().filter(|c| c.bph != Some(28800)) {
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("2824-train-wheel-counts.md")),
+                "{}",
+                c.calibre
+            );
+        }
+        for name in [
+            "ETA 2824 (21,600 bph, 53°)",
+            "ETA 2826",
+            "ETA 2892-A2",
+            "SH3135",
+            "VR3235",
+        ] {
+            assert!(
+                find(name)
+                    .unwrap()
+                    .sources
+                    .iter()
+                    .all(|s| !s.contains("2824-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        for name in ["SW200-2", "SW200-2 Power+", "SW200-1 S", "SW400-1 AJ"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+        assert_eq!(find("STP1-11").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("ETA 2824-2").unwrap().lift_angle_deg, Some(50.0));
+    }
+
+    #[test]
+    fn counted_4130_train_keeps_maker_scope_and_inference_provenance() {
+        for name in [
+            "4130",
+            "Rolex 4130",
+            "DD4130",
+            "Dandong 4130",
+            "SH4130",
+            "Shanghai 4130",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            assert_eq!(wheel("third wheel").period_s, 480.0, "{name}");
+            assert_eq!(wheel("barrel").period_s, 25200.0, "{name}");
+            // The extra 30-tooth clutch drive must not be stored as the
+            // receiving pinion, which would make the going-train ratio wrong.
+            let fourth = wheel("fourth wheel");
+            assert_eq!(fourth.pinion, Some(12), "{name}");
+            assert!(fourth.basis.as_deref().unwrap().contains("INFERRED"));
+            assert!(c
+                .sources
+                .iter()
+                .any(|s| s.contains("4130-train-wheel-counts.md")));
+            // Stopped chronograph output has no unconditional turn period.
+            assert!(c
+                .wheels
+                .iter()
+                .all(|w| !w.name.contains("clutch") && !w.name.contains("chronograph")));
+        }
+        // Lift applicability was separately confirmed by the contributor.
+        assert_eq!(find("SH4130").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("Rolex 4130").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("DD4130").unwrap().lift_angle_deg, Some(52.0));
+        assert!(find("4130 (clone)").is_none());
+        for name in ["Rolex 4131", "DD4131", "SH4131", "Valjoux 7750"] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("4130-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn counted_31xx_train_distinguishes_second_wheel_from_cannon_pinion() {
+        let mut names = vec![
+            "Rolex 31xx".to_string(),
+            "Rolex 3131".to_string(),
+            "DD31xx".to_string(),
+            "VS31xx".to_string(),
+            "Dandong 31xx".to_string(),
+            "VR31xx".to_string(),
+        ];
+        for number in [3130, 3135, 3186, 3187] {
+            for prefix in ["", "Rolex ", "DD", "VS", "Dandong ", "VR"] {
+                names.push(format!("{prefix}{number}"));
+            }
+        }
+        for name in names {
+            let c = find(&name).unwrap_or_else(|| panic!("missing {name}"));
+            assert_eq!(c.bph, Some(28800), "{name}");
+            assert_eq!(c.escape_teeth, Some(20), "{name}");
+            for (wheel, period, teeth, pinion) in [
+                ("barrel", 18000.0, Some(100), None),
+                ("centre wheel", 2160.0, Some(81), Some(12)),
+                ("third wheel", 320.0, Some(96), Some(12)),
+                ("fourth wheel", 60.0, Some(120), Some(18)),
+                ("escape wheel", 5.0, Some(20), Some(10)),
+                ("cannon pinion", 3600.0, None, None),
+            ] {
+                let w = c.wheels.iter().find(|w| w.name == wheel).unwrap();
+                assert_eq!(
+                    (w.period_s, w.teeth, w.pinion),
+                    (period, teeth, pinion),
+                    "{name}: {wheel}"
+                );
+            }
+            assert!(c
+                .sources
+                .iter()
+                .any(|s| s.contains("31xx-train-wheel-counts.md")));
+        }
+        assert_eq!(find("DD3135").unwrap().lift_angle_deg, None);
+        assert_eq!(find("Rolex 3135").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("VR3135").unwrap().lift_angle_deg, Some(52.0));
+        // A shared number/family must not assign these measurements to SH,
+        // 32xx/4130 variants, or the initially mistyped AP 3120.
+        for name in ["SH3135", "VR3235", "SH3235", "DD3235", "DD4130", "AP 3120"] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(
+                c.sources
+                    .iter()
+                    .all(|s| !s.contains("31xx-train-wheel-counts.md")),
+                "{name}"
+            );
+        }
+        assert!(find("SH3135")
+            .unwrap()
+            .wheels
+            .iter()
+            .all(|w| w.teeth.is_none() && w.pinion.is_none()));
+        for name in ["31xx", "SH31xx", "DD3120", "VR3120"] {
             assert!(find(name).is_none(), "{name}");
         }
     }
