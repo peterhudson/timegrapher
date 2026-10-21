@@ -212,6 +212,12 @@ fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
         let r = m.rate_s_per_day.expect("rate");
         assert!((r - 10.0).abs() < 0.3, "{first_s}: session rate {r}");
         assert_eq!(m.breaks.len(), 1);
+        // One sign either side: the beat error stays signed.
+        assert!(
+            !m.caveats.contains(&Caveat::BeatErrorAsSize),
+            "{:?}",
+            m.caveats
+        );
     }
 }
 
@@ -418,6 +424,11 @@ fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
     let unlock = m.beat_error_unlock_ms.expect("unlock beat error");
     assert!((drop - 0.6).abs() < 0.1, "drop {drop}");
     assert!((unlock - 0.6).abs() < 0.15, "unlock {unlock}");
+    assert!(
+        m.caveats.contains(&Caveat::BeatErrorAsSize),
+        "{:?}",
+        m.caveats
+    );
 }
 
 #[test]
