@@ -15,6 +15,7 @@ mod series_cmd;
 mod session_cmd;
 mod session_report;
 mod shape_cmd;
+mod synth_cmd;
 mod update_cmd;
 
 use clap::{Parser, Subcommand};
@@ -554,7 +555,16 @@ enum Command {
     },
     /// Write a synthetic watch recording (for testing).
     Synth {
-        out: PathBuf,
+        /// The WAV file to write, or with --scenario the take folder.
+        out: Option<PathBuf>,
+        /// Write a take with a known hidden variation instead, as a take
+        /// folder (FLAC files, session.json, a README saying what is
+        /// hidden); `list` names them.
+        #[arg(long)]
+        scenario: Option<String>,
+        /// The noise and beat-to-beat variation of a scenario take.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
         #[arg(long, default_value_t = 60.0)]
         duration: f64,
         #[arg(long, default_value_t = 28800, value_parser = parse_bph)]
@@ -978,6 +988,8 @@ fn main() -> ExitCode {
         },
         Command::Synth {
             out,
+            scenario,
+            seed,
             duration,
             bph,
             amplitude,
@@ -988,23 +1000,31 @@ fn main() -> ExitCode {
             fault_length,
             fault_rate,
             fault_amplitude,
-        } => {
-            let cfg = SynthConfig {
-                duration_s: duration,
-                bph,
-                rate_s_per_day: rate,
-                beat_error_ms: beat_error,
-                snr_db: snr,
-                ..Default::default()
-            };
-            let bad = |t: f64| fault_period.is_some_and(|p| t % p < fault_length);
-            let audio = synth::generate(
-                &cfg,
-                |t| amplitude + if bad(t) { fault_amplitude } else { 0.0 },
-                |t| if bad(t) { fault_rate } else { 0.0 },
-            );
-            timegrapher_core::audio::write_wav(&out, &audio).map_err(|e| e.to_string())
-        }
+        } => match (scenario.as_deref(), out) {
+            (Some("list"), _) => {
+                print!("{}", synth_cmd::list());
+                Ok(())
+            }
+            (Some(name), Some(out)) => synth_cmd::write(&out, name, seed),
+            (_, None) => Err("synth needs OUT: a WAV file, or with --scenario a folder".into()),
+            (None, Some(out)) => {
+                let cfg = SynthConfig {
+                    duration_s: duration,
+                    bph,
+                    rate_s_per_day: rate,
+                    beat_error_ms: beat_error,
+                    snr_db: snr,
+                    ..Default::default()
+                };
+                let bad = |t: f64| fault_period.is_some_and(|p| t % p < fault_length);
+                let audio = synth::generate(
+                    &cfg,
+                    |t| amplitude + if bad(t) { fault_amplitude } else { 0.0 },
+                    |t| if bad(t) { fault_rate } else { 0.0 },
+                );
+                timegrapher_core::audio::write_wav(&out, &audio).map_err(|e| e.to_string())
+            }
+        },
     };
     match res {
         Ok(()) => ExitCode::SUCCESS,
