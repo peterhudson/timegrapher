@@ -729,12 +729,10 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
 /// One pallet stone's beat shape, from `shape`.
 ///
 /// An analysis-only take stores this in its `timegrapher.analysis/1` file
-/// ([`crate::analysis_take`]), so a field missing from a file saved
-/// earlier reads as its default (none, 0 or empty) rather than refusing
-/// the take. A field added later should be an `Option`, so that a missing
-/// one reads as not measured.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+/// ([`crate::analysis_take`]). A field added later must be an `Option`, so
+/// that a file saved before it existed still reads, the field as not
+/// measured; nothing missing is filled in with a value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSide {
     pub i12_ms: Option<f64>,
     pub i13_ms: Option<f64>,
@@ -750,10 +748,8 @@ pub struct ShapeSide {
 }
 
 /// Both sides' beat shapes. Stored in an analysis-only take, so a field
-/// missing from a file saved earlier reads as its default, as for
-/// [`ShapeSide`].
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+/// added later must be an `Option`, as for [`ShapeSide`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
@@ -1365,38 +1361,28 @@ mod manifest_input_tests {
     use super::*;
 
     #[test]
-    fn a_stored_shape_missing_fields_still_reads() {
-        // As an analysis-only take saved before a field existed would hold
-        // it: some fields of a side, none of the other.
-        let v = serde_json::json!({
+    fn a_stored_shape_missing_an_optional_field_reads_it_as_not_measured() {
+        // As an analysis-only take saved before an `Option` field existed
+        // would hold it: the field reads as none, and nothing else changes.
+        let mut v = serde_json::json!({
             "measured_s": 30.0,
-            "even": { "i12_ms": 2.5, "sound1_found": 0.9 },
+            "even": {
+                "i12_ms": 2.5, "i13_ms": 6.0, "ratio13": 0.4, "ratio23": 0.7,
+                "noise_ratio": 0.1, "sound1_found": 0.9,
+                "extra_pre": [[1.5, 0.2]], "extra_post": [],
+            },
         });
+        v["odd"] = v["even"].clone();
+        v["odd"].as_object_mut().unwrap().remove("ratio23");
         let s: ShapeSummary = serde_json::from_value(v).unwrap();
-        assert_eq!(s.measured_s, 30.0);
-        assert_eq!(s.even.i12_ms, Some(2.5));
-        assert_eq!(s.even.sound1_found, 0.9);
-        assert!(s.even.i13_ms.is_none() && s.even.extra_pre.is_empty());
-        assert!(s.odd.i12_ms.is_none() && s.odd.extra_post.is_empty());
-        // A whole one reads back as written.
-        let whole = ShapeSummary {
-            measured_s: 12.0,
-            even: ShapeSide {
-                ratio13: Some(0.4),
-                extra_pre: vec![(1.5, 0.2)],
-                ..Default::default()
-            },
-            odd: ShapeSide {
-                sound1_found: 1.0,
-                ..Default::default()
-            },
-        };
-        let back: ShapeSummary =
-            serde_json::from_value(serde_json::to_value(&whole).unwrap()).unwrap();
-        assert_eq!(
-            serde_json::to_value(&back).unwrap(),
-            serde_json::to_value(&whole).unwrap()
-        );
+        assert_eq!(s.odd.ratio23, None);
+        assert_eq!(s.even.ratio23, Some(0.7));
+        assert_eq!(s.odd.sound1_found, 0.9);
+        assert_eq!(s.odd.extra_pre, vec![(1.5, 0.2)]);
+        // A field that is not an `Option` is never filled in.
+        let mut w = serde_json::to_value(&s).unwrap();
+        w["odd"].as_object_mut().unwrap().remove("sound1_found");
+        assert!(serde_json::from_value::<ShapeSummary>(w).is_err());
     }
 
     #[test]
