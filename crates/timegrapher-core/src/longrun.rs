@@ -394,6 +394,7 @@ pub fn analyse_with_breaks(
                 count: log.by_count.len(),
             })
             .into_iter()
+            .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),
@@ -578,16 +579,35 @@ mod tests {
                 assert!(slice_unlock.iter().all(|&v| (v - 0.3).abs() < 1e-9));
                 assert_eq!(
                     r.caveats,
-                    vec![crate::measure::Caveat::SidesByCount { count: 1 }]
+                    vec![
+                        crate::measure::Caveat::SidesByCount { count: 1 },
+                        crate::measure::Caveat::BeatErrorAsSize
+                    ]
                 );
             } else {
                 assert!(r.caveats.is_empty());
             }
+            // `series` carries the long run's caveats.
+            let lc = LongConfig::default();
+            let st = crate::steadiness::check(
+                &log,
+                None,
+                &r,
+                &lc,
+                &crate::steadiness::Config::default(),
+            );
+            assert_eq!(st.caveats, r.caveats);
             let [_, be] = crate::steadiness::window_grids(&log, None, &breaks);
             let finite: Vec<f64> = be.y.iter().copied().filter(|v| v.is_finite()).collect();
             assert_eq!(finite.len(), 200);
             assert!(finite.iter().all(|&v| (v - 0.3).abs() < 1e-9), "{flip}");
         }
+        // With no watch heard there is no beat error to give as a size.
+        let mut quiet = make(true);
+        quiet.beats.clear();
+        let r = analyse_with_breaks(&quiet, None, &breaks, &LongConfig::default());
+        assert!(r.overall.is_none());
+        assert!(!r.caveats.contains(&crate::measure::Caveat::BeatErrorAsSize));
     }
 
     #[test]

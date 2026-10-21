@@ -454,16 +454,30 @@ pub fn run(
     Ok(())
 }
 
-/// The `sides_by_count` caveat in words, when there is one.
-pub(crate) fn sides_line(caveats: &[timegrapher_core::measure::Caveat]) -> Option<String> {
-    caveats.iter().find_map(|c| match c {
-        timegrapher_core::measure::Caveat::SidesByCount { count } => Some(format!(
-            "Tick and Tock named by the beat count across {count} break{}, \
-             not told apart by their sound",
-            if *count == 1 { "" } else { "s" }
-        )),
-        _ => None,
-    })
+/// The `sides_by_count` and `beat_error_as_size` caveats in words, each
+/// with its label, as `analyze` words them.
+pub(crate) fn caveat_lines(
+    caveats: &[timegrapher_core::measure::Caveat],
+) -> Vec<(&'static str, String)> {
+    use timegrapher_core::measure::Caveat;
+    caveats
+        .iter()
+        .filter_map(|c| match c {
+            Caveat::SidesByCount { count } => Some((
+                "Sides",
+                format!(
+                    "Tick and Tock named by the beat count across {count} break{}, \
+                     not told apart by their sound",
+                    if *count == 1 { "" } else { "s" }
+                ),
+            )),
+            Caveat::BeatErrorAsSize => Some((
+                "Conditions",
+                "beat error given as a size: its sign differs either side of a cut".to_string(),
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The report without the long arrays, for `summary.json` and `--json`.
@@ -658,8 +672,8 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             crate::beat_error_text(r.beat_error_unlock_ms, f.beat_error_ms)
         );
     }
-    if let Some(line) = sides_line(&r.caveats) {
-        println!("Sides        {line}");
+    for (label, line) in caveat_lines(&r.caveats) {
+        println!("{label:<13}{line}");
     }
     println!(
         "Amplitude    {} deg median; slices from {} to {} deg (lift angle {} deg)",
