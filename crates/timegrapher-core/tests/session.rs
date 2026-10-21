@@ -789,11 +789,11 @@ fn a_clock_step_no_listed_pause_explains_is_cut() {
             })
             .collect();
         clock.place_breaks(&listed);
-        assert!(
-            clock.breaks.iter().any(|b| (b.audio_s - 98.0).abs() < 1e-9),
-            "{:?}",
-            clock.breaks
-        );
+        // The step's break, and no other: the short listed pause has no log
+        // entry after it for the clock fit to take a break at.
+        assert_eq!(clock.breaks.len(), 1, "{:?}", clock.breaks);
+        assert!((clock.breaks[0].audio_s - 98.0).abs() < 1e-9);
+        assert!((clock.breaks[0].gap_s - 1.0).abs() < 1e-6);
         let g = short.unwrap_or(0.0);
         let beats: Vec<timegrapher_core::beats::Beat> = (0..(156.0 / period) as i64)
             .filter_map(|k| {
