@@ -881,7 +881,12 @@ function steadyPlot(s, view, doc) {
       const marks = [], notes = [];
       if (s.period && s.period.period_s > 0) {
         const x = Math.log10(s.period.period_s);
-        const near = pts.reduce((a, q) => Math.abs(q[0] - x) < Math.abs(a[0] - x) ? q : a, pts[0]);
+        // The tallest drawn point within 3.5% of the period: the thinned
+        // curve keeps each slice's low point too, which can sit nearest.
+        const close = pts.filter((q) => Math.abs(q[0] - x) < 0.015);
+        const near = close.length
+          ? close.reduce((a, q) => (q[1] > a[1] ? q : a))
+          : pts.reduce((a, q) => (Math.abs(q[0] - x) < Math.abs(a[0] - x) ? q : a), pts[0]);
         marks.push({ x, y: near[1], color });
         notes.push({ x, y: near[1], text: secs(s.period.period_s) + (s.period.wheel ? `, ${wheelTitle(s.period.wheel)}` : "") });
       }
