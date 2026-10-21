@@ -160,8 +160,9 @@ fn whole(p: &[Beat]) -> bool {
 /// its own, since the phase (and after a long gap the rate) does not carry
 /// across a break, and the fits are combined weighted by the beats each
 /// used, so the rate is the average over the time the watch was heard.
-/// Stretches shorter than [`MIN_PIECE_S`] are left out. With no cuts this
-/// is [`fit`].
+/// The beat error is combined as [`signed_across`] says. Stretches
+/// shorter than [`MIN_PIECE_S`] are left out. With no cuts this is
+/// [`fit`].
 pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
     if cuts.is_empty() {
         return fit(beats, bph);
@@ -181,11 +182,55 @@ pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
     let rate = mean(&|f| f.rate_s_per_day);
     Some(TimingFit {
         rate_s_per_day: rate,
-        beat_error_ms: mean(&|f| f.beat_error_ms),
+        beat_error_ms: signed_across(
+            &fits
+                .iter()
+                .map(|f| (f.beat_error_ms, f.beats_used as f64))
+                .collect::<Vec<_>>(),
+        )?,
         period_s: 3600.0 / bph as f64 / (1.0 + rate / 86400.0),
         jitter_us: mean(&|f| f.jitter_us),
         beats_used: n,
     })
+}
+
+/// A signed figure (a beat error) over stretches, each `(value, weight)`:
+/// their weighted mean when the stretches agree in sign, else the weighted
+/// mean of their sizes, given as positive, so a sign that turns over across
+/// a break does not cancel the size the watch has either side.
+pub fn signed_across(parts: &[(f64, f64)]) -> Option<f64> {
+    let w: f64 = parts.iter().map(|p| p.1).sum();
+    if w.is_nan() || w <= 0.0 {
+        return None;
+    }
+    let mixed = parts.iter().any(|p| p.0 > 0.0) && parts.iter().any(|p| p.0 < 0.0);
+    let v = |x: f64| if mixed { x.abs() } else { x };
+    Some(parts.iter().map(|p| v(p.0) * p.1).sum::<f64>() / w)
+}
+
+/// Whether the beat error turns over across `cuts`: the whole stretches
+/// that [`fit_pieces`] fits differ in the sign of their beat error, so it
+/// combines them as sizes. Other beat-error figures over the same beats
+/// follow this one decision ([`median_signed`]), so they keep one sign.
+pub fn sign_turns(beats: &[Beat], bph: u32, cuts: &[f64]) -> bool {
+    let be: Vec<f64> = pieces(beats, cuts)
+        .into_iter()
+        .filter(|p| whole(p))
+        .filter_map(|p| fit(p, bph))
+        .map(|f| f.beat_error_ms)
+        .collect();
+    be.iter().any(|&v| v > 0.0) && be.iter().any(|&v| v < 0.0)
+}
+
+/// The median of signed figures (a beat error's 2 s windows): of their
+/// sizes, given as positive, where the sign turns over ([`sign_turns`]),
+/// else of the values.
+pub fn median_signed(values: impl Iterator<Item = f64>, turned: bool) -> Option<f64> {
+    let mut v: Vec<f64> = values
+        .filter(|x| x.is_finite())
+        .map(|x| if turned { x.abs() } else { x })
+        .collect();
+    (!v.is_empty()).then(|| crate::dsp::median(&mut v))
 }
 
 /// [`residuals`] for a take with breaks: each stretch against its own fit,
@@ -241,6 +286,41 @@ pub fn windows(beats: &[Beat], bph: u32, window_s: f64, step_s: f64) -> Vec<Wind
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signs_that_turn_over_combine_as_sizes() {
+        assert_eq!(signed_across(&[(-0.6, 1.0), (0.6, 1.0)]), Some(0.6));
+        assert!((signed_across(&[(-0.6, 3.0), (-0.2, 1.0)]).unwrap() + 0.5).abs() < 1e-12);
+        assert_eq!(signed_across(&[(0.4, 1.0), (0.0, 1.0)]), Some(0.2));
+        assert_eq!(signed_across(&[]), None);
+        assert_eq!(
+            median_signed([-0.6, -0.5, 0.6].into_iter(), true),
+            Some(0.6)
+        );
+        assert_eq!(
+            median_signed([-0.6, -0.5, 0.6].into_iter(), false),
+            Some(-0.5)
+        );
+        assert_eq!(median_signed([f64::NAN].into_iter(), false), None);
+        let flip = |mut b: Vec<Beat>, at: f64| {
+            b.iter_mut()
+                .filter(|x| x.time >= at)
+                .for_each(|x| x.index += 1);
+            b
+        };
+        let both = flip(take(5.5, &[(0.0, 12.0), (20.0, 32.0)]), 19.0);
+        assert!(sign_turns(&both, 28800, &[19.0]));
+        assert!(!sign_turns(&both, 28800, &[]));
+        let k = both.partition_point(|b| b.time < 19.0);
+        assert!(!sign_turns(&both[..k], 28800, &[19.0]));
+        assert!(!sign_turns(
+            &take(5.5, &[(0.0, 12.0), (20.0, 32.0)]),
+            28800,
+            &[19.0]
+        ));
+        let scrap = flip(take(5.5, &[(0.0, 40.0), (50.0, 52.0)]), 45.0);
+        assert!(!sign_turns(&scrap, 28800, &[45.0]));
+    }
 
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on
     /// the stretches given, numbered on one grid.

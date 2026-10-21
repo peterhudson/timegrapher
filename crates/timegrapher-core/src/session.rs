@@ -557,7 +557,10 @@ pub fn measure_masked(
         calibrated: clock.is_some(),
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
-        beat_error_unlock_ms: median_of(amp.iter().filter_map(|w| w.beat_error_unlock_ms)),
+        beat_error_unlock_ms: timing::median_signed(
+            amp.iter().filter_map(|w| w.beat_error_unlock_ms),
+            timing::sign_turns(&beats, log.bph, &cuts),
+        ),
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
