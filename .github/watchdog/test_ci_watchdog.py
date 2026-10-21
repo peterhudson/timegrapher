@@ -15,6 +15,7 @@ def ci_run(**changes):
                head_repository={"full_name": watchdog.REPOSITORY}, head_sha="b" * 40,
                head_branch="feature", event="pull_request", pull_requests=[{"number": 7}],
                run_attempt=1, status="completed", conclusion="failure",
+               created_at="2026-10-21T16:00:00Z",
                html_url="https://github.com/example/actions/runs/50")
     run.update(changes)
     return run
@@ -33,9 +34,11 @@ def macos_stall():
 
 
 class FakeAPI:
-    def __init__(self, run, jobs, annotations, newer=(), comments=(), issues=(), pulls=()):
+    def __init__(self, run, jobs, annotations, newer=(), comments=(), issues=(), pulls=(),
+                 closed=(), moved=()):
         self.run, self.jobs, self.annotations = run, jobs, annotations
         self.newer, self.comments, self.issues, self.pulls = list(newer), list(comments), list(issues), list(pulls)
+        self.closed, self.moved = set(closed), set(moved)
         self.posts = []
 
     def get(self, path):
@@ -51,10 +54,16 @@ class FakeAPI:
         if path.startswith("/actions/workflows/ci.yml/runs?status="):
             status = path.split("status=")[1].split("&")[0]
             return {"workflow_runs": [self.run] if status == self.run["status"] else []}
-        if path.endswith("/comments"):
+        if path.startswith("/issues/comments?since="):
+            # Every comment in the repository: pull requests and issues alike.
             return self.comments
-        if path.startswith("/issues?"):
+        if path.startswith("/issues?state=all"):
             return self.issues
+        if path.startswith("/pulls/"):
+            number = int(path.split("/")[2])
+            head = "c" * 40 if number in self.moved else self.run["head_sha"]
+            return dict(number=number, state="closed" if number in self.closed else "open",
+                        head=dict(sha=head))
         if path.startswith("/pulls?"):
             return self.pulls
         raise AssertionError(f"unexpected GET {path}")
@@ -194,12 +203,41 @@ class Sweep(unittest.TestCase):
         self.assertEqual(path, "/issues")
         self.assertIn(watchdog.MAIN_ISSUE, body["body"])
         # GitHub lists an issue's comments without its body.
-        api.issues, api.posts = [dict(number=12, body=body["body"])], []
+        api.issues, api.posts = [dict(number=12, state="open", body=body["body"])], []
         watchdog.sweep(api, self.NOW, log=quiet)
         self.assertEqual(api.posts, [])
         api.run = dict(run, id=60)
         watchdog.sweep(api, self.NOW, log=quiet)
         self.assertEqual([path for path, _ in api.posts], ["/issues/12/comments"])
+
+    def test_closing_the_issue_does_not_bring_the_same_flag_back(self):
+        run, jobs = self.queued_run("2026-10-21T16:00:00Z")
+        run.update(event="push", head_branch="main", pull_requests=[])
+        api = FakeAPI(run, jobs, {})
+        watchdog.sweep(api, self.NOW, log=quiet)
+        [(_, body)] = api.posts
+        api.issues, api.posts = [dict(number=12, state="closed", body=body["body"])], []
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual(api.posts, [])
+        # A later stall opens a fresh issue.
+        api.run = dict(run, id=60)
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual([path for path, _ in api.posts], ["/issues"])
+
+    def test_a_closed_pull_requests_run_is_left_alone(self):
+        jobs, annotations = macos_stall()
+        for attempt in (1, 3):
+            api = FakeAPI(ci_run(run_attempt=attempt), jobs, annotations, closed={7})
+            watchdog.sweep(api, self.NOW, log=quiet)
+            self.assertEqual(api.posts, [])
+
+    def test_a_new_pull_request_on_the_same_branch_is_not_this_runs(self):
+        # GitHub lists #8, opened on the branch after #7 merged, on #7's old runs.
+        jobs, annotations = macos_stall()
+        api = FakeAPI(ci_run(run_attempt=3, pull_requests=[{"number": 8}]), jobs, annotations,
+                      moved={8})
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual(api.posts, [])
 
     def test_a_failed_run_the_event_missed_is_rerun(self):
         jobs, annotations = macos_stall()
