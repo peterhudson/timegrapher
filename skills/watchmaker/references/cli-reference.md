@@ -310,8 +310,10 @@ wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
 is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
-(`start_s,end_s,true_start_s,even_deg,odd_deg`), `slices.csv`
-(`start_s,end_s,rate_s_per_day,beat_error_ms,amplitude_deg`), `folds.csv`
+(`start_s,end_s,true_start_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms`),
+`slices.csv`
+(`start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg`),
+`folds.csv`
 (`series,period_s,phase,mean,shape,unit`). Progress goes to stderr.
 
 JSON body:
