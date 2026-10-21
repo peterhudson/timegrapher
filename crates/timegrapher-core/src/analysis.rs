@@ -247,6 +247,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     // on each stretch between jumps, and no window spans one.
     let cuts: Vec<f64> = log.jumps.iter().map(|&t| t - 1e-6).collect();
     let overall = timing::fit_pieces(&beats, bph, &cuts);
+    let turned = timing::sign_turns(&beats, bph, &cuts);
     let residuals =
         timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
     let mut rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
@@ -314,6 +315,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             listened_s: duration,
             breaks: cuts.len(),
             sides_by_count: log.by_count.len(),
+            beat_error_as_size: turned && overall.is_some(),
             average_s: None,
         },
     );
@@ -341,7 +343,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             amplitude_windows
                 .iter()
                 .filter_map(|w| w.beat_error_unlock_ms),
-            timing::sign_turns(&beats, bph, &cuts),
+            turned,
         ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),

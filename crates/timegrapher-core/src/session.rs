@@ -467,6 +467,7 @@ pub fn measure_masked(
         })
         .collect();
     let fit = timing::fit_pieces(&beats, log.bph, &cuts);
+    let turned = timing::sign_turns(&beats, log.bph, &cuts);
     let mut windows = timing::windows(&beats, log.bph, 10.0, 5.0);
     windows.retain(apart);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
@@ -559,7 +560,7 @@ pub fn measure_masked(
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: timing::median_signed(
             amp.iter().filter_map(|w| w.beat_error_unlock_ms),
-            timing::sign_turns(&beats, log.bph, &cuts),
+            turned,
         ),
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
@@ -613,6 +614,7 @@ pub fn measure_masked(
                 .iter()
                 .filter(|&&t| t > m.start_s && t < m.end_s)
                 .count(),
+            beat_error_as_size: turned && fit.is_some(),
             average_s: None,
         },
     );
