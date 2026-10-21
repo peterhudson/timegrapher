@@ -212,8 +212,9 @@ beat rate and layout, plus these:
   Other Rolex calibres retain their earlier
   inferred counts and recorded clones their measured basis (the Dandong
   3235 recorded here carries a genuine escape wheel).
-  The 2892-A2, 7750, Miyota 9015 and the Seiko 21,600 bph calibres have
-  no escape wheel entry because no count was found.
+  The 2892-A2 and 7750 still have no escape count. The Seiko/Miyota
+  research contribution below supplies illustrated counts for its explicitly
+  covered variants, with the manufacturer-part mappings recorded separately.
 - **Barrels.** Rolex, DD/VS and VR31xx: 5 h from the photographed 100:12
   barrel-to-second mesh and 2160 s second wheel, agreeing with the earlier
   Rolex 3135 value from SJX's 5:1 barrel to minute ratio.
@@ -259,9 +260,9 @@ beat rate and layout, plus these:
 ## Not found
 
 Third-wheel and barrel tooth counts for every calibre except as above;
-escape wheel counts for the 2892-A2, 7750, Powermatic 80, AP, Seiko and
-Miyota calibres; the AP clones' trains; any published data for the
-Dandong 324 or the Peacock SL1258; lift angles for the Sellita, Powermatic 80, Seiko 7S26,
+escape wheel counts for the 2892-A2, 7750, Powermatic 80, AP and the
+Seiko/Miyota variants outside the documented research coverage; the AP clones' trains; any published data for the
+Dandong 324 or the Peacock SL1258; lift angles for the Sellita, Powermatic 80,
 Seagull and Patek 324 calibres. Corrections with a source are welcome.
 
 Built from manufacturer documents, technical guides, parts catalogues,
@@ -281,3 +282,18 @@ Three-hertz, Power+ and ambiguous clone identities are excluded.
 100 / 80:20 / 99:12 / 120:11 train and five-hour barrel. The 20:10 escape pair
 is the contributor-accepted standard specification, supported by both
 comparison families. Its source note records that it was not photographed. VR and SH aliases are separated.
+
+## Seiko and Miyota manufacturer-document research
+
+[Research and limitations](../../../docs/seiko-miyota-train-research.md)
+records illustrated escape counts and exact part-identity transfers for
+42 catalogue rows. Fifteen escape teeth at 21,600 bph and twenty at
+28,800 bph both give five seconds. The source manifest audits all 182
+pre-existing Seiko/Miyota rows and distinguishes unresolved entries.
+
+These are counts from manufacturer drawings, not microscope measurements.
+Third-wheel, barrel and pinion counts remain unestablished. The Miyota
+9015 family's one-hour entry now names the cannon pinion, not its off-centre
+centre wheel. Indirect seconds do not by themselves establish the fourth
+wheel period. Broad 6R/7S aliases are removed, and Seiko revision-specific
+lift angles are retained.

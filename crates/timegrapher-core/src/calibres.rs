@@ -247,6 +247,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn seiko_miyota_research_resolves_variants_without_broad_family_transfers() {
+        for name in [
+            "NH34A", "NH37", "NH39A", "NH70", "NH71A", "NH72", "4R35A", "4R35B", "4R36", "4R37A",
+            "4R38A", "4R39A", "7S26A", "7S26B", "7S26C", "7S36A", "7S36B", "7S36C", "7S25C",
+            "7S35C", "6R15", "6R15D", "6R35A", "6R31", "6R38", "6R54", "6R55", "8215", "821A",
+            "820A", "8217", "82S0", "82S5", "82S7", "8N24", "8N40", "9015", "9039", "90S5", "9075",
+            "9100", "9110", "9120", "9122", "9130", "9132",
+        ] {
+            let c = find(name).unwrap_or_else(|| panic!("missing {name}"));
+            let escape = c.wheels.iter().find(|w| w.name == "escape wheel").unwrap();
+            assert_eq!(escape.period_s, 5.0, "{name}");
+            assert_eq!(escape.teeth, c.escape_teeth, "{name}");
+            assert_eq!(
+                c.escape_teeth,
+                Some(if c.bph == Some(28800) { 20 } else { 15 })
+            );
+            assert!(escape
+                .basis
+                .as_deref()
+                .unwrap()
+                .contains("manufacturer illustration"));
+            assert!(escape.pinion.is_none(), "unmeasured escape pinion: {name}");
+        }
+        assert!(find("6R").is_none());
+        assert!(find("7S").is_none());
+        for name in [
+            "Miyota 8200",
+            "Seiko NH05",
+            "Seiko 6R20A",
+            "Seiko 6R21A",
+            "Seiko 6R24A",
+        ] {
+            let c = find(name).unwrap();
+            assert!(
+                c.escape_teeth.is_none(),
+                "unverified family transfer: {name}"
+            );
+        }
+        assert_eq!(find("4R35").unwrap().calibre, "Seiko 4R35B");
+        assert_eq!(find("4R35A").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("4R35B").unwrap().lift_angle_deg, Some(53.0));
+        assert_ne!(find("6R15").unwrap().calibre, find("6R35").unwrap().calibre);
+    }
+
+    #[test]
+    fn miyota_hand_periods_do_not_invent_unknown_train_periods() {
+        for name in ["8215", "82S0", "8N24"] {
+            let c = find(name).unwrap();
+            assert!(c
+                .wheels
+                .iter()
+                .any(|w| w.name == "seconds pinion" && w.period_s == 60.0));
+            assert!(!c.wheels.iter().any(|w| w.name == "fourth wheel"));
+        }
+        for name in [
+            "9015", "9039", "90S5", "9075", "9100", "9110", "9120", "9122", "9130", "9132",
+        ] {
+            let c = find(name).unwrap();
+            assert!(c
+                .wheels
+                .iter()
+                .any(|w| w.name == "cannon pinion" && w.period_s == 3600.0));
+            assert!(!c
+                .wheels
+                .iter()
+                .any(|w| matches!(w.name.as_str(), "centre wheel" | "third wheel" | "barrel")));
+        }
+    }
+
+    #[test]
     fn table_parses_and_names_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for c in all() {
