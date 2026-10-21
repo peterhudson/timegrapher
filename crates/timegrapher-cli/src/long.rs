@@ -454,6 +454,18 @@ pub fn run(
     Ok(())
 }
 
+/// The `sides_by_count` caveat in words, when there is one.
+pub(crate) fn sides_line(caveats: &[timegrapher_core::measure::Caveat]) -> Option<String> {
+    caveats.iter().find_map(|c| match c {
+        timegrapher_core::measure::Caveat::SidesByCount { count } => Some(format!(
+            "Tick and Tock named by the beat count across {count} break{}, \
+             not told apart by their sound",
+            if *count == 1 { "" } else { "s" }
+        )),
+        _ => None,
+    })
+}
+
 /// The report without the long arrays, for `summary.json` and `--json`.
 #[derive(serde::Serialize)]
 struct Summary<'a> {
@@ -473,6 +485,7 @@ struct Summary<'a> {
     amplitude_p95: Option<f64>,
     rate_periods: Vec<SlimComponent>,
     amplitude_periods: Vec<SlimComponent>,
+    caveats: &'a [timegrapher_core::measure::Caveat],
 }
 
 #[derive(serde::Serialize)]
@@ -532,6 +545,7 @@ impl<'a> From<&'a LongReport> for Summary<'a> {
             amplitude_deg: r.amplitude_deg,
             amplitude_p05: r.amplitude_p05,
             amplitude_p95: r.amplitude_p95,
+            caveats: &r.caveats,
             rate_periods: r
                 .rate_components
                 .iter()
@@ -643,6 +657,9 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             "Beat error   {}",
             crate::beat_error_text(r.beat_error_unlock_ms, f.beat_error_ms)
         );
+    }
+    if let Some(line) = sides_line(&r.caveats) {
+        println!("Sides        {line}");
     }
     println!(
         "Amplitude    {} deg median; slices from {} to {} deg (lift angle {} deg)",
