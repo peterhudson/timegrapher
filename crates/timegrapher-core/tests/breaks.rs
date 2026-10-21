@@ -498,3 +498,28 @@ fn the_drop_and_the_unlock_keep_one_sign_near_a_whole_stretch() {
         }
     }
 }
+
+#[test]
+fn a_clock_step_no_listed_pause_explains_is_a_break_too() {
+    // The take lists its pause, and the clock log also steps 2 s at 140 s
+    // with no pause listed there (a system clock step): the breaks are the
+    // listed one and that step, as the step alone would be with nothing
+    // listed.
+    let dir = std::env::temp_dir().join(format!("tg-breaks-step-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, mut pairs, join_s) = take(&dir);
+    for q in pairs.iter_mut().filter(|q| q.0 >= 140.0) {
+        q.1 += 2.0;
+    }
+    let mut clock = ClockFit::new(&pairs).unwrap();
+    assert_eq!(clock.breaks.len(), 2, "{:?}", clock.breaks);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000);
+    std::fs::remove_dir_all(&dir).ok();
+    let at: Vec<f64> = found.iter().map(|b| b.audio_s).collect();
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!(
+        (at[0] - join_s).abs() < 1e-6 && (at[1] - 140.0).abs() < 1e-6,
+        "{found:?}"
+    );
+    assert!((found[1].gap_s - 2.0).abs() < 0.01, "{found:?}");
+}
