@@ -56,6 +56,16 @@ pub struct BeatLog {
     /// [`crate::breaks::with_jumps`] makes them breaks for the readings.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub jumps: Vec<f64>,
+    /// Of `jumps`, those where the side sounds told Tick from Tock after
+    /// the jump, so the beat numbers there already keep the sides; at the
+    /// others the count across the hole is a guess.
+    #[serde(skip)]
+    pub sided: Vec<f64>,
+    /// The breaks, audio seconds, whose sides are named by the beat count
+    /// alone ([`crate::breaks::by_count`]): the jumps not in `sided`, or
+    /// after [`crate::breaks::renumber`] the breaks it returns.
+    #[serde(skip)]
+    pub by_count: Vec<f64>,
 }
 
 struct State {
@@ -65,6 +75,7 @@ struct State {
     /// The sound of each side so far, to tell the sides apart after a jump.
     sides: Option<beats::SideSounds>,
     jumps: Vec<f64>,
+    sided: Vec<f64>,
     /// The last jump's stretch was too short to tell its sides: check
     /// the start of the next chunk instead.
     recheck: bool,
@@ -123,6 +134,7 @@ impl State {
         match_sides(
             &mut self.sides,
             &mut self.jumps,
+            &mut self.sided,
             &mut self.recheck,
             &self.beats[self.beats.len().saturating_sub(beats::JUMP_CONTEXT)..],
             fs,
@@ -208,6 +220,7 @@ impl State {
 fn match_sides(
     sides: &mut Option<beats::SideSounds>,
     jumps: &mut Vec<f64>,
+    sided: &mut Vec<f64>,
     recheck: &mut bool,
     last: &[Beat],
     fs: f64,
@@ -257,7 +270,21 @@ fn match_sides(
             }
             continue;
         };
-        match now.map(|now| beats::side_margin(r, &now)) {
+        let margin = now.map(|now| beats::side_margin(r, &now));
+        if margin.is_some_and(|m| m.abs() >= beats::SIDE_MARGIN_MIN) {
+            // The jump this check belongs to: here, or for a chunk that
+            // starts by rechecking, the last one seen.
+            let t = numbered[s].time + off;
+            let j = if i > 0 {
+                t
+            } else {
+                jumps.last().copied().unwrap_or(t)
+            };
+            if !sided.last().is_some_and(|&x| (j - x).abs() <= 1.0) {
+                sided.push(j);
+            }
+        }
+        match margin {
             Some(m) if m <= -beats::SIDE_MARGIN_MIN => {
                 for b in &mut numbered[s..] {
                     b.index += 1;
@@ -364,6 +391,7 @@ impl Chunker {
                 template: None,
                 sides: None,
                 jumps: Vec::new(),
+                sided: Vec::new(),
                 recheck: false,
                 bph: cfg.analysis.bph.unwrap_or(0),
                 beats: Vec::new(),
@@ -424,7 +452,9 @@ impl Chunker {
             },
             clipped_beats: st.clipped_beats,
             clipped_samples: st.clipped_samples,
+            by_count: crate::breaks::by_count(st.jumps.iter().copied(), &st.sided),
             jumps: st.jumps,
+            sided: st.sided,
         }
     }
 }

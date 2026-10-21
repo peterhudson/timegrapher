@@ -67,6 +67,11 @@ pub enum Caveat {
     ShortSpan { span_s: f64 },
     /// The take was paused or resumed inside the stretch.
     Breaks { count: usize },
+    /// At `count` of those breaks Tick and Tock were not told apart by
+    /// their sound (too alike, too few good beats, or no jump in the beats
+    /// for the side check to run at), so the sides after each are named by
+    /// the beat count across it alone.
+    SidesByCount { count: usize },
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
     Masked { seconds: f64 },
@@ -84,7 +89,8 @@ impl Caveat {
             Caveat::LiftUnknown => 5,
             Caveat::ClockUnknown => 6,
             Caveat::Breaks { .. } => 7,
-            Caveat::Masked { .. } => 8,
+            Caveat::SidesByCount { .. } => 8,
+            Caveat::Masked { .. } => 9,
         }
     }
 }
@@ -117,6 +123,8 @@ pub struct Context {
     /// stretch, or the live screen's averaging time so far.
     pub listened_s: f64,
     pub breaks: usize,
+    /// Of `breaks`, those where the sides were kept by the beat count.
+    pub sides_by_count: usize,
     /// The seconds a shown rate is averaged over, when shorter than the
     /// stretch (the live screen's averaging time). `None`: the rate is the
     /// fit over the whole stretch.
@@ -190,6 +198,11 @@ pub fn assess(
     }
     if c.breaks > 0 {
         caveats.push(Caveat::Breaks { count: c.breaks });
+    }
+    if c.sides_by_count > 0 {
+        caveats.push(Caveat::SidesByCount {
+            count: c.sides_by_count,
+        });
     }
     let confidence = c.watch_heard.then(|| {
         let amps: Vec<f64> = amplitude_windows.iter().filter_map(|w| w.mean()).collect();
