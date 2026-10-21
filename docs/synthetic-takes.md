@@ -18,7 +18,7 @@ views name its wheels.
 |---|---|---|---|
 | `control` | nothing | "Rate: 719 10 s readings, median +5.0 s/d, ±0.9 s/d from one reading to the next; no cycle, level change, trend or correlation between readings detected." (amplitude and beat error alike) | every view stays inside its noise bands |
 | `fourth-wheel` | rate ±1 s/d every 60 s | "Rate repeats every 60 s (the fourth wheel), 1.8 s/d peak to peak." | Periods, FFT, Cycle and the autocorrelation's repeat at 60 s |
-| `escape-wheel` | rate ±10 s/d every 5 s (0.18 ms of timing) | "Rate: … the beat timing repeats every 5.0 s, the escape wheel's period, 0.18 ms peak to peak; 10 s readings are too coarse to show it." | FFT with Timing; not in the readings, since a 10 s reading is two whole turns |
+| `escape-wheel` | rate ±10 s/d every 5 s (0.18 ms of timing peak to peak) | "Rate: … the beat timing repeats every 5.0 s, the escape wheel's period, 0.18 ms peak to peak; 10 s readings are too coarse to show it." | FFT with Timing; not in the readings, since a 10 s reading is two whole turns |
 | `half-period` | rate ±1 s/d every 45 s | "Rate repeats every 45 s, 1.7 s/d peak to peak." | Periods, FFT and Cycle at 45 s, four and a half readings a turn |
 | `slow-cycle` | amplitude ±3° every 8 min | "Amplitude repeats every 8 min, 6.6° peak to peak." | Periods, FFT and Cycle at 480 s, and a bump in the Allan deviation near 180 s (for a cycle of period *P* the bump peaks near 0.37 *P*) |
 | `beat-error-cycle` | beat error ±0.1 ms every 120 s | "Beat error repeats every 120 s, 0.22 ms peak to peak." | Periods, FFT and Cycle for the beat error |

@@ -45,7 +45,11 @@ It reads the same input as `long`: one recording, several segments in
 order, or a folder. `--clock` corrects for the sound card's clock. The
 other options are the same as for `long`. `--reading` sets the length of
 each rate reading, 10 s by default. The beat error is the one measured
-from the unlock. A 2 h take takes about 30 s, and a 16 h run about 4
+from the unlock; where its sign turns over across a break, its readings
+are sizes, given as positive, as the take's beat error is (see
+[long-runs.md](long-runs.md)). Where Tick and Tock were named by the
+beat count across a break, not told apart by their sound, a `Sides` line
+says so. A 2 h take takes about 30 s, and a 16 h run about 4
 minutes.
 
 All three series are tested on readings of the same length, the rate's.
@@ -86,7 +90,7 @@ For each series:
   white line, which is what independent readings would give (the scatter
   at one reading divided by √(τ / reading)). For independent readings
   the two lines stay together. Wander and drift lift the curve at long τ,
-  and a cycle puts a bump near half its period. `best_tau_s` is the
+  and a cycle of period P puts a bump near 0.37 P. `best_tau_s` is the
   averaging time with the smallest scatter, so the most repeatable
   reading.
 - **CUSUM**: the running sum of each reading's distance from the mean,
@@ -260,6 +264,7 @@ headlines state facts. Everything else is as in version 1.
 | Field | Contents |
 |---|---|
 | `duration_s`, `bph` | the take |
+| `caveats[]` | conditions detected, each with a `code`: `sides_by_count` (`count`: the breaks across which Tick and Tock were named by the beat count, not told apart by their sound), as for `analyze`; empty when none |
 | `config` | the detection settings used |
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
 | `isochronism` | the rate by amplitude: `step_s`, `bin_deg`, `bins[]` (`amplitude_deg`, `readings`, `rate_s_per_day`, `rate_q25`, `rate_q75`, `from_wind_h`, `to_wind_h`), `amplitude_from_deg`, `amplitude_to_deg`, `s_per_day_per_deg`, `rate_change_s_per_day`, `curve_centre_deg`, `curve` (`[c0, c1, c2]` in A − centre), `curve_explained`, `turn_deg`, `headline`; null with fewer than three bins |

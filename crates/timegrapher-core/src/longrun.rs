@@ -17,7 +17,9 @@ pub struct Slice {
     pub end_s: f64,
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the drop (the slice's fit) and from the
-    /// unlock (median of the amplitude windows in the slice), ms.
+    /// unlock (median of the amplitude windows in the slice), ms; sizes,
+    /// given as positive, when the sign turns over across a break
+    /// ([`beat_error_turns`]), as the take's figures are.
     pub beat_error_ms: Option<f64>,
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
@@ -68,6 +70,10 @@ pub struct LongReport {
     /// Pauses and resumes in the take; times here run on with each gap in.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<Break>,
+    /// Conditions detected: `sides_by_count` when Tick and Tock were named
+    /// by the beat count across some of `breaks`, not told apart by their
+    /// sound.
+    pub caveats: Vec<crate::measure::Caveat>,
     /// The whole run fitted at once (calibrated when `clock` is set); its
     /// jitter is the median over the slices.
     pub overall: Option<TimingFit>,
@@ -137,7 +143,7 @@ pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
     let map = true_time(clock, breaks);
     breaks
         .iter()
-        .map(|b| map(b.audio_s) - 0.5 * b.gap_s - 1e-6)
+        .map(|b| map(b.audio_s) - 0.5 * b.gap_s.max(0.0) - 1e-6)
         .collect()
 }
 
@@ -192,6 +198,25 @@ pub fn piece_cuts(gaps: &[(f64, f64)]) -> Vec<f64> {
     cuts
 }
 
+/// Whether the beat error's sign turns over across the take's breaks
+/// ([`timing::sign_turns`] on its stretches), so its figures are given as
+/// sizes.
+pub fn beat_error_turns(log: &BeatLog, clock: Option<&ClockFit>, breaks: &[Break]) -> bool {
+    if breaks.is_empty() {
+        return false;
+    }
+    let map = true_time(clock, breaks);
+    let beats: Vec<Beat> = log
+        .beats
+        .iter()
+        .map(|b| Beat {
+            time: map(b.time),
+            ..*b
+        })
+        .collect();
+    timing::sign_turns(&beats, log.bph, &piece_cuts(&gaps(clock, breaks)))
+}
+
 /// Whether a stretch from `start` to `end` on true time reaches into, or
 /// across, any of `gaps`.
 pub fn touches_gap(gaps: &[(f64, f64)], start: f64, end: f64) -> bool {
@@ -227,6 +252,8 @@ pub fn analyse_with_breaks(
         .collect();
     let duration = map(log.duration_s);
     let mut overall = timing::fit_pieces(&beats, log.bph, &cuts);
+    let turned = timing::sign_turns(&beats, log.bph, &cuts);
+    let size = |v: f64| if turned { v.abs() } else { v };
     let residuals =
         timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
 
@@ -336,8 +363,8 @@ pub fn analyse_with_breaks(
             start_s: s,
             end_s: e,
             rate_s_per_day: w.map(|f| f.rate_s_per_day),
-            beat_error_ms: w.map(|f| f.beat_error_ms),
-            beat_error_unlock_ms: (!unlocks.is_empty()).then(|| median(&mut unlocks)),
+            beat_error_ms: w.map(|f| size(f.beat_error_ms)),
+            beat_error_unlock_ms: timing::median_signed(unlocks.into_iter(), turned),
             amplitude_deg: (!amps.is_empty()).then(|| median(&mut amps)),
         });
         s = e;
@@ -362,11 +389,14 @@ pub fn analyse_with_breaks(
         clean_fraction: (bw.len() as f64 / expected.max(1.0)).min(1.0),
         clock: clock.cloned(),
         breaks: breaks.to_vec(),
+        caveats: (!log.by_count.is_empty())
+            .then_some(crate::measure::Caveat::SidesByCount {
+                count: log.by_count.len(),
+            })
+            .into_iter()
+            .collect(),
         overall,
-        beat_error_unlock_ms: timing::median_signed(
-            uv.into_iter(),
-            timing::sign_turns(&beats, log.bph, &cuts),
-        ),
+        beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         amplitude_deg: {
@@ -456,6 +486,7 @@ mod tests {
         let map = true_time(None, &breaks);
         assert_eq!(map(100.0), 100.0);
         assert_eq!(map(150.0), 150.0);
+        assert_eq!(super::cuts(None, &breaks), vec![100.0 - 1e-6]);
         let beats: Vec<Beat> = (0..1000)
             .map(|index| Beat {
                 time: map(index as f64 * 0.2 * (1.0 + 1e-5)),
@@ -470,6 +501,93 @@ mod tests {
         let single = timing::fit_pieces(&beats, 18000, &[100.0 - 1e-6]).unwrap();
         assert!((ours.rate_s_per_day - single.rate_s_per_day).abs() < 1e-9);
         assert!((ours.rate_s_per_day + 0.864).abs() < 0.01, "{ours:?}");
+    }
+
+    #[test]
+    fn a_beat_error_that_turns_over_reads_as_sizes() {
+        // Tick 0.3 ms late throughout, but the beats after a break at
+        // 200 s are numbered one on, as when the count crossed it wrong:
+        // the sign turns over there, so the slices and the series give
+        // sizes, and the take says the sides were named by the count.
+        let make = |flip: bool| {
+            let beats: Vec<Beat> = (0..2000)
+                .map(|i| {
+                    let t = i as f64 * 0.2 + 0.05 + if i % 2 == 0 { 0.0003 } else { 0.0 };
+                    Beat {
+                        time: t,
+                        index: if flip && t > 200.0 { i + 1 } else { i },
+                        quality: 1.0,
+                    }
+                })
+                .collect();
+            let amplitude_windows = (0..200)
+                .map(|k| {
+                    let start_s = k as f64 * 2.0;
+                    crate::amplitude::AmplitudeWindow {
+                        start_s,
+                        end_s: start_s + 2.0,
+                        even_deg: Some(250.0),
+                        odd_deg: Some(250.0),
+                        beat_error_ms: None,
+                        beat_error_unlock_ms: Some(if flip && start_s >= 200.0 {
+                            -0.3
+                        } else {
+                            0.3
+                        }),
+                        even_unlock_ms: None,
+                        odd_unlock_ms: None,
+                        even_drop_ms: None,
+                        odd_drop_ms: None,
+                    }
+                })
+                .collect();
+            BeatLog {
+                sample_rate: 48000,
+                duration_s: 400.0,
+                bph: 18000,
+                lift_deg: 52.0,
+                beats,
+                amplitude_windows,
+                clipped_beats: vec![],
+                clipped_samples: 0,
+                jumps: vec![],
+                sided: vec![],
+                by_count: if flip { vec![200.0] } else { vec![] },
+            }
+        };
+        let breaks = [Break {
+            audio_s: 200.0,
+            gap_s: 0.0,
+        }];
+        for flip in [false, true] {
+            let log = make(flip);
+            assert_eq!(beat_error_turns(&log, None, &breaks), flip);
+            let r = analyse_with_breaks(&log, None, &breaks, &LongConfig::default());
+            let slice_be: Vec<f64> = r.slices.iter().filter_map(|s| s.beat_error_ms).collect();
+            let slice_unlock: Vec<f64> = r
+                .slices
+                .iter()
+                .filter_map(|s| s.beat_error_unlock_ms)
+                .collect();
+            assert!(slice_be.len() > 30 && slice_unlock.len() > 30);
+            // One sign throughout: the take's own, or flipped, sizes.
+            let s0 = slice_be[0].signum();
+            assert!(slice_be.iter().all(|&v| v.signum() == s0), "{slice_be:?}");
+            if flip {
+                assert_eq!(s0, 1.0);
+                assert!(slice_unlock.iter().all(|&v| (v - 0.3).abs() < 1e-9));
+                assert_eq!(
+                    r.caveats,
+                    vec![crate::measure::Caveat::SidesByCount { count: 1 }]
+                );
+            } else {
+                assert!(r.caveats.is_empty());
+            }
+            let [_, be] = crate::steadiness::window_grids(&log, None, &breaks);
+            let finite: Vec<f64> = be.y.iter().copied().filter(|v| v.is_finite()).collect();
+            assert_eq!(finite.len(), 200);
+            assert!(finite.iter().all(|&v| (v - 0.3).abs() < 1e-9), "{flip}");
+        }
     }
 
     #[test]
