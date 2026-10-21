@@ -363,10 +363,10 @@ pub fn analyse_with_breaks(
         clock: clock.cloned(),
         breaks: breaks.to_vec(),
         overall,
-        beat_error_unlock_ms: {
-            let mut u = uv;
-            (!u.is_empty()).then(|| median(&mut u))
-        },
+        beat_error_unlock_ms: timing::median_signed(
+            uv.into_iter(),
+            timing::sign_turns(&beats, log.bph, &cuts),
+        ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         amplitude_deg: {
