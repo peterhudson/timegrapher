@@ -214,8 +214,8 @@ fn print_text(r: &Report, calibrated: bool) {
             ""
         }
     );
-    if let Some(line) = crate::long::sides_line(&r.caveats) {
-        println!("Sides        {line}");
+    for (label, line) in crate::long::caveat_lines(&r.caveats) {
+        println!("{label:<13}{line}");
     }
     for s in &r.series {
         print_series(s, r.config.outlier_sigma);
