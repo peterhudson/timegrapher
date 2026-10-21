@@ -19,7 +19,7 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
-(Ctrl+Shift+S), New Session and Quit (Ctrl+Q). **View**: a tick for the
+(Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q). **View**: a tick for the
 readings and for each pane, Reset Panes and Appearance (Auto, Light,
 Dark). **Help**: Check for Updates…, Check for Updates at Start, Report a
 Problem… and, on Linux, **Add to Applications Menu**, which puts the app
@@ -916,6 +916,33 @@ timegrapher long "2026-10-08T21-30-00_Yacht-Master_Rolex_3235/" \
 
 The WAV header is brought up to date every 10 s, so a recording survives
 the program being stopped abruptly.
+
+**Save Analysis Only…** keeps a microphone session's readings without its
+sound, for long takes whose sound would fill the disk. Once listening has
+stopped, it asks for a folder and reads the whole session's sound again,
+in the background with its progress (and a Cancel) in the status bar:
+once for the beats and amplitude windows, as opening the take would find
+them, then for the Tick Tock profiles of each 2 seconds, the signal
+figure, the clock error the USB lines show and each position's beat
+shape. It then writes a new folder, named as a saved take with
+`_analysis` on the end, holding `session.toml` (with `audio = false`),
+`session.json`, `clock.csv`, `positions-test.json` when there is one, and
+an `analysis/` folder, and no sound; the message says how much space it
+takes. A folder already there is never written over. While it works, a
+progress bar in the status bar shows how far it has read, with Cancel,
+which leaves nothing written; listening, New Session and opening a
+recording are refused with a message saying it is still keeping the
+analysis. The session's sound itself stays unsaved: the status bar says
+its analysis is kept, and Save still keeps the sound. The layout is
+in [sessions.md](sessions.md#a-take-kept-as-its-analysis-alone).
+
+Opened, such a take shows its readings, Paper Strip, charts, Steadiness
+tests and position stretches as the take with its sound would, from the
+beats it kept, and the Tick Tock Profile from the profile kept for the
+2 seconds before the moment shown. It can't be measured again with
+other settings, and the Scope and Replay need the sound: the Scope says
+there is no waveform, and Replay says the take can't be replayed. Masks
+can still be changed and saved into its `session.toml`.
 
 ## Without a window
 

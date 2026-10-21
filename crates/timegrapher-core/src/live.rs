@@ -968,6 +968,12 @@ fn clipped_out(x: &[f32], fs: f64, beats: &[Beat]) -> bool {
     beats.len() >= 8 && Clipping::measure(x, fs, beats).beat_fraction > 0.5
 }
 
+/// The signal figure of `beats` in `env`: the median beat peak over the
+/// median of the envelope, as the readings give it.
+pub fn signal_figure(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
+    snr(env, fs, beats)
+}
+
 /// Median beat peak over the median of the envelope.
 fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
     let w = (0.001 * fs) as usize;

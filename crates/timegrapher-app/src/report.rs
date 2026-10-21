@@ -841,7 +841,7 @@ fn excerpt_document(summary: &Summary, cfg: &AnalysisConfig) -> Result<Value, St
 }
 
 /// The same `software` block the command line's documents carry.
-fn software() -> Value {
+pub(crate) fn software() -> Value {
     let dirty = match env!("TIMEGRAPHER_GIT_DIRTY") {
         "true" => json!(true),
         "false" => json!(false),

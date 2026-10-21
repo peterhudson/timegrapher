@@ -3954,6 +3954,7 @@ dependencies = [
  "claxon",
  "cpal",
  "flacenc",
+ "flate2",
  "hound",
  "realfft",
  "serde",
