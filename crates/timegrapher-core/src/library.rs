@@ -188,8 +188,9 @@ fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// A folder name for `name` that every system accepts: the characters
 /// Windows forbids and control characters become `-`, trailing dots and
-/// spaces go, a name Windows keeps for devices gets `_` after it, and it
-/// is cut to 100 characters. The name as typed stays in the files.
+/// spaces go, a name Windows keeps for devices (`CON`, `LPT1`, also
+/// with an extension) gets `_` before its first dot, and it is cut to 100
+/// characters first. The name as typed stays in the files.
 pub fn folder_name(name: &str) -> String {
     let mut s: String = name
         .trim()
@@ -520,7 +521,8 @@ impl Library {
 }
 
 /// `p` with links followed: the nearest folder of it that exists,
-/// resolved, with the rest of `p` after it.
+/// resolved, with the rest of `p` after it. A `..` in the part that
+/// doesn't exist is left as it is (no caller passes one).
 fn resolved(p: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut at = p;
@@ -538,12 +540,15 @@ fn resolved(p: &Path) -> PathBuf {
     }
 }
 
-/// Move the library at `from` to `to`, which must be missing or empty:
-/// renamed where both are on one disk, else copied whole, written to the
-/// disk, checked and only then removed from `from`. `Ok(None)` when it
-/// is all at `to`. `Ok(Some(why))` when it is all at `to` but some of
-/// `from` couldn't be removed: `from` is no longer a library then (its
-/// `library.toml` goes first), and `why` says what is left.
+/// Move the library at `from` to `to`, which must be missing or empty
+/// and not inside `from`, links followed. A rename is tried first; where
+/// it fails (another disk), the library is copied, each file written to
+/// the disk, with `library.toml` last, the copy's bytes and entries
+/// checked against `from`, and only then `from` removed, its
+/// `library.toml` first. `Ok(None)` when it is all at `to` and `from` is
+/// gone. `Ok(Some(why))` when it is all at `to` but some of `from`
+/// couldn't be removed; `why` says so. A copy that fails or doesn't match
+/// is removed and `from` left as it was.
 pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     if !Library::is_library(from) {
         return Err(format!("{} is not a Timegrapher library", from.display()));
@@ -568,19 +573,22 @@ pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
 
 /// [`move_library`] onto another disk: copy, check, then remove `from`.
 fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
-    let copied = copy_tree(from, to).and_then(|_| {
-        let (a, b) = (stamp(from), stamp(to));
-        if (a.bytes, a.entries) == (b.bytes, b.entries) {
-            Ok(())
-        } else {
-            Err(format!(
-                "The copy in {} doesn't match the library ({} of {} bytes)",
-                to.display(),
-                b.bytes,
-                a.bytes
-            ))
-        }
-    });
+    // library.toml last, so a copy cut short is not a library.
+    let copied = copy_tree(from, to, &[LIBRARY_FILE])
+        .and_then(|_| copy_file(&from.join(LIBRARY_FILE), &to.join(LIBRARY_FILE)))
+        .and_then(|_| {
+            let (a, b) = (stamp(from), stamp(to));
+            if (a.bytes, a.entries) == (b.bytes, b.entries) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "The copy in {} doesn't match the library ({} of {} bytes)",
+                    to.display(),
+                    b.bytes,
+                    a.bytes
+                ))
+            }
+        });
     match copied {
         Ok(()) => {
             let gone =
@@ -601,18 +609,16 @@ fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
     }
 }
 
-fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
+/// Copy `from` into `to`, leaving out the top-level files in `skip`.
+fn copy_tree(from: &Path, to: &Path, skip: &[&str]) -> Result<(), String> {
     fs::create_dir_all(to).map_err(|e| format!("{}: {e}", to.display()))?;
     for e in fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))? {
         let e = e.map_err(|e| format!("{}: {e}", from.display()))?;
         let (src, dst) = (e.path(), to.join(e.file_name()));
         if e.file_type().is_ok_and(|t| t.is_dir()) {
-            copy_tree(&src, &dst)?;
-        } else {
-            fs::copy(&src, &dst)
-                // Opened for writing: Windows flushes only a file it may write.
-                .and_then(|_| fs::OpenOptions::new().write(true).open(&dst)?.sync_all())
-                .map_err(|e| format!("{}: {e}", src.display()))?;
+            copy_tree(&src, &dst, &[])?;
+        } else if !skip.iter().any(|s| e.file_name() == *s) {
+            copy_file(&src, &dst)?;
         }
     }
     // The folder's own entries too, where the system allows it (not on
@@ -621,6 +627,21 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
         let _ = d.sync_all();
     }
     Ok(())
+}
+
+/// Copy one file and write it to the disk through the handle that wrote
+/// it, then give it the original's permissions (so a read-only file stays
+/// read-only, and is never opened for writing).
+fn copy_file(src: &Path, dst: &Path) -> Result<(), String> {
+    let copied = (|| {
+        let mut r = fs::File::open(src)?;
+        let mut w = fs::File::create(dst)?;
+        std::io::copy(&mut r, &mut w)?;
+        w.sync_all()?;
+        drop(w);
+        fs::set_permissions(dst, r.metadata()?.permissions())
+    })();
+    copied.map_err(|e| format!("Copying {} to {}: {e}", src.display(), dst.display()))
 }
 
 fn file_name(p: &Path) -> String {
@@ -962,7 +983,10 @@ mod tests {
         {
             let link = scratch("create-link");
             std::os::unix::fs::symlink(&root, &link).unwrap();
-            assert!(move_library(&root, &link.join("inside")).is_err());
+            // Lexically outside the library, so only the links followed
+            // find it inside.
+            let refused = move_library(&root, &link.join("inside")).unwrap_err();
+            assert!(refused.contains("inside itself"), "{refused}");
             let _ = fs::remove_file(&link);
         }
         assert!(Library::is_library(&root) && other.join("keep.txt").is_file());
@@ -983,9 +1007,31 @@ mod tests {
             1,
             "2026-10-20T17:00:00Z",
         );
+        // A read-only file is copied, and stays read-only.
+        let locked = dir.join(PHOTOS).join("dial.jpg");
+        fs::write(&locked, b"jpeg").unwrap();
+        let mut ro = fs::metadata(&locked).unwrap().permissions();
+        ro.set_readonly(true);
+        fs::set_permissions(&locked, ro).unwrap();
         lib.scan();
         let to = scratch("across-to");
-        assert_eq!(copy_across(&root, &to), Ok(None));
+        // Removing a read-only file fails on Windows; the whole library is
+        // at `to` either way.
+        let moved = copy_across(&root, &to).unwrap();
+        let copy = to.join(file_name(&dir)).join(PHOTOS).join("dial.jpg");
+        assert_eq!(fs::read(&copy).unwrap(), b"jpeg");
+        assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+        if cfg!(windows) {
+            if moved.is_some() {
+                let mut rw = fs::metadata(&locked).unwrap().permissions();
+                #[allow(clippy::permissions_set_readonly_false)]
+                rw.set_readonly(false);
+                fs::set_permissions(&locked, rw).unwrap();
+                let _ = fs::remove_dir_all(&root);
+            }
+        } else {
+            assert_eq!(moved, None);
+        }
         assert!(!root.exists());
         let moved = Library::open(&to).unwrap();
         assert_eq!(moved.watches[0].takes, lib.watches[0].takes);

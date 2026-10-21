@@ -190,10 +190,12 @@ default (calibre not set)" when no calibre or lift angle is set
 in the stretch. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
 Tock named by the beat count across 1 break"). Where the beat error's
-sign differs either side of a cut in the take (the one decision
-`analyze` makes), the whole-take line under the Beat Error card is the
-mean and spread of every reading's size, and a line under it says
-"whole take given as a size: its sign differs either side of a cut".
+sign differs either side of a cut (a pause, a jump, a move or its
+settling) among the beats of the position the whole-take line covers
+(the decision `analyze` makes over its stretches), that line under the
+Beat Error card is the mean and spread of every reading's size, and a
+line under it says "whole take given as a size: its sign differs either
+side of a cut".
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
@@ -774,7 +776,11 @@ Settings' **Library** section shows where it is and how many watches and
 takes it holds and their size, with **Show in Finder** (Explorer on
 Windows, File Manager on Linux), **Move Library…** (into a folder picked,
 asking first; onto another disk it is copied, checked and only then
-removed), **Choose Another…** (a library elsewhere, or an empty folder
+removed; closing the window or File > Quit waits until it is done,
+though on macOS Cmd+Q and Quit in the app menu or the Dock do not; a
+move cut short that way leaves the library whole in one place or the
+other, and Choose Another… finds it if it is the new one),
+**Choose Another…** (a library elsewhere, or an empty folder
 for a new one; nothing is moved) and, once another is chosen, **Use the
 Default**. The app does not yet add watches or takes to it.
 

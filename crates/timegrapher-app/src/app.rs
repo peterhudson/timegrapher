@@ -3393,17 +3393,24 @@ impl TimegrapherApp {
 
     /// [`Self::whole_take`] for a signed figure, the beat error, and
     /// whether it was taken as sizes: where its sign turns over across a
-    /// cut ([`timegrapher_core::timing::sign_turns`], the one decision
-    /// `analyze` and `session` make), each reading counts by its size, so
-    /// a turn at a jump does not cancel the size either side.
+    /// cut within the beats of the position the readings are taken in
+    /// ([`timegrapher_core::timing::sign_turns`], the decision `analyze`
+    /// and `session` make over their stretches), each reading counts by
+    /// its size, so a turn at a jump does not cancel the size either side.
     fn whole_take_signed(
         &self,
         f: impl Fn(&TrendPoint) -> Option<f64>,
     ) -> Option<((f64, f64, f64), bool)> {
         let turned = self.live.as_ref().is_some_and(|l| {
+            let beats: Vec<_> = l
+                .beats()
+                .iter()
+                .filter(|b| self.in_position(b.time))
+                .copied()
+                .collect();
             !l.breaks().is_empty()
                 && l.bph().is_some_and(|bph| {
-                    timegrapher_core::timing::sign_turns(l.beats(), bph, l.breaks())
+                    timegrapher_core::timing::sign_turns(&beats, bph, l.breaks())
                 })
         });
         Some((self.whole_take_as(f, turned)?, turned))
@@ -6364,7 +6371,7 @@ impl TimegrapherApp {
                             .on_hover_text(
                                 "The beat error's sign differs either side of a cut in the \
                                  take, so the whole take's mean and spread are of each \
-                                 reading's size, as analyze gives it.",
+                                 reading's size rather than of the signed readings.",
                             );
                         }
                     }
