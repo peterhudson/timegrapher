@@ -179,7 +179,8 @@ leave no step to see, and then the names can swap unnoticed; the
 The app's live readings never reach across a pause, a break, a jump or
 a masked stretch. A Positions Test's reading of a position with a mask
 in it does cover it, and so do the command line's whole-take figures
-(`analyze`, `session`, `long`). They measure the beat error on each side
+(`analyze`, `session`, `long`) and the readings `long` and `series`
+make for each slice. They measure the beat error on each side
 apart and then combine the sides. When both sides give the same
 sign, the combined figure is their average, weighted by beats. When the
 sign turns over from one side to the other, as it can when the names
@@ -188,6 +189,10 @@ sizes instead and the figure is given as positive: a watch at 0.6 ms on
 both sides reads 0.6 ms rather than a near-zero average of +0.6 and
 -0.6. Only a stretch of at least 10 seconds of beats counts towards that
 decision.
+Where Tick and Tock were named across a break by the beat count rather
+than told apart by their sound, `analyze`, `long` and `series` say so: a
+`sides_by_count` caveat in the JSON, and in `long`'s and `series`'s text a **Sides**
+line.
 
 A continuous run is especially valuable for
 [Isochronism](10-isochronism.md). For reports over hours or days, the

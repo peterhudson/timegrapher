@@ -301,7 +301,9 @@ as `1/√τ`. That is the reference behaviour for independent reading noise:
 four times as much averaging gives half the scatter. It is not a
 manufacturer's tolerance line. A curve that flattens or rises indicates
 that averaging longer is no longer removing the variation in the same
-way. Drift and cycles can both do this.
+way. Drift and cycles can both do this. A cycle of period *P* puts a
+bump in the curve, highest near 0.37 *P*: an 8-minute cycle peaks near
+180 seconds.
 
 The annotated minimum is the lowest sampled deviation among points with
 enough comparisons. Use it as a guide to repeatability **for this
