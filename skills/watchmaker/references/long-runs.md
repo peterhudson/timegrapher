@@ -61,7 +61,10 @@ Report       syn_long/report.html
 (That one is synthetic: a watch made to lose 30 s/d and 15° for 8 s of
 every minute, `timegrapher synth syn.wav --duration 1800 --rate 8 --snr
 24 --fault-period 60`. The 20.01 s amplitude line is a third of that
-60 s cycle and matches no wheel.)
+60 s cycle and matches no wheel. The 60 s amplitude swing reads low,
+11.4° against the 15° put in, because the amplitude's average cycle is
+kept to two harmonics, which round off a short dip; the repository's
+`docs/long-runs.md` explains why.)
 
 - **Clean percentage.** Beats matched well. Under about 95% (the
   project's rule of thumb), something
@@ -72,7 +75,11 @@ every minute, `timegrapher synth syn.wav --duration 1800 --rate 8 --snr
   lines in the recording, nothing is corrected and the rates are on the
   card's clock.
 - **Beat error.** Measured from the unlock (the figure to quote), with
-  the drop's in brackets.
+  the drop's in brackets. Where its sign turns over across a break, it
+  and the slices' beat errors are sizes, given as positive.
+- **Sides** (only on a paused take). Present when Tick and Tock were
+  named by the beat count across a break, not told apart by their
+  sound (the `sides_by_count` caveat).
 - **Rate.** The average over the run, and how far the rate wandered from
   slice to slice. A wide 5th–95th range is the "wandering trace".
 - **Amplitude.** Median and range over the run. On a full-reserve run,
