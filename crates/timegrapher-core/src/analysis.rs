@@ -337,10 +337,12 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         },
         watch_heard,
         overall,
-        beat_error_unlock_ms: median_of(
-            amplitude_windows
+        beat_error_unlock_ms: timing::median_across(
+            &amplitude_windows
                 .iter()
-                .filter_map(|w| w.beat_error_unlock_ms),
+                .filter_map(|w| Some(((w.start_s + w.end_s) / 2.0, w.beat_error_unlock_ms?)))
+                .collect::<Vec<_>>(),
+            &cuts,
         ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
