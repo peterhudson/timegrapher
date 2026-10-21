@@ -312,6 +312,8 @@ pub fn beat_log(s: &Scenario, seed: u64) -> crate::stream::BeatLog {
         clipped_beats: vec![],
         clipped_samples: 0,
         jumps: vec![],
+        sided: vec![],
+        by_count: vec![],
     }
 }
 
