@@ -149,9 +149,13 @@ def parse_time(text):
 
 
 def pull_request(api, run):
-    """The open pull request this run tested, or None."""
-    for pr in run.get("pull_requests") or []:
-        return pr["number"]
+    """The open pull request whose head is this run's commit, or None."""
+    # GitHub lists the pull requests open on the run's branch now, which can
+    # be a newer one than the run tested, so check the state and the head.
+    for listed in run.get("pull_requests") or []:
+        pr = api.get(f"/pulls/{listed['number']}")
+        if pr.get("state") == "open" and pr.get("head", {}).get("sha") == run.get("head_sha"):
+            return pr["number"]
     # Runs from forks list no pull requests; match the head commit instead.
     for pr in pages(api, "/pulls?state=open"):
         if pr.get("head", {}).get("sha") == run.get("head_sha"):
@@ -160,22 +164,29 @@ def pull_request(api, run):
 
 
 def flag(api, run, kind, text):
-    """Post text once per run, attempt and kind: on the PR, or main's issue."""
+    """Post text once per run, attempt and kind: on the PR, or main's issue.
+
+    The marker is looked for in every issue the watchdog opened and every
+    comment updated since the run began, so closing the "CI stalled" issue
+    does not bring the same flag back on a new one.
+    """
     marker = f"<!-- ci-watchdog:{kind}:{run['id']}:{run.get('run_attempt', 1)} -->"
     body = f"{marker}\n{text}"
+    since = urllib.parse.quote(run.get("created_at") or "", safe="")
+    ours = pages(api, f"/issues?state=all&creator=github-actions%5Bbot%5D&since={since}")
+    comments = pages(api, f"/issues/comments?since={since}")
+    if any(marker in (row.get("body") or "") for row in ours + comments):
+        return "already flagged"
     number = None if on_main(run) else pull_request(api, run)
     if number is None:
+        # Not the since-filtered list: an open issue untouched since the run
+        # began is still the one to comment on.
         issues = [issue for issue in pages(api, "/issues?state=open&creator=github-actions%5Bbot%5D")
                   if MAIN_ISSUE in (issue.get("body") or "") and "pull_request" not in issue]
         if not issues:
             api.post("/issues", {"title": "CI stalled", "body": f"{MAIN_ISSUE}\n{body}"})
             return "opened an issue"
         number = issues[0]["number"]
-        if marker in (issues[0].get("body") or ""):
-            return f"already flagged on #{number}"
-    comments = pages(api, f"/issues/{number}/comments")
-    if any(marker in (comment.get("body") or "") for comment in comments):
-        return f"already flagged on #{number}"
     api.post(f"/issues/{number}/comments", {"body": body})
     return f"commented on #{number}"
 
@@ -189,6 +200,9 @@ def completed(api, run_id, log=print):
     run = api.get(f"/actions/runs/{run_id}")
     if not is_ci(run):
         log(f"run {run_id}: not this repository's CI workflow")
+        return "skip"
+    if run.get("event") == "pull_request" and pull_request(api, run) is None:
+        log(f"run {run_id}: its pull request is closed")
         return "skip"
     jobs = pages(api, f"/actions/runs/{run_id}/jobs?filter=latest", "jobs")
     annotations = {job["id"]: pages(api, f"/check-runs/{job['id']}/annotations")
@@ -210,6 +224,8 @@ def sweep(api, now, log=print):
     for status in ("queued", "in_progress"):
         for run in pages(api, f"/actions/workflows/ci.yml/runs?status={status}", "workflow_runs"):
             if not is_ci(run):
+                continue
+            if run.get("event") == "pull_request" and pull_request(api, run) is None:
                 continue
             late = stalled(pages(api, f"/actions/runs/{run['id']}/jobs?filter=latest", "jobs"), now)
             for name, minutes in late:
