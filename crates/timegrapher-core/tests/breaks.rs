@@ -421,10 +421,14 @@ fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
 }
 
 #[test]
-fn a_short_tail_of_the_other_sign_turns_no_beat_error_over() {
-    // 90 s at one sign, a hole, then only 6 s at the other: too short to
-    // count as a stretch of its own, so it sets no sign, and the drop's
-    // and the unlock's beat errors keep one sign, the long stretch's.
+fn the_drop_and_the_unlock_keep_one_sign_near_a_whole_stretch() {
+    // A long stretch at one sign, a hole, and a short one at the other,
+    // near the length a stretch needs to be fitted on its own: a tail of
+    // 12.5 to 13.5 s (about 10.4 to 11.4 s of beats, but only 8 s of 2 s
+    // windows) and a head of 9 to 10 s (under 10 s of beats, but 10 s of
+    // windows), both ways round. The drop's and the unlock's beat errors
+    // decide together whether the sign turns over, so in `session` and in
+    // `long` they never come out with opposite signs.
     let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
         generate(
             &SynthConfig {
@@ -438,25 +442,47 @@ fn a_short_tail_of_the_other_sign_turns_no_beat_error_over() {
             |_| 0.0,
         )
     };
-    let a = piece(90.03, 0.6, 1);
-    let b = piece(6.0, -0.6, 2);
-    let fs = a.sample_rate;
-    let mut samples = a.samples;
-    samples.extend(b.samples);
-    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
-    let found = breaks::with_jumps(Vec::new(), &log.jumps);
-    log.by_count = breaks::renumber(
-        &mut log.beats,
-        &mut log.amplitude_windows,
-        &found,
-        &log.sided,
-        log.bph,
-    );
-    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
-    let drop = m.beat_error_ms.expect("beat error");
-    let unlock = m.beat_error_unlock_ms.expect("unlock beat error");
-    assert!(
-        drop * unlock > 0.0 && drop.abs() > 0.4 && unlock.abs() > 0.4,
-        "drop {drop}, unlock {unlock}"
-    );
+    let lc = LongConfig::default();
+    for (first_s, then_s) in [
+        (90.03, 12.5),
+        (90.03, 13.0),
+        (90.03, 13.5),
+        (9.03, 90.0),
+        (9.53, 90.0),
+        (10.03, 90.0),
+    ] {
+        for sign in [1.0, -1.0] {
+            let a = piece(first_s, 0.6 * sign, 1);
+            let b = piece(then_s, -0.6 * sign, 2);
+            let fs = a.sample_rate;
+            let mut samples = a.samples;
+            samples.extend(b.samples);
+            let mut log =
+                timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+            let found = breaks::with_jumps(Vec::new(), &log.jumps);
+            log.by_count = breaks::renumber(
+                &mut log.beats,
+                &mut log.amplitude_windows,
+                &found,
+                &log.sided,
+                log.bph,
+            );
+            let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+            let long = longrun::analyse_with_breaks(&log, None, &found, &lc);
+            for (what, drop, unlock) in [
+                ("session", m.beat_error_ms, m.beat_error_unlock_ms),
+                (
+                    "long",
+                    long.overall.map(|f| f.beat_error_ms),
+                    long.beat_error_unlock_ms,
+                ),
+            ] {
+                let (drop, unlock) = (drop.expect("beat error"), unlock.expect("unlock"));
+                assert!(
+                    drop * unlock > 0.0 && drop.abs() > 0.4 && unlock.abs() > 0.4,
+                    "{what}, {first_s} s then {then_s} s, sign {sign}: drop {drop}, unlock {unlock}"
+                );
+            }
+        }
+    }
 }

@@ -208,40 +208,29 @@ pub fn signed_across(parts: &[(f64, f64)]) -> Option<f64> {
     Some(parts.iter().map(|p| v(p.0) * p.1).sum::<f64>() / w)
 }
 
-/// The median of signed figures over windows `(start_s, end_s, value)`
-/// across the stretches between `cuts`: of the values when the stretches
-/// agree in sign, else of their sizes, given as positive (see
-/// [`signed_across`]). A stretch's sign is its windows' median, and only a
-/// stretch whose windows span [`MIN_PIECE_S`] or more has one, as only
-/// such a stretch counts in [`fit_pieces`]; every window's value is pooled.
-pub fn median_across(windows: &[(f64, f64, f64)], cuts: &[f64]) -> Option<f64> {
-    let v: Vec<(f64, f64, f64)> = windows
-        .iter()
-        .copied()
-        .filter(|w| w.2.is_finite())
+/// Whether the beat error turns over across `cuts`: the whole stretches
+/// that [`fit_pieces`] fits differ in the sign of their beat error, so it
+/// combines them as sizes. Other beat-error figures over the same beats
+/// follow this one decision ([`median_signed`]), so they keep one sign.
+pub fn sign_turns(beats: &[Beat], bph: u32, cuts: &[f64]) -> bool {
+    let be: Vec<f64> = pieces(beats, cuts)
+        .into_iter()
+        .filter(|p| whole(p))
+        .filter_map(|p| fit(p, bph))
+        .map(|f| f.beat_error_ms)
         .collect();
-    if v.is_empty() {
-        return None;
-    }
-    let piece = |w: &(f64, f64, f64)| cuts.iter().filter(|&&c| c <= w.0).count();
-    let mut signs = (false, false);
-    for k in 0..=cuts.len() {
-        let here: Vec<&(f64, f64, f64)> = v.iter().filter(|w| piece(w) == k).collect();
-        let span = here.iter().map(|w| w.1).fold(f64::NEG_INFINITY, f64::max)
-            - here.iter().map(|w| w.0).fold(f64::INFINITY, f64::min);
-        if here.is_empty() || span < MIN_PIECE_S - 1e-9 {
-            continue;
-        }
-        let m = crate::dsp::median(&mut here.iter().map(|w| w.2).collect::<Vec<_>>());
-        signs.0 |= m > 0.0;
-        signs.1 |= m < 0.0;
-    }
-    let mixed = signs.0 && signs.1;
-    let mut all: Vec<f64> = v
-        .iter()
-        .map(|w| if mixed { w.2.abs() } else { w.2 })
+    be.iter().any(|&v| v > 0.0) && be.iter().any(|&v| v < 0.0)
+}
+
+/// The median of signed figures (a beat error's 2 s windows): of their
+/// sizes, given as positive, where the sign turns over ([`sign_turns`]),
+/// else of the values.
+pub fn median_signed(values: impl Iterator<Item = f64>, turned: bool) -> Option<f64> {
+    let mut v: Vec<f64> = values
+        .filter(|x| x.is_finite())
+        .map(|x| if turned { x.abs() } else { x })
         .collect();
-    Some(crate::dsp::median(&mut all))
+    (!v.is_empty()).then(|| crate::dsp::median(&mut v))
 }
 
 /// [`residuals`] for a take with breaks: each stretch against its own fit,
@@ -304,17 +293,15 @@ mod tests {
         assert!((signed_across(&[(-0.6, 3.0), (-0.2, 1.0)]).unwrap() + 0.5).abs() < 1e-12);
         assert_eq!(signed_across(&[(0.4, 1.0), (0.0, 1.0)]), Some(0.2));
         assert_eq!(signed_across(&[]), None);
-        // Windows 2 s long: 12 s at one sign, a cut, 12 s at the other.
-        let w = |a: f64, v: f64| (a, a + 2.0, v);
-        let mut v: Vec<_> = (0..6).map(|i| w(2.0 * i as f64, -0.6)).collect();
-        v.extend((0..6).map(|i| w(20.0 + 2.0 * i as f64, 0.6)));
-        assert_eq!(median_across(&v, &[19.0]), Some(0.6));
-        assert_eq!(median_across(&v, &[]), Some(0.0));
-        assert_eq!(median_across(&v[..6], &[19.0]), Some(-0.6));
-        // One short scrap after the cut does not set a sign.
-        let mut v: Vec<_> = (0..20).map(|i| w(2.0 * i as f64, -0.6)).collect();
-        v.push(w(50.0, 0.6));
-        assert_eq!(median_across(&v, &[45.0]), Some(-0.6));
+        assert_eq!(
+            median_signed([-0.6, -0.5, 0.6].into_iter(), true),
+            Some(0.6)
+        );
+        assert_eq!(
+            median_signed([-0.6, -0.5, 0.6].into_iter(), false),
+            Some(-0.5)
+        );
+        assert_eq!(median_signed([f64::NAN].into_iter(), false), None);
     }
 
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on
