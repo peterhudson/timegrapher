@@ -3370,6 +3370,23 @@ impl TimegrapherApp {
     /// points with a watch heard, their spread (standard deviation) and the
     /// time they cover.
     fn whole_take(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
+        self.whole_take_as(f, false)
+    }
+
+    /// [`Self::whole_take`] for a signed figure, the beat error: the
+    /// stretches between breaks are combined as `timegrapher session`
+    /// combines them ([`timegrapher_core::timing::signed_across`]), each
+    /// weighted by its points, as sizes where the sign turns over, so a
+    /// turn at a jump does not cancel the size either side.
+    fn whole_take_signed(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
+        self.whole_take_as(f, true)
+    }
+
+    fn whole_take_as(
+        &self,
+        f: impl Fn(&TrendPoint) -> Option<f64>,
+        signed: bool,
+    ) -> Option<(f64, f64, f64)> {
         if self.running() || self.view_end.is_some() {
             return None;
         }
@@ -3384,8 +3401,28 @@ impl TimegrapherApp {
             return None;
         }
         let n = pts.len() as f64;
-        let mean = pts.iter().map(|p| p.1).sum::<f64>() / n;
-        let sd = (pts.iter().map(|p| (p.1 - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+        let breaks = self.live.as_ref().map_or(&[][..], |l| l.breaks());
+        // Each stretch between breaks: its points' mean and how many.
+        let mut parts: Vec<(f64, f64)> = Vec::new();
+        let mut at = None;
+        for &(t, v) in &pts {
+            let k = breaks.partition_point(|&b| b <= t);
+            if at != Some(k) {
+                parts.push((0.0, 0.0));
+                at = Some(k);
+            }
+            let last = parts.last_mut()?;
+            *last = (last.0 + v, last.1 + 1.0);
+        }
+        let parts: Vec<(f64, f64)> = parts.iter().map(|p| (p.0 / p.1, p.1)).collect();
+        let turned = signed && parts.iter().any(|p| p.0 > 0.0) && parts.iter().any(|p| p.0 < 0.0);
+        let v = |x: f64| if turned { x.abs() } else { x };
+        let mean = if signed {
+            timegrapher_core::timing::signed_across(&parts)?
+        } else {
+            pts.iter().map(|p| p.1).sum::<f64>() / n
+        };
+        let sd = (pts.iter().map(|p| (v(p.1) - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
         Some((mean, sd, span))
     }
 
@@ -5489,12 +5526,12 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             ui.label(
                 "Rates from this input are then read on its own clock, uncorrected, here, on \
-                 the command line and in the MCP server. Getting it back takes 20 minutes or \
-                 more of listening and Keep.",
+                 the command line and in the MCP server. In the app, getting it back takes 20 \
+                 minutes or more of listening and Keep.",
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.add(theme::primary(ui, "Forget")).clicked() {
+                if ui.add(theme::destructive(ui, "Forget")).clicked() {
                     choice = Some(true);
                 }
                 if ui
@@ -5561,7 +5598,8 @@ impl TimegrapherApp {
         });
         match forgot {
             Ok(s) => {
-                // The input listening now loses its True Clock too.
+                // The microphone session in hand, listening or stopped,
+                // loses its True Clock too.
                 if self.clock.as_ref().is_some_and(|c| c.device == device) {
                     self.clock = None;
                 }
@@ -6117,7 +6155,7 @@ impl TimegrapherApp {
                         "The big figure is timed from the unlock, as tg shows it: quote \
                          that one. The drop figure is a second opinion.",
                     );
-                    if let Some((m, sd, span)) = self.whole_take(|p| p.beat_error_unlock) {
+                    if let Some((m, sd, span)) = self.whole_take_signed(|p| p.beat_error_unlock) {
                         whole_line(
                             ui,
                             format!("{:.2} ms", m.abs()),
@@ -9501,6 +9539,23 @@ fn reading_limits(
                 format!("{heard} bph heard"),
                 format!("The beat rate set differs from the {heard} bph heard."),
             )),
+            (Caveat::BeatErrorAsSize, "Beat Error") => Some((
+                "given as a size".to_string(),
+                "The beat error is given as a size: its sign differs either side of a cut \
+                 in this stretch."
+                    .to_string(),
+            )),
+            (Caveat::SidesByCount { count }, "Beat Error") => Some((
+                format!(
+                    "Tick and Tock named by the beat count across {count} break{}",
+                    if *count == 1 { "" } else { "s" }
+                ),
+                format!(
+                    "Tick and Tock are named by the beat count across {count} break{} in \
+                     this stretch, not told apart by their sound.",
+                    if *count == 1 { "" } else { "s" }
+                ),
+            )),
             (Caveat::Breaks { count }, _) => Some((
                 format!("{count} pause{}", if *count == 1 { "" } else { "s" }),
                 format!("The take was paused {count} times in this stretch."),
@@ -9579,6 +9634,25 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn a_beat_error_across_a_cut_says_how_it_was_given() {
+        let caveats = [Caveat::BeatErrorAsSize, Caveat::SidesByCount { count: 2 }];
+        let be = reading_limits("Beat Error", &caveats, 52.0, 30);
+        let short: Vec<&str> = be.iter().map(|f| f.0.as_str()).collect();
+        assert_eq!(
+            short,
+            [
+                "given as a size",
+                "Tick and Tock named by the beat count across 2 breaks"
+            ]
+        );
+        assert!(be[0].1.contains("its sign differs either side of a cut"));
+        assert!(be[1].1.contains("not told apart by their sound"));
+        // Neither touches the rate or the amplitude.
+        assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
+        assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
+    }
+
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
@@ -9655,6 +9729,46 @@ mod tests {
             "{why}"
         );
         assert!(app.resume_refusal("Mic A", "Mic A", 44_100).is_some());
+    }
+
+    /// The whole-take beat error over a jump where its sign turns over is
+    /// the size either side, weighted by the readings, as `timegrapher
+    /// session` gives it, not a mean that cancels to nothing.
+    #[test]
+    fn whole_take_beat_error_keeps_its_size_across_a_turn() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let mut live = LiveAnalyzer::new(48_000, LiveConfig::default());
+        live.set_breaks(vec![60.0]);
+        app.live = Some(live);
+        let point = |t: f64, be: f64| TrendPoint {
+            t,
+            rate: Some(5.0),
+            amplitude: None,
+            amplitude_a: None,
+            amplitude_b: None,
+            beat_error_unlock: Some(be),
+            beat_error_drop: None,
+            heard: true,
+        };
+        // 0.6 ms one way for 40 readings, then 0.4 ms the other for 20.
+        app.trend = (0..40)
+            .map(|i| point(10.0 + i as f64, 0.6))
+            .chain((0..20).map(|i| point(70.0 + i as f64, -0.4)))
+            .collect();
+        let (m, sd, _) = app
+            .whole_take_signed(|p| p.beat_error_unlock)
+            .expect("whole take");
+        assert!((m - (0.6 * 40.0 + 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
+        assert!(sd < 0.11, "the spread is of the sizes: {sd}");
+        // The plain mean would have all but cancelled.
+        let (plain, _, _) = app.whole_take(|p| p.beat_error_unlock).unwrap();
+        assert!(plain < m - 0.2, "{plain}");
+        // Agreeing in sign, it stays signed.
+        for p in &mut app.trend {
+            p.beat_error_unlock = p.beat_error_unlock.map(|v| -v.abs());
+        }
+        let (m, _, _) = app.whole_take_signed(|p| p.beat_error_unlock).unwrap();
+        assert!(m < 0.0, "{m}");
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on

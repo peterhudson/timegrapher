@@ -20,8 +20,8 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
-**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the readings and
-for each pane, and Reset Panes. **Help**: Check for Updates…, Report a
+**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the
+readings and for each pane, and Reset Panes. **Help**: Check for Updates…, Report a
 Problem… and, on Linux, **Add to Applications Menu**, which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
@@ -185,8 +185,13 @@ hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), "lift angle 52°, the
 default (calibre not set)" when no calibre or lift angle is set
-(amplitude), a beat rate set that differs from the one heard, and pauses in the stretch. No reading is
-graded. That the input's clock hasn't been measured is said in the Rate
+(amplitude), a beat rate set that differs from the one heard, and pauses in the stretch. On the
+beat error, an opened file whose Tick and Tock were named by the beat
+count across a break says so ("Tick and Tock named by the beat count
+across 1 break"), and one given as a size says so when its sign differs
+either side of a cut. The beat error over a take with breaks combines
+each stretch's mean, weighted by its beats, and is a size when their signs
+differ, as `analyze` gives it. No reading is graded. That the input's clock hasn't been measured is said in the Rate
 card's **?** rather than on the card, with how to measure it. When the beats found don't come at regular intervals (their
 timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No regular beat found
@@ -277,7 +282,9 @@ how far its settling or measuring has got. Then a Mean row, the largest
 difference between the rates (D), vertical less horizontal for rate and
 amplitude (DVH), and a plain line for each condition found in a
 position's sound: no regular beat (with its timing scatter), clipping,
-or under 10 s of beats. After the sixth, **Finish** reads the six
+under 10 s of beats, a beat error given as a size because its sign
+differs either side of a cut, or Tick and Tock named by the beat count
+across a break rather than by their sound. After the sixth, **Finish** reads the six
 together. The figures are `session`'s for the same stretches. **Save as
 CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
@@ -614,7 +621,9 @@ Desktop rate readings do not bridge those cuts; the overall fit still combines t
 pieces using their existing beat weights. Joining also keeps amplitude sides
 and signed beat errors aligned with the renumbered beats. This preserves
 supplied context; it does not detect new jumps or change the statistical tests.
-Amplitude-window eligibility across internal cuts is unchanged.
+Amplitude-window eligibility across internal cuts is unchanged. Where the
+beat error's sign differs either side of a cut, its readings are drawn as
+sizes, positive, as the tests beside them read them.
 
 The views:
 **Readings Over Time** (the readings in time order, with the stretches of
@@ -742,8 +751,8 @@ the end of the pane icons opens it over the app, with three sections:
 **General** (Appearance and Check for Updates at Start), **Calibres**
 (Manage Calibres, below) and **Sound Card Clock** (each input's kept
 clock with Forget; see True Clock). It opens at the section it was last
-left on. **Done**, Escape or a click outside closes it. What belongs to the watch on show (its calibre, lift angle,
-beat rate and position) and to the microphone (input, level, Show Every
+left on. **Done**, Escape or a click outside closes it. What belongs to
+the watch on show (its calibre, lift angle, beat rate and position) and to the microphone (input, level, Show Every
 Input, Keep Awake) stays in the Watch pane, beside what it sets.
 
 - **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with

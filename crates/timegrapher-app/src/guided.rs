@@ -1070,7 +1070,6 @@ pub struct Table {
 
 /// The conditions found in one position's measurement, as plain facts.
 fn conditions(label: &str, bph: u32, m: &Measurement) -> Vec<String> {
-    use timegrapher_core::measure::Caveat;
     let mut out = Vec::new();
     if !m.watch_heard {
         out.push(match m.jitter_us {
@@ -1090,12 +1089,26 @@ fn conditions(label: &str, bph: u32, m: &Measurement) -> Vec<String> {
             format!("{label}: clipping on {pct:.0}% of beats")
         });
     }
-    for c in &m.caveats {
-        if let Caveat::ShortSpan { span_s } = c {
-            out.push(format!("{label}: {span_s:.0} s of beats"));
-        }
-    }
+    out.extend(m.caveats.iter().filter_map(|c| caveat_condition(label, c)));
     out
+}
+
+/// The line for a caveat a position's reading carries, where the table
+/// says it.
+fn caveat_condition(label: &str, c: &timegrapher_core::measure::Caveat) -> Option<String> {
+    use timegrapher_core::measure::Caveat;
+    match c {
+        Caveat::ShortSpan { span_s } => Some(format!("{label}: {span_s:.0} s of beats")),
+        Caveat::BeatErrorAsSize => Some(format!(
+            "{label}: beat error given as a size, its sign differs either side of a cut"
+        )),
+        Caveat::SidesByCount { count } => Some(format!(
+            "{label}: Tick and Tock named by the beat count across {count} break{}, \
+             not told apart by their sound",
+            if *count == 1 { "" } else { "s" }
+        )),
+        _ => None,
+    }
 }
 
 fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
@@ -1489,6 +1502,22 @@ mod tests {
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    #[test]
+    fn a_position_says_how_its_beat_error_was_given() {
+        assert_eq!(
+            caveat_condition("Dial Up", &Caveat::BeatErrorAsSize).as_deref(),
+            Some("Dial Up: beat error given as a size, its sign differs either side of a cut")
+        );
+        assert_eq!(
+            caveat_condition("Dial Up", &Caveat::SidesByCount { count: 1 }).as_deref(),
+            Some(
+                "Dial Up: Tick and Tock named by the beat count across 1 break, not told \
+                 apart by their sound"
+            )
+        );
+        assert_eq!(caveat_condition("Dial Up", &Caveat::LiftUnknown), None);
+    }
 
     /// A bump of the stand inside a position, masked: the position is read
     /// without it, its rate comes back, the masked caveat says how much was

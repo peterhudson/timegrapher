@@ -156,6 +156,9 @@ pub struct LiveAnalyzer {
     /// Known jumps in an imported beat log. Replacing position/settling
     /// boundaries must not erase these intrinsic discontinuities.
     intrinsic_breaks: Vec<f64>,
+    /// The jumps of an imported beat log whose sides were named by the beat
+    /// count alone ([`BeatLog::by_count`]): a reading after one says so.
+    by_count: Vec<f64>,
     /// Intrinsic jumps and caller-supplied stretch boundaries, oldest first:
     /// readings never fit across one.
     breaks: Vec<f64>,
@@ -243,6 +246,7 @@ impl LiveAnalyzer {
             quiet_passes: 0,
             logged_bph: None,
             intrinsic_breaks: Vec::new(),
+            by_count: Vec::new(),
             breaks: Vec::new(),
             masked: Vec::new(),
             clock_known: false,
@@ -262,6 +266,7 @@ impl LiveAnalyzer {
         a.amp = log.amplitude_windows;
         a.clipped = log.clipped_beats;
         a.intrinsic_breaks = log.jumps;
+        a.by_count = log.by_count;
         a.set_breaks(Vec::new());
         a
     }
@@ -332,6 +337,7 @@ impl LiveAnalyzer {
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
         self.intrinsic_breaks.clear();
+        self.by_count.clear();
         self.breaks.clear();
         self.side_snips = [VecDeque::new(), VecDeque::new()];
         self.side_check = None;
@@ -928,7 +934,9 @@ impl LiveAnalyzer {
                 span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
                 listened_s,
                 breaks: 0,
-                sides_by_count: 0,
+                // Tick and Tock here are named across every such jump
+                // before the reading.
+                sides_by_count: self.by_count.iter().filter(|&&b| b <= end_s).count(),
                 beat_error_as_size: false,
                 average_s: Some(average_s),
             },
@@ -1377,6 +1385,32 @@ mod tests {
         let unmarked = LiveAnalyzer::from_log(unmarked, LiveConfig::default());
         assert!(unmarked.breaks().is_empty());
         assert!(unmarked.reading_at(90.0, 60.0).span_s > 50.0);
+    }
+
+    #[test]
+    fn an_opened_log_says_where_its_sides_were_named_by_count() {
+        let mut log = viewer_phase_log(0.0, 0.0);
+        log.by_count = log.jumps.clone();
+        let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let by_count = |end_s: f64| {
+            a.reading_at(end_s, 20.0)
+                .caveats
+                .iter()
+                .find_map(|c| match c {
+                    Caveat::SidesByCount { count } => Some(*count),
+                    _ => None,
+                })
+        };
+        // Before the jump the sides are as heard; after it, by the count.
+        assert_eq!(by_count(45.0), None);
+        assert_eq!(by_count(90.0), Some(1));
+        // Without the log's by-count jumps, nothing is said.
+        let plain = LiveAnalyzer::from_log(viewer_phase_log(0.0, 0.0), LiveConfig::default());
+        assert!(!plain
+            .reading_at(90.0, 20.0)
+            .caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::SidesByCount { .. })));
     }
 
     #[test]

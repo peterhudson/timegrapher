@@ -67,12 +67,21 @@ pub fn ppm_words(ppm: f64) -> String {
     }
 }
 
+/// A rate error in s/d with its sign, "+1.06" or "−0.42", and "0.00" for
+/// one too small to show.
+pub fn sd_words(s_per_day: f64) -> String {
+    match format!("{s_per_day:+.2}").as_str() {
+        "+0.00" | "-0.00" => "0.00".to_string(),
+        s => s.replace('-', "−"),
+    }
+}
+
 /// One kept clock's error in words: "12.3 ppm slow, +1.06 s/d on every rate".
 pub fn error_words(c: &DeviceClock) -> String {
     format!(
         "{}, {} s/d on every rate",
         ppm_words(c.ppm),
-        format!("{:+.2}", c.rate_error_s_per_day()).replace('-', "−")
+        sd_words(c.rate_error_s_per_day())
     )
 }
 
@@ -124,7 +133,7 @@ pub fn clock_section(ui: &mut egui::Ui, store: &Result<ClockStore, String>) -> O
                         ppm_words(c.ppm),
                         c.ppm_sd
                             .map_or(String::new(), |sd| format!(", give or take {sd:.1} ppm")),
-                        format!("{:+.2}", c.rate_error_s_per_day()).replace('-', "−"),
+                        sd_words(c.rate_error_s_per_day()),
                     ));
                         let over = if c.span_s > 0.0 {
                             format!(" over {}", crate::strip::fmt_time(c.span_s))
@@ -154,4 +163,19 @@ pub fn clock_section(ui: &mut egui::Ui, store: &Result<ClockStore, String>) -> O
                 });
         });
     forget
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tiny_error_reads_as_none() {
+        assert_eq!(sd_words(-0.001), "0.00");
+        assert_eq!(sd_words(0.004), "0.00");
+        assert_eq!(sd_words(-0.42), "−0.42");
+        assert_eq!(sd_words(1.06), "+1.06");
+        assert_eq!(ppm_words(-0.01), "0.0 ppm");
+        assert_eq!(ppm_words(12.3), "12.3 ppm slow");
+    }
 }
