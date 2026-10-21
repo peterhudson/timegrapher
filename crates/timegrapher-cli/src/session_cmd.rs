@@ -190,6 +190,22 @@ fn is_audio(p: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac"))
 }
 
+/// A kept take's beat log with its amplitudes at `lift_deg`, the lift this
+/// reading uses, where the analysis was kept at another: amplitude scales
+/// with the lift, as the app's lift change scales it.
+fn kept_at_lift(log: &BeatLog, lift_deg: f64) -> BeatLog {
+    let mut log = log.clone();
+    if lift_deg > 0.0 && log.lift_deg > 0.0 && lift_deg != log.lift_deg {
+        let k = lift_deg / log.lift_deg;
+        for w in &mut log.amplitude_windows {
+            w.even_deg = w.even_deg.map(|a| a * k);
+            w.odd_deg = w.odd_deg.map(|a| a * k);
+        }
+        log.lift_deg = lift_deg;
+    }
+    log
+}
+
 fn has_audio(dir: &Path) -> bool {
     fs::read_dir(dir).is_ok_and(|d| d.filter_map(|e| e.ok()).any(|e| is_audio(&e.path())))
 }
@@ -549,6 +565,14 @@ fn read_one_inner(
                 analysis_take::DIR
             ));
         }
+        if has_audio(&path) {
+            return Err(format!(
+                "{}: it holds both sound and an {}/ folder: a take is kept either with its \
+                 sound or as its analysis alone",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
         if capture {
             return Err(format!(
                 "{}: kept as its analysis alone, with no sound to record provenance for",
@@ -556,6 +580,12 @@ fn read_one_inner(
             ));
         }
         Some(analysis_take::read(&path).map_err(|err| format!("{}: {err}", e.file))?)
+    } else if c.m.audio == Some(false) {
+        return Err(format!(
+            "{}: {MANIFEST} says audio = false, but there is no {}/ folder to read",
+            e.file,
+            analysis_take::DIR
+        ));
     } else {
         None
     };
@@ -573,7 +603,7 @@ fn read_one_inner(
     }
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
     let mut log = match &kept {
-        Some(k) => k.log.clone(),
+        Some(k) => kept_at_lift(&k.log, cfg.analysis.amplitude.lift_deg),
         None => stream::analyze_files(&paths, &cfg, |_| {})
             .map_err(|err| format!("{}: {err}", e.file))?,
     };
@@ -609,7 +639,13 @@ fn read_one_inner(
         None => breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
     };
     let breaks = breaks::with_jumps(listed, &log.jumps);
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &breaks,
+        &log.sided,
+        log.bph,
+    );
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
@@ -1604,11 +1640,11 @@ mod tests {
             &stored,
         )
         .unwrap();
-        let read = |dir: &Path| -> serde_json::Value {
+        let read_at = |dir: &Path, lift: Option<f64>| -> serde_json::Value {
             let out = dir.join("out");
             let o = Options {
                 out: Some(out.clone()),
-                ..options(None, None, None)
+                ..options(None, lift, None)
             };
             run(&[dir.to_path_buf()], &o).unwrap();
             let v = serde_json::from_str(&fs::read_to_string(out.join("summary.json")).unwrap())
@@ -1616,6 +1652,7 @@ mod tests {
             let _ = fs::remove_dir_all(&out);
             v
         };
+        let read = |dir: &Path| read_at(dir, None);
         let (a, b) = (read(&full), read(&kept));
         for i in 0..2 {
             let (ra, rb) = (&a["readings"][i], &b["readings"][i]);
@@ -1652,6 +1689,34 @@ mod tests {
         };
         let html = crate::session_report::html(&s);
         assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));
+
+        // Read at another lift, the kept amplitudes are those the sound
+        // gives at it.
+        let (a, b) = (read_at(&full, Some(44.0)), read_at(&kept, Some(44.0)));
+        for i in 0..2 {
+            let f = |v: &serde_json::Value| {
+                v["readings"][i]["measurement"]["amplitude_deg"]
+                    .as_f64()
+                    .unwrap()
+            };
+            assert!(
+                (f(&a) - f(&b)).abs() < 0.01,
+                "reading {i} at 44°: {} and {}",
+                f(&a),
+                f(&b)
+            );
+        }
+
+        // A take is kept with its sound or as its analysis, never both, and
+        // a session file saying no sound needs the analysis to read.
+        fs::copy(&wav, kept.join("take_part01-001.wav")).unwrap();
+        let o = options(None, None, None);
+        let err = run(std::slice::from_ref(&kept), &o).unwrap_err();
+        assert!(err.contains("both sound and"), "{err}");
+        fs::remove_file(kept.join("take_part01-001.wav")).unwrap();
+        fs::remove_dir_all(kept.join(analysis_take::DIR)).unwrap();
+        let err = run(std::slice::from_ref(&kept), &o).unwrap_err();
+        assert!(err.contains("audio = false, but there is no"), "{err}");
         let _ = fs::remove_dir_all(&base);
     }
 

@@ -928,8 +928,12 @@ shape. It then writes a new folder, named as a saved take with
 `_analysis` on the end, holding `session.toml` (with `audio = false`),
 `session.json`, `clock.csv`, `positions-test.json` when there is one, and
 an `analysis/` folder, and no sound; the message says how much space it
-takes. A folder already there is never written over. While it works,
-listening, New Session and opening a recording wait for it. The layout is
+takes. A folder already there is never written over. While it works, a
+progress bar in the status bar shows how far it has read, with Cancel,
+which leaves nothing written; listening, New Session and opening a
+recording are refused with a message saying it is still keeping the
+analysis. The session's sound itself stays unsaved: the status bar says
+its analysis is kept, and Save still keeps the sound. The layout is
 in [sessions.md](sessions.md#a-take-kept-as-its-analysis-alone).
 
 Opened, such a take shows its readings, Paper Strip, charts, Steadiness

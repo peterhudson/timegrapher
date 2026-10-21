@@ -605,6 +605,11 @@ pub fn measure_masked(
             },
             listened_s,
             breaks: m.breaks.len(),
+            sides_by_count: log
+                .by_count
+                .iter()
+                .filter(|&&t| t > m.start_s && t < m.end_s)
+                .count(),
             average_s: None,
         },
     );

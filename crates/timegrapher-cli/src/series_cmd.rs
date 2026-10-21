@@ -91,7 +91,13 @@ pub fn run(o: Options) -> Result<(), String> {
     );
     let clock = applied_clock.as_ref().map(|c| &c.fit);
     let breaks = breaks::with_jumps(listed, &log.jumps);
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &breaks,
+        &log.sided,
+        log.bph,
+    );
     let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 

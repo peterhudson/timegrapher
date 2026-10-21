@@ -1253,6 +1253,11 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
             )),
             Caveat::ClockUnknown => Some("clock: card clock, not corrected".to_string()),
             Caveat::Breaks { count } => Some(format!("{count} breaks in the take")),
+            Caveat::SidesByCount { count } => Some(format!(
+                "Tick and Tock named by the beat count across {count} break{}, \
+                 not told apart by their sound",
+                if *count == 1 { "" } else { "s" }
+            )),
             Caveat::Masked { seconds } if *seconds < 0.05 => None,
             Caveat::Masked { seconds } if *seconds < 9.95 => {
                 Some(format!("{seconds:.1} s masked out"))

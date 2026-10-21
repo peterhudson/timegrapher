@@ -76,6 +76,9 @@ pub struct Header {
     pub clipped_samples: usize,
     /// Audio seconds where the beats jumped (the beat log's `jumps`).
     pub jumps: Vec<f64>,
+    /// The jumps whose sides the sound told apart (the beat log's `sided`);
+    /// the others are named by the beat count alone.
+    pub sided: Vec<f64>,
     /// The analysis settings that shaped the beats.
     pub settings: serde_json::Value,
     /// Rows in each of the other files.
@@ -334,6 +337,7 @@ pub fn measure(
         lift_deg: log.lift_deg,
         clipped_samples: log.clipped_samples,
         jumps: log.jumps.clone(),
+        sided: log.sided.clone(),
         settings: settings(cfg),
         beats: log.beats.len(),
         windows: log.amplitude_windows.len(),
@@ -472,7 +476,9 @@ pub fn read(take: &Path) -> io::Result<Stored> {
         amplitude_windows: windows,
         clipped_beats: clipped,
         clipped_samples: header.clipped_samples,
+        by_count: crate::breaks::by_count(header.jumps.iter().copied(), &header.sided),
         jumps: header.jumps.clone(),
+        sided: header.sided.clone(),
     };
     Ok(Stored {
         header,
@@ -510,7 +516,7 @@ fn beats_csv(log: &BeatLog) -> String {
         while clipped.next_if(|&&c| c < b.time).is_some() {}
         let clip = clipped.next_if(|&&c| c == b.time).is_some();
         out.push_str(&format!(
-            "{step},{residual},{:.3},{}\n",
+            "{step},{residual},{},{}\n",
             b.quality,
             u8::from(clip)
         ));
@@ -884,7 +890,7 @@ mod tests {
                 a.time,
                 b.time
             );
-            assert!((a.quality - b.quality).abs() <= 0.0005 + 1e-6);
+            assert_eq!(a.quality, b.quality);
         }
         assert_eq!(back.log.clipped_beats.len(), 1);
         assert!((back.log.clipped_beats[0] - clip).abs() < 1e-6);
@@ -893,6 +899,8 @@ mod tests {
             windows_csv(&s.log.amplitude_windows)
         );
         assert_eq!(back.log.jumps, s.log.jumps);
+        assert_eq!(back.log.sided, s.log.sided);
+        assert_eq!(back.log.by_count, s.log.by_count);
         assert_eq!(back.log.duration_s, s.log.duration_s);
         assert_eq!(back.profiles.len(), s.profiles.len());
         for (a, b) in back.profiles.iter().zip(&s.profiles) {

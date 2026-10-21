@@ -898,7 +898,6 @@ struct AnalysisSave {
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// The take's length, seconds.
     total_s: f64,
-    metadata: Option<session::MetadataSnapshot>,
 }
 
 impl Drop for AnalysisSave {
@@ -1126,6 +1125,9 @@ pub struct TimegrapherApp {
     analysis_save: Option<AnalysisSave>,
     /// The take on show was kept as its analysis alone, without its sound.
     no_sound: bool,
+    /// Where this session's analysis was last kept without its sound. The
+    /// sound itself stays unsaved.
+    analysis_kept_to: Option<PathBuf>,
     /// The jumps in the live sound's beats as of the last pass, to see a
     /// new one.
     jumps_seen: Vec<f64>,
@@ -1435,6 +1437,7 @@ impl TimegrapherApp {
             sound_at: None,
             analysis_save: None,
             no_sound: false,
+            analysis_kept_to: None,
             jumps_seen: Vec::new(),
             masks_let_go: false,
             guided_after_ask: None,
@@ -1583,6 +1586,7 @@ impl TimegrapherApp {
         self.message = None;
         self.sound_history.clear();
         self.no_sound = false;
+        self.analysis_kept_to = None;
         self.guided = None;
         self.guided_unused.clear();
         self.guided_measured.clear();
@@ -1814,6 +1818,7 @@ impl TimegrapherApp {
         self.clear_trends();
         self.sound_history.clear();
         self.no_sound = false;
+        self.analysis_kept_to = None;
         self.guided = None;
         self.guided_unused.clear();
         self.guided_measured.clear();
@@ -2103,7 +2108,6 @@ impl TimegrapherApp {
     /// Read the session's sound again for its analysis, in the background,
     /// then write it as a take with no sound inside `parent`.
     fn start_analysis_save(&mut self, parent: &Path) {
-        let metadata = self.session.metadata_snapshot(self.save_metadata());
         let mut manifest = self.take_manifest();
         manifest.audio = Some(false);
         let prepared = (|| -> Result<_, String> {
@@ -2170,8 +2174,19 @@ impl TimegrapherApp {
                     },
                 )
                 .map_err(|e| e.to_string())?;
-                timegrapher_core::analysis_take::save(&dest, &companions, &stored)
-                    .map_err(|e| e.to_string())
+                let cancelled = || c2.load(std::sync::atomic::Ordering::Relaxed);
+                if cancelled() {
+                    std::panic::resume_unwind(Box::new(Cancelled));
+                }
+                let dir = timegrapher_core::analysis_take::save(&dest, &companions, &stored)
+                    .map_err(|e| e.to_string())?;
+                // Cancelled while it was being written: the folder is this
+                // job's own (the save refuses one already there), so it goes.
+                if cancelled() {
+                    let _ = std::fs::remove_dir_all(&dir);
+                    std::panic::resume_unwind(Box::new(Cancelled));
+                }
+                Ok(dir)
             }));
             match r {
                 Ok(r) => {
@@ -2187,7 +2202,6 @@ impl TimegrapherApp {
             progress,
             cancel,
             total_s,
-            metadata: Some(metadata),
         });
     }
 
@@ -2201,7 +2215,7 @@ impl TimegrapherApp {
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => Err("it stopped part way".into()),
         };
-        let Some(mut job) = self.analysis_save.take() else {
+        let Some(job) = self.analysis_save.take() else {
             return;
         };
         match done {
@@ -2213,9 +2227,7 @@ impl TimegrapherApp {
                     dir.display(),
                     fmt_bytes(size)
                 ));
-                if let Some(m) = job.metadata.take() {
-                    self.session.mark_saved(job.total_s, dir, m);
-                }
+                self.analysis_kept_to = Some(dir);
             }
             Err(e) => self.error(format!("Keeping the analysis failed: {e}")),
         }
@@ -2463,6 +2475,17 @@ impl TimegrapherApp {
     /// after the other in the order it is analysed in, with the watch from
     /// its session file when it has one.
     fn start_replay(&mut self, path: &Path) {
+        // Refused before anything on show is stopped or its masks cleared.
+        if let Some(inner) = take_folder(path)
+            .ok()
+            .filter(|p| analysis_take::is_analysis_only(p))
+        {
+            return self.open_failed(format!(
+                "{} was kept as its analysis alone, without its sound, so it can't be \
+                 replayed. Open shows its readings.",
+                capture_label(&inner)
+            ));
+        }
         self.stop();
         self.masked.clear();
         self.masking = false;
@@ -2471,13 +2494,6 @@ impl TimegrapherApp {
             Err(e) => return self.open_failed(e),
         };
         let path = inner.as_path();
-        if analysis_take::is_analysis_only(path) {
-            return self.open_failed(format!(
-                "{} was kept as its analysis alone, without its sound, so it can't be \
-                 replayed. Open shows its readings.",
-                capture_label(path)
-            ));
-        }
         // Reject a relevant invalid manifest before opening audio or a worker.
         let manifest = match read_manifest(path) {
             Ok(manifest) => manifest,
@@ -6160,6 +6176,21 @@ impl TimegrapherApp {
                             "Saved in {}. Sound since then is kept too; Save Again adds it, \
                          and New Session or quitting asks first.",
                             p.display()
+                        ),
+                    ),
+                    None if self.analysis_kept_to.is_some() => (
+                        format!(
+                            "{} of sound, not saved; its analysis kept",
+                            strip::fmt_time(r.duration_s())
+                        ),
+                        pal.text_secondary,
+                        format!(
+                            "The analysis was kept without the sound in {}. The sound itself \
+                         isn't saved: Save keeps it, and New Session or quitting throws it \
+                         away unless saved.",
+                            self.analysis_kept_to
+                                .as_deref()
+                                .map_or(String::new(), |p| p.display().to_string())
                         ),
                     ),
                     None => (
@@ -10536,7 +10567,8 @@ mod tests {
             "{:?}",
             app.message
         );
-        let kept = app.session.saved_to().map(Path::to_path_buf).expect("kept");
+        let kept = app.analysis_kept_to.clone().expect("kept");
+        assert!(app.session.saved_to().is_none(), "the sound isn't saved");
         assert!(
             file_name(&kept).ends_with("_analysis"),
             "{}",
@@ -10600,6 +10632,9 @@ mod tests {
         c.open_recording(&kept, true, false);
         let (msg, error) = c.message.clone().unwrap();
         assert!(error && msg.contains("can't be replayed"), "{msg}");
+        // Refused over the take on show, its masks stay as they were.
+        a.start_replay(&kept);
+        assert_eq!(a.masked, vec![(30.0, 32.0), (50.0, 52.0)]);
         // The folder it was kept in opens it too.
         assert_eq!(take_folder(&base.join("kept")).unwrap(), kept);
         let _ = std::fs::remove_dir_all(&base);
@@ -11743,6 +11778,8 @@ mod tests {
                 clipped_beats: vec![],
                 clipped_samples: 0,
                 jumps: vec![60.03],
+                sided: Vec::new(),
+                by_count: Vec::new(),
             };
             let original: Vec<_> = log
                 .beats
@@ -11919,6 +11956,8 @@ mod tests {
             clipped_beats: vec![],
             clipped_samples: 0,
             jumps: vec![],
+            sided: Vec::new(),
+            by_count: Vec::new(),
         };
         app.live = Some(LiveAnalyzer::from_log(log, app.live_config()));
         app.session.replay();

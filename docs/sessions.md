@@ -231,18 +231,22 @@ sound, every entry naming the whole take (`file = "."`). `session.json`
 and `clock.csv` are unchanged (`session.json`'s `segments` still name the
 files the sound was in), and `positions-test.json` is kept when there is
 one. With no audio files, the file-order rule has nothing to order. A
-folder with both sound and `analysis/`, or with `analysis/` but no
-`audio = false`, is refused with a message saying so; builds from before
+folder with both sound and `analysis/`, with `analysis/` but no
+`audio = false`, or with `audio = false` but no `analysis/`, is refused
+with a message saying so; builds from before
 `audio` refuse the session file, as they refuse any field they don't
 know.
 
 `timegrapher session` reads such a take's beats from `analysis/` instead
 of finding them in the sound, and everything after that is read as for
 the sound: the breaks from `session.json` (or the clock log), the masks,
-the readings, the two states and the cycles. Each position's beat shape
-is the one measured on the sound when the take was kept (the first
-unmasked minute after the session file's settling, as above, whatever
-`--settle` says now). `input.settings.analysis_only` gives the fact
+the readings, the two states and the cycles. A lift angle other than the
+one kept (`--lift`, `--calibre`, or one edited into `session.toml`)
+rescales the kept amplitudes to it, as the sound would read at that
+lift. Each position's beat shape is the one measured on the sound when
+the take was kept (the first unmasked minute after the session file's
+settling, as above, whatever `--settle` says now, and whatever masks
+were changed since). `input.settings.analysis_only` gives the fact
 (`note`) and `measured_by` (the software that measured the sound: name,
 version and commit); it is `null` for a take with its sound. The report
 adds a **Sound** row saying none was kept and what measured it.
@@ -250,7 +254,7 @@ adds a **Sound** row saying none was kept and what measured it.
 | File in `analysis/` | Contents |
 | --- | --- |
 | `analysis.json` | The header, below |
-| `beats.csv.gz` | Every beat, gzipped CSV with the header line `index_step,residual_us,quality,clipped`: the step in the beat's number from the beat before (from 0 for the first; the numbers are the beat log's own, after Tick and Tock are matched across jumps, so their parity gives the side), the beat's time in whole µs less where the beat before and that many nominal beats at the header's `bph` put it (from 0 µs for the first), its quality to 3 decimals, and 1 when it clipped, else 0. Times read back to within 0.5 µs |
+| `beats.csv.gz` | Every beat, gzipped CSV with the header line `index_step,residual_us,quality,clipped`: the step in the beat's number from the beat before (from 0 for the first; the numbers are the beat log's own, after Tick and Tock are matched across jumps, so their parity gives the side), the beat's time in whole µs less where the beat before and that many nominal beats at the header's `bph` put it (from 0 µs for the first), its quality written in full (the shortest decimal that reads back to the same value), and 1 when it clipped, else 0. Times read back to within 0.5 µs |
 | `windows.csv.gz` | Every 2-second amplitude window, gzipped CSV with the header line `start_s,end_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms,even_unlock_ms,odd_unlock_ms,even_drop_ms,odd_drop_ms` (the beat log's fields, each written so it reads back exactly; empty where there is none) |
 | `profiles.bin.gz` | The Tick Tock profiles of each 2 seconds, gzipped binary, below |
 
@@ -261,7 +265,8 @@ without its sound: it can't be measured again, and the waveform (the
 Scope pane and Replay) can't come back."), `sample_rate`,
 `bytes_per_frame` (of the sound, for reading `clock.csv`), `duration_s`,
 `bph`, `lift_deg`, `clipped_samples`, `jumps` (audio seconds where the
-beats jumped), `settings` (the analysis settings that shaped the beats:
+beats jumped), `sided` (the jumps whose sides the sound told apart; the
+others are named by the beat count alone), `settings` (the analysis settings that shaped the beats:
 `bph` as given, `lift_deg`, `lift_known`, `onset_fraction`,
 `escape_teeth`, `rate_window_s`, `amplitude_window_s`, the `envelope`'s
 `highpass_hz`, `notch_hz`, `smooth_s` and `burst_gate`, the stream's
