@@ -206,13 +206,23 @@ pub fn folder_name(name: &str) -> String {
     while s.ends_with(['.', ' ']) {
         s.pop();
     }
-    let stem = s.split('.').next().unwrap_or("").to_ascii_uppercase();
+    // Windows keeps these names for devices whatever follows a dot
+    // ("lpt1.txt" too), so the `_` goes before the first dot.
+    let stem_len = s.find('.').unwrap_or(s.len());
+    let stem = s[..stem_len].trim_end().to_uppercase();
+    let numbered = |p: &str| {
+        stem.strip_prefix(p).is_some_and(|n| {
+            matches!(
+                n,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+    };
     let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || (stem.len() == 4
-            && (stem.starts_with("COM") || stem.starts_with("LPT"))
-            && stem.ends_with(|c: char| ('1'..='9').contains(&c)));
+        || numbered("COM")
+        || numbered("LPT");
     if reserved {
-        s.push('_');
+        s.insert(stem_len, '_');
     }
     if s.is_empty() {
         s = "Watch".into();
@@ -509,14 +519,37 @@ impl Library {
     }
 }
 
+/// `p` with links followed: the nearest folder of it that exists,
+/// resolved, with the rest of `p` after it.
+fn resolved(p: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut at = p;
+    loop {
+        if let Ok(real) = fs::canonicalize(at) {
+            return rest.iter().rev().fold(real, |acc, c| acc.join(c));
+        }
+        match (at.parent(), at.file_name()) {
+            (Some(up), Some(name)) => {
+                rest.push(name.to_owned());
+                at = up;
+            }
+            _ => return p.to_path_buf(),
+        }
+    }
+}
+
 /// Move the library at `from` to `to`, which must be missing or empty:
-/// renamed where both are on one disk, else copied whole, checked and only
-/// then removed from `from`.
-pub fn move_library(from: &Path, to: &Path) -> Result<(), String> {
+/// renamed where both are on one disk, else copied whole, written to the
+/// disk, checked and only then removed from `from`. `Ok(None)` when it
+/// is all at `to`. `Ok(Some(why))` when it is all at `to` but some of
+/// `from` couldn't be removed: `from` is no longer a library then (its
+/// `library.toml` goes first), and `why` says what is left.
+pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     if !Library::is_library(from) {
         return Err(format!("{} is not a Timegrapher library", from.display()));
     }
-    if to.starts_with(from) {
+    let (real_from, real_to) = (resolved(from), resolved(to));
+    if real_to.starts_with(&real_from) {
         return Err("A library can't be moved inside itself".into());
     }
     if fs::read_dir(to).is_ok_and(|mut d| d.next().is_some()) {
@@ -528,8 +561,13 @@ pub fn move_library(from: &Path, to: &Path) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     if fs::rename(from, to).is_ok() {
-        return Ok(());
+        return Ok(None);
     }
+    copy_across(from, to)
+}
+
+/// [`move_library`] onto another disk: copy, check, then remove `from`.
+fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
     let copied = copy_tree(from, to).and_then(|_| {
         let (a, b) = (stamp(from), stamp(to));
         if (a.bytes, a.entries) == (b.bytes, b.entries) {
@@ -544,13 +582,18 @@ pub fn move_library(from: &Path, to: &Path) -> Result<(), String> {
         }
     });
     match copied {
-        Ok(()) => fs::remove_dir_all(from).map_err(|e| {
-            format!(
-                "The library was copied to {}, but {} couldn't be removed: {e}",
-                to.display(),
-                from.display()
-            )
-        }),
+        Ok(()) => {
+            let gone =
+                fs::remove_file(from.join(LIBRARY_FILE)).and_then(|_| fs::remove_dir_all(from));
+            Ok(gone.err().map(|e| {
+                format!(
+                    "The library is now in {}, but some of {} couldn't be removed ({e}): \
+                     what is left there is a copy and can be deleted",
+                    to.display(),
+                    from.display()
+                )
+            }))
+        }
         Err(e) => {
             let _ = fs::remove_dir_all(to);
             Err(e)
@@ -566,8 +609,15 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
         if e.file_type().is_ok_and(|t| t.is_dir()) {
             copy_tree(&src, &dst)?;
         } else {
-            fs::copy(&src, &dst).map_err(|e| format!("{}: {e}", src.display()))?;
+            fs::copy(&src, &dst)
+                .and_then(|_| fs::File::open(&dst)?.sync_all())
+                .map_err(|e| format!("{}: {e}", src.display()))?;
         }
+    }
+    // The folder's own entries too, where the system allows it (not on
+    // Windows, which can't open a folder as a file).
+    if let Ok(d) = fs::File::open(to) {
+        let _ = d.sync_all();
     }
     Ok(())
 }
@@ -873,7 +923,10 @@ mod tests {
         w.name = "Seiko 5".into();
         assert!(lib.update(&w).is_err());
         assert_eq!(folder_name("CON"), "CON_");
-        assert_eq!(folder_name("lpt1.txt"), "lpt1.txt_");
+        assert_eq!(folder_name("lpt1.txt"), "lpt1_.txt");
+        assert_eq!(folder_name("Com2"), "Com2_");
+        assert_eq!(folder_name("COM¹"), "COM¹_");
+        assert_eq!(folder_name("CONSOLE"), "CONSOLE");
         assert_eq!(folder_name("COM10"), "COM10");
         assert_eq!(folder_name("Tudor..."), "Tudor");
         assert_eq!(folder_name("a/b\\c\u{7}"), "a-b-c-");
@@ -903,9 +956,39 @@ mod tests {
         fs::write(root.join(LIBRARY_FILE), "format = 1\n").unwrap();
         assert!(move_library(&root, &other).is_err());
         assert!(move_library(&root, &root.join("inside")).is_err());
+        // Nor inside itself by way of a link to it.
+        #[cfg(unix)]
+        {
+            let link = scratch("create-link");
+            std::os::unix::fs::symlink(&root, &link).unwrap();
+            assert!(move_library(&root, &link.join("inside")).is_err());
+            let _ = fs::remove_file(&link);
+        }
         assert!(Library::is_library(&root) && other.join("keep.txt").is_file());
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&other);
+    }
+
+    /// Onto another disk the library is copied, checked, and only then
+    /// removed, its library.toml first.
+    #[test]
+    fn a_move_onto_another_disk_copies_then_removes() {
+        let root = scratch("across");
+        let mut lib = Library::create(&root).unwrap();
+        let dir = lib.add(&Watch::new("Pepsi")).unwrap();
+        take(
+            &dir.join(TAKES).join("2026-10-20 10.00 Dial Up"),
+            &[("take_part01-001.flac", "DU")],
+            1,
+            "2026-10-20T17:00:00Z",
+        );
+        lib.scan();
+        let to = scratch("across-to");
+        assert_eq!(copy_across(&root, &to), Ok(None));
+        assert!(!root.exists());
+        let moved = Library::open(&to).unwrap();
+        assert_eq!(moved.watches[0].takes, lib.watches[0].takes);
+        let _ = fs::remove_dir_all(&to);
     }
 
     #[test]
