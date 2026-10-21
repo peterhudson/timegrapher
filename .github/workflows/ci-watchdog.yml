@@ -1,0 +1,68 @@
+name: CI Watchdog
+
+# Re-runs CI jobs that GitHub's hosted runners failed (never acquired, or
+# lost mid-job), at most twice per run, and flags CI jobs queued for 45
+# minutes or more. A job that ran and failed is never re-run. Logic and
+# offline tests: .github/watchdog/.
+#
+# Both triggers run main's copy of this workflow in this repository's context,
+# so pull requests from forks are watched too. It checks out only main's
+# watchdog script, never pull-request code, and needs no secrets.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-watchdog-${{ github.event.workflow_run.id || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    if: >-
+      github.event_name == 'workflow_run'
+      && contains(fromJSON('["failure","cancelled","timed_out","startup_failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write        # re-run a CI run
+      checks: read          # read the runner annotations on its jobs
+      contents: read
+      issues: write         # flag a run on main
+      pull-requests: write  # flag a run on its pull request
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          sparse-checkout: .github/watchdog
+          persist-credentials: false
+      - name: Re-run jobs the runners failed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 .github/watchdog/ci_watchdog.py completed "$RUN_ID"
+
+  stalled:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          sparse-checkout: .github/watchdog
+          persist-credentials: false
+      - name: Flag CI jobs queued too long
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/watchdog/ci_watchdog.py sweep
