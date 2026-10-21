@@ -43,8 +43,9 @@ pub struct Calibres {
     /// own ones they took off it.
     pub short_added: Vec<String>,
     pub short_removed: Vec<String>,
-    /// Manage Calibres: open, the calibre selected in it, its search and
-    /// which calibres its list shows.
+    /// Manage Calibres: asked for (the app opens Settings at Calibres),
+    /// the calibre selected in it, its search and which calibres its list
+    /// shows.
     pub manager_open: bool,
     selected: Option<String>,
     search: String,
@@ -652,28 +653,13 @@ impl Calibres {
         true
     }
 
-    /// Manage Calibres, when open: every calibre in a list to search, with
-    /// each one's short-list tickbox, and the one selected in full beside
-    /// it. Returns a calibre to use for the watch, and what changed for the
-    /// one selected, with its name before the change.
-    pub fn manager(&mut self, ctx: &egui::Context, current: &str, version: &str) -> Managed {
+    /// Manage Calibres, in Settings: every calibre in a list to search,
+    /// with each one's short-list tickbox, and the one selected in full
+    /// beside it. Returns a calibre to use for the watch, and what changed
+    /// for the one selected, with its name before the change.
+    pub fn contents(&mut self, ui: &mut egui::Ui, current: &str, version: &str) -> Managed {
         let mut out = Managed::default();
-        if !self.manager_open {
-            return out;
-        }
-        let screen = ctx.content_rect();
-        let size = Vec2::new(
-            (screen.width() - 48.0).clamp(320.0, 1100.0),
-            (screen.height() - 64.0).clamp(240.0, 760.0),
-        );
-        let modal = egui::Modal::new(egui::Id::new("manage calibres")).show(ctx, |ui| {
-            ui.set_width(size.x);
-            ui.set_height(size.y);
-            self.manager_body(ui, current, version, &mut out);
-        });
-        if modal.should_close() {
-            self.manager_open = false;
-        }
+        self.manager_body(ui, current, version, &mut out);
         out
     }
 
@@ -685,16 +671,8 @@ impl Calibres {
             ui.label(RichText::new(problem).color(pal.bad));
         }
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Manage Calibres").strong().size(16.0));
-            theme::help(ui, "Manage Calibres", MANAGE_HELP);
+            theme::help(ui, "Calibres", MANAGE_HELP);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(theme::primary(ui, "Done"))
-                    .on_hover_text("Close Manage Calibres")
-                    .clicked()
-                {
-                    self.manager_open = false;
-                }
                 if ui
                     .button("New Custom Calibre…")
                     .on_hover_text(
