@@ -610,7 +610,8 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
             copy_tree(&src, &dst)?;
         } else {
             fs::copy(&src, &dst)
-                .and_then(|_| fs::File::open(&dst)?.sync_all())
+                // Opened for writing: Windows flushes only a file it may write.
+                .and_then(|_| fs::OpenOptions::new().write(true).open(&dst)?.sync_all())
                 .map_err(|e| format!("{}: {e}", src.display()))?;
         }
     }
