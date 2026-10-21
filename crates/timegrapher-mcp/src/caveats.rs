@@ -52,6 +52,9 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
             }
             None => "The recording was paused; the readings leave the pauses out.".into(),
         },
+        "beat_error_as_size" => "The beat error's sign differs either side of a cut in the \
+                                 stretch, so it is given as a size."
+            .into(),
         "sides_by_count" => match c["count"].as_u64() {
             Some(1) => "At one break Tick and Tock were not told apart by their sound, so \
                         the sides after it are named by the beat count across it."
@@ -268,6 +271,7 @@ mod tests {
             { "code": "beats_missing", "fraction": 0.8 }, { "code": "lift_unknown" },
             { "code": "clock_unknown" }, { "code": "breaks", "count": 2 },
             { "code": "sides_by_count", "count": 1 }, { "code": "sides_by_count", "count": 2 },
+            { "code": "beat_error_as_size" },
             { "code": "masked", "seconds": 12.0 }, { "code": "masked" },
         ]);
         for c in codes.as_array().unwrap() {

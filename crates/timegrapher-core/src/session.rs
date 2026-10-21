@@ -467,6 +467,7 @@ pub fn measure_masked(
         })
         .collect();
     let fit = timing::fit_pieces(&beats, log.bph, &cuts);
+    let turned = timing::sign_turns(&beats, log.bph, &cuts);
     let mut windows = timing::windows(&beats, log.bph, 10.0, 5.0);
     windows.retain(apart);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
@@ -559,7 +560,7 @@ pub fn measure_masked(
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: timing::median_signed(
             amp.iter().filter_map(|w| w.beat_error_unlock_ms),
-            timing::sign_turns(&beats, log.bph, &cuts),
+            turned,
         ),
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
@@ -613,6 +614,7 @@ pub fn measure_masked(
                 .iter()
                 .filter(|&&t| t > m.start_s && t < m.end_s)
                 .count(),
+            beat_error_as_size: turned && fit.is_some(),
             average_s: None,
         },
     );
@@ -727,7 +729,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
 }
 
 /// One pallet stone's beat shape, from `shape`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSide {
     pub i12_ms: Option<f64>,
     pub i13_ms: Option<f64>,
@@ -742,7 +744,7 @@ pub struct ShapeSide {
     pub extra_post: Vec<(f64, f64)>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
@@ -1273,6 +1275,10 @@ pub struct Manifest {
     pub limits: Option<serde::de::IgnoredAny>,
     #[serde(default, rename = "recording")]
     pub recordings: Vec<RecordingEntry>,
+    /// False for a take kept as its analysis alone, with no sound: its
+    /// beats are read from `analysis/` (see [`crate::analysis_take`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<bool>,
 }
 
 impl Manifest {

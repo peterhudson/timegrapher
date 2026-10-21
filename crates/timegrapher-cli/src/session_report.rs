@@ -511,6 +511,25 @@ fn shape_table(sn: &Session) -> String {
     s
 }
 
+/// The facts row for a take kept as its analysis alone: no sound, and
+/// what measured it.
+fn kept_row(v: &serde_json::Value) -> String {
+    if v.is_null() {
+        return String::new();
+    }
+    let by = &v["measured_by"];
+    let who = match (by["version"].as_str(), by["git_hash"].as_str()) {
+        (Some(ver), Some(h)) if !h.is_empty() => format!(" by timegrapher {ver} ({h})"),
+        (Some(ver), _) => format!(" by timegrapher {ver}"),
+        _ => String::new(),
+    };
+    format!(
+        "<tr><th>Sound</th><td>None kept: the take was kept as its analysis alone. Its beats, \
+         amplitude and beat shape are as measured when it was saved{}.</td></tr>\n",
+        esc(&who)
+    )
+}
+
 pub fn html(sn: &Session) -> String {
     let r = &sn.report;
     let title = match (sn.watch, sn.calibre) {
@@ -537,7 +556,7 @@ pub fn html(sn: &Session) -> String {
 <tr><th>Movement</th><td>{} bph, lift angle {}°</td></tr>
 <tr><th>Recordings</th><td>{} in {} position(s): {}</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
-{}</table>"#,
+{}{}</table>"#,
         sn.bph,
         sn.lift_deg,
         sn.readings.len(),
@@ -548,6 +567,7 @@ pub fn html(sn: &Session) -> String {
             n if n == sn.readings.len() => "every rate is corrected for the sound card's clock".to_string(),
             n => format!("{n} of {} rates corrected for the sound card's clock; the others are on the card's clock", sn.readings.len()),
         },
+        kept_row(&sn.input["settings"]["analysis_only"]),
         sn.notes
             .map(|n| format!("<tr><th>Notes</th><td>{}</td></tr>", esc(n)))
             .unwrap_or_default()

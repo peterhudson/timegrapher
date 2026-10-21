@@ -21,12 +21,21 @@ Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
 Periodic changes in rate:
       60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
-      60.03 s ±2.00   swing 17.7 deg p-p     explains  99%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
+      20.01 s ±0.22   swing 0.3 deg p-p      explains  23%  false alarm <1e-300  no wheel listed within ±0.2 s or 1%; nearest is the fourth wheel, -66.6% off
+      60.03 s ±2.00   swing 11.4 deg p-p     explains  97%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Report       syn_long/report.html
 ```
 
 The rate swing reads high (36.8 against 30 s/d) because the average cycle
 is kept to its first eight harmonics, which overshoot on a sharp step.
+The amplitude is read in 2 s windows, so its search stops at 16 s (eight
+readings a cycle), and a cycle's score counts only its harmonics down to
+there, in sets of 1, 2, 4 or 8. The 60 s cycle's fourth harmonic, at
+15 s, is under that floor, so it scores on two (60 and 30 s), and its
+third harmonic, at 20 s, scored on its own, scores higher. The 20 s line
+is found and taken out first, and the 60 s cycle is read from what is
+left with its average cycle kept to two harmonics, so its swing reads low
+(11.4 against 15°).
 
 The recording is read in 47 s chunks, so memory use does not grow with
 its length; a 30-minute file takes about 7 s on one core. Results go to a
@@ -114,17 +123,23 @@ records it.
 
 A take that was paused, or saved and then continued, has audio that runs
 straight on across each break while the clock jumps. `long`, `series` and
-`session` find the breaks in the take's `session.json` (`breaks`), or for
-older takes from the step in `clock.csv`, and read each stretch on its own:
+`session` find the breaks in the take's `session.json` (`breaks`), plus
+any step in `clock.csv` that none of those explains (for older takes,
+the steps alone), and read each stretch on its own:
 the clock fit takes the gap out before fitting, so a pause no longer reads
 as a huge sound-card error; rate and beat error are fitted per stretch and
-combined weighted by beats; no 10 s window or slice reaches into a
+combined weighted by beats (where the beat error's sign turns over across
+a break, as sizes, given as positive, and then the slices' beat errors
+and `series`' are sizes too); no 10 s window or slice reaches into a
 break's gap from either side (a slice that would is left empty, rate,
 beat error and amplitude alike, rather than read from part of its
 span), and the gap runs from the last sound before the pause to where
 the clock log shows it took up again, so sound inside it belongs to
 neither stretch; and the period search and Steadiness run on true time,
 so a gap is a missing stretch. The JSON lists the breaks as `breaks`.
+Where Tick and Tock were not told apart by their sound across a break,
+the sides after it are named by the beat count across it; the printed
+`Sides` line and the JSON's `caveats` (`sides_by_count`, `count`) say so.
 `analyze` on a single file does not look for breaks, so read a paused
 take with `long`, `series` or `session`.
 

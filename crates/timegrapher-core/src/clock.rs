@@ -264,11 +264,14 @@ impl ClockFit {
             })
             .sum();
         fit.residual_ms = (ss / p.len() as f64).sqrt() * 1e3;
+        // A gap fitted a few ms below zero (a near-instant stop and resume
+        // forced by a listed pause) counts as none, as [`breaks::wall`]
+        // takes it, so true time never runs back at a break.
         fit.breaks = gaps
             .into_iter()
             .map(|g| Break {
                 audio_s: g.audio_s + origin.0,
-                gap_s: g.gap_s,
+                gap_s: g.gap_s.max(0.0),
             })
             .collect();
         Ok(fit)
@@ -912,6 +915,27 @@ mod tests {
         assert_eq!(at, [150.0, 300.0], "{:?}", fit.breaks);
         assert!((fit.breaks[1].gap_s - 0.2).abs() < 1e-3, "{:?}", fit.breaks);
         assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
+    }
+
+    #[test]
+    fn a_forced_break_never_runs_true_time_back() {
+        // A near-instant stop and resume listed at 300 s, after which the
+        // resume line and the 29 lines after it are all stamped 3 ms early:
+        // the break forced there takes no gap below zero, the map never
+        // steps back, and the rate is fitted without the step.
+        let k = 1.0 + 20e-6;
+        let line = |a: f64, off: f64| (a, 1.79e9 + a * k + off);
+        let mut pairs: Vec<(f64, f64)> = (0..=30).map(|i| line(i as f64 * 10.0, 0.0)).collect();
+        pairs.extend((0..30).map(|i| line(300.01 + i as f64 * 10.0, -0.003)));
+        let mut fit = ClockFit::new(&pairs).unwrap();
+        fit.place_breaks(&[Break {
+            audio_s: 300.0,
+            gap_s: 0.0,
+        }]);
+        assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
+        assert!(fit.breaks[0].gap_s >= 0.0, "{:?}", fit.breaks);
+        assert!(fit.map(300.0) >= fit.map(300.0 - 1e-6), "{:?}", fit.breaks);
+        assert!((fit.ppm - 20.0).abs() < 0.5, "ppm {}", fit.ppm);
     }
 
     #[test]

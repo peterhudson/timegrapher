@@ -193,13 +193,13 @@ JSON body:
 | `bph` | Beat rate used |
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
-| `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch`, `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`). Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
+| `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch`, `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`), `sides_by_count` (`count`); a `session` reading's measurement can also carry `masked` (`seconds`). Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
 | `beats_found_fraction`, `timing_scatter_fraction` | Beats found over the beats the length holds; the median timing scatter as a share of the beat (0.02 or more: no regular beat) |
 | `confidence` | `rate`, `amplitude`, `beat_error`, each `se`: one standard error in the reading's unit. Null when no regular beat is found |
 | `shape` | The Tick (`even`) and the Tock (`odd`), each `windows_measured`, `share_with_sound_1`, `share_with_sound_2`, `i12_ms`, `i13_ms`, `ratio13`, `tail_ratio`; and `beat_error_first_quarter_ms`, `beat_error_last_quarter_ms`, `beat_error_quarter_windows`. Read with [tick-shape.md](tick-shape.md#rules-for-possible-faults). Null when no regular beat is found |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
 | `beat_error_unlock_ms` | **The beat error to quote**: signed, measured from the unlock (this project's headline beat error); report its absolute value |
-| `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop |
+| `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop. Across a break (in a `session` reading, also across a masked stretch) where the sign turns over, both beat errors are given as positive sizes, with no flag saying so: name no side from the sign of a stretch with `breaks` or `masked` |
 | `overall.period_s` | Fitted beat period |
 | `overall.jitter_us`, `jitter_us` | Scatter of single beats, microseconds (overall, and the median within 10 s windows) |
 | `overall.beats_used` | Beats in the fit |
@@ -303,14 +303,17 @@ sound-card calibration log. Without one, `--card-ppm` corrects for a
 card that many ppm slow (negative if fast); else `--device` uses the
 clock error stored for that input, and is an error when none is stored;
 else the error stored for the input the recording names, else the
-recording's USB lines; `--wheel` names another wheel by its period
+recording's USB lines; with none of these the rates are on the sound
+card's clock, uncorrected. `--wheel` names another wheel by its period
 (repeatable); `--calibre` names periodic changes after that movement's
 wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
 is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
-(`start_s,end_s,true_start_s,even_deg,odd_deg`), `slices.csv`
-(`start_s,end_s,rate_s_per_day,beat_error_ms,amplitude_deg`), `folds.csv`
+(`start_s,end_s,true_start_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms`),
+`slices.csv`
+(`start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg`),
+`folds.csv`
 (`series,period_s,phase,mean,shape,unit`). Progress goes to stderr.
 
 JSON body:
@@ -323,6 +326,7 @@ JSON body:
 | `overall` | As for `analyze` (rate corrected when `clock` is given) |
 | `rate_p05`, `rate_p95` | Spread of the rate over slices of about 1/400 of the run |
 | `amplitude_deg`, `amplitude_p05`, `amplitude_p95` | Median and spread |
+| `caveats[]` | `sides_by_count` (`count`) as for `analyze`; empty when none. The printed summary's `Sides` line says the same |
 | `rate_periods`, `amplitude_periods` | Components found: `{ period_s, resolution_s, significance, harmonics, explained, peak_to_peak, wheel, nearest_wheel }` |
 
 Component fields: `significance` is −log10 of the false-alarm chance (2 =
@@ -348,8 +352,14 @@ rate against the amplitude, always given) and `findings[]` (`code`,
 `--calibre` names periodic changes after that movement's wheels; a
 name not in the table is an error that points to `timegrapher calibres
 --search`, as it is for `analyze` and `record`. The lift angle is
-`--lift`, else the calibre's when `--calibre` is given, else 52°. Same
-input as `long`.
+`--lift`, else the calibre's when `--calibre` is given, else 52°.
+`FILES` are read as for `long`. The clock is `--clock`, else the error
+stored for the input the recording names, else the recording's USB
+lines, else none (`series` has no `--card-ppm` or `--device`). The beat
+error series is the unlock's; where its sign turns over across a break,
+its readings are sizes, given as positive. `caveats[]` holds
+`sides_by_count` (`count`) as for `analyze`, and a printed `Sides` line
+says the same.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
@@ -391,6 +401,7 @@ repository's `docs/reports.md`.
 timegrapher synth OUT.wav [--duration S] [--bph N] [--amplitude DEG] [--rate S/D]
                   [--beat-error MS] [--snr DB] [--fault-period S]
                   [--fault-length S] [--fault-rate S/D] [--fault-amplitude DEG]
+timegrapher synth --scenario NAME FOLDER [--seed N]
 ```
 
 Writes a synthetic recording with known values (defaults: 60 s, 28,800
@@ -400,3 +411,12 @@ period, the rate changes by `--fault-rate` (default −30 s/d) and the
 amplitude by `--fault-amplitude` (default −15°). Use it to show someone
 what a fault looks like, or to check the program works before blaming
 the watch.
+
+`--scenario NAME FOLDER` writes instead a two-hour take folder with one
+known variation hidden in it, or none for `control`: twelve 10-minute
+FLAC files, `session.json`, and a README saying what is hidden and what
+the analysis should find. The app, `series` and `long` open it like a
+recording. `--scenario list` names them; `--seed` (default 1) changes
+the noise and the beat-to-beat variation drawn (their sizes stay the
+same), and the same command always writes the same sound. Reference:
+the repository's `docs/synthetic-takes.md`.

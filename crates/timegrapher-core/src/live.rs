@@ -929,6 +929,7 @@ impl LiveAnalyzer {
                 listened_s,
                 breaks: 0,
                 sides_by_count: 0,
+                beat_error_as_size: false,
                 average_s: Some(average_s),
             },
         );
@@ -966,6 +967,12 @@ impl LiveAnalyzer {
 /// read (and the clipping said) rather than taken for silence.
 fn clipped_out(x: &[f32], fs: f64, beats: &[Beat]) -> bool {
     beats.len() >= 8 && Clipping::measure(x, fs, beats).beat_fraction > 0.5
+}
+
+/// The signal figure of `beats` in `env`: the median beat peak over the
+/// median of the envelope, as the readings give it.
+pub fn signal_figure(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
+    snr(env, fs, beats)
 }
 
 /// Median beat peak over the median of the envelope.
