@@ -221,11 +221,23 @@ Tick and Tock change places at a jump, the sides are combined by their
 sizes instead and the figure is given as positive: a watch at 0.6 ms on
 both sides reads 0.6 ms rather than a near-zero average of +0.6 and
 -0.6. Only a stretch of at least 10 seconds of beats counts towards that
-decision.
+decision. `analyze` and `session` say when a beat error is given as a
+size this way, on a **Conditions** line ("beat error given as a size:
+its sign differs either side of a cut") and as a `beat_error_as_size`
+caveat in the JSON, which the Claude Desktop tools pass on. Where no
+regular beat is heard there is no beat error, and nothing is said.
+
 Where Tick and Tock were named across a break by the beat count rather
 than told apart by their sound, `analyze`, `long` and `series` say so: a
 `sides_by_count` caveat in the JSON, and in `long`'s and `series`'s text a **Sides**
 line.
+
+When `session` or `long` reads a saved take, it finds the pauses in
+`session.json`. A step in `clock.csv` that none of those pauses explains,
+such as the computer's clock being set or a dropout the app did not
+list, counts as a break of its own, and the stretches either side are read
+apart as at a pause. That holds for a take kept with Save Analysis Only
+too.
 
 A continuous run is especially valuable for
 [Isochronism](10-isochronism.md). For reports over hours or days, the
