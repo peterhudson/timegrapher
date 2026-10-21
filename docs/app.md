@@ -19,8 +19,8 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
-(Ctrl+Shift+S), Save Analysis Only…, New Session, Settings… (Ctrl+, or
-Cmd+, on a Mac) and Quit (Ctrl+Q). **View**: a tick for the readings and
+(Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
+**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the readings and
 for each pane, and Reset Panes. **Help**: Check for Updates…, Report a
 Problem… and, on Linux, **Add to Applications Menu**, which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
@@ -737,7 +737,7 @@ been published yet"). The request carries no account or identifier.
 
 ## Settings
 
-**The Settings window.** File > Settings… (Ctrl+, or Cmd+,) or the gear at
+**The Settings window.** Edit > Settings… (Ctrl+, or Cmd+,) or the gear at
 the end of the pane icons opens it over the app, with three sections:
 **General** (Appearance and Check for Updates at Start), **Calibres**
 (Manage Calibres, below) and **Sound Card Clock** (each input's kept

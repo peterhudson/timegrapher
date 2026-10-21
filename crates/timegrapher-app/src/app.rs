@@ -4903,11 +4903,12 @@ impl TimegrapherApp {
         );
     }
 
-    /// The menus across the very top, File, View and Help, and beside
+    /// The menus across the very top, File, Edit, View and Help, and beside
     /// them an icon for each pane that shows or hides it.
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| self.file_menu(ui));
+            ui.menu_button("Edit", |ui| self.edit_menu(ui));
             ui.menu_button("View", |ui| self.view_menu(ui));
             ui.menu_button("Help", |ui| self.help_menu(ui));
             ui.add_space(16.0);
@@ -5012,6 +5013,19 @@ impl TimegrapherApp {
         ui.separator();
         if ui
             .add(
+                egui::Button::new("Quit")
+                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
+            )
+            .clicked()
+        {
+            ui.close();
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .add(
                 egui::Button::new("Settings…")
                     .shortcut_text(ui.ctx().format_shortcut(&settings_shortcut())),
             )
@@ -5023,17 +5037,6 @@ impl TimegrapherApp {
         {
             ui.close();
             self.open_settings(self.settings_last);
-        }
-        ui.separator();
-        if ui
-            .add(
-                egui::Button::new("Quit")
-                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
-            )
-            .clicked()
-        {
-            ui.close();
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
 
