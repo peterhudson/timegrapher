@@ -19,15 +19,15 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
-(Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q). **View**: a tick for the
-readings and for each pane, Reset Panes and Appearance (Auto, Light,
-Dark). **Help**: Check for Updates…, Check for Updates at Start, Report a
+(Ctrl+Shift+S), Save Analysis Only…, New Session, Settings… (Ctrl+, or
+Cmd+, on a Mac) and Quit (Ctrl+Q). **View**: a tick for the readings and
+for each pane, and Reset Panes. **Help**: Check for Updates…, Report a
 Problem… and, on Linux, **Add to Applications Menu**, which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
 menus, one icon for each pane that shows or hides it (resting the pointer
-on an icon names its pane). Each icon is a small picture with a pun on
+on an icon names its pane), and a gear at the end that opens Settings. Each icon is a small picture with a pun on
 its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
 Tock Profile, a die showing six for the Positions Test, a hare for the
 Rate chart, a dromedary for the Rate distribution (one hump), an Allen
@@ -103,7 +103,7 @@ shown in place, and the path box goes back to it. Choosing **Recording**
 while a stopped microphone session is in hand shows the ways in again
 rather than that session's figures, and says the session is kept;
 **Microphone** brings it back. The app follows the
-desktop's light or dark setting (Appearance, in the View menu, overrides it),
+desktop's light or dark setting (Appearance, in Settings, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
 shift as they change.
 
@@ -344,7 +344,15 @@ which moves every rate read on it by 1 to 4 s/d. The big figure always
 stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; the True Clock line is beside it,
 never instead of it. It is looked up by the input's name when a microphone
-session starts, and is not shown for a replayed recording.
+session starts, and is not shown for a replayed recording. **Settings**,
+under **Sound Card Clock**, lists each input's kept clock (its error in ppm
+and in s/d, the day it was measured, how, and over how long) with
+**Forget** beside it. Forget removes it from the same `clocks.json` that
+`timegrapher clock list` and `clock forget` read, so the command line and
+the MCP server forget it too; rates from that input are then read on its
+own clock again, and the True Clock line goes, until it is timed and kept
+afresh. Do this after changing the microphone or sound card behind an
+input's name.
 
 **Clipping.** Whenever a beat in the readings has a clipped sample in
 its sound, counted as `timegrapher analyze` counts them, an amber banner
@@ -689,8 +697,8 @@ stored clock corrections, with the home folder, user name and host name
 removed. Saving opens the zip's folder and the matching GitHub form; the app
 sends nothing itself.
 
-**Appearance.** In the View menu: Auto follows the desktop's light or dark
-setting; Light and Dark override it.
+**Appearance.** In Settings, under General: Auto follows the desktop's
+light or dark setting; Light and Dark override it.
 
 **No input touched at launch.** Listing the inputs asks each one what it
 supports, which briefly opens it and can disturb another program recording
@@ -713,8 +721,8 @@ smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and on the right the beat rate and the
 position, **Check for Updates…** and **Report a Problem…**.
 
-**Updates.** With **Check for Updates at Start** on (the Help menu;
-on unless switched off), the app asks GitHub once at start, on a
+**Updates.** With **Check for Updates at Start** on (in Settings, under
+General; on unless switched off), the app asks GitHub once at start, on a
 background thread, whether a newer release is published
 (`timegrapher_core::update::check`). If one is, a banner says
 "Timegrapher 0.2.0 is available" with **Download**, which opens the
@@ -725,6 +733,15 @@ found: the notice, "up to date", or why it couldn't check ("no release has
 been published yet"). The request carries no account or identifier.
 
 ## Settings
+
+**The Settings window.** File > Settings… (Ctrl+, or Cmd+,) or the gear at
+the end of the pane icons opens it over the app, with three sections:
+**General** (Appearance and Check for Updates at Start), **Calibres**
+(Manage Calibres, below) and **Sound Card Clock** (each input's kept
+clock with Forget; see True Clock). **Done**, Escape or a click outside
+closes it. What belongs to the watch on show (its calibre, lift angle,
+beat rate and position) and to the microphone (input, level, Show Every
+Input, Keep Awake) stays in the Watch pane, beside what it sets.
 
 - **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:
@@ -759,7 +776,8 @@ been published yet"). The request carries no account or identifier.
   - **The menu.** It offers Not Set, the calibres picked lately
     (**Recent**), the **Short List** by maker and **Your Calibres**, with
     **Manage Calibres…** at its foot and as a button under it.
-  - **Manage Calibres.** A window over the app with every calibre in a
+  - **Manage Calibres.** The Calibres section of Settings, which
+    Manage Calibres… opens, with every calibre in a
     list down the left, by maker (the common and modern makers first, your
     own calibres at the top), and the one selected in full on the right.
     **All**, **Short List** and **Yours** choose what the list shows.
@@ -768,7 +786,7 @@ been published yet"). The request carries no account or identifier.
     any of the maker's names ("dd 3235", "sw200", "seagull st19"), and the
     best matches come first. **Use for This Watch** sets the selected
     calibre under Watch. **New Custom Calibre…** adds one, named as typed
-    in the search box. **Done**, Escape or a click outside closes it.
+    in the search box.
   - **The short list.** It starts as the list's common and modern
     calibres. In Manage Calibres a tickbox beside every calibre puts it on
     the short list or takes it off, and **Tick All** and **Untick All**

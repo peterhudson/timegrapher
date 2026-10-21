@@ -13,6 +13,7 @@ use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::scope;
 use crate::settings::Settings;
+use crate::settings_window::{self, Tab};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
@@ -90,6 +91,11 @@ impl ClockTrack {
 }
 
 /// The day of a UTC timestamp kept as text ("2026-10-12T…").
+/// Settings…: Cmd+, on macOS, Ctrl+, elsewhere.
+fn settings_shortcut() -> egui::KeyboardShortcut {
+    egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Comma)
+}
+
 fn day_of(utc: &str) -> &str {
     utc.get(..10).unwrap_or(utc)
 }
@@ -986,6 +992,10 @@ pub struct TimegrapherApp {
     calibre: String,
     /// The user's calibres, the short list and the recent picks.
     cal: calibre_ui::Calibres,
+    /// The Settings window, open at a section, and the kept clocks as read
+    /// when it opened or last changed.
+    settings_tab: Option<Tab>,
+    kept_clocks: Result<clockstore::ClockStore, String>,
     /// Panes that average over their own time rather than Readings'
     /// Average Over, and that time in seconds.
     pane_average: std::collections::BTreeMap<Pane, f64>,
@@ -1369,6 +1379,8 @@ impl TimegrapherApp {
             watch: String::new(),
             calibre: String::new(),
             cal: calibre_ui::Calibres::in_memory(),
+            settings_tab: None,
+            kept_clocks: Ok(clockstore::ClockStore::default()),
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -4994,6 +5006,21 @@ impl TimegrapherApp {
         ui.separator();
         if ui
             .add(
+                egui::Button::new("Settings…")
+                    .shortcut_text(ui.ctx().format_shortcut(&settings_shortcut())),
+            )
+            .on_hover_text(
+                "How the app looks, the calibres and each input's kept clock, in a window \
+                 of their own",
+            )
+            .clicked()
+        {
+            ui.close();
+            self.open_settings(Tab::General);
+        }
+        ui.separator();
+        if ui
+            .add(
                 egui::Button::new("Quit")
                     .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
             )
@@ -5037,25 +5064,6 @@ impl TimegrapherApp {
             self.show_readings = true;
             self.panes = default_layout(self.strip.horizontal);
         }
-        ui.separator();
-        ui.menu_button("Appearance", |ui| {
-            let mut t = ui.ctx().options(|o| o.theme_preference);
-            for (v, name, hint) in [
-                (
-                    egui::ThemePreference::System,
-                    "Auto",
-                    "Follow the system's light or dark setting",
-                ),
-                (egui::ThemePreference::Light, "Light", "Always light"),
-                (egui::ThemePreference::Dark, "Dark", "Always dark"),
-            ] {
-                ui.radio_value(&mut t, v, name).on_hover_text(hint);
-            }
-            if t != ui.ctx().options(|o| o.theme_preference) {
-                ui.ctx().set_theme(t);
-                self.theme = t;
-            }
-        });
     }
 
     fn help_menu(&mut self, ui: &mut egui::Ui) {
@@ -5078,12 +5086,6 @@ impl TimegrapherApp {
             ui.close();
             self.updates.start(ui.ctx(), true);
         }
-        ui.checkbox(&mut self.check_at_start, "Check for Updates at Start")
-            .on_hover_text(
-                "Ask GitHub whether a newer Timegrapher is published each time the app \
-                 starts, and say so if there is. It sends no account or identifier, and \
-                 nothing installs itself.",
-            );
         ui.separator();
         if ui
             .button("Report a Problem…")
@@ -5190,6 +5192,19 @@ impl TimegrapherApp {
                     set_pane_visible(&mut self.panes.tiles, pane, !on);
                 }
             }
+        }
+        ui.add_space(6.0);
+        ui.separator();
+        if theme::icon_toggle(
+            ui,
+            theme::Icon::Settings,
+            self.settings_tab.is_some(),
+            pal.accent,
+        )
+        .on_hover_text("Settings: how the app looks, the calibres and each input's kept clock")
+        .clicked()
+        {
+            self.open_settings(Tab::General);
         }
     }
 
@@ -5374,15 +5389,127 @@ impl TimegrapherApp {
         self.steady_job = None;
     }
 
-    /// The Calibre row under Watch, and what is known about the one picked.
-    /// Manage Calibres, when open, over everything else.
-    fn manage_calibres(&mut self, ctx: &egui::Context) {
-        let current = self.calibre.clone();
-        let out = self.cal.manager(ctx, &current, env!("CARGO_PKG_VERSION"));
-        let name = out.name.clone();
-        self.calibre_changed(&name, out.change);
-        if let Some(p) = out.picked {
-            self.set_calibre(p);
+    /// Open the Settings window at `tab`, reading the kept clocks afresh.
+    fn open_settings(&mut self, tab: Tab) {
+        self.kept_clocks = clockstore::ClockStore::load();
+        self.settings_tab = Some(tab);
+    }
+
+    /// The Settings window, when open, over everything else. Manage
+    /// Calibres… opens it at Calibres.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        if std::mem::take(&mut self.cal.manager_open) {
+            self.open_settings(Tab::Calibres);
+        }
+        let Some(mut tab) = self.settings_tab else {
+            return;
+        };
+        let screen = ctx.content_rect();
+        let size = Vec2::new(
+            (screen.width() - 48.0).clamp(320.0, 1100.0),
+            (screen.height() - 64.0).clamp(240.0, 760.0),
+        );
+        let mut done = false;
+        let modal = egui::Modal::new(egui::Id::new("settings")).show(ctx, |ui| {
+            ui.set_width(size.x);
+            ui.set_height(size.y);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Settings").strong().size(16.0));
+                ui.add_space(12.0);
+                theme::segmented(ui, &mut tab, &settings_window::TABS);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(theme::primary(ui, "Done"))
+                        .on_hover_text("Close Settings")
+                        .clicked()
+                    {
+                        done = true;
+                    }
+                });
+            });
+            ui.separator();
+            match tab {
+                Tab::General => self.general_settings(ui),
+                Tab::Calibres => {
+                    let current = self.calibre.clone();
+                    let out = self.cal.contents(ui, &current, env!("CARGO_PKG_VERSION"));
+                    let name = out.name.clone();
+                    self.calibre_changed(&name, out.change);
+                    if let Some(p) = out.picked {
+                        self.set_calibre(p);
+                    }
+                }
+                Tab::Clock => {
+                    if let Some(device) = settings_window::clock_section(ui, &self.kept_clocks) {
+                        self.forget_clock(&device);
+                    }
+                }
+            }
+        });
+        self.settings_tab = (!done && !modal.should_close()).then_some(tab);
+    }
+
+    /// Settings' General section: how the app looks and whether it asks
+    /// about updates.
+    fn general_settings(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Appearance").strong());
+        let mut t = ui.ctx().options(|o| o.theme_preference);
+        ui.horizontal(|ui| {
+            theme::segmented(
+                ui,
+                &mut t,
+                &[
+                    (
+                        egui::ThemePreference::System,
+                        "Auto",
+                        "Follow the system's light or dark setting",
+                    ),
+                    (egui::ThemePreference::Light, "Light", "Always light"),
+                    (egui::ThemePreference::Dark, "Dark", "Always dark"),
+                ],
+            );
+        });
+        if t != ui.ctx().options(|o| o.theme_preference) {
+            ui.ctx().set_theme(t);
+            self.theme = t;
+        }
+        ui.add_space(12.0);
+        ui.label(RichText::new("Updates").strong());
+        theme::switch_row(
+            ui,
+            "Check for Updates at Start",
+            &mut self.check_at_start,
+            "Ask GitHub whether a newer Timegrapher is published each time the app starts, \
+             and say so if there is. It sends no account or identifier, and nothing installs \
+             itself. Help > Check for Updates… asks now.",
+        );
+    }
+
+    /// Forget the kept clock of `device`: its rates are read on its own
+    /// clock again, here and for the command line and the MCP server.
+    fn forget_clock(&mut self, device: &str) {
+        let forgot = clockstore::ClockStore::load().and_then(|mut s| {
+            s.remove(device);
+            s.save().map(|_| s)
+        });
+        match forgot {
+            Ok(s) => {
+                // The input listening now loses its True Clock too.
+                if self.clock.as_ref().is_some_and(|c| c.device == device) {
+                    self.clock = None;
+                }
+                self.kept_clocks = Ok(s);
+                self.info_msg(format!(
+                    "Forgot the clock kept for \"{device}\": its rates are read on its own \
+                     clock again."
+                ));
+            }
+            Err(e) => {
+                self.kept_clocks = clockstore::ClockStore::load();
+                self.error(format!(
+                    "The clock kept for \"{device}\" couldn't be forgotten: {e}"
+                ));
+            }
         }
     }
 
@@ -9043,6 +9170,9 @@ impl TimegrapherApp {
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::Q))) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&settings_shortcut())) {
+            self.open_settings(Tab::General);
+        }
         egui::CentralPanel::default()
             .frame(bar.inner_margin(egui::Margin {
                 left: 12,
@@ -9051,7 +9181,7 @@ impl TimegrapherApp {
                 bottom: 12,
             }))
             .show(ctx, |ui| self.main_view(ui));
-        self.manage_calibres(ctx);
+        self.settings_window(ctx);
     }
 }
 
@@ -12389,6 +12519,105 @@ mod tests {
         assert_eq!(chart_time_label(-30.0, &r), "");
         assert_eq!(chart_time_label(0.0, &r), "0:00");
         assert_eq!(chart_time_label(120.0, &r), "2:00");
+    }
+
+    /// Settings lists each kept clock; Forget removes that one from the
+    /// file the command line reads, and the input listening loses its
+    /// True Clock with it. Manage Calibres… opens Settings at Calibres.
+    #[test]
+    fn settings_forgets_a_kept_clock() {
+        const MARKER: &str = "TIMEGRAPHER_FORGET_TEST_CHILD";
+        if std::env::var_os(MARKER).is_none() {
+            let root =
+                std::env::temp_dir().join(format!("tg-app-forget-clock-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            let mut store = clockstore::ClockStore::default();
+            for (device, ppm) in [("USB Mic", 12.5), ("Built-in", -3.0)] {
+                store.set(clockstore::DeviceClock::from_fit(
+                    device,
+                    &timegrapher_core::clock::ClockFit::fixed(ppm, 1500.0),
+                    "2026-10-20T10:00:00Z".into(),
+                    "measure",
+                ));
+            }
+            store.save_to(&root.join("clocks.json")).unwrap();
+            // Isolate the config environment in a child test process.
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    &format!(
+                        "{}::settings_forgets_a_kept_clock",
+                        module_path!().split_once("::").unwrap().1
+                    ),
+                    "--nocapture",
+                ])
+                .env(MARKER, "1")
+                .env("TIMEGRAPHER_CONFIG_DIR", &root)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            let left = clockstore::ClockStore::load_from(&root.join("clocks.json")).unwrap();
+            let names: Vec<&str> = left.devices.iter().map(|d| d.device.as_str()).collect();
+            assert_eq!(names, ["Built-in"]);
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        }
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.clock = clockstore::ClockStore::load()
+            .unwrap()
+            .get("USB Mic")
+            .cloned();
+        assert!(app.clock.is_some());
+        app.open_settings(Tab::Clock);
+        let listed = app.kept_clocks.as_ref().unwrap();
+        assert_eq!(listed.devices.len(), 2);
+        assert_eq!(
+            settings_window::error_words(listed.get("USB Mic").unwrap()),
+            "12.5 ppm slow, +1.08 s/d on every rate"
+        );
+        // The window draws both, each with its Forget.
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        // A window is measured on its first frame and drawn from the next.
+        let _ = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let text = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            text.iter().any(|t| t == "USB Mic") && text.iter().any(|t| t == "Built-in"),
+            "{text:?}"
+        );
+        assert_eq!(
+            text.iter().filter(|t| *t == "Forget").count(),
+            2,
+            "{text:?}"
+        );
+        app.forget_clock("USB Mic");
+        assert!(
+            app.clock.is_none(),
+            "the input listening loses its True Clock"
+        );
+        assert_eq!(app.kept_clocks.as_ref().unwrap().devices.len(), 1);
+        assert!(!app.message.as_ref().unwrap().1);
+        // Manage Calibres… opens Settings at Calibres.
+        app.settings_tab = None;
+        app.cal.open_manager("");
+        let _ = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        assert_eq!(app.settings_tab, Some(Tab::Calibres));
+        assert!(!app.cal.manager_open);
     }
 
     #[test]
