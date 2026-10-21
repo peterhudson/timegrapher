@@ -97,9 +97,9 @@ Two points that apply to all of them:
 
 `analyze` and each `session` reading's `measurement` carry `caveats[]`,
 each with a `code`; `long` and `series` carry one too, with only
-`sides_by_count` and `beat_error_as_size`. They are facts about the recording. Empty means none
-applies. Read it before quoting any number, and say the ones that apply
-in plain words.
+`sides_by_count` and `beat_error_as_size`. They are facts about the
+recording. Empty means none applies. Read it before quoting any number,
+and say the ones that apply in plain words.
 
 | Code | Means | Do | Tell them |
 | --- | --- | --- | --- |
@@ -113,7 +113,7 @@ in plain words.
 | `breaks` | The take was paused or resumed (`count`). | Nothing to fix. | Only if asked. |
 | `sides_by_count` | At `count` of those breaks Tick and Tock were not told apart by their sound, so the sides after each are named by the beat count across it. | Nothing to fix. | Only if asked. |
 | `masked` | `session` readings only: `seconds` of the measured stretch were masked out of the readings by hand (a session file's `masked`, or the app's Paper Strip). | Nothing to fix; say the readings leave that time out. | "Some of the take was masked out of the readings by hand." |
-| `beat_error_as_size` | The beat error's sign differs either side of a cut in the stretch, so both beat errors are given as sizes, positive, not signed; in `long` the slices' beat errors too, and in `series` the beat error readings, their median and the tests on them. | Name no side from the sign; quote the size. | Only if asked. |
+| `beat_error_as_size` | The beat error's sign differs either side of a cut in the stretch, so it is given as a size, positive, not signed: in `analyze`, `session` and `long` both beat errors (and in `long` the slices' too); in `series` the beat error readings, their median and the tests on them. | Name no side from the sign; quote the size. | Only if asked. |
 
 `session` takes the lift angle as known, so its readings never carry
 `lift_unknown`.

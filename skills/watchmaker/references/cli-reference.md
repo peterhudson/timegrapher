@@ -356,7 +356,8 @@ name not in the table is an error that points to `timegrapher calibres
 `FILES` are read as for `long`. The clock is `--clock`, else the error
 stored for the input the recording names, else the recording's USB
 lines, else none (`series` has no `--card-ppm` or `--device`). The beat
-error series is the unlock's; where its sign turns over across a break,
+error series is the unlock's; where the drop fit's sign turns over
+across a break,
 its readings, and so its median and the tests on them, are sizes, given
 as positive. `caveats[]` holds `sides_by_count` (`count`) and
 `beat_error_as_size` as for `analyze`, and printed `Sides` and
