@@ -150,7 +150,8 @@ Work through them in this order. The reasons are in
    no watch was heard (an empty stand, a stopped watch, no contact), and
    every number describes noise, so show none of them. Readings that are
    absent (null) beside `watch_heard` false mean the same: no watch was
-   heard. Then `caveats` (on `analyze` and on each `session` reading):
+   heard. Then `caveats` (on `analyze`, on each `session` reading, and
+   on `long` and `series`):
    what limits the readings, each code with what to do in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
