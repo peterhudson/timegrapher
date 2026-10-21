@@ -555,7 +555,13 @@ fn read_one_inner(
         breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
         &log.jumps,
     );
-    breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &breaks,
+        &log.sided,
+        log.bph,
+    );
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
