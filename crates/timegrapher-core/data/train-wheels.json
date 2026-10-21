@@ -849,8 +849,7 @@
     "calibre": "VR3235",
     "maker": "Shanghai (clone)",
     "family": [
-      "VR32xx",
-      "SH3235"
+      "VR32xx"
     ],
     "common": true,
     "bph": 28800,
@@ -858,33 +857,58 @@
     "seconds": "centre",
     "wheels": [
       {
-        "name": "fourth wheel",
-        "period_s": 60,
-        "basis": "derived from the beat rate"
+        "name": "barrel",
+        "period_s": 18000,
+        "teeth": 100,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md."
       },
       {
         "name": "centre wheel",
         "period_s": 3600,
-        "basis": "derived from the beat rate"
+        "teeth": 80,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 20
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 12
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 11
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "basis": "Accepted 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor accepted this as the standard VR32xx configuration; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 10
       },
       {
         "name": "balance",
         "period_s": 0.25,
-        "basis": "derived from the beat rate"
+        "basis": "derived from 28800 bph"
       }
     ],
     "sources": [
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a hybrid of the 3135 and 3235, about 40 h)",
-      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
+      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and accepted escape-pair specification, 2026-10-19)"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "Not a true clone: a hybrid of the 3135 and 3235, about 40 h, so neither train can be assumed and the escape wheel is left out. VR is the prefix from the watch factory that first used it; the guide credits the Shanghai movement factory in one place and Shanghai Jinghe in another. That it is a 3135 and 3235 hybrid of about 40 h, and its 52° lift angle, rest only on one author's two forum guides (on clone movements and on lift angles); no independent source was found."
+    "confidence": "derived from tooth counts; accepted escape pair",
+    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are accepted as the standard VR32xx specification by the contributor, based on agreement with both measured Rolex-derived families; the VR escape wheel was not photographed. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
+    "escape_teeth": 20
   },
   {
     "calibre": "SH3285",
     "maker": "Shanghai (clone)",
     "family": [
-      "VR3285",
       "SH3285-2"
     ],
     "common": true,
@@ -911,7 +935,7 @@
       "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (closer to genuine than the VR3235; balance, pallet fork and escape wheel not to genuine spec)"
     ],
     "confidence": "derived from the beat rate",
-    "notes": "Everything in this entry rests on one source, one author's forum guide to clone movements, and no second source was found: its account of the escapement (not to genuine spec, so the escape wheel and lift angle are left out) and the beat rate, taken as the 28,800 bph of the Rolex 32xx it copies. The balance follows from that beat rate, and the fourth and centre wheels from the centre-seconds layout of the 32xx."
+    "notes": "Everything in this entry rests on one source, one author's forum guide to clone movements, and no second source was found: its account of the escapement (not to genuine spec, so the escape wheel and lift angle are left out) and the beat rate, taken as the 28,800 bph of the Rolex 32xx it copies. The balance follows from that beat rate, and the fourth and centre wheels from the centre-seconds layout of the 32xx. VR3285 is now a separate entry with contributor-reported VR32xx train applicability. SH retains the unmeasured train."
   },
   {
     "calibre": "Rolex 4130",
@@ -78435,5 +78459,93 @@
     ],
     "confidence": "inferred family transfer",
     "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+  },
+  {
+    "calibre": "SH3235",
+    "maker": "Shanghai (clone)",
+    "family": [],
+    "common": true,
+    "bph": 28800,
+    "lift_angle_deg": 52,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "basis": "derived from the beat rate"
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (a hybrid of the 3135 and 3235, about 40 h)",
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Separated from the former combined VR3235/SH3235 entry. SH train teeth and periods beyond the existing one-minute fourth and one-hour second wheel are unverified. VR32xx microscope evidence must not be applied to SH32xx. The existing 52-degree setting is retained from the earlier catalogue; it is not inferred from VR photographs."
+  },
+  {
+    "calibre": "VR3285",
+    "maker": "Shanghai (clone)",
+    "family": [],
+    "common": true,
+    "bph": 28800,
+    "seconds": "centre",
+    "wheels": [
+      {
+        "name": "barrel",
+        "period_s": 18000,
+        "teeth": 100,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 80,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 20
+      },
+      {
+        "name": "third wheel",
+        "period_s": 540,
+        "teeth": 99,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 12
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 120,
+        "basis": "Counted in Peter Hudson VR32xx photographs; period derived from ratios and confirmed one-hour second / one-minute fourth wheel. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 11
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "basis": "Accepted 20/10 escape pair: matches the photographed 31xx and genuine/DD/Jinghe 32xx pairs and satisfies 28800 bph with 120-tooth fourth wheel at 60 s. Contributor accepted this as the standard VR32xx configuration; no VR escape-wheel photograph supplied. See docs/vr32xx-train-wheel-counts.md.",
+        "pinion": 10
+      },
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from 28800 bph"
+      }
+    ],
+    "sources": [
+      "https://forum.replica-watch.info/threads/comprehensive-guide-to-clone-movements-found-in-rolex-reps.10936248/ (closer to genuine than the VR3235; balance, pallet fork and escape wheel not to genuine spec)",
+      "docs/vr32xx-train-wheel-counts.md (Peter Hudson microscope photographs, corrected filenames and accepted escape-pair specification, 2026-10-19)"
+    ],
+    "confidence": "derived from tooth counts; accepted escape pair",
+    "notes": "VR32xx family contribution: barrel 100; second 80/20; third 99/12; fourth 120/11. The third and fourth photograph labels were swapped, confirmed by Peter Hudson. Barrel 18000 s (5 h), second 3600 s, third 540 s, fourth 60 s. Escape 20/10 and 5 s are accepted as the standard VR32xx specification by the contributor, based on agreement with both measured Rolex-derived families; the VR escape wheel was not photographed. These counts do not apply to SH32xx or replace genuine/DD/Jinghe 32xx counts. Coverage of VR3235/VR3285 is a family transfer from one photographed set; no assertion of parts interchangeability. Existing lift settings are retained, not inferred from train teeth.",
+    "escape_teeth": 20
   }
 ]

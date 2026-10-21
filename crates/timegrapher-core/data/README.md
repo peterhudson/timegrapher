@@ -133,9 +133,10 @@ into this table with the issue as their source.
   contributor.
   For the photographed 31xx, this slot represents the second wheel at
   **2160 s**, with the one-hour cannon pinion listed separately.
-  Where the great wheel is off centre and its period is unknown
-  (ETA 2824-2, Valjoux 7750), the **cannon pinion**, which carries
-  the minute hand, is listed at 3600 s instead.
+  The ETA 2824 contribution stores its off-centre intermediate wheel at
+  46200/13 s and the cannon pinion separately at 3600 s. Where the great
+  wheel period remains unknown (Valjoux 7750), only the **cannon pinion**
+  is listed at 3600 s.
 - **third wheel** and **barrel**: only from tooth counts or a published
   ratio: third = fourth × third-wheel teeth / fourth-pinion leaves, barrel
   = centre × barrel teeth / centre-pinion leaves.
@@ -155,11 +156,11 @@ and pinion leaves with `confidence` "derived from tooth counts".
 
 Manufacturer-specific aliases are used for clones. The ambiguous
 `3235 (clone)` alias was removed; saved selections using it need an explicit
-DD/JH/VR/SH designation. VR32xx and SH32xx retain their previous known
-periods and receive none of these counts. Their independent photo sets
-are pending, as are contributions for ETA 2824 and its clones and further
-Rolex 413x variants. Future contributions must state which makers and variants they cover rather than propagate counts
-by a shared calibre number alone.
+DD/JH/VR/SH designation. The separate VR32xx contribution below supplies
+its own train; SH32xx remains unmeasured. ETA 2824 and its explicitly
+covered 4 Hz derivatives also have separate evidence below. Future
+contributions must state which makers and variants they cover rather than
+propagate counts by a shared calibre number alone.
 
 [4130 train and chronograph counts](../../../docs/4130-train-wheel-counts.md)
 contain twelve numbered figures and ten originals from a DD4130, contributed
@@ -232,8 +233,10 @@ beat rate and layout, plus these:
   included, only where it is described as a true clone that takes genuine
   parts (DD3235 and DD3285, JH3235, VR3135, DD4130), or whose maker says
   nearly all parts interchange (DD4131). Design clones and hybrids
-  (SH3135, VR3235, SH3285, SH4131) and 7750-based "4130" clones
-  get only what follows from the beat rate and layout. Most clone facts
+  (unqualified SH3135, SH3285, SH4131) and 7750-based "4130" clones
+  get only what follows from the beat rate and layout. VR32xx now has
+  separate photographic evidence; explicitly ETA-based SH31xx homages
+  use a qualified entry. Most older clone facts
   come from two guides by one author on a watch forum (one on clone
   movements, one on lift angles) and teardown threads, cited by URL per
   entry; the escape wheel of a clone resting on them alone is marked
@@ -271,3 +274,10 @@ See [the evidence and coverage audit](../../../docs/2824-train-wheel-counts.md)
 for the 28,800 bph counts, exact fractional second/barrel periods, cannon
 mesh inference, and source-labelled transfers to 39 catalogue rows.
 Three-hertz, Power+ and ambiguous clone identities are excluded.
+
+## VR32xx microscope contribution
+
+[VR32xx evidence](../../../docs/vr32xx-train-wheel-counts.md) establishes the
+100 / 80:20 / 99:12 / 120:11 train and five-hour barrel. The 20:10 escape pair
+is the contributor-accepted standard specification, supported by both
+comparison families. Its source note records that it was not photographed. VR and SH aliases are separated.

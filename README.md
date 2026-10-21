@@ -169,6 +169,10 @@ The [ETA 2824 evidence](docs/2824-train-wheel-counts.md) records the 28,800 bph
 train, its separate one-hour cannon wheel, and an explicit variant/clone
 coverage audit.
 
+The [VR32xx evidence](docs/vr32xx-train-wheel-counts.md) records its separate
+five-hour barrel, corrected third/fourth photo labels, and explicitly
+inferred escape pair; SH32xx remains separate.
+
 ## Reporting problems and sharing recordings
 
 Open an [issue](https://github.com/peterhudson/timegrapher/issues/new/choose):
