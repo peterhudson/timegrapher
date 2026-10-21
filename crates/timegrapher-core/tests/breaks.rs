@@ -419,3 +419,44 @@ fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
     assert!((drop - 0.6).abs() < 0.1, "drop {drop}");
     assert!((unlock - 0.6).abs() < 0.15, "unlock {unlock}");
 }
+
+#[test]
+fn a_short_tail_of_the_other_sign_turns_no_beat_error_over() {
+    // 90 s at one sign, a hole, then only 6 s at the other: too short to
+    // count as a stretch of its own, so it sets no sign, and the drop's
+    // and the unlock's beat errors keep one sign, the long stretch's.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, 0.6, 1);
+    let b = piece(6.0, -0.6, 2);
+    let fs = a.sample_rate;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    let drop = m.beat_error_ms.expect("beat error");
+    let unlock = m.beat_error_unlock_ms.expect("unlock beat error");
+    assert!(
+        drop * unlock > 0.0 && drop.abs() > 0.4 && unlock.abs() > 0.4,
+        "drop {drop}, unlock {unlock}"
+    );
+}

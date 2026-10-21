@@ -160,8 +160,9 @@ fn whole(p: &[Beat]) -> bool {
 /// its own, since the phase (and after a long gap the rate) does not carry
 /// across a break, and the fits are combined weighted by the beats each
 /// used, so the rate is the average over the time the watch was heard.
-/// The beat error is combined as [`signed_across`] says. Stretches shorter than [`MIN_PIECE_S`] are left out. With no cuts this
-/// is [`fit`].
+/// The beat error is combined as [`signed_across`] says. Stretches
+/// shorter than [`MIN_PIECE_S`] are left out. With no cuts this is
+/// [`fit`].
 pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
     if cuts.is_empty() {
         return fit(beats, bph);
@@ -207,30 +208,38 @@ pub fn signed_across(parts: &[(f64, f64)]) -> Option<f64> {
     Some(parts.iter().map(|p| v(p.0) * p.1).sum::<f64>() / w)
 }
 
-/// The median of signed figures at audio seconds `(t, value)` across the
-/// stretches between `cuts`: of the values when the stretches' own medians
+/// The median of signed figures over windows `(start_s, end_s, value)`
+/// across the stretches between `cuts`: of the values when the stretches
 /// agree in sign, else of their sizes, given as positive (see
-/// [`signed_across`]).
-pub fn median_across(values: &[(f64, f64)], cuts: &[f64]) -> Option<f64> {
-    let v: Vec<(f64, f64)> = values.iter().copied().filter(|p| p.1.is_finite()).collect();
+/// [`signed_across`]). A stretch's sign is its windows' median, and only a
+/// stretch whose windows span [`MIN_PIECE_S`] or more has one, as only
+/// such a stretch counts in [`fit_pieces`]; every window's value is pooled.
+pub fn median_across(windows: &[(f64, f64, f64)], cuts: &[f64]) -> Option<f64> {
+    let v: Vec<(f64, f64, f64)> = windows
+        .iter()
+        .copied()
+        .filter(|w| w.2.is_finite())
+        .collect();
     if v.is_empty() {
         return None;
     }
-    let piece = |t: f64| cuts.iter().filter(|&&c| c <= t).count();
+    let piece = |w: &(f64, f64, f64)| cuts.iter().filter(|&&c| c <= w.0).count();
     let mut signs = (false, false);
     for k in 0..=cuts.len() {
-        let mut here: Vec<f64> = v.iter().filter(|p| piece(p.0) == k).map(|p| p.1).collect();
-        if here.is_empty() {
+        let here: Vec<&(f64, f64, f64)> = v.iter().filter(|w| piece(w) == k).collect();
+        let span = here.iter().map(|w| w.1).fold(f64::NEG_INFINITY, f64::max)
+            - here.iter().map(|w| w.0).fold(f64::INFINITY, f64::min);
+        if here.is_empty() || span < MIN_PIECE_S - 1e-9 {
             continue;
         }
-        let m = crate::dsp::median(&mut here);
+        let m = crate::dsp::median(&mut here.iter().map(|w| w.2).collect::<Vec<_>>());
         signs.0 |= m > 0.0;
         signs.1 |= m < 0.0;
     }
     let mixed = signs.0 && signs.1;
     let mut all: Vec<f64> = v
         .iter()
-        .map(|p| if mixed { p.1.abs() } else { p.1 })
+        .map(|w| if mixed { w.2.abs() } else { w.2 })
         .collect();
     Some(crate::dsp::median(&mut all))
 }
@@ -287,6 +296,7 @@ pub fn windows(beats: &[Beat], bph: u32, window_s: f64, step_s: f64) -> Vec<Wind
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn signs_that_turn_over_combine_as_sizes() {
@@ -294,18 +304,18 @@ mod tests {
         assert!((signed_across(&[(-0.6, 3.0), (-0.2, 1.0)]).unwrap() + 0.5).abs() < 1e-12);
         assert_eq!(signed_across(&[(0.4, 1.0), (0.0, 1.0)]), Some(0.2));
         assert_eq!(signed_across(&[]), None);
-        let v = [
-            (1.0, -0.6),
-            (2.0, -0.5),
-            (3.0, -0.7),
-            (11.0, 0.6),
-            (12.0, 0.5),
-        ];
-        assert_eq!(median_across(&v, &[10.0]), Some(0.6));
-        assert_eq!(median_across(&v, &[]), Some(-0.5));
-        assert_eq!(median_across(&v[..3], &[10.0]), Some(-0.6));
+        // Windows 2 s long: 12 s at one sign, a cut, 12 s at the other.
+        let w = |a: f64, v: f64| (a, a + 2.0, v);
+        let mut v: Vec<_> = (0..6).map(|i| w(2.0 * i as f64, -0.6)).collect();
+        v.extend((0..6).map(|i| w(20.0 + 2.0 * i as f64, 0.6)));
+        assert_eq!(median_across(&v, &[19.0]), Some(0.6));
+        assert_eq!(median_across(&v, &[]), Some(0.0));
+        assert_eq!(median_across(&v[..6], &[19.0]), Some(-0.6));
+        // One short scrap after the cut does not set a sign.
+        let mut v: Vec<_> = (0..20).map(|i| w(2.0 * i as f64, -0.6)).collect();
+        v.push(w(50.0, 0.6));
+        assert_eq!(median_across(&v, &[45.0]), Some(-0.6));
     }
-    use super::*;
 
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on
     /// the stretches given, numbered on one grid.

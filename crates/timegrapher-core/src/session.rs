@@ -559,7 +559,7 @@ pub fn measure_masked(
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: timing::median_across(
             &amp.iter()
-                .filter_map(|w| Some(((w.start_s + w.end_s) / 2.0, w.beat_error_unlock_ms?)))
+                .filter_map(|w| Some((w.start_s, w.end_s, w.beat_error_unlock_ms?)))
                 .collect::<Vec<_>>(),
             &on_time.iter().map(|b| b.audio_s).collect::<Vec<_>>(),
         ),
