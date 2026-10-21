@@ -80,6 +80,9 @@ kept to two harmonics, which round off a short dip; the repository's
 - **Sides** (only on a paused take). Present when Tick and Tock were
   named by the beat count across a break, not told apart by their
   sound (the `sides_by_count` caveat).
+- **Conditions** (only when it applies). "beat error given as a size:
+  its sign differs either side of a cut" (the `beat_error_as_size`
+  caveat).
 - **Rate.** The average over the run, and how far the rate wandered from
   slice to slice. A wide 5th–95th range is the "wandering trace".
 - **Amplitude.** Median and range over the run. On a full-reserve run,

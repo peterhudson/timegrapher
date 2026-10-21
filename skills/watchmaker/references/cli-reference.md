@@ -326,7 +326,7 @@ JSON body:
 | `overall` | As for `analyze` (rate corrected when `clock` is given) |
 | `rate_p05`, `rate_p95` | Spread of the rate over slices of about 1/400 of the run |
 | `amplitude_deg`, `amplitude_p05`, `amplitude_p95` | Median and spread |
-| `caveats[]` | `sides_by_count` (`count`) as for `analyze`; empty when none. The printed summary's `Sides` line says the same |
+| `caveats[]` | `sides_by_count` (`count`) and `beat_error_as_size` (the take's beat errors and the slices' are sizes, positive, not signed) as for `analyze`; empty when none. The printed summary's `Sides` and `Conditions` lines say the same |
 | `rate_periods`, `amplitude_periods` | Components found: `{ period_s, resolution_s, significance, harmonics, explained, peak_to_peak, wheel, nearest_wheel }` |
 
 Component fields: `significance` is −log10 of the false-alarm chance (2 =
@@ -357,9 +357,10 @@ name not in the table is an error that points to `timegrapher calibres
 stored for the input the recording names, else the recording's USB
 lines, else none (`series` has no `--card-ppm` or `--device`). The beat
 error series is the unlock's; where its sign turns over across a break,
-its readings are sizes, given as positive. `caveats[]` holds
-`sides_by_count` (`count`) as for `analyze`, and a printed `Sides` line
-says the same.
+its readings, and so its median and the tests on them, are sizes, given
+as positive. `caveats[]` holds `sides_by_count` (`count`) and
+`beat_error_as_size` as for `analyze`, and printed `Sides` and
+`Conditions` lines say the same.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
