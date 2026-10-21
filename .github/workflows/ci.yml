@@ -24,12 +24,19 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # Time limits count from when a runner starts the job, not the queue, and
+    # sit well above the slowest recent run (test 18 minutes, regress 7) so a
+    # hung job fails within the hour instead of GitHub's six. The CI watchdog
+    # does not re-run a job that hits one.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       # Offline tests of the publishing gate; keep its five-job/step contract
       # in .github/scripts/release_ci_gate.py synchronized with this workflow.
       - name: Release CI gate tests (offline)
         run: python3 -m unittest discover -s .github/scripts -p 'test_release_ci_gate.py' -v
+      - name: CI watchdog tests (offline)
+        run: python3 -m unittest discover -s .github/watchdog -p 'test_ci_watchdog.py' -v
       - name: Packaging script tests (offline)
         run: python3 -m unittest discover -s packaging -p 'test_*.py' -v
       # Exercise the supported compiler floor without another build/job.
@@ -49,6 +56,7 @@ jobs:
 
   mcp-renderer:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -61,6 +69,7 @@ jobs:
   # releases, checked by SHA-256 and cached between runs.
   regress:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       # Reviewed with the engine baseline; update through docs/regress.md.
       CORPUS_REVISION: 224b6032b831e120277e8e58ded4449b57706794

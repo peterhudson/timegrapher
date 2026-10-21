@@ -148,19 +148,36 @@ pub fn of_files(
     for_take(json.as_ref().filter(|_| whole), clock, sample_rate)
 }
 
-/// [`of_files`], with the clock fit's breaks moved to the listed ones
-/// ([`crate::clock::ClockFit::place_breaks`]), so the clock and the breaks
-/// put each gap at the same audio second.
+/// [`of_files`], placed on the clock with [`on_clock`].
 pub fn of_files_on_clock(
     files: &[&std::path::Path],
     clock: Option<&mut crate::clock::ClockFit>,
     sample_rate: u32,
 ) -> Vec<Break> {
     let listed = of_files(files, clock.as_deref(), sample_rate);
-    if let Some(c) = clock {
-        c.place_breaks(&listed);
-    }
-    listed
+    on_clock(listed, clock)
+}
+
+/// The listed breaks with the clock fit's breaks moved to them
+/// ([`crate::clock::ClockFit::place_breaks`]), so the clock and the breaks
+/// put each gap at the same audio second, and with every step in the
+/// clock log that no listed break explains (a system clock step, or a
+/// dropout the recorder did not list) as a break of its own, as it is
+/// when nothing is listed. Sorted.
+pub fn on_clock(listed: Vec<Break>, clock: Option<&mut crate::clock::ClockFit>) -> Vec<Break> {
+    let Some(c) = clock else {
+        return listed;
+    };
+    c.place_breaks(&listed);
+    let mut out = listed.clone();
+    out.extend(
+        c.breaks
+            .iter()
+            .filter(|cb| !listed.iter().any(|b| (b.audio_s - cb.audio_s).abs() < 1e-9))
+            .copied(),
+    );
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    out
 }
 
 /// How near a jump in the beats must be to a listed break to be that break,

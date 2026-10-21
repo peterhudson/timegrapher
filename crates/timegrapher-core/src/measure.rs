@@ -72,6 +72,10 @@ pub enum Caveat {
     /// for the side check to run at), so the sides after each are named by
     /// the beat count across it alone.
     SidesByCount { count: usize },
+    /// The beat error's sign differs either side of a cut in the stretch
+    /// ([`crate::timing::sign_turns`]), so it is given as a size, positive,
+    /// rather than signed.
+    BeatErrorAsSize,
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
     Masked { seconds: f64 },
@@ -91,6 +95,7 @@ impl Caveat {
             Caveat::Breaks { .. } => 7,
             Caveat::SidesByCount { .. } => 8,
             Caveat::Masked { .. } => 9,
+            Caveat::BeatErrorAsSize => 10,
         }
     }
 }
@@ -125,6 +130,8 @@ pub struct Context {
     pub breaks: usize,
     /// Of `breaks`, those where the sides were kept by the beat count.
     pub sides_by_count: usize,
+    /// The beat error is given as a size ([`Caveat::BeatErrorAsSize`]).
+    pub beat_error_as_size: bool,
     /// The seconds a shown rate is averaged over, when shorter than the
     /// stretch (the live screen's averaging time). `None`: the rate is the
     /// fit over the whole stretch.
@@ -204,6 +211,9 @@ pub fn assess(
             count: c.sides_by_count,
         });
     }
+    if c.beat_error_as_size && c.watch_heard {
+        caveats.push(Caveat::BeatErrorAsSize);
+    }
     let confidence = c.watch_heard.then(|| {
         let amps: Vec<f64> = amplitude_windows.iter().filter_map(|w| w.mean()).collect();
         let bes: Vec<f64> = amplitude_windows
@@ -262,6 +272,30 @@ mod tests {
         );
         assert_eq!(a.caveats, vec![Caveat::NoWatch]);
         assert!(a.confidence.is_none());
+    }
+
+    #[test]
+    fn no_regular_beat_says_nothing_of_a_beat_error_size() {
+        // A cut take with no regular beat has no beat error to call a size.
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                watch_heard: false,
+                beat_error_as_size: true,
+                ..heard()
+            },
+        );
+        assert_eq!(a.caveats, vec![Caveat::NoWatch]);
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                beat_error_as_size: true,
+                ..heard()
+            },
+        );
+        assert_eq!(a.caveats, vec![Caveat::BeatErrorAsSize]);
     }
 
     #[test]

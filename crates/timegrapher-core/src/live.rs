@@ -929,6 +929,7 @@ impl LiveAnalyzer {
                 listened_s,
                 breaks: 0,
                 sides_by_count: 0,
+                beat_error_as_size: false,
                 average_s: Some(average_s),
             },
         );
