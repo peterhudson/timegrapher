@@ -233,10 +233,13 @@ than told apart by their sound, `analyze`, `long` and `series` say so: a
 line.
 
 When `session` reads a saved take, or `long` reads one with its
-`clock.csv` given as `--clock`, it finds the pauses in `session.json`. A step in `clock.csv` that none of those pauses explains,
-such as the computer's clock being set or a dropout the app did not
-list, counts as a break of its own, and the stretches either side are read
-apart as at a pause. That holds for a take kept with Save Analysis Only
+`clock.csv` given as `--clock`, it finds the pauses in `session.json`.
+A forward step in `clock.csv` that none of those pauses explains
+counts as a break of its own: the computer's time jumps ahead of the
+sound by half a second or more and stays ahead, as after a dropout the
+app did not list. A clock set back, or one late timestamp that falls
+back again, is not a break. The stretches either side of such a break are read
+apart, as at a pause. That holds for a take kept with Save Analysis Only
 too.
 
 A continuous run is especially valuable for
