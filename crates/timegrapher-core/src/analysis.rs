@@ -313,6 +313,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             },
             listened_s: duration,
             breaks: cuts.len(),
+            sides_by_count: log.by_count.len(),
             average_s: None,
         },
     );
