@@ -158,6 +158,9 @@ Validation against tg is in [docs/validation.md](docs/validation.md).
 Numbered microscope photographs and gear-ratio calculations for the Rolex,
 Dandong and Jinghe 32xx train are in
 [docs/32xx-train-wheel-counts.md](docs/32xx-train-wheel-counts.md).
+The [4130 evidence](docs/4130-train-wheel-counts.md) covers the Rolex, Dandong
+and SH4130 train and chronograph drive, with directly counted and inferred
+teeth distinguished.
 
 ## Reporting problems and sharing recordings
 
