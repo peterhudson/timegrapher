@@ -232,8 +232,8 @@ than told apart by their sound, `analyze`, `long` and `series` say so: a
 `sides_by_count` caveat in the JSON, and in `long`'s and `series`'s text a **Sides**
 line.
 
-When `session` or `long` reads a saved take, it finds the pauses in
-`session.json`. A step in `clock.csv` that none of those pauses explains,
+When `session` reads a saved take, or `long` reads one with its
+`clock.csv` given as `--clock`, it finds the pauses in `session.json`. A step in `clock.csv` that none of those pauses explains,
 such as the computer's clock being set or a dropout the app did not
 list, counts as a break of its own, and the stretches either side are read
 apart as at a pause. That holds for a take kept with Save Analysis Only
