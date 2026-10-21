@@ -624,17 +624,14 @@ fn read_one_inner(
     };
     let listed = match &kept {
         // Every part of the take was in it, so its session.json lists its
-        // breaks as for the whole take's sound, and the clock fit's breaks
-        // move to them as `of_files_on_clock` moves them.
+        // breaks as for the whole take's sound, and they go on the clock as
+        // `of_files_on_clock` puts them.
         Some(_) => {
             let json = fs::read_to_string(path.join("session.json"))
                 .ok()
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
             let listed = breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate);
-            if let Some(c) = clock.as_mut() {
-                c.place_breaks(&listed);
-            }
-            listed
+            breaks::on_clock(listed, clock.as_mut())
         }
         None => breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
     };

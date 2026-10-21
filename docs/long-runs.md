@@ -123,8 +123,9 @@ records it.
 
 A take that was paused, or saved and then continued, has audio that runs
 straight on across each break while the clock jumps. `long`, `series` and
-`session` find the breaks in the take's `session.json` (`breaks`), or for
-older takes from the step in `clock.csv`, and read each stretch on its own:
+`session` find the breaks in the take's `session.json` (`breaks`), plus
+any step in `clock.csv` that none of those explains (for older takes,
+the steps alone), and read each stretch on its own:
 the clock fit takes the gap out before fitting, so a pause no longer reads
 as a huge sound-card error; rate and beat error are fitted per stretch and
 combined weighted by beats (where the beat error's sign turns over across

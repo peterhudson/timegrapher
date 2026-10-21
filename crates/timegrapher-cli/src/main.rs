@@ -1276,6 +1276,9 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
             )),
             Caveat::ClockUnknown => Some("clock: card clock, not corrected".to_string()),
             Caveat::Breaks { count } => Some(format!("{count} breaks in the take")),
+            Caveat::BeatErrorAsSize => Some(
+                "beat error given as a size: its sign differs either side of a cut".to_string(),
+            ),
             Caveat::SidesByCount { count } => Some(format!(
                 "Tick and Tock named by the beat count across {count} break{}, \
                  not told apart by their sound",
