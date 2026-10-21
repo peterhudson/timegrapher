@@ -48,6 +48,7 @@ You can save while listening or after stopping:
 | **Save…** | Choose a parent folder; the app creates a session folder inside it |
 | **Save Again** / Ctrl+S | Update the previously chosen saved copy |
 | **Save As…** / Ctrl+Shift+S | Make a copy at a new destination and use that destination for subsequent Save Again actions |
+| **Save Analysis Only…** | After listening stops, keep the session's readings in a new folder without its sound; see [below](#keeping-the-analysis-without-the-sound) |
 
 Use Cmd on macOS. A save captures the session available at that point.
 If recording continues, save again to include the new audio and context.
@@ -80,6 +81,38 @@ contain several positions.
 During capture, the app flushes the audio files periodically, approximately
 every ten seconds. This improves recoverability after interruption; it
 is not a guarantee that the last samples or all metadata survive a crash.
+
+### Keeping the Analysis Without the Sound
+
+An overnight take's sound can fill a disk. **Save Analysis Only…** in
+the File menu keeps a finished microphone session's readings without its
+sound. It is available once listening has stopped. Choose a parent
+folder; the app reads the whole session's sound again in the background,
+with its progress and a **Cancel** button in the status bar, and then
+writes a new folder named like a saved take with `_analysis` on the end.
+The message says how much space it takes. A folder already there is
+never written over, and Cancel leaves nothing written. While it works,
+listening, New Session and opening a recording wait, and a message says
+why.
+
+The folder holds `session.toml`, `session.json`, `clock.csv`,
+`positions-test.json` when there is one, and an `analysis/` folder with
+the beats, the 2-second amplitude windows, the Tick Tock profiles and
+each position's beat shape. It holds no sound. The session's sound
+itself is still unsaved afterwards: the status bar says its analysis is
+kept, and **Save…** still keeps the sound.
+
+Opened later, the folder shows the same readings, Paper Strip, charts,
+Steadiness tests and positions as the take with its sound would. The
+Tick Tock Profile comes from the profiles kept for each 2 seconds. Masks
+can still be changed and saved. What needs the sound is unavailable: the
+Scope says there is no waveform, Replay says the take can't be replayed,
+and the take can't be measured again with other settings. The command
+line's `session` reads such a folder too, and says in its report that no
+sound was kept. A folder whose session file says it has no sound but
+whose `analysis/` folder is missing is refused with a message. The
+[sessions reference](../sessions.md#a-take-kept-as-its-analysis-alone)
+gives the layout.
 
 ## Opening a Recording
 

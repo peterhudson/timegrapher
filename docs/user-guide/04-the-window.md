@@ -17,7 +17,7 @@ the readings selects an earlier moment.
 
 | Menu | Main actions |
 | --- | --- |
-| **File** | **Open Recording…**, **Open Folder…**, **Save… / Save Again**, **Save As…**, **New Session** (also while listening), **Quit** |
+| **File** | **Open Recording…**, **Open Folder…**, **Save… / Save Again**, **Save As…**, **Save Analysis Only…**, **New Session** (also while listening), **Quit** |
 | **View** | Show or hide readings and panes, choose Steadiness panes, **Reset Panes**, and select **Appearance** |
 | **Help** | **Check for Updates…**, **Check for Updates at Start**, **Report a Problem…** and, on Linux, **Add to Applications Menu** |
 
