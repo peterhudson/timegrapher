@@ -271,6 +271,7 @@ pub(crate) fn load_manifest_file(f: &Path) -> Result<(Manifest, PathBuf, String)
     let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?;
     m.validate_analysis_inputs()
         .map_err(|e| format!("{}: {e}", f.display()))?;
+    check_times(&m).map_err(|e| format!("{}: {e}", f.display()))?;
     if m.recordings.is_empty() {
         return Err(format!("{}: no [[recording]] entries", f.display()));
     }
@@ -278,6 +279,33 @@ pub(crate) fn load_manifest_file(f: &Path) -> Result<(Manifest, PathBuf, String)
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     Ok((m, base, crate::archive::sha256_hex(text.as_bytes())))
+}
+
+/// Seconds that must be a finite number of at least `min` (or above it,
+/// when `above`), checked before any audio is read.
+fn check_seconds(name: &str, value: Option<f64>, min: f64, above: bool) -> Result<(), String> {
+    match value {
+        Some(v) if !v.is_finite() || v < min || (above && v <= min) => Err(format!(
+            "{name} is {v}; it must be a number of seconds {} {min}",
+            if above { "above" } else { "of at least" }
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// The session file's settling and measuring times, its own and each
+/// reading's, and each reading's start and end.
+fn check_times(m: &Manifest) -> Result<(), String> {
+    check_seconds("settle_s", m.settle_s, 0.0, false)?;
+    check_seconds("measure_s", m.measure_s, 0.0, true)?;
+    for e in &m.recordings {
+        let at = |name: &str| format!("{}: {name}", e.file);
+        check_seconds(&at("settle_s"), e.settle_s, 0.0, false)?;
+        check_seconds(&at("measure_s"), e.measure_s, 0.0, true)?;
+        check_seconds(&at("start_s"), e.start_s, 0.0, false)?;
+        check_seconds(&at("end_s"), e.end_s, 0.0, true)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn position_of(e: &RecordingEntry) -> Result<Position, String> {
@@ -549,7 +577,7 @@ fn read_one_inner(
         None => stream::analyze_files(&paths, &cfg, |_| {})
             .map_err(|err| format!("{}: {err}", e.file))?,
     };
-    let (clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
+    let (mut clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
         (Some(p), _) => {
             let (fit, digest) = match &kept {
                 Some(k) => read_clock_as(
@@ -566,14 +594,19 @@ fn read_one_inner(
     };
     let listed = match &kept {
         // Every part of the take was in it, so its session.json lists its
-        // breaks as for the whole take's sound.
+        // breaks as for the whole take's sound, and the clock fit's breaks
+        // move to them as `of_files_on_clock` moves them.
         Some(_) => {
             let json = fs::read_to_string(path.join("session.json"))
                 .ok()
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-            breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate)
+            let listed = breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate);
+            if let Some(c) = clock.as_mut() {
+                c.place_breaks(&listed);
+            }
+            listed
         }
-        None => breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
+        None => breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
     };
     let breaks = breaks::with_jumps(listed, &log.jumps);
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
@@ -738,6 +771,7 @@ pub struct Session<'a> {
 }
 
 pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
+    check_seconds("--settle", o.settle, 0.0, false)?;
     if o.init {
         return init(paths, o);
     }
@@ -1343,6 +1377,55 @@ mod tests {
         again.validate_analysis_inputs().unwrap();
         assert_eq!(again.lift_known, m.lift_known);
         assert!(toml::from_str::<Manifest>("no_such_key=1").is_err());
+    }
+
+    #[test]
+    fn a_session_file_with_impossible_times_is_refused_before_any_audio() {
+        let dir = std::env::temp_dir().join(format!("tg-times-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join(MANIFEST);
+        for (text, field) in [
+            ("settle_s = 0\nmeasure_s = -20\n", "measure_s"),
+            ("settle_s = -20\nmeasure_s = 1\n", "settle_s"),
+            ("measure_s = 0\n", "measure_s"),
+            ("settle_s = nan\n", "settle_s"),
+            (
+                "[[recording]]\nfile = \"a.wav\"\nstart_s = nan\n",
+                "a.wav: start_s",
+            ),
+            (
+                "[[recording]]\nfile = \"a.wav\"\nstart_s = -1\n",
+                "a.wav: start_s",
+            ),
+            (
+                "[[recording]]\nfile = \"a.wav\"\nend_s = 0\n",
+                "a.wav: end_s",
+            ),
+            (
+                "[[recording]]\nfile = \"a.wav\"\nsettle_s = inf\n",
+                "a.wav: settle_s",
+            ),
+            (
+                "[[recording]]\nfile = \"a.wav\"\nmeasure_s = -5\n",
+                "a.wav: measure_s",
+            ),
+        ] {
+            let text = if text.contains("[[recording]]") {
+                text.to_string()
+            } else {
+                format!("{text}[[recording]]\nfile = \"a.wav\"\n")
+            };
+            fs::write(&f, &text).unwrap();
+            let err = load_manifest_file(&f).unwrap_err();
+            assert!(err.contains(&format!("{field} is")), "{text}: {err}");
+        }
+        fs::write(
+            &f,
+            "settle_s = 0\nmeasure_s = 10\n[[recording]]\nfile = \"a.wav\"\nstart_s = 0\nend_s = 60\n",
+        )
+        .unwrap();
+        load_manifest_file(&f).unwrap();
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

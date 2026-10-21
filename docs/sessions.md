@@ -133,7 +133,7 @@ names more wheels in the cycle search (seconds per turn).
 
 The `calibre` line, when the calibre table knows the name (the same table
 the app's picker, `calibres` and `long --calibre` use; "3235", "2824-2" and
-"4130 (clone)" all match), gives the beat rate, lift angle and escape wheel
+"DD4130" all match), gives the beat rate, lift angle and escape wheel
 where the session file leaves them out, and the train's wheels in the cycle
 search. A name the table does not know is only a label. `--calibre NAME`
 picks a calibre from the table in its place (an unknown name lists the
@@ -315,8 +315,9 @@ of the recording or for `measure_s`:
   windows: how steady the rate is. The headline rate is the fit over
   every beat (over the stretches between cuts, as above), the average the
   hands keep; where the rate wanders with dips (the Yacht-Master crown
-  left), the 10 s median sits a few s/d above it, as tg's median reading sits above its mean, so compare tg's
-  mean with the headline and tg's median with the 10 s median;
+  left), the 10 s median sits a few s/d above it, as tg's median reading
+  sits above its mean, so compare tg's mean with the headline and tg's
+  median with the 10 s median;
 - periodic changes in rate and amplitude, from the same search as `long`,
   named after the wheel whose turn they match;
 - beat shape (as `shape`) on the first 60 s after settling, or on
@@ -371,6 +372,14 @@ reported only when all of these hold (`two_levels` in the JSON):
 
 Otherwise the line reads "one amplitude level". With fewer than 30
 blocks it says how many there were and that they are too few.
+
+A block is missing where the reading was masked or paused, or where too
+few windows filled it. The finder keeps each block's place in the
+reading, so a hole is time that passed: the running median takes the
+blocks within ±5 minutes of the take's time, only a change between two
+blocks side by side counts as a switch, a stay ends at a hole, and the
+lags of the level sequence are times apart, pairing only blocks that far
+apart in the take.
 
 Beside the levels, the line states what else the finder measured:
 

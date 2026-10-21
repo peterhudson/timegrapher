@@ -1,0 +1,34 @@
+[
+  {
+    "original_filename": "Barrel.JPG",
+    "saved_filename": "barrel.jpg",
+    "confirmed_role": "barrel",
+    "sha256": "14bff89aa31314810915e5bcf76a6d66746d9e18e3c3c5768cd273492d377d2a",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Second Wheel.JPG",
+    "saved_filename": "second-wheel.jpg",
+    "confirmed_role": "second-wheel",
+    "sha256": "ba35317ec66b9183895e658cb12c00c89d66a00261d1f549b8dcbbfc23332185",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Third Wheel.JPG",
+    "saved_filename": "fourth-wheel.jpg",
+    "confirmed_role": "fourth-wheel",
+    "sha256": "29231b13e0a6d50f0665b9f04dae87a4d750a16ef5217e68ab12776bec4e6de9",
+    "width": 2592,
+    "height": 1944
+  },
+  {
+    "original_filename": "Fourth Wheel.JPG",
+    "saved_filename": "third-wheel.jpg",
+    "confirmed_role": "third-wheel",
+    "sha256": "04f74ee8967613865055c5b12544c066c8c1e4465a67448dbe06de814b8119fa",
+    "width": 2592,
+    "height": 1944
+  }
+]

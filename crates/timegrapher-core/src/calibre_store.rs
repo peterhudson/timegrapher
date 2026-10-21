@@ -468,13 +468,24 @@ mod tests {
 
     #[test]
     fn user_periods_fill_blanks_and_replace_shipped_ones() {
-        let u = store();
+        let mut u = store();
+        u.set_wheel("ETA 2892-A2", "third wheel", 240.0, None);
         let cat = Catalog::new(&u);
         let rolex = cat.find("4130").unwrap();
         let slots = cat.slots(rolex);
         let third = slots.iter().find(|s| s.name == "third wheel").unwrap();
         assert_eq!((third.period_s, third.origin), (Some(240.0), Origin::User));
-        assert!(slots
+        assert_eq!(third.shipped_period_s, Some(480.0));
+        // 4130 now has a complete train. Exercise filling an unknown
+        // period separately, on a catalogue entry still missing it.
+        let eta = cat.slots(cat.find("ETA 2892-A2").unwrap());
+        let eta_third = eta.iter().find(|s| s.name == "third wheel").unwrap();
+        assert_eq!(
+            (eta_third.period_s, eta_third.origin),
+            (Some(240.0), Origin::User)
+        );
+        assert_eq!(eta_third.shipped_period_s, None);
+        assert!(eta
             .iter()
             .any(|s| s.origin == Origin::Unknown && s.period_s.is_none()));
         let esc = cat.slots(cat.find("3235").unwrap());
