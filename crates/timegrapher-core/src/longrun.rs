@@ -146,11 +146,12 @@ pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
 /// side holds only part of its span, so it is left out (see
 /// [`touches_gap`]).
 ///
-/// A clock fit with the pauses in places its own break at its first log
-/// line after the resume, up to a block after the break's frame, so the
-/// gap ends at that break where one is within
-/// [`crate::breaks::JUMP_MATCH_S`] after; the sound between the two lies
-/// in the gap. A break of zero or negative length is a point.
+/// A clock fit with the pauses in, unless its breaks were moved to the
+/// listed ones ([`ClockFit::place_breaks`], as `long` and `series` do),
+/// places its own break at its first log line after the resume, up to a
+/// block after the break's frame, so the gap ends at that break where one
+/// is within [`crate::breaks::JUMP_MATCH_S`] after; the sound between the
+/// two lies in the gap. A break of zero or negative length is a point.
 pub fn gaps(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<(f64, f64)> {
     let map = true_time(clock, breaks);
     let clock_breaks = clock.map_or(&[][..], |c| &c.breaks[..]);
@@ -422,6 +423,18 @@ mod tests {
         assert!(!touches_gap(&gaps, a - 10.0, a));
         assert!(touches_gap(&gaps, map(300.05), map(300.05) + 10.0));
         assert!(!touches_gap(&gaps, b, b + 10.0));
+        // With the clock's break moved to the listed one, the gap ends at
+        // the resume and the sound after it maps after the gap.
+        let mut placed = clock.clone();
+        placed.place_breaks(&breaks);
+        assert!((placed.breaks[0].audio_s - 300.0).abs() < 1e-9);
+        let on = super::gaps(Some(&placed), &breaks)[0];
+        let map_on = true_time(Some(&placed), &breaks);
+        assert!(
+            (on.0 - a).abs() < 1e-6 && (on.1 - map_on(300.0)).abs() < 1e-9,
+            "{on:?}"
+        );
+        assert!(map_on(300.05) > on.1);
         // A jump of no known length is a point.
         let jump = [Break {
             audio_s: 100.0,
