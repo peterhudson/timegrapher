@@ -140,6 +140,9 @@ so a gap is a missing stretch. The JSON lists the breaks as `breaks`.
 Where Tick and Tock were not told apart by their sound across a break,
 the sides after it are named by the beat count across it; the printed
 `Sides` line and the JSON's `caveats` (`sides_by_count`, `count`) say so.
+Where the beat error is given as a size, a `Conditions` line ("beat error
+given as a size: its sign differs either side of a cut") and the caveat
+`beat_error_as_size` say so, as for `analyze`.
 `analyze` on a single file does not look for breaks, so read a paused
 take with `long`, `series` or `session`.
 
