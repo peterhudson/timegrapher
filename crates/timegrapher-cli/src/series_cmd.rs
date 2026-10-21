@@ -214,6 +214,9 @@ fn print_text(r: &Report, calibrated: bool) {
             ""
         }
     );
+    if let Some(line) = crate::long::sides_line(&r.caveats) {
+        println!("Sides        {line}");
+    }
     for s in &r.series {
         print_series(s, r.config.outlier_sigma);
     }
@@ -419,6 +422,7 @@ mod tests {
             duration_s: 600.0,
             bph: 28800,
             breaks: vec![],
+            caveats: vec![],
             config: Config::default(),
             series: vec![],
             rate_amplitude: None,
