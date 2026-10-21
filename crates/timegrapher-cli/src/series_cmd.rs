@@ -51,10 +51,9 @@ pub fn run(o: Options) -> Result<(), String> {
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let applied_clock = resolve_clock(o.clock_log, &info, total_s, || {
+    let mut applied_clock = resolve_clock(o.clock_log, &info, total_s, || {
         crate::clock_cmd::correction_or_usb(&files, None, None)
     })?;
-    let clock = applied_clock.as_ref().map(|c| &c.fit);
 
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
     let tty = std::io::stderr().is_terminal();
@@ -85,7 +84,13 @@ pub fn run(o: Options) -> Result<(), String> {
     };
     lc.wheels.extend(extra);
     let mut log = log;
-    let breaks = breaks::with_jumps(breaks::of_files(&paths, clock, log.sample_rate), &log.jumps);
+    let listed = breaks::of_files_on_clock(
+        &paths,
+        applied_clock.as_mut().map(|c| &mut c.fit),
+        log.sample_rate,
+    );
+    let clock = applied_clock.as_ref().map(|c| &c.fit);
+    let breaks = breaks::with_jumps(listed, &log.jumps);
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);

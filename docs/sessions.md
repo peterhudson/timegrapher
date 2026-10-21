@@ -133,7 +133,7 @@ names more wheels in the cycle search (seconds per turn).
 
 The `calibre` line, when the calibre table knows the name (the same table
 the app's picker, `calibres` and `long --calibre` use; "3235", "2824-2" and
-"4130 (clone)" all match), gives the beat rate, lift angle and escape wheel
+"DD4130" all match), gives the beat rate, lift angle and escape wheel
 where the session file leaves them out, and the train's wheels in the cycle
 search. A name the table does not know is only a label. `--calibre NAME`
 picks a calibre from the table in its place (an unknown name lists the

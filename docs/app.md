@@ -493,10 +493,9 @@ They are cut like a pause, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
 once nine tenths of an averaging time of beats has been heard after it
 (as at the start of a session and after a pause), the steadiness tests
-leave out any 10-second rate reading that takes in either end of one (a
-10-second amplitude or beat-error reading there is still made from the
-2-second stretches outside the mask when they fill at least half of
-it), and the charts, the whole-take figures, the
+and their views leave out any 10-second reading (rate, amplitude or beat
+error) that takes in either end of one, as they do one with a 2-second
+stretch of no beats in it, and the charts, the whole-take figures, the
 distributions (their 2-second stretches too), the steadiness tests and a
 Positions Test leave their beats out; a Positions Test's positions are
 read again when what is masked changes. A reading whose averaging time
@@ -563,10 +562,11 @@ lift angle works every point out again, back to the start of the session.
 over the session or the strip's length (Time Span), switched on in the
 Distributions card (all off at first). An average gives one number; these
 show whether a watch keeps to one state or moves between two, such as a
-high and a low amplitude. Amplitude and beat error count either the
-readings (**Values: Readings**, the default, averaged over Average Over as
-on the charts and the strip) or each 2 seconds of beats (**2 s**, the
-finest the engine measures them, with more scatter); rate counts readings.
+high and a low amplitude. Rate, amplitude and beat error count either
+the readings (**Values: Readings**, the default, averaged over Average
+Over as on the charts and the strip) or each 2 seconds of beats (**2 s**,
+the finest the engine measures them, with more scatter; none reaches
+across a break or into a masked stretch).
 **Show: Probability** (the default) is a normal probability plot, the
 probability paper of flood-frequency analysis: each value against its rank,
 on a vertical scale spaced in standard deviations and labelled in percent
@@ -863,7 +863,9 @@ listening and lets go of the microphone, so another program can use it
 readings, strip, charts and the sound so far.
 **Resume** carries on in the same session: the strip and charts leave
 the stopped time out, and the readings start from the beats after the
-stop. **New Session** clears everything for the next watch or position;
+stop. It carries on only with the input and the sample rate the session
+was listening at; with another, it says which and stays stopped.
+**New Session** clears everything for the next watch or position;
 pressed while listening, listening carries on into the new session
 (unless closing the kept sound fails: see Recording stopped, below).
 Everything heard is kept as it comes in, so **Save…** can be pressed at

@@ -62,6 +62,8 @@ const CLOCK_DIFFERS_PPM: f64 = 2.0;
 struct ClockTrack {
     /// The input's name, as the clock file keeps it.
     device: String,
+    /// Its name as the microphone menu shows it.
+    shown: String,
     tracker: timegrapher_core::clock::ClockTracker,
     /// Audio seconds at which to fit again.
     next_s: f64,
@@ -714,6 +716,70 @@ struct ChartLine {
     main: bool,
 }
 
+/// The rate over each 2 seconds of beats, on a grid from the first beat,
+/// worked out on as beats arrive: (start, s/day). Whatever it was worked
+/// out from is kept, so it starts again when that changes.
+#[derive(Debug, Default)]
+struct RateTwoS {
+    first: Option<f64>,
+    beats: usize,
+    bph: Option<u32>,
+    breaks: Vec<f64>,
+    masked: Vec<(f64, f64)>,
+    /// The next stretch on the grid to work out.
+    next: usize,
+    values: Vec<(f64, f64)>,
+}
+
+impl RateTwoS {
+    /// Seconds of beats in each value, as the amplitude's stretches.
+    const STEP_S: f64 = 2.0;
+
+    /// Bring the values up to `live`'s settled beats. None reaches across a
+    /// break (a jump or a new position) or into a masked stretch, as no
+    /// reading does.
+    fn refresh(&mut self, live: &LiveAnalyzer, masked: &[(f64, f64)]) {
+        let beats = live.beats();
+        let first = beats.first().map(|b| b.time);
+        if self.first != first
+            || self.beats > beats.len()
+            || self.bph != live.bph()
+            || self.breaks != live.breaks()
+            || self.masked != masked
+        {
+            *self = RateTwoS {
+                first,
+                bph: live.bph(),
+                breaks: live.breaks().to_vec(),
+                masked: masked.to_vec(),
+                ..Default::default()
+            };
+        }
+        self.beats = beats.len();
+        let (Some(t0), Some(bph), Some(last)) = (first, self.bph, beats.last()) else {
+            return;
+        };
+        loop {
+            let a = t0 + self.next as f64 * Self::STEP_S;
+            let b = a + Self::STEP_S;
+            if b > last.time + 1e-9 {
+                break;
+            }
+            self.next += 1;
+            if self.breaks.iter().any(|&x| a < x && x < b)
+                || self.masked.iter().any(|&(m0, m1)| a < m1 && b > m0)
+            {
+                continue;
+            }
+            let lo = beats.partition_point(|x| x.time < a);
+            let hi = beats.partition_point(|x| x.time < b);
+            if let Some(f) = timegrapher_core::timing::fit(&beats[lo..hi], bph) {
+                self.values.push((a, f.rate_s_per_day));
+            }
+        }
+    }
+}
+
 /// The key a run of readings is kept under: its averaging time in ms.
 fn trend_key(seconds: f64) -> u64 {
     (seconds * 1000.0).round() as u64
@@ -941,9 +1007,11 @@ pub struct TimegrapherApp {
     hist_span_of_strip: bool,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
-    /// Amplitude and beat error histograms count the readings rather than
-    /// each 2 seconds of beats.
+    /// The histograms count the readings rather than each 2 seconds of
+    /// beats.
     hist_readings: bool,
+    /// The rate over each 2 seconds of beats, for the Rate Distribution.
+    rate_2s: RateTwoS,
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
     /// The Periods pane's scores on a log scale.
@@ -1297,6 +1365,7 @@ impl TimegrapherApp {
             steady_job: None,
             steady_work: (Default::default(), std::time::Instant::now()),
             hist_readings: true,
+            rate_2s: RateTwoS::default(),
             cursor_t: None,
             cursor_next: None,
             folded: Default::default(),
@@ -1572,6 +1641,7 @@ impl TimegrapherApp {
                 self.clock = clocks.get(&c.label).cloned();
                 self.clock_track = Some(ClockTrack {
                     device: c.label.clone(),
+                    shown: label.clone(),
                     tracker: timegrapher_core::clock::ClockTracker::new(c.sample_rate),
                     next_s: CLOCK_MEASURE_S,
                     fit: None,
@@ -1628,7 +1698,11 @@ impl TimegrapherApp {
         }
         let rate = self.live.as_ref().map(|l| l.sample_rate());
         match capture::open_input(self.device.as_deref(), rate) {
-            Ok(c) if Some(c.sample_rate) == rate => {
+            Ok(c) => {
+                let shown = self.device_label(&c);
+                if let Some(why) = self.resume_refusal(&c.label, &shown, c.sample_rate) {
+                    return self.error(why);
+                }
                 let paused = match self.session.resume(&c.label) {
                     Ok(p) => p,
                     Err(e) => return self.error(e.to_string()),
@@ -1648,17 +1722,35 @@ impl TimegrapherApp {
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
                 self.capture = Some(c);
             }
-            Ok(c) => self.error(format!(
-                "The microphone opened at {} Hz this time, not the {} Hz this session \
-                 was listening at, so it can't carry on. Press New Session to start again.",
-                c.sample_rate,
-                rate.unwrap_or_default()
-            )),
             Err(e) => self.error(format!(
                 "Can't open the input. {}",
                 capture::explain_error(&e)
             )),
         }
+    }
+
+    /// Why the paused session can't carry on with the input `label` (shown
+    /// in the microphone menu as `shown`) opened at `sample_rate`: another
+    /// sample rate, or another input, whose clock correction and clock
+    /// measurement aren't this session's.
+    fn resume_refusal(&self, label: &str, shown: &str, sample_rate: u32) -> Option<String> {
+        let rate = self.live.as_ref().map(|l| l.sample_rate());
+        if Some(sample_rate) != rate {
+            return Some(format!(
+                "The microphone opened at {sample_rate} Hz this time, not the {} Hz this session \
+                 was listening at, so it can't carry on. Press New Session to start again.",
+                rate.unwrap_or_default()
+            ));
+        }
+        let track = self.clock_track.as_ref()?;
+        let first = &track.shown;
+        (track.device != label).then(|| {
+            format!(
+                "This session was listening to {first}, and its sound is timed by that input's \
+                 clock, so it can't carry on with {shown}. Choose {first} to carry on, or press \
+                 New Session to start again with {shown}."
+            )
+        })
     }
 
     /// Clear everything for the next watch or position. Listening to the
@@ -3853,32 +3945,27 @@ impl TimegrapherApp {
                 );
             },
         );
-        theme::row(
-            ui,
-            "Values",
-            Some("What the amplitude and beat error distributions count"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut self.hist_readings,
-                    &[
-                        (
-                            true,
-                            "Readings",
-                            "The readings, each averaged over Average Over, as on the charts \
+        theme::row(ui, "Values", Some("What the distributions count"), |ui| {
+            theme::segmented(
+                ui,
+                &mut self.hist_readings,
+                &[
+                    (
+                        true,
+                        "Readings",
+                        "The readings, each averaged over Average Over, as on the charts \
                              and the strip, one per Average Over so that no two share beats: \
                              states lasting longer than that stand out clearly",
-                        ),
-                        (
-                            false,
-                            "2 s",
-                            "Each 2 seconds of beats, the finest the app measures: catches \
+                    ),
+                    (
+                        false,
+                        "2 s",
+                        "Each 2 seconds of beats, the finest the app measures: catches \
                              quicker changes, with more scatter",
-                        ),
-                    ],
-                );
-            },
-        );
+                    ),
+                ],
+            );
+        });
     }
 
     /// Whether the distributions cover the whole session or the strip's
@@ -7166,12 +7253,15 @@ impl TimegrapherApp {
     }
 
     /// The 2-second stretches of amplitude and beat error, leaving out any
-    /// that overlap a masked stretch, as the readings do.
+    /// that overlap a masked stretch or reach across a break, as the
+    /// readings do.
     fn unmasked_windows(&self) -> Vec<&timegrapher_core::amplitude::AmplitudeWindow> {
+        let breaks = self.live.as_ref().map_or(&[][..], |l| l.breaks());
         self.live
             .as_ref()
             .map_or(&[][..], |l| l.amplitude_windows())
             .iter()
+            .filter(|w| !breaks.iter().any(|&b| w.start_s < b && b < w.end_s))
             .filter(|w| {
                 !self
                     .masked
@@ -7186,6 +7276,13 @@ impl TimegrapherApp {
     fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
+        let short = !self.hist_readings;
+        if pane == Pane::RateHistogram && short {
+            match self.live.as_ref() {
+                Some(live) => self.rate_2s.refresh(live, &self.masked),
+                None => self.rate_2s = RateTwoS::default(),
+            }
+        }
         let window = self.hist_window();
         // Only the position the watch is in now: values from another
         // position are a different measurement.
@@ -7212,7 +7309,6 @@ impl TimegrapherApp {
                 .map(|(_, v)| v)
                 .collect()
         };
-        let short = !self.hist_readings;
         let (values, resolution, unit, decimals, color, per): (
             Vec<f64>,
             f64,
@@ -7221,6 +7317,19 @@ impl TimegrapherApp {
             _,
             &str,
         ) = match pane {
+            Pane::RateHistogram if short => (
+                self.rate_2s
+                    .values
+                    .iter()
+                    .filter(|&&(a, _)| inside(a + RateTwoS::STEP_S) && self.in_position(a + 1e-6))
+                    .map(|&(_, v)| v)
+                    .collect(),
+                0.1,
+                " s/day",
+                1,
+                pal.trace_rate,
+                "2-second stretches",
+            ),
             Pane::RateHistogram => (
                 readings(|p| p.rate),
                 0.1,
@@ -8810,6 +8919,62 @@ mod tests {
         }
         app.poll();
         app
+    }
+
+    /// The Rate Distribution's 2 s values are the rate over each 2 seconds
+    /// of beats, none across a break or into a masked stretch.
+    #[test]
+    fn rate_distribution_counts_two_second_stretches() {
+        let mut app = synthetic(30.0, 12.0);
+        let live = app.live.as_mut().unwrap();
+        live.set_breaks(vec![15.0]);
+        let mut r = RateTwoS::default();
+        r.refresh(live, &[(5.0, 7.5)]);
+        assert!(r.values.len() >= 10, "{}", r.values.len());
+        for &(a, v) in &r.values {
+            let b = a + RateTwoS::STEP_S;
+            assert!(!(a < 15.0 && 15.0 < b), "across the break at {a}");
+            assert!(!(a < 7.5 && b > 5.0), "into the mask at {a}");
+            assert!((v - 12.0).abs() < 20.0, "{v} s/day at {a}");
+        }
+        // Refreshing again adds nothing; a change of mask starts again.
+        let n = r.values.len();
+        r.refresh(live, &[(5.0, 7.5)]);
+        assert_eq!(r.values.len(), n);
+        r.refresh(live, &[]);
+        assert!(r.values.len() > n);
+        // The pane follows Values for rate too.
+        app.hist_readings = false;
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.histogram(ui, Pane::RateHistogram));
+        });
+        assert!(!app.rate_2s.values.is_empty());
+    }
+
+    /// A paused session carries on only with the input it was listening to:
+    /// another input's clock correction and clock measurement aren't its.
+    #[test]
+    fn resuming_on_another_input_is_refused() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.live = Some(LiveAnalyzer::new(48_000, LiveConfig::default()));
+        app.clock_track = Some(ClockTrack {
+            device: "Mic A".into(),
+            shown: "Mic A (default)".into(),
+            tracker: timegrapher_core::clock::ClockTracker::new(48_000),
+            next_s: CLOCK_MEASURE_S,
+            fit: None,
+        });
+        // Compared by the input's name, named as the microphone menu shows it.
+        assert_eq!(app.resume_refusal("Mic A", "Mic A (direct)", 48_000), None);
+        let why = app
+            .resume_refusal("Mic B", "Mic B (direct)", 48_000)
+            .expect("another input refused");
+        assert!(
+            why.contains("Mic A (default)") && why.contains("Mic B (direct)"),
+            "{why}"
+        );
+        assert!(app.resume_refusal("Mic A", "Mic A", 44_100).is_some());
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on
@@ -11635,6 +11800,7 @@ mod tests {
         );
         app.clock_track = Some(ClockTrack {
             device: "USB".into(),
+            shown: "USB".into(),
             tracker: timegrapher_core::clock::ClockTracker::new(48_000),
             next_s: CLOCK_MEASURE_S,
             fit: Some(timegrapher_core::clock::ClockFit::fixed(20.0, 1200.0)),
@@ -11654,6 +11820,7 @@ mod tests {
         // the computer's time, in blocks of a tenth of a second.
         let mut t = ClockTrack {
             device: "Test Mic".into(),
+            shown: "Test Mic".into(),
             tracker: timegrapher_core::clock::ClockTracker::new(48_000),
             next_s: CLOCK_MEASURE_S,
             fit: None,

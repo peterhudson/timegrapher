@@ -11,7 +11,7 @@ function definition(name, optional = false) {
   return match ? match[0] : "";
 }
 const context = vm.createContext({
-  fftTiming: true, secs: String, logTicks: () => [], wheelMarks: () => [],
+  fftTiming: true, secs: String, logTicks: () => [], wheelMarks: () => [], periodsLog: false, wheelTitle: String,
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
@@ -46,4 +46,16 @@ test("malformed support cannot claim complete FFT input", () => {
   for (const support of [null, {}, { finite_bins: true, total_bins: 10 }, { finite_bins: 11, total_bins: 10 }, { finite_bins: 0, total_bins: 0 }]) {
     assert.ok(render(support).markup.includes("FFT input support was not recorded."));
   }
+});
+
+test("the Periods label sits on its line's top, not a thinned slice's low point", () => {
+  const views = { search: { period_s: [100, 99, 98, 97, 90], score: [1, 9, 0.5, 2, 1], threshold: 3 } };
+  const mark = (period_s) => {
+    context.steadyPlot({ series: "rate", period: { period_s }, views }, "periods", { period_span: [1.9, 2.1] });
+    return context.last.marks[0];
+  };
+  assert.equal(mark(98).y, 9);
+  assert.equal(mark(98).x, Math.log10(98));
+  // Nothing drawn within 3.5%: the nearest drawn point, 90 s.
+  assert.equal(mark(50).y, 1);
 });
