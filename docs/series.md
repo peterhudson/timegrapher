@@ -310,6 +310,12 @@ clock fit when `clock` is non-null. The arrays are meant to be drawn as they are
 autocorrelation with its band, the Allan deviation against `white` on
 log-log axes, and the CUSUM with lines at ±1.36.
 
+## Synthetic takes
+
+`timegrapher synth --scenario NAME FOLDER` writes a take with one known
+variation hidden in it, to check what each view shows; see
+[synthetic-takes.md](synthetic-takes.md).
+
 ## On the stored takes
 
 Run on main plus this command, at the lift angles the takes' READMEs
