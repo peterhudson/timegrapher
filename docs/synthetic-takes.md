@@ -9,9 +9,9 @@ noise (the same command always writes the same sound). The watch is
 synthetic: 28,800 bph laid out as an ETA 2824-2 (a 20-tooth escape
 wheel turning in 5 s, the fourth wheel in 60 s), lift angle 50°, dial
 up, rate +5 s/d, amplitude 270° and beat error 0.4 ms, with a
-beat-to-beat spread of 0.25 ms in timing and 3° in amplitude, about what
-a good watch on a quiet stand shows (each 10 s rate reading then
-scatters by about 0.9 s/d). Choose the ETA 2824-2 as the calibre so the
+beat-to-beat spread of 0.25 ms in timing and 3° in amplitude, a
+synthetic choice (each 10 s rate reading then scatters by about
+0.9 s/d). Choose the ETA 2824-2 as the calibre so the
 views name its wheels.
 
 | Scenario | Hidden | Headline (`series`, seed 1) | Where it shows |
@@ -20,7 +20,7 @@ views name its wheels.
 | `fourth-wheel` | rate ±1 s/d every 60 s | "Rate repeats every 60 s (the fourth wheel), 1.8 s/d peak to peak." | Periods, FFT, Cycle and the autocorrelation's repeat at 60 s |
 | `escape-wheel` | rate ±10 s/d every 5 s (0.18 ms of timing) | "Rate: … the beat timing repeats every 5.0 s, the escape wheel's period, 0.18 ms peak to peak; 10 s readings are too coarse to show it." | FFT with Timing; not in the readings, since a 10 s reading is two whole turns |
 | `half-period` | rate ±1 s/d every 45 s | "Rate repeats every 45 s, 1.7 s/d peak to peak." | Periods, FFT and Cycle at 45 s, four and a half readings a turn |
-| `slow-cycle` | amplitude ±3° every 8 min | "Amplitude repeats every 8 min, 6.6° peak to peak." | Periods, FFT and Cycle at 480 s, and a bump in the Allan deviation near 240 s |
+| `slow-cycle` | amplitude ±3° every 8 min | "Amplitude repeats every 8 min, 6.6° peak to peak." | Periods, FFT and Cycle at 480 s, and a bump in the Allan deviation near 180 s (for a cycle of period *P* the bump peaks near 0.37 *P*) |
 | `beat-error-cycle` | beat error ±0.1 ms every 120 s | "Beat error repeats every 120 s, 0.22 ms peak to peak." | Periods, FFT and Cycle for the beat error |
 | `letting-down` | amplitude 280° falling to 260° | "Amplitude slides from 279° to 259° (-10.0° per hour)." | Trend, and an Allan deviation that rises at long τ |
 | `knock` | rate +5 to +8 s/d at 70 min | "Rate shifts level 1 time: +5.0 s/d, then +8.1 s/d." | CUSUM's corner and Change points at 70 min |
@@ -38,11 +38,12 @@ that the series with nothing hidden find nothing.
 The FFT pane's rate is one spectrum drawn two ways. **Timing** shows the
 beat timing's own swing in ms at each period. Without it, each timing
 swing is drawn as the swing it makes in the 10 s rate readings, in s/d:
-the rate is the timing's slope, so a timing sine of *a* ms at period *P*
-swings the rate by 2·*a*·2π/*P*·86.4 s/d (less what a 10 s reading
+the rate is the timing's slope, so a timing sine of *a* ms each way at period *P*
+swings the rate by 2·*a*·2π/*P*·86.4 s/d peak to peak (less what a 10 s reading
 averages away). The same timing swing is a smaller rate swing the
-slower it is. On `fourth-wheel` the line is 0.10 ms of timing at 60 s,
-1.8 s/d of rate; 0.10 ms at 30 min would be 0.06 s/d. So the two views'
+slower it is. On `fourth-wheel` the line is 0.10 ms of timing each way at 60 s
+(0.20 ms peak to peak), 1.8 s/d of rate peak to peak; 0.10 ms each way
+at 30 min would be 0.06 s/d. So the two views'
 tallest points need not agree: slow wander, which builds up in the
 timing toward the longest periods the take can show, tops the Timing
 view, while a wheel's line tops the rate view. Timing is the view for

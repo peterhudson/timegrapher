@@ -39,8 +39,8 @@ const AMPLITUDE: f64 = 270.0;
 const BEAT_ERROR: f64 = 0.4;
 const HOURS_2: f64 = 7200.0;
 /// Beat-to-beat spread of each beat's timing, ms, and of its amplitude,
-/// degrees: about what a good watch on a quiet stand shows (a 10 s rate
-/// reading then scatters by about 1 s/d).
+/// degrees: a synthetic choice (each 10 s rate reading then scatters by
+/// about 0.9 s/d).
 pub const TIMING_JITTER_MS: f64 = 0.25;
 pub const AMPLITUDE_JITTER_DEG: f64 = 3.0;
 
@@ -99,8 +99,8 @@ pub fn all() -> Vec<Scenario> {
         },
         Scenario {
             name: "slow-cycle",
-            summary: "The amplitude swings 6° peak to peak every 8 min, a slow wheel.",
-            expect: "Amplitude repeats every 8 min, about 6° peak to peak: Period search, FFT and Cycle at 480 s, and a bump in the Allan deviation near half the period.",
+            summary: "The amplitude swings 6° peak to peak every 8 min, an arbitrary slow cycle (no wheel of the 2824-2 layout turns in 8 min).",
+            expect: "Amplitude repeats every 8 min, about 6° peak to peak: Period search, FFT and Cycle at 480 s, and a bump in the Allan deviation near 0.37 of the period (about 180 s).",
             finds: &[("amplitude", "Amplitude repeats every 8 min")],
             duration_s: HOURS_2,
             rate: steady(RATE),

@@ -560,10 +560,13 @@ enum Command {
         /// Write a take with a known hidden variation instead, as a take
         /// folder (FLAC files, session.json, a README saying what is
         /// hidden); `list` names them.
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = [
+            "duration", "bph", "amplitude", "rate", "beat_error", "snr",
+            "fault_period", "fault_length", "fault_rate", "fault_amplitude",
+        ])]
         scenario: Option<String>,
         /// The noise and beat-to-beat variation of a scenario take.
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 1, requires = "scenario")]
         seed: u64,
         #[arg(long, default_value_t = 60.0)]
         duration: f64,

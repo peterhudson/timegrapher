@@ -230,3 +230,45 @@ pub(crate) fn render_beat(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// FNV-1a over the 16-bit samples `write_wav` would write.
+    fn wav_hash(audio: &Audio) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for &s in &audio.samples {
+            let v = (s.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+            for b in v.to_le_bytes() {
+                h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        h
+    }
+
+    #[test]
+    fn the_default_output_is_unchanged() {
+        // Pinned on main before render_beat(): plain `synth` must write
+        // the same sound, with and without a rub.
+        let cfg = SynthConfig {
+            duration_s: 10.0,
+            ..Default::default()
+        };
+        let plain = generate(&cfg, |_| 270.0, |_| 0.0);
+        let rub = SynthConfig {
+            rub: Some(Rub {
+                even: true,
+                length_s: 0.003,
+                gain: 0.05,
+            }),
+            duration_s: 10.0,
+            ..Default::default()
+        };
+        let rubbed = generate(&rub, |t| 270.0 - t, |t| t / 10.0);
+        assert_eq!(
+            (wav_hash(&plain), wav_hash(&rubbed)),
+            (2769891825584145652, 18026172536521054176)
+        );
+    }
+}
