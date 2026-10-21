@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: '24.22.0'
+          node-version: '24.22.1'
       - run: node --test crates/timegrapher-mcp/tests/*.test.cjs
 
   # The engine against tg on the public corpus's takes (docs/regress.md),
