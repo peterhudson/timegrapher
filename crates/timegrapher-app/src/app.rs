@@ -2657,7 +2657,12 @@ impl TimegrapherApp {
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
     fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
-        if let Some(why) = no_analysis_to_read(path) {
+        // Refused before anything on show is stopped, as Replay is.
+        if let Some(why) = no_analysis_to_read(path).or_else(|| {
+            take_folder(path)
+                .ok()
+                .and_then(|inner| no_analysis_to_read(&inner))
+        }) {
             return self.open_failed(why);
         }
         self.stop();
@@ -8918,9 +8923,6 @@ fn order_warning(files: &[PathBuf]) -> Option<String> {
     None
 }
 
-/// The folder to open for `path`: itself when it holds sound (or isn't a
-/// folder), else the one take folder inside it, which is where the app
-/// saves a take. Several takes inside are named so one can be picked.
 /// Why a folder whose session file says it was kept without its sound
 /// can't be read, when it has no `analysis/` folder: it is refused as
 /// `timegrapher session` refuses it, sound in it or not.
@@ -8939,6 +8941,9 @@ fn no_analysis_to_read(path: &Path) -> Option<String> {
     })
 }
 
+/// The folder to open for `path`: itself when it holds sound (or isn't a
+/// folder), else the one take folder inside it, which is where the app
+/// saves a take. Several takes inside are named so one can be picked.
 fn take_folder(path: &Path) -> Result<PathBuf, String> {
     let is_take = |p: &Path| recordings_in(p).is_ok() || analysis_take::is_analysis_only(p);
     if !path.is_dir() || is_take(path) {
@@ -10707,6 +10712,18 @@ mod tests {
         };
         refused(false);
         refused(true);
+        // Opened through the folder it sits in, refused before the take on
+        // show loses its masks.
+        let nest = base.join("nest").join("odd");
+        std::fs::create_dir_all(&nest).unwrap();
+        for f in std::fs::read_dir(&odd).unwrap() {
+            let f = f.unwrap().path();
+            std::fs::copy(&f, nest.join(f.file_name().unwrap())).unwrap();
+        }
+        a.open_recording(&base.join("nest"), false, false);
+        let (msg, error) = a.message.clone().unwrap();
+        assert!(error && msg.contains("audio = false"), "{msg}");
+        assert_eq!(a.masked, vec![(30.0, 32.0), (50.0, 52.0)]);
         for f in recordings_in(&odd).unwrap() {
             std::fs::remove_file(f).unwrap();
         }
