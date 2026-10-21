@@ -6,6 +6,7 @@
 
 pub mod amplitude;
 pub mod analysis;
+pub mod analysis_take;
 pub mod archive;
 pub mod audio;
 pub mod beats;

@@ -694,7 +694,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
 }
 
 /// One pallet stone's beat shape, from `shape`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSide {
     pub i12_ms: Option<f64>,
     pub i13_ms: Option<f64>,
@@ -709,7 +709,7 @@ pub struct ShapeSide {
     pub extra_post: Vec<(f64, f64)>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
@@ -1240,6 +1240,10 @@ pub struct Manifest {
     pub limits: Option<serde::de::IgnoredAny>,
     #[serde(default, rename = "recording")]
     pub recordings: Vec<RecordingEntry>,
+    /// False for a take kept as its analysis alone, with no sound: its
+    /// beats are read from `analysis/` (see [`crate::analysis_take`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<bool>,
 }
 
 impl Manifest {

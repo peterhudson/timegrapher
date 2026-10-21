@@ -18,7 +18,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, beats, breaks, timing, twostate};
+use timegrapher_core::{analysis_take, audio, beats, breaks, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 
@@ -374,8 +374,17 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
 
 fn read_clock(path: &Path, first: &Path) -> Result<(ClockFit, String), String> {
     let info = audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
+    read_clock_as(path, info.sample_rate, info.bytes_per_frame)
+}
+
+/// [`read_clock`] for a sound at `sample_rate` with `bytes_per_frame`.
+fn read_clock_as(
+    path: &Path,
+    sample_rate: u32,
+    bytes_per_frame: u32,
+) -> Result<(ClockFit, String), String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
+    let pairs = clock::parse_log(&text, sample_rate, bytes_per_frame)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let fit = ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
@@ -503,7 +512,29 @@ fn read_one_inner(
 ) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), String> {
     let position = position_of(e)?;
     let path = c.base.join(&e.file);
-    let files = expand_dirs(std::slice::from_ref(&path))?;
+    // A take kept as its analysis alone: its beats are read, not found.
+    let kept = if analysis_take::is_analysis_only(&path) {
+        if c.m.audio != Some(false) {
+            return Err(format!(
+                "{}: it has an {}/ folder, but {MANIFEST} doesn't say audio = false",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
+        if capture {
+            return Err(format!(
+                "{}: kept as its analysis alone, with no sound to record provenance for",
+                e.file
+            ));
+        }
+        Some(analysis_take::read(&path).map_err(|err| format!("{}: {err}", e.file))?)
+    } else {
+        None
+    };
+    let files = match &kept {
+        Some(_) => Vec::new(),
+        None => expand_dirs(std::slice::from_ref(&path))?,
+    };
     let (cfg, cal) = stream_config(c)?;
     let escape_teeth = cfg.analysis.escape_teeth;
     if c.quiet {
@@ -513,20 +544,38 @@ fn read_one_inner(
         eprintln!("analysing {} ({})", e.file, position);
     }
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-    let mut log =
-        stream::analyze_files(&paths, &cfg, |_| {}).map_err(|err| format!("{}: {err}", e.file))?;
+    let mut log = match &kept {
+        Some(k) => k.log.clone(),
+        None => stream::analyze_files(&paths, &cfg, |_| {})
+            .map_err(|err| format!("{}: {err}", e.file))?,
+    };
     let (clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
         (Some(p), _) => {
-            let (fit, digest) = read_clock(&c.base.join(p), &files[0])?;
+            let (fit, digest) = match &kept {
+                Some(k) => read_clock_as(
+                    &c.base.join(p),
+                    k.header.sample_rate,
+                    k.header.bytes_per_frame,
+                )?,
+                None => read_clock(&c.base.join(p), &files[0])?,
+            };
             (Some(fit), Some(digest))
         }
         (None, Some(ppm)) => (session::fixed_clock(ppm, log.duration_s), None),
         (None, None) => (None, None),
     };
-    let breaks = breaks::with_jumps(
-        breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
-        &log.jumps,
-    );
+    let listed = match &kept {
+        // Every part of the take was in it, so its session.json lists its
+        // breaks as for the whole take's sound.
+        Some(_) => {
+            let json = fs::read_to_string(path.join("session.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+            breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate)
+        }
+        None => breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
+    };
+    let breaks = breaks::with_jumps(listed, &log.jumps);
     breaks::renumber(&mut log.beats, &mut log.amplitude_windows, &breaks, log.bph);
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
@@ -599,6 +648,21 @@ fn read_one_inner(
 
     let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
         None
+    } else if let Some(k) = &kept {
+        // Measured on the sound when the take was kept.
+        let i =
+            c.m.recordings
+                .iter()
+                .position(|r| std::ptr::eq(r, e))
+                .or_else(|| {
+                    c.m.recordings.iter().position(|r| {
+                        r.file == e.file
+                            && r.start_s == e.start_s
+                            && r.end_s == e.end_s
+                            && r.position == e.position
+                    })
+                });
+        i.and_then(|i| k.shape_of(i)).map(|s| s.summary.clone())
     } else if let Some((from, len)) = shape_stretch(&masked, settle, end) {
         let (x, fs) = excerpt(&files, from, len)?;
         let env = envelope(&x, fs, &EnvelopeConfig::default());
@@ -714,6 +778,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "settle_s": o.settle,
         "shape": !o.no_shape,
         "cycles": !o.no_cycles,
+        "analysis_only": kept_note(&base, &m),
     });
     let s = Session {
         schema: format!(
@@ -760,6 +825,22 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// For a session file whose take was kept as its analysis alone: the fact,
+/// and the software that measured its sound (the beats, windows and beat
+/// shape are as that version found them). Null otherwise.
+fn kept_note(base: &Path, m: &Manifest) -> serde_json::Value {
+    if m.audio != Some(false) {
+        return serde_json::Value::Null;
+    }
+    match fs::read_to_string(base.join(analysis_take::DIR).join(analysis_take::HEADER))
+        .ok()
+        .and_then(|t| serde_json::from_str::<analysis_take::Header>(&t).ok())
+    {
+        Some(h) => serde_json::json!({ "note": h.note, "measured_by": h.software }),
+        None => serde_json::json!({ "note": analysis_take::NO_SOUND }),
+    }
 }
 
 pub fn opt(v: Option<f64>, digits: usize) -> String {
@@ -1390,6 +1471,105 @@ mod tests {
         assert_eq!(row.split(',').nth(3), Some("102.0"), "{row}");
         assert!(v["readings"][0]["shape"].is_object(), "no shape");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A take kept as its analysis alone reads as the take with its sound
+    /// did: the same readings and beat shape for each position, with the
+    /// report saying no sound was kept.
+    #[test]
+    fn a_take_kept_as_its_analysis_reads_as_its_sound() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-session-kept-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let full = base.join("full");
+        fs::create_dir_all(&full).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                rate_s_per_day: 6.0,
+                beat_error_ms: 0.6,
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                ..Default::default()
+            },
+            |t| if t < 60.0 { 280.0 } else { 260.0 },
+            |_| 0.0,
+        );
+        let wav = full.join("take_part01-001.wav");
+        audio::write_wav(&wav, &audio).unwrap();
+        let toml = "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                    end_s = 60.0\nmasked = [[40.0, 43.0]]\n\n[[recording]]\nfile = \".\"\n\
+                    position = \"DD\"\nstart_s = 60.0\n";
+        fs::write(full.join(MANIFEST), toml).unwrap();
+        let m: Manifest = toml::from_str(toml).unwrap();
+        let mut cfg = StreamConfig::default();
+        cfg.analysis.bph = Some(28800);
+        cfg.analysis.amplitude.lift_deg = 52.0;
+        let shapes = analysis_take::shape_stretches(&m, 120.0);
+        let stored = analysis_take::measure(
+            &[wav.as_path()],
+            &cfg,
+            &shapes,
+            serde_json::json!({"name": "timegrapher", "version": "test", "git_hash": "abc"}),
+            |_| {},
+        )
+        .unwrap();
+        let kept = base.join("kept");
+        let kept_toml = format!("audio = false\n{toml}");
+        analysis_take::save(
+            &kept,
+            &[(MANIFEST.to_string(), kept_toml.into_bytes())],
+            &stored,
+        )
+        .unwrap();
+        let read = |dir: &Path| -> serde_json::Value {
+            let out = dir.join("out");
+            let o = Options {
+                out: Some(out.clone()),
+                ..options(None, None, None)
+            };
+            run(&[dir.to_path_buf()], &o).unwrap();
+            let v = serde_json::from_str(&fs::read_to_string(out.join("summary.json")).unwrap())
+                .unwrap();
+            let _ = fs::remove_dir_all(&out);
+            v
+        };
+        let (a, b) = (read(&full), read(&kept));
+        for i in 0..2 {
+            let (ra, rb) = (&a["readings"][i], &b["readings"][i]);
+            let f = |r: &serde_json::Value, k: &str| r["measurement"][k].as_f64();
+            let (x, y) = (
+                f(ra, "rate_s_per_day").unwrap(),
+                f(rb, "rate_s_per_day").unwrap(),
+            );
+            assert!((x - y).abs() < 0.05, "reading {i}: rate {x} and {y}");
+            for k in ["amplitude_deg", "beat_error_ms"] {
+                let (x, y) = (f(ra, k).unwrap(), f(rb, k).unwrap());
+                assert!((x - y).abs() < 0.01, "reading {i}: {k} {x} and {y}");
+            }
+            assert_eq!(ra["measurement"]["masked_s"], rb["measurement"]["masked_s"]);
+            assert!(rb["shape"].is_object(), "reading {i}: no shape");
+            assert_eq!(ra["shape"], rb["shape"], "reading {i}");
+        }
+        assert!(a["input"]["settings"]["analysis_only"].is_null());
+        let note = &b["input"]["settings"]["analysis_only"];
+        assert_eq!(note["note"], analysis_take::NO_SOUND);
+        assert_eq!(note["measured_by"]["version"], "test");
+        let s: Session = Session {
+            schema: String::new(),
+            software: serde_json::Value::Null,
+            input: b["input"].clone(),
+            watch: None,
+            calibre: None,
+            owner: None,
+            notes: None,
+            bph: 28800,
+            lift_deg: 52.0,
+            readings: Vec::new(),
+            report: session::evaluate(&[]),
+        };
+        let html = crate::session_report::html(&s);
+        assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

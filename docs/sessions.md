@@ -221,6 +221,73 @@ after winding"). A reading without it shows "not given" and is taken as
 fully wound; `session --init` leaves it commented out, so a take whose
 winding is unknown is not logged as freshly wound.
 
+## A take kept as its analysis alone
+
+The app's **Save Analysis Only…** keeps a take without its sound: a take
+folder in the standard layout with every audio file left out and an
+`analysis/` folder in their place. `session.toml` says `audio = false` at
+the top; its recordings, positions and masks are as for the take with its
+sound, every entry naming the whole take (`file = "."`). `session.json`
+and `clock.csv` are unchanged (`session.json`'s `segments` still name the
+files the sound was in), and `positions-test.json` is kept when there is
+one. With no audio files, the file-order rule has nothing to order. A
+folder with both sound and `analysis/`, or with `analysis/` but no
+`audio = false`, is refused with a message saying so; builds from before
+`audio` refuse the session file, as they refuse any field they don't
+know.
+
+`timegrapher session` reads such a take's beats from `analysis/` instead
+of finding them in the sound, and everything after that is read as for
+the sound: the breaks from `session.json` (or the clock log), the masks,
+the readings, the two states and the cycles. Each position's beat shape
+is the one measured on the sound when the take was kept (the first
+unmasked minute after the session file's settling, as above, whatever
+`--settle` says now). `input.settings.analysis_only` gives the fact
+(`note`) and `measured_by` (the software that measured the sound: name,
+version and commit); it is `null` for a take with its sound. The report
+adds a **Sound** row saying none was kept and what measured it.
+
+| File in `analysis/` | Contents |
+| --- | --- |
+| `analysis.json` | The header, below |
+| `beats.csv.gz` | Every beat, gzipped CSV with the header line `index_step,residual_us,quality,clipped`: the step in the beat's number from the beat before (from 0 for the first; the numbers are the beat log's own, after Tick and Tock are matched across jumps, so their parity gives the side), the beat's time in whole µs less where the beat before and that many nominal beats at the header's `bph` put it (from 0 µs for the first), its quality to 3 decimals, and 1 when it clipped, else 0. Times read back to within 0.5 µs |
+| `windows.csv.gz` | Every 2-second amplitude window, gzipped CSV with the header line `start_s,end_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms,even_unlock_ms,odd_unlock_ms,even_drop_ms,odd_drop_ms` (the beat log's fields, each written so it reads back exactly; empty where there is none) |
+| `profiles.bin.gz` | The Tick Tock profiles of each 2 seconds, gzipped binary, below |
+
+`analysis.json` holds `format` (`"timegrapher.analysis/1"`; a later
+version is refused by name), `software` (name, version and commit of
+what measured the sound), `audio` (false), `note` (the fact: "Saved
+without its sound: it can't be measured again, and the waveform (the
+Scope pane and Replay) can't come back."), `sample_rate`,
+`bytes_per_frame` (of the sound, for reading `clock.csv`), `duration_s`,
+`bph`, `lift_deg`, `clipped_samples`, `jumps` (audio seconds where the
+beats jumped), `settings` (the analysis settings that shaped the beats:
+`bph` as given, `lift_deg`, `lift_known`, `onset_fraction`,
+`escape_teeth`, `rate_window_s`, `amplitude_window_s`, the `envelope`'s
+`highpass_hz`, `notch_hz`, `smooth_s` and `burst_gate`, the stream's
+`chunk_s` and `margin_s`, and `profile_every_s`), the row counts `beats`,
+`windows` and `profiles`, `usb_clock` (`ppm`, `lines`, `spread_ppm`: the
+card's clock error from the USB lines in the sound's first ten minutes,
+or null), `signal_median` (the median signal figure, each beat's peak
+over the envelope's median, or null) and `shape` (one entry per
+recording with a shape: `recording`, its place in `session.toml` from
+0, `from_s` and `to_s`, the stretch measured, and `summary`, as a
+reading's `shape`).
+
+`profiles.bin.gz` is little-endian. It starts with the 8 bytes
+`TGPROF\0\x01`, the stretch length (f32 seconds, 2), the first point
+and the spacing between points (f32 ms each: −20, and every second point
+of the Tick Tock Profile pane's, about 0.2), the points in a curve
+(u16), two bytes of 0 and the number of stretches (u32). Each stretch
+then has its end (f64 seconds; it began 2 seconds before) and its signal
+figure (f32, NaN when none), then Tick and Tock in turn. Each is one byte,
+0 when there is no profile, or 1 followed by the beats in it (u16), the
+top and the floor (f32 envelope levels), the unlock, drop, peak,
+amplitude and sounds 1 to 3 (f32 ms, or degrees for the amplitude; NaN
+when none), then the median, 10th and 90th percentile curves, a byte a
+point: the level in quarter-dB steps above 63.75 dB below the top (0 for
+anything lower, read back as 0). Stretches with no beats are left out.
+
 ## What each reading is
 
 After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
@@ -389,6 +456,10 @@ and `regularity`, and for amplitude `tick_change`, `tock_change`,
 `tick_unlock_ms` and `tock_unlock_ms` (low and high level),
 `tick_split_alone`, `tock_split_alone`, `tick_edge_split_alone`,
 `tock_edge_split_alone`, `one_sided` and `unlock_jump`.
+
+`input.settings.analysis_only` is null, or for a take kept as its
+analysis alone its `note` and `measured_by` (see
+[A take kept as its analysis alone](#a-take-kept-as-its-analysis-alone)).
 
 Removed in `/2`: `report.tolerance`, `report.limits`, `report.verdicts`,
 `report.n` (Witschi's quality factor), each finding's `severity` and
