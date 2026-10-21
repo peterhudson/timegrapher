@@ -933,9 +933,20 @@ into a folder of its own inside it. **Save Again** (Ctrl+S) later brings
 that copy up to date without asking again, and **Save As…** (Ctrl+Shift+S)
 copies the session to a new folder of your choosing, which Save Again then
 keeps up to date. Sound that hasn't been saved is never thrown away
-without asking: New Session, opening or replaying a recording, and closing
-the window ask whether to save it first. The microphone's own settings are
-kept aside while recordings are open and come back with **Microphone**.
+without asking: New Session, opening or replaying a recording, closing
+the window and File > Quit ask whether to save it first. Until it is
+saved it is kept in a folder of the app's own (`timegrapher/unsaved`
+under `~/.local/share` on Linux, `~/Library/Application Support` on a
+Mac, `%LOCALAPPDATA%` on Windows), which the system doesn't clear. When
+the app quits without asking (on a Mac, Cmd+Q and Quit in the app menu or
+the Dock, which can't be held back), or is stopped by a crash, a logout
+or a shutdown, the sound stays there, and the next start says so in a
+banner with **Open** (analysed here, and offered again next time),
+**Move To…** (the recording's folder moved into one you pick, to open
+with Open Folder…), **Delete…** (asking first) and **Later**. A folder
+another copy of the app is recording into is never offered. The
+microphone's own settings are kept aside while recordings are open and
+come back with **Microphone**.
 Once stopped, the time slider shows for a microphone session too; stopped
 during a move's settling time, the rate card gives the reading from before
 the move and says so.
@@ -1053,9 +1064,10 @@ contain incomplete audio or clock information. Resume, Save and Save Again
 are unavailable for that session so an earlier saved take stays unchanged.
 This is different from an input disconnect alone, which can still be resumed.
 
-Copy the folder shown in the warning to a location outside the system
-temporary directory before attempting manual recovery or system cleanup; do
-not treat it as a complete saved take. The app attempts to leave a
+Copy the folder shown in the warning to a location outside the app's
+folder for unsaved sound before attempting manual recovery or cleanup; do
+not treat it as a complete saved take. The next start also offers it back
+as unsaved sound. The app attempts to leave a
 `RECORDING-ERROR.txt` note there and reports if even that write fails. New
 Session, opening another recording, and quitting leave the faulted folder on
 disk. After resolving the storage problem, start a new session.

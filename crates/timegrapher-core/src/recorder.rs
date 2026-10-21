@@ -120,6 +120,35 @@ pub struct Recorder {
     /// The folder name the first copy was saved under, so Save Again lands
     /// in the same place.
     saved_name: Option<std::ffi::OsString>,
+    /// Held locked while recording ([`in_use`]), beside the folder rather
+    /// than in it, so a save never copies it.
+    lock: Option<File>,
+}
+
+/// The lock file beside a recording folder while it is being recorded.
+fn lock_path(dir: &Path) -> PathBuf {
+    let mut name = dir.file_name().unwrap_or_default().to_os_string();
+    name.push(".lock");
+    dir.with_file_name(name)
+}
+
+/// Whether the recording folder `dir` is being recorded into now, by this
+/// app or another copy of it: its lock is held. The system lets go of a
+/// lock when its holder quits or is killed, so a folder left behind reads
+/// as not in use.
+pub fn in_use(dir: &Path) -> bool {
+    match File::open(lock_path(dir)) {
+        Ok(f) => matches!(f.try_lock(), Err(fs::TryLockError::WouldBlock)),
+        Err(_) => false,
+    }
+}
+
+/// Remove the lock file a recording left beside `dir`, when nothing holds
+/// it.
+pub fn remove_stale_lock(dir: &Path) {
+    if !in_use(dir) {
+        let _ = fs::remove_file(lock_path(dir));
+    }
 }
 
 fn io_err(e: hound::Error) -> io::Error {
@@ -143,6 +172,10 @@ impl Recorder {
         name = format!("{name}_{}", safe_name(&info.position));
         let dir = parent.join(name);
         fs::create_dir_all(&dir)?;
+        // Best effort: a system that can't lock only loses the in-use check.
+        let lock = File::create(lock_path(&dir))
+            .ok()
+            .filter(|f| f.try_lock().is_ok());
         let mut clock = BufWriter::new(File::create(dir.join("clock.csv"))?);
         writeln!(
             clock,
@@ -166,6 +199,7 @@ impl Recorder {
             breaks: Vec::new(),
             notes: Vec::new(),
             saved_name: None,
+            lock,
         };
         r.write_session(None, None)?;
         Ok(r)
@@ -600,6 +634,9 @@ impl Recorder {
         }
         self.clock.flush()?;
         self.write_session(Some(utc(SystemTime::now())), result.as_ref())?;
+        if self.lock.take().is_some() {
+            let _ = fs::remove_file(lock_path(&self.dir));
+        }
         Ok(self.dir)
     }
 }
@@ -790,6 +827,46 @@ mod tests {
         assert_eq!(utc(UNIX_EPOCH), "1970-01-01T00:00:00.000Z");
         let leap = UNIX_EPOCH + Duration::from_secs(951_782_400);
         assert_eq!(&utc(leap)[..10], "2000-02-29");
+    }
+
+    /// A folder being recorded into reads as in use, to this process and
+    /// any other; once finished, or its recorder gone without finishing,
+    /// it doesn't.
+    #[test]
+    fn a_recording_folder_is_in_use_only_while_recorded() {
+        let parent = std::env::temp_dir().join(format!("tg-rec-lock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&parent);
+        let info = || SessionInfo {
+            watch: "Lock".into(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: None,
+            device: "test".into(),
+            sample_rate: 8000,
+            bits: 16,
+            software: "test".into(),
+        };
+        let r = Recorder::start(&parent, info()).unwrap();
+        let dir = r.dir().to_path_buf();
+        assert!(in_use(&dir));
+        let done = r.finish(None).unwrap();
+        assert!(!in_use(&done));
+        // The lock lives beside the folder, never in it, and goes on finish.
+        assert!(!lock_path(&done).exists());
+        assert!(fs::read_dir(&done).unwrap().all(|e| !e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".lock")));
+        let _ = fs::remove_dir_all(&done);
+        // Dropped without finishing (a crash, a recording fault): let go.
+        let r = Recorder::start(&parent.join("again"), info()).unwrap();
+        let dir = r.dir().to_path_buf();
+        drop(r);
+        assert!(!in_use(&dir));
+        remove_stale_lock(&dir);
+        assert!(!lock_path(&dir).exists());
+        let _ = fs::remove_dir_all(&parent);
     }
 
     #[test]
