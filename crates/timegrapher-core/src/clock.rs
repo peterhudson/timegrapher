@@ -919,10 +919,10 @@ mod tests {
 
     #[test]
     fn a_forced_break_never_runs_true_time_back() {
-        // A near-instant stop and resume listed at 300 s, whose resume line
-        // the system clock happens to stamp 3 ms early: the break forced
-        // there takes no gap below zero, the map never steps back, and the
-        // rate is fitted without the step.
+        // A near-instant stop and resume listed at 300 s, after which the
+        // resume line and the 29 lines after it are all stamped 3 ms early:
+        // the break forced there takes no gap below zero, the map never
+        // steps back, and the rate is fitted without the step.
         let k = 1.0 + 20e-6;
         let line = |a: f64, off: f64| (a, 1.79e9 + a * k + off);
         let mut pairs: Vec<(f64, f64)> = (0..=30).map(|i| line(i as f64 * 10.0, 0.0)).collect();
