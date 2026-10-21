@@ -2,6 +2,7 @@
 
 import datetime
 import unittest
+import urllib.parse
 
 import ci_watchdog as watchdog
 
@@ -54,11 +55,17 @@ class FakeAPI:
         if path.startswith("/actions/workflows/ci.yml/runs?status="):
             status = path.split("status=")[1].split("&")[0]
             return {"workflow_runs": [self.run] if status == self.run["status"] else []}
+        # Like GitHub, since= keeps rows updated at or after it; a row with no
+        # updated_at stands for one just written.
+        since = urllib.parse.unquote(path.split("since=")[1].split("&")[0]) if "since=" in path else ""
+        recent = lambda rows: [row for row in rows if row.get("updated_at", "9999") >= since]
         if path.startswith("/issues/comments?since="):
             # Every comment in the repository: pull requests and issues alike.
-            return self.comments
+            return recent(self.comments)
         if path.startswith("/issues?state=all"):
-            return self.issues
+            return recent(self.issues)
+        if path.startswith("/issues?state=open"):
+            return [issue for issue in self.issues if issue.get("state") == "open"]
         if path.startswith("/pulls/"):
             number = int(path.split("/")[2])
             head = "c" * 40 if number in self.moved else self.run["head_sha"]
@@ -209,6 +216,21 @@ class Sweep(unittest.TestCase):
         api.run = dict(run, id=60)
         watchdog.sweep(api, self.NOW, log=quiet)
         self.assertEqual([path for path, _ in api.posts], ["/issues/12/comments"])
+
+    def test_a_later_stall_comments_on_an_open_issue_untouched_since(self):
+        run, jobs = self.queued_run("2026-10-21T16:00:00Z")
+        run.update(event="push", head_branch="main", pull_requests=[])
+        older = dict(number=12, state="open", updated_at="2026-10-20T09:00:00Z",
+                     body=f"{watchdog.MAIN_ISSUE}\n<!-- ci-watchdog:stalled:40:1 -->")
+        api = FakeAPI(run, jobs, {}, issues=[older])
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual([path for path, _ in api.posts], ["/issues/12/comments"])
+
+    def test_a_queued_run_of_a_closed_pull_request_is_not_flagged(self):
+        run, jobs = self.queued_run("2026-10-21T16:00:00Z")
+        api = FakeAPI(run, jobs, {}, closed={7})
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual(api.posts, [])
 
     def test_closing_the_issue_does_not_bring_the_same_flag_back(self):
         run, jobs = self.queued_run("2026-10-21T16:00:00Z")

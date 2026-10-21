@@ -167,8 +167,8 @@ def flag(api, run, kind, text):
     """Post text once per run, attempt and kind: on the PR, or main's issue.
 
     The marker is looked for in every issue the watchdog opened and every
-    comment since the run began, so closing the "CI stalled" issue does not
-    bring the same flag back on a new one.
+    comment updated since the run began, so closing the "CI stalled" issue
+    does not bring the same flag back on a new one.
     """
     marker = f"<!-- ci-watchdog:{kind}:{run['id']}:{run.get('run_attempt', 1)} -->"
     body = f"{marker}\n{text}"
@@ -179,9 +179,10 @@ def flag(api, run, kind, text):
         return "already flagged"
     number = None if on_main(run) else pull_request(api, run)
     if number is None:
-        issues = [issue for issue in ours
-                  if issue.get("state") == "open" and MAIN_ISSUE in (issue.get("body") or "")
-                  and "pull_request" not in issue]
+        # Not the since-filtered list: an open issue untouched since the run
+        # began is still the one to comment on.
+        issues = [issue for issue in pages(api, "/issues?state=open&creator=github-actions%5Bbot%5D")
+                  if MAIN_ISSUE in (issue.get("body") or "") and "pull_request" not in issue]
         if not issues:
             api.post("/issues", {"title": "CI stalled", "body": f"{MAIN_ISSUE}\n{body}"})
             return "opened an issue"
@@ -223,6 +224,8 @@ def sweep(api, now, log=print):
     for status in ("queued", "in_progress"):
         for run in pages(api, f"/actions/workflows/ci.yml/runs?status={status}", "workflow_runs"):
             if not is_ci(run):
+                continue
+            if run.get("event") == "pull_request" and pull_request(api, run) is None:
                 continue
             late = stalled(pages(api, f"/actions/runs/{run['id']}/jobs?filter=latest", "jobs"), now)
             for name, minutes in late:
