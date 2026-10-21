@@ -176,6 +176,18 @@ every session. A hole that costs close to an odd number of beats can
 leave no step to see, and then the names can swap unnoticed; the
 [app reference](../app.md) gives the limits.
 
+The app's readings never reach across a pause, a break, a jump or a
+masked stretch. The command line's whole-take figures do cover them
+(`analyze`, `session`, `long`), so they measure the beat error on each
+side apart and then combine the sides. When both sides give the same
+sign, the combined figure is their average, weighted by beats. When the
+sign turns over from one side to the other, as it can when the names
+Tick and Tock change places at a jump, the sides are combined by their
+sizes instead and the figure is given as positive: a watch at 0.6 ms on
+both sides reads 0.6 ms rather than a near-zero average of +0.6 and
+-0.6. Only a stretch of at least 10 seconds of beats counts towards that
+decision.
+
 A continuous run is especially valuable for
 [Isochronism](10-isochronism.md). For reports over hours or days, the
 command-line [long](14-command-line.md#long) and

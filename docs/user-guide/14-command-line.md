@@ -311,6 +311,29 @@ recovery of its pattern checks an analysis path; it does not validate
 all real escapement sounds or identify a real damaged tooth. `synth`
 does not take `--json`.
 
+### Synthetic Takes
+
+With `--scenario`, `synth` writes a whole take instead of one WAV file:
+two hours of a synthetic 28,800 bph watch with one known variation hidden
+in it, as a folder the app, `series` and `long` open like a recording.
+The folder holds twelve 10-minute FLAC files, `session.json` and a
+README saying what is hidden and what the analysis should find.
+
+```sh
+timegrapher synth --scenario list
+timegrapher synth --scenario fourth-wheel fourth-wheel-take
+timegrapher series fourth-wheel-take --calibre "ETA 2824-2"
+```
+
+`--scenario list` names the scenarios: `control` (nothing hidden),
+`fourth-wheel`, `escape-wheel`, `half-period`, `slow-cycle`,
+`beat-error-cycle`, `letting-down`, `knock`, `wander` and `rub`. The
+same command always writes the same sound; `--seed` changes the noise.
+The watch is laid out as an ETA 2824-2, so choose that calibre for the
+views to name its wheels. Writing a take takes about a minute. What each
+scenario hides, the headline `series` gives for it and the views where
+it shows are tabled in [Synthetic takes](../synthetic-takes.md).
+
 ## For Programs and Agents
 
 JSON-producing commands include a schema identifier and software version.

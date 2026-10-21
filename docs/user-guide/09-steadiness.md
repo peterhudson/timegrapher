@@ -424,6 +424,13 @@ peak to peak. It matches the listed fourth-wheel period.” Determining
 *why* it occurs still requires the movement, its condition and further
 bench observations.
 
+To practise on a pattern whose answer is known, write a synthetic take
+with `timegrapher synth --scenario fourth-wheel FOLDER` and open the
+folder in the app with the ETA 2824-2 as its calibre. Its rate swings
+2 s/d peak to peak every 60 s. The `control` scenario hides nothing and
+shows what the views give for noise alone; the others are listed in
+[Synthetic Takes](14-command-line.md#synthetic-takes).
+
 The Steadiness plots currently have fixed navigation: no pan, zoom or
 pointer value readout. Use the ordinary charts for time selection and
 `timegrapher series --json --views` when you need the numerical arrays.
