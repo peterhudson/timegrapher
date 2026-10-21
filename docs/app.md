@@ -775,14 +775,22 @@ take with sound files missing is listed as incomplete and never changed.
 Settings' **Library** section shows where it is and how many watches and
 takes it holds and their size, with **Show in Finder** (Explorer on
 Windows, File Manager on Linux), **Move Library…** (into a folder picked,
-asking first; onto another disk it is copied, checked and only then
-removed; closing the window or File > Quit waits until it is done,
-though on macOS Cmd+Q and Quit in the app menu or the Dock do not; a
-move cut short that way leaves the library whole in one place or the
-other, and Choose Another… finds it if it is the new one),
+asking first; onto another disk it is copied, each file with its
+modification time, checked and only then removed, and a link or a
+special file such as a named pipe in it stops the copy, leaving the
+library as it was; while it moves, closing the window or File > Quit is
+refused and the app stays open; on macOS Cmd+Q and Quit in the app menu
+or the Dock do not wait, and on any system neither does logging out,
+shutting down or ending the app from outside; a move cut short that way
+leaves the library whole where it was, or whole at the new place once
+its copy was finished, which Choose Another… then finds; a copy cut
+short leaves its files at the new place without a `library.toml`, which
+is not a library and can be deleted),
 **Choose Another…** (a library elsewhere, or an empty folder
 for a new one; nothing is moved) and, once another is chosen, **Use the
-Default**. The app does not yet add watches or takes to it.
+Default**. Only one copy of the app at a time can change a library: a
+second copy opens it to read only and says so in Settings, and the
+library can't be moved while another copy has it open. The app does not yet add watches or takes to it.
 
 - **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:

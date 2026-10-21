@@ -5705,6 +5705,10 @@ impl TimegrapherApp {
     /// Move the library on a thread of its own: a copy onto another disk
     /// can take a while.
     fn move_library(&mut self, from: PathBuf, to: PathBuf) {
+        // A library this copy of the app holds can't be moved.
+        if let Ok(Some(l)) = &mut self.library {
+            l.unlock();
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         let dest = to.clone();
         std::thread::spawn(move || {
@@ -9786,8 +9790,9 @@ impl eframe::App for TimegrapherApp {
 
         self.export_tick(ctx);
 
-        // Closing the window while the library is being moved waits for it:
-        // stopping a copy part way would leave half a library behind.
+        // Closing the window while the library is being moved is refused,
+        // and the app stays open: stopping a copy part way would leave half
+        // a library behind.
         if ctx.input(|i| i.viewport().close_requested()) && self.library_moving.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.info_msg(
@@ -13328,6 +13333,11 @@ mod tests {
         let drawn = text(&ctx, &mut app);
         assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
         assert!(drawn.contains("Move Library…") && drawn.contains("Use the Default"));
+        // While another copy holds it, this one can only read it, and says so.
+        assert!(drawn.contains("can only read it"), "{drawn}");
+        drop(lib);
+        app.read_library();
+        assert!(!text(&ctx, &mut app).contains("can only read it"));
 
         // Move it into another folder, and it is used there.
         let to = base.join("there").join("Timegrapher Data");
