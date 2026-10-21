@@ -8,8 +8,10 @@
 //! The grids are the ones `steadiness::check` builds, from its own
 //! functions (on true time when the take has pauses or a clock fit). On the
 //! app's own takes, with no clock fit and only zero-length breaks, the app's
-//! pane builds the same grids. The searches and folds are the app's, and
-//! only the output is thinned, so a day's take stays small.
+//! pane builds the same grids, except that its beat errors keep their sign
+//! where it turns over at a jump, which the tests give as sizes. The
+//! searches and folds are the app's, and only the output is thinned, so a
+//! day's take stays small.
 
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
