@@ -310,8 +310,10 @@ wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
 is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
-(`start_s,end_s,true_start_s,even_deg,odd_deg`), `slices.csv`
-(`start_s,end_s,rate_s_per_day,beat_error_ms,amplitude_deg`), `folds.csv`
+(`start_s,end_s,true_start_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms`),
+`slices.csv`
+(`start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg`),
+`folds.csv`
 (`series,period_s,phase,mean,shape,unit`). Progress goes to stderr.
 
 JSON body:
@@ -324,6 +326,7 @@ JSON body:
 | `overall` | As for `analyze` (rate corrected when `clock` is given) |
 | `rate_p05`, `rate_p95` | Spread of the rate over slices of about 1/400 of the run |
 | `amplitude_deg`, `amplitude_p05`, `amplitude_p95` | Median and spread |
+| `caveats[]` | `sides_by_count` (`count`) as for `analyze`; empty when none. The printed summary's `Sides` line says the same |
 | `rate_periods`, `amplitude_periods` | Components found: `{ period_s, resolution_s, significance, harmonics, explained, peak_to_peak, wheel, nearest_wheel }` |
 
 Component fields: `significance` is −log10 of the false-alarm chance (2 =
@@ -352,7 +355,11 @@ name not in the table is an error that points to `timegrapher calibres
 `--lift`, else the calibre's when `--calibre` is given, else 52°.
 `FILES` are read as for `long`. The clock is `--clock`, else the error
 stored for the input the recording names, else the recording's USB
-lines, else none (`series` has no `--card-ppm` or `--device`).
+lines, else none (`series` has no `--card-ppm` or `--device`). The beat
+error series is the unlock's; where its sign turns over across a break,
+its readings are sizes, given as positive. `caveats[]` holds
+`sides_by_count` (`count`) as for `analyze`, and a printed `Sides` line
+says the same.
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
@@ -406,9 +413,10 @@ what a fault looks like, or to check the program works before blaming
 the watch.
 
 `--scenario NAME FOLDER` writes instead a two-hour take folder with one
-known variation hidden in it (`control` hides none) (twelve 10-minute FLAC files,
-`session.json`, and a README saying what is hidden and what the analysis
-should find), which the app, `series` and `long` open like a recording.
-`--scenario list` names them; `--seed` (default 1) changes the noise
-and the beat-to-beat spread, and the same command always writes the same sound. Reference: the
-repository's `docs/synthetic-takes.md`.
+known variation hidden in it, or none for `control`: twelve 10-minute
+FLAC files, `session.json`, and a README saying what is hidden and what
+the analysis should find. The app, `series` and `long` open it like a
+recording. `--scenario list` names them; `--seed` (default 1) changes
+the noise and the beat-to-beat variation drawn (their sizes stay the
+same), and the same command always writes the same sound. Reference:
+the repository's `docs/synthetic-takes.md`.

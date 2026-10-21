@@ -409,6 +409,47 @@ impl Recorder {
         name.into()
     }
 
+    /// What a copy kept as its analysis alone holds beside its `analysis/`
+    /// folder ([`crate::analysis_take::save`]): every file of the recording
+    /// but its sound, with session.json as a copy has it (`result` saved as
+    /// the readings at the time), then `required_files`; and the copy's
+    /// folder name, the copy's name ending `_analysis`.
+    pub fn analysis_copy_files(
+        &mut self,
+        calibre: &str,
+        result: Option<&serde_json::Value>,
+        required_files: &[(&str, &[u8])],
+    ) -> io::Result<(std::ffi::OsString, NamedFiles)> {
+        self.flush()?;
+        let mut name = self.copy_name(calibre);
+        name.push("_analysis");
+        let session = self.session_text(Some(utc(SystemTime::now())), result)?;
+        let mut files = vec![("session.json".to_string(), session.into_bytes())];
+        let mut names: Vec<_> = fs::read_dir(&self.dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "session.json" && !self.segments.iter().any(|s| s == n))
+            .collect();
+        names.sort();
+        for n in names {
+            if required_files
+                .iter()
+                .any(|(r, _)| r.eq_ignore_ascii_case(&n))
+            {
+                continue;
+            }
+            let bytes = fs::read(self.dir.join(&n))?;
+            files.push((n, bytes));
+        }
+        files.extend(
+            required_files
+                .iter()
+                .map(|&(n, b)| (n.to_string(), b.to_vec())),
+        );
+        Ok((name, files))
+    }
+
     /// Copy the recording so far into a new folder under `parent`, named
     /// after the start time, the watch and `calibre` (either left out when
     /// empty), keeping on recording here. `result` is saved with the
@@ -562,6 +603,9 @@ impl Recorder {
         Ok(self.dir)
     }
 }
+
+/// Files by name, with their bytes.
+pub type NamedFiles = Vec<(String, Vec<u8>)>;
 
 /// Narrow fault-injection points for the save transaction's filesystem work.
 #[derive(Clone, Copy, Debug, PartialEq)]
