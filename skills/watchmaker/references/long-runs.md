@@ -45,25 +45,34 @@ amplitude, slices and the folded cycles. Details in
 ## Reading the summary
 
 ```
-Recording    30:00 at 48000 Hz, 28800 bph, 14400 beats (100.0% clean)
-Clock        not calibrated: absolute rate is only as good as the sound card (use --clock)
+Recording    30:00 at 48000 Hz, 28800 bph, 14399 beats (100.0% clean)
+Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
-Amplitude    268 deg median; slices from 253 to 268 deg (lift angle 52 deg)
+Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
+Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
 Periodic changes in rate:
-      60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel
+      60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
-      60.03 s ±2.00   swing 16.4 deg p-p     explains  42%  false alarm 4e-52    matches the fourth wheel
+      20.01 s ±0.22   swing 0.3 deg p-p      explains  23%  false alarm <1e-300  no wheel listed within ±0.2 s or 1%; nearest is the fourth wheel, -66.6% off
+      60.03 s ±2.00   swing 11.4 deg p-p     explains  97%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
+Report       syn_long/report.html
 ```
 
 (That one is synthetic: a watch made to lose 30 s/d and 15° for 8 s of
-every minute.)
+every minute, `timegrapher synth syn.wav --duration 1800 --rate 8 --snr
+24 --fault-period 60`. The 20.01 s amplitude line is a third of that
+60 s cycle and matches no wheel.)
 
 - **Clean percentage.** Beats matched well. Under about 95% (the
   project's rule of thumb), something
   disturbed the recording or the watch's sound changed; treat the rest
   with care.
 - **Clock.** Whether the sound card's error was corrected, and by how
-  much.
+  much. With no clock log, no card error given or stored, and no USB
+  lines in the recording, nothing is corrected and the rates are on the
+  card's clock.
+- **Beat error.** Measured from the unlock (the figure to quote), with
+  the drop's in brackets.
 - **Rate.** The average over the run, and how far the rate wandered from
   slice to slice. A wide 5th–95th range is the "wandering trace".
 - **Amplitude.** Median and range over the run. On a full-reserve run,

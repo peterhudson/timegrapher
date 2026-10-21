@@ -339,9 +339,11 @@ listing. Say plainly what that can and can't support.
   hours, or any chronometer-like claim. Don't offer general figures for
   the positions in their place.
 - **Name the conditions in the line**: the lift angle used (and that it
-  is an assumption when the calibre table says so), whether the sound
-  card's clock was calibrated (without a clock log or a stored
-  correction it wasn't, and a buyer's timegrapher may read a few s/d
+  is an assumption when the calibre table says so), whether the rate
+  was corrected for the sound card's clock (a `session` reading's
+  `measurement.calibrated`; for `analyze`, a `clock` block, from a
+  stored or given card error or the USB microphone's 1 kHz lines;
+  without one it wasn't, and a buyer's timegrapher may read a few s/d
   differently), and that it is one position.
 - **A once-a-minute wobble** (a regular change at the fourth wheel's turn) belongs in the listing as
   measured, with its size: "amplitude varies by about 18° once a minute,
