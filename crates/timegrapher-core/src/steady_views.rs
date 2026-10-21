@@ -5,12 +5,11 @@
 //! are the Readings, Periods and Cycle views, so a chart outside the app can
 //! draw the same thing.
 //!
-//! The grids are the ones `steadiness::check` builds (on true time when the
-//! take has pauses or a clock fit). On the app's own takes, with no clock
-//! fit and only zero-length breaks, the app's pane builds the same grids,
-//! except that its rate readings keep one with a 2 s stretch holding no
-//! beats, which the tests leave out. The searches and folds are the app's,
-//! and only the output is thinned, so a day's take stays small.
+//! The grids are the ones `steadiness::check` builds, from its own
+//! functions (on true time when the take has pauses or a clock fit). On the
+//! app's own takes, with no clock fit and only zero-length breaks, the app's
+//! pane builds the same grids. The searches and folds are the app's, and
+//! only the output is thinned, so a day's take stays small.
 
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
@@ -183,90 +182,14 @@ pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Optio
 /// true time (the clock's mapping, and each pause's gap when the take has
 /// pauses), each gap left empty, and no rate reading that touches a gap or
 /// lacks beats in any of its 2 s stretches.
-/// The views draw, search and fold these, so they show the readings the
-/// tests were made on.
+/// Built with the tests' own functions, so the views draw, search and fold
+/// the readings the tests were made on.
 fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
+    use crate::steadiness::{rate_grid, rate_windows, window_grids};
     let clock = long.clock.as_ref();
-    let map = crate::longrun::true_time(clock, &long.breaks);
-    let gaps = crate::longrun::gaps(clock, &long.breaks);
-    let beats: Vec<_> = log
-        .beats
-        .iter()
-        .map(|b| crate::beats::Beat {
-            time: map(b.time),
-            ..*b
-        })
-        .collect();
-    let aw = &log.amplitude_windows;
-    let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
-    let mut wins = timing::windows(&beats, log.bph, rate_s, rate_s);
-    wins.retain(|w| {
-        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
-            && covered(&beats, w.start_s, w.end_s, step)
-    });
-    let rate = match (wins.first(), wins.last()) {
-        (Some(w0), Some(last)) => {
-            let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
-            let mut y = vec![f64::NAN; n];
-            for w in &wins {
-                let i = ((w.start_s - w0.start_s) / rate_s).round() as usize;
-                if i < n {
-                    y[i] = w.fit.rate_s_per_day;
-                }
-            }
-            Grid {
-                t0: w0.start_s,
-                step: rate_s,
-                y,
-            }
-        }
-        _ => Grid {
-            t0: 0.0,
-            step: rate_s,
-            y: Vec::new(),
-        },
-    };
-    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
-        let (Some(w0), Some(last)) = (aw.first(), aw.last()) else {
-            return Grid {
-                t0: 0.0,
-                step,
-                y: Vec::new(),
-            };
-        };
-        let pos = |t: f64| if long.breaks.is_empty() { t } else { map(t) };
-        let n = ((pos(last.start_s) - pos(w0.start_s)) / step).round() as usize + 1;
-        let mut y = vec![f64::NAN; n];
-        for w in aw {
-            let i = ((pos(w.start_s) - pos(w0.start_s)) / step).round() as usize;
-            if i < n {
-                y[i] = f(w).unwrap_or(f64::NAN);
-            }
-        }
-        Grid {
-            t0: map(w0.start_s),
-            step,
-            y,
-        }
-    };
-    [
-        rate,
-        grid_of(&|w| w.mean()),
-        grid_of(&|w| w.beat_error_unlock_ms),
-    ]
-}
-
-/// Whether every stretch of `part` seconds from `start` to `end` holds a
-/// beat (`beats` sorted by time), as `steadiness::check` asks of a rate
-/// reading.
-fn covered(beats: &[crate::beats::Beat], start: f64, end: f64, part: f64) -> bool {
-    let k = ((end - start) / part).round().max(1.0) as usize;
-    let len = (end - start) / k as f64;
-    (0..k).all(|j| {
-        let a = start + j as f64 * len;
-        let i = beats.partition_point(|b| b.time < a);
-        beats.get(i).is_some_and(|b| b.time < a + len)
-    })
+    let rate = rate_grid(&rate_windows(log, clock, &long.breaks, rate_s), rate_s);
+    let [amplitude, beat_error] = window_grids(log, clock, &long.breaks);
+    [rate, amplitude, beat_error]
 }
 
 /// Where a series' fold period came from.
