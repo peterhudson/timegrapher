@@ -75,7 +75,7 @@ judgement, and say what limits it.
 | Clipping | `clipping.beat_fraction` (`analyze`), the `clipped` caveat's `fraction` | Over 1% of beats with a clipped sample: amplitude and beat error may be off; the rate is not (`session` lists it as a `clipping` finding; docs/sessions.md). | Hold neither amplitude nor beat error to a tolerance. Lower the input level (`doctor`, ask first) and record again. |
 | Beats found | `beats_found` against duration × bph ÷ 3600; the `beats_missing` caveat | Under 95% of the beats expected: every reading is less sure. | First the beat rate (run `analyze` again without `--bph`), then the level and the clamp. A forced wrong beat rate finds a fraction of the beats and gives a meaningless amplitude. |
 | Span | `short_span` caveat (`span_s`); a `session` reading's measured time | Under 10 s of beats: quote no reading. In a session, the program lists under 40 s measured in a position as `measurement_short`, after Witschi's testing methods D40e ("≥40 s measurement time", about p. 34). For comparison, Witschi's training course (p. 53) sets about 15 s to stabilise and at least 20 s to measure per position; Sellita's SW200-1 sheet 20 s and 40 s; Seiko's NH35 and 6R35 guides at least 20 s each. | Record that position again: `record` takes 2 minutes. |
-| Breaks | `breaks` (`count`; `audio_s`, `gap_s` on long runs) | A fact, not a fault: rate and beat error are fitted on each side of a break apart. Where the beat error's sign turns over across a break (or, in a `session` reading, across a masked stretch), both beat errors are given as positive sizes, with no flag saying so. | Say the take was paused, if it matters. |
+| Breaks | `breaks` (`count`; `audio_s`, `gap_s` on long runs) | A fact, not a fault: rate and beat error are fitted on each side of a break apart. Where the beat error's sign turns over across a break (or, in a `session` reading, across a masked stretch), both beat errors are given as positive sizes, with no flag saying so; `long`'s slices and `series`' beat error readings are then sizes too. | Say the take was paused, if it matters. |
 | Timing scatter | `jitter_us` against the beat period | 2% of the beat or more: no regular beat (above). Below that, compare it between takes of the same watch: a jump with nothing else changed points at the set-up. | |
 | Lift angle | `lift_deg`; the `lift_unknown` caveat | No calibre or lift angle given: the amplitude rests on the 52° default. | Find the calibre's lift angle before quoting amplitude: ask what the watch is; pass `--calibre` or `--lift` ([reading-the-numbers.md](reading-the-numbers.md#lift-angle)). |
 | Clock | `clock.from`, `usb_clock`, `rate_corrected_s_per_day`; the `clock_unknown` caveat | A sound card is off by 10–50 ppm, 1–4 s/d (`timegrapher --help`); 1 ppm is 0.09 s/d. | See [the rate and the card's clock](#the-rate-and-the-cards-clock). |
@@ -96,7 +96,8 @@ Two points that apply to all of them:
 ## What limits the readings: `caveats`
 
 `analyze` and each `session` reading's `measurement` carry `caveats[]`,
-each with a `code`. They are facts about the recording. Empty means none
+each with a `code`; `long` and `series` carry one too, with only
+`sides_by_count`. They are facts about the recording. Empty means none
 applies. Read it before quoting any number, and say the ones that apply
 in plain words.
 
