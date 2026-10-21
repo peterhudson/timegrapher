@@ -1589,6 +1589,132 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// A take kept as its analysis alone has the breaks the take with its
+    /// sound has: its listed pause, and a step in its clock log that no
+    /// listed pause explains.
+    #[test]
+    fn a_kept_take_has_the_breaks_its_sound_has() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base =
+            std::env::temp_dir().join(format!("tg-session-kept-breaks-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let full = base.join("full");
+        fs::create_dir_all(&full).unwrap();
+        // 300 s of a watch, heard for the first 90.03 s and from 210.03 s:
+        // a pause of 120 s, listed in session.json.
+        let (pause, gap) = (90.03, 120.0);
+        let watch = generate(
+            &SynthConfig {
+                duration_s: 300.0,
+                rate_s_per_day: 6.0,
+                beat_error_ms: 0.6,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let sr = watch.sample_rate;
+        let cut = |t: f64| (t * sr as f64) as usize;
+        let mut samples = watch.samples[..cut(pause)].to_vec();
+        samples.extend_from_slice(&watch.samples[cut(pause + gap)..]);
+        let wav = full.join("take_part01-001.wav");
+        audio::write_wav(
+            &wav,
+            &audio::Audio {
+                samples,
+                sample_rate: sr,
+            },
+        )
+        .unwrap();
+        let json = format!(r#"{{"breaks": [{{"audio_s": {pause}, "gap_s": {gap}}}]}}"#);
+        fs::write(full.join("session.json"), &json).unwrap();
+        // The clock log: the pause's gap from 90.03 s on, and the system
+        // clock set 2 s forward between 140 s and 150 s with no pause.
+        let mut clock = String::from("audio_s,unix_s\n");
+        let mut audio_s: Vec<f64> = (0..=9).map(|i| i as f64 * 10.0).collect();
+        audio_s.push(pause);
+        audio_s.extend((10..=18).map(|i| i as f64 * 10.0));
+        for a in audio_s {
+            let off = if a >= pause { gap } else { 0.0 } + if a >= 150.0 { 2.0 } else { 0.0 };
+            clock.push_str(&format!("{a},{}\n", 1.79e9 + a + off));
+        }
+        fs::write(full.join("clock.csv"), &clock).unwrap();
+        let toml = "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                    clock = \"clock.csv\"\n";
+        fs::write(full.join(MANIFEST), toml).unwrap();
+        let m: Manifest = toml::from_str(toml).unwrap();
+        let mut cfg = StreamConfig::default();
+        cfg.analysis.bph = Some(28800);
+        cfg.analysis.amplitude.lift_deg = 52.0;
+        let shapes = analysis_take::shape_stretches(&m, 180.0);
+        let stored = analysis_take::measure(
+            &[wav.as_path()],
+            &cfg,
+            &shapes,
+            serde_json::json!({"name": "timegrapher", "version": "test", "git_hash": "abc"}),
+            |_| {},
+        )
+        .unwrap();
+        let kept = base.join("kept");
+        analysis_take::save(
+            &kept,
+            &[
+                (
+                    MANIFEST.to_string(),
+                    format!("audio = false\n{toml}").into_bytes(),
+                ),
+                ("session.json".to_string(), json.into_bytes()),
+                ("clock.csv".to_string(), clock.into_bytes()),
+            ],
+            &stored,
+        )
+        .unwrap();
+        let read = |dir: &Path| -> serde_json::Value {
+            let out = dir.join("out");
+            let o = Options {
+                settle: Some(10.0),
+                out: Some(out.clone()),
+                ..options(None, None, None)
+            };
+            run(&[dir.to_path_buf()], &o).unwrap();
+            let v = serde_json::from_str(&fs::read_to_string(out.join("summary.json")).unwrap())
+                .unwrap();
+            let _ = fs::remove_dir_all(&out);
+            v
+        };
+        let caveat = |m: &serde_json::Value, code: &str| -> Option<u64> {
+            m["caveats"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["code"] == code)
+                .and_then(|c| c["count"].as_u64())
+        };
+        let (a, b) = (read(&full), read(&kept));
+        let (ma, mb) = (
+            &a["readings"][0]["measurement"],
+            &b["readings"][0]["measurement"],
+        );
+        assert_eq!(
+            ma["breaks"].as_array().map(Vec::len),
+            Some(2),
+            "{}",
+            ma["breaks"]
+        );
+        assert_eq!(ma["breaks"], mb["breaks"]);
+        assert_eq!(caveat(ma, "breaks"), Some(2), "{}", ma["caveats"]);
+        assert_eq!(caveat(mb, "breaks"), Some(2), "{}", mb["caveats"]);
+        assert_eq!(caveat(ma, "sides_by_count"), caveat(mb, "sides_by_count"));
+        let rate = |m: &serde_json::Value| m["rate_s_per_day"].as_f64().unwrap();
+        assert!(
+            (rate(ma) - rate(mb)).abs() < 0.05,
+            "{} and {}",
+            rate(ma),
+            rate(mb)
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
     /// A take kept as its analysis alone reads as the take with its sound
     /// did: the same readings and beat shape for each position, with the
     /// report saying no sound was kept.
