@@ -179,8 +179,8 @@ run URL, SHA, attempt and job results appear in the release gate's log and summa
 The gate waits up to 40 minutes for pending CI, so the build can be started
 straight after a merge; a failed, missing, cancelled or incomplete latest run stops the build rather than reusing an older green result.
 All five jobs must belong to the latest attempt: use **Re-run all jobs** after a
-partial rerun. Markdown-only commits may have no automatic CI; run **Actions →
-CI → Run workflow** on main first. Do not tag an untested branch or substitute
+partial rerun. Every push to main runs CI in full, Markdown-only commits
+included. Do not tag an untested branch or substitute
 PR-head results for the candidate's main CI.
 
 Pull-request packaging and manual runs without **Draft a release** remain

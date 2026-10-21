@@ -1,14 +1,14 @@
 name: CI
 
-# Markdown alone skips CI, except the watchmaker skill: the MCP server
-# compiles it in (guidance.rs) and its tests read it. Later patterns
-# override earlier ones.
+# Every push to main and every pull request runs all five jobs. A pull
+# request that only edits or adds Markdown nothing compiles in or tests read
+# is a light run: each job still reports, with its offline Python tests, and
+# skips the Rust build, tests and corpus checks (.github/ci/changes.py). The
+# watchmaker skill and the docs the MCP server compiles in always run in full.
 on:
   push:
     branches: [main]
-    paths: ["**", "!**.md", "skills/watchmaker/**"]
   pull_request:
-    paths: ["**", "!**.md", "skills/watchmaker/**"]
   workflow_dispatch:
 
 # A newer push to a PR cancels that PR's run still in progress; runs on main
@@ -29,8 +29,21 @@ jobs:
     # hung job fails within the hour instead of GitHub's six. The CI watchdog
     # does not re-run a job that hits one.
     timeout-minutes: 45
+    # No debug info in CI's release builds, as release.yml already builds the
+    # downloads (Cargo.toml's [profile.release] keeps debug = 1 for local
+    # builds). The build is faster and its cache under half the size.
+    # rust-cache keys on CARGO_* variables, so this gets a cache of its own.
+    env:
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
     steps:
+      # Two commits: on a pull request, GitHub's merge commit and its base.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Full or light run
+        id: changes
+        shell: bash
+        run: python3 .github/ci/changes.py "${{ github.event_name }}" HEAD^1 HEAD | tee -a "$GITHUB_OUTPUT"
       # Offline tests of the publishing gate; keep its five-job/step contract
       # in .github/scripts/release_ci_gate.py synchronized with this workflow.
       - name: Release CI gate tests (offline)
@@ -39,20 +52,27 @@ jobs:
         run: python3 -m unittest discover -s .github/watchdog -p 'test_ci_watchdog.py' -v
       - name: Packaging script tests (offline)
         run: python3 -m unittest discover -s packaging -p 'test_*.py' -v
+      - name: Light-run rule tests (offline)
+        run: python3 -m unittest discover -s .github/ci -p 'test_changes.py' -v
       # Exercise the supported compiler floor without another build/job.
       # Keep this version aligned with workspace.package.rust-version and
       # docs/building.md. Other hosts continue checking current stable.
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.full != 'false'
         with:
           toolchain: ${{ matrix.os == 'ubuntu-24.04' && '1.90.0' || 'stable' }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.full != 'false'
       - name: ALSA headers for sound input
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.changes.outputs.full != 'false'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: cargo fmt --check
+        if: steps.changes.outputs.full != 'false'
       - run: cargo clippy --locked --all-targets -- -D warnings
+        if: steps.changes.outputs.full != 'false'
       - run: cargo test --locked --release
+        if: steps.changes.outputs.full != 'false'
 
   mcp-renderer:
     runs-on: ubuntu-24.04
@@ -71,13 +91,23 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
+      # As in the test job: no debug info in CI's release builds.
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
       # Reviewed with the engine baseline; update through docs/regress.md.
       CORPUS_REVISION: 224b6032b831e120277e8e58ded4449b57706794
     steps:
+      # Two commits: on a pull request, GitHub's merge commit and its base.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Full or light run
+        id: changes
+        shell: bash
+        run: python3 .github/ci/changes.py "${{ github.event_name }}" HEAD^1 HEAD | tee -a "$GITHUB_OUTPUT"
       # Metadata in git, audio in releases: no secret, so this also runs on
       # pull requests from forks.
       - name: Check out the corpus
+        if: steps.changes.outputs.full != 'false'
         uses: actions/checkout@v7
         with:
           repository: peterhudson/timegrapher-corpus
@@ -86,6 +116,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Record corpus inputs
+        if: steps.changes.outputs.full != 'false'
         run: |
           python3 - <<'PY'
           import hashlib, os, pathlib, subprocess
@@ -101,6 +132,7 @@ jobs:
               summary.write(report)
           PY
       - name: Corpus audio cache
+        if: steps.changes.outputs.full != 'false'
         uses: actions/cache@v6
         with:
           path: |
@@ -110,6 +142,7 @@ jobs:
       # A cache from an older corpus.json can hold files the corpus has
       # since renamed; a take read as a whole folder would read them too.
       - name: Drop cached audio the corpus no longer lists
+        if: steps.changes.outputs.full != 'false'
         run: |
           python3 - <<'PY'
           import json, pathlib
@@ -121,14 +154,19 @@ jobs:
                   p.unlink()
           PY
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.full != 'false'
       - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.full != 'false'
       - name: Build
+        if: steps.changes.outputs.full != 'false'
         run: cargo build --locked --release -p timegrapher-cli --no-default-features
       - name: Engine against tg and the baseline
+        if: steps.changes.outputs.full != 'false'
         run: |
           set -o pipefail
           ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet | tee regress.txt
       - name: Required real-recording analyze/session equivalence
+        if: steps.changes.outputs.full != 'false'
         timeout-minutes: 10
         env:
           TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
