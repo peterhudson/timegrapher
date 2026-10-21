@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
+use timegrapher_core::library;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
 use timegrapher_core::mixer::{GainState, InputGain};
@@ -1000,6 +1001,16 @@ pub struct TimegrapherApp {
     kept_clocks: Result<clockstore::ClockStore, String>,
     /// The input whose kept clock Forget is asking about.
     forget_ask: Option<String>,
+    /// The library's folder when the user chose one; `None` is the
+    /// default, `~/Timegrapher Data`.
+    library_dir: Option<PathBuf>,
+    /// The library as read when Settings opened or it last changed:
+    /// `Ok(None)` while there is none at its folder.
+    library: Result<Option<library::Library>, String>,
+    /// Where Move Library… is asking to move it to.
+    library_move_ask: Option<PathBuf>,
+    /// A move under way: where to, and its outcome when done.
+    library_moving: Option<(PathBuf, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// Panes that average over their own time rather than Readings'
     /// Average Over, and that time in seconds.
     pane_average: std::collections::BTreeMap<Pane, f64>,
@@ -1218,6 +1229,7 @@ impl TimegrapherApp {
             check_updates: self.check_at_start,
             keep_awake: self.keep_awake,
             show_readings: self.show_readings,
+            library: self.library_dir.clone(),
         }
     }
 
@@ -1256,7 +1268,9 @@ impl TimegrapherApp {
             check_updates,
             keep_awake,
             show_readings,
+            library,
         } = s;
+        self.library_dir = library;
         self.check_at_start = check_updates;
         self.keep_awake = keep_awake;
         self.show_readings = show_readings;
@@ -1387,6 +1401,10 @@ impl TimegrapherApp {
             settings_last: Tab::General,
             kept_clocks: Ok(clockstore::ClockStore::default()),
             forget_ask: None,
+            library_dir: None,
+            library: Ok(None),
+            library_move_ask: None,
+            library_moving: None,
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -5438,7 +5456,170 @@ impl TimegrapherApp {
     /// Open the Settings window at `tab`, reading the kept clocks afresh.
     fn open_settings(&mut self, tab: Tab) {
         self.kept_clocks = clockstore::ClockStore::load();
+        self.read_library();
         self.settings_tab = Some(tab);
+    }
+
+    /// The library's folder: the one chosen, else `~/Timegrapher Data`.
+    fn library_root(&self) -> Option<PathBuf> {
+        self.library_dir.clone().or_else(library::default_location)
+    }
+
+    /// Read the library afresh: none yet where its folder holds no
+    /// `library.toml`.
+    fn read_library(&mut self) {
+        self.library = match self.library_root() {
+            Some(root) if library::Library::is_library(&root) => {
+                library::Library::open(&root).map(Some)
+            }
+            _ => Ok(None),
+        };
+    }
+
+    /// Act on a button in Settings' Library section.
+    fn library_action(&mut self, act: settings_window::LibraryAction) {
+        use settings_window::LibraryAction;
+        match act {
+            LibraryAction::Show => {
+                if let Some(root) = self.library_root() {
+                    if let Err(e) = reveal(&root) {
+                        self.error(format!("Couldn't open {}: {e}", root.display()));
+                    }
+                }
+            }
+            LibraryAction::Move => {
+                let (Some(root), Ok(Some(_))) = (self.library_root(), &self.library) else {
+                    return;
+                };
+                let mut d = rfd::FileDialog::new().set_title("Move the Library Into a Folder");
+                if let Some(parent) = root.parent() {
+                    d = d.set_directory(parent);
+                }
+                let Some(parent) = d.pick_folder() else {
+                    return;
+                };
+                let name = root
+                    .file_name()
+                    .map_or_else(|| library::DEFAULT_NAME.into(), |n| n.to_owned());
+                self.library_move_ask = Some(parent.join(name));
+            }
+            LibraryAction::Choose => {
+                let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose a Library, or an Empty Folder for a New One")
+                    .pick_folder()
+                else {
+                    return;
+                };
+                let empty = std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none());
+                if !library::Library::is_library(&dir) && !empty {
+                    return self.error(format!(
+                        "{} holds files but no library: choose a library, or an empty folder \
+                         for a new one",
+                        dir.display()
+                    ));
+                }
+                self.use_library(Some(dir));
+            }
+            LibraryAction::UseDefault => self.use_library(None),
+        }
+    }
+
+    /// Use the library at `dir` (`None`: the default) from now on.
+    fn use_library(&mut self, dir: Option<PathBuf>) {
+        // The default chosen by name is the default.
+        self.library_dir = dir.filter(|d| Some(d) != library::default_location().as_ref());
+        self.read_library();
+    }
+
+    /// Move Library… asks first, saying what moves and where.
+    fn library_move_dialog(&mut self, ctx: &egui::Context) {
+        let (Some(to), Some(from)) = (self.library_move_ask.clone(), self.library_root()) else {
+            return;
+        };
+        let what = match &self.library {
+            Ok(Some(l)) => format!(
+                "Its {} and their takes ({}) are moved there,",
+                if l.watches.len() == 1 {
+                    "1 watch".to_string()
+                } else {
+                    format!("{} watches", l.watches.len())
+                },
+                fmt_bytes(l.bytes())
+            ),
+            _ => "Everything in it is moved there,".to_string(),
+        };
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("move library")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.label(
+                RichText::new(format!("Move the library to {}?", to.display()))
+                    .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "{what} and the app keeps them there from now on. Onto another disk they are \
+                 copied, checked and only then removed from {}.",
+                from.display()
+            ));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Move")).clicked() {
+                    choice = Some(true);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(false);
+                }
+            });
+        });
+        if choice.is_none() && modal.should_close() {
+            choice = Some(false);
+        }
+        if let Some(go) = choice {
+            self.library_move_ask = None;
+            if go {
+                self.move_library(from, to);
+            }
+        }
+    }
+
+    /// Move the library on a thread of its own: a copy onto another disk
+    /// can take a while.
+    fn move_library(&mut self, from: PathBuf, to: PathBuf) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dest = to.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(library::move_library(&from, &dest));
+        });
+        self.library_moving = Some((to, rx));
+    }
+
+    /// The move's outcome, once it is done.
+    fn poll_library_move(&mut self, ctx: &egui::Context) {
+        let Some((to, rx)) = &self.library_moving else {
+            return;
+        };
+        let to = to.clone();
+        match rx.try_recv() {
+            Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(200)),
+            Ok(Ok(())) => {
+                self.library_moving = None;
+                self.use_library(Some(to.clone()));
+                self.info_msg(format!("Moved the library to {}.", to.display()));
+            }
+            Ok(Err(e)) => {
+                self.library_moving = None;
+                self.read_library();
+                self.error(format!("The library couldn't be moved: {e}"));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.library_moving = None;
+                self.read_library();
+                self.error("The library's move stopped without finishing.".into());
+            }
+        }
     }
 
     /// The Settings window, when open, over everything else. Manage
@@ -5447,6 +5628,7 @@ impl TimegrapherApp {
         if std::mem::take(&mut self.cal.manager_open) {
             self.open_settings(Tab::Calibres);
         }
+        self.poll_library_move(ctx);
         let Some(mut tab) = self.settings_tab else {
             return;
         };
@@ -5476,6 +5658,19 @@ impl TimegrapherApp {
             ui.separator();
             match tab {
                 Tab::General => self.general_settings(ui),
+                Tab::Library => {
+                    let root = self.library_root();
+                    let act = settings_window::library_section(
+                        ui,
+                        root.as_deref(),
+                        &self.library,
+                        self.library_moving.as_ref().map(|(to, _)| to.as_path()),
+                        self.library_dir.is_some(),
+                    );
+                    if let Some(act) = act {
+                        self.library_action(act);
+                    }
+                }
                 Tab::Calibres => {
                     let current = self.calibre.clone();
                     let out = self.cal.contents(ui, &current, env!("CARGO_PKG_VERSION"));
@@ -5495,6 +5690,7 @@ impl TimegrapherApp {
         self.settings_last = tab;
         self.settings_tab = (!done && !modal.should_close()).then_some(tab);
         self.forget_dialog(ctx);
+        self.library_move_dialog(ctx);
     }
 
     /// Forget asks first, saying what is lost: the kept clock took 20
@@ -9217,7 +9413,7 @@ fn folder_size(dir: &Path) -> u64 {
 }
 
 /// A size on disk, as a file manager shows it: 7.7 GB, 10.5 MB, 812 kB.
-fn fmt_bytes(n: u64) -> String {
+pub(crate) fn fmt_bytes(n: u64) -> String {
     let n = n as f64;
     match n {
         n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
@@ -9225,6 +9421,21 @@ fn fmt_bytes(n: u64) -> String {
         n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
         n => format!("{n:.0} bytes"),
     }
+}
+
+/// Open `dir` in the system's file manager.
+fn reveal(dir: &Path) -> std::io::Result<()> {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
 }
 
 fn capture_label(path: &Path) -> String {
@@ -12700,6 +12911,79 @@ mod tests {
         assert_eq!(chart_time_label(-30.0, &r), "");
         assert_eq!(chart_time_label(0.0, &r), "0:00");
         assert_eq!(chart_time_label(120.0, &r), "2:00");
+    }
+
+    /// Settings' Library section reads the library at the folder chosen,
+    /// draws what it holds, moves it and keeps using it where it went,
+    /// and the choice is kept between runs.
+    #[test]
+    fn settings_moves_the_library_and_keeps_its_place() {
+        let base = std::env::temp_dir().join(format!("tg-app-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("here").join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        app.open_settings(Tab::Library);
+        assert_eq!(
+            app.library
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .watches
+                .len(),
+            1
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let text = |ctx: &egui::Context, app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+                all = format!("{:?}", out.shapes);
+            }
+            all
+        };
+        let drawn = text(&ctx, &mut app);
+        assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
+        assert!(drawn.contains("Move Library…") && drawn.contains("Use the Default"));
+
+        // Move it into another folder, and it is used there.
+        let to = base.join("there").join("Timegrapher Data");
+        app.library_move_ask = Some(to.clone());
+        let asked = text(&ctx, &mut app);
+        assert!(asked.contains("Move the library to"), "{asked}");
+        app.library_move_ask = None;
+        app.move_library(root.clone(), to.clone());
+        let t = Instant::now();
+        while app.library_moving.is_some() && t.elapsed().as_secs() < 30 {
+            app.poll_library_move(&ctx);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(app.library_dir.as_deref(), Some(to.as_path()));
+        assert!(!root.exists() && library::Library::is_library(&to));
+        assert_eq!(
+            app.library
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .watches
+                .len(),
+            1
+        );
+        assert_eq!(app.settings().library.as_deref(), Some(to.as_path()));
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.apply_settings(app.settings());
+        assert_eq!(again.library_root().as_deref(), Some(to.as_path()));
+
+        // A folder with no library yet reads as none, and is left alone.
+        app.use_library(Some(base.join("empty")));
+        assert!(matches!(app.library, Ok(None)));
+        assert!(!base.join("empty").exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Settings lists each kept clock; Forget removes that one from the

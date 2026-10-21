@@ -747,13 +747,30 @@ been published yet"). The request carries no account or identifier.
 ## Settings
 
 **The Settings window.** Edit > Settings… (Ctrl+, or Cmd+,) or the gear at
-the end of the pane icons opens it over the app, with three sections:
-**General** (Appearance and Check for Updates at Start), **Calibres**
+the end of the pane icons opens it over the app, with four sections:
+**General** (Appearance and Check for Updates at Start), **Library**
+(below), **Calibres**
 (Manage Calibres, below) and **Sound Card Clock** (each input's kept
 clock with Forget; see True Clock). It opens at the section it was last
 left on. **Done**, Escape or a click outside closes it. What belongs to
 the watch on show (its calibre, lift angle, beat rate and position) and to the microphone (input, level, Show Every
 Input, Keep Awake) stays in the Watch pane, beside what it sets.
+
+**The library.** The watches and their takes are to be kept in one
+folder, `Timegrapher Data` in the home folder unless another is chosen:
+`library.toml` at the top, then a folder for each watch holding its
+details (`watch.toml`), its `photos/` and its `takes/`, each take a
+standard take folder named by when it started (`2026-10-20 14.32 Dial
+Up`, with the position in words when the take used only one). Nothing in
+it records where it is, so it can be moved, synced or copied whole; a
+take with sound files missing is listed as incomplete and never changed.
+Settings' **Library** section shows where it is and how many watches and
+takes it holds and their size, with **Show in Finder** (Explorer on
+Windows, File Manager on Linux), **Move Library…** (into a folder picked,
+asking first; onto another disk it is copied, checked and only then
+removed), **Choose Another…** (a library elsewhere, or an empty folder
+for a new one; nothing is moved) and, once another is chosen, **Use the
+Default**. The app does not yet add watches or takes to it.
 
 - **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:

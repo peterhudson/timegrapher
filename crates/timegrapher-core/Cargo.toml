@@ -18,6 +18,8 @@ flate2 = "1"
 # The FLAC encoder for excerpts, single-threaded (excerpts are short).
 flacenc = { version = "0.5", default-features = false }
 sha2 = "0.10"
+# A library's library.toml and each watch's watch.toml.
+toml = "0.8"
 # Stored and deflated entries only: what a report bundle is written as, or
 # becomes when someone unpacks it and zips it again.
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
