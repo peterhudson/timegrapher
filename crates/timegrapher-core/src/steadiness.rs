@@ -2041,23 +2041,7 @@ pub fn check(
     let map = crate::longrun::true_time(clock, &long.breaks);
     let r = cfg.rate_reading_s;
     let wins = rate_windows(log, clock, &long.breaks, r);
-    let rate_grid = match wins.first() {
-        Some(w0) => {
-            let t0 = w0.start_s;
-            let last = wins.last().unwrap();
-            let n = ((last.start_s - t0) / r).round() as usize + 1;
-            let mut y = vec![f64::NAN; n];
-            for w in &wins {
-                y[((w.start_s - t0) / r).round() as usize] = w.fit.rate_s_per_day;
-            }
-            Grid { t0, step: r, y }
-        }
-        None => Grid {
-            t0: 0.0,
-            step: r,
-            y: Vec::new(),
-        },
-    };
+    let rate_grid = rate_grid(&wins, r);
     let rate_samples: Vec<twostate::Sample> = wins
         .iter()
         .map(|w| twostate::Sample {
@@ -2070,33 +2054,7 @@ pub fn check(
 
     // Amplitude and beat error windows.
     let aw = &log.amplitude_windows;
-    let astep = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
-    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
-        let Some(w0) = aw.first() else {
-            return Grid {
-                t0: 0.0,
-                step: astep,
-                y: Vec::new(),
-            };
-        };
-        // With breaks, on true time, so each gap is left empty.
-        let pos = |t: f64| if long.breaks.is_empty() { t } else { map(t) };
-        let n = ((pos(aw.last().unwrap().start_s) - pos(w0.start_s)) / astep).round() as usize + 1;
-        let mut y = vec![f64::NAN; n];
-        for w in aw {
-            let i = ((pos(w.start_s) - pos(w0.start_s)) / astep).round() as usize;
-            if i < n {
-                y[i] = f(w).unwrap_or(f64::NAN);
-            }
-        }
-        Grid {
-            t0: map(w0.start_s),
-            step: astep,
-            y,
-        }
-    };
-    let amp_grid = grid_of(&|w| w.mean());
-    let be_grid = grid_of(&|w| w.beat_error_unlock_ms);
+    let [amp_grid, be_grid] = window_grids(log, clock, &long.breaks);
     // The verdicts judge every series at the rate's reading length: the
     // amplitude and beat error windows are averaged into the rate's
     // readings, so one reading means the same time for all three. The
@@ -2256,6 +2214,67 @@ pub fn check(
         spectra,
         findings,
     }
+}
+
+/// The rate readings of [`rate_windows`] on a grid of `r` seconds,
+/// NaN where none was kept. `wins` must be in time order.
+pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
+    match wins.first() {
+        Some(w0) => {
+            let t0 = w0.start_s;
+            let last = wins.last().unwrap();
+            let n = ((last.start_s - t0) / r).round() as usize + 1;
+            let mut y = vec![f64::NAN; n];
+            for w in wins {
+                y[((w.start_s - t0) / r).round() as usize] = w.fit.rate_s_per_day;
+            }
+            Grid { t0, step: r, y }
+        }
+        None => Grid {
+            t0: 0.0,
+            step: r,
+            y: Vec::new(),
+        },
+    }
+}
+
+/// The amplitude and beat error windows on true time, one grid point
+/// every window length, so each gap is left empty.
+pub(crate) fn window_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+) -> [Grid; 2] {
+    let map = crate::longrun::true_time(clock, breaks);
+    let aw = &log.amplitude_windows;
+    let astep = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
+    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
+        let Some(w0) = aw.first() else {
+            return Grid {
+                t0: 0.0,
+                step: astep,
+                y: Vec::new(),
+            };
+        };
+        // With breaks, on true time, so each gap is left empty.
+        let pos = |t: f64| if breaks.is_empty() { t } else { map(t) };
+        let n = ((pos(aw.last().unwrap().start_s) - pos(w0.start_s)) / astep).round() as usize + 1;
+        let mut y = vec![f64::NAN; n];
+        for w in aw {
+            let i = ((pos(w.start_s) - pos(w0.start_s)) / astep).round() as usize;
+            if i < n {
+                y[i] = f(w).unwrap_or(f64::NAN);
+            }
+        }
+        Grid {
+            t0: map(w0.start_s),
+            step: astep,
+            y,
+        }
+    };
+    let amp_grid = grid_of(&|w| w.mean());
+    let be_grid = grid_of(&|w| w.beat_error_unlock_ms);
+    [amp_grid, be_grid]
 }
 
 /// The rate readings [`check`] tests, `r` seconds each, on true time.
