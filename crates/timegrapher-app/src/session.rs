@@ -637,6 +637,19 @@ impl Session {
         self.recording_fault = Some(fault);
     }
 
+    /// Release the recorder, finishing its files and leaving them where
+    /// they are, for the next start to offer back (the app is quitting
+    /// without having asked about them).
+    pub fn keep_recording(&mut self) {
+        if let Some(r) = self.recorder.take() {
+            if self.recording_fault.is_some() {
+                drop(r);
+            } else {
+                let _ = r.finish(None);
+            }
+        }
+    }
+
     /// Release the recorder and forget the saves. Healthy unsaved scratch is
     /// deleted; faulted scratch is left untouched for manual recovery.
     pub fn discard_recording(&mut self) {

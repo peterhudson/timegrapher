@@ -126,9 +126,121 @@ enum Confirm {
     },
 }
 
-/// Where a session's sound is kept until it is saved or thrown away.
+/// Where a session's sound is kept until it is saved or thrown away: a
+/// folder of the app's own that the system doesn't clear, so sound kept
+/// when the app quits without asking (or is stopped) is still there at the
+/// next start. Tests use the temporary folder.
 fn scratch_dir() -> PathBuf {
-    std::env::temp_dir().join("timegrapher-unsaved")
+    if cfg!(test) {
+        return std::env::temp_dir().join("timegrapher-unsaved");
+    }
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    let base = if cfg!(target_os = "windows") {
+        env("LOCALAPPDATA")
+    } else if cfg!(target_os = "macos") {
+        env("HOME").map(|h| h.join("Library").join("Application Support"))
+    } else {
+        env("XDG_DATA_HOME").or_else(|| env("HOME").map(|h| h.join(".local").join("share")))
+    };
+    base.map_or_else(
+        || std::env::temp_dir().join("timegrapher-unsaved"),
+        |b| b.join("timegrapher").join("unsaved"),
+    )
+}
+
+/// Sound a session recorded that was never saved or thrown away: the app
+/// quit without asking (on macOS, Cmd+Q and Quit in the app menu or the
+/// Dock), or was stopped (a crash, a logout, a shutdown).
+#[derive(Debug, Clone, PartialEq)]
+struct KeptSound {
+    dir: PathBuf,
+    /// "2026-10-21 14.32 UTC", from its session.json.
+    started: Option<String>,
+    duration_s: Option<f64>,
+    bytes: u64,
+}
+
+/// The sound kept in `scratch` from earlier sessions, oldest first,
+/// leaving out any folder another copy of the app is recording into now.
+fn kept_sounds(scratch: &Path) -> Vec<KeptSound> {
+    let mut v: Vec<KeptSound> = std::fs::read_dir(scratch)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .filter(|d| !timegrapher_core::recorder::in_use(d))
+        .filter_map(|dir| {
+            let files: Vec<std::fs::DirEntry> = std::fs::read_dir(&dir).ok()?.flatten().collect();
+            let has_sound = files.iter().any(|f| {
+                let n = f.file_name().to_string_lossy().to_lowercase();
+                n.ends_with(".wav") || n.ends_with(".flac")
+            });
+            if !has_sound {
+                return None;
+            }
+            let bytes = files
+                .iter()
+                .filter_map(|f| f.metadata().ok())
+                .map(|m| m.len())
+                .sum();
+            let about: Option<serde_json::Value> = std::fs::read(dir.join("session.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok());
+            let started = about
+                .as_ref()
+                .and_then(|a| a["started_utc"].as_str())
+                .map(|u| {
+                    let at = u.get(..16).unwrap_or(u).replacen('T', " ", 1);
+                    format!("{} UTC", at.replace(':', "."))
+                });
+            Some(KeptSound {
+                started,
+                duration_s: about.as_ref().and_then(|a| a["duration_s"].as_f64()),
+                bytes,
+                dir,
+            })
+        })
+        .collect();
+    v.sort_by(|a, b| a.dir.cmp(&b.dir));
+    v
+}
+
+/// Move the recording folder `dir` into `parent`, under its own name:
+/// renamed, or onto another disk copied, each file written to the disk,
+/// and only then removed. Returns where it went.
+fn move_kept(dir: &Path, parent: &Path) -> Result<PathBuf, String> {
+    let name = dir.file_name().ok_or("The kept sound has no folder name")?;
+    let to = library::unused_dir(parent, &name.to_string_lossy());
+    timegrapher_core::recorder::remove_stale_lock(dir);
+    if std::fs::rename(dir, &to).is_ok() {
+        return Ok(to);
+    }
+    let copied = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(&to)?;
+        for e in std::fs::read_dir(dir)? {
+            let e = e?;
+            let mut r = std::fs::File::open(e.path())?;
+            let mut w = std::fs::File::create(to.join(e.file_name()))?;
+            std::io::copy(&mut r, &mut w)?;
+            w.sync_all()?;
+        }
+        Ok(())
+    })();
+    match copied {
+        Ok(()) => {
+            let _ = std::fs::remove_dir_all(dir);
+            Ok(to)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&to);
+            Err(format!("Couldn't move it to {}: {e}", parent.display()))
+        }
+    }
 }
 
 /// Keep acquisition and recording failures distinct from their display text.
@@ -951,6 +1063,10 @@ pub struct TimegrapherApp {
     /// its text is showing.
     crash: Option<PathBuf>,
     crash_shown: bool,
+    /// Sound kept from earlier sessions, offered back one at a time.
+    kept: Vec<KeptSound>,
+    /// The kept sound Delete… is asking about.
+    kept_delete_ask: Option<PathBuf>,
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
@@ -1191,6 +1307,7 @@ impl TimegrapherApp {
             app.apply_settings(s);
         }
         app.crash = applog::dir().and_then(|d| applog::unseen_crashes(&d).pop());
+        app.kept = kept_sounds(&scratch_dir());
         app.check_pending = app.check_at_start;
         app
     }
@@ -1380,6 +1497,8 @@ impl TimegrapherApp {
             locked_bph: None,
             crash: None,
             crash_shown: false,
+            kept: Vec::new(),
+            kept_delete_ask: None,
             report: ReportDialog::default(),
             updates: Default::default(),
             guided: None,
@@ -7303,6 +7422,117 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
+    /// Sound kept from an earlier session that was never saved: Open,
+    /// Move To… or Delete…, one kept recording at a time.
+    fn kept_banner(&mut self, ui: &mut egui::Ui) {
+        let Some(k) = self.kept.first().cloned() else {
+            return;
+        };
+        let pal = theme::pal(ui);
+        let (mut open, mut move_to, mut delete, mut later) = (false, false, false, false);
+        let what = format!(
+            "Sound from an earlier session wasn't saved{}{}, {}. Open it, move it into a \
+             folder of your own, or delete it?",
+            k.started
+                .as_ref()
+                .map_or(String::new(), |s| format!(": started {s}")),
+            k.duration_s
+                .map_or(String::new(), |d| format!(", {} long", strip::fmt_time(d))),
+            fmt_bytes(k.bytes),
+        );
+        banner(ui, pal.warn, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                later = ui
+                    .add(egui::Button::new("Later").frame_when_inactive(false))
+                    .on_hover_text("Leave it where it is: it is offered again next time")
+                    .clicked();
+                delete = ui
+                    .add(egui::Button::new("Delete…"))
+                    .on_hover_text("Delete this sound for good. It asks first.")
+                    .clicked();
+                move_to = ui
+                    .add(egui::Button::new("Move To…"))
+                    .on_hover_text(
+                        "Move the recording's folder into a folder you pick, to open again \
+                         with Open Folder… whenever you like",
+                    )
+                    .clicked();
+                open = ui
+                    .add(theme::primary(ui, "Open"))
+                    .on_hover_text(
+                        "Analyse it here. It stays where it is and is offered again next time \
+                         until it is moved or deleted.",
+                    )
+                    .clicked();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(&what).color(pal.text)).wrap());
+                });
+            });
+        });
+        if open {
+            self.kept.remove(0);
+            self.input = Input::File;
+            self.file_path = k.dir.display().to_string();
+            self.open_recording(&k.dir, false, true);
+        } else if move_to {
+            if let Some(parent) = rfd::FileDialog::new()
+                .set_title("Move the Unsaved Sound Into a Folder")
+                .pick_folder()
+            {
+                match move_kept(&k.dir, &parent) {
+                    Ok(to) => {
+                        self.kept.remove(0);
+                        self.info_msg(format!("Moved the unsaved sound to {}.", to.display()));
+                    }
+                    Err(e) => self.error(e),
+                }
+            }
+        } else if delete {
+            self.kept_delete_ask = Some(k.dir.clone());
+        } else if later {
+            self.kept.clear();
+        }
+    }
+
+    /// Delete… on kept sound asks first: it can't be got back.
+    fn kept_delete_dialog(&mut self, ctx: &egui::Context) {
+        let Some(dir) = self.kept_delete_ask.clone() else {
+            return;
+        };
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("delete kept sound")).show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.label(RichText::new("Delete the unsaved sound?").font(theme::semibold(15.0)));
+            ui.add_space(4.0);
+            ui.label("It was never saved anywhere else, so it can't be got back.");
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::destructive(ui, "Delete")).clicked() {
+                    choice = Some(true);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(false);
+                }
+            });
+        });
+        if choice.is_none() && modal.should_close() {
+            choice = Some(false);
+        }
+        if let Some(go) = choice {
+            self.kept_delete_ask = None;
+            if go {
+                timegrapher_core::recorder::remove_stale_lock(&dir);
+                match std::fs::remove_dir_all(&dir) {
+                    Ok(()) => self.kept.retain(|k| k.dir != dir),
+                    Err(e) => self.error(format!("Couldn't delete {}: {e}", dir.display())),
+                }
+            }
+        }
+    }
+
     /// After the app closed unexpectedly: an offer to report it. The report
     /// is a GitHub issue the user opens with the crash record pasted in;
     /// nothing is sent from the app.
@@ -7438,6 +7668,7 @@ impl TimegrapherApp {
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
         self.crash_banner(ui);
+        self.kept_banner(ui);
         self.update_banner(ui);
         // Errors float over the top of the main area rather than pushing
         // everything down.
@@ -9575,6 +9806,7 @@ impl eframe::App for TimegrapherApp {
         self.guided_tick(ctx);
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        self.kept_delete_dialog(ctx);
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
         }
@@ -9610,7 +9842,15 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
-        self.session.discard_recording();
+        // Sound the user hasn't been asked about is kept for the next start
+        // to offer back: on macOS, Cmd+Q and Quit in the app menu or the
+        // Dock quit without the window's close being asked first, and
+        // can't be cancelled.
+        if !self.may_close && self.unsaved_s() > 5.0 {
+            self.session.keep_recording();
+        } else {
+            self.session.discard_recording();
+        }
     }
 }
 
@@ -11103,6 +11343,93 @@ mod tests {
         assert!(app.session.recorder.is_some() && app.unsaved_s() > 19.0);
         app.input = Input::Microphone;
         assert!(!app.mic_session_set_aside());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Quitting without the close being asked first (on macOS, Cmd+Q and
+    /// Quit in the app menu or the Dock) keeps the unsaved sound, and the
+    /// next start offers it back; a quit the user answered throws it away
+    /// as before. A folder another copy is recording into is never offered.
+    #[test]
+    fn a_quit_that_cannot_ask_keeps_unsaved_sound_to_offer_back() {
+        let base = std::env::temp_dir().join(format!("tg-app-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let listening = |base: &Path| {
+            let mut app = synthetic(5.0, 0.0);
+            app.session.listen();
+            let info = app.info("Kept", 48000, 16);
+            let mut r = Recorder::start(base, info).unwrap();
+            r.write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 48000 * 20],
+                at: std::time::SystemTime::now(),
+            })
+            .unwrap();
+            let dir = r.dir().to_path_buf();
+            app.session.recorder = Some(r);
+            app.session.set_state(session::State::Paused {
+                since: Instant::now(),
+            });
+            (app, dir)
+        };
+        let (mut app, dir) = listening(&base);
+        // Being recorded into, it is not offered.
+        assert!(kept_sounds(&base).is_empty());
+        eframe::App::on_exit(&mut app, None);
+        let kept = kept_sounds(&base);
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert_eq!(kept[0].dir, dir);
+        assert!((kept[0].duration_s.unwrap() - 20.0).abs() < 0.5, "{kept:?}");
+        assert!(
+            kept[0]
+                .started
+                .as_ref()
+                .is_some_and(|s| s.len() == 20 && s.ends_with(" UTC")),
+            "{kept:?}"
+        );
+        assert!(kept[0].bytes > 48000 * 2 * 19);
+
+        // The next start says so, with the ways to keep it.
+        let mut next = TimegrapherApp::with_devices(Vec::new(), None, false);
+        next.kept = kept;
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut drawn = String::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| next.kept_banner(ui));
+            });
+            drawn = format!("{:?}", out.shapes);
+        }
+        assert!(drawn.contains("wasn't saved"), "{drawn}");
+        for b in ["Open", "Move To…", "Delete…", "Later"] {
+            assert!(drawn.contains(b), "{b}");
+        }
+        // Open reads it as a recording.
+        next.open_recording(&dir, false, true);
+        let t = Instant::now();
+        while next.batch.is_some() && t.elapsed().as_secs() < 60 {
+            next.poll();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let live = next.live.as_ref().expect("opened");
+        assert!(
+            (live.duration_s() - 20.0).abs() < 0.5,
+            "{}",
+            live.duration_s()
+        );
+        drop(next);
+        // Move To… puts the folder where the user says.
+        let mine = base.join("mine");
+        std::fs::create_dir_all(&mine).unwrap();
+        let moved = move_kept(&dir, &mine).unwrap();
+        assert!(!dir.exists() && moved.join("audio-001.wav").is_file());
+        assert!(kept_sounds(&base).is_empty());
+
+        // A quit the user answered ("Quit Without Saving") throws it away.
+        let (mut app, dir) = listening(&base);
+        app.may_close = true;
+        eframe::App::on_exit(&mut app, None);
+        assert!(!dir.exists());
         let _ = std::fs::remove_dir_all(&base);
     }
 
