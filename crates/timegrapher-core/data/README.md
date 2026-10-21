@@ -264,3 +264,10 @@ Seagull and Patek 324 calibres. Corrections with a source are welcome.
 Built from manufacturer documents, technical guides, parts catalogues,
 watchmaking references and forum teardowns, cited per entry; nothing was
 taken from any other timegrapher program.
+
+## ETA 2824 microscope contribution
+
+See [the evidence and coverage audit](../../../docs/2824-train-wheel-counts.md)
+for the 28,800 bph counts, exact fractional second/barrel periods, cannon
+mesh inference, and source-labelled transfers to 39 catalogue rows.
+Three-hertz, Power+ and ambiguous clone identities are excluded.

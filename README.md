@@ -165,6 +165,10 @@ The [31xx evidence](docs/31xx-train-wheel-counts.md) covers Rolex, DD/VS and
 VR31xx, excluding SH31xx, and distinguishes the 36-minute second wheel from
 the one-hour cannon pinion.
 
+The [ETA 2824 evidence](docs/2824-train-wheel-counts.md) records the 28,800 bph
+train, its separate one-hour cannon wheel, and an explicit variant/clone
+coverage audit.
+
 ## Reporting problems and sharing recordings
 
 Open an [issue](https://github.com/peterhudson/timegrapher/issues/new/choose):
