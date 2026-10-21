@@ -90,12 +90,12 @@ impl ClockTrack {
     }
 }
 
-/// The day of a UTC timestamp kept as text ("2026-10-12T…").
 /// Settings…: Cmd+, on macOS, Ctrl+, elsewhere.
 fn settings_shortcut() -> egui::KeyboardShortcut {
     egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Comma)
 }
 
+/// The day of a UTC timestamp kept as text ("2026-10-12T…").
 fn day_of(utc: &str) -> &str {
     utc.get(..10).unwrap_or(utc)
 }
@@ -995,7 +995,11 @@ pub struct TimegrapherApp {
     /// The Settings window, open at a section, and the kept clocks as read
     /// when it opened or last changed.
     settings_tab: Option<Tab>,
+    /// The section Settings opened at last, to open at again.
+    settings_last: Tab,
     kept_clocks: Result<clockstore::ClockStore, String>,
+    /// The input whose kept clock Forget is asking about.
+    forget_ask: Option<String>,
     /// Panes that average over their own time rather than Readings'
     /// Average Over, and that time in seconds.
     pane_average: std::collections::BTreeMap<Pane, f64>,
@@ -1380,7 +1384,9 @@ impl TimegrapherApp {
             calibre: String::new(),
             cal: calibre_ui::Calibres::in_memory(),
             settings_tab: None,
+            settings_last: Tab::General,
             kept_clocks: Ok(clockstore::ClockStore::default()),
+            forget_ask: None,
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -5016,7 +5022,7 @@ impl TimegrapherApp {
             .clicked()
         {
             ui.close();
-            self.open_settings(Tab::General);
+            self.open_settings(self.settings_last);
         }
         ui.separator();
         if ui
@@ -5204,7 +5210,7 @@ impl TimegrapherApp {
         .on_hover_text("Settings: how the app looks, the calibres and each input's kept clock")
         .clicked()
         {
-            self.open_settings(Tab::General);
+            self.open_settings(self.settings_last);
         }
     }
 
@@ -5441,12 +5447,70 @@ impl TimegrapherApp {
                 }
                 Tab::Clock => {
                     if let Some(device) = settings_window::clock_section(ui, &self.kept_clocks) {
-                        self.forget_clock(&device);
+                        self.forget_ask = Some(device);
                     }
                 }
             }
         });
+        self.settings_last = tab;
         self.settings_tab = (!done && !modal.should_close()).then_some(tab);
+        self.forget_dialog(ctx);
+    }
+
+    /// Forget asks first, saying what is lost: the kept clock took 20
+    /// minutes or more of listening to measure.
+    fn forget_dialog(&mut self, ctx: &egui::Context) {
+        let Some(device) = self.forget_ask.clone() else {
+            return;
+        };
+        let kept = self
+            .kept_clocks
+            .as_ref()
+            .ok()
+            .and_then(|s| s.get(&device))
+            .cloned();
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("forget clock")).show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.label(
+                RichText::new(match &kept {
+                    Some(c) => format!(
+                        "Forget the clock kept for \"{device}\", {}, measured {}?",
+                        settings_window::ppm_words(c.ppm),
+                        day_of(&c.measured_utc)
+                    ),
+                    None => format!("Forget the clock kept for \"{device}\"?"),
+                })
+                .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                "Rates from this input are then read on its own clock, uncorrected, here, on \
+                 the command line and in the MCP server. Getting it back takes 20 minutes or \
+                 more of listening and Keep.",
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Forget")).clicked() {
+                    choice = Some(true);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(false);
+                }
+            });
+        });
+        if choice.is_none() && modal.should_close() {
+            choice = Some(false);
+        }
+        if let Some(go) = choice {
+            self.forget_ask = None;
+            if go {
+                self.forget_clock(&device);
+            }
+        }
     }
 
     /// Settings' General section: how the app looks and whether it asks
@@ -9171,7 +9235,7 @@ impl TimegrapherApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&settings_shortcut())) {
-            self.open_settings(Tab::General);
+            self.open_settings(self.settings_last);
         }
         egui::CentralPanel::default()
             .frame(bar.inner_margin(egui::Margin {
@@ -12605,6 +12669,21 @@ mod tests {
             2,
             "{text:?}"
         );
+        // Forget asks first, saying what is lost; nothing goes until it is
+        // confirmed.
+        app.forget_ask = Some("USB Mic".into());
+        let _ = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let asked =
+            out.shapes.iter().any(|s| match &s.shape {
+                egui::Shape::Text(t) => t.galley.text()
+                    == "Forget the clock kept for \"USB Mic\", 12.5 ppm slow, measured 2026-10-20?",
+                _ => false,
+            });
+        assert!(asked, "the question names the input, its error and its day");
+        assert!(app.clock.is_some() && app.forget_ask.is_some());
+        assert_eq!(app.kept_clocks.as_ref().unwrap().devices.len(), 2);
+        app.forget_ask = None;
         app.forget_clock("USB Mic");
         assert!(
             app.clock.is_none(),
@@ -12612,12 +12691,16 @@ mod tests {
         );
         assert_eq!(app.kept_clocks.as_ref().unwrap().devices.len(), 1);
         assert!(!app.message.as_ref().unwrap().1);
-        // Manage Calibres… opens Settings at Calibres.
+        // Manage Calibres… opens Settings at Calibres, and Settings opens
+        // where it was left.
         app.settings_tab = None;
         app.cal.open_manager("");
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
         assert_eq!(app.settings_tab, Some(Tab::Calibres));
         assert!(!app.cal.manager_open);
+        app.settings_tab = None;
+        app.open_settings(app.settings_last);
+        assert_eq!(app.settings_tab, Some(Tab::Calibres));
     }
 
     #[test]

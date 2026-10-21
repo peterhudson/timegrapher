@@ -27,7 +27,8 @@ and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
 menus, one icon for each pane that shows or hides it (resting the pointer
-on an icon names its pane), and a gear at the end that opens Settings. Each icon is a small picture with a pun on
+on an icon names its pane), and a gear at the end that opens Settings.
+Each icon is a small picture with a pun on
 its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
 Tock Profile, a die showing six for the Positions Test, a hare for the
 Rate chart, a dromedary for the Rate distribution (one hump), an Allen
@@ -347,7 +348,9 @@ never instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording. **Settings**,
 under **Sound Card Clock**, lists each input's kept clock (its error in ppm
 and in s/d, the day it was measured, how, and over how long) with
-**Forget** beside it. Forget removes it from the same `clocks.json` that
+**Forget** beside it. Forget first asks, naming the input, its error and
+the day it was measured, since getting it back takes 20 minutes or more of
+listening; then it removes it from the same `clocks.json` that
 `timegrapher clock list` and `clock forget` read, so the command line and
 the MCP server forget it too; rates from that input are then read on its
 own clock again, and the True Clock line goes, until it is timed and kept
@@ -738,8 +741,8 @@ been published yet"). The request carries no account or identifier.
 the end of the pane icons opens it over the app, with three sections:
 **General** (Appearance and Check for Updates at Start), **Calibres**
 (Manage Calibres, below) and **Sound Card Clock** (each input's kept
-clock with Forget; see True Clock). **Done**, Escape or a click outside
-closes it. What belongs to the watch on show (its calibre, lift angle,
+clock with Forget; see True Clock). It opens at the section it was last
+left on. **Done**, Escape or a click outside closes it. What belongs to the watch on show (its calibre, lift angle,
 beat rate and position) and to the microphone (input, level, Show Every
 Input, Keep Awake) stays in the Watch pane, beside what it sets.
 

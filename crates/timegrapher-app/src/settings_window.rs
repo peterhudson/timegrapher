@@ -40,7 +40,7 @@ pub const CLOCK_HELP: &[&str] = &[
      computer's; Keep then stores that error for the input, and its rates are shown \
      corrected as True Clock from then on.",
     "Each input kept is listed here with its error, when it was measured and how. Forget \
-     removes it: rates from that input are then read on its own clock again, uncorrected, \
+     asks first, then removes it: rates from that input are then read on its own clock again, uncorrected, \
      until it is timed and kept afresh. Do this after changing the microphone or sound card \
      behind an input's name.",
     "The command line and the MCP server read the same list (`timegrapher clock list`, \
@@ -56,12 +56,22 @@ pub fn source_words(source: &str) -> &'static str {
     }
 }
 
+/// "12.3 ppm slow", "4.0 ppm fast", or "0.0 ppm" for a clock that keeps
+/// time as it reads.
+pub fn ppm_words(ppm: f64) -> String {
+    let size = format!("{:.1} ppm", ppm.abs());
+    if size == "0.0 ppm" {
+        size
+    } else {
+        format!("{size} {}", if ppm > 0.0 { "slow" } else { "fast" })
+    }
+}
+
 /// One kept clock's error in words: "12.3 ppm slow, +1.06 s/d on every rate".
 pub fn error_words(c: &DeviceClock) -> String {
     format!(
-        "{:.1} ppm {}, {} s/d on every rate",
-        c.ppm.abs(),
-        if c.ppm >= 0.0 { "slow" } else { "fast" },
+        "{}, {} s/d on every rate",
+        ppm_words(c.ppm),
         format!("{:+.2}", c.rate_error_s_per_day()).replace('-', "−")
     )
 }
@@ -88,57 +98,60 @@ pub fn clock_section(ui: &mut egui::Ui, store: &Result<ClockStore, String>) -> O
         ui.label(
             RichText::new(
                 "No input's clock is kept. Listen for 20 minutes or more and Keep the clock \
-                 the status bar offers, and it is listed here.",
+                 the Rate card offers, and it is listed here.",
             )
             .color(pal.text_secondary),
         );
         return None;
     }
-    egui::Grid::new("kept clocks")
-        .num_columns(4)
-        .spacing([18.0, 8.0])
-        .striped(true)
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, true])
         .show(ui, |ui| {
-            for h in ["Input", "Clock", "Measured", ""] {
-                ui.label(RichText::new(h).small().color(pal.text_tertiary));
-            }
-            ui.end_row();
-            for c in &store.devices {
-                ui.label(&c.device);
-                ui.label(error_words(c)).on_hover_text(format!(
-                    "This input's clock runs {:.1} ppm {}{}: rates read on it are {} s/d off, \
-                     and True Clock takes that off.",
-                    c.ppm.abs(),
-                    if c.ppm >= 0.0 { "slow" } else { "fast" },
-                    c.ppm_sd
-                        .map_or(String::new(), |sd| format!(", give or take {sd:.1} ppm")),
-                    format!("{:+.2}", c.rate_error_s_per_day()).replace('-', "−"),
-                ));
-                let over = if c.span_s > 0.0 {
-                    format!(" over {}", crate::strip::fmt_time(c.span_s))
-                } else {
-                    String::new()
-                };
-                ui.label(format!(
-                    "{}, {}{over}",
-                    c.measured_utc.get(..10).unwrap_or(&c.measured_utc),
-                    source_words(&c.source)
-                ))
-                .on_hover_text(format!("Measured {} UTC", c.measured_utc));
-                if ui
-                    .button("Forget")
-                    .on_hover_text(format!(
-                        "Stop correcting rates from \"{}\": they are read on its own clock \
-                         again until it is timed and kept afresh. The command line and the MCP \
-                         server forget it too.",
-                        c.device
-                    ))
-                    .clicked()
-                {
-                    forget = Some(c.device.clone());
-                }
-                ui.end_row();
-            }
+            egui::Grid::new("kept clocks")
+                .num_columns(4)
+                .spacing([18.0, 8.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    for h in ["Input", "Clock", "Measured", ""] {
+                        ui.label(RichText::new(h).small().color(pal.text_tertiary));
+                    }
+                    ui.end_row();
+                    for c in &store.devices {
+                        ui.label(&c.device);
+                        ui.label(error_words(c)).on_hover_text(format!(
+                        "This input's clock runs {}{}: rates read on it are {} s/d off, and True \
+                         Clock takes that off.",
+                        ppm_words(c.ppm),
+                        c.ppm_sd
+                            .map_or(String::new(), |sd| format!(", give or take {sd:.1} ppm")),
+                        format!("{:+.2}", c.rate_error_s_per_day()).replace('-', "−"),
+                    ));
+                        let over = if c.span_s > 0.0 {
+                            format!(" over {}", crate::strip::fmt_time(c.span_s))
+                        } else {
+                            String::new()
+                        };
+                        ui.label(format!(
+                            "{}, {}{over}",
+                            c.measured_utc.get(..10).unwrap_or(&c.measured_utc),
+                            source_words(&c.source)
+                        ))
+                        .on_hover_text(format!("Measured {} UTC", c.measured_utc));
+                        if ui
+                            .button("Forget")
+                            .on_hover_text(format!(
+                            "Stop correcting rates from \"{}\": they are read on its own clock \
+                             again until it is timed and kept afresh. The command line and the MCP \
+                             server forget it too.",
+                            c.device
+                        ))
+                            .clicked()
+                        {
+                            forget = Some(c.device.clone());
+                        }
+                        ui.end_row();
+                    }
+                });
         });
     forget
 }
