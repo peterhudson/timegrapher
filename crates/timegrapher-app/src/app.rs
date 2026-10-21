@@ -904,6 +904,11 @@ impl Drop for AnalysisSave {
     fn drop(&mut self) {
         self.cancel
             .store(true, std::sync::atomic::Ordering::Relaxed);
+        // Cancelled just as it finished: the folder it wrote, never
+        // reported, goes, so Cancel leaves nothing written.
+        if let Ok(Ok(dir)) = self.rx.try_recv() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
@@ -1125,9 +1130,9 @@ pub struct TimegrapherApp {
     analysis_save: Option<AnalysisSave>,
     /// The take on show was kept as its analysis alone, without its sound.
     no_sound: bool,
-    /// Where this session's analysis was last kept without its sound. The
-    /// sound itself stays unsaved.
-    analysis_kept_to: Option<PathBuf>,
+    /// Where this session's analysis was last kept without its sound, and
+    /// the seconds of sound it covers. The sound itself stays unsaved.
+    analysis_kept_to: Option<(PathBuf, f64)>,
     /// The jumps in the live sound's beats as of the last pass, to see a
     /// new one.
     jumps_seen: Vec<f64>,
@@ -2067,8 +2072,9 @@ impl TimegrapherApp {
             return false;
         }
         self.info_msg(
-            "Keeping the analysis of this session: it is reading the session's sound, so wait \
-             until it is done, or press Cancel beside its progress."
+            "Keeping the analysis of this session: it is reading the session's sound and \
+             writing its analysis, so wait until it is done, or press Cancel beside its \
+             progress."
                 .into(),
         );
         true
@@ -2190,7 +2196,11 @@ impl TimegrapherApp {
             }));
             match r {
                 Ok(r) => {
-                    let _ = tx.send(r);
+                    // No one left to tell (cancelled after its last check):
+                    // the folder it wrote goes too.
+                    if let Err(std::sync::mpsc::SendError(Ok(dir))) = tx.send(r) {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
                 }
                 Err(e) if e.is::<Cancelled>() => {}
                 Err(e) => std::panic::resume_unwind(e),
@@ -2227,7 +2237,7 @@ impl TimegrapherApp {
                     dir.display(),
                     fmt_bytes(size)
                 ));
-                self.analysis_kept_to = Some(dir);
+                self.analysis_kept_to = Some((dir, job.total_s));
             }
             Err(e) => self.error(format!("Keeping the analysis failed: {e}")),
         }
@@ -2476,15 +2486,20 @@ impl TimegrapherApp {
     /// its session file when it has one.
     fn start_replay(&mut self, path: &Path) {
         // Refused before anything on show is stopped or its masks cleared.
-        if let Some(inner) = take_folder(path)
-            .ok()
-            .filter(|p| analysis_take::is_analysis_only(p))
-        {
-            return self.open_failed(format!(
-                "{} was kept as its analysis alone, without its sound, so it can't be \
-                 replayed. Open shows its readings.",
-                capture_label(&inner)
-            ));
+        if let Some(why) = no_analysis_to_read(path) {
+            return self.open_failed(why);
+        }
+        if let Ok(inner) = take_folder(path) {
+            if analysis_take::is_analysis_only(&inner) {
+                return self.open_failed(format!(
+                    "{} was kept as its analysis alone, without its sound, so it can't be \
+                     replayed. Open shows its readings.",
+                    capture_label(&inner)
+                ));
+            }
+            if let Some(why) = no_analysis_to_read(&inner) {
+                return self.open_failed(why);
+            }
         }
         self.stop();
         self.masked.clear();
@@ -2642,6 +2657,9 @@ impl TimegrapherApp {
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
     fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
+        if let Some(why) = no_analysis_to_read(path) {
+            return self.open_failed(why);
+        }
         self.stop();
         // What was masked during a replay carries over; anything else
         // opened starts with what its session file masks.
@@ -2673,6 +2691,9 @@ impl TimegrapherApp {
         }
         if analysis_take::is_analysis_only(path) {
             return self.open_analysis_only(path, manifest);
+        }
+        if let Some(why) = no_analysis_to_read(path) {
+            return self.open_failed(why);
         }
         let files = match recordings_in(path) {
             Ok(f) => f,
@@ -6178,21 +6199,31 @@ impl TimegrapherApp {
                             p.display()
                         ),
                     ),
-                    None if self.analysis_kept_to.is_some() => (
-                        format!(
-                            "{} of sound, not saved; its analysis kept",
-                            strip::fmt_time(r.duration_s())
-                        ),
-                        pal.text_secondary,
-                        format!(
-                            "The analysis was kept without the sound in {}. The sound itself \
-                         isn't saved: Save keeps it, and New Session or quitting throws it \
-                         away unless saved.",
-                            self.analysis_kept_to
-                                .as_deref()
-                                .map_or(String::new(), |p| p.display().to_string())
-                        ),
-                    ),
+                    None if self.analysis_kept_to.is_some() => {
+                        let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
+                        let kept = if r.duration_s() - through_s >= 1.0 {
+                            format!(
+                                "the analysis of its first {} kept",
+                                strip::fmt_time(through_s)
+                            )
+                        } else {
+                            "its analysis kept".to_string()
+                        };
+                        (
+                            format!(
+                                "{} of sound, not saved; {kept}",
+                                strip::fmt_time(r.duration_s())
+                            ),
+                            pal.text_secondary,
+                            format!(
+                                "The analysis of the first {} was kept without the sound in {}. \
+                                 The sound itself isn't saved: Save keeps it, and New Session \
+                                 or quitting throws it away unless saved.",
+                                strip::fmt_time(through_s),
+                                dir.display()
+                            ),
+                        )
+                    }
                     None => (
                         format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
                         pal.text_secondary,
@@ -8890,6 +8921,24 @@ fn order_warning(files: &[PathBuf]) -> Option<String> {
 /// The folder to open for `path`: itself when it holds sound (or isn't a
 /// folder), else the one take folder inside it, which is where the app
 /// saves a take. Several takes inside are named so one can be picked.
+/// Why a folder whose session file says it was kept without its sound
+/// can't be read, when it has no `analysis/` folder: it is refused as
+/// `timegrapher session` refuses it, sound in it or not.
+fn no_analysis_to_read(path: &Path) -> Option<String> {
+    let dir = if path.is_dir() { path } else { path.parent()? };
+    if analysis_take::is_analysis_only(dir) || !dir.join(MANIFEST).is_file() {
+        return None;
+    }
+    let m: Manifest = toml::from_str(&std::fs::read_to_string(dir.join(MANIFEST)).ok()?).ok()?;
+    (m.audio == Some(false)).then(|| {
+        format!(
+            "{}: its {MANIFEST} says audio = false, but there is no {}/ folder to read.",
+            capture_label(dir),
+            analysis_take::DIR
+        )
+    })
+}
+
 fn take_folder(path: &Path) -> Result<PathBuf, String> {
     let is_take = |p: &Path| recordings_in(p).is_ok() || analysis_take::is_analysis_only(p);
     if !path.is_dir() || is_take(path) {
@@ -10567,7 +10616,7 @@ mod tests {
             "{:?}",
             app.message
         );
-        let kept = app.analysis_kept_to.clone().expect("kept");
+        let (kept, _) = app.analysis_kept_to.clone().expect("kept");
         assert!(app.session.saved_to().is_none(), "the sound isn't saved");
         assert!(
             file_name(&kept).ends_with("_analysis"),
@@ -10637,6 +10686,32 @@ mod tests {
         assert_eq!(a.masked, vec![(30.0, 32.0), (50.0, 52.0)]);
         // The folder it was kept in opens it too.
         assert_eq!(take_folder(&base.join("kept")).unwrap(), kept);
+        // A session file saying no sound needs the analysis to read, as
+        // `timegrapher session` needs it: refused with the sound beside it
+        // or without, opened or replayed.
+        let odd = base.join("odd");
+        std::fs::create_dir_all(&odd).unwrap();
+        for f in std::fs::read_dir(&full).unwrap() {
+            let f = f.unwrap().path();
+            if f.is_file() {
+                std::fs::copy(&f, odd.join(f.file_name().unwrap())).unwrap();
+            }
+        }
+        let text = std::fs::read_to_string(odd.join(MANIFEST)).unwrap();
+        std::fs::write(odd.join(MANIFEST), format!("audio = false\n{text}")).unwrap();
+        let refused = |replay: bool| {
+            let mut d = TimegrapherApp::with_devices(Vec::new(), None, false);
+            d.open_recording(&odd, replay, false);
+            let (msg, error) = d.message.clone().unwrap();
+            assert!(error && msg.contains("audio = false"), "{msg}");
+        };
+        refused(false);
+        refused(true);
+        for f in recordings_in(&odd).unwrap() {
+            std::fs::remove_file(f).unwrap();
+        }
+        refused(false);
+        refused(true);
         let _ = std::fs::remove_dir_all(&base);
     }
 
