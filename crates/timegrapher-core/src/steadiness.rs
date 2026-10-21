@@ -13,7 +13,7 @@
 //!   independent readings would give (the scatter at one reading over
 //!   √(τ / reading)). The two lines stay together for independent
 //!   readings; wander and drift lift the curve at long τ, and a cycle
-//!   puts a bump near half its period.
+//!   of period P puts a bump near 0.37 P.
 //! - **CUSUM**: the running sum of each reading's distance from the
 //!   mean, in units of σ√n. For independent readings it wanders inside
 //!   ±1.36 (95%); a shift of the mean bends it into a V or a tent with
@@ -463,6 +463,8 @@ pub struct Report {
     /// Pauses and resumes in the take; times run on with each gap in.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<crate::breaks::Break>,
+    /// The long-run analysis's conditions detected ([`LongReport`]'s).
+    pub caveats: Vec<crate::measure::Caveat>,
     pub config: Config,
     pub series: Vec<SeriesCheck>,
     /// The rate against the amplitude, at the rate's reading length.
@@ -2205,6 +2207,7 @@ pub fn check(
         duration_s: long.duration_s,
         bph: log.bph,
         breaks: long.breaks.clone(),
+        caveats: long.caveats.clone(),
         config: cfg.clone(),
         series,
         rate_amplitude,
@@ -2239,7 +2242,9 @@ pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
 }
 
 /// The amplitude and beat error windows on true time, one grid point
-/// every window length, so each gap is left empty.
+/// every window length, so each gap is left empty. The beat errors are
+/// sizes, given as positive, when the sign turns over across a break
+/// ([`crate::longrun::beat_error_turns`]).
 pub(crate) fn window_grids(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -2273,7 +2278,13 @@ pub(crate) fn window_grids(
         }
     };
     let amp_grid = grid_of(&|w| w.mean());
-    let be_grid = grid_of(&|w| w.beat_error_unlock_ms);
+    // As sizes when the sign turns over across a break, as the take's
+    // beat errors are.
+    let turned = crate::longrun::beat_error_turns(log, clock, breaks);
+    let be_grid = grid_of(&|w| {
+        w.beat_error_unlock_ms
+            .map(|v| if turned { v.abs() } else { v })
+    });
     [amp_grid, be_grid]
 }
 
