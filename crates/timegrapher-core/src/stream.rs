@@ -61,6 +61,11 @@ pub struct BeatLog {
     /// others the count across the hole is a guess.
     #[serde(skip)]
     pub sided: Vec<f64>,
+    /// The breaks, audio seconds, whose sides are named by the beat count
+    /// alone ([`crate::breaks::by_count`]): the jumps not in `sided`, or
+    /// after [`crate::breaks::renumber`] the breaks it returns.
+    #[serde(skip)]
+    pub by_count: Vec<f64>,
 }
 
 struct State {
@@ -447,6 +452,7 @@ impl Chunker {
             },
             clipped_beats: st.clipped_beats,
             clipped_samples: st.clipped_samples,
+            by_count: crate::breaks::by_count(st.jumps.iter().copied(), &st.sided),
             jumps: st.jumps,
             sided: st.sided,
         }

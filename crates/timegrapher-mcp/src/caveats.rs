@@ -52,6 +52,18 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
             }
             None => "The recording was paused; the readings leave the pauses out.".into(),
         },
+        "sides_by_count" => match c["count"].as_u64() {
+            Some(1) => "At one break the sounds could not tell Tick from Tock, so the sides \
+                        after it are named by the beat count across it."
+                .into(),
+            Some(n) => format!(
+                "At {n} breaks the sounds could not tell Tick from Tock, so the sides after \
+                 them are named by the beat count across them."
+            ),
+            None => "At a break the sounds could not tell Tick from Tock, so the sides after \
+                     it are named by the beat count across it."
+                .into(),
+        },
         // Any masked time counts, so a sliver gets a tenth of a second, and
         // under 0.05 s, where that would read 0.0 s, no figure at all.
         "masked" => match c["seconds"].as_f64() {
@@ -255,6 +267,7 @@ mod tests {
             { "code": "short_span", "span_s": 4.0 }, { "code": "clipped", "fraction": 0.03 },
             { "code": "beats_missing", "fraction": 0.8 }, { "code": "lift_unknown" },
             { "code": "clock_unknown" }, { "code": "breaks", "count": 2 },
+            { "code": "sides_by_count", "count": 1 }, { "code": "sides_by_count", "count": 2 },
             { "code": "masked", "seconds": 12.0 }, { "code": "masked" },
         ]);
         for c in codes.as_array().unwrap() {

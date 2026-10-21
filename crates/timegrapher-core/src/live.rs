@@ -928,6 +928,7 @@ impl LiveAnalyzer {
                 span_s: span_s + bph.map_or(0.0, |b| 3600.0 / b as f64),
                 listened_s,
                 breaks: 0,
+                sides_by_count: 0,
                 average_s: Some(average_s),
             },
         );
@@ -1185,6 +1186,7 @@ mod tests {
             clipped_samples: 0,
             jumps: vec![60.03],
             sided: Vec::new(),
+            by_count: Vec::new(),
         }
     }
 
@@ -1619,6 +1621,7 @@ mod tests {
             clipped_samples: 0,
             jumps: Vec::new(),
             sided: Vec::new(),
+            by_count: Vec::new(),
         };
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();

@@ -380,7 +380,7 @@ pub fn run(
         breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
         &log.jumps,
     );
-    breaks::renumber(
+    log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
         &breaks,

@@ -527,7 +527,7 @@ fn read_one_inner(
         breaks::of_files(&paths, clock.as_ref(), log.sample_rate),
         &log.jumps,
     );
-    breaks::renumber(
+    log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
         &breaks,

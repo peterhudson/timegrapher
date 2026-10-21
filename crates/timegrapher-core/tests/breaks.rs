@@ -6,6 +6,7 @@ use timegrapher_core::breaks;
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
+use timegrapher_core::measure::Caveat;
 use timegrapher_core::periodicity::standard_wheels;
 use timegrapher_core::session;
 use timegrapher_core::stream::{analyze_file, StreamConfig};
@@ -318,4 +319,63 @@ fn a_negative_pause_moves_no_beat_numbers_back() {
     assert_eq!(idx(&beats), idx(&zero));
     assert_eq!(beats[480].index, 480);
     assert_eq!(breaks::wall(&[gap(-0.2)], 70.0), 70.0);
+}
+
+#[test]
+fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
+    // As above, but Tick and Tock sound alike, so the side sounds can't
+    // tell them apart at the jump: the beat count carries the sides across
+    // it, the change of sign stands, and the reading says the sides there
+    // were named by the count.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.6, 1);
+    let b = piece(90.0, 0.6, 2);
+    let fs = a.sample_rate;
+    let join_s = a.samples.len() as f64 / fs as f64;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert!(log.sided.is_empty(), "{:?}", log.sided);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    assert_eq!(log.by_count, log.jumps);
+    let be = |from: f64, to: f64| {
+        let run: Vec<_> = log
+            .beats
+            .iter()
+            .filter(|b| b.time >= from && b.time < to)
+            .copied()
+            .collect();
+        timegrapher_core::timing::beat_error_ms(&run).unwrap()
+    };
+    let (before, after) = (be(5.0, join_s - 1.0), be(join_s + 5.0, 175.0));
+    assert!(
+        before * after < 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
+        "{before} {after}"
+    );
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    assert!(
+        m.caveats.contains(&Caveat::SidesByCount { count: 1 }),
+        "{:?}",
+        m.caveats
+    );
 }

@@ -711,6 +711,7 @@ mod tests {
             clipped_samples: 0,
             jumps: vec![],
             sided: Vec::new(),
+            by_count: Vec::new(),
         };
         let clock = ppm.and_then(|ppm| session::fixed_clock(ppm, log.duration_s));
         let mut measurement = session::measure(&log, clock.as_ref(), 0.0, log.duration_s);

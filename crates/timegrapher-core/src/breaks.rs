@@ -210,59 +210,36 @@ pub fn piece(breaks: &[Break], t: f64) -> usize {
 /// a negative gap), rounded to keep the sides. Where the side sounds told
 /// the sides apart at a jump within [`JUMP_MATCH_S`] of the break (`sided`,
 /// [`crate::stream::BeatLog`]'s), the numbers already keep them; elsewhere
-/// the stretch is turned over by one beat where its sides came out the
-/// other way round, told by the sign of its beat error against the first
-/// stretch's when both are clear of zero. Amplitude windows that span a
-/// break are dropped, and those of a turned stretch swap sides.
+/// the sides are kept by the beat count alone, and those breaks are
+/// returned (audio seconds) for [`crate::measure::Caveat::SidesByCount`].
+/// Amplitude windows that span a break are dropped.
 pub fn renumber(
     beats: &mut [Beat],
     windows: &mut Vec<AmplitudeWindow>,
     breaks: &[Break],
     sided: &[f64],
     bph: u32,
-) {
-    if breaks.is_empty() {
-        return;
-    }
+) -> Vec<f64> {
     windows.retain(|w| !straddles(breaks, w.start_s, w.end_s));
     let period = 3600.0 / bph.max(1) as f64;
-    let be: Vec<Option<f64>> = (0..=breaks.len())
-        .map(|k| {
-            let run: Vec<Beat> = beats
-                .iter()
-                .filter(|b| piece(breaks, b.time) == k)
-                .copied()
-                .collect();
-            crate::timing::beat_error_ms(&run).filter(|v| v.abs() >= TURN_MIN_MS)
-        })
-        .collect();
-    let first = be[0];
     let mut shift = 0i64;
     for (k, b) in breaks.iter().enumerate() {
-        let k = k + 1;
         shift += 2 * (b.gap_s.max(0.0) / (2.0 * period)).round() as i64;
-        let heard = sided.iter().any(|&j| (j - b.audio_s).abs() <= JUMP_MATCH_S);
-        let turned =
-            !heard && matches!((first, be[k]), (Some(a), Some(c)) if a.signum() != c.signum());
-        let s = shift + i64::from(turned);
-        let end = breaks.get(k).map_or(f64::INFINITY, |n| n.audio_s);
+        let end = breaks.get(k + 1).map_or(f64::INFINITY, |n| n.audio_s);
         for beat in beats
             .iter_mut()
             .filter(|x| x.time >= b.audio_s && x.time < end)
         {
-            beat.index += s;
-        }
-        if turned {
-            for w in windows
-                .iter_mut()
-                .filter(|w| w.start_s >= b.audio_s && w.end_s <= end)
-            {
-                w.swap_sides();
-            }
+            beat.index += shift;
         }
     }
+    by_count(breaks.iter().map(|b| b.audio_s), sided)
 }
 
-/// A stretch's beat error must be at least this far from zero, ms, before
-/// its sign is trusted to say which side is which.
-const TURN_MIN_MS: f64 = 0.05;
+/// Of the breaks at `at` (audio seconds), those with no side-sound verdict
+/// within [`JUMP_MATCH_S`] in `sided`: their sides are kept by the count.
+pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
+    at.into_iter()
+        .filter(|&t| !sided.iter().any(|&j| (j - t).abs() <= JUMP_MATCH_S))
+        .collect()
+}
