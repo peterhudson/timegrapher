@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 20] = [
+const ALL: [Icon; 21] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -29,6 +29,7 @@ const ALL: [Icon; 20] = [
     Icon::Allan,
     Icon::Cusum,
     Icon::Fft,
+    Icon::Settings,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -113,6 +114,10 @@ fn drawing(icon: Icon) -> &'static str {
         // A prism: Splitting the rate into its frequencies, as a prism splits light.
         Icon::Fft => {
             r#"<path d="M11 4l7.5 14h-15z"/><path d="M1.5 13.4l6.4-1.6"/><path d="M14.6 11.6l7.9-3M14.9 12.2l7.6 0M15.2 12.8l7.3 3.4"/>"#
+        }
+        // A gear: The works behind the dial, set once and left to run.
+        Icon::Settings => {
+            r#"<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.4"/><path stroke-width="2.6" d="M18.5 12h2.6M16.6 16.6l1.8 1.8M12 18.5v2.6M7.4 16.6l-1.8 1.8M5.5 12H2.9M7.4 7.4L5.6 5.6M12 5.5V2.9M16.6 7.4l1.8-1.8"/>"#
         }
     }
 }

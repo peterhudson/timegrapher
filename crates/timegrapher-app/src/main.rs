@@ -32,6 +32,7 @@ mod report;
 mod scope;
 mod session;
 mod settings;
+mod settings_window;
 mod span;
 mod steady;
 mod strip;
