@@ -53,15 +53,15 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
             None => "The recording was paused; the readings leave the pauses out.".into(),
         },
         "sides_by_count" => match c["count"].as_u64() {
-            Some(1) => "At one break the sounds could not tell Tick from Tock, so the sides \
-                        after it are named by the beat count across it."
+            Some(1) => "At one break Tick and Tock were not told apart by their sound, so \
+                        the sides after it are named by the beat count across it."
                 .into(),
             Some(n) => format!(
-                "At {n} breaks the sounds could not tell Tick from Tock, so the sides after \
-                 them are named by the beat count across them."
+                "At {n} breaks Tick and Tock were not told apart by their sound, so the sides \
+                 after them are named by the beat count across them."
             ),
-            None => "At a break the sounds could not tell Tick from Tock, so the sides after \
-                     it are named by the beat count across it."
+            None => "At a break Tick and Tock were not told apart by their sound, so the sides \
+                     after it are named by the beat count across it."
                 .into(),
         },
         // Any masked time counts, so a sliver gets a tenth of a second, and

@@ -67,9 +67,10 @@ pub enum Caveat {
     ShortSpan { span_s: f64 },
     /// The take was paused or resumed inside the stretch.
     Breaks { count: usize },
-    /// At `count` of those breaks the side sounds could not tell Tick from
-    /// Tock (too alike, or too few good beats), so the sides after it are
-    /// named by the beat count across the break alone.
+    /// At `count` of those breaks Tick and Tock were not told apart by
+    /// their sound (too alike, too few good beats, or no jump in the beats
+    /// for the side check to run at), so the sides after each are named by
+    /// the beat count across it alone.
     SidesByCount { count: usize },
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
