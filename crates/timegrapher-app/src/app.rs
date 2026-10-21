@@ -553,7 +553,9 @@ const SAVE_HINT: &str = "Save the sound of this session so far, with its clock l
      settings, to analyse again later. The first time it asks where: the take goes in a \
      folder of its own, named for its time and watch, inside the folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
-     carries on. Unsaved sound is thrown away by New Session or quitting.";
+     carries on. New Session and quitting ask before unsaved sound is thrown away; a quit \
+     that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it, to offer back at \
+     the next start.";
 
 const SAVE_AS_HINT: &str = "Save the session so far as a new take, in a folder you choose; \
      Save Again then goes there";
