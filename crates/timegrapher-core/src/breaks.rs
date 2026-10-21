@@ -35,10 +35,31 @@ pub const MIN_GAP_S: f64 = 0.5;
 /// audio time: a step in the offset between the two clocks that the next
 /// entries keep.
 pub fn from_clock(pairs: &[(f64, f64)]) -> Vec<Break> {
+    from_clock_at(pairs, &[])
+}
+
+/// [`from_clock`], with a break also at each of `at` (audio seconds)
+/// whatever the size of its step: at the first entry after it, its gap the
+/// step the next entries keep. An entry at the same second is the last one
+/// before the break, as the recorder writes it at a pause.
+pub fn from_clock_at(pairs: &[(f64, f64)], at: &[f64]) -> Vec<Break> {
     let off: Vec<f64> = pairs.iter().map(|q| q.1 - q.0).collect();
     let mut out = Vec::new();
     for i in 1..pairs.len() {
         let step = off[i] - off[i - 1];
+        if at
+            .iter()
+            .any(|&a| pairs[i - 1].0 <= a + 1e-6 && a + 1e-6 < pairs[i].0)
+        {
+            let later = &off[i..(i + 4).min(off.len())];
+            let mut v = later.to_vec();
+            v.sort_by(|a, b| a.total_cmp(b));
+            out.push(Break {
+                audio_s: pairs[i].0,
+                gap_s: v[v.len() / 2] - off[i - 1],
+            });
+            continue;
+        }
         if step < MIN_GAP_S {
             continue;
         }
