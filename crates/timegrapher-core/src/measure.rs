@@ -211,7 +211,7 @@ pub fn assess(
             count: c.sides_by_count,
         });
     }
-    if c.beat_error_as_size {
+    if c.beat_error_as_size && c.watch_heard {
         caveats.push(Caveat::BeatErrorAsSize);
     }
     let confidence = c.watch_heard.then(|| {
@@ -272,6 +272,30 @@ mod tests {
         );
         assert_eq!(a.caveats, vec![Caveat::NoWatch]);
         assert!(a.confidence.is_none());
+    }
+
+    #[test]
+    fn no_regular_beat_says_nothing_of_a_beat_error_size() {
+        // A cut take with no regular beat has no beat error to call a size.
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                watch_heard: false,
+                beat_error_as_size: true,
+                ..heard()
+            },
+        );
+        assert_eq!(a.caveats, vec![Caveat::NoWatch]);
+        let a = assess(
+            &[],
+            &[],
+            &Context {
+                beat_error_as_size: true,
+                ..heard()
+            },
+        );
+        assert_eq!(a.caveats, vec![Caveat::BeatErrorAsSize]);
     }
 
     #[test]
