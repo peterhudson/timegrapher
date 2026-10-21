@@ -100,7 +100,7 @@ impl View {
                 "How much the rate's average scatters when averaged over longer and longer \
                  times; lower is steadier. On or below the dashed line, the rate only jitters \
                  from moment to moment; above it towards the right, it wanders or drifts, and a \
-                 cycle puts a bump near half its period. Both axes are logarithmic"
+                 cycle puts a bump near 0.37 of its period. Both axes are logarithmic"
             }
             View::Cusum => {
                 "The running sum of each reading's distance from the mean: independent \
@@ -322,6 +322,13 @@ pub fn compute_with(
     let report = steadiness::check(log, None, &long, &lc, &cfg);
     stage.store(3, Relaxed);
     let mut grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
+    // As sizes when the beat error's sign turns over across a jump, as the
+    // tests beside them and the take's own figures give it.
+    if longrun::beat_error_turns(log, None, &breaks) {
+        for v in &mut grids[2].y {
+            *v = v.abs();
+        }
+    }
     // The tests leave out a rate reading with a 2-second stretch that holds
     // no beat (a dropout with no listed break, or the edge of a masked
     // stretch); so do the views drawn beside them.
@@ -1751,6 +1758,57 @@ mod tests {
                 .y
                 .len()
         );
+    }
+
+    #[test]
+    fn the_beat_error_view_gives_sizes_where_its_sign_turns() {
+        use timegrapher_core::amplitude::AmplitudeWindow;
+        // `after` ms of beat error after the jump at 60.03 s, 0.6 ms before.
+        let log_with = |after: f64| {
+            let mut log = context_log();
+            for b in &mut log.beats {
+                let be = if b.index < 480 { 0.6 } else { after };
+                let half = be / 2000.0;
+                b.time += if b.index % 2 == 1 { half } else { -half };
+            }
+            log.amplitude_windows = (0..60)
+                .map(|i| {
+                    let a = i as f64 * 2.0;
+                    AmplitudeWindow {
+                        start_s: a,
+                        end_s: a + 2.0,
+                        even_deg: Some(270.0),
+                        odd_deg: Some(270.0),
+                        beat_error_ms: Some(if a < 60.0 { 0.6 } else { after }),
+                        beat_error_unlock_ms: Some(if a < 60.0 { 0.6 } else { after }),
+                        even_unlock_ms: None,
+                        odd_unlock_ms: None,
+                        even_drop_ms: None,
+                        odd_drop_ms: None,
+                    }
+                })
+                .collect();
+            log
+        };
+        let finite = |s: &Steadiness| -> Vec<f64> {
+            s.grids[2]
+                .y
+                .iter()
+                .copied()
+                .filter(|v| v.is_finite())
+                .collect()
+        };
+        let turned = compute(&log_with(-0.4), None);
+        let be = finite(&turned);
+        assert!(be.iter().all(|&v| v > 0.0), "{be:?}");
+        assert!(be.iter().any(|&v| (v - 0.4).abs() < 1e-9), "{be:?}");
+        // Where the beats' sign agrees either side, the readings keep theirs.
+        let mut agree = log_with(0.4);
+        for w in &mut agree.amplitude_windows {
+            w.beat_error_unlock_ms = w.beat_error_unlock_ms.map(|v| -v);
+        }
+        let both_slow = compute(&agree, None);
+        assert!(finite(&both_slow).iter().any(|&v| v < 0.0));
     }
 
     #[test]

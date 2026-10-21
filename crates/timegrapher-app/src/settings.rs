@@ -65,6 +65,9 @@ pub struct Settings {
     pub keep_awake: bool,
     /// The readings' cards across the top shown.
     pub show_readings: bool,
+    /// The library's folder when one was chosen in Settings; `None` is
+    /// `~/Timegrapher Data`.
+    pub library: Option<std::path::PathBuf>,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -120,6 +123,7 @@ impl Default for Settings {
             check_updates: true,
             keep_awake: true,
             show_readings: true,
+            library: None,
         }
     }
 }

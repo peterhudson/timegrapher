@@ -20,9 +20,10 @@ On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`)
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
-**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the readings and
-for each pane, and Reset Panes. **Help**: Check for Updates…, Report a
-Problem… and, on Linux, **Add to Applications Menu**, which puts the app
+**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the
+readings and for each pane, and Reset Panes. **Help**: Check for
+Updates…, Report a Problem… and, on Linux, **Add to Applications Menu**,
+which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
@@ -185,9 +186,19 @@ hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), "lift angle 52°, the
 default (calibre not set)" when no calibre or lift angle is set
-(amplitude), a beat rate set that differs from the one heard, and pauses in the stretch. No reading is
-graded. That the input's clock hasn't been measured is said in the Rate
-card's **?** rather than on the card, with how to measure it. When the beats found don't come at regular intervals (their
+(amplitude), a beat rate set that differs from the one heard, and pauses
+in the stretch. On the beat error, a reading of an opened file whose Tick
+and Tock were named by the beat count across a break says so ("Tick and
+Tock named by the beat count across 1 break"). Where the beat error's
+sign differs either side of a cut (a pause, a jump, a move or its
+settling) among the beats of the position the whole-take line covers
+(the decision `analyze` makes over its stretches), that line under the
+Beat Error card is the mean and spread of every reading's size, and a
+line under it says "whole take given as a size: its sign differs either
+side of a cut".
+No reading is graded. That the input's clock hasn't been measured is
+said in the Rate card's **?** rather than on the card, with how to
+measure it. When the beats found don't come at regular intervals (their
 timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No regular beat found
 (timing scatter 8.6 ms, 5.2% of a beat)**. When nothing in the take has
@@ -277,8 +288,11 @@ how far its settling or measuring has got. Then a Mean row, the largest
 difference between the rates (D), vertical less horizontal for rate and
 amplitude (DVH), and a plain line for each condition found in a
 position's sound: no regular beat (with its timing scatter), clipping,
-or under 10 s of beats. After the sixth, **Finish** reads the six
-together. The figures are `session`'s for the same stretches. **Save as
+under 10 s of beats, a beat error given as a size because its sign
+differs either side of a cut, or Tick and Tock named by the beat count
+across a break rather than by their sound. After the sixth, **Finish**
+reads the six together. The figures are `session`'s for the same
+stretches. **Save as
 CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
 table, the means, the differences and those lines, as a CSV file a
@@ -614,7 +628,9 @@ Desktop rate readings do not bridge those cuts; the overall fit still combines t
 pieces using their existing beat weights. Joining also keeps amplitude sides
 and signed beat errors aligned with the renumbered beats. This preserves
 supplied context; it does not detect new jumps or change the statistical tests.
-Amplitude-window eligibility across internal cuts is unchanged.
+Amplitude-window eligibility across internal cuts is unchanged. Where the
+beat error's sign differs either side of a cut, its readings are drawn as
+sizes, positive, as the tests beside them read them.
 
 The views:
 **Readings Over Time** (the readings in time order, with the stretches of
@@ -738,13 +754,35 @@ been published yet"). The request carries no account or identifier.
 ## Settings
 
 **The Settings window.** Edit > Settings… (Ctrl+, or Cmd+,) or the gear at
-the end of the pane icons opens it over the app, with three sections:
-**General** (Appearance and Check for Updates at Start), **Calibres**
+the end of the pane icons opens it over the app, with four sections:
+**General** (Appearance and Check for Updates at Start), **Library**
+(below), **Calibres**
 (Manage Calibres, below) and **Sound Card Clock** (each input's kept
 clock with Forget; see True Clock). It opens at the section it was last
-left on. **Done**, Escape or a click outside closes it. What belongs to the watch on show (its calibre, lift angle,
-beat rate and position) and to the microphone (input, level, Show Every
-Input, Keep Awake) stays in the Watch pane, beside what it sets.
+left on. **Done**, Escape or a click outside closes it. What belongs to
+the watch on show (its calibre, lift angle, beat rate and position) and
+to the microphone (input, level, Show Every Input, Keep Awake) stays in
+the Watch pane, beside what it sets.
+
+**The library.** The watches and their takes are to be kept in one
+folder, `Timegrapher Data` in the home folder unless another is chosen:
+`library.toml` at the top, then a folder for each watch holding its
+details (`watch.toml`), its `photos/` and its `takes/`, each take a
+standard take folder named by when it started (`2026-10-20 14.32 Dial
+Up`, with the position in words when the take used only one). Nothing in
+it records where it is, so it can be moved, synced or copied whole; a
+take with sound files missing is listed as incomplete and never changed.
+Settings' **Library** section shows where it is and how many watches and
+takes it holds and their size, with **Show in Finder** (Explorer on
+Windows, File Manager on Linux), **Move Library…** (into a folder picked,
+asking first; onto another disk it is copied, checked and only then
+removed; closing the window or File > Quit waits until it is done,
+though on macOS Cmd+Q and Quit in the app menu or the Dock do not; a
+move cut short that way leaves the library whole in one place or the
+other, and Choose Another… finds it if it is the new one),
+**Choose Another…** (a library elsewhere, or an empty folder
+for a new one; nothing is moved) and, once another is chosen, **Use the
+Default**. The app does not yet add watches or takes to it.
 
 - **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:

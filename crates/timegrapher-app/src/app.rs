@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
+use timegrapher_core::library;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
 use timegrapher_core::mixer::{GainState, InputGain};
@@ -1000,6 +1001,16 @@ pub struct TimegrapherApp {
     kept_clocks: Result<clockstore::ClockStore, String>,
     /// The input whose kept clock Forget is asking about.
     forget_ask: Option<String>,
+    /// The library's folder when the user chose one; `None` is the
+    /// default, `~/Timegrapher Data`.
+    library_dir: Option<PathBuf>,
+    /// The library as read when Settings opened or it last changed:
+    /// `Ok(None)` while there is none at its folder.
+    library: Result<Option<library::Library>, String>,
+    /// Where Move Library… is asking to move it to.
+    library_move_ask: Option<PathBuf>,
+    /// A move under way: where to, and its outcome when done.
+    library_moving: Option<(PathBuf, LibraryMove)>,
     /// Panes that average over their own time rather than Readings'
     /// Average Over, and that time in seconds.
     pane_average: std::collections::BTreeMap<Pane, f64>,
@@ -1218,6 +1229,7 @@ impl TimegrapherApp {
             check_updates: self.check_at_start,
             keep_awake: self.keep_awake,
             show_readings: self.show_readings,
+            library: self.library_dir.clone(),
         }
     }
 
@@ -1256,7 +1268,9 @@ impl TimegrapherApp {
             check_updates,
             keep_awake,
             show_readings,
+            library,
         } = s;
+        self.library_dir = library;
         self.check_at_start = check_updates;
         self.keep_awake = keep_awake;
         self.show_readings = show_readings;
@@ -1387,6 +1401,10 @@ impl TimegrapherApp {
             settings_last: Tab::General,
             kept_clocks: Ok(clockstore::ClockStore::default()),
             forget_ask: None,
+            library_dir: None,
+            library: Ok(None),
+            library_move_ask: None,
+            library_moving: None,
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -3370,6 +3388,41 @@ impl TimegrapherApp {
     /// points with a watch heard, their spread (standard deviation) and the
     /// time they cover.
     fn whole_take(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
+        self.whole_take_as(f, false)
+    }
+
+    /// [`Self::whole_take`] for a signed figure, the beat error, and
+    /// whether it was taken as sizes: where its sign turns over across a
+    /// cut within the beats of the position the readings are taken in
+    /// ([`timegrapher_core::timing::sign_turns`], the decision `analyze`
+    /// and `session` make over their stretches), each reading counts by
+    /// its size, so a turn at a jump does not cancel the size either side.
+    fn whole_take_signed(
+        &self,
+        f: impl Fn(&TrendPoint) -> Option<f64>,
+    ) -> Option<((f64, f64, f64), bool)> {
+        let turned = self.live.as_ref().is_some_and(|l| {
+            let beats: Vec<_> = l
+                .beats()
+                .iter()
+                .filter(|b| self.in_position(b.time))
+                .copied()
+                .collect();
+            !l.breaks().is_empty()
+                && l.bph().is_some_and(|bph| {
+                    timegrapher_core::timing::sign_turns(&beats, bph, l.breaks())
+                })
+        });
+        Some((self.whole_take_as(f, turned)?, turned))
+    }
+
+    /// The mean, spread and span of `f` over the take, of its sizes when
+    /// `sizes`.
+    fn whole_take_as(
+        &self,
+        f: impl Fn(&TrendPoint) -> Option<f64>,
+        sizes: bool,
+    ) -> Option<(f64, f64, f64)> {
         if self.running() || self.view_end.is_some() {
             return None;
         }
@@ -3377,7 +3430,7 @@ impl TimegrapherApp {
             .trend
             .iter()
             .filter(|p| p.heard && self.in_position(p.t))
-            .filter_map(|p| Some((p.t, f(p)?)))
+            .filter_map(|p| Some((p.t, f(p).map(|v| if sizes { v.abs() } else { v })?)))
             .collect();
         let span = pts.last()?.0 - pts.first()?.0;
         if pts.len() < 6 || span < 3.0 * self.average_s {
@@ -5401,7 +5454,174 @@ impl TimegrapherApp {
     /// Open the Settings window at `tab`, reading the kept clocks afresh.
     fn open_settings(&mut self, tab: Tab) {
         self.kept_clocks = clockstore::ClockStore::load();
+        self.read_library();
         self.settings_tab = Some(tab);
+    }
+
+    /// The library's folder: the one chosen, else `~/Timegrapher Data`.
+    fn library_root(&self) -> Option<PathBuf> {
+        self.library_dir.clone().or_else(library::default_location)
+    }
+
+    /// Read the library afresh: none yet where its folder holds no
+    /// `library.toml`.
+    fn read_library(&mut self) {
+        self.library = match self.library_root() {
+            Some(root) if library::Library::is_library(&root) => {
+                library::Library::open(&root).map(Some)
+            }
+            _ => Ok(None),
+        };
+    }
+
+    /// Act on a button in Settings' Library section.
+    fn library_action(&mut self, act: settings_window::LibraryAction) {
+        use settings_window::LibraryAction;
+        match act {
+            LibraryAction::Show => {
+                if let Some(root) = self.library_root() {
+                    if let Err(e) = reveal(&root) {
+                        self.error(format!("Couldn't open {}: {e}", root.display()));
+                    }
+                }
+            }
+            LibraryAction::Move => {
+                let (Some(root), Ok(Some(_))) = (self.library_root(), &self.library) else {
+                    return;
+                };
+                let mut d = rfd::FileDialog::new().set_title("Move the Library Into a Folder");
+                if let Some(parent) = root.parent() {
+                    d = d.set_directory(parent);
+                }
+                let Some(parent) = d.pick_folder() else {
+                    return;
+                };
+                let name = root
+                    .file_name()
+                    .map_or_else(|| library::DEFAULT_NAME.into(), |n| n.to_owned());
+                self.library_move_ask = Some(parent.join(name));
+            }
+            LibraryAction::Choose => {
+                let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose a Library, or an Empty Folder for a New One")
+                    .pick_folder()
+                else {
+                    return;
+                };
+                let empty = std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none());
+                if !library::Library::is_library(&dir) && !empty {
+                    return self.error(format!(
+                        "{} holds files but no library: choose a library, or an empty folder \
+                         for a new one",
+                        dir.display()
+                    ));
+                }
+                self.use_library(Some(dir));
+            }
+            LibraryAction::UseDefault => self.use_library(None),
+        }
+    }
+
+    /// Use the library at `dir` (`None`: the default) from now on.
+    fn use_library(&mut self, dir: Option<PathBuf>) {
+        // The default chosen by name is the default.
+        self.library_dir = dir.filter(|d| Some(d) != library::default_location().as_ref());
+        self.read_library();
+    }
+
+    /// Move Library… asks first, saying what moves and where.
+    fn library_move_dialog(&mut self, ctx: &egui::Context) {
+        let (Some(to), Some(from)) = (self.library_move_ask.clone(), self.library_root()) else {
+            return;
+        };
+        let what = match &self.library {
+            Ok(Some(l)) => format!(
+                "Its {} and their takes ({}) are moved there,",
+                if l.watches.len() == 1 {
+                    "1 watch".to_string()
+                } else {
+                    format!("{} watches", l.watches.len())
+                },
+                fmt_bytes(l.bytes())
+            ),
+            _ => "Everything in it is moved there,".to_string(),
+        };
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("move library")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.label(
+                RichText::new(format!("Move the library to {}?", to.display()))
+                    .font(theme::semibold(15.0)),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "{what} and the app keeps them there from now on. Onto another disk they are \
+                 copied, checked and only then removed from {}.",
+                from.display()
+            ));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Move")).clicked() {
+                    choice = Some(true);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(false);
+                }
+            });
+        });
+        if choice.is_none() && modal.should_close() {
+            choice = Some(false);
+        }
+        if let Some(go) = choice {
+            self.library_move_ask = None;
+            if go {
+                self.move_library(from, to);
+            }
+        }
+    }
+
+    /// Move the library on a thread of its own: a copy onto another disk
+    /// can take a while.
+    fn move_library(&mut self, from: PathBuf, to: PathBuf) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dest = to.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(library::move_library(&from, &dest));
+        });
+        self.library_moving = Some((to, rx));
+    }
+
+    /// The move's outcome, once it is done.
+    fn poll_library_move(&mut self, ctx: &egui::Context) {
+        let Some((to, rx)) = &self.library_moving else {
+            return;
+        };
+        let to = to.clone();
+        match rx.try_recv() {
+            Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(200)),
+            Ok(Ok(left)) => {
+                // The whole library is at `to` either way, so it is used there.
+                self.library_moving = None;
+                self.use_library(Some(to.clone()));
+                match left {
+                    None => self.info_msg(format!("Moved the library to {}.", to.display())),
+                    Some(why) => self.error(why),
+                }
+            }
+            Ok(Err(e)) => {
+                self.library_moving = None;
+                self.read_library();
+                self.error(format!("The library couldn't be moved: {e}"));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.library_moving = None;
+                self.read_library();
+                self.error("The library's move stopped without finishing.".into());
+            }
+        }
     }
 
     /// The Settings window, when open, over everything else. Manage
@@ -5410,6 +5630,7 @@ impl TimegrapherApp {
         if std::mem::take(&mut self.cal.manager_open) {
             self.open_settings(Tab::Calibres);
         }
+        self.poll_library_move(ctx);
         let Some(mut tab) = self.settings_tab else {
             return;
         };
@@ -5439,6 +5660,19 @@ impl TimegrapherApp {
             ui.separator();
             match tab {
                 Tab::General => self.general_settings(ui),
+                Tab::Library => {
+                    let root = self.library_root();
+                    let act = settings_window::library_section(
+                        ui,
+                        root.as_deref(),
+                        &self.library,
+                        self.library_moving.as_ref().map(|(to, _)| to.as_path()),
+                        self.library_dir.is_some(),
+                    );
+                    if let Some(act) = act {
+                        self.library_action(act);
+                    }
+                }
                 Tab::Calibres => {
                     let current = self.calibre.clone();
                     let out = self.cal.contents(ui, &current, env!("CARGO_PKG_VERSION"));
@@ -5458,6 +5692,7 @@ impl TimegrapherApp {
         self.settings_last = tab;
         self.settings_tab = (!done && !modal.should_close()).then_some(tab);
         self.forget_dialog(ctx);
+        self.library_move_dialog(ctx);
     }
 
     /// Forget asks first, saying what is lost: the kept clock took 20
@@ -5489,12 +5724,12 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             ui.label(
                 "Rates from this input are then read on its own clock, uncorrected, here, on \
-                 the command line and in the MCP server. Getting it back takes 20 minutes or \
-                 more of listening and Keep.",
+                 the command line and in the MCP server. In the app, getting it back takes 20 \
+                 minutes or more of listening and Keep.",
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.add(theme::primary(ui, "Forget")).clicked() {
+                if ui.add(theme::destructive(ui, "Forget")).clicked() {
                     choice = Some(true);
                 }
                 if ui
@@ -5561,7 +5796,8 @@ impl TimegrapherApp {
         });
         match forgot {
             Ok(s) => {
-                // The input listening now loses its True Clock too.
+                // The microphone session in hand, listening or stopped,
+                // loses its True Clock too.
                 if self.clock.as_ref().is_some_and(|c| c.device == device) {
                     self.clock = None;
                 }
@@ -6117,13 +6353,27 @@ impl TimegrapherApp {
                         "The big figure is timed from the unlock, as tg shows it: quote \
                          that one. The drop figure is a second opinion.",
                     );
-                    if let Some((m, sd, span)) = self.whole_take(|p| p.beat_error_unlock) {
+                    if let Some(((m, sd, span), sizes)) =
+                        self.whole_take_signed(|p| p.beat_error_unlock)
+                    {
                         whole_line(
                             ui,
                             format!("{:.2} ms", m.abs()),
                             format!("{sd:.2} ms"),
                             span,
                         );
+                        if sizes {
+                            ui.label(
+                                RichText::new(WHOLE_AS_SIZES)
+                                    .small()
+                                    .color(pal.text_secondary),
+                            )
+                            .on_hover_text(
+                                "The beat error's sign differs either side of a cut in the \
+                                 take, so the whole take's mean and spread are of each \
+                                 reading's size rather than of the signed readings.",
+                            );
+                        }
                     }
                 },
             );
@@ -9178,8 +9428,11 @@ fn folder_size(dir: &Path) -> u64 {
     })
 }
 
+/// A library move's outcome, from its thread ([`library::move_library`]).
+type LibraryMove = std::sync::mpsc::Receiver<Result<Option<String>, String>>;
+
 /// A size on disk, as a file manager shows it: 7.7 GB, 10.5 MB, 812 kB.
-fn fmt_bytes(n: u64) -> String {
+pub(crate) fn fmt_bytes(n: u64) -> String {
     let n = n as f64;
     match n {
         n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
@@ -9187,6 +9440,21 @@ fn fmt_bytes(n: u64) -> String {
         n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
         n => format!("{n:.0} bytes"),
     }
+}
+
+/// Open `dir` in the system's file manager.
+fn reveal(dir: &Path) -> std::io::Result<()> {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    let mut child = std::process::Command::new(program).arg(dir).spawn()?;
+    // Waited on apart, so it leaves no zombie process behind.
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 fn capture_label(path: &Path) -> String {
@@ -9287,6 +9555,15 @@ impl eframe::App for TimegrapherApp {
 
         self.export_tick(ctx);
 
+        // Closing the window while the library is being moved waits for it:
+        // stopping a copy part way would leave half a library behind.
+        if ctx.input(|i| i.viewport().close_requested()) && self.library_moving.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.info_msg(
+                "The library is still being moved: Timegrapher can be closed once it is done."
+                    .into(),
+            );
+        }
         // Closing the window with unsaved sound asks first.
         if ctx.input(|i| i.viewport().close_requested())
             && !self.may_close
@@ -9444,6 +9721,9 @@ fn no_regular_beat(r: &LiveReading) -> String {
     }
 }
 
+/// The Beat Error card's line under the whole take, when it is of sizes.
+const WHOLE_AS_SIZES: &str = "whole take given as a size: its sign differs either side of a cut";
+
 fn reading_limits(
     title: &str,
     caveats: &[Caveat],
@@ -9500,6 +9780,17 @@ fn reading_limits(
             (Caveat::SetRateDisagrees { heard }, _) => Some((
                 format!("{heard} bph heard"),
                 format!("The beat rate set differs from the {heard} bph heard."),
+            )),
+            (Caveat::SidesByCount { count }, "Beat Error") => Some((
+                format!(
+                    "Tick and Tock named by the beat count across {count} break{}",
+                    if *count == 1 { "" } else { "s" }
+                ),
+                format!(
+                    "Tick and Tock are named by the beat count across {count} break{} in \
+                     this stretch, not told apart by their sound.",
+                    if *count == 1 { "" } else { "s" }
+                ),
             )),
             (Caveat::Breaks { count }, _) => Some((
                 format!("{count} pause{}", if *count == 1 { "" } else { "s" }),
@@ -9579,6 +9870,21 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn a_beat_error_says_where_its_sides_were_named_by_count() {
+        let caveats = [Caveat::SidesByCount { count: 2 }];
+        let be = reading_limits("Beat Error", &caveats, 52.0, 30);
+        assert_eq!(be.len(), 1);
+        assert_eq!(
+            be[0].0,
+            "Tick and Tock named by the beat count across 2 breaks"
+        );
+        assert!(be[0].1.contains("not told apart by their sound"));
+        // It doesn't touch the rate or the amplitude.
+        assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
+        assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
+    }
+
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
@@ -9655,6 +9961,77 @@ mod tests {
             "{why}"
         );
         assert!(app.resume_refusal("Mic A", "Mic A", 44_100).is_some());
+    }
+
+    /// The whole take's beat error, where its sign turns over at a jump
+    /// in the beats (`timing::sign_turns`), is the mean of the readings'
+    /// sizes, and says so, not a mean that cancels to nothing; where the
+    /// beats agree in sign either side it stays signed.
+    #[test]
+    fn whole_take_beat_error_keeps_its_size_across_a_turn() {
+        // 120 s at 28,800 bph with a jump at 60 s: the tock 0.6 ms late
+        // before it and `after` ms after it.
+        let app_with = |after: f64| {
+            let beats = (0..960)
+                .map(|index| {
+                    let be = if index < 480 { 0.6 } else { after };
+                    let half = be / 2000.0 * if index % 2 == 1 { 1.0 } else { -1.0 };
+                    timegrapher_core::beats::Beat {
+                        time: index as f64 * 0.125 + half,
+                        index,
+                        quality: 1.0,
+                    }
+                })
+                .collect();
+            let log = BeatLog {
+                sample_rate: 48_000,
+                duration_s: 120.0,
+                bph: 28_800,
+                lift_deg: 52.0,
+                beats,
+                amplitude_windows: Vec::new(),
+                clipped_beats: Vec::new(),
+                clipped_samples: 0,
+                jumps: vec![60.0],
+                sided: Vec::new(),
+                by_count: Vec::new(),
+            };
+            let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+            app.live = Some(LiveAnalyzer::from_log(log, LiveConfig::default()));
+            app
+        };
+        let point = |t: f64, be: f64| TrendPoint {
+            t,
+            rate: Some(5.0),
+            amplitude: None,
+            amplitude_a: None,
+            amplitude_b: None,
+            beat_error_unlock: Some(be),
+            beat_error_drop: None,
+            heard: true,
+        };
+        // 0.6 ms one way for 40 readings, then 0.4 ms the other for 20.
+        let trend: Vec<TrendPoint> = (0..40)
+            .map(|i| point(10.0 + i as f64, 0.6))
+            .chain((0..20).map(|i| point(70.0 + i as f64, -0.4)))
+            .collect();
+        let mut app = app_with(-0.4);
+        app.trend = trend.clone();
+        let ((m, sd, _), sizes) = app
+            .whole_take_signed(|p| p.beat_error_unlock)
+            .expect("whole take");
+        assert!(sizes);
+        assert!((m - (0.6 * 40.0 + 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
+        assert!(sd < 0.11, "the spread is of the sizes: {sd}");
+        // The plain mean would have all but cancelled.
+        let (plain, _, _) = app.whole_take(|p| p.beat_error_unlock).unwrap();
+        assert!(plain < m - 0.2, "{plain}");
+        // Where the beats keep one sign either side, the readings keep theirs.
+        let mut app = app_with(0.4);
+        app.trend = trend;
+        let ((m, _, _), sizes) = app.whole_take_signed(|p| p.beat_error_unlock).unwrap();
+        assert!(!sizes);
+        assert!((m - (0.6 * 40.0 - 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on
@@ -12586,6 +12963,79 @@ mod tests {
         assert_eq!(chart_time_label(-30.0, &r), "");
         assert_eq!(chart_time_label(0.0, &r), "0:00");
         assert_eq!(chart_time_label(120.0, &r), "2:00");
+    }
+
+    /// Settings' Library section reads the library at the folder chosen,
+    /// draws what it holds, moves it and keeps using it where it went,
+    /// and the choice is kept between runs.
+    #[test]
+    fn settings_moves_the_library_and_keeps_its_place() {
+        let base = std::env::temp_dir().join(format!("tg-app-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("here").join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        app.open_settings(Tab::Library);
+        assert_eq!(
+            app.library
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .watches
+                .len(),
+            1
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let text = |ctx: &egui::Context, app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+                all = format!("{:?}", out.shapes);
+            }
+            all
+        };
+        let drawn = text(&ctx, &mut app);
+        assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
+        assert!(drawn.contains("Move Library…") && drawn.contains("Use the Default"));
+
+        // Move it into another folder, and it is used there.
+        let to = base.join("there").join("Timegrapher Data");
+        app.library_move_ask = Some(to.clone());
+        let asked = text(&ctx, &mut app);
+        assert!(asked.contains("Move the library to"), "{asked}");
+        app.library_move_ask = None;
+        app.move_library(root.clone(), to.clone());
+        let t = Instant::now();
+        while app.library_moving.is_some() && t.elapsed().as_secs() < 30 {
+            app.poll_library_move(&ctx);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(app.library_dir.as_deref(), Some(to.as_path()));
+        assert!(!root.exists() && library::Library::is_library(&to));
+        assert_eq!(
+            app.library
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .watches
+                .len(),
+            1
+        );
+        assert_eq!(app.settings().library.as_deref(), Some(to.as_path()));
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.apply_settings(app.settings());
+        assert_eq!(again.library_root().as_deref(), Some(to.as_path()));
+
+        // A folder with no library yet reads as none, and is left alone.
+        app.use_library(Some(base.join("empty")));
+        assert!(matches!(app.library, Ok(None)));
+        assert!(!base.join("empty").exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Settings lists each kept clock; Forget removes that one from the
