@@ -302,6 +302,24 @@ mod tests {
             Some(-0.5)
         );
         assert_eq!(median_signed([f64::NAN].into_iter(), false), None);
+        let flip = |mut b: Vec<Beat>, at: f64| {
+            b.iter_mut()
+                .filter(|x| x.time >= at)
+                .for_each(|x| x.index += 1);
+            b
+        };
+        let both = flip(take(5.5, &[(0.0, 12.0), (20.0, 32.0)]), 19.0);
+        assert!(sign_turns(&both, 28800, &[19.0]));
+        assert!(!sign_turns(&both, 28800, &[]));
+        let k = both.partition_point(|b| b.time < 19.0);
+        assert!(!sign_turns(&both[..k], 28800, &[19.0]));
+        assert!(!sign_turns(
+            &take(5.5, &[(0.0, 12.0), (20.0, 32.0)]),
+            28800,
+            &[19.0]
+        ));
+        let scrap = flip(take(5.5, &[(0.0, 40.0), (50.0, 52.0)]), 45.0);
+        assert!(!sign_turns(&scrap, 28800, &[45.0]));
     }
 
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on

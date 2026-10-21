@@ -444,6 +444,7 @@ fn the_drop_and_the_unlock_keep_one_sign_near_a_whole_stretch() {
     };
     let lc = LongConfig::default();
     for (first_s, then_s) in [
+        (90.03, 6.0),
         (90.03, 12.5),
         (90.03, 13.0),
         (90.03, 13.5),
