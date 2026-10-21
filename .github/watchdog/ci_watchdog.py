@@ -6,13 +6,15 @@ never re-run. Runs from ci-watchdog.yml with main's copy of this file and the
 workflow token: it reads no pull-request code. Standard library only.
 
   ci_watchdog.py completed RUN_ID   a CI run just finished
-  ci_watchdog.py sweep              look for CI jobs queued too long
+  ci_watchdog.py sweep              look for CI jobs queued too long, and
+                                    re-check recent failed CI runs
 """
 
 import datetime
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -23,6 +25,9 @@ WORKFLOW = ".github/workflows/ci.yml"
 MAX_ATTEMPTS = 3
 # Hosted runners normally start a CI job within ten minutes.
 STALL_MINUTES = 45
+# The sweep re-checks failed CI runs created this recently, in case GitHub
+# starts no workflow_run event when a run the workflow token re-ran finishes.
+RECHECK_HOURS = 6
 FAILED = {"failure", "cancelled", "timed_out", "startup_failure"}
 # GitHub's annotations for a hosted runner that never started a job or was
 # lost during one. A test failure or a timeout-minutes cancel carries none.
@@ -166,6 +171,8 @@ def flag(api, run, kind, text):
             api.post("/issues", {"title": "CI stalled", "body": f"{MAIN_ISSUE}\n{body}"})
             return "opened an issue"
         number = issues[0]["number"]
+        if marker in (issues[0].get("body") or ""):
+            return f"already flagged on #{number}"
     comments = pages(api, f"/issues/{number}/comments")
     if any(marker in (comment.get("body") or "") for comment in comments):
         return f"already flagged on #{number}"
@@ -213,6 +220,15 @@ def sweep(api, now, log=print):
                 log(flag(api, run, "stalled",
                          f"{run_link(run)}: waiting for a GitHub-hosted runner: {waits}. "
                          f"CI jobs normally start within 10 minutes."))
+    since = (now - datetime.timedelta(hours=RECHECK_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for run in pages(api, f"/actions/workflows/ci.yml/runs?status=completed&created=%3E%3D{since}",
+                     "workflow_runs"):
+        if is_ci(run) and run.get("conclusion") in FAILED:
+            try:
+                completed(api, run["id"], log)
+            except urllib.error.HTTPError as error:
+                # Most likely a re-run the workflow_run job started meanwhile.
+                log(f"run {run['id']}: {error}")
     return found
 
 

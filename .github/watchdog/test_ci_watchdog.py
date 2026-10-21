@@ -49,7 +49,8 @@ class FakeAPI:
         if path.startswith("/actions/workflows/ci.yml/runs?event=pull_request"):
             return {"workflow_runs": [self.run] + self.newer}
         if path.startswith("/actions/workflows/ci.yml/runs?status="):
-            return {"workflow_runs": [self.run] if path.endswith(self.run["status"]) else []}
+            status = path.split("status=")[1].split("&")[0]
+            return {"workflow_runs": [self.run] if status == self.run["status"] else []}
         if path.endswith("/comments"):
             return self.comments
         if path.startswith("/issues?"):
@@ -192,8 +193,23 @@ class Sweep(unittest.TestCase):
         [(path, body)] = api.posts
         self.assertEqual(path, "/issues")
         self.assertIn(watchdog.MAIN_ISSUE, body["body"])
+        # GitHub lists an issue's comments without its body.
         api.issues, api.posts = [dict(number=12, body=body["body"])], []
-        api.comments = [dict(body=body["body"])]
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual(api.posts, [])
+        api.run = dict(run, id=60)
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual([path for path, _ in api.posts], ["/issues/12/comments"])
+
+    def test_a_failed_run_the_event_missed_is_rerun(self):
+        jobs, annotations = macos_stall()
+        api = FakeAPI(ci_run(run_attempt=2), jobs, annotations)
+        watchdog.sweep(api, self.NOW, log=quiet)
+        self.assertEqual(api.posts, [("/actions/runs/50/rerun-failed-jobs", None)])
+
+    def test_the_sweep_leaves_real_failures_alone(self):
+        jobs = [job(1, "regress", "failure")]
+        api = FakeAPI(ci_run(), jobs, {1: []})
         watchdog.sweep(api, self.NOW, log=quiet)
         self.assertEqual(api.posts, [])
 
