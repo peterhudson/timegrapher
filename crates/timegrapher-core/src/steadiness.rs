@@ -2217,7 +2217,7 @@ pub fn check(
 }
 
 /// The rate readings of [`rate_windows`] on a grid of `r` seconds,
-/// NaN where none was kept.
+/// NaN where none was kept. `wins` must be in time order.
 pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
     match wins.first() {
         Some(w0) => {
@@ -2238,8 +2238,8 @@ pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
     }
 }
 
-/// The amplitude and beat error windows on true time, one grid point a
-/// window, so each gap is left empty.
+/// The amplitude and beat error windows on true time, one grid point
+/// every window length, so each gap is left empty.
 pub(crate) fn window_grids(
     log: &BeatLog,
     clock: Option<&ClockFit>,
