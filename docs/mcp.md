@@ -96,7 +96,7 @@ That route has not been tried with this server yet.
 | Tool | Runs | What for |
 |---|---|---|
 | `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
-| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
+| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values, and a Power Reserve take's run in `power_reserve`; writes `report.html` |
 | `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics; with `maps`, the time-frequency maps too |
 | `long_run` | `long` | Rate and amplitude over hours and the periodic changes that point at a wheel of the train; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
@@ -323,7 +323,11 @@ document, about what the numbers alone do not say:
   amplitude difference between any two positions, `d_amplitude`, is not
   mistaken for vertical minus horizontal, `dvh_amplitude`), and what limits
   the readings. A sentence names the positions it is about, unless it is
-  about every one.
+  about every one. A Power Reserve take's folder leads with its run: how
+  long the watch ran, in which position, how the run ended (the watch
+  stopping, stopped by hand, or the 80 h limit), how many times the beats
+  stopped for 30 s or more and came back, and how many hours `hours`
+  measures.
 - `record_position`: what was recorded, what the take's check measured,
   the lift angle and whether it was given, the calibre's or the default,
   how many of the expected beats were found and clipped (or that no
