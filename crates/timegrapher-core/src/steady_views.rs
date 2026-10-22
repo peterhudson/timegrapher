@@ -635,7 +635,12 @@ mod tests {
         // keeps readings that reach into the pause from either side, so
         // this test bites.
         let holes = crate::clean::Cuts::new(None, &paused.breaks, &[]);
-        let cut = longrun::cuts(None, &paused.breaks);
+        // The old cut: halfway through each pause's gap.
+        let cut: Vec<f64> = paused
+            .breaks
+            .iter()
+            .map(|b| holes.true_time(b.audio_s) - 0.5 * b.gap_s - 1e-6)
+            .collect();
         let beats = holes.beats(&log.beats);
         // Without the 2 s check, reading 5 would be kept.
         let outside = timing::windows(&beats, log.bph, 10.0, 10.0)

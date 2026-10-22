@@ -23,6 +23,7 @@ use crate::amplitude::AmplitudeWindow;
 use crate::beats::Beat;
 use crate::breaks::{Break, JUMP_MATCH_S};
 use crate::clock::ClockFit;
+use crate::timing::WindowFit;
 use serde::Serialize;
 
 /// Seconds a bin or a hole's edge may be off by and still count as
@@ -281,6 +282,45 @@ impl<'a> Cuts<'a> {
             .collect()
     }
 
+    /// Fits over whole bins of `len` seconds, one every `step` seconds
+    /// from the first beat at or after `from` up to `to` (true time). A
+    /// bin is fitted on the beats from its start up to its end when it is
+    /// [`whole`](Self::whole) with parts of `part` seconds, so none spans
+    /// a hole or a dropout, and none needs a beat at or past its end.
+    /// `beats` on true time, sorted.
+    #[allow(clippy::too_many_arguments)]
+    pub fn windows(
+        &self,
+        beats: &[Beat],
+        bph: u32,
+        from: f64,
+        to: f64,
+        len: f64,
+        step: f64,
+        part: f64,
+    ) -> Vec<WindowFit> {
+        let mut out = Vec::new();
+        let Some(first) = beats.get(beats.partition_point(|x| x.time < from)) else {
+            return out;
+        };
+        let mut s = first.time;
+        while s + len <= to + 1e-9 {
+            if self.whole(beats, s, s + len, part) {
+                let lo = beats.partition_point(|x| x.time < s);
+                let hi = beats.partition_point(|x| x.time < s + len);
+                if let Some(fit) = crate::timing::fit(&beats[lo..hi], bph) {
+                    out.push(WindowFit {
+                        start_s: s,
+                        end_s: s + len,
+                        fit,
+                    });
+                }
+            }
+            s += step;
+        }
+        out
+    }
+
     /// The amplitude windows a reading may use: those whose span on true
     /// time is [`clear`](Self::clear) of every hole.
     pub fn amplitude_windows<'w>(
@@ -383,6 +423,61 @@ mod tests {
         assert_eq!(cuts.true_time(100.0), 130.0);
         assert!(cuts.clear(90.0, 100.0 - EDGE_S) && cuts.clear(130.0, 140.0));
         assert!(!cuts.clear(95.0, 105.0) && !cuts.clear(125.0, 135.0));
+        // With a clock fit whose break sits at the log's first line after
+        // the resume (305.1 s), the gap runs from the last sound before the
+        // listed pause to there; moved to the listed break, to the resume.
+        let clock = paused_clock();
+        let listed = [brk(305.0, 30.0)];
+        let cuts = Cuts::new(Some(&clock), &listed, &[]);
+        assert_eq!(cuts.holes().len(), 1, "{:?}", cuts.holes());
+        let h = cuts.holes()[0];
+        assert!(
+            (h.start_s - clock.map(305.0 - EDGE_S)).abs() < 1e-9,
+            "{h:?}"
+        );
+        assert!((h.end_s - clock.map(305.1)).abs() < 1e-9, "{h:?}");
+        assert!((h.end_s - h.start_s - 30.1).abs() < 0.01, "{h:?}");
+        assert!(!cuts.clear(clock.map(305.05), clock.map(305.05) + 10.0));
+        let mut placed = clock.clone();
+        placed.place_breaks(&listed);
+        let cuts = Cuts::new(Some(&placed), &listed, &[]);
+        let h = cuts.holes()[0];
+        assert!((h.end_s - placed.map(305.0)).abs() < 1e-9, "{h:?}");
+        assert!(cuts.true_time(305.05) > h.end_s);
+    }
+
+    #[test]
+    fn covered_needs_a_beat_in_every_part() {
+        // Beats every 0.2 s with none from 52 s to 55 s.
+        let beats: Vec<Beat> = beats_to(100.0)
+            .into_iter()
+            .filter(|b| !(52.0..55.0).contains(&b.time))
+            .collect();
+        assert!(covered(&beats, 40.0, 50.0, 2.0));
+        assert!(!covered(&beats, 50.0, 60.0, 2.0));
+        // Parts of 5 s each hold a beat; the hole is under one part.
+        assert!(covered(&beats, 50.0, 60.0, 5.0));
+        // A span not a whole number of parts is split into equal ones:
+        // 11 s at about 2 s: six parts of 1.83 s, the second empty.
+        assert!(!covered(&beats, 51.0, 62.0, 2.0));
+        // Past the last beat, or with no beats, nothing is covered.
+        assert!(!covered(&beats, 95.0, 105.0, 2.0));
+        assert!(!covered(&[], 0.0, 10.0, 2.0));
+        // A beat on a part's start counts; one on its end is the next's.
+        let two = [
+            Beat {
+                index: 0,
+                time: 0.0,
+                quality: 1.0,
+            },
+            Beat {
+                index: 1,
+                time: 2.0,
+                quality: 1.0,
+            },
+        ];
+        assert!(covered(&two, 0.0, 4.0, 2.0));
+        assert!(!covered(&two, -2.0, 2.0, 2.0));
     }
 
     #[test]
@@ -506,5 +601,42 @@ mod tests {
         assert_eq!(h.kind, HoleKind::ClockStep);
         assert!(!cuts.clear(h.start_s - 5.0, h.end_s + 5.0));
         assert!(cuts.clear(h.end_s, h.end_s + 10.0));
+    }
+
+    #[test]
+    fn windows_lie_inside_each_stretch_and_need_no_beat_past_their_end() {
+        // Beats every 0.125 s for exactly 10 s: one whole 10 s window,
+        // though no beat falls at or after its end.
+        let beats: Vec<Beat> = (0..80)
+            .map(|i| Beat {
+                index: i,
+                time: i as f64 * 0.125,
+                quality: 1.0,
+            })
+            .collect();
+        let w = Cuts::none().windows(&beats, 28800, 0.0, 10.0, 10.0, 5.0, 2.0);
+        assert_eq!(w.len(), 1);
+        assert_eq!(
+            (w[0].start_s, w[0].end_s, w[0].fit.beats_used),
+            (0.0, 10.0, 80)
+        );
+        // A pause after 100 s and a mask: the windows keep one grid from
+        // the first beat, none reaches into a hole, and a window over a
+        // dropout no break lists is left out.
+        let cuts = Cuts::new(None, &[brk(100.0, 30.0)], &[(150.0, 160.0)]);
+        let beats: Vec<Beat> = cuts
+            .beats(&beats_to(300.0))
+            .into_iter()
+            .filter(|b| !(250.0..253.0).contains(&b.time))
+            .collect();
+        let w = cuts.windows(&beats, 18000, 0.0, 330.0, 10.0, 5.0, 2.0);
+        let starts: Vec<f64> = w.iter().map(|w| w.start_s).collect();
+        let want: Vec<f64> = (0..65)
+            .map(|i| i as f64 * 5.0)
+            .filter(|&s| cuts.clear(s, s + 10.0) && !(241.0..253.0).contains(&s))
+            .collect();
+        assert_eq!(starts, want);
+        assert!(starts.contains(&90.0) && starts.contains(&130.0) && starts.contains(&320.0));
+        assert!(!starts.contains(&95.0) && !starts.contains(&175.0) && !starts.contains(&185.0));
     }
 }

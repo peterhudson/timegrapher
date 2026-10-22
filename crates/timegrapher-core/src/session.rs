@@ -15,6 +15,7 @@
 
 use crate::beats::Beat;
 use crate::breaks::Break;
+use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longrun::LongReport;
@@ -441,67 +442,32 @@ pub fn measure_masked(
             ..*b
         })
         .collect();
-    let map = crate::longrun::true_time(clock, &on_time);
-    // Cut at both ends of each gap and each mask: a window or sample that
-    // reaches into one from either side, taking in a ragged edge of
-    // beats, is dropped, so nothing is averaged across a gap or a mask. A
-    // break with no gap keeps its single cut.
-    let mut cuts: Vec<f64> = on_time
-        .iter()
-        .zip(crate::longrun::cuts(clock, &on_time))
-        .flat_map(|(b, cut)| {
-            // The gap on true time, from the last sound before the pause
-            // to the first after it. The gap's end is taken from the
-            // listed break, so a clock fit that found the pause must have
-            // its break moved there (`breaks::of_files_on_clock`).
-            let (start, end) = (map(b.audio_s - 1e-6), map(b.audio_s));
-            if b.gap_s > 2e-6 && end > start {
-                vec![start, end - 1e-6]
-            } else {
-                vec![cut]
-            }
-        })
-        .collect();
-    cuts.extend(
-        masked
-            .iter()
-            .filter(|&&(a, b)| b > from_s && a < to_s)
-            .flat_map(|&(a, b)| [map(a), map(b)]),
-    );
-    // A step the clock log holds that no listed pause was placed on (a
-    // system clock step, or a dropout the recorder did not list) is cut
-    // at both ends too.
-    if let Some(c) = clock {
-        cuts.extend(
-            c.breaks
-                .iter()
-                .filter(|cb| {
-                    !on_time
-                        .iter()
-                        .any(|b| (b.audio_s - cb.audio_s).abs() < 1e-9)
-                })
-                .flat_map(|cb| [map(cb.audio_s - 1e-6), map(cb.audio_s) - 1e-6]),
-        );
-    }
-    cuts.sort_by(f64::total_cmp);
-    let apart = |w: &timing::WindowFit| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s);
-    let beats: Vec<Beat> = log
+    // Every cut (each gap, each mask, each clock step no break explains),
+    // the beats outside the masks on true time, and which bins are whole:
+    // no fit, window or sample reaches into a cut, and none takes in a
+    // ragged edge of beats beside one.
+    let holes = Cuts::new(clock, &on_time, masked);
+    let map = |t: f64| holes.true_time(t);
+    let cuts = holes.piece_cuts();
+    let in_range: Vec<Beat> = log
         .beats
         .iter()
-        .filter(|b| b.time >= from_s && b.time < to_s && !in_mask(masked, b.time))
-        .map(|b| Beat {
-            time: map(b.time),
-            ..*b
-        })
+        .filter(|b| b.time >= from_s && b.time < to_s)
+        .copied()
         .collect();
+    let beats = holes.beats(&in_range);
     let fit = timing::fit_pieces(&beats, log.bph, &cuts);
     let turned = timing::sign_turns(&beats, log.bph, &cuts);
-    let mut windows = timing::windows(&beats, log.bph, 10.0, 5.0);
-    windows.retain(apart);
+    let (from_t, to_t) = (map(from_s), map(to_s));
+    let part = log
+        .amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    let windows = holes.windows(&beats, log.bph, from_t, to_t, 10.0, 5.0, part);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
-    let rate_samples: Vec<twostate::Sample> = timing::windows(&beats, log.bph, 10.0, 10.0)
+    let rate_samples: Vec<twostate::Sample> = holes
+        .windows(&beats, log.bph, from_t, to_t, 10.0, 10.0, part)
         .iter()
-        .filter(|w| apart(w))
         .map(|w| twostate::Sample {
             start_s: w.start_s,
             end_s: w.end_s,
@@ -509,29 +475,20 @@ pub fn measure_masked(
             ..Default::default()
         })
         .collect();
-    let amp: Vec<_> = log
-        .amplitude_windows
-        .iter()
+    let amp: Vec<_> = holes
+        .amplitude_windows(&log.amplitude_windows)
+        .into_iter()
         .filter(|w| w.start_s >= from_s && w.end_s <= to_s)
-        .filter(|w| !masked.iter().any(|&(a, b)| w.start_s < b && w.end_s > a))
         .collect();
     let amps: Vec<f64> = amp.iter().filter_map(|w| w.mean()).collect();
-    // The windows' place in the take: their audio seconds plus the gaps
-    // before them, so a pause is a hole in the two-state blocks, as it is
-    // for the rate samples on true time.
-    let placed = |t: f64| {
-        t + on_time
-            .iter()
-            .filter(|b| b.audio_s <= t)
-            .map(|b| b.gap_s)
-            .sum::<f64>()
-    };
+    // On true time, as the rate samples are, so a pause is a hole in the
+    // two-state blocks.
     let amp_samples: Vec<twostate::Sample> = amp
         .iter()
         .filter_map(|w| {
             Some(twostate::Sample {
-                start_s: placed(w.start_s),
-                end_s: placed(w.end_s),
+                start_s: map(w.start_s),
+                end_s: map(w.end_s),
                 value: w.mean()?,
                 tick: w.even_deg,
                 tock: w.odd_deg,

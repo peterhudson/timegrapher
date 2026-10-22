@@ -476,7 +476,11 @@ impl Test {
         masked: &[(f64, f64)],
     ) -> Option<Reading> {
         let position = session::Position::parse(p.code())?;
-        let measurement: Measurement = session::measure_masked(log, clock, &[], masked, from, to);
+        // Cut at every jump in the beats, as the whole take is, so no fit
+        // runs across one.
+        let jumps = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+        let measurement: Measurement =
+            session::measure_masked(log, clock, &jumps, masked, from, to);
         Some(Reading {
             label: p.name().into(),
             position,
@@ -1566,6 +1570,49 @@ mod tests {
         let r = t.readings.as_ref().unwrap();
         assert_eq!(r.len(), 6);
         assert_eq!(r[1].measurement.masked_s, 0.0);
+    }
+
+    /// A jump in the beats inside a position (the sound lost its place by
+    /// 40 ms at 50 s): the position's rate is fitted on each side of it
+    /// and combined, as the whole take's is, not across it.
+    #[test]
+    fn a_jump_inside_a_position_is_cut() {
+        let each = SETTLE_S + MEASURE_S;
+        let duration = each * 6.0 + 1.0;
+        let period = 0.125 / (1.0 + 3.0 / 86400.0);
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: duration,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..)
+                .map(|index| {
+                    let t = index as f64 * period;
+                    timegrapher_core::beats::Beat {
+                        index,
+                        time: t + if t >= 50.0 { 0.04 } else { 0.0 },
+                        quality: 1.0,
+                    }
+                })
+                .take_while(|b| b.time < duration)
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: vec![50.0],
+            sided: Vec::new(),
+            by_count: Vec::new(),
+        };
+        let mut t = Test::new();
+        t.tick(0.0);
+        for i in 1..=6 {
+            t.tick(each * i as f64);
+            t.advance(each * i as f64);
+        }
+        t.finish(&log, None, &[]);
+        let m = &t.readings.as_ref().unwrap()[0].measurement;
+        let rate = m.rate_s_per_day.unwrap();
+        assert!((rate - 3.0).abs() < 0.5, "rate {rate}");
     }
 
     /// Six positions with their own rates, each held for one settle and
