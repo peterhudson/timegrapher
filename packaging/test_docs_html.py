@@ -21,6 +21,19 @@ class Outputs(unittest.TestCase):
             if source != docs_html.INDEX:
                 self.assertTrue((docs_html.ROOT / source).is_file(), source)
 
+    def test_research_evidence_stays_on_github(self):
+        mapping = docs_html.outputs("linux")
+        self.assertNotIn("docs/2824-train-wheel-counts.md", mapping)
+        self.assertNotIn("docs/seiko-miyota-train-research.md", mapping)
+        self.assertFalse([s for s in mapping if s.startswith("docs/assets/train-wheels/")])
+        self.assertIn("docs/model-probes/README.md", mapping)
+
+    def test_the_documentation_stays_small(self):
+        # Each download carries it; photographs belong in ON_GITHUB.
+        mapping = docs_html.outputs("linux")
+        size = sum((docs_html.ROOT / s).stat().st_size for s in mapping if s != docs_html.INDEX)
+        self.assertLess(size, 20_000_000)
+
     def test_each_platform_has_a_start_page(self):
         for platform in docs_html.PLATFORMS:
             self.assertTrue((docs_html.ROOT / f"packaging/{platform}/start-here.md").is_file())
@@ -44,6 +57,11 @@ class RewriteLinks(unittest.TestCase):
                          "../watchmaker-skill.html")
         self.assertEqual(self.rewrite("sessions.md", "docs/app.md"), "sessions.html")
         self.assertEqual(self.rewrite("../README.md", "docs/app.md"), "README.html")
+
+    def test_research_pages_link_to_github(self):
+        self.assertEqual(self.rewrite("docs/2824-train-wheel-counts.md"),
+                         f"https://github.com/{docs_html.REPO}/blob/{REF}/"
+                         "docs/2824-train-wheel-counts.md")
 
     def test_start_page_links_into_documentation(self):
         self.assertEqual(self.rewrite("../../docs/mcp.md", "packaging/linux/start-here.md"),

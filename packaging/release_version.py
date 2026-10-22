@@ -1,10 +1,10 @@
 """The version a release build carries, so a draft can be made at any time.
 
 The root Cargo.toml holds the base version X.Y.Z. A release takes one more
-than the highest patch number any release or tag has used for that X.Y,
-never less than the base: with 0.4.0 and 0.4.1 already made from a base of
-0.4.0, the next draft is 0.4.2. Raise X or Y in Cargo.toml for a new feature release; nobody raises Z
-by hand.
+than the highest patch number any remaining release or tag uses for that
+X.Y, never less than the base: with 0.4.0 and 0.4.1 already made from a
+base of 0.4.0, the next draft is 0.4.2. Raise X or Y in Cargo.toml for a
+new feature release; nobody raises Z by hand.
 
   release_version.py next TAGS_FILE   print the version for the next release,
                                       given the release and tag names in use,
@@ -56,7 +56,8 @@ def next_version(base, used_names):
         if match and (int(match.group(1)), int(match.group(2))) == (major, minor):
             taken.add(int(match.group(3)))
     # Above every patch still used, so a number below a remaining release
-    # or tag never comes back; deleting the newest draft frees its number.
+    # or tag never comes back; deleting the newest draft frees its number
+    # unless its tag remains.
     if taken:
         patch = max(patch, max(taken) + 1)
     return f"{major}.{minor}.{patch}"

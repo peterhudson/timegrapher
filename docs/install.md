@@ -205,9 +205,10 @@ place.
 The documentation pages come from the Release workflow's `docs` job:
 `packaging/docs_html.py` renders `README.md`, `docs/` and the watchmaker
 skill with pandoc, and each platform's **Start Here** page from
-`packaging/PLATFORM/start-here.md`. Links between those files point at the
-pages beside them; links to other repository files go to GitHub at the
-commit built.
+`packaging/PLATFORM/start-here.md`. The calibre train-count research and its
+photographs (over 200 MB) stay out of the download. Links between the files
+it carries point at the pages beside them; links to the research and to
+other repository files go to GitHub at the commit built.
 
 Each pair generates the existing deterministic 40-second synthetic-watch recipe
 (48 kHz, seed 1, 28,800 bph, rate +6 s/day, amplitude 280°, beat error 0.4 ms,
