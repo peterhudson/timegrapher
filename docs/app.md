@@ -72,8 +72,10 @@ be read shows its name and "Can't be shown" instead), and its **Takes**,
 newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
 size) it measured when saved, the space it uses, and **Analysis Only** or
-**Incomplete** when it is one. Clicking a take opens it as Open… does;
-right-clicking offers **Open**, **Replay** (when it has its sound),
+**Incomplete** when it is one. Clicking a take picks it and shows its
+**Open** and **Replay** buttons under it; double-clicking opens it as
+Open… does. The take on show is marked **On Show** and is not read again
+when opened again. Right-clicking offers **Open**, **Replay** (when it has its sound),
 **Show in Finder**, **Rename…** (its folder; nothing relies on the name),
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone). Keep Analysis Only… asks
