@@ -1,7 +1,7 @@
 name: An idea
 description: Something the timegrapher should do, show or explain.
 title: "Idea: "
-labels: ["idea"]
+labels: ["enhancement"]
 body:
   - type: textarea
     id: need
