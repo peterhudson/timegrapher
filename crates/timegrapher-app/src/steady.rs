@@ -49,11 +49,13 @@ pub enum View {
     Allan,
     Cusum,
     Fft,
+    Stft,
+    Wavelet,
 }
 
 impl View {
     #[cfg(test)]
-    const ALL: [View; 7] = [
+    const ALL: [View; 9] = [
         View::Readings,
         View::Periods,
         View::Cycle,
@@ -61,6 +63,8 @@ impl View {
         View::Allan,
         View::Cusum,
         View::Fft,
+        View::Stft,
+        View::Wavelet,
     ];
 
     pub fn label(self) -> &'static str {
@@ -72,6 +76,8 @@ impl View {
             View::Allan => "Allan Deviation",
             View::Cusum => "CUSUM",
             View::Fft => "FFT",
+            View::Stft => "STFT Map",
+            View::Wavelet => "Wavelet Map",
         }
     }
 
@@ -114,6 +120,23 @@ impl View {
                  with the wheels' periods marked and twice a turn dashed. Both axes are \
                  logarithmic"
             }
+            View::Stft => {
+                "Each series' size at each period (up, on a log scale) and time of the \
+                 session (across), from the amplitude spectrum of each 20 minutes of \
+                 readings, stepped 5 minutes: every period is read over the same window, so \
+                 this map gives a line's size and shows a line that comes and goes. The \
+                 rate's map is of the beat timing, in ms. Empty where a window has a \
+                 reading missing"
+            }
+            View::Wavelet => {
+                "Each series' size at each period (up, on a log scale) and time of the \
+                 session (across), from a synchrosqueezed wavelet transform: short periods \
+                 read over short times and long ones over long, each moved to the period its \
+                 own phase turns at, so a line shows sharply where and when it is; under \
+                 noise one row reads under the line's size, so read its size from the STFT \
+                 Map. Each unbroken stretch is read alone, and its ends, which a period's \
+                 wavelet can't reach, are left empty"
+            }
         }
     }
 }
@@ -135,6 +158,8 @@ pub struct Steadiness {
     /// The periods every series' search covers between them, log10 seconds,
     /// so the three Periods plots share one time axis.
     period_span: Option<(f64, f64)>,
+    /// The STFT and wavelet maps of each series (core `timefreq`).
+    maps: Vec<timegrapher_core::timefreq::TimeFrequency>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
 }
@@ -346,6 +371,8 @@ pub fn compute_with(
         Some(fold)
     });
     let period_span = steady_views::period_span(&searches);
+    // With the same (no) clock the long-run analysis above was given.
+    let maps = timegrapher_core::timefreq::for_take(log, None, &long, &lc);
     Steadiness {
         report,
         grids,
@@ -354,6 +381,7 @@ pub fn compute_with(
         fold_from,
         period_span,
         wheels: lc.wheels,
+        maps,
         upto_s: log.duration_s,
     }
 }
@@ -1080,6 +1108,39 @@ fn row(
                     }
                 });
         }
+        View::Stft | View::Wavelet => {
+            let name = match k {
+                SeriesKind::Rate => "rate",
+                SeriesKind::Amplitude => "amplitude",
+                _ => "beat_error",
+            };
+            let method = if view == View::Stft { "stft" } else { "sst" };
+            let Some(m) = s
+                .maps
+                .iter()
+                .find(|m| m.series == name && m.method == method)
+            else {
+                return note(
+                    ui,
+                    if view == View::Stft {
+                        "The STFT Map needs 20 minutes of readings with none missing."
+                    } else {
+                        "The wavelet map needs a longer stretch of unbroken readings."
+                    },
+                );
+            };
+            crate::tfmap::draw(
+                ui,
+                base,
+                egui::Id::new(id),
+                m,
+                s.upto_s,
+                opts.maps_log,
+                &s.wheels,
+                strip::fmt_time,
+                secs,
+            );
+        }
         View::Fft => {
             let name = match k {
                 SeriesKind::Rate => "rate",
@@ -1210,6 +1271,8 @@ pub struct Opts {
     /// FFT: rate as the beat timing's spectrum in ms, not its swing in
     /// the rate readings.
     pub fft_timing: bool,
+    /// STFT and wavelet maps: the sizes' colours on a log scale.
+    pub maps_log: bool,
 }
 
 /// The wheels' turns on a log10 period axis spanning `span`: a bold line
