@@ -2,6 +2,7 @@
 
 import pathlib
 import re
+import sys
 import tempfile
 import unittest
 
@@ -34,6 +35,31 @@ class Light(unittest.TestCase):
 
     def test_no_changes_is_full(self):
         self.assertFalse(changes.light([]))
+
+
+class Pages(unittest.TestCase):
+    def test_a_page_the_downloads_carry_is_checked(self):
+        for path in ("README.md", "LICENSE", "docs/app.md", "docs/assets/x.png",
+                     "skills/watchmaker/SKILL.md", "skills/watchmaker/references/long-runs.md"):
+            self.assertTrue(changes.pages([("M", "Cargo.lock"), ("M", path)]), path)
+        self.assertTrue(changes.pages([("D", "docs/app.md")]))
+
+    def test_other_files_are_not(self):
+        self.assertFalse(changes.pages([("M", "crates/timegrapher-core/src/lib.rs"),
+                                        ("M", "personas/README.md"), ("M", "docs.md")]))
+        self.assertFalse(changes.pages([]))
+
+    def test_every_file_docs_html_renders_is_covered(self):
+        sys.path.insert(0, str(ROOT / "packaging"))
+        try:
+            import docs_html
+        finally:
+            sys.path.pop(0)
+        for platform in docs_html.PLATFORMS:
+            # Release's own pull-request run renders the pages for packaging/.
+            for path in docs_html.outputs(platform):
+                if not path.startswith("packaging/"):
+                    self.assertTrue(changes.pages([("M", path)]), path)
 
 
 class Tree(unittest.TestCase):
