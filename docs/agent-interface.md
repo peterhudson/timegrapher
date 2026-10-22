@@ -253,8 +253,9 @@ in the home folder). The session folder is made among that watch's
 takes, named by the date and time it started in this computer's time
 (`2026-10-22 09.15`, with ` 2` and so on added when that name is taken;
 unlike the app's one-position takes, no position is added, since more
-positions can go into the folder later), and the watch's calibre, beat rate and lift angle fill in those
-not given; the session file's `watch` is the watch's name. The `--json`
+positions can go into the folder later), and the watch's calibre, beat
+rate and lift angle fill in those not given; the session file's `watch`
+is the watch's name. The `--json`
 document's `library_watch` names the watch (null when FOLDER was given),
 and `session_file` is in the new folder: give that folder as FOLDER to
 record the next position into the same test. The session folder is then
