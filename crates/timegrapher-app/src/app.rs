@@ -556,7 +556,9 @@ const SAVE_HINT: &str = "Save the sound of this session so far, with its clock l
      where: the take goes in a folder of its own, named for its time and watch, inside the \
      folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
-     carries on. Unsaved sound is thrown away by New Session or quitting.";
+     carries on. New Session and quitting ask before unsaved sound is thrown away; a quit \
+     that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it, to offer back at \
+     the next start.";
 
 const SAVE_AS_HINT: &str = "Save the session so far as a new take, in a folder you choose; \
      Save Again then goes there";
@@ -7110,8 +7112,9 @@ impl TimegrapherApp {
                         },
                         pal.text_secondary,
                         format!(
-                            "Saved in {}. Sound since then is kept too; Save Again adds it, \
-                         and New Session or quitting asks first.",
+                            "Saved in {}. Sound since then is kept too; Save Again adds it. \
+                         New Session and quitting ask first, and a quit that can't ask \
+                         keeps it, to offer back at the next start.",
                             p.display()
                         ),
                     ),
@@ -7133,8 +7136,9 @@ impl TimegrapherApp {
                             pal.text_secondary,
                             format!(
                                 "The analysis of the first {} was kept without the sound in {}. \
-                                 The sound itself isn't saved: Save keeps it, and New Session \
-                                 or quitting throws it away unless saved.",
+                                 The sound itself isn't saved: Save keeps it. New Session and \
+                                 quitting ask before throwing it away, and a quit that can't \
+                                 ask keeps it, to offer back at the next start.",
                                 strip::fmt_time(through_s),
                                 dir.display()
                             ),
@@ -7144,7 +7148,8 @@ impl TimegrapherApp {
                         format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
                         pal.text_secondary,
                         "The session's sound is kept as it goes, so Save can keep it at any \
-                     point. New Session or quitting throws it away unless saved."
+                     point. New Session and quitting ask before throwing it away, and a quit that \
+                     can't ask keeps it, to offer back at the next start."
                             .to_string(),
                     ),
                 }

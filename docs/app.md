@@ -972,8 +972,9 @@ saved it is kept in a folder of the app's own (`timegrapher/unsaved`
 under `~/.local/share` on Linux, `~/Library/Application Support` on a
 Mac, `%LOCALAPPDATA%` on Windows), which the system doesn't clear. When
 the app quits without asking (on a Mac, Cmd+Q and Quit in the app menu or
-the Dock, which can't be held back), or is stopped by a crash, a logout
-or a shutdown, the sound stays there, and the next start says so in a
+the Dock, which can't be held back; on any system, a logout or a
+shutdown) with more than 5 s of unsaved sound, or is stopped by a crash,
+the sound stays there, and the next start says so in a
 banner with **Open** (analysed here, and offered again next time),
 **Move To…** (the recording's folder moved into one you pick, to open
 with Open Folder…), **Delete…** (asking first) and **Later**. A folder
