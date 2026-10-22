@@ -109,7 +109,7 @@ const CLOCK_UNKNOWN: &str = "input clock not measured";
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
-use timegrapher_core::recorder::{Recorder, SessionInfo};
+use timegrapher_core::recorder::{Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -579,9 +579,13 @@ const SAVE_HINT: &str = "Save the sound of this session so far, with its clock l
      where: the take goes in a folder of its own, named for its time and watch, inside the \
      folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
-     carries on. New Session and quitting ask before unsaved sound is thrown away; a quit \
+     carries on, and so does the window: the copy is written in the background, with \
+     Saving… in the status bar until it is done, and the take saved before stays as it was \
+     until then. New Session and quitting ask before unsaved sound is thrown away; a quit \
      that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it when there is \
      more than 5 s of it, to offer back at the next start.";
+
+const SAVING_HINT: &str = "Saving now: wait until the sound so far is copied into its take";
 
 const SAVE_AS_HINT: &str = "Save the session so far as a new take, in a folder you choose; \
      Save Again then goes there";
@@ -1047,6 +1051,21 @@ struct AnalysisSave {
     total_s: f64,
 }
 
+/// A copy of the session's sound being written on a thread of its own,
+/// so the window and listening carry on meanwhile.
+struct Saving {
+    thread: std::thread::JoinHandle<std::io::Result<SavedCopy>>,
+    /// The take's folder.
+    dest: PathBuf,
+    /// The folder it is in, for the next Save… to start in.
+    parent: PathBuf,
+    /// Seconds of sound it holds.
+    secs: f64,
+    metadata: session::MetadataSnapshot,
+    /// Read the library again once it is written: a new take in a watch.
+    rescan: bool,
+}
+
 impl Drop for AnalysisSave {
     fn drop(&mut self) {
         self.cancel
@@ -1324,6 +1343,8 @@ pub struct TimegrapherApp {
     sound_at: Option<(f64, Profiles)>,
     /// Keeping the session as its analysis alone, while that is worked out.
     analysis_save: Option<AnalysisSave>,
+    /// Saving the session's sound, while the copy is written.
+    saving: Option<Saving>,
     /// The take on show was kept as its analysis alone, without its sound.
     no_sound: bool,
     /// Where this session's analysis was last kept without its sound, and
@@ -1669,6 +1690,7 @@ impl TimegrapherApp {
             sound_history: Vec::new(),
             sound_at: None,
             analysis_save: None,
+            saving: None,
             no_sound: false,
             analysis_kept_to: None,
             jumps_seen: Vec::new(),
@@ -1804,6 +1826,8 @@ impl TimegrapherApp {
     }
 
     fn reset_session(&mut self, sample_rate: u32, label: String) {
+        // Never throw away the sound a save is still copying.
+        self.wait_for_save();
         self.session.discard_recording();
         self.session.clear();
         self.clock = None;
@@ -1872,6 +1896,11 @@ impl TimegrapherApp {
     fn start_microphone(&mut self) {
         let let_go = std::mem::take(&mut self.masks_let_go);
         if self.refuse_faulted_recording() || self.analysis_save_busy() {
+            return;
+        }
+        // A save being written carries on through a resume, but not a new
+        // session, which throws away the sound it copies.
+        if !self.can_resume() && self.saving_busy() {
             return;
         }
         // Listening replaces the recording on show: changed masks on it
@@ -2041,7 +2070,7 @@ impl TimegrapherApp {
     /// Clear everything for the next watch or position. Listening to the
     /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
-        if self.analysis_save_busy() {
+        if self.analysis_save_busy() || self.saving_busy() {
             return;
         }
         let listening = self.running() && self.session.mic();
@@ -2217,7 +2246,7 @@ impl TimegrapherApp {
     /// question. The first time, Save… saves into the watch picked in the
     /// Watches pane, else asks where.
     fn save_again(&mut self) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         match self.session.saved_to().and_then(|p| p.parent()) {
@@ -2256,15 +2285,15 @@ impl TimegrapherApp {
             r.name_first_copy(name.to_owned());
         }
         self.save_into(takes);
-        if let Ok(Some(l)) = &mut self.library {
-            l.scan();
+        if let Some(s) = &mut self.saving {
+            s.rescan = true;
         }
     }
 
     /// Save a copy of the session's sound so far, with its clock log and
     /// settings, in a folder the user picks. Listening carries on.
     fn save_recording(&mut self) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         let mut d = rfd::FileDialog::new()
@@ -2283,8 +2312,11 @@ impl TimegrapherApp {
         self.save_into(&parent);
     }
 
+    /// Save the session's sound so far into a take in `parent`. The copy
+    /// is written on a thread of its own ([`Saving`]): listening carries
+    /// on, and the window with it.
     fn save_into(&mut self, parent: &Path) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         let metadata = self.session.metadata_snapshot(self.save_metadata());
@@ -2297,14 +2329,7 @@ impl TimegrapherApp {
                 .map_err(|e| format!("Couldn't prepare the saved reading: {e}"))?;
             let manifest = toml::to_string_pretty(&self.take_manifest())
                 .map_err(|e| format!("Couldn't prepare {MANIFEST}: {e}"))?;
-            let about = self.guided_about();
-            let kept = self
-                .guided
-                .as_ref()
-                .and_then(|t| t.kept(&about))
-                .map(|k| serde_json::to_string_pretty(&k).map(|s| s + "\n"))
-                .transpose()
-                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            let kept = self.results_files()?;
             Ok((result, manifest, kept))
         })();
         let (result, manifest, kept) = match prepared {
@@ -2318,22 +2343,92 @@ impl TimegrapherApp {
         };
         let secs = r.duration_s();
         let mut files = vec![(MANIFEST, manifest.as_bytes())];
-        if let Some(k) = &kept {
-            files.push((guided::RESULTS_FILE, k.as_bytes()));
-        }
+        files.extend(kept.iter().map(|(n, b)| (*n, b.as_slice())));
         // With no new full-wind result (including a 24-hour half), preserve
         // the earlier result file for comparison, as Save Again always has.
-        match r.save_copy_with_files(parent, &self.calibre, result.as_ref(), &files) {
-            Ok(dir) => {
-                self.info_msg(format!(
-                    "Saved {} of sound in {}",
-                    strip::fmt_time(secs),
-                    dir.display()
-                ));
-                self.save_dir = parent.display().to_string();
-                self.session.mark_saved(secs, dir, metadata);
+        let pending = match r.begin_save(parent, &self.calibre, result.as_ref(), &files) {
+            Ok(p) => p,
+            Err(e) => return self.error(format!("Saving the recording failed: {e}")),
+        };
+        let dest = pending.dest().to_path_buf();
+        let spawned = std::thread::Builder::new()
+            .name("saving".into())
+            .spawn(move || pending.write());
+        match spawned {
+            Ok(thread) => {
+                self.saving = Some(Saving {
+                    thread,
+                    dest,
+                    parent: parent.to_path_buf(),
+                    secs,
+                    metadata,
+                    rescan: false,
+                })
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
+        }
+    }
+
+    /// The take's results files, written beside its session.toml by both
+    /// Save… and Save Analysis Only…: the positions test's, when there is
+    /// one.
+    fn results_files(&self) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
+        let about = self.guided_about();
+        let mut files = Vec::new();
+        if let Some(k) = self.guided.as_ref().and_then(|t| t.kept(&about)) {
+            let text = serde_json::to_string_pretty(&k)
+                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            files.push((guided::RESULTS_FILE, (text + "\n").into_bytes()));
+        }
+        Ok(files)
+    }
+
+    /// While a save is being written, say so and refuse what would start
+    /// another or throw the sound it is copying away.
+    fn saving_busy(&mut self) -> bool {
+        if self.saving.is_none() {
+            return false;
+        }
+        self.info_msg(
+            "Saving: the sound so far is being copied into its take, so wait until it is done."
+                .into(),
+        );
+        true
+    }
+
+    /// The save being written, once it is done.
+    fn poll_saving(&mut self) {
+        if self.saving.as_ref().is_some_and(|s| s.thread.is_finished()) {
+            self.wait_for_save();
+        }
+    }
+
+    /// Wait for the save being written, if there is one, and say how it
+    /// went.
+    fn wait_for_save(&mut self) {
+        let Some(s) = self.saving.take() else {
+            return;
+        };
+        match s.thread.join() {
+            Ok(Ok(copy)) => {
+                if let Some(r) = self.session.recorder.as_mut() {
+                    r.note_saved(&copy);
+                }
+                self.info_msg(format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(s.secs),
+                    copy.dir.display()
+                ));
+                self.save_dir = s.parent.display().to_string();
+                self.session.mark_saved(s.secs, copy.dir, s.metadata);
+                if s.rescan {
+                    if let Ok(Some(l)) = &mut self.library {
+                        l.scan();
+                    }
+                }
+            }
+            Ok(Err(e)) => self.error(format!("Saving the recording failed: {e}")),
+            Err(_) => self.error("Saving the recording failed: it stopped part way".into()),
         }
     }
 
@@ -2396,14 +2491,7 @@ impl TimegrapherApp {
                 .map_err(|e| format!("Couldn't prepare the saved reading: {e}"))?;
             let text = toml::to_string_pretty(&manifest)
                 .map_err(|e| format!("Couldn't prepare {MANIFEST}: {e}"))?;
-            let about = self.guided_about();
-            let kept = self
-                .guided
-                .as_ref()
-                .and_then(|t| t.kept(&about))
-                .map(|k| serde_json::to_string_pretty(&k).map(|s| s + "\n"))
-                .transpose()
-                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            let kept = self.results_files()?;
             Ok((result, text, kept))
         })();
         let (result, text, kept) = match prepared {
@@ -2416,9 +2504,7 @@ impl TimegrapherApp {
         };
         let total_s = r.duration_s();
         let mut required = vec![(MANIFEST, text.as_bytes())];
-        if let Some(k) = &kept {
-            required.push((guided::RESULTS_FILE, k.as_bytes()));
-        }
+        required.extend(kept.iter().map(|(n, b)| (*n, b.as_slice())));
         let (name, companions) =
             match r.analysis_copy_files(&self.calibre, result.as_ref(), &required) {
                 Ok(c) => c,
@@ -2738,7 +2824,7 @@ impl TimegrapherApp {
     /// sound from a microphone session is not thrown away without asking
     /// first.
     fn open_recording(&mut self, path: &Path, replay: bool, ask: bool) {
-        if self.analysis_save_busy() {
+        if self.analysis_save_busy() || self.saving_busy() {
             return;
         }
         if ask && (self.session.mic() || self.masks_unsaved()) && self.needs_save_confirmation() {
@@ -3402,6 +3488,7 @@ impl TimegrapherApp {
         self.locked_bph = bph;
 
         self.poll_analysis_save();
+        self.poll_saving();
         let mut done = None;
         if let Some(b) = &self.batch {
             match b.rx.try_recv() {
@@ -3814,6 +3901,17 @@ impl TimegrapherApp {
         let Some(what) = self.confirm.clone() else {
             return;
         };
+        // A save is being written (its Save… started it, or one before):
+        // wait for it. Once nothing is left unsaved, carry on; otherwise
+        // (it failed, and the status bar says why, or there is sound since)
+        // ask as before.
+        if self.saving.is_some() {
+            return self.confirm_saving_dialog(ctx);
+        }
+        if !self.needs_save_confirmation() {
+            self.confirm = None;
+            return self.confirmed(what, ctx);
+        }
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         let metadata = self.metadata_unsaved();
@@ -3888,6 +3986,9 @@ impl TimegrapherApp {
             Some(0) => {
                 // Saved before: the rest goes to the same copy.
                 self.save_again();
+                if self.saving.is_some() {
+                    return; // asked again, or carried on, once it is written
+                }
                 if self.needs_save_confirmation() {
                     return; // the folder dialog was cancelled, or saving failed
                 }
@@ -3901,6 +4002,38 @@ impl TimegrapherApp {
             None => return,
         }
         self.confirm = None;
+        self.confirmed(what, ctx);
+    }
+
+    /// The question before throwing away unsaved sound, while a save is
+    /// written.
+    fn confirm_saving_dialog(&mut self, ctx: &egui::Context) {
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new().size(14.0));
+                ui.label(RichText::new("Saving…").font(theme::semibold(15.0)));
+            });
+            ui.add_space(4.0);
+            ui.label(
+                "The sound so far is being copied into its take. This carries on once it is saved.",
+            );
+            ui.add_space(8.0);
+            cancel = ui
+                .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                .on_hover_text("Stay here; the save carries on")
+                .clicked();
+        });
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        if cancel {
+            self.confirm = None;
+            self.guided_after_ask = None;
+        }
+    }
+
+    /// Do what the question before throwing away unsaved sound asked about.
+    fn confirmed(&mut self, what: Confirm, ctx: &egui::Context) {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
@@ -4745,6 +4878,10 @@ impl TimegrapherApp {
             self.confirm = Some(Confirm::QuickListen);
             return false;
         }
+        // Not even a resume: Quick Listen starts a new session.
+        if self.saving_busy() {
+            return false;
+        }
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
@@ -4917,21 +5054,28 @@ impl TimegrapherApp {
         });
         if self.session.allows(Action::Save) {
             let saved = self.session.saved_to().is_some();
+            let saving = self.saving.is_some();
             ui.horizontal_wrapped(|ui| {
                 if ui
-                    .add(
+                    .add_enabled(
+                        !saving,
                         egui::Button::new(if saved { "Save Again" } else { "Save…" })
                             .min_size(Vec2::new(0.0, 26.0)),
                     )
                     .on_hover_text(SAVE_HINT)
+                    .on_disabled_hover_text(SAVING_HINT)
                     .clicked()
                 {
                     self.save_again();
                 }
                 if saved
                     && ui
-                        .add(egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)))
+                        .add_enabled(
+                            !saving,
+                            egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)),
+                        )
                         .on_hover_text(SAVE_AS_HINT)
+                        .on_disabled_hover_text(SAVING_HINT)
                         .clicked()
                 {
                     self.save_recording();
@@ -6128,6 +6272,7 @@ impl TimegrapherApp {
         ui.separator();
         let saved = self.session.saved_to().is_some();
         let can_save = self.session.allows(Action::Save);
+        let saving = self.saving.is_some();
         if self.masks_unsaved() {
             if ui
                 .button("Save Masks")
@@ -6139,12 +6284,16 @@ impl TimegrapherApp {
             }
         } else if ui
             .add_enabled(
-                can_save,
+                can_save && !saving,
                 egui::Button::new(if saved { "Save Again" } else { "Save…" })
                     .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::S))),
             )
             .on_hover_text(SAVE_HINT)
-            .on_disabled_hover_text("Nothing to save yet: listen to a watch first")
+            .on_disabled_hover_text(if saving {
+                SAVING_HINT
+            } else {
+                "Nothing to save yet: listen to a watch first"
+            })
             .clicked()
         {
             ui.close();
@@ -6152,12 +6301,16 @@ impl TimegrapherApp {
         }
         if ui
             .add_enabled(
-                can_save && saved,
+                can_save && saved && !saving,
                 egui::Button::new("Save As…")
                     .shortcut_text(ui.ctx().format_shortcut(&save_as_shortcut())),
             )
             .on_hover_text(SAVE_AS_HINT)
-            .on_disabled_hover_text("Save once first; Save… asks where")
+            .on_disabled_hover_text(if saving {
+                SAVING_HINT
+            } else {
+                "Save once first; Save… asks where"
+            })
             .clicked()
         {
             ui.close();
@@ -7719,6 +7872,16 @@ impl TimegrapherApp {
             if cancel {
                 self.analysis_save = None;
             }
+        }
+        if let Some(s) = &self.saving {
+            ui.add(egui::Spinner::new().size(12.0).color(pal.text_secondary));
+            ui.label(RichText::new("Saving…").small().color(pal.text_secondary))
+                .on_hover_text(format!(
+                    "Copying {} of sound into {}. Listening carries on; the take saved before \
+                     stays as it was until the copy is done.",
+                    strip::fmt_time(s.secs),
+                    s.dest.display()
+                ));
         }
         if let Some(b) = &self.batch {
             let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
@@ -10851,8 +11014,21 @@ impl eframe::App for TimegrapherApp {
                     .into(),
             );
         }
+        // Closing the window while a save is written waits for it: the
+        // take would be left half copied.
+        if ctx.input(|i| i.viewport().close_requested())
+            && self.saving.is_some()
+            && self.library_moving.is_none()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.info_msg(
+                "Saving: Timegrapher can be closed once the sound so far is copied into its take."
+                    .into(),
+            );
+        }
         // Closing the window with unsaved sound asks first.
         if ctx.input(|i| i.viewport().close_requested())
+            && self.saving.is_none()
             && !self.may_close
             && self.needs_save_confirmation()
         {
@@ -10879,7 +11055,10 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
-        } else if self.sound_job.is_some() || self.scope_job.is_some() || self.steady_job.is_some()
+        } else if self.sound_job.is_some()
+            || self.scope_job.is_some()
+            || self.steady_job.is_some()
+            || self.saving.is_some()
         {
             // Show the profile when it's worked out, without waiting for
             // the pointer to move.
@@ -10901,6 +11080,9 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
+        // A save being written finishes first: quitting part way would
+        // leave half a take, and the sound it copies is let go below.
+        self.wait_for_save();
         // Sound the user hasn't been asked about is kept for the next start
         // to offer back: on macOS, Cmd+Q and Quit in the app menu or the
         // Dock quit without the window's close being asked first, and
@@ -11933,6 +12115,7 @@ mod tests {
                 "recording-only"
             });
             app.save_into(&base.join("saved"));
+            app.wait_for_save();
             let saved = app.session.saved_to().unwrap().to_path_buf();
             let saved_bytes = saved_file_bytes(&saved);
             let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
@@ -11972,8 +12155,11 @@ mod tests {
             assert!(!app.devices_listed);
             assert!(!app.running());
             app.save_into(&base.join("must-not-exist"));
+            app.wait_for_save();
             app.save_again();
+            app.wait_for_save();
             app.save_recording();
+            app.wait_for_save();
             assert!(!base.join("must-not-exist").exists());
             assert_eq!(saved_file_bytes(&saved), saved_bytes);
             app.info_msg("Another notice".into());
@@ -12008,6 +12194,7 @@ mod tests {
         assert!(app.session.allows(Action::Save));
         assert!(app.session.recording_fault().is_none());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert!(app.session.saved_to().unwrap().join(MANIFEST).is_file());
         app.new_session();
         drop(tx);
@@ -12107,6 +12294,7 @@ mod tests {
     fn persisted_lift_context_only_edit_stays_dirty_until_successful_save() {
         let (mut app, base) = save_failure_fixture("lift-context");
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let old = std::fs::read(dest.join(MANIFEST)).unwrap();
         let explicit: Manifest = toml::from_str("lift = 52\nlift_known = true").unwrap();
@@ -12119,11 +12307,13 @@ mod tests {
         std::fs::remove_file(dest.join(MANIFEST)).unwrap();
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(app.metadata_unsaved());
         assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         std::fs::write(dest.join(MANIFEST), old).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.metadata_unsaved());
         let m: Manifest =
             toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
@@ -12132,11 +12322,82 @@ mod tests {
         std::fs::remove_dir_all(base).unwrap();
     }
 
+    /// Save hands the copy to a thread of its own and returns: the session
+    /// isn't marked saved until the copy is written, listening carries on
+    /// meanwhile, and nothing that would start another save or throw the
+    /// sound away runs until it is done. The copy holds the sound up to
+    /// the Save.
+    #[test]
+    fn save_copies_in_the_background_while_listening_carries_on() {
+        let (mut app, base) = save_failure_fixture("background");
+        append_save_test_second(&mut app, 2);
+        app.save_into(&base.join("saved"));
+        assert!(
+            app.saving.is_some(),
+            "the copy is written on its own thread"
+        );
+        assert_eq!(
+            app.session.saved_to(),
+            None,
+            "not saved until it is written"
+        );
+        append_save_test_second(&mut app, 3);
+        app.save_again();
+        app.new_session();
+        assert!(
+            app.session.recorder.is_some(),
+            "the sound being copied is kept"
+        );
+        assert!(app.saving.is_some());
+        app.wait_for_save();
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 2 * 48000);
+        assert_eq!(app.unsaved_s(), 1.0);
+        app.save_again();
+        app.wait_for_save();
+        assert_eq!(app.session.saved_to(), Some(dest.as_path()));
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 3 * 48000);
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// The question before a new session, answered Save…, waits for the
+    /// save it started, then carries on.
+    #[test]
+    fn a_save_from_the_question_carries_on_once_it_is_written() {
+        let (mut app, base) = save_failure_fixture("confirm-wait");
+        app.save_into(&base.join("saved"));
+        app.wait_for_save();
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        for second in 2..=8 {
+            append_save_test_second(&mut app, second);
+        }
+        assert!(app.needs_save_confirmation());
+        app.confirm = Some(Confirm::NewSession);
+        // What the question's Save… does.
+        app.save_again();
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let _ = ctx.run(Default::default(), |ctx| app.confirm_dialog(ctx));
+        assert!(app.confirm.is_some(), "still waiting for the save");
+        assert!(app.session.recorder.is_some());
+        app.wait_for_save();
+        let _ = ctx.run(Default::default(), |ctx| app.confirm_dialog(ctx));
+        assert!(app.confirm.is_none());
+        assert!(app.session.recorder.is_none(), "the new session started");
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 8 * 48000);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
     #[test]
     fn saved_metadata_edits_warn_without_new_sound_and_reverts_are_clean() {
         let (mut app, base) = save_failure_fixture("metadata-edits");
         app.watch = "original".into();
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         app.session
             .pause(app.live.as_ref().unwrap().duration_s())
             .unwrap()
@@ -12175,6 +12436,7 @@ mod tests {
             "returning to DU retains appended position notes"
         );
         app.save_again();
+        app.wait_for_save();
         assert!(!app.needs_save_confirmation());
         app.session.discard_recording();
         std::fs::remove_dir_all(base).unwrap();
@@ -12185,6 +12447,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-audio");
         app.change_position(Position::DialDown);
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let ranges = app.take_manifest().recordings;
         append_save_test_second(&mut app, 2);
         assert_eq!(app.unsaved_s(), 1.0);
@@ -12203,6 +12466,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-failure");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         app.session
             .pause(app.live.as_ref().unwrap().duration_s())
@@ -12214,6 +12478,7 @@ mod tests {
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         let before = saved_file_bytes(&dest);
         app.save_again();
+        app.wait_for_save();
         assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
         assert!(app.metadata_unsaved());
         assert!(
@@ -12226,6 +12491,7 @@ mod tests {
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         std::fs::write(dest.join(MANIFEST), previous).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.needs_save_confirmation());
         let manifest: Manifest =
             toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
@@ -12242,6 +12508,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-guided");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let mut test = guided::Test::new();
         test.readings = Some(Vec::new());
         app.guided = Some(test);
@@ -12249,9 +12516,11 @@ mod tests {
         let dest = app.session.saved_to().unwrap().to_path_buf();
         std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(app.metadata_unsaved());
         std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.metadata_unsaved());
         assert!(dest.join(guided::RESULTS_FILE).is_file());
         app.session.discard_recording();
@@ -12263,6 +12532,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("caller-path");
         let parent = base.join("saved").join("..").join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap();
         assert_eq!(dest.parent().unwrap().as_os_str(), parent.as_os_str());
         assert_eq!(
@@ -12298,6 +12568,7 @@ mod tests {
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         let before = saved_file_bytes(&dest);
         app.save_into(&parent);
+        app.wait_for_save();
         assert!(app
             .message
             .as_ref()
@@ -12307,6 +12578,7 @@ mod tests {
         assert_eq!(saved_file_bytes(&dest), before);
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(app.session.saved_to(), Some(dest.as_path()));
         assert_eq!(app.unsaved_s(), 0.0);
         let manifest: Manifest =
@@ -12328,6 +12600,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("guided");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let before = saved_file_bytes(&dest);
         append_save_test_second(&mut app, 2);
@@ -12338,6 +12611,7 @@ mod tests {
         app.guided = Some(test);
         std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert!(app
             .message
             .as_ref()
@@ -12347,6 +12621,7 @@ mod tests {
         assert_eq!(saved_file_bytes(&dest), before);
         std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         let kept = std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&kept).unwrap();
@@ -12355,6 +12630,7 @@ mod tests {
         // result. Preserve the earlier result as a separate comparison artifact.
         app.guided = Some(guided::Test::new());
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(
             std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap(),
             kept
@@ -12391,6 +12667,7 @@ mod tests {
         app.session.recorder = Some(r);
         assert!(app.unsaved_s() > 5.0, "unsaved sound to ask about");
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let saved = app
             .session
             .saved_to()
@@ -12535,6 +12812,7 @@ mod tests {
             since: Instant::now(),
         });
         app.save_again();
+        app.wait_for_save();
         let takes = root.join("Pepsi").join(library::TAKES);
         let saved: Vec<PathBuf> = std::fs::read_dir(&takes)
             .unwrap()
@@ -12549,6 +12827,7 @@ mod tests {
         assert!(drawn.contains(&name), "{drawn}");
         // Save Again saves into the same take.
         app.save_again();
+        app.wait_for_save();
         assert_eq!(std::fs::read_dir(&takes).unwrap().count(), 1);
 
         // The list says so; a name already in use is refused.
@@ -12701,6 +12980,7 @@ mod tests {
         // Stop saves the take into Unsorted; Save Again adds to it.
         record(&mut app, &base.join("unsaved-2"));
         app.stop_listening();
+        app.wait_for_save();
         let unsorted = root.join(library::UNSORTED).join(library::TAKES);
         let saved: Vec<PathBuf> = std::fs::read_dir(&unsorted)
             .unwrap()
@@ -12710,6 +12990,7 @@ mod tests {
         assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
         assert!(!app.needs_save_confirmation());
         app.stop_listening();
+        app.wait_for_save();
         assert_eq!(std::fs::read_dir(&unsorted).unwrap().count(), 1);
         let name = file_name(&saved[0]);
         let drawn = pane(&ctx, &mut app);
@@ -13088,6 +13369,7 @@ mod tests {
         assert!(kept.join("session.json").is_file() && kept.join("clock.csv").is_file());
         // The same session with its sound, to compare.
         app.save_into(&base.join("full"));
+        app.wait_for_save();
         let full = app
             .session
             .saved_to()
@@ -13228,6 +13510,7 @@ mod tests {
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
         feed(&mut app, 0);
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         // Carrying on after the save: that sound isn't saved yet.
         feed(&mut app, 1);
@@ -13260,6 +13543,7 @@ mod tests {
         assert_eq!(app.session.audio_of(150.0), Some(90.0));
         assert!((app.unsaved_s() - 60.0).abs() < 0.1, "{}", app.unsaved_s());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         let saved = app
             .session
@@ -13856,6 +14140,7 @@ mod tests {
         // hour half.
         app.guided.as_mut().unwrap().readings = Some(Vec::new());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let dir = app.session.saved_to().unwrap().to_path_buf();
         let kept: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join(guided::RESULTS_FILE)).unwrap())
@@ -13934,6 +14219,7 @@ mod tests {
             .unwrap();
         }
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let saved = app
             .session
             .saved_to()

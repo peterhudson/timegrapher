@@ -3,6 +3,7 @@
 
 use crate::beats::Beat;
 use crate::breaks::Break;
+use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::dsp::median;
 use crate::longterm::{self, grid_median, Component, LongConfig, SeriesReport};
@@ -114,31 +115,16 @@ pub fn timing_step(span_s: f64) -> f64 {
     }
 }
 
-/// Audio seconds to true seconds for a take: through the clock fit, and
-/// with the gaps of `breaks` in. A clock fit from a log with the pauses in
-/// already puts the gaps back; any other clock (none, or one steady
-/// correction) gets them from the breaks.
-pub fn true_time<'a>(clock: Option<&'a ClockFit>, breaks: &'a [Break]) -> impl Fn(f64) -> f64 + 'a {
-    let clock_has_gaps = clock.is_some_and(|c| !c.breaks.is_empty());
-    move |t| {
-        let base = clock.map_or(t, |c| c.map(t));
-        if clock_has_gaps {
-            base
-        } else {
-            // A negative gap (the first sound after a pause stamped
-            // before the last one before it) would step true time back and
-            // overlap the two sides, so it counts as none.
-            base + breaks
-                .iter()
-                .filter(|b| b.audio_s <= t)
-                .map(|b| b.gap_s.max(0.0))
-                .sum::<f64>()
-        }
-    }
+/// Audio seconds to true seconds for a take, as [`Cuts::true_time`] has
+/// it.
+pub fn true_time<'a>(clock: Option<&'a ClockFit>, breaks: &[Break]) -> impl Fn(f64) -> f64 + 'a {
+    let cuts = Cuts::new(clock, breaks, &[]);
+    move |t| cuts.true_time(t)
 }
 
-/// Each break's place on [`true_time`]: halfway through its gap. A fit
-/// or a window must not reach across one.
+/// Each break's place on [`true_time`]: halfway through its gap. Kept only
+/// for [`crate::session::measure_masked`] until it reads its cuts from
+/// [`Cuts`].
 pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
     let map = true_time(clock, breaks);
     breaks
@@ -147,82 +133,15 @@ pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
         .collect()
 }
 
-/// Each break's gap on [`true_time`], from the last sound before the
-/// pause to the first after it. A reading reaching into one from either
-/// side holds only part of its span, so it is left out (see
-/// [`touches_gap`]).
-///
-/// A clock fit with the pauses in, unless its breaks were moved to the
-/// listed ones ([`ClockFit::place_breaks`], as `long` and `series` do),
-/// places its own break at the recorder's line at the pause, or at its
-/// first log line after the step where the log has no line at the pause
-/// ([`crate::clock::PAUSE_PAIR_S`]), so the gap ends at that break where
-/// one is within [`crate::breaks::JUMP_MATCH_S`] after; the sound between
-/// the two lies in the gap. A break of zero or negative length is a point.
-pub fn gaps(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<(f64, f64)> {
-    let map = true_time(clock, breaks);
-    let clock_breaks = clock.map_or(&[][..], |c| &c.breaks[..]);
-    breaks
-        .iter()
-        .map(|b| {
-            if b.gap_s <= 0.0 {
-                let p = map(b.audio_s);
-                return (p, p);
-            }
-            let start = map(b.audio_s - 1e-6);
-            let resume = clock_breaks
-                .iter()
-                .map(|c| c.audio_s)
-                .find(|&c| c >= b.audio_s && c - b.audio_s <= crate::breaks::JUMP_MATCH_S)
-                .unwrap_or(b.audio_s);
-            (start, map(resume).max(start))
-        })
-        .collect()
-}
-
-/// Where per-stretch fits cut, on true time: each stretch ends where its
-/// gap starts and the next starts where it ends, so sound inside a gap
-/// (the first block after a resume, before the clock log's break) belongs
-/// to neither. A point gap is one cut.
-pub fn piece_cuts(gaps: &[(f64, f64)]) -> Vec<f64> {
-    let mut cuts: Vec<f64> = gaps
-        .iter()
-        .flat_map(|&(a, b)| {
-            if b > a + 2e-6 {
-                vec![a - 1e-6, b - 1e-6]
-            } else {
-                vec![a - 1e-6]
-            }
-        })
-        .collect();
-    cuts.sort_by(f64::total_cmp);
-    cuts
-}
-
 /// Whether the beat error's sign turns over across the take's breaks
-/// ([`timing::sign_turns`] on its stretches), so its figures are given as
-/// sizes.
+/// ([`timing::sign_turns`] on its whole stretches), so its figures are
+/// given as sizes.
 pub fn beat_error_turns(log: &BeatLog, clock: Option<&ClockFit>, breaks: &[Break]) -> bool {
     if breaks.is_empty() {
         return false;
     }
-    let map = true_time(clock, breaks);
-    let beats: Vec<Beat> = log
-        .beats
-        .iter()
-        .map(|b| Beat {
-            time: map(b.time),
-            ..*b
-        })
-        .collect();
-    timing::sign_turns(&beats, log.bph, &piece_cuts(&gaps(clock, breaks)))
-}
-
-/// Whether a stretch from `start` to `end` on true time reaches into, or
-/// across, any of `gaps`.
-pub fn touches_gap(gaps: &[(f64, f64)], start: f64, end: f64) -> bool {
-    gaps.iter()
-        .any(|&(a, b)| start < b - 1e-6 && end > a + 1e-6)
+    let cuts = Cuts::new(clock, breaks, &[]);
+    timing::sign_turns(&cuts.beats(&log.beats), log.bph, &cuts.piece_cuts())
 }
 
 pub fn analyse(log: &BeatLog, clock: Option<&ClockFit>, cfg: &LongConfig) -> LongReport {
@@ -240,17 +159,10 @@ pub fn analyse_with_breaks(
     breaks: &[Break],
     cfg: &LongConfig,
 ) -> LongReport {
-    let map = true_time(clock, breaks);
-    let gaps = gaps(clock, breaks);
-    let cuts = piece_cuts(&gaps);
-    let beats: Vec<Beat> = log
-        .beats
-        .iter()
-        .map(|b| Beat {
-            time: map(b.time),
-            ..*b
-        })
-        .collect();
+    let holes = Cuts::new(clock, breaks, &[]);
+    let map = |t: f64| holes.true_time(t);
+    let cuts = holes.piece_cuts();
+    let beats = holes.beats(&log.beats);
     let duration = map(log.duration_s);
     let mut overall = timing::fit_pieces(&beats, log.bph, &cuts);
     let turned = timing::sign_turns(&beats, log.bph, &cuts);
@@ -324,8 +236,8 @@ pub fn analyse_with_breaks(
         .collect();
 
     // Slices for the overview: about 400 over the run, 10 s to 10 min each.
-    // A slice reaching into a gap holds part of its span only and reads
-    // nothing.
+    // A slice that is not whole (reaching into a gap, or with 2 s or more
+    // without beats) holds part of its span only and reads nothing.
     let slice_s = (duration / 400.0).clamp(10.0, 600.0).round();
     let mut slices = Vec::new();
     let mut jitters = Vec::new();
@@ -337,7 +249,7 @@ pub fn analyse_with_breaks(
         while bi < beats.len() && beats[bi].time < e {
             bi += 1;
         }
-        let whole = !touches_gap(&gaps, s, e);
+        let whole = holes.whole(&beats, s, e, amp_w);
         let w = if whole {
             timing::fit(&beats[b0..bi], log.bph)
         } else {
@@ -441,7 +353,8 @@ mod tests {
             gap_s: 30.0,
         }];
         let map = true_time(Some(&clock), &breaks);
-        let gaps = gaps(Some(&clock), &breaks);
+        let holes = Cuts::new(Some(&clock), &breaks, &[]);
+        let gaps: Vec<(f64, f64)> = holes.holes().iter().map(|h| (h.start_s, h.end_s)).collect();
         let (a, b) = gaps[0];
         // From the last sound before the pause to the clock's resume, so
         // the 0.1 s of sound mapped before the jump lies in the gap.
@@ -453,15 +366,16 @@ mod tests {
         assert!(mid < a - 10.0, "{mid} {a}");
         // A reading ending at the pause is whole; one taking in the ragged
         // 0.1 s after it is not; one starting at the resume is whole.
-        assert!(!touches_gap(&gaps, a - 10.0, a));
-        assert!(touches_gap(&gaps, map(305.05), map(305.05) + 10.0));
-        assert!(!touches_gap(&gaps, b, b + 10.0));
+        assert!(holes.clear(a - 10.0, a));
+        assert!(!holes.clear(map(305.05), map(305.05) + 10.0));
+        assert!(holes.clear(b, b + 10.0));
         // With the clock's break moved to the listed one, the gap ends at
         // the resume and the sound after it maps after the gap.
         let mut placed = clock.clone();
         placed.place_breaks(&breaks);
         assert!((placed.breaks[0].audio_s - 305.0).abs() < 1e-9);
-        let on = super::gaps(Some(&placed), &breaks)[0];
+        let on = Cuts::new(Some(&placed), &breaks, &[]).holes()[0];
+        let on = (on.start_s, on.end_s);
         let map_on = true_time(Some(&placed), &breaks);
         assert!(
             (on.0 - a).abs() < 1e-6 && (on.1 - map_on(305.0)).abs() < 1e-9,
@@ -473,8 +387,8 @@ mod tests {
             audio_s: 100.0,
             gap_s: 0.0,
         }];
-        let p = super::gaps(None, &jump)[0];
-        assert_eq!(p.0, p.1);
+        let p = Cuts::new(None, &jump, &[]).holes()[0];
+        assert_eq!(p.start_s, p.end_s);
     }
 
     #[test]
@@ -497,8 +411,7 @@ mod tests {
                 quality: 1.0,
             })
             .collect();
-        let gaps = super::gaps(None, &breaks);
-        let cuts = piece_cuts(&gaps);
+        let cuts = Cuts::new(None, &breaks, &[]).piece_cuts();
         assert_eq!(cuts, vec![map(100.0) - 1e-6]);
         let ours = timing::fit_pieces(&beats, 18000, &cuts).unwrap();
         let single = timing::fit_pieces(&beats, 18000, &[100.0 - 1e-6]).unwrap();
@@ -644,7 +557,7 @@ mod tests {
                 quality: 1.0,
             })
             .collect();
-        let cuts = piece_cuts(&super::gaps(Some(&clock), &breaks));
+        let cuts = Cuts::new(Some(&clock), &breaks, &[]).piece_cuts();
         assert_eq!(cuts.len(), 4, "{cuts:?}");
         let all = timing::fit_pieces(&beats, 18000, &cuts).unwrap();
         let first = timing::fit(&beats[..1500], 18000).unwrap();
