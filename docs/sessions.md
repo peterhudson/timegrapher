@@ -333,7 +333,9 @@ of the recording or for `measure_s`:
   say which stone is which; in the JSON, Tick is `amplitude_even_deg`
   and Tock `amplitude_odd_deg`);
 - jitter, and the median and the 5th to 95th percentile of rate in 10 s
-  windows: how steady the rate is. The headline rate is the fit over
+  windows: how steady the rate is. A 10 s window is used only when each
+  2 s of it holds a beat and it reaches into no cut; it needs no beat at
+  or after its end, so a stretch of exactly 10 s has one. The headline rate is the fit over
   every beat (over the stretches between cuts, as above), the average the
   hands keep; where the rate wanders with dips (the Yacht-Master crown
   left), the 10 s median sits a few s/d above it, as tg's median reading

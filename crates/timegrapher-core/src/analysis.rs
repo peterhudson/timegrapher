@@ -244,14 +244,34 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let amplitude_windows = log.amplitude_windows;
     // Where listening stopped and started again the beats jump, and no
     // count of beats across the hole is known: rate and timing are fitted
-    // on each stretch between jumps, and no window spans one.
-    let cuts: Vec<f64> = log.jumps.iter().map(|&t| t - 1e-6).collect();
+    // on each stretch between jumps, and no window spans one or takes in a
+    // stretch with no beats.
+    let jumps: Vec<crate::breaks::Break> = log
+        .jumps
+        .iter()
+        .map(|&audio_s| crate::breaks::Break {
+            audio_s,
+            gap_s: 0.0,
+        })
+        .collect();
+    let holes = crate::clean::Cuts::new(None, &jumps, &[]);
+    let cuts = holes.piece_cuts();
     let overall = timing::fit_pieces(&beats, bph, &cuts);
     let turned = timing::sign_turns(&beats, bph, &cuts);
     let residuals =
         timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
-    let mut rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
-    rate_windows.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
+    let part = amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    let rate_windows = holes.windows(
+        &beats,
+        bph,
+        0.0,
+        audio.duration(),
+        cfg.rate_window_s,
+        cfg.rate_window_s / 2.0,
+        part,
+    );
     let rates: Vec<f64> = rate_windows.iter().map(|w| w.fit.rate_s_per_day).collect();
 
     // Periodicity: timing residuals and amplitude, in 1 s bins.
