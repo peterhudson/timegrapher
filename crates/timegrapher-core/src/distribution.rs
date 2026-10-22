@@ -70,7 +70,7 @@ pub struct NormalLine {
 pub struct Distribution {
     pub series: &'static str,
     pub unit: &'static str,
-    /// "readings" (one per reading length, as the verdicts judge them) or
+    /// "readings" (one per reading length, as the tests read them) or
     /// "2 s" (each 2 seconds of beats, amplitude and beat error only).
     pub values: &'static str,
     /// Length of each value, seconds.
