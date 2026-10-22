@@ -1944,23 +1944,54 @@
     "bph": 28800,
     "escape_teeth": 20,
     "lift_angle_deg": 52,
-    "seconds": "centre",
+    "seconds": "indirect centre: third-wheel rim drives a separate 9-leaf seconds pinion",
     "wheels": [
       {
-        "name": "escape wheel",
-        "period_s": 5.0,
-        "teeth": 20,
-        "basis": "measured: the 5 s rate cycle every watch on the bench shows"
+        "name": "barrel",
+        "period_s": 18600,
+        "teeth": 93,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; 3600 × 93/18 = 18600 s for the running drum"
       },
       {
-        "name": "seconds wheel",
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 60,
+        "pinion": 18,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; second wheel in the centre-wheel slot; 600 × 60/10 = 3600 s"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 600,
+        "teeth": 90,
+        "pinion": 10,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; 10 leaves on each face; seconds 60 × 90/9 and cannon 3600 × 10/60 independently give 600 s"
+      },
+      {
+        "name": "fourth wheel",
         "period_s": 60,
-        "basis": "measured: a 60 s rate and amplitude cycle on the bench (patek324_DU_30min)"
+        "teeth": 84,
+        "pinion": 9,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; 600 × 9/90 = 60 s; both counts directly visible in the fourth-wheel photograph"
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "pinion": 7,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; 60 × 7/84 = 5 s, independently 20 × 7200/28800 = 5 s"
+      },
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "pinion": 9,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; separate indirect seconds arbor: 600 × 9/90 = 60 s, matching the contributor hand-period constraint"
       },
       {
         "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived: carries the minute hand"
+        "teeth": 60,
+        "pinion": 28,
+        "basis": "photographed DD324 tooth counts, Peter Hudson, 2026-10-21; 60-tooth cannon wheel driven by the third wheel’s 10-leaf pinion: 600 × 60/10 = 3600 s; 28 leaves belong to the motion works"
       },
       {
         "name": "balance",
@@ -1971,10 +2002,12 @@
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
       "Project bench measurement: 28,800 vph, does not hack",
-      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
+      "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
+      "docs/dd324-train-wheel-counts.md — Peter Hudson, eight DD324 microscope photographs and confirmed SL1258 train applicability, 2026-10-21",
+      "Prior bench observation: 60 s rate and amplitude cycle in patek324_DU_30min; not sufficient alone to distinguish fourth wheel from indirect seconds pinion"
     ],
-    "confidence": "measured",
-    "notes": "No published data at all: the beat rate, the 60 s cycle and the escape wheel come from this project's own recording. Lift 52° as the clone timegrapher guide gives for the 324. Its 52° lift angle rests only on one author's forum guide to lift angles."
+    "confidence": "derived from tooth counts",
+    "notes": "Full DD324 train counted from eight photographs: barrel 93, second 60/18, third 90 with 10 leaves on both faces, fourth 84/9, escape 20/7. The centre-wheel slot represents the second wheel; indirect seconds uses a separate 9-leaf pinion driven by the third-wheel rim. The 60-tooth cannon wheel is driven by the third wheel’s 10-leaf pinion; its own 28 leaves serve the motion works. Barrel drum period 18600 s (5 h 10 min), not power reserve. The photographed fourth wheel resolves the earlier underdetermined 28:3 ratio. Genuine Patek 324 entries are outside this contribution. Does not hack per existing bench notes. The retained 52° lift angle comes from the existing forum guide, not these tooth counts."
   },
   {
     "calibre": "Peacock SL1258",
@@ -1985,23 +2018,54 @@
     "common": true,
     "bph": 28800,
     "escape_teeth": 20,
-    "seconds": "centre",
+    "seconds": "indirect centre: third-wheel rim drives a separate 9-leaf seconds pinion",
     "wheels": [
       {
-        "name": "escape wheel",
-        "period_s": 5.0,
-        "teeth": 20,
-        "basis": "measured: a 5 s rate cycle on the bench (peacock1258_DU_30min)"
+        "name": "barrel",
+        "period_s": 18600,
+        "teeth": 93,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; 3600 × 93/18 = 18600 s for the running drum"
       },
       {
-        "name": "seconds wheel",
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 60,
+        "pinion": 18,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; second wheel in the centre-wheel slot; 600 × 60/10 = 3600 s"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 600,
+        "teeth": 90,
+        "pinion": 10,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; 10 leaves on each face; seconds 60 × 90/9 and cannon 3600 × 10/60 independently give 600 s"
+      },
+      {
+        "name": "fourth wheel",
         "period_s": 60,
-        "basis": "measured: a 60.03 s amplitude cycle on the bench"
+        "teeth": 84,
+        "pinion": 9,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; 600 × 9/90 = 60 s; both counts directly visible in the fourth-wheel photograph"
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 5,
+        "teeth": 20,
+        "pinion": 7,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; 60 × 7/84 = 5 s, independently 20 × 7200/28800 = 5 s"
+      },
+      {
+        "name": "seconds pinion",
+        "period_s": 60,
+        "pinion": 9,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; separate indirect seconds arbor: 600 × 9/90 = 60 s, matching the contributor hand-period constraint"
       },
       {
         "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived: carries the minute hand"
+        "teeth": 60,
+        "pinion": 28,
+        "basis": "INFERRED family transfer: Peter Hudson confirms the DD324 counts for the SL1258 train; 60-tooth cannon wheel driven by the third wheel’s 10-leaf pinion: 600 × 60/10 = 3600 s; 28 leaves belong to the motion works"
       },
       {
         "name": "balance",
@@ -2012,10 +2076,12 @@
     "sources": [
       "This project's bench recordings: a 5.00 s rate cycle locked to 40 beats (one escape-wheel turn at 20 teeth)",
       "Project bench notes: like the Dandong 324, with a monolithic bridge",
-      "http://en.cpeacockmovement.com/Movement_detail/56.html: maker's page, \"Frequency: 28800 Vibrations/Hr\""
+      "http://en.cpeacockmovement.com/Movement_detail/56.html: maker's page, \"Frequency: 28800 Vibrations/Hr\"",
+      "docs/dd324-train-wheel-counts.md — Peter Hudson, eight DD324 microscope photographs and confirmed SL1258 train applicability, 2026-10-21",
+      "Prior bench observations: 5 s rate cycle in peacock1258_DU_30min and a 60.03 s amplitude cycle; the latter does not distinguish fourth wheel from indirect seconds pinion"
     ],
-    "confidence": "measured",
-    "notes": "No published data found under this name. Taken from this project's recordings only. Bench takes use lift 52°, a setting rather than a documented figure."
+    "confidence": "derived from tooth counts",
+    "notes": "Full DD324 train counted from eight photographs: barrel 93, second 60/18, third 90 with 10 leaves on both faces, fourth 84/9, escape 20/7. The centre-wheel slot represents the second wheel; indirect seconds uses a separate 9-leaf pinion driven by the third-wheel rim. The 60-tooth cannon wheel is driven by the third wheel’s 10-leaf pinion; its own 28 leaves serve the motion works. Barrel drum period 18600 s (5 h 10 min), not power reserve. Counts are transferred from the DD324 specimen on the contributor’s confirmation that SL1258 and variants retaining this train match; no separate SL1258 wheel set was photographed. Existing bench takes use 52° lift as a setting, not a documented specification; lift angle remains unspecified."
   },
   {
     "calibre": "Agassiz 8 PCV",

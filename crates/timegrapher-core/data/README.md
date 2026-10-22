@@ -194,7 +194,7 @@ aliases and leaves lift angle unspecified. Existing Rolex 3131, Rolex
 
 Tooth counts are rarely published. Only the Unitas 6497-2 / 6498-2 has a
 full published train (escape 15 on a 10-leaf pinion, fourth 120/8, third
-60/10, centre 80). The 31xx, 32xx and 4130 photo contributions above supply
+60/10, centre 80). The 31xx, 32xx, 4130 and DD324 photo contributions supply
 train counts including the barrels, with applicability reported by the contributor and the hidden
 4130 fourth pinion explicitly marked as inferred. Other entries rest on the
 beat rate and layout, plus these:
@@ -261,8 +261,8 @@ beat rate and layout, plus these:
 
 Third-wheel and barrel tooth counts for every calibre except as above;
 escape wheel counts for the 2892-A2, 7750, Powermatic 80, AP and the
-Seiko/Miyota variants outside the documented research coverage; the AP clones' trains; any published data for the
-Dandong 324 or the Peacock SL1258; lift angles for the Sellita, Powermatic 80,
+Seiko/Miyota variants outside the documented research coverage; the AP clones' trains; manufacturer-published train data for
+Dandong 324 or Peacock SL1258 (photographed counts are documented below); lift angles for the Sellita, Powermatic 80,
 Seagull and Patek 324 calibres. Corrections with a source are welcome.
 
 Built from manufacturer documents, technical guides, parts catalogues,
@@ -297,6 +297,26 @@ Third-wheel, barrel and pinion counts remain unestablished. The Miyota
 centre wheel. Indirect seconds do not by themselves establish the fourth
 wheel period. Broad 6R/7S aliases are removed, and Seiko revision-specific
 lift angles are retained.
+
+## DD324 and Peacock SL1258 microscope contribution
+
+[DD324 evidence and ratio checks](../../../docs/dd324-train-wheel-counts.md)
+contains eight unchanged originals and numbered count figures contributed
+by Peter Hudson on 2026-10-21. The complete photographed train is barrel 93,
+second 60/18, third 90 with 10 leaves on each face, fourth 84/9 and escape
+20/7. Periods are 18600, 3600, 600, 60 and 5 seconds respectively.
+The second wheel uses the established `centre wheel` slot.
+
+The separate nine-leaf centre-seconds pinion is driven by the third-wheel
+rim. The 60-tooth cannon wheel is driven by a ten-leaf third-wheel pinion;
+its own 28-leaf pinion serves the motion works. Their independently supplied
+60-second and 3600-second periods both establish a 600-second third wheel.
+The fourth wheel was subsequently photographed, so its 84/9 counts and
+60-second period are now established independently of the seconds hand.
+
+Peacock SL1258 receives a contributor-confirmed family transfer from the
+DD324 specimen. Genuine Patek 324 entries and all other rows are unchanged.
+DD324 retains the existing 52° lift setting; SL1258 remains unspecified.
 
 ## Patek 240 clone photographs
 
