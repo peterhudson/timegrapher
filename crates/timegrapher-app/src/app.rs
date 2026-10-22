@@ -1219,6 +1219,8 @@ pub struct TimegrapherApp {
     /// The recording last opened, which the path box goes back to when
     /// another can't be opened.
     opened_path: String,
+    /// The take picked in the Watches pane's list.
+    take_picked: Option<PathBuf>,
     /// The watch set up for the microphone, kept while a recording with
     /// its own (or no) settings is open, and put back on listening again.
     mic_setup: Option<WatchSetup>,
@@ -1294,6 +1296,11 @@ pub struct TimegrapherApp {
     /// The averaging time each chart last drew with: a new one rescales
     /// its values, which spread wider or narrower with it.
     chart_average_drawn: std::collections::HashMap<Pane, f64>,
+    /// How wide each chart's controls in its tab bar were last drawn, and
+    /// the charts whose tab bar has no room for them beside the tabs'
+    /// titles: those draw them in a toolbar in the pane instead.
+    chart_tools_w: std::collections::HashMap<Pane, f32>,
+    chart_tools_below: std::collections::HashSet<Pane>,
     /// `None` follows the newest beat; otherwise the time at the newest
     /// edge of the strip.
     view_end: Option<f64>,
@@ -1307,6 +1314,8 @@ pub struct TimegrapherApp {
     batch: Option<Batch>,
     anchor: Option<Anchor>,
     trend: Vec<TrendPoint>,
+    /// The last [`Self::whole_take`] and what it was read from.
+    whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
     level: Level,
     level_at: Instant,
     /// When the input last clipped.
@@ -1615,6 +1624,7 @@ impl TimegrapherApp {
             masking: false,
             confirm: None,
             opened_path: String::new(),
+            take_picked: None,
             mic_setup: None,
             last_beat_seen: 0.0,
             move_prompt: None,
@@ -1657,12 +1667,15 @@ impl TimegrapherApp {
             charts_to_live: false,
             charts_to_live_now: false,
             chart_average_drawn: Default::default(),
+            chart_tools_w: Default::default(),
+            chart_tools_below: Default::default(),
             capture: None,
             live: None,
             source_label: String::new(),
             batch: None,
             anchor: None,
             trend: Vec::new(),
+            whole_take: Default::default(),
             level: Level::default(),
             level_at: Instant::now(),
             clipped_at: None,
@@ -3696,63 +3709,70 @@ impl TimegrapherApp {
             .map_or(f64::INFINITY, |p| p.t)
     }
 
-    /// Over the whole take in the position the watch is in now, once it is
-    /// stopped and longer than a few readings: the mean of each reading's
-    /// points with a watch heard, their spread (standard deviation) and the
-    /// time they cover.
-    fn whole_take(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
-        self.whole_take_as(f, false)
-    }
-
-    /// [`Self::whole_take`] for a signed figure, the beat error, and
-    /// whether it was taken as sizes: where its sign turns over across a
-    /// cut within the beats of the position the readings are taken in
-    /// ([`timegrapher_core::timing::sign_turns`], the decision `analyze`
-    /// and `session` make over their stretches), each reading counts by
-    /// its size, so a turn at a jump does not cancel the size either side.
-    fn whole_take_signed(
-        &self,
-        f: impl Fn(&TrendPoint) -> Option<f64>,
-    ) -> Option<((f64, f64, f64), bool)> {
-        let turned = self.live.as_ref().is_some_and(|l| {
-            let beats: Vec<_> = l
-                .beats()
-                .iter()
-                .filter(|b| self.in_position(b.time))
-                .copied()
-                .collect();
-            !l.breaks().is_empty()
-                && l.bph().is_some_and(|bph| {
-                    timegrapher_core::timing::sign_turns(&beats, bph, l.breaks())
-                })
-        });
-        Some((self.whole_take_as(f, turned)?, turned))
-    }
-
-    /// The mean, spread and span of `f` over the take, of its sizes when
-    /// `sizes`.
-    fn whole_take_as(
-        &self,
-        f: impl Fn(&TrendPoint) -> Option<f64>,
-        sizes: bool,
-    ) -> Option<(f64, f64, f64)> {
+    /// The take in the position the watch is in now, once it is stopped
+    /// and longer than a few readings: its settled stretches up to the
+    /// last reading with a watch heard, read as `timegrapher session`
+    /// reads a recording (core `session::measure_masked`), the time
+    /// between them masked, and the seconds they cover.
+    fn whole_take(&self) -> Option<WholeTake> {
         if self.running() || self.view_end.is_some() {
             return None;
         }
-        let pts: Vec<(f64, f64)> = self
-            .trend
-            .iter()
-            .filter(|p| p.heard && self.in_position(p.t))
-            .filter_map(|p| Some((p.t, f(p).map(|v| if sizes { v.abs() } else { v })?)))
+        let live = self.live.as_ref()?;
+        let end = self.last_heard_s().min(self.latest_s());
+        let spans: Vec<(f64, f64)> = self
+            .current_spans()
+            .into_iter()
+            .map(|(a, b)| (a.max(0.0), b.min(end)))
+            .filter(|(a, b)| a < b)
             .collect();
-        let span = pts.last()?.0 - pts.first()?.0;
-        if pts.len() < 6 || span < 3.0 * self.average_s {
-            return None;
+        let key: WholeKey = (
+            live.beats().len(),
+            spans.clone(),
+            self.masked.clone(),
+            self.clock.as_ref().map(|c| c.ppm),
+        );
+        if let Some((k, w)) = self.whole_take.borrow().as_ref() {
+            if *k == key {
+                return w.clone();
+            }
         }
-        let n = pts.len() as f64;
-        let mean = pts.iter().map(|p| p.1).sum::<f64>() / n;
-        let sd = (pts.iter().map(|p| (p.1 - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
-        Some((mean, sd, span))
+        let read = || {
+            let span: f64 = spans.iter().map(|(a, b)| b - a).sum();
+            let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
+            if span < 3.0 * self.average_s {
+                return None;
+            }
+            let log = steady::log_of(live)?;
+            let clock = self
+                .clock
+                .as_ref()
+                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
+            let breaks: Vec<_> = log
+                .jumps
+                .iter()
+                .map(|&audio_s| timegrapher_core::breaks::Break {
+                    audio_s,
+                    gap_s: 0.0,
+                })
+                .collect();
+            // The time between the stretches, another position or its
+            // settling, is left out as a mask is.
+            let mut masked = self.masked.clone();
+            masked.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
+            let m = timegrapher_core::session::measure_masked(
+                &log,
+                clock.as_ref(),
+                &breaks,
+                &masked,
+                from,
+                to,
+            );
+            Some(WholeTake { m, span })
+        };
+        let w = read();
+        *self.whole_take.borrow_mut() = Some((key, w.clone()));
+        w
     }
 
     /// Show the whole session so far along the strip, ending at its latest
@@ -4147,7 +4167,7 @@ impl TimegrapherApp {
                     );
                     show = ui
                         .small_button(settings_window::show_in_words())
-                        .on_hover_text("Open the library's folder")
+                        .on_hover_text("Open the Watches folder")
                         .clicked();
                 });
                 if let Some(why) = &l.read_only {
@@ -4170,7 +4190,7 @@ impl TimegrapherApp {
                 None
             }
             Err(e) => {
-                ui.label(RichText::new(format!("The library can't be read: {e}")).color(pal.bad));
+                ui.label(RichText::new(format!("Your watches can't be read: {e}")).color(pal.bad));
                 None
             }
         };
@@ -4274,19 +4294,36 @@ impl TimegrapherApp {
         if keeping.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(250));
         }
+        let on_show = self.take_on_show();
+        let picked = self.take_picked.clone();
         let cx = watches::TakesContext {
             others: &others,
             writable,
             keeping,
             unsorted: e.watch.id.is_empty(),
+            picked: picked.as_deref(),
+            on_show: on_show.as_deref(),
         };
-        match watches::takes(ui, &e, &cx) {
+        let act = watches::takes(ui, &e, &cx);
+        self.take_action(act);
+    }
+
+    /// Do what was asked of a take in the Watches pane's list.
+    fn take_action(&mut self, act: Option<watches::TakeAction>) {
+        match act {
+            Some(watches::TakeAction::Pick(dir)) => self.take_picked = Some(dir),
+            // The take on show is not read again.
+            Some(watches::TakeAction::Open(dir)) if self.take_on_show().as_ref() == Some(&dir) => {
+                self.take_picked = Some(dir);
+            }
             Some(watches::TakeAction::Open(dir)) => {
+                self.take_picked = Some(dir.clone());
                 self.input = Input::File;
                 self.file_path = dir.display().to_string();
                 self.open_recording(&dir, false, true);
             }
             Some(watches::TakeAction::Replay(dir)) => {
+                self.take_picked = Some(dir.clone());
                 self.input = Input::File;
                 self.file_path = dir.display().to_string();
                 self.open_recording(&dir, true, true);
@@ -4332,7 +4369,7 @@ impl TimegrapherApp {
                 filed = l.is_unsorted(take);
                 l.move_take(take, id)
             }
-            _ => Err("There is no library".into()),
+            _ => Err("There is no Watches folder".into()),
         };
         match moved {
             Ok(to) => {
@@ -4446,7 +4483,7 @@ impl TimegrapherApp {
             return self.info_msg(why);
         }
         let Ok(Some(lib)) = &mut self.library else {
-            return self.error("There is no library.".into());
+            return self.error("There is no Watches folder.".into());
         };
         match ask {
             watches::Ask::Rename { take, name } => match lib.rename_take(&take, &name) {
@@ -4619,7 +4656,7 @@ impl TimegrapherApp {
             }),
             (Ok(kept), _) => {
                 let _ = std::fs::remove_dir_all(&kept);
-                Err("the library is no longer open".into())
+                Err("the Watches folder is no longer open".into())
             }
             (Err(e), _) => Err(e),
         };
@@ -4706,7 +4743,7 @@ impl TimegrapherApp {
             if ui
                 .add_enabled(writable, egui::Button::new("Edit…"))
                 .on_hover_text("Change this watch's details")
-                .on_disabled_hover_text("This copy of the app can only read the library")
+                .on_disabled_hover_text("This copy of the app can only read your watches")
                 .clicked()
             {
                 self.watch_form = Some(watches::Form {
@@ -4721,7 +4758,7 @@ impl TimegrapherApp {
                     "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an \
                      iPhone, or TIFF). The first by name leads its row in the list.",
                 )
-                .on_disabled_hover_text("This copy of the app can only read the library")
+                .on_disabled_hover_text("This copy of the app can only read your watches")
                 .clicked()
             {
                 self.add_photos();
@@ -4762,7 +4799,7 @@ impl TimegrapherApp {
             .on_disabled_hover_text(if listening {
                 "Stop listening first"
             } else {
-                "This copy of the app can only read the library, or there is no folder for it"
+                "This copy of the app can only read your watches, or there is no folder for them"
             })
             .clicked()
         {
@@ -4770,9 +4807,9 @@ impl TimegrapherApp {
         }
         if ui
             .add_enabled(writable, egui::Button::new("New Watch…"))
-            .on_hover_text("Add a watch to the library: only its name is needed")
+            .on_hover_text("Add a watch: only its name is needed")
             .on_disabled_hover_text(
-                "This copy of the app can only read the library, or there is no folder for it",
+                "This copy of the app can only read your watches, or there is no folder for them",
             )
             .clicked()
         {
@@ -4797,6 +4834,15 @@ impl TimegrapherApp {
             Some(watches::FormAction::Cancel) => self.watch_form = None,
             None => {}
         }
+    }
+
+    /// The take opened whole (or being opened), if one is on show.
+    fn take_on_show(&self) -> Option<PathBuf> {
+        (matches!(
+            self.session.state(),
+            session::State::Analysing | session::State::Analysed
+        ) && !self.opened_path.is_empty())
+        .then(|| PathBuf::from(&self.opened_path))
     }
 
     /// Make the library at its folder when there is none yet.
@@ -4831,8 +4877,8 @@ impl TimegrapherApp {
                 Some(why) => Err(why.clone()),
                 None => l.unsorted_dir().map(|_| ()),
             },
-            Ok(None) => Err("There is no library".into()),
-            Err(e) => Err(format!("The library can't be read: {e}")),
+            Ok(None) => Err("There is no Watches folder".into()),
+            Err(e) => Err(format!("Your watches can't be read: {e}")),
         };
         if let Err(e) = ready {
             self.error(format!("Quick Listen can't keep its take: {e}"));
@@ -4875,8 +4921,8 @@ impl TimegrapherApp {
         let done = match &mut self.library {
             Ok(Some(lib)) if f.new => lib.add(&w).map(|_| ()),
             Ok(Some(lib)) => lib.update(&w),
-            Ok(None) => Err("There is no library".into()),
-            Err(e) => Err(format!("The library can't be read: {e}")),
+            Ok(None) => Err("There is no Watches folder".into()),
+            Err(e) => Err(format!("Your watches can't be read: {e}")),
         };
         match done {
             Ok(()) => {
@@ -5072,7 +5118,7 @@ impl TimegrapherApp {
                 if ui
                     .button("Add to a Watch…")
                     .on_hover_text(
-                        "Copy or move the take opened, from outside the library, into one of \
+                        "Copy or move the take opened, from outside your watches, into one of \
                          your watches",
                     )
                     .clicked()
@@ -5234,6 +5280,14 @@ impl TimegrapherApp {
                     self.span_setting(ui);
                     self.histogram_settings(ui);
                     self.pane_average_setting(ui, p);
+                    self.export_button(ui, p);
+                })
+            }
+            p if self.chart_tools_below.contains(&p) => {
+                theme::pane_toolbar(ui, title, help::CHARTS, |ui| {
+                    self.pane_average_setting(ui, p);
+                    theme::toggle(ui, "Match Strip", &mut self.span_of_strip)
+                        .on_hover_text(MATCH_STRIP_HINT);
                     self.export_button(ui, p);
                 })
             }
@@ -6710,6 +6764,9 @@ impl TimegrapherApp {
     /// Read the library afresh: none yet where its folder holds no
     /// `library.toml`.
     fn read_library(&mut self) {
+        // Let go of this copy's own lock first, or the new one finds it
+        // held and reads as another copy's.
+        self.library = Ok(None);
         self.library = match self.library_root() {
             Some(root) if library::Library::is_library(&root) => {
                 library::Library::open(&root).map(Some)
@@ -6718,7 +6775,7 @@ impl TimegrapherApp {
         };
     }
 
-    /// Act on a button in Settings' Library section.
+    /// Act on a button in Settings' Watches Folder section.
     fn library_action(&mut self, act: settings_window::LibraryAction) {
         use settings_window::LibraryAction;
         match act {
@@ -6747,7 +6804,7 @@ impl TimegrapherApp {
             }
             LibraryAction::Choose => {
                 let Some(dir) = rfd::FileDialog::new()
-                    .set_title("Choose a Library, or an Empty Folder for a New One")
+                    .set_title("Choose a Watches Folder, or an Empty Folder for a New One")
                     .pick_folder()
                 else {
                     return;
@@ -6755,7 +6812,7 @@ impl TimegrapherApp {
                 let empty = std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none());
                 if !library::Library::is_library(&dir) && !empty {
                     return self.error(format!(
-                        "{} holds files but no library: choose a library, or an empty folder \
+                        "{} holds files but no watches: choose a Watches folder, or an empty folder \
                          for a new one",
                         dir.display()
                     ));
@@ -6794,7 +6851,7 @@ impl TimegrapherApp {
         let modal = egui::Modal::new(egui::Id::new("move library")).show(ctx, |ui| {
             ui.set_width(420.0);
             ui.label(
-                RichText::new(format!("Move the library to {}?", to.display()))
+                RichText::new(format!("Move your watches to {}?", to.display()))
                     .font(theme::semibold(15.0)),
             );
             ui.add_space(4.0);
@@ -6855,19 +6912,19 @@ impl TimegrapherApp {
                 self.library_moving = None;
                 self.use_library(Some(to.clone()));
                 match left {
-                    None => self.info_msg(format!("Moved the library to {}.", to.display())),
+                    None => self.info_msg(format!("Moved your watches to {}.", to.display())),
                     Some(why) => self.error(why),
                 }
             }
             Ok(Err(e)) => {
                 self.library_moving = None;
                 self.read_library();
-                self.error(format!("The library couldn't be moved: {e}"));
+                self.error(format!("Your watches couldn't be moved: {e}"));
             }
             Err(TryRecvError::Disconnected) => {
                 self.library_moving = None;
                 self.read_library();
-                self.error("The library's move stopped without finishing.".into());
+                self.error("Moving your watches stopped without finishing.".into());
             }
         }
     }
@@ -6907,19 +6964,33 @@ impl TimegrapherApp {
             });
             ui.separator();
             match tab {
-                Tab::General => self.general_settings(ui),
-                Tab::Library => {
-                    let root = self.library_root();
-                    let act = settings_window::library_section(
-                        ui,
-                        root.as_deref(),
-                        &self.library,
-                        self.library_moving.as_ref().map(|(to, _)| to.as_path()),
-                        self.library_dir.is_some(),
-                    );
-                    if let Some(act) = act {
-                        self.library_action(act);
-                    }
+                Tab::General => {
+                    egui::ScrollArea::vertical()
+                        .id_salt("general settings")
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            self.general_settings(ui);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            let root = self.library_root();
+                            let act = settings_window::library_section(
+                                ui,
+                                root.as_deref(),
+                                &self.library,
+                                self.library_moving.as_ref().map(|(to, _)| to.as_path()),
+                                self.library_dir.is_some(),
+                            );
+                            if let Some(act) = act {
+                                self.library_action(act);
+                            }
+                            ui.add_space(8.0);
+                            ui.separator();
+                            if let Some(device) =
+                                settings_window::clock_section(ui, &self.kept_clocks)
+                            {
+                                self.forget_ask = Some(device);
+                            }
+                        });
                 }
                 Tab::Calibres => {
                     let current = self.calibre.clone();
@@ -6928,11 +6999,6 @@ impl TimegrapherApp {
                     self.calibre_changed(&name, out.change);
                     if let Some(p) = out.picked {
                         self.set_calibre(p);
-                    }
-                }
-                Tab::Clock => {
-                    if let Some(device) = settings_window::clock_section(ui, &self.kept_clocks) {
-                        self.forget_ask = Some(device);
                     }
                 }
             }
@@ -7218,21 +7284,25 @@ impl TimegrapherApp {
         let be_pm = r.and_then(|r| r.beat_error_unlock_error_ms);
         let lift_now = self.lift_deg;
         let beats = r.map_or(0, |r| r.beats_used);
-        // Over the whole take, once it is stopped: the mean and spread of
-        // the readings beside the last window's figure.
-        let whole_line = |ui: &mut egui::Ui, mean: String, sd: String, span: f64| {
+        // Over the whole take, once it is stopped: `session`'s reading of
+        // it beside the last window's figure.
+        let whole = self.whole_take();
+        let whole_line = |ui: &mut egui::Ui, figure: String, spread: Option<String>, span: f64| {
+            let spread = spread.map_or_else(String::new, |s| format!(", {s}"));
             ui.label(
                 RichText::new(format!(
-                    "whole take {mean}, spread {sd} over {}",
+                    "whole take {figure}{spread} over {}",
                     strip::fmt_time(span)
                 ))
                 .small()
                 .color(pal.text_secondary),
             )
             .on_hover_text(
-                "The big figure is the last stretch of Average Over. This is every reading \
-                 of the take in this position with a watch heard, settling left out: their \
-                 mean, and their spread as a standard deviation.",
+                "The big figure is the last stretch of Average Over. This is the take in \
+                 this position, settling left out, read as timegrapher session reads a \
+                 recording: the rate fitted over every beat, the amplitude and beat error \
+                 the median of the 2 s windows, with the ± of each, and the 5th to 95th \
+                 percentile of the 10 s rates and the 2 s amplitudes.",
             );
         };
         let unheard = |ui: &mut egui::Ui| {
@@ -7503,13 +7573,20 @@ impl TimegrapherApp {
                         }
                     });
                 }
-                if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
-                    whole_line(
-                        ui,
-                        format!("{m:+.1} s/d").replace('-', "−"),
-                        format!("{sd:.1} s/d"),
-                        span,
-                    );
+                if let Some(w) = &whole {
+                    if let Some(v) = w.m.rate_s_per_day {
+                        let se = w.m.confidence.and_then(|c| c.rate.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                        let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
+                            format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
+                        });
+                        whole_line(
+                            ui,
+                            format!("{v:+.1}{pm} s/d").replace('-', "−"),
+                            spread,
+                            w.span,
+                        );
+                    }
                 }
             });
             let amp = r.and_then(|r| r.amplitude_deg);
@@ -7556,8 +7633,15 @@ impl TimegrapherApp {
                                 .color(pal.text_secondary),
                         );
                     });
-                    if let Some((m, sd, span)) = self.whole_take(|p| p.amplitude) {
-                        whole_line(ui, format!("{m:.0}°"), format!("{sd:.0}°"), span);
+                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?)))
+                    {
+                        let se = w.m.confidence.and_then(|c| c.amplitude.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
+                        let spread =
+                            w.m.amplitude_p05
+                                .zip(w.m.amplitude_p95)
+                                .map(|(a, b)| format!("2 s windows {a:.0}° to {b:.0}°"));
+                        whole_line(ui, format!("{v:.0}{pm}°"), spread, w.span);
                     }
                 },
             );
@@ -7601,16 +7685,12 @@ impl TimegrapherApp {
                         "The big figure is timed from the unlock, as tg shows it: quote \
                          that one. The drop figure is a second opinion.",
                     );
-                    if let Some(((m, sd, span), sizes)) =
-                        self.whole_take_signed(|p| p.beat_error_unlock)
+                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?)))
                     {
-                        whole_line(
-                            ui,
-                            format!("{:.2} ms", m.abs()),
-                            format!("{sd:.2} ms"),
-                            span,
-                        );
-                        if sizes {
+                        let se = w.m.confidence.and_then(|c| c.beat_error.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                        whole_line(ui, format!("{v:.2}{pm} ms"), None, w.span);
+                        if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
                             ui.label(
                                 RichText::new(WHOLE_AS_SIZES)
                                     .small()
@@ -7618,8 +7698,9 @@ impl TimegrapherApp {
                             )
                             .on_hover_text(
                                 "The beat error's sign differs either side of a cut in the \
-                                 take, so the whole take's mean and spread are of each \
-                                 reading's size rather than of the signed readings.",
+                                 take, so the whole take's figure combines the sizes either \
+                                 side rather than the signed values, as timegrapher session \
+                                 does.",
                             );
                         }
                     }
@@ -9467,7 +9548,18 @@ impl TimegrapherApp {
             self.reshape_mask(was, now);
         }
         if input.span_factor != 1.0 {
-            self.strip.set_span(self.strip.span_s * input.span_factor);
+            let was = self.strip.span_s;
+            self.strip.set_span(was * input.span_factor);
+            // The time under the pointer stays under it.
+            if let Some(t) = input.zoom_at {
+                let latest = self.latest_s();
+                let to = t + (end - t) * self.strip.span_s / was;
+                self.view_end = if to >= latest {
+                    None
+                } else {
+                    Some(to.max(self.strip.span_s.min(latest)))
+                };
+            }
         }
         if input.width_factor != 1.0 {
             self.strip
@@ -10429,24 +10521,50 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         };
         let pal = theme::pal(ui);
         ui.spacing_mut().item_spacing.x = 4.0;
+        // The tabs' titles and their ×s come first: what is drawn here
+        // only takes the room they leave.
+        let title_font = theme::semibold(12.5);
+        let tabs_w: f32 = tabs
+            .children
+            .iter()
+            .filter_map(|c| match tiles.get(*c) {
+                Some(egui_tiles::Tile::Pane(p)) if tiles.is_visible(*c) => Some(*p),
+                _ => None,
+            })
+            .map(|p| {
+                let name = self.app.pane_heading(p);
+                ui.fonts_mut(|f| f.layout_no_wrap(name, title_font.clone(), pal.text))
+                    .size()
+                    .x
+                    + 40.0
+            })
+            .sum();
         // Right to left: a chart's "?" and Match Strip, then its key.
         if Pane::CHARTS.contains(pane) {
+            let need = self.app.chart_tools_w.get(pane).copied().unwrap_or(360.0);
+            if ui.available_width() - tabs_w < need {
+                self.app.chart_tools_below.insert(*pane);
+                return;
+            }
+            self.app.chart_tools_below.remove(pane);
+            let before = ui.available_width();
             ui.add_space(4.0);
             theme::help(ui, pane.title(), help::CHARTS);
             ui.add_space(6.0);
             self.app.export_button(ui, *pane);
             ui.add_space(6.0);
-            theme::toggle(ui, "Match Strip", &mut self.app.span_of_strip).on_hover_text(
-                "Show the same stretch of time as the paper strip, so the charts line up with \
-                 it and move with it. Off, the charts show the whole session.",
-            );
+            theme::toggle(ui, "Match Strip", &mut self.app.span_of_strip)
+                .on_hover_text(MATCH_STRIP_HINT);
             ui.add_space(6.0);
             self.app.pane_average_choice(ui, *pane);
             ui.label(RichText::new("Average Over").size(12.5))
                 .on_hover_text(PANE_AVERAGE_HINT);
             ui.add_space(8.0);
+            self.app
+                .chart_tools_w
+                .insert(*pane, before - ui.available_width());
         }
-        // The key only when all of it fits beside the tab's title.
+        // The key only when all of it fits beside the tabs' titles.
         let key = chart_key(*pane, pal);
         let font = egui::TextStyle::Small.resolve(ui.style());
         let needed: f32 = key
@@ -10459,7 +10577,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 .x + 26.0
             })
             .sum();
-        if needed + 80.0 > ui.available_width() {
+        if needed + tabs_w > ui.available_width() {
             return;
         }
         for (name, color, gaps) in key.into_iter().rev() {
@@ -10937,7 +11055,7 @@ impl eframe::App for TimegrapherApp {
         if ctx.input(|i| i.viewport().close_requested()) && self.library_moving.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.info_msg(
-                "The library is still being moved: Timegrapher can be closed once it is done."
+                "Your watches are still being moved: Timegrapher can be closed once it is done."
                     .into(),
             );
         }
@@ -11061,6 +11179,9 @@ fn banner(
 type ScopeKey = (i64, u64, scope::Zoom, u64);
 
 /// What a pane's Average Over does.
+const MATCH_STRIP_HINT: &str = "Show the same stretch of time as the paper strip, so the charts \
+     line up with it and move with it. Off, the charts show the whole session.";
+
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
      As Readings follows Average Over in the Readings card. A time of its own sets \
      everything in this pane that Average Over sets, and is named on the pane's tab, until \
@@ -11130,6 +11251,17 @@ fn no_regular_beat(r: &LiveReading) -> String {
 }
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
+/// What [`TimegrapherApp::whole_take`] was read from: the beats heard,
+/// the stretches, the masks and the clock's ppm.
+type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
+
+/// The whole take in one position, and the seconds it covers.
+#[derive(Clone)]
+struct WholeTake {
+    m: timegrapher_core::session::Measurement,
+    span: f64,
+}
+
 const WHOLE_AS_SIZES: &str = "whole take given as a size: its sign differs either side of a cut";
 
 fn reading_limits(
@@ -11372,17 +11504,17 @@ mod tests {
     }
 
     /// The whole take's beat error, where its sign turns over at a jump
-    /// in the beats (`timing::sign_turns`), is the mean of the readings'
-    /// sizes, and says so, not a mean that cancels to nothing; where the
+    /// in the beats, combines the sizes either side and says so, as
+    /// `session` does, not a figure that cancels to nothing; where the
     /// beats agree in sign either side it stays signed.
     #[test]
     fn whole_take_beat_error_keeps_its_size_across_a_turn() {
-        // 120 s at 28,800 bph with a jump at 60 s: the tock 0.6 ms late
-        // before it and `after` ms after it.
+        // 120 s at 28,800 bph with a jump at 80 s: the tock 0.6 ms late
+        // for the 640 beats before it and `after` ms for the 320 after.
         let app_with = |after: f64| {
             let beats = (0..960)
                 .map(|index| {
-                    let be = if index < 480 { 0.6 } else { after };
+                    let be = if index < 640 { 0.6 } else { after };
                     let half = be / 2000.0 * if index % 2 == 1 { 1.0 } else { -1.0 };
                     timegrapher_core::beats::Beat {
                         time: index as f64 * 0.125 + half,
@@ -11400,7 +11532,7 @@ mod tests {
                 amplitude_windows: Vec::new(),
                 clipped_beats: Vec::new(),
                 clipped_samples: 0,
-                jumps: vec![60.0],
+                jumps: vec![80.0],
                 sided: Vec::new(),
                 by_count: Vec::new(),
             };
@@ -11408,50 +11540,52 @@ mod tests {
             app.live = Some(LiveAnalyzer::from_log(log, LiveConfig::default()));
             app
         };
-        let point = |t: f64, be: f64| TrendPoint {
-            t,
-            rate: Some(5.0),
-            amplitude: None,
-            amplitude_a: None,
-            amplitude_b: None,
-            beat_error_unlock: Some(be),
-            beat_error_drop: None,
-            heard: true,
-        };
-        // 0.6 ms one way for 40 readings, then 0.4 ms the other for 20.
-        let trend: Vec<TrendPoint> = (0..40)
-            .map(|i| point(10.0 + i as f64, 0.6))
-            .chain((0..20).map(|i| point(70.0 + i as f64, -0.4)))
-            .collect();
-        let mut app = app_with(-0.4);
-        app.trend = trend.clone();
-        let ((m, sd, _), sizes) = app
-            .whole_take_signed(|p| p.beat_error_unlock)
-            .expect("whole take");
-        assert!(sizes);
-        assert!((m - (0.6 * 40.0 + 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
-        assert!(sd < 0.11, "the spread is of the sizes: {sd}");
-        // The plain mean would have all but cancelled.
-        let (plain, _, _) = app.whole_take(|p| p.beat_error_unlock).unwrap();
-        assert!(plain < m - 0.2, "{plain}");
-        // Where the beats keep one sign either side, the readings keep theirs.
-        let mut app = app_with(0.4);
-        app.trend = trend;
-        let ((m, _, _), sizes) = app.whole_take_signed(|p| p.beat_error_unlock).unwrap();
-        assert!(!sizes);
-        assert!((m - (0.6 * 40.0 - 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
+        let sizes = |w: &WholeTake| w.m.caveats.contains(&Caveat::BeatErrorAsSize);
+        // Sizes across the turn, beat-weighted: (0.6 × 640 + 0.4 × 320) / 960.
+        let size = (0.6 * 640.0 + 0.4 * 320.0) / 960.0;
+        // What a signed combination would cancel to: (0.6 × 640 − 0.4 × 320) / 960.
+        let cancelled = (0.6 * 640.0 - 0.4 * 320.0) / 960.0;
+        let w = app_with(-0.4).whole_take().expect("whole take");
+        let be = w.m.beat_error_ms.unwrap();
+        assert!(sizes(&w));
+        assert!((be - size).abs() < 1e-3, "{be} vs {size}");
+        assert_eq!(w.m.beat_error(), Some(be));
+        assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");
+        // Where the beats keep one sign either side, the figure keeps it:
+        // the same size, signed.
+        let w = app_with(0.4).whole_take().expect("whole take");
+        let be = w.m.beat_error_ms.unwrap();
+        assert!(!sizes(&w));
+        assert!((be.abs() - size).abs() < 1e-3, "{be} vs {size}");
+        assert!(be < 0.0, "signed: {be}");
+    }
+
+    /// The whole take line is `session`'s reading of the same stretch:
+    /// the rate fitted over every beat, not a mean of the readings shown.
+    #[test]
+    fn whole_take_is_the_session_reading() {
+        let app = synthetic(60.0, 12.0);
+        let w = app.whole_take().expect("whole take");
+        let log = steady::log_of(app.live.as_ref().unwrap()).unwrap();
+        let spans = app.current_spans();
+        let (from, to) = (spans[0].0.max(0.0), app.latest_s());
+        let m = timegrapher_core::session::measure(&log, None, from, to);
+        assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
+        assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
+        assert!((w.span - (to - from)).abs() < 1e-9, "{}", w.span);
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on
     /// the last stretch with a watch heard, and a long enough take shows
-    /// its whole-take mean and spread.
+    /// its whole-take reading.
     #[test]
     fn stopping_keeps_the_last_heard_readings() {
         let mut app = synthetic(60.0, 12.0);
         let before = app.reading().unwrap();
-        let whole = app.whole_take(|p| p.rate).expect("whole take");
-        assert!((whole.0 - 12.0).abs() < 2.0, "{whole:?}");
-        assert!(whole.2 > 40.0, "{whole:?}");
+        let whole = app.whole_take().expect("whole take");
+        let rate = whole.m.rate_s_per_day.unwrap();
+        assert!((rate - 12.0).abs() < 2.0, "{rate}");
+        assert!(whole.span > 40.0, "{}", whole.span);
         // Then 20 s of hiss with the watch gone.
         let mut seed = 1u32;
         let noise: Vec<f32> = (0..48000 * 20)
@@ -11701,6 +11835,42 @@ mod tests {
             };
             let _ = ctx.run(input, |ctx| app.panels(ctx));
         }
+    }
+
+    /// A chart too narrow for its controls beside its tab's title draws
+    /// them in a toolbar in the pane, so its title and × stay in view; a
+    /// wide one keeps them in its tab bar.
+    #[test]
+    fn a_narrow_chart_keeps_its_tab_title_and_moves_its_controls_into_the_pane() {
+        let mut app = synthetic(12.0, 20.0);
+        let ctx = themed();
+        let draw = |app: &mut TimegrapherApp, w: f32| {
+            let mut text = String::new();
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 1000.0),
+                    )),
+                    ..Default::default()
+                };
+                text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
+            }
+            text
+        };
+        let text = draw(&mut app, 1600.0);
+        assert!(!app.chart_tools_below.is_empty());
+        for p in &app.chart_tools_below {
+            assert!(text.contains(&app.pane_heading(*p)), "{p:?}: {text}");
+        }
+        // Each chart's controls once, in its bar or its pane.
+        assert_eq!(
+            text.matches("Match Strip").count(),
+            Pane::CHARTS.len(),
+            "{text}"
+        );
+        draw(&mut app, 6000.0);
+        assert!(app.chart_tools_below.is_empty());
     }
 
     /// The window before anything is open, with a problem showing, in both
@@ -13013,14 +13183,23 @@ mod tests {
             egui::CentralPanel::default().show(ctx, |ui| app.watch_takes_card(ui));
         });
         assert!(format!("{:?}", out.shapes).contains("Analysis Only"));
+        // A click picks the take without opening it.
+        app.take_action(Some(watches::TakeAction::Pick(take.clone())));
+        assert_eq!(app.take_picked.as_ref(), Some(&take));
+        assert!(app.batch.is_none() && app.live.is_none());
         // Its opened analysis reads back.
-        app.open_recording(&take, false, true);
+        app.take_action(Some(watches::TakeAction::Open(take.clone())));
+        assert!(app.batch.is_some());
         let t = Instant::now();
         while app.batch.is_some() && t.elapsed().as_secs() < 60 {
             app.poll();
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(app.live.is_some());
+        assert_eq!(app.take_on_show().as_ref(), Some(&take));
+        // Opened again while on show, it is not read again.
+        app.take_action(Some(watches::TakeAction::Open(take.clone())));
+        assert!(app.batch.is_none());
 
         // Renamed: the recording opened follows.
         app.answer_take_ask(watches::Ask::Rename {
@@ -15020,7 +15199,7 @@ mod tests {
         lib.add(&library::Watch::new("Pepsi")).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.use_library(Some(root.clone()));
-        app.open_settings(Tab::Library);
+        app.open_settings(Tab::General);
         assert_eq!(
             app.library
                 .as_ref()
@@ -15043,18 +15222,29 @@ mod tests {
         };
         let drawn = text(&ctx, &mut app);
         assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
-        assert!(drawn.contains("Move Library…") && drawn.contains("Use the Default"));
-        // While another copy holds it, this one can only read it, and says so.
-        assert!(drawn.contains("can only read it"), "{drawn}");
+        assert!(drawn.contains("Move Watches…") && drawn.contains("Use the Default"));
+        // One General tab holds the Watches folder and the sound card's
+        // clock, with Calibres beside it; nothing is called Library.
+        assert!(drawn.contains("Watches Folder") && drawn.contains("Sound Card Clock Calibration"));
+        assert!(
+            drawn.contains("Calibres") && !drawn.contains("Library"),
+            "{drawn}"
+        );
+        // While another copy holds them, this one can only read them, and says so.
+        assert!(drawn.contains("can only read them"), "{drawn}");
         drop(lib);
         app.read_library();
-        assert!(!text(&ctx, &mut app).contains("can only read it"));
+        assert!(!text(&ctx, &mut app).contains("can only read them"));
+        // Opening Settings again reads it afresh, and this copy's own lock
+        // is no other copy.
+        app.open_settings(Tab::General);
+        assert!(!text(&ctx, &mut app).contains("can only read them"));
 
         // Move it into another folder, and it is used there.
         let to = base.join("there").join("Timegrapher Data");
         app.library_move_ask = Some(to.clone());
         let asked = text(&ctx, &mut app);
-        assert!(asked.contains("Move the library to"), "{asked}");
+        assert!(asked.contains("Move your watches to"), "{asked}");
         app.library_move_ask = None;
         app.move_library(root.clone(), to.clone());
         let t = Instant::now();
@@ -15140,7 +15330,7 @@ mod tests {
             .get("USB Mic")
             .cloned();
         assert!(app.clock.is_some());
-        app.open_settings(Tab::Clock);
+        app.open_settings(Tab::General);
         let listed = app.kept_clocks.as_ref().unwrap();
         assert_eq!(listed.devices.len(), 2);
         assert_eq!(
@@ -15431,6 +15621,19 @@ mod tests {
         app.apply_strip_input(zoom, app.end_s());
         assert_eq!(app.strip.span_s, 60.0);
         assert_eq!(app.strip.half_width_ms, 5.0);
+
+        // Zoomed about a time, that time stays where it was on the strip.
+        let end = app.end_s();
+        let at = end - 15.0;
+        let zoom = StripInput {
+            span_factor: 0.5,
+            zoom_at: Some(at),
+            ..Default::default()
+        };
+        app.apply_strip_input(zoom, end);
+        assert_eq!(app.strip.span_s, 30.0);
+        let now = app.view_end.expect("looking back");
+        assert!(((now - at) / 30.0 - 15.0 / 60.0).abs() < 1e-9, "{now}");
     }
 
     /// New Session while listening, when closing the kept sound fails:

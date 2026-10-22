@@ -170,19 +170,12 @@ pub fn draw(
     let key_h = 22.0;
     let plot_h = (ui.available_height() - key_h).max(40.0);
     let x_hi = upto_s.max(left + width);
-    let lp = period_label.clone();
     let resp = base
         .height(plot_h)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
         .x_axis_formatter(move |g, _| time_label(g.value))
-        .y_grid_spacer(super_log_grid)
-        .y_axis_formatter(move |g, r| {
-            if g.step_size >= 1.0 || r.end() - r.start() < 3.0 {
-                lp(10f64.powf(g.value))
-            } else {
-                String::new()
-            }
-        })
+        .y_grid_spacer(crate::steady::period_grid(plot_h))
+        .y_axis_formatter(|g, _| crate::steady::period_label(g.value))
         .default_x_bounds(0.0f64.min(left), x_hi)
         .default_y_bounds(bottom, top)
         .show(ui, |p| {
@@ -210,29 +203,6 @@ pub fn draw(
         ));
     }
     key_row(ui, m, scale, pal);
-}
-
-/// The log10 period axis' marks: each power of ten, and 2 and 5 between
-/// when the span is short.
-fn super_log_grid(input: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
-    let (lo, hi) = input.bounds;
-    let fine = hi - lo < 3.0;
-    let mut marks = Vec::new();
-    for k in (lo.floor() as i32 - 1)..=(hi.ceil() as i32) {
-        for (m, step) in [(1.0f64, 1.0), (2.0, 0.3), (5.0, 0.3)] {
-            if !fine && m != 1.0 {
-                continue;
-            }
-            let v = k as f64 + m.log10();
-            if v >= lo && v <= hi {
-                marks.push(egui_plot::GridMark {
-                    value: v,
-                    step_size: step,
-                });
-            }
-        }
-    }
-    marks
 }
 
 /// The wheels' turns across the map, dashed and named at the right, where

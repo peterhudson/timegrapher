@@ -122,17 +122,6 @@ pub fn true_time<'a>(clock: Option<&'a ClockFit>, breaks: &[Break]) -> impl Fn(f
     move |t| cuts.true_time(t)
 }
 
-/// Each break's place on [`true_time`]: halfway through its gap. Kept only
-/// for [`crate::session::measure_masked`] until it reads its cuts from
-/// [`Cuts`].
-pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
-    let map = true_time(clock, breaks);
-    breaks
-        .iter()
-        .map(|b| map(b.audio_s) - 0.5 * b.gap_s.max(0.0) - 1e-6)
-        .collect()
-}
-
 /// Whether the beat error's sign turns over across the take's breaks
 /// ([`timing::sign_turns`] on its whole stretches), so its figures are
 /// given as sizes.
@@ -362,7 +351,7 @@ mod tests {
         assert!((b - map(305.1)).abs() < 1e-6, "{gaps:?}");
         assert!((b - a - 30.1).abs() < 0.01, "{gaps:?}");
         // The old middle cut fell 15 s before the pause, in the sound.
-        let mid = cuts(Some(&clock), &breaks)[0];
+        let mid = map(305.0) - 0.5 * 30.0 - 1e-6;
         assert!(mid < a - 10.0, "{mid} {a}");
         // A reading ending at the pause is whole; one taking in the ragged
         // 0.1 s after it is not; one starting at the resume is whole.
@@ -403,7 +392,6 @@ mod tests {
         let map = true_time(None, &breaks);
         assert_eq!(map(100.0), 100.0);
         assert_eq!(map(150.0), 150.0);
-        assert_eq!(super::cuts(None, &breaks), vec![100.0 - 1e-6]);
         let beats: Vec<Beat> = (0..1000)
             .map(|index| Beat {
                 time: map(index as f64 * 0.2 * (1.0 + 1e-5)),

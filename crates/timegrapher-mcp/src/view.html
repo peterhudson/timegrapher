@@ -750,6 +750,18 @@ function logTicks(lo, hi, fmt) {
   }
   return ticks;
 }
+// Core period_ticks::TICKS, put in by the server.
+const PERIOD_TICKS = /*PERIOD_TICKS*/null;
+// A period axis in log10 seconds, as the app's steady::period_grid marks it:
+// core's period_ticks, the finest level with no more marks than one per
+// 64 px, and at least the level 0 ones. [[log10 s, label]].
+function periodTicks(lo, hi, px) {
+  const room = Math.max(2, Math.floor(px / 64));
+  const a = Math.pow(10, lo), b = Math.pow(10, hi);
+  const at = (level) => PERIOD_TICKS.filter((t) => t.period_s >= a && t.period_s <= b && t.level <= level);
+  const fit = [2, 1, 0].map(at).find((v) => v.length <= room) || at(0);
+  return fit.map((t) => [Math.log10(t.period_s), t.label]);
+}
 function linTicks(lo, hi, px, minPx, fmt, ladder) {
   const g = gridFor(lo, hi, px, minPx, ladder);
   return g.ticks.map((v) => [v, fmt(v, g.step)]);
@@ -899,7 +911,7 @@ function steadyPlot(s, view, doc) {
       }
       return xyChart({
         title: "Periods", x: span, y, faint: true,
-        xTicks: (a, b) => logTicks(a, b, secs),
+        xTicks: periodTicks,
         yTicks: periodsLog ? (a, b) => logTicks(a, b, sig) : (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
         vlines: wheelMarks(doc, span), hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
         lines: [{ pts, color, width: 1.5 }], marks, notes,
@@ -976,7 +988,7 @@ function steadyPlot(s, view, doc) {
       const peak = pts.reduce((a, q) => (q[1] > a[1] ? q : a), pts[0]);
       return `<p class="note">${esc(spectrumSupportText(sp))}</p>` + xyChart({
         title: "FFT", x, y, faint: true,
-        xTicks: (p, q) => logTicks(p, q, secs),
+        xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, size),
         vlines: wheelMarks(doc, x), lines: [{ pts, color, width: 1.5 }],
         marks: [{ x: peak[0], y: peak[1], color }],
@@ -1009,7 +1021,7 @@ function steadyPlot(s, view, doc) {
       }
       return xyChart({
         title: "Allan Deviation", x, y,
-        xTicks: (p, q) => logTicks(p, q, secs),
+        xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, (d) => sig(d) + unit),
         lines: [{ pts: white, color: "--text2", width: 1, dash: "loose" }, { pts: dev, color, width: 1.5 }],
         dots: [{ pts: dev, color, r: 2 }], notes,
@@ -1172,7 +1184,7 @@ function mapChart(m, doc, log) {
   const left = t0 - dt / 2, width = dt * w;
   const x0 = Math.min(0, left), x1 = Math.max(doc.duration_s || 0, left + width);
   const W = chartWidth(), H = 170, T = 4, B = 20, R = 6, plotH = H - T - B;
-  const yt = logTicks(bottom, top, secs);
+  const yt = periodTicks(bottom, top, plotH);
   const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
   const plotW = W - L - R;
   const xt = linTicks(x0, x1, plotW, Math.min(80, plotW / 4), (t) => fmtTime(t), TIME_STEPS);
