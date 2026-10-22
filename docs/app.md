@@ -41,10 +41,10 @@ take their reading's colour, and the Steadiness views share one green.
 where the sound comes from and what to do with it, then the watch itself.
 It is a pane like the others: drag it by its tab, or hide it and bring it
 back from its icon or the View menu. At its top, under **Watches**, one
-row per watch in the library (see The library, below): its first photo
+row per watch (see The Watches folder, below): its first photo
 (by name; a tile with its initial while it has none, or one that can't be
 read), its name, its calibre, how many takes it has and the date of the last, and the space
-they use, with the library's total size and folder and **Show in
+they use, with the Watches folder's total size and location and **Show in
 Finder** at the foot. Its toolbar has a search (in the name, calibre,
 notes and fields), **Sort** by Name, Last Take or Size, **Archived**
 (once a watch is archived, to list those too), **Quick Listen** and
@@ -64,7 +64,7 @@ only the **Name** is needed, and Calibre (which fills the Lift Angle and
 Beat Rate), Lift Angle, Beat Rate and Notes can each be
 removed with its ×, then given back, with any of the suggested fields or
 one of your own, from **Add Field**; **Archived** hides the watch from the
-list without deleting it. The first watch makes the library's folder.
+list without deleting it. The first watch makes the Watches folder.
 Clicking a watch shows its details, its photos as a strip of thumbnails
 (clicking one opens it in the computer's own viewer; right-clicking offers
 **Open**, **Show in Finder** and **Delete…**, asking first; one that can't
@@ -96,15 +96,15 @@ Photos…**, which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
 an iPhone takes them, each kept as it is) into the watch's `photos/`,
 adding a number to a name already there. Thumbnails are read in the
 background, turned the way the camera says, and kept in this computer's
-cache folder (never in the library), so the next start shows them at
+cache folder (never in the Watches folder), so the next start shows them at
 once.
 Picking a watch, refused while listening, sets the take's name, calibre,
 lift angle and beat rate from it; changing them under **This Take**
 changes that take, not the watch. With a watch picked, **Save…** saves
 the take into it with no question, in a folder named by when the take
 started (in this computer's time) and its position when it used only one;
-Save Again then saves into the same take, and Save As… still asks. A
-library another copy of the app has open is read only: Quick Listen, New
+Save Again then saves into the same take, and Save As… still asks.
+Watches another copy of the app has open are read only: Quick Listen, New
 Watch…, Edit…, Add Photos… and a photo's Delete… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
@@ -112,7 +112,7 @@ new session, unless closing the kept sound fails), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
 peak meter, Show Every Input and **Keep Awake** (see Long takes, below).
 For a recording: **Open…**, **Open Folder…**, **Add to a Watch…** (once a
-take folder from outside the library is open: into the watch picked
+take folder from outside the Watches folder is open: into the watch picked
 above or another, copied or moved; a copy is made beside its new place
 and moved in whole, so one cut short is not a take), the path box, **Replay** (or
 **Stop**, **Cancel** while one is being analysed, and **Analyse All**) and
@@ -435,7 +435,7 @@ stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; the True Clock line is beside it,
 never instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a replayed recording. **Settings**,
-under **Sound Card Clock**, lists each input's kept clock (its error in ppm
+under General's **Sound Card Clock Calibration**, lists each input's kept clock (its error in ppm
 and in s/d, the day it was measured, how, and over how long) with
 **Forget** beside it. Forget first asks, naming the input, its error and
 the day it was measured, since getting it back takes 20 minutes or more of
@@ -573,7 +573,8 @@ to a two-hour run, then **Fit**, which sets the length to the whole
 session so far, or its last 24 hours when it is longer, and shows it up
 to its latest beat.
 
-On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
+On the strip, the mouse wheel changes the length about the time under the
+pointer, which stays where it is, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
 click returns to the newest beats and centres them. **Auto-Centre** keeps
@@ -584,7 +585,8 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Mask** leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
-the mouse), dragging a masked stretch's edge moves it, and clicking a
+the mouse), dragging a masked stretch's edge moves it, dragging with the
+right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
 back; **Unmask All** brings them all back. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
@@ -850,17 +852,16 @@ been published yet"). The request carries no account or identifier.
 ## Settings
 
 **The Settings window.** Edit > Settings… (Ctrl+, or Cmd+,) or the gear at
-the end of the pane icons opens it over the app, with four sections:
-**General** (Appearance and Check for Updates at Start), **Library**
-(below), **Calibres**
-(Manage Calibres, below) and **Sound Card Clock** (each input's kept
-clock with Forget; see True Clock). It opens at the section it was last
-left on. **Done**, Escape or a click outside closes it. What belongs to
+the end of the pane icons opens it over the app, with two sections:
+**General** (Appearance, Check for Updates at Start, the **Watches
+Folder** (below) and **Sound Card Clock Calibration**, each input's kept
+clock with Forget; see True Clock) and **Calibres** (Manage Calibres,
+below). It opens at the section it was last left on. **Done**, Escape or a click outside closes it. What belongs to
 the watch on show (its calibre, lift angle, beat rate and position) and
 to the microphone (input, level, Show Every Input, Keep Awake) stays in
 the Watches pane, beside what it sets.
 
-**The library.** The watches and their takes are to be kept in one
+**The Watches folder.** The watches and their takes are kept in one
 folder, `Timegrapher Data` in the home folder unless another is chosen:
 `library.toml` at the top, then a folder for each watch holding its
 details (`watch.toml`), its `photos/` and its `takes/`, and `Unsorted/`,
@@ -870,29 +871,29 @@ each take a standard take folder named by when it started (`2026-10-20
 `timegrapher watches list` and `show` read it from the command line,
 without changing it ([agent-interface.md](agent-interface.md#watches)),
 and `timegrapher record --watch NAME` records a test into a watch's
-takes while the app doesn't have the library open
+takes while the app doesn't have the Watches folder open
 ([agent-interface.md](agent-interface.md#record)). Nothing in
 it records where it is, so it can be moved, synced or copied whole; a
 take with sound files missing is listed as incomplete and never changed.
-Settings' **Library** section shows where it is and how many watches and
+Settings' **Watches Folder** section, under General, shows where it is and how many watches and
 takes it holds and their size, with **Show in Finder** (Explorer on
-Windows, File Manager on Linux), **Move Library…** (into a folder picked,
+Windows, File Manager on Linux), **Move Watches…** (into a folder picked,
 asking first; onto another disk it is copied, each file with its
 modification time, checked and only then removed, and a link or a
 special file such as a named pipe in it stops the copy, leaving the
-library as it was; while it moves, closing the window or File > Quit is
+folder as it was; while it moves, closing the window or File > Quit is
 refused and the app stays open; on macOS Cmd+Q and Quit in the app menu
 or the Dock do not wait, and on any system neither does logging out,
 shutting down or ending the app from outside; a move cut short that way
-leaves the library whole where it was, or whole at the new place once
+leaves the Watches folder whole where it was, or whole at the new place once
 its copy was finished, which Choose Another… then finds; a copy cut
 short leaves its files at the new place without a `library.toml`, which
-is not a library and can be deleted),
-**Choose Another…** (a library elsewhere, or an empty folder
+is not a Watches folder and can be deleted),
+**Choose Another…** (a Watches folder elsewhere, or an empty folder
 for a new one; nothing is moved) and, once another is chosen, **Use the
-Default**. Only one copy of the app at a time can change a library: a
-second copy opens it to read only and says so in Settings, and the
-library can't be moved while another copy has it open. The Watches pane adds watches to it and saves takes into them.
+Default**. Only one copy of the app at a time can change your watches: a
+second copy opens them to read only and says so in Settings, and the
+folder can't be moved while another copy has it open. The Watches pane adds watches to it and saves takes into them.
 
 - **Input.** In the Watches pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:

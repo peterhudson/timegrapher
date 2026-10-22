@@ -13,8 +13,8 @@ use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEnt
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
-    "Your watches, each with its details and every take made of it, kept in the library \
-     folder (Settings > Library says where). Pick a watch to see its takes and to start a \
+    "Your watches, each with its details and every take made of it, kept in the Watches \
+     folder (Settings > General says where). Pick a watch to see its takes and to start a \
      new one; Save… then saves the take into that watch, named by when it started.",
     "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
      set up each new take of it, and can be changed for one take without changing the watch.",
@@ -27,7 +27,7 @@ pub const HELP: &[&str] = &[
      as Open does, and the take already on show is not read again. Right-clicking it \
      offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
-     Another Watch and Delete…. A take opened from outside the library can be copied or \
+     Another Watch and Delete…. A take opened from outside your watches can be copied or \
      moved into a watch with Add to a Watch…, beside Open….",
     "Quick Listen listens on the microphone without picking or adding a watch first, for a \
      watch handed over the counter. Its take is saved into Unsorted when you Stop (and \
@@ -400,7 +400,7 @@ pub fn photo_strip(
                             .add_enabled(writable, egui::Button::new("Delete…"))
                             .on_hover_text("Delete this photo for good. It asks first.")
                             .on_disabled_hover_text(
-                                "This copy of the app can only read the library",
+                                "This copy of the app can only read your watches",
                             )
                             .clicked()
                         {
@@ -571,7 +571,7 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
         let why = if busy {
             "Wait until its analysis is kept, or Cancel"
         } else {
-            "This copy of the app can only read the library"
+            "This copy of the app can only read your watches"
         };
         r.context_menu(|ui| {
             if ui

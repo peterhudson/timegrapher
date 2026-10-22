@@ -33,6 +33,7 @@ pub mod longterm;
 pub mod measure;
 pub mod mixer;
 pub mod palette;
+pub mod period_ticks;
 pub mod periodicity;
 pub mod profile;
 pub mod recorder;
