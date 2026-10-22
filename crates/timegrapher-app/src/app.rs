@@ -161,7 +161,8 @@ fn scratch_dir() -> PathBuf {
 #[derive(Debug, Clone, PartialEq)]
 struct KeptSound {
     dir: PathBuf,
-    /// "2026-10-21 14.32 UTC", from its session.json.
+    /// "2026-10-21 14.32", from its session.json, in this computer's
+    /// time.
     started: Option<String>,
     duration_s: Option<f64>,
     bytes: u64,
@@ -198,8 +199,12 @@ fn kept_sounds(scratch: &Path) -> Vec<KeptSound> {
                 .as_ref()
                 .and_then(|a| a["started_utc"].as_str())
                 .map(|u| {
-                    let at = u.get(..16).unwrap_or(u).replacen('T', " ", 1);
-                    format!("{} UTC", at.replace(':', "."))
+                    // In this computer's time, as takes are named; as
+                    // written, marked UTC, when it can't be read.
+                    watches::local_minute(u).unwrap_or_else(|| {
+                        let at = u.get(..16).unwrap_or(u).replacen('T', " ", 1);
+                        format!("{} UTC", at.replace(':', "."))
+                    })
                 });
             Some(KeptSound {
                 started,
@@ -12631,13 +12636,11 @@ mod tests {
         assert_eq!(kept.len(), 1, "{kept:?}");
         assert_eq!(kept[0].dir, dir);
         assert!((kept[0].duration_s.unwrap() - 20.0).abs() < 0.5, "{kept:?}");
-        assert!(
-            kept[0]
-                .started
-                .as_ref()
-                .is_some_and(|s| s.len() == 20 && s.ends_with(" UTC")),
-            "{kept:?}"
-        );
+        let about: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join("session.json")).unwrap()).unwrap();
+        let local = watches::local_minute(about["started_utc"].as_str().unwrap());
+        assert!(local.is_some());
+        assert_eq!(kept[0].started, local, "in this computer's time: {kept:?}");
         assert!(kept[0].bytes > 48000 * 2 * 19);
 
         // The next start says so, with the ways to keep it.

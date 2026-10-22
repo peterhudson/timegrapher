@@ -1011,7 +1011,8 @@ the app quits without asking (on a Mac, Cmd+Q and Quit in the app menu or
 the Dock, which can't be held back; on any system, a logout or a
 shutdown) with more than 5 s of unsaved sound, or is stopped by a crash,
 the sound stays there, and the next start says so in a
-banner with **Open** (analysed here, and offered again next time),
+banner, with when it started (in this computer's time), its length and
+size, and **Open** (analysed here, and offered again next time),
 **Move To…** (the recording's folder moved into one you pick, to open
 with Open Folder…), **Delete…** (asking first) and **Later**. A folder
 another copy of the app is recording into is never offered. The
