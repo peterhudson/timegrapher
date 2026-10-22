@@ -11,7 +11,7 @@ function definition(name, optional = false) {
   return match ? match[0] : "";
 }
 const context = vm.createContext({
-  fftTiming: true, secs: String, logTicks: () => [], wheelMarks: () => [], periodsLog: false, wheelTitle: String,
+  fftTiming: true, secs: String, logTicks: () => [], periodTicks: () => [], wheelMarks: () => [], periodsLog: false, wheelTitle: String,
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
