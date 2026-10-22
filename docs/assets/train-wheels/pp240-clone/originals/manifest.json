@@ -1,0 +1,37 @@
+{
+  "specimen": "Patek 240 Clone",
+  "contributor": "Peter Hudson",
+  "date": "2026-10-21",
+  "originals": [
+    {
+      "file": "originals/barrel.jpg",
+      "supplied_filename": "Barrel.JPG",
+      "sha256": "8ae1338b9e514e378e39a08503f55739a2819ba1764b5d9bd3e8550909c7a40d"
+    },
+    {
+      "file": "originals/second-wheel.jpg",
+      "supplied_filename": "Second Wheel.JPG",
+      "sha256": "90beaaef9fdccd8f724abac367153a1479ae7c27c62cfad310ed85c6a1c45cda"
+    },
+    {
+      "file": "originals/third-wheel.jpg",
+      "supplied_filename": "Third Wheel.JPG",
+      "sha256": "961a4f531b7e7969f647db96a882a3ba54c8cc5e39762309d558e4ce2eb65524"
+    },
+    {
+      "file": "originals/fourth-wheel.jpg",
+      "supplied_filename": "Fourth Wheel.JPG",
+      "sha256": "b8e05f039f48e97460d9c9d0cb211b550a6946da489e97db3105091d90021a39"
+    },
+    {
+      "file": "originals/escape-wheel.jpg",
+      "supplied_filename": "Escape Wheel.JPG",
+      "sha256": "8a25c2b2b013a3eeca3b2a15dfae265d4593f0ff01cf27613f867148abe00602"
+    },
+    {
+      "file": "originals/second-wheel-profile.jpg",
+      "supplied_filename": "Second Wheel Profile.JPG",
+      "sha256": "ea6f183b556344e93dd2a809de8ecb99fe8b98b59fe3978635c14693b6cab49c"
+    }
+  ]
+}
