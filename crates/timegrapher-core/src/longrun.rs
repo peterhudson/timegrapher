@@ -154,10 +154,11 @@ pub fn cuts(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<f64> {
 ///
 /// A clock fit with the pauses in, unless its breaks were moved to the
 /// listed ones ([`ClockFit::place_breaks`], as `long` and `series` do),
-/// places its own break at its first log line after the resume, up to a
-/// block after the break's frame, so the gap ends at that break where one
-/// is within [`crate::breaks::JUMP_MATCH_S`] after; the sound between the
-/// two lies in the gap. A break of zero or negative length is a point.
+/// places its own break at the recorder's line at the pause, or at its
+/// first log line after the step where the log has no line at the pause
+/// ([`crate::clock::PAUSE_PAIR_S`]), so the gap ends at that break where
+/// one is within [`crate::breaks::JUMP_MATCH_S`] after; the sound between
+/// the two lies in the gap. A break of zero or negative length is a point.
 pub fn gaps(clock: Option<&ClockFit>, breaks: &[Break]) -> Vec<(f64, f64)> {
     let map = true_time(clock, breaks);
     let clock_breaks = clock.map_or(&[][..], |c| &c.breaks[..]);
@@ -420,22 +421,23 @@ mod tests {
 
     #[test]
     fn a_gap_runs_to_the_clock_fits_own_break() {
-        // Lines as the recorder writes them: every 10 s, at a block's last
-        // frame. The first after a 30 s pause at 300 s of audio comes with
-        // the first 0.1 s block, so the clock fit's break is at 300.1 s.
+        // Lines every 10 s, at a block's last frame, but none at the 30 s
+        // pause at 305 s of audio (a log from before the recorder wrote
+        // one there): the first after it comes with the first 0.1 s block,
+        // so the clock fit's break is at 305.1 s.
         let k = 1.0 + 20e-6;
         let mut pairs: Vec<(f64, f64)> = (0..=30)
             .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
             .collect();
         pairs.extend((0..30).map(|i| {
-            let t = 300.1 + i as f64 * 10.0;
+            let t = 305.1 + i as f64 * 10.0;
             (t, 1.79e9 + t * k + 30.0)
         }));
         let clock = ClockFit::new(&pairs).unwrap();
         assert_eq!(clock.breaks.len(), 1, "{:?}", clock.breaks);
-        assert!((clock.breaks[0].audio_s - 300.1).abs() < 1e-9);
+        assert!((clock.breaks[0].audio_s - 305.1).abs() < 1e-9);
         let breaks = [Break {
-            audio_s: 300.0,
+            audio_s: 305.0,
             gap_s: 30.0,
         }];
         let map = true_time(Some(&clock), &breaks);
@@ -443,8 +445,8 @@ mod tests {
         let (a, b) = gaps[0];
         // From the last sound before the pause to the clock's resume, so
         // the 0.1 s of sound mapped before the jump lies in the gap.
-        assert!((a - map(300.0 - 1e-6)).abs() < 1e-6, "{gaps:?}");
-        assert!((b - map(300.1)).abs() < 1e-6, "{gaps:?}");
+        assert!((a - map(305.0 - 1e-6)).abs() < 1e-6, "{gaps:?}");
+        assert!((b - map(305.1)).abs() < 1e-6, "{gaps:?}");
         assert!((b - a - 30.1).abs() < 0.01, "{gaps:?}");
         // The old middle cut fell 15 s before the pause, in the sound.
         let mid = cuts(Some(&clock), &breaks)[0];
@@ -452,20 +454,20 @@ mod tests {
         // A reading ending at the pause is whole; one taking in the ragged
         // 0.1 s after it is not; one starting at the resume is whole.
         assert!(!touches_gap(&gaps, a - 10.0, a));
-        assert!(touches_gap(&gaps, map(300.05), map(300.05) + 10.0));
+        assert!(touches_gap(&gaps, map(305.05), map(305.05) + 10.0));
         assert!(!touches_gap(&gaps, b, b + 10.0));
         // With the clock's break moved to the listed one, the gap ends at
         // the resume and the sound after it maps after the gap.
         let mut placed = clock.clone();
         placed.place_breaks(&breaks);
-        assert!((placed.breaks[0].audio_s - 300.0).abs() < 1e-9);
+        assert!((placed.breaks[0].audio_s - 305.0).abs() < 1e-9);
         let on = super::gaps(Some(&placed), &breaks)[0];
         let map_on = true_time(Some(&placed), &breaks);
         assert!(
-            (on.0 - a).abs() < 1e-6 && (on.1 - map_on(300.0)).abs() < 1e-9,
+            (on.0 - a).abs() < 1e-6 && (on.1 - map_on(305.0)).abs() < 1e-9,
             "{on:?}"
         );
-        assert!(map_on(300.05) > on.1);
+        assert!(map_on(305.05) > on.1);
         // A jump of no known length is a point.
         let jump = [Break {
             audio_s: 100.0,

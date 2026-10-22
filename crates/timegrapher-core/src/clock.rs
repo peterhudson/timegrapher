@@ -35,8 +35,10 @@ pub struct ClockFit {
     pub tracks_drift: bool,
     /// Pauses in listening seen as steps in the log: the mapping is fitted
     /// with the gaps taken out, and [`ClockFit::map`] puts them back. Each
-    /// is at the log's first entry after its step until
-    /// [`ClockFit::place_breaks`] moves it to the listed break.
+    /// is at the log's first entry after its step, or at the last entry
+    /// before it when the two are under [`PAUSE_PAIR_S`] apart (the
+    /// recorder's pair at a pause), until [`ClockFit::place_breaks`] moves
+    /// it to the listed break.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<Break>,
     /// For each of `breaks`, the audio seconds of the log's last entry
@@ -96,6 +98,11 @@ fn line_sd(p: &[(f64, f64)]) -> (f64, f64, f64) {
     };
     (a, b, sd)
 }
+
+/// Two log entries closer than this, in audio seconds, either side of a
+/// step are the recorder's pair at a pause (its lines are otherwise 10 s
+/// apart): a capture block is far shorter.
+pub const PAUSE_PAIR_S: f64 = 1.0;
 
 /// Runs longer than this get a mapping that follows drift.
 const DRIFT_SPAN_S: f64 = 4.0 * 3600.0;
@@ -266,12 +273,25 @@ impl ClockFit {
         fit.residual_ms = (ss / p.len() as f64).sqrt() * 1e3;
         // A gap fitted a few ms below zero (a near-instant stop and resume
         // forced by a listed pause) counts as none, as [`breaks::wall`]
-        // takes it, so true time never runs back at a break.
+        // takes it, so true time never runs back at a break. A step between
+        // two entries under [`PAUSE_PAIR_S`] apart is the recorder's pair
+        // at a pause: its line for the last block before the pause, then
+        // its line for the first block after the resume, written once that
+        // block is in. The sound after the earlier line is already the
+        // resumed sound, so the break goes there.
         fit.breaks = gaps
             .into_iter()
-            .map(|g| Break {
-                audio_s: g.audio_s + origin.0,
-                gap_s: g.gap_s.max(0.0),
+            .zip(&fit.entry_before)
+            .map(|(g, &e)| {
+                let audio_s = g.audio_s + origin.0;
+                Break {
+                    audio_s: if audio_s - e < PAUSE_PAIR_S {
+                        e
+                    } else {
+                        audio_s
+                    },
+                    gap_s: g.gap_s.max(0.0),
+                }
             })
             .collect();
         Ok(fit)
@@ -349,7 +369,8 @@ impl ClockFit {
             .map(|l| l.audio_s)
             .filter(|&a| {
                 !self.breaks.iter().zip(&self.entry_before).any(|(b, &e)| {
-                    a > e - 1e-6 && a <= b.audio_s && b.audio_s - a <= breaks::JUMP_MATCH_S
+                    let end = self.entry_after(e).max(b.audio_s);
+                    a > e - 1e-6 && a <= end && end - a <= breaks::JUMP_MATCH_S
                 })
             })
             .collect();
@@ -362,23 +383,46 @@ impl ClockFit {
                 *self = f;
             }
         }
+        let ends: Vec<f64> = self
+            .breaks
+            .iter()
+            .zip(&self.entry_before)
+            .map(|(b, &e)| self.entry_after(e).max(b.audio_s))
+            .collect();
         for (i, b) in self.breaks.iter_mut().enumerate() {
             let after = self
                 .entry_before
                 .get(i)
                 .copied()
                 .unwrap_or(f64::NEG_INFINITY);
+            let end = ends.get(i).copied().unwrap_or(b.audio_s);
             if let Some(l) = listed
                 .iter()
                 .filter(|l| {
                     l.audio_s > after - 1e-6
-                        && l.audio_s <= b.audio_s
-                        && b.audio_s - l.audio_s <= breaks::JUMP_MATCH_S
+                        && l.audio_s <= end
+                        && end - l.audio_s <= breaks::JUMP_MATCH_S
                 })
                 .max_by(|x, y| x.audio_s.total_cmp(&y.audio_s))
             {
                 b.audio_s = l.audio_s;
             }
+        }
+    }
+
+    /// The audio seconds of the log's first entry after `e`, or `e` when
+    /// there is none.
+    fn entry_after(&self, e: f64) -> f64 {
+        let next = self
+            .entries
+            .iter()
+            .map(|q| q.0)
+            .filter(|&x| x > e + 1e-9)
+            .fold(f64::INFINITY, f64::min);
+        if next.is_finite() {
+            next
+        } else {
+            e
         }
     }
 
@@ -831,9 +875,11 @@ mod tests {
             (a, 1.79e9 + a + 67.0)
         }));
         let mut fit = ClockFit::new(&pairs).unwrap();
+        // The pause's pair puts its break at the pause line; the 7 s step,
+        // between lines 3 s apart, stays at the line after it.
         let at: Vec<f64> = fit.breaks.iter().map(|b| b.audio_s).collect();
         assert_eq!(at.len(), 2, "{at:?}");
-        assert!((at[0] - 300.01).abs() < 1e-9 && (at[1] - 303.01).abs() < 1e-9);
+        assert!((at[0] - 300.0).abs() < 1e-9 && (at[1] - 303.01).abs() < 1e-9);
         fit.place_breaks(&[Break {
             audio_s: 300.0,
             gap_s: 60.0,
@@ -848,6 +894,44 @@ mod tests {
             "{:?}",
             fit.breaks
         );
+    }
+
+    #[test]
+    fn a_pause_the_log_alone_shows_breaks_at_the_pause_line() {
+        // The recorder's pair at a 60 s pause at 300 s, with nothing
+        // listed: its line for the last block before the pause, then its
+        // line for the first 0.1 s block after the resume. The sound in
+        // that block is resumed sound, so it maps after the gap.
+        let k = 1.0 + 20e-6;
+        let mut pairs: Vec<(f64, f64)> = (0..=30)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
+            .collect();
+        pairs.extend((0..30).map(|i| {
+            let a = 300.1 + i as f64 * 10.0;
+            (a, 1.79e9 + a * k + 60.0)
+        }));
+        let fit = ClockFit::new(&pairs).unwrap();
+        assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
+        assert!(
+            (fit.breaks[0].audio_s - 300.0).abs() < 1e-9,
+            "{:?}",
+            fit.breaks
+        );
+        assert!(
+            (fit.breaks[0].gap_s - 60.0).abs() < 1e-3,
+            "{:?}",
+            fit.breaks
+        );
+        assert!((fit.map(300.05) - (300.05 * k + 60.0)).abs() < 1e-3);
+        assert!((fit.map(299.95) - 299.95 * k).abs() < 1e-3);
+        assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
+        // Listed at its frame, the same break is matched and stays put.
+        let mut placed = fit.clone();
+        placed.place_breaks(&[Break {
+            audio_s: 300.0,
+            gap_s: 60.0,
+        }]);
+        assert_eq!(placed.breaks, fit.breaks);
     }
 
     #[test]
