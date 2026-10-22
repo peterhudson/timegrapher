@@ -18,6 +18,7 @@ use timegrapher_core::beats::Beat;
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
+use timegrapher_core::period_ticks::{period_tick_label, period_ticks};
 use timegrapher_core::periodicity::{default_wheels, Wheel};
 use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind};
 use timegrapher_core::steady_views::{self, FoldFrom};
@@ -546,6 +547,29 @@ fn sig(v: f64) -> String {
     }
 }
 
+/// Grid lines for a period axis drawn in log10 seconds, `width` points
+/// wide: at the times core's `period_ticks` names, as many as have room.
+pub fn period_grid(width: f32) -> impl Fn(GridInput) -> Vec<GridMark> {
+    let room = (width / 64.0).max(2.0) as usize;
+    move |input| {
+        let (lo, hi) = input.bounds;
+        period_ticks(10f64.powf(lo), 10f64.powf(hi), room)
+            .into_iter()
+            .map(|t| GridMark {
+                value: t.period_s.log10(),
+                step_size: [1.0, 0.5, 0.25][usize::from(t.level.min(2))],
+            })
+            .collect()
+    }
+}
+
+/// The label of a period axis' mark at `log10_s`, as core names it.
+pub fn period_label(log10_s: f64) -> String {
+    period_tick_label(10f64.powf(log10_s))
+        .unwrap_or_default()
+        .to_string()
+}
+
 /// Grid lines for an axis drawn in log10 of its values: every decade, and
 /// 2 and 5 within each when fewer than three decades show.
 fn log_grid(input: GridInput) -> Vec<GridMark> {
@@ -836,8 +860,8 @@ fn row(
             };
             let threshold = y_of(search.threshold);
             let mut plot = base
-                .x_grid_spacer(log_grid)
-                .x_axis_formatter(|m, r| log_label(m, r, secs))
+                .x_grid_spacer(period_grid(ui.available_width()))
+                .x_axis_formatter(|m, _| period_label(m.value))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top);
             plot = if log_y {
@@ -1064,8 +1088,8 @@ fn row(
             };
             let dev = both(&a.deviation);
             let white = both(&a.white);
-            base.x_grid_spacer(log_grid)
-                .x_axis_formatter(|m, r| log_label(m, r, secs))
+            base.x_grid_spacer(period_grid(ui.available_width()))
+                .x_axis_formatter(|m, _| period_label(m.value))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, |v| unit_sig(k, v)))
                 .show(ui, |p| {
@@ -1269,8 +1293,8 @@ fn row(
                 format!("{v:.d$}{unit}")
             };
             let peak = tallest_peak(&pts);
-            base.x_grid_spacer(log_grid)
-                .x_axis_formatter(|m, r| log_label(m, r, secs))
+            base.x_grid_spacer(period_grid(ui.available_width()))
+                .x_axis_formatter(|m, _| period_label(m.value))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, size))
                 .default_x_bounds(x_lo, x_hi)
@@ -1593,6 +1617,30 @@ mod tests {
     }
 
     use super::*;
+
+    /// A period axis is marked at times a watchmaker reads, in their own
+    /// units, not at 100 s and "17 min".
+    #[test]
+    fn a_period_axis_is_marked_in_watchmakers_times() {
+        let marks = period_grid(900.0)(GridInput {
+            bounds: (4f64.log10(), 60_000f64.log10()),
+            base_step_size: 0.001,
+        });
+        let labels: Vec<String> = marks.iter().map(|m| period_label(m.value)).collect();
+        assert!(labels.contains(&"1 min".to_string()), "{labels:?}");
+        assert!(labels.contains(&"1 h".to_string()), "{labels:?}");
+        assert!(
+            labels.iter().all(|l| !l.is_empty() && !l.contains("17")),
+            "{labels:?}"
+        );
+        // Narrow, fewer marks, the main ones kept.
+        let few = period_grid(200.0)(GridInput {
+            bounds: (4f64.log10(), 60_000f64.log10()),
+            base_step_size: 0.001,
+        });
+        assert!(few.len() < marks.len() && few.len() >= 3);
+        assert_eq!(period_label(1000f64.log10()), "");
+    }
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
 
