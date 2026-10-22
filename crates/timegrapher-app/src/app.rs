@@ -9,6 +9,7 @@ use crate::fields::{self, Format};
 use crate::guided;
 use crate::help;
 use crate::isochronism;
+use crate::photos;
 use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::scope;
@@ -1110,6 +1111,8 @@ pub struct TimegrapherApp {
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
+    /// The watches' photos as thumbnails, read in the background.
+    thumbs: photos::Thumbs,
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
@@ -1582,6 +1585,7 @@ impl TimegrapherApp {
             watch_form: None,
             take_ask: None,
             take_keep: None,
+            thumbs: Default::default(),
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -3994,9 +3998,10 @@ impl TimegrapherApp {
                         RichText::new("No watch matches the search.").color(pal.text_secondary),
                     );
                 }
+                let tiled = shown.iter().any(|e| !e.photos.is_empty());
                 let unsorted =
-                    !l.unsorted.takes.is_empty() && watches::unsorted_row(ui, &l.unsorted);
-                let picked = watches::list(ui, &shown);
+                    !l.unsorted.takes.is_empty() && watches::unsorted_row(ui, &l.unsorted, tiled);
+                let picked = watches::list(ui, &shown, &mut self.thumbs);
                 if unsorted {
                     show_unsorted = true;
                 }
@@ -4047,11 +4052,66 @@ impl TimegrapherApp {
         }
     }
 
-    /// The picked watch's details.
+    /// The picked watch's details and photos.
     fn watch_details(&mut self, ui: &mut egui::Ui) {
-        if let Some(e) = self.open_watch() {
-            let e = e.clone();
-            watches::details(ui, &e);
+        let Some(e) = self.open_watch().cloned() else {
+            return;
+        };
+        watches::details(ui, &e);
+        if e.photos.is_empty() {
+            return;
+        }
+        let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
+        match watches::photo_strip(ui, &e, &mut self.thumbs, writable) {
+            Some(watches::PhotoAction::Open(p)) => {
+                if let Err(err) = reveal(&p) {
+                    self.error(format!("Couldn't open {}: {err}", p.display()));
+                }
+            }
+            Some(watches::PhotoAction::Show(p)) => {
+                let dir = p.parent().unwrap_or(&p).to_path_buf();
+                if let Err(err) = reveal(&dir) {
+                    self.error(format!("Couldn't open {}: {err}", dir.display()));
+                }
+            }
+            Some(watches::PhotoAction::Delete(photo)) => {
+                self.take_ask = Some(watches::Ask::DeletePhoto { photo });
+            }
+            None => {}
+        }
+    }
+
+    /// Add Photos…: copy the photos picked into the open watch's.
+    fn add_photos(&mut self) {
+        let Some(id) = self.open_watch().map(|e| e.watch.id.clone()) else {
+            return;
+        };
+        let Some(files) = rfd::FileDialog::new()
+            .set_title("Add Photos of the Watch")
+            .add_filter(
+                "Photos",
+                &[
+                    "jpg", "jpeg", "png", "heic", "heif", "tif", "tiff", "JPG", "JPEG", "PNG",
+                    "HEIC", "HEIF", "TIF", "TIFF",
+                ],
+            )
+            .pick_files()
+        else {
+            return;
+        };
+        let Ok(Some(lib)) = &mut self.library else {
+            return;
+        };
+        match lib.add_photos(&id, &files) {
+            Ok(added) => self.info_msg(format!(
+                "Added {}.",
+                if added.len() == 1 {
+                    "1 photo".to_string()
+                } else {
+                    format!("{} photos", added.len())
+                }
+            )),
+            Err(e) => self.error(format!("The photos couldn't all be added: {e}")),
         }
     }
 
@@ -4239,6 +4299,7 @@ impl TimegrapherApp {
             watches::Ask::Rename { take, .. } | watches::Ask::Delete { take, .. } => {
                 self.take_busy(take, false)
             }
+            watches::Ask::DeletePhoto { .. } => None,
             watches::Ask::Keep { take, .. } => self.take_busy(take, true),
             watches::Ask::Add {
                 from,
@@ -4264,6 +4325,13 @@ impl TimegrapherApp {
                 Err(e) => self.error(format!("The take couldn't be deleted: {e}")),
             },
             watches::Ask::Keep { take, .. } => self.start_take_keep(take),
+            watches::Ask::DeletePhoto { photo } => match lib.delete_photo(&photo) {
+                Ok(()) => {
+                    self.thumbs.forget(&photo);
+                    self.info_msg(format!("Deleted \"{}\".", file_name(&photo)));
+                }
+                Err(e) => self.error(format!("The photo couldn't be deleted: {e}")),
+            },
             watches::Ask::Add {
                 from,
                 watch: Some(id),
@@ -4513,6 +4581,17 @@ impl TimegrapherApp {
                     new: false,
                     error: None,
                 });
+            }
+            if ui
+                .add_enabled(writable, egui::Button::new("Add Photos…"))
+                .on_hover_text(
+                    "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an \
+                     iPhone, or TIFF). The first by name leads its row in the list.",
+                )
+                .on_disabled_hover_text("This copy of the app can only read the library")
+                .clicked()
+            {
+                self.add_photos();
             }
             return;
         }
@@ -12372,6 +12451,74 @@ mod tests {
         app.save_watch_form();
         let refused = app.watch_form.as_ref().and_then(|f| f.error.clone());
         assert!(refused.is_some_and(|e| e.contains("already")));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A watch's photos lead its row in the list and show as a strip in
+    /// its details, read in the background; one that can't be read says
+    /// so by name. Delete… asks, then deletes only that photo.
+    #[test]
+    fn a_watchs_photos_show_as_thumbnails_and_one_can_be_deleted() {
+        let base = std::env::temp_dir().join(format!("tg-app-photos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let dir = lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let id = lib.watches[0].watch.id.clone();
+        let data = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata")
+            .join("photos");
+        let broken = base.join("broken.jpg");
+        std::fs::write(&broken, b"not a photo").unwrap();
+        lib.add_photos(&id, &[data.join("plain.heic"), broken])
+            .unwrap();
+        drop(lib);
+        let photos = dir.join(library::PHOTOS);
+        let (good, bad) = (photos.join("plain.heic"), photos.join("broken.jpg"));
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let pane = |ctx: &egui::Context, app: &mut TimegrapherApp| {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.pane_tools(ui, Pane::Watch);
+                    app.watch_pane(ui);
+                });
+                app.take_ask_dialog(ctx);
+            });
+            format!("{:?}", out.shapes)
+        };
+        // The list asks for the first photo (by name: broken.jpg) only.
+        pane(&ctx, &mut app);
+        app.pick_watch(&id);
+        let ready = |app: &mut TimegrapherApp, p: &Path| {
+            matches!(app.thumbs.get(&ctx, p), photos::Thumb::Ready(_))
+        };
+        let failed = |app: &mut TimegrapherApp, p: &Path| {
+            matches!(app.thumbs.get(&ctx, p), photos::Thumb::Failed(_))
+        };
+        for _ in 0..200 {
+            pane(&ctx, &mut app);
+            if ready(&mut app, &good) && failed(&mut app, &bad) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(ready(&mut app, &good) && failed(&mut app, &bad));
+        let drawn = pane(&ctx, &mut app);
+        for t in ["Add Photos…", "broken.jpg", "Can't be shown"] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+        app.take_ask = Some(watches::Ask::DeletePhoto { photo: bad.clone() });
+        pane(&ctx, &mut app);
+        let asked = pane(&ctx, &mut app);
+        assert!(asked.contains("Delete \\\"broken.jpg\\\"?"), "{asked}");
+        let ask = app.take_ask.take().unwrap();
+        app.answer_take_ask(ask);
+        assert!(!bad.exists() && good.exists());
+        assert_eq!(app.open_watch().unwrap().photos, [good]);
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

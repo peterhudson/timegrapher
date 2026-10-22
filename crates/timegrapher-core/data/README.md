@@ -327,3 +327,20 @@ beat rate. The second wheel has 15 leaves on its near section and 16 on its far
 section. The confirmed 16-leaf barrel input gives a 6-hour barrel period; the
 15-leaf section serves the dial-side motion works.
 The maker is Shanghai, per the contributor; lift angle remains unconfirmed.
+
+## AP3120 clone microscope contribution
+
+[AP3120 clone counts and mesh checks](../../../docs/ap3120-clone-train-wheel-counts.md)
+extends the existing SA3120 entry from six Peter Hudson photographs and
+bench confirmations. The 21,600 bph train is barrel 104, simple intermediate
+40 (physically confirmed to have no pinion), centre 80/13, third 75/10,
+fourth 81/10 and escape 20/9. The intermediate rim directly meshes with
+the barrel and drives both the centre and minutes-drive pinions (13 each).
+
+Periods are eight hours, 144000/13 seconds, one hour, 450 seconds, 60 seconds
+and 20/3 seconds respectively; the cannon/minutes assembly also turns hourly.
+Original Third/Fourth/Fifth filenames map to centre/third/fourth roles.
+The genuine AP3120 and Miyota-based replicas receive no transferred counts.
+The existing 53° lift setting is retained. Peter Hudson identifies Jinghe as
+the SA3120 manufacturer; it is listed under Shanghai Jinghe (clone), with
+APS/ZF retained as marketed aliases.
