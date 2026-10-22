@@ -11231,12 +11231,12 @@ mod tests {
     /// beats agree in sign either side it stays signed.
     #[test]
     fn whole_take_beat_error_keeps_its_size_across_a_turn() {
-        // 120 s at 28,800 bph with a jump at 60 s: the tock 0.6 ms late
-        // before it and `after` ms after it.
+        // 120 s at 28,800 bph with a jump at 80 s: the tock 0.6 ms late
+        // for the 640 beats before it and `after` ms for the 320 after.
         let app_with = |after: f64| {
             let beats = (0..960)
                 .map(|index| {
-                    let be = if index < 480 { 0.6 } else { after };
+                    let be = if index < 640 { 0.6 } else { after };
                     let half = be / 2000.0 * if index % 2 == 1 { 1.0 } else { -1.0 };
                     timegrapher_core::beats::Beat {
                         time: index as f64 * 0.125 + half,
@@ -11254,7 +11254,7 @@ mod tests {
                 amplitude_windows: Vec::new(),
                 clipped_beats: Vec::new(),
                 clipped_samples: 0,
-                jumps: vec![60.0],
+                jumps: vec![80.0],
                 sided: Vec::new(),
                 by_count: Vec::new(),
             };
@@ -11263,14 +11263,23 @@ mod tests {
             app
         };
         let sizes = |w: &WholeTake| w.m.caveats.contains(&Caveat::BeatErrorAsSize);
+        // Sizes across the turn, beat-weighted: (0.6 × 640 + 0.4 × 320) / 960.
+        let size = (0.6 * 640.0 + 0.4 * 320.0) / 960.0;
+        // What a signed combination would cancel to: (0.6 × 640 − 0.4 × 320) / 960.
+        let cancelled = (0.6 * 640.0 - 0.4 * 320.0) / 960.0;
         let w = app_with(-0.4).whole_take().expect("whole take");
-        let be = w.m.beat_error().unwrap();
+        let be = w.m.beat_error_ms.unwrap();
         assert!(sizes(&w));
-        assert!((0.4..=0.6).contains(&be), "{be}");
-        // Where the beats keep one sign either side, the figure keeps it.
+        assert!((be - size).abs() < 1e-3, "{be} vs {size}");
+        assert_eq!(w.m.beat_error(), Some(be));
+        assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");
+        // Where the beats keep one sign either side, the figure keeps it:
+        // the same size, signed.
         let w = app_with(0.4).whole_take().expect("whole take");
+        let be = w.m.beat_error_ms.unwrap();
         assert!(!sizes(&w));
-        assert!((0.4..=0.6).contains(&w.m.beat_error().unwrap()));
+        assert!((be.abs() - size).abs() < 1e-3, "{be} vs {size}");
+        assert!(be < 0.0, "signed: {be}");
     }
 
     /// The whole take line is `session`'s reading of the same stretch:
