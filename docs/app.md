@@ -827,7 +827,10 @@ whose `takes/` holds the takes Quick Listen made until each is filed;
 each take a standard take folder named by when it started (`2026-10-20
 14.32 Dial Up`, with the position in words when the take used only one).
 `timegrapher watches list` and `show` read it from the command line,
-without changing it ([agent-interface.md](agent-interface.md#watches)). Nothing in
+without changing it ([agent-interface.md](agent-interface.md#watches)),
+and `timegrapher record --watch NAME` records a test into a watch's
+takes while the app doesn't have the library open
+([agent-interface.md](agent-interface.md#record)). Nothing in
 it records where it is, so it can be moved, synced or copied whole; a
 take with sound files missing is listed as incomplete and never changed.
 Settings' **Library** section shows where it is and how many watches and
@@ -1008,7 +1011,8 @@ the app quits without asking (on a Mac, Cmd+Q and Quit in the app menu or
 the Dock, which can't be held back; on any system, a logout or a
 shutdown) with more than 5 s of unsaved sound, or is stopped by a crash,
 the sound stays there, and the next start says so in a
-banner with **Open** (analysed here, and offered again next time),
+banner, with when it started (in this computer's time), its length and
+size, and **Open** (analysed here, and offered again next time),
 **Move To…** (the recording's folder moved into one you pick, to open
 with Open Folder…), **Delete…** (asking first) and **Later**. A folder
 another copy of the app is recording into is never offered. The

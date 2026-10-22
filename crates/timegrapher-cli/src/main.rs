@@ -282,6 +282,11 @@ enum Command {
         /// a few hundred kB on a long take.
         #[arg(long, requires = "json")]
         views: bool,
+        /// With --json, add the time-frequency maps of each series (an
+        /// STFT and a synchrosqueezed wavelet transform): about 1.6 MB on
+        /// a 2 h take.
+        #[arg(long, requires = "json")]
+        maps: bool,
     },
     /// Check GitHub for a newer published release (one request; nothing
     /// is downloaded or installed).
@@ -365,7 +370,13 @@ enum Command {
     /// it runs, for --seconds.
     Record {
         /// The session folder (created if missing); one per watch and test.
-        folder: PathBuf,
+        /// Left out, --watch names a watch in the app's library, and the
+        /// folder is made among its takes.
+        folder: Option<PathBuf>,
+        /// The app's library, for --watch without a FOLDER (default:
+        /// Timegrapher Data in the home folder).
+        #[arg(long)]
+        library: Option<PathBuf>,
         /// Position: DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H).
         #[arg(long)]
         position: String,
@@ -381,6 +392,8 @@ enum Command {
         #[arg(long)]
         file: Option<PathBuf>,
         /// The watch, in the owner's words (for a new session file).
+        /// Without a FOLDER, a watch in the app's library: its calibre,
+        /// beat rate and lift angle fill in those not given.
         #[arg(long)]
         watch: Option<String>,
         /// The movement, from the calibre table: gives bph and lift when
@@ -797,6 +810,7 @@ fn main() -> ExitCode {
             stretch_min,
             json,
             views,
+            maps,
         } => {
             let mut cfg = StreamConfig::default();
             cfg.analysis.bph = bph;
@@ -825,6 +839,7 @@ fn main() -> ExitCode {
                     },
                     json,
                     views,
+                    maps,
                 })
             }
         }
@@ -893,6 +908,7 @@ fn main() -> ExitCode {
         }
         Command::Record {
             folder,
+            library,
             position,
             seconds,
             device,
@@ -907,6 +923,7 @@ fn main() -> ExitCode {
         } => {
             let o = record_cmd::Options {
                 folder,
+                library,
                 position,
                 seconds,
                 device,

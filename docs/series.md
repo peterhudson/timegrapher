@@ -111,6 +111,24 @@ For each series:
   false-alarm chance (see [long-runs.md](long-runs.md)).
 - **Two states**: the two-state finder over 10 s blocks (see
   [sessions.md](sessions.md)).
+- **Time and frequency** (with `--maps`): two maps of each series'
+  lines against the time of the take, on one log period axis, so a line
+  that comes and goes, or drifts, shows where and when it does. The
+  **STFT** is the amplitude spectrum of each 20 min stretch, stepped
+  5 min, every period read over the same window, from four readings up to
+  a third of the window (400 s). The **synchrosqueezed wavelet transform**
+  (SST) is a Morlet wavelet transform (ω0 = 6) whose window grows with the
+  period, with each value moved to the period its own phase turns at,
+  which sharpens a line to near its true period; it reaches up to an hour
+  or a quarter of the longest unbroken stretch, whichever is shorter.
+  Both give the sine-wave size at each period (half its peak to peak), in
+  the spectra's units. Under noise the SST spreads a line over
+  neighbouring rows, so one row reads under the line's size: read the
+  size from the STFT, and where and when from the SST. Neither reads
+  across a gap: an STFT window with a missing reading is left out, and
+  the wavelet transform runs on each unbroken stretch of at least 64
+  readings alone, with the times too near a stretch's ends for a period's
+  wavelet (its cone of influence) left empty.
 
 Across the series, the rate is correlated with the amplitude, each
 reading against the same reading. There is no lag search: the rate
@@ -275,6 +293,7 @@ headlines state facts. Everything else is as in version 1.
 | `distributions` | `overall[]`, `stretch_s` (0 when the take is not split) and `stretches[]` (`start_s`, `end_s`, `distributions[]`); each distribution has `series` (`rate`, `amplitude`, `beat_error`), `unit`, `values` (`readings` or `2 s`), `step_s`, `n`, `median`, `p10`, `p90`, `bin_width`, `edges` (one more than `counts`; bin i is from `edges[i]` up to `edges[i+1]`), `counts`, `below` and `above` (off the scale, counted in `n`), `peaks` (bin centres of separate peaks), `normal_line` (`centre`, `spread`: the straight line on probability paper; null with no spread), `quantiles` (`[share, value]` at 0.1%, 1, 5, 10, 25, 50, 75, 90, 95, 99 and 99.9% where the count resolves them), `points` (with `--views`, on the whole take's distributions only: the probability plot the app draws, `[value, z]` lowest first: each value against the normal score of its rank, every value up to 400 and evenly by rank beyond, the lowest and highest always kept), `summary` (the app's line). A series with fewer than three values has no entry. |
 | `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `headline` (all of these as numbers, whatever their size) |
 | `spectra[]` | the plain amplitude spectrum of each series, as a commercial timegrapher's FFT shows it: `series` (`rate`, `amplitude`, `beat_error`), `unit` (`ms` of timing for the rate, `deg`, `ms`), `step_s`, `period_s[]` (longest first) and `amplitude[]` (an estimate of sine-wave size at each period for complete regular inputs, half its peak to peak), and `support` (`finite_bins`, `total_bins`). The rate's comes from the beat timing, so it reaches down to the escape wheel; the amplitude's and the beat error's from their 2 s windows. Each series has its slow change taken off as the period search takes it off, a Hann window is applied and its loss corrected, and the points are thinned to at most 600 on a log period axis, keeping the largest in each slice so narrow lines survive. The period search reads the same Fourier transform but whitens it and sums harmonics to decide what stands out; this keeps the raw sizes, best drawn on log axes. |
+| `time_frequency[]` | with `--maps`: the STFT maps of `rate`, `amplitude` and `beat_error`, then their SST maps, each `series`, `method` (`stft` or `sst`), `unit` (as `spectra`), `step_s` (the series' spacing: the beat timing's for the rate, 0.25 s on takes up to 12 h, and 2 s windows for the others; for the SST, after a stretch longer than 65,536 readings is averaged down to that), `window_s` and `hop_s` (the STFT's 1200 and 300; null for the SST), `period_s[]` (48 rows, longest first, evenly spaced in log period), `t_s[]` (column times on the tests' time: each STFT window's middle, or the middle of each SST slice, at most 400), and `values[][]` (one column per `t_s`, a size per `period_s`; null where nothing was read). An SST column is the mean over its slice of the values read. A series too short for a map has none. |
 | `period_span` | with `--views`: `[lo, hi]`, log10 seconds, the periods every series' search covers between them, so the Periods plots share one axis |
 | `findings[]` | one per series where a test detected structure: `code`, `series`, `title` (what was detected), `evidence` (the headline and the statistics). Codes: `periodic`, `two_states`, `measurement_split` (two levels that show on one side only, or in the beat error from the unlock but not from the drop), `shifting_mean` (level changes), `drifting` (a trend), `wandering` (correlation between readings). A series where none was detected has none. |
 
@@ -300,6 +319,9 @@ Each entry of `series[]`:
 above, a few hundred kB on a long take (about 600 kB over 2 h 40 min), so
 plain `--json` stays small for agents. The MCP server asks for them and
 keeps them out of what the model reads.
+
+`--maps` (with `--json`) adds `time_frequency`, about 1.6 MB on a 2 h
+take (the Pepsi take's parts 6 and 7, where `--views` adds about 0.7 MB).
 
 The JSON's top-level `clock` describes the correction actually applied to
 these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and

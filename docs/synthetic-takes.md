@@ -20,6 +20,7 @@ views name its wheels.
 | `fourth-wheel` | rate ±1 s/d every 60 s | "Rate repeats every 60 s (the fourth wheel), 1.8 s/d peak to peak." | Periods, FFT, Cycle and the autocorrelation's repeat at 60 s |
 | `escape-wheel` | rate ±10 s/d every 5 s (0.18 ms of timing peak to peak) | "Rate: … the beat timing repeats every 5.0 s, the escape wheel's period, 0.18 ms peak to peak; 10 s readings are too coarse to show it." | FFT with Timing; not in the readings, since a 10 s reading is two whole turns |
 | `half-period` | rate ±1 s/d every 45 s | "Rate repeats every 45 s, 1.7 s/d peak to peak." | Periods, FFT and Cycle at 45 s, four and a half readings a turn |
+| `line-switches-on` | rate ±1.5 s/d every 60 s, from 60 min on only | "Rate repeats every 60 s (the fourth wheel), 1.3 s/d peak to peak. The rate's period search also finds 58 s and 62 s." | over the whole take as for `fourth-wheel`; the `series --json --maps` time and frequency maps show the 60 s line only from about 60 min |
 | `slow-cycle` | amplitude ±3° every 8 min | "Amplitude repeats every 8 min, 6.6° peak to peak." | Periods, FFT and Cycle at 480 s, and a bump in the Allan deviation near 180 s (for a cycle of period *P* the bump peaks near 0.37 *P*) |
 | `beat-error-cycle` | beat error ±0.1 ms every 120 s | "Beat error repeats every 120 s, 0.22 ms peak to peak." | Periods, FFT and Cycle for the beat error |
 | `letting-down` | amplitude 280° falling to 260° | "Amplitude slides from 279° to 259° (-10.0° per hour)." | Trend, and an Allan deviation that rises at long τ |
