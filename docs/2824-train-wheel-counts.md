@@ -99,6 +99,11 @@ These establish identities/specifications, not independent counts of the
 transferred trains. STP's sheet explicitly specifies **52°**; ETA's manuals
 specify **50°**. Equal train counts do not imply equal lift angles.
 
+The rows' lift angles do not come from the train counts. Peter Hudson
+gives **50°** for all 2824-2 movements and their derivatives, clones and
+variations (2026-10-22); the 28,800 bph rows that had no lift angle carry
+that figure, and STP1-11 keeps its own 52°.
+
 ### Explicit exclusions and unresolved names
 
 - **All 21,600 bph / 3 Hz variants**, including the separately named old

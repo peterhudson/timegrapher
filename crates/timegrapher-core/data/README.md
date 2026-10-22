@@ -262,8 +262,9 @@ beat rate and layout, plus these:
 Third-wheel and barrel tooth counts for every calibre except as above;
 escape wheel counts for the 2892-A2, 7750, Powermatic 80, AP and the
 Seiko/Miyota variants outside the documented research coverage; the AP clones' trains; manufacturer-published train data for
-Dandong 324 or Peacock SL1258 (photographed counts are documented below); lift angles for the Sellita, Powermatic 80,
-Seagull and Patek 324 calibres. Corrections with a source are welcome.
+Dandong 324 or Peacock SL1258 (photographed counts are documented below); lift angles from a published source for the Sellita, Seagull and other
+2824-family calibres (they carry a contributor's 50°, below), and any lift
+angle for the Powermatic 80 and Patek 324. Corrections with a source are welcome.
 
 Built from manufacturer documents, technical guides, parts catalogues,
 watchmaking references and forum teardowns, cited per entry; nothing was
@@ -275,6 +276,14 @@ See [the evidence and coverage audit](../../../docs/2824-train-wheel-counts.md)
 for the 28,800 bph counts, exact fractional second/barrel periods, cannon
 mesh inference, and source-labelled transfers to 39 catalogue rows.
 Three-hertz, Power+ and ambiguous clone identities are excluded.
+
+Peter Hudson gives a 50° lift angle for all 2824-2 movements and their
+derivatives, clones and variations (2026-10-22). The 32 rows at 28,800 bph
+in this family that had no lift angle now carry 50° credited to him; it
+is his figure, not inferred from the shared train. The four rows with a
+lift angle from their own source keep it (STP1-11 52°, Enicar 2824 53°,
+Eterna 12824 52°, ETA 2824 at 21,600 bph 53°), and their notes give his
+50° beside it. The Powermatic 80 is not covered.
 
 ## VR32xx microscope contribution
 

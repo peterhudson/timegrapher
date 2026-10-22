@@ -1845,6 +1845,7 @@
     "common": true,
     "bph": 28800,
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "seconds": "centre",
     "wheels": [
       {
@@ -1897,10 +1898,11 @@
     "sources": [
       "https://calibercorner.com/seagull-caliber-ty2130",
       "https://en.seagullwatch.com/products/hands-date-movement-ty2130-st2130: maker's page, \"Frequency: 28800 (no unit stated on page)\"",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "PTS DG2813",
@@ -19260,9 +19262,11 @@
     ],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ENICAR 2824, 53°, 28800 vph)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2824, 53°, 28800 vph)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Enicar 2824, 53°, 28800 vph)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
-    "confidence": "published list"
+    "confidence": "published list",
+    "notes": "Peter Hudson gives 50° for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); this entry keeps its own source's 53°."
   },
   {
     "calibre": "Enicar 2825",
@@ -57009,10 +57013,11 @@
     ],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 2824, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 2824, 53°, 21600 vph)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (ETA 2824, 53°, 21600 vph)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "confidence": "published list",
-    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 50° (this project's checked entry, ETA 2824-2)."
+    "notes": "Sources disagree; kept as separate entries. Others give 28,800 bph and 50° (this project's checked entry, ETA 2824-2). Peter Hudson gives 50° for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); this entry keeps its own source's 53°."
   },
   {
     "calibre": "ETA 2825",
@@ -57708,9 +57713,11 @@
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Eterna 12824, 52°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Eterna 12824, 52°)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
-    "confidence": "published list"
+    "confidence": "published list",
+    "notes": "Peter Hudson gives 50° for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); this entry keeps its own source's 52°."
   },
   {
     "calibre": "Excelsior Park 01.04.68",
@@ -76970,11 +76977,13 @@
     ],
     "sources": [
       "https://en.seagullwatch.com/products/hands-date-movement-ty2100-st2100: maker's page, \"Frequency: 28800 (no unit stated on page)\"",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage.",
-    "escape_teeth": 20
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
+    "escape_teeth": 20,
+    "lift_angle_deg": 50
   },
   {
     "calibre": "Seagull ST8000",
@@ -77076,11 +77085,13 @@
     ],
     "sources": [
       "https://en.seagullwatch.com/products/multifunction-moon-phase-movement-ty2108-st2108: maker's page, \"Frequency: 28800 (no unit stated on page)\"",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage.",
-    "escape_teeth": 20
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Seagull publishes the beat rate; equality of the base train is a family inference under contributor coverage. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
+    "escape_teeth": 20,
+    "lift_angle_deg": 50
   },
   {
     "calibre": "Seagull ST2553JK1",
@@ -77468,9 +77479,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77520,7 +77533,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -77532,9 +77545,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77584,7 +77599,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -77596,9 +77611,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77648,7 +77665,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -77660,9 +77677,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77712,7 +77731,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -77724,9 +77743,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77776,7 +77797,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -77788,9 +77809,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77840,7 +77863,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -77854,9 +77877,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77906,7 +77931,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -77920,9 +77945,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -77972,7 +77999,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -77984,9 +78011,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78036,7 +78065,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78048,9 +78077,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78100,7 +78131,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78112,9 +78143,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78164,7 +78197,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -78176,9 +78209,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78228,7 +78263,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -78240,9 +78275,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78292,7 +78329,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -78304,9 +78341,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78356,7 +78395,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -78368,9 +78407,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78420,7 +78461,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78432,9 +78473,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78484,7 +78527,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78496,9 +78539,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78548,7 +78593,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78560,9 +78605,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78612,7 +78659,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78626,9 +78673,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78678,7 +78727,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78692,9 +78741,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78744,7 +78795,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78756,9 +78807,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78808,7 +78861,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78820,9 +78873,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78872,7 +78927,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78886,9 +78941,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -78938,7 +78995,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "centre"
   },
   {
@@ -78950,9 +79007,11 @@
     "bph": 28800,
     "sources": [
       "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79002,7 +79061,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant.",
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Complication wheels are not counted; only the base going train and cannon pinion are represented. Lift angle is left unspecified for this separate variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train.",
     "seconds": "small seconds"
   },
   {
@@ -79015,9 +79074,11 @@
     "bph": 28800,
     "sources": [
       "https://www.nejpanskehodinky.cz/user/related_files/geckota_manual_2020_%281%29.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79067,7 +79128,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "STP1-11",
@@ -79078,7 +79139,8 @@
     "bph": 28800,
     "sources": [
       "https://www.boschett-timepieces.com/docu/Boschett-Cave-Dweller-B03-3-03.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "lift_angle_deg": 52,
     "escape_teeth": 20,
@@ -79131,7 +79193,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. Peter Hudson gives 50° for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); this entry keeps its own source's 52°."
   },
   {
     "calibre": "Soprod P024",
@@ -79142,9 +79204,11 @@
     "bph": 28800,
     "sources": [
       "https://watchguy.co.uk/tmp/automatique_soprod_p024_especificaciones_tecnicas.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79194,7 +79258,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "Hangzhou 6300",
@@ -79206,9 +79270,11 @@
     "bph": 28800,
     "sources": [
       "https://www.gl-branding.com/news/wp-content/uploads/2015/05/CTK-catalogue-2015.pdf",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79258,7 +79324,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "Valanvron VAL24",
@@ -79269,9 +79335,11 @@
     "bph": 28800,
     "sources": [
       "https://sourcing.hktdc.com/en/Product-Detail/Swiss-Made-Automatic-Watch-Movement-1X09EEAK",
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79321,7 +79389,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "SH31xx (ETA 2824 base)",
@@ -79332,9 +79400,11 @@
     ],
     "bph": 28800,
     "sources": [
-      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)"
+      "docs/2824-train-wheel-counts.md (Peter Hudson microscope photographs, 2026-10-19; counted base train, explicit variant applicability)",
+      "Peter Hudson, 2026-10-22: lift angle 50° for all ETA 2824-2 movements and their derivatives, clones and variations"
     ],
     "escape_teeth": 20,
+    "lift_angle_deg": 50,
     "wheels": [
       {
         "name": "barrel",
@@ -79384,7 +79454,7 @@
       }
     ],
     "confidence": "inferred family transfer",
-    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant."
+    "notes": "28,800 bph 2824 base train only. The centre wheel slot denotes the off-centre second/intermediate wheel (77/17), not the one-hour cannon pinion. The third pinion (13) drives the cannon wheel (78): 600 x 78/13 = 3600 s. Barrel running period is 4666200/221 s; this is not power reserve. See the evidence document for applicability and exclusions. Train counts are transferred from the photographed base, not separately measured on this variant. The 50° lift angle is Peter Hudson's figure for all 2824-2 movements and their derivatives, clones and variations (2026-10-22); it is not inferred from the shared train."
   },
   {
     "calibre": "SH3235",
