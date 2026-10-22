@@ -113,6 +113,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "calibre": o.train.calibre,
             "escape_teeth": o.train.escape_teeth,
             "named_wheels": lc.wheels,
+            "reference_lines": crate::long::reference_lines(&lc.wheels),
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,
             "wind_h": o.check.wind_h,

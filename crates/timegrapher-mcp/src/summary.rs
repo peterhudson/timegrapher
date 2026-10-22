@@ -186,6 +186,9 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             }
         }
     } else if schema.starts_with("timegrapher.session/") {
+        if let Some(l) = power_reserve(&doc["power_reserve"]) {
+            lines.push(l);
+        }
         lines.push("Readings by position:".to_string());
         for r in doc["readings"].as_array().into_iter().flatten() {
             let m = &r["measurement"];
@@ -216,6 +219,42 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         lines.extend(limits.into_iter().map(|l| format!("- {l}")));
     }
     Some(lines.join("\n"))
+}
+
+/// A Power Reserve take's run, as the CLI's text gives it, with the stops
+/// on the way and the hours read.
+fn power_reserve(p: &Value) -> Option<String> {
+    let run_s = p["run_s"].as_f64()?;
+    let ending = match p["ending"].as_str()? {
+        "stopped" => "to the watch stopping",
+        "by_hand" => "stopped by hand while the watch still ran",
+        "limit" => "reached the 80 h limit while the watch still ran",
+        _ => return None,
+    };
+    let position = position_name(p["position"].as_str().unwrap_or(""));
+    let mut s = format!(
+        "Power reserve: {} in {position}, {ending}.",
+        timegrapher_core::power_reserve::run_text(run_s)
+    );
+    let pauses = p["pauses"].as_array().map_or(0, |a| a.len()) as u64;
+    if pauses > 0 {
+        s += &format!(
+            " The beats stopped for 30 s or more and came back {} on the way.",
+            if pauses == 1 {
+                "once".to_string()
+            } else {
+                format!("{pauses} times")
+            }
+        );
+    }
+    let hours = p["hours"].as_array().map_or(0, |a| a.len()) as u64;
+    if hours > 0 {
+        s += &format!(
+            " Measured hour by hour: {} in `hours`.",
+            count(hours, "hour", "hours")
+        );
+    }
+    Some(s)
 }
 
 /// A recorded take: what was recorded, what its quick check measured, the
@@ -536,6 +575,40 @@ mod tests {
         assert!(s.contains("- Dial Up (DU): rate +6.0 s/day"), "{s}");
         assert!(s.contains("largest amplitude difference between any two positions (not vertical against horizontal): 28.4° (d_amplitude)"), "{s}");
         assert!(s.contains("vertical minus horizontal amplitude (mean of the crown positions minus mean of dial up and dial down): -15.6° (dvh_amplitude)"), "{s}");
+    }
+
+    #[test]
+    fn a_power_reserve_take_leads_with_its_run() {
+        let doc = json!({
+            "schema": "timegrapher.session/1",
+            "power_reserve": { "schema": "power-reserve/1", "position": "DU",
+                "ending": "stopped", "run_s": 151_380.0,
+                "pauses": [{ "from_s": 100.0, "to_s": 140.0 }],
+                "hours": [{ "hour": 0 }, { "hour": 1 }, { "hour": 2 }] },
+            "readings": [],
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert!(
+            s.starts_with(
+                "Power reserve: 42 h 03 min in Dial Up (DU), to the watch stopping. The \
+                 beats stopped for 30 s or more and came back once on the way. Measured \
+                 hour by hour: 3 hours in `hours`.\nReadings by position:"
+            ),
+            "{s}"
+        );
+        let mut by_hand = doc.clone();
+        by_hand["power_reserve"]["ending"] = json!("by_hand");
+        by_hand["power_reserve"]["pauses"] = json!([]);
+        by_hand["power_reserve"]["hours"] = json!([]);
+        assert!(lead(&by_hand, &Map::new()).unwrap().starts_with(
+            "Power reserve: 42 h 03 min in Dial Up (DU), stopped by hand while the watch \
+             still ran.\nReadings"
+        ));
+        let mut plain = doc.clone();
+        plain.as_object_mut().unwrap().remove("power_reserve");
+        assert!(lead(&plain, &Map::new())
+            .unwrap()
+            .starts_with("Readings by position:"));
     }
 
     #[test]

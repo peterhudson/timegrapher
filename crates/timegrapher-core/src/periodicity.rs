@@ -35,15 +35,48 @@ pub fn standard_wheels(bph: u32, escape_teeth: u32) -> Vec<Wheel> {
     ]
 }
 
-/// The wheels to name when the movement is not known. Escape wheels have
-/// 15 teeth in many movements and 20 in others (the ETA 2824 family and
-/// Rolex's), so both turn periods are named "escape wheel" and the line
-/// the recording shows picks one: at 28,800 vph they are 3.75 s and 5 s,
-/// and neither is a whole multiple of the other.
-pub fn default_wheels(bph: u32) -> Vec<Wheel> {
-    let mut w = standard_wheels(bph, 15);
-    w.insert(1, standard_wheels(bph, 20).remove(0));
-    w
+/// The wheels to name when the movement is not known: none. Which wheel
+/// turns once a minute or once an hour, and how many teeth the escape
+/// wheel has, depend on the calibre, so without one no cycle is named
+/// after a wheel; [`reference_lines`] mark the common periods instead.
+pub fn default_wheels(_bph: u32) -> Vec<Wheel> {
+    Vec::new()
+}
+
+/// The escape wheel's two common turn periods, for a calibre whose table
+/// gives no escape wheel. Escape wheels have 15 teeth in many movements
+/// and 20 in others (the ETA 2824 family and Rolex's), so both are named
+/// "escape wheel" and the line the recording shows picks one: at 28,800
+/// vph they are 3.75 s and 5 s, and neither is a whole multiple of the
+/// other.
+pub fn common_escape_wheels(bph: u32) -> Vec<Wheel> {
+    [15, 20]
+        .into_iter()
+        .map(|t| standard_wheels(bph, t).remove(0))
+        .collect()
+}
+
+/// A period marked on a chart for reference, not a wheel.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReferenceLine {
+    pub label: &'static str,
+    pub period_s: f64,
+}
+
+/// What to mark when no wheel is named: one minute and one hour, the
+/// periods a seconds hand's and a minute hand's wheels turn at in most
+/// movements, given as periods alone.
+pub fn reference_lines() -> Vec<ReferenceLine> {
+    vec![
+        ReferenceLine {
+            label: "1 min",
+            period_s: 60.0,
+        },
+        ReferenceLine {
+            label: "1 h",
+            period_s: 3600.0,
+        },
+    ]
 }
 
 /// A series sampled into bins of equal length, with gaps left out.
@@ -248,14 +281,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_wheels_name_both_escape_wheels() {
-        let escape: Vec<f64> = default_wheels(28800)
-            .iter()
-            .filter(|w| w.name == "escape wheel")
-            .map(|w| w.period_s)
+    fn common_escape_wheels_are_both_escape_wheels() {
+        let escape: Vec<(String, f64)> = common_escape_wheels(28800)
+            .into_iter()
+            .map(|w| (w.name, w.period_s))
             .collect();
-        assert_eq!(escape, vec![3.75, 5.0]);
-        assert!(default_wheels(21600).iter().any(|w| w.period_s == 60.0));
+        assert_eq!(
+            escape,
+            vec![("escape wheel".into(), 3.75), ("escape wheel".into(), 5.0)]
+        );
+    }
+
+    #[test]
+    fn with_no_calibre_no_wheel_is_named_and_reference_lines_are_plain() {
+        assert!(default_wheels(28800).is_empty());
+        assert!(default_wheels(21600).is_empty());
+        let r: Vec<(&str, f64)> = reference_lines()
+            .iter()
+            .map(|l| (l.label, l.period_s))
+            .collect();
+        assert_eq!(r, vec![("1 min", 60.0), ("1 h", 3600.0)]);
     }
 
     #[test]

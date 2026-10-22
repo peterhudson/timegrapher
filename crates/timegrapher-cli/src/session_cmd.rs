@@ -12,7 +12,7 @@ use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
-use timegrapher_core::periodicity::{standard_wheels, Wheel};
+use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::session::{
     self, Finding, Manifest, Position, Reading, RecordingEntry, SessionReport,
 };
@@ -87,12 +87,12 @@ impl Options {
         } else {
             inherited
         };
+        // With no calibre and no `escape_teeth`, no wheel is named.
         let teeth = m
             .escape_teeth
-            .or(train.calibre.as_ref().and_then(|c| c.escape_teeth))
-            .unwrap_or(15);
+            .or(train.calibre.as_ref().map(|c| c.escape_teeth.unwrap_or(15)));
         Ok(SessionCalibre {
-            train: train.with_escape_teeth(Some(teeth)),
+            train: train.with_escape_teeth(teeth),
             manifest_name,
         })
     }
@@ -594,7 +594,6 @@ fn read_one_inner(
         None => expand_dirs(std::slice::from_ref(&path))?,
     };
     let (cfg, cal) = stream_config(c)?;
-    let escape_teeth = cfg.analysis.escape_teeth;
     if c.quiet {
     } else if c.tty {
         eprint!("\r{:<70}", format!("analysing {} ({})", e.file, position));
@@ -670,16 +669,16 @@ fn read_one_inner(
         Vec::new()
     } else {
         let lc = LongConfig {
-            wheels: match cal {
-                Some(_) => c.calibre.train.wheels(log.bph),
-                None => standard_wheels(log.bph, escape_teeth),
-            }
-            .into_iter()
-            .chain(c.m.wheels.iter().map(|(name, &period_s)| Wheel {
-                name: name.clone(),
-                period_s,
-            }))
-            .collect(),
+            wheels: c
+                .calibre
+                .train
+                .wheels(log.bph)
+                .into_iter()
+                .chain(c.m.wheels.iter().map(|(name, &period_s)| Wheel {
+                    name: name.clone(),
+                    period_s,
+                }))
+                .collect(),
             ..Default::default()
         };
         let part = trimmed(&log, settle, end);
