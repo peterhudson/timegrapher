@@ -210,6 +210,34 @@ pub struct Reference {
     pub beat_error_ms: Option<f64>,
     /// Where the numbers came from, e.g. "No. 1900, lift 52°".
     pub source: Option<String>,
+    /// The clock the reference's rate was read on; left out, not recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<ReferenceClock>,
+}
+
+/// The clock a [`Reference`]'s rate was read on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceClock {
+    /// The reference instrument's own time base (a bench timegrapher's
+    /// crystal): set beside a clock-corrected reading.
+    Own,
+    /// This sound card's clock (another program reading the same
+    /// recording): set beside an uncorrected reading.
+    SoundCard,
+}
+
+impl Reference {
+    /// Whether the reference's rate is on the same clock as a reading's:
+    /// `own` beside a clock-corrected reading, `sound_card` beside an
+    /// uncorrected one. A reference with no `clock` is taken as matching an
+    /// uncorrected reading, as the report has always set them side by side.
+    pub fn same_clock_as(&self, calibrated: bool) -> bool {
+        match self.clock {
+            Some(ReferenceClock::Own) => calibrated,
+            Some(ReferenceClock::SoundCard) | None => !calibrated,
+        }
+    }
 }
 
 /// Rate, amplitude and beat error over the measured part of a recording.

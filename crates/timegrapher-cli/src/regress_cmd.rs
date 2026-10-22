@@ -1311,6 +1311,7 @@ mod tests {
             amplitude_deg: Some(amp),
             beat_error_ms: Some(be),
             source: None,
+            clock: None,
         }
     }
 

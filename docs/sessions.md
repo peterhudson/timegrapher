@@ -37,7 +37,7 @@ file = "dandong_DU.flac"        # a file, or a folder of segments
 position = "DU"                 # see below
 wind_h = 0                      # hours since the watch was fully wound
 date = "2026-10-08T20:41Z"
-reference = { rate = 1.0, amplitude = 290, beat_error = 0.3, source = "tg on the same file, lift 55" }   # example values
+reference = { rate = 1.0, amplitude = 290, beat_error = 0.3, source = "tg on the same file, lift 55", clock = "sound_card" }   # example values
 
 [[recording]]
 file = "ym42_DU_2h"
@@ -112,15 +112,30 @@ folder, or edit `lift_known = true` only if that supplied context applies to all
 of the session's takes. Existing context is retained when no new lift is given.
 
 A `reference` can describe tg on the same file or a bench instrument. Its
-`source` is descriptive text; it does not declare a machine-readable clock
-basis. The HTML report labels the measured rate as sound-card-clock or clock
-corrected and retains the supplied reference value. For clock-corrected readings,
-it omits the rate Difference rather than subtracting rates whose clock bases
-may differ. This also applies to an explicit zero-ppm correction. Uncorrected
-readings retain the existing difference; check the reference source for a
-matching basis. A rate chart containing any clock-corrected reading omits its
-reference-rate overlay, with an explanatory note; the table keeps all reference
-values. Amplitude comparisons and the calibrated headline rate are unchanged.
+`source` is descriptive text. Its `clock` says which clock its rate was
+read on:
+
+- `clock = "own"`: the reference instrument's own time base, such as a
+  bench timegrapher's crystal listening to the watch beside this
+  recording. Its rate is set beside a clock-corrected reading (a clock
+  log, or a stored or given correction).
+- `clock = "sound_card"`: this sound card's clock, as for tg or another
+  program reading the same recording. Its rate is set beside an
+  uncorrected reading.
+- Left out: not recorded. Its rate is set beside an uncorrected reading,
+  as before; check the source for a matching basis.
+
+The HTML report labels the measured rate as sound-card-clock or clock
+corrected and the reference by its clock, and keeps every supplied value.
+The rate Difference is given only where the two clocks match, and is "—"
+otherwise (as for a clock-corrected reading, an explicit zero-ppm
+correction included, beside a reference whose clock is not recorded). A
+reference's own clock error is not corrected. The rate chart overlays the
+reference rates only when every reading is on one clock and every
+reference rate on that clock too, and otherwise says why it leaves them
+out; the table keeps all reference values. Amplitude comparisons and the
+calibrated headline rate are unchanged. The JSON gives each reading's
+`reference` as the session file set it, `clock` included when given.
 
 A recording on a corpus holdout take may also carry
 `fault = { id = "...", side = "Tick", source = "bench: ..." }`, the fault a
