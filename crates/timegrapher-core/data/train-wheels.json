@@ -80066,11 +80066,10 @@
     "notes": "GMT variant has its own fourth wheel and cannon-pinion parts; only the documented escape count and hand-arbor periods are transferred. No lift angle inferred from 9015. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
-    "calibre": "SH240",
+    "calibre": "Patek 240 Clone",
     "maker": "Shanghai (clone)",
     "family": [
-      "Patek 240 Clone",
-      "PP 240 Clone",
+      "PP240 Clone",
       "Patek Philippe 240 Clone"
     ],
     "escape_teeth": 20,

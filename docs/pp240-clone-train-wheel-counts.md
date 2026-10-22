@@ -1,10 +1,10 @@
-# SH240 (Patek 240 clone): photographed train-wheel counts
+# Patek 240 clone: photographed train-wheel counts
 
 Peter Hudson supplied six microscope photographs on 2026-10-21, identifying the
 specimen as a Patek 240 clone. On 2026-10-22 he identified its maker as
 Shanghai. No existing clone record was found in the catalogue, so the new entry
-is **SH240**, with maker **Shanghai (clone)**, following the catalogue's SH
-prefix for Shanghai clones; "Patek 240 Clone" also finds it. These photographs
+is **Patek 240 Clone**, with maker **Shanghai (clone)**, the name the movement
+commonly goes by; "PP240 Clone" also finds it. These photographs
 do not establish genuine Patek Philippe 240 counts or specifications.
 
 ## Direct counts
