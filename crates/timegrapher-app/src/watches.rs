@@ -23,7 +23,9 @@ pub const HELP: &[&str] = &[
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
     "Each take shows what it measured when it was saved, its length and the space it uses. \
-     Picking one opens it as Open does; right-clicking it offers Rename…, Keep Analysis \
+     Clicking one picks it and shows its Open and Replay buttons; double-clicking opens it \
+     as Open does, and the take already on show is not read again. Right-clicking it \
+     offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
      Another Watch and Delete…. A take opened from outside the library can be copied or \
      moved into a watch with Add to a Watch…, beside Open….",
@@ -155,6 +157,7 @@ fn tile(ui: &egui::Ui, rect: egui::Rect, tex: Option<&egui::TextureHandle>, name
 /// in small grey type under it, after its `lead`.
 fn row(
     ui: &mut egui::Ui,
+    picked: bool,
     lead: Lead,
     top: &str,
     right: &str,
@@ -164,7 +167,9 @@ fn row(
     let pal = theme::pal(ui);
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 40.0), Sense::click());
-    if resp.hovered() {
+    if picked {
+        ui.painter().rect_filled(rect, 6.0, pal.control_active);
+    } else if resp.hovered() {
         ui.painter().rect_filled(rect, 6.0, pal.control_hover);
     }
     let mut left = rect.left() + 8.0;
@@ -233,6 +238,7 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
         }
         if row(
             ui,
+            false,
             lead,
             &w.name,
             &fmt_bytes(e.bytes()),
@@ -252,6 +258,7 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
 pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool) -> bool {
     row(
         ui,
+        false,
         if tiled {
             Lead::Photo(None, &e.watch.name)
         } else {
@@ -409,6 +416,8 @@ pub fn photo_strip(
 /// What to do with a take.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TakeAction {
+    /// Picked in the list, not opened.
+    Pick(PathBuf),
     Open(PathBuf),
     Replay(PathBuf),
     Show(PathBuf),
@@ -430,6 +439,10 @@ pub struct TakesContext<'a> {
     pub writable: bool,
     pub keeping: Option<(&'a std::path::Path, f32)>,
     pub unsorted: bool,
+    /// The take picked in the list, and the one on show (open, or
+    /// opening).
+    pub picked: Option<&'a std::path::Path>,
+    pub on_show: Option<&'a std::path::Path>,
 }
 
 /// What a take measured and is, in a line: its positions, length, rate,
@@ -495,21 +508,53 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
     for t in &e.takes {
         let dir = e.take_dir(t);
         let replays = t.audio && !t.incomplete;
+        let on_show = cx.on_show == Some(dir.as_path());
+        let picked = cx.picked == Some(dir.as_path());
         let r = row(
             ui,
+            picked,
             Lead::None,
             &t.name,
-            &fmt_bytes(t.bytes),
-            &take_line(t),
-            if t.incomplete {
-                "Files this take lists are missing (still syncing, or copied in part): it is \
-                 left as it is. Click to open what is there."
+            &if on_show {
+                format!("On Show · {}", fmt_bytes(t.bytes))
             } else {
-                "Open this take, as Open does. Right-click for more."
+                fmt_bytes(t.bytes)
+            },
+            &take_line(t),
+            if on_show {
+                "This take is on show. Right-click for more."
+            } else if t.incomplete {
+                "Files this take lists are missing (still syncing, or copied in part): it is \
+                 left as it is. Double-click to open what is there."
+            } else {
+                "Click to pick this take, double-click to open it. Right-click for more."
             },
         );
-        if r.clicked() {
+        if r.double_clicked() {
             act = Some(TakeAction::Open(dir.clone()));
+        } else if r.clicked() {
+            act = Some(TakeAction::Pick(dir.clone()));
+        }
+        // The picked take's own buttons: nothing opens until asked.
+        if picked && !on_show {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                if ui
+                    .button("Open")
+                    .on_hover_text("Analyse the whole take; a long take takes a while to read")
+                    .clicked()
+                {
+                    act = Some(TakeAction::Open(dir.clone()));
+                }
+                if ui
+                    .add_enabled(replays, egui::Button::new("Replay"))
+                    .on_hover_text("Play the take through as if live")
+                    .on_disabled_hover_text("This take has no sound to replay")
+                    .clicked()
+                {
+                    act = Some(TakeAction::Replay(dir.clone()));
+                }
+            });
         }
         if let Some((_, done)) = cx.keeping.filter(|(k, _)| *k == dir) {
             ui.horizontal(|ui| {

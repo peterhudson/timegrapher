@@ -19,7 +19,7 @@
 //! comes late. Tick is whichever beat a reading locks on first, so the sign
 //! holds within one run only; text shows the size.
 
-use crate::amplitude::{standard_error, AmplitudeWindow};
+use crate::amplitude::AmplitudeWindow;
 use crate::confidence::{self, Confidence, Doubts};
 use crate::timing::WindowFit;
 use serde::Serialize;
@@ -225,8 +225,8 @@ pub fn assess(
                 Some(t) => rate_se_over(rate_windows, t),
                 None => confidence::rate_se(rate_windows),
             },
-            standard_error(&amps),
-            standard_error(&bes),
+            confidence::standard_error(&amps),
+            confidence::standard_error(&bes),
         )
     });
     Assessment {

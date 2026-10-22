@@ -72,8 +72,10 @@ be read shows its name and "Can't be shown" instead), and its **Takes**,
 newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
 size) it measured when saved, the space it uses, and **Analysis Only** or
-**Incomplete** when it is one. Clicking a take opens it as Open… does;
-right-clicking offers **Open**, **Replay** (when it has its sound),
+**Incomplete** when it is one. Clicking a take picks it and shows its
+**Open** and **Replay** buttons under it; double-clicking opens it as
+Open… does. The take on show is marked **On Show** and is not read again
+when opened again. Right-clicking offers **Open**, **Replay** (when it has its sound),
 **Show in Finder**, **Rename…** (its folder; nothing relies on the name),
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone). Keep Analysis Only… asks
@@ -214,7 +216,8 @@ time names it in its tab ("Rate · 30 s"). A pane's own time sets everything
 in it that Average Over would. Changing Readings' Average Over puts every
 pane back on it, dropping their own times. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
-median of its 2 s windows, estimated from successive window differences.
+median of its 2 s windows, estimated from successive window differences
+and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
@@ -239,8 +242,10 @@ each reading explains it at length.
 **What limits a reading.** Each figure carries its ±, worked out as
 `analyze` and `session` work out theirs (`timegrapher_core::measure`),
 over the averaging time. These are model-based precision estimates, not
-bounds on total error or measures of the watch's true variation. Correlated
-window readings can make the estimates too small. The
+bounds on total error or measures of the watch's true variation. Window
+readings that follow one another are counted as fewer independent ones,
+from their lag-one correlation; memory of another shape can still make
+the estimates too small. The
 [precision assumptions and probes](measurement-precision.md) explain what
 is calculated and what has been checked. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±
@@ -255,13 +260,16 @@ default (calibre not set)" when no calibre or lift angle is set
 (amplitude), a beat rate set that differs from the one heard, and pauses
 in the stretch. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
-Tock named by the beat count across 1 break"). Where the beat error's
-sign differs either side of a cut (a pause, a jump, a move or its
-settling) among the beats of the position the whole-take line covers
-(the decision `analyze` makes over its stretches), that line under the
-Beat Error card is the mean and spread of every reading's size, and a
-line under it says "whole take given as a size: its sign differs either
-side of a cut".
+Tock named by the beat count across 1 break"). Once stopped, a line under each card gives the whole take in the
+position the watch is in, settling left out, as `timegrapher session`
+reads it (core `session::measure_masked`, the time in other positions
+masked): the rate fitted over every beat, the amplitude and beat error
+the median of the 2 s windows, each with its ±, and the 5th to 95th
+percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
+error's sign differs either side of a cut (a pause, a jump, a move or
+its settling) in that stretch, the line combines the sizes either side,
+as `session` does, and a line under it says "whole take given as a
+size: its sign differs either side of a cut".
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
@@ -352,7 +360,8 @@ measured clock when there is one): each position by name ("Crown Up
 its amplitude and its beat error (a size); the position under way says
 how far its settling or measuring has got. Then a Mean row, the largest
 difference between the rates (D), vertical less horizontal for rate and
-amplitude (DVH), and a plain line for each condition found in a
+amplitude (DVH), all from core `session::indices`, the values
+`session` gives (a position read twice is averaged first), and a plain line for each condition found in a
 position's sound: no regular beat (with its timing scatter), clipping,
 under 10 s of beats, a beat error given as a size because its sign
 differs either side of a cut, or Tick and Tock named by the beat count
