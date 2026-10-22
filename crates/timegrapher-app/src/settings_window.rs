@@ -64,6 +64,8 @@ pub const LIBRARY_HELP: &[&str] = &[
      another computer. Move Library… moves it and keeps using it there; Choose Another… uses \
      a library somewhere else, such as one copied from another computer, or an empty folder \
      for a new one. Use the Default goes back to Timegrapher Data in your home folder.",
+    "Only one copy of the app at a time can change a library. A second copy opens it to read \
+     only, and says so here; the library can't be moved while another copy has it open.",
 ];
 
 /// What the Library section asks the app to do.
@@ -144,6 +146,9 @@ pub fn library_section(
                 count(takes, "take", "takes"),
                 crate::app::fmt_bytes(l.bytes())
             ));
+            if let (Some(why), None) = (&l.read_only, moving) {
+                ui.label(RichText::new(format!("{why}.")).color(pal.text_secondary));
+            }
             if !l.unreadable.is_empty() {
                 ui.label(
                     RichText::new(format!(

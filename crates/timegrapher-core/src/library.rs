@@ -27,6 +27,12 @@
 //! folders stay the truth. Nothing here deletes or repairs anything: a
 //! take with sound files missing (half synced, or copied in part) is
 //! listed as incomplete, as it is.
+//!
+//! The first copy of the app to open a library holds a lock on
+//! `.library.lock` at its top while it has it open. Another copy opens it
+//! read-only: it lists the watches but changes nothing, not even the
+//! cache. The system lets go of the lock when the app ends, however it
+//! ends.
 
 use crate::session::{Manifest, Position};
 use serde::{Deserialize, Serialize};
@@ -41,6 +47,7 @@ pub const WATCH_FILE: &str = "watch.toml";
 pub const TAKES: &str = "takes";
 pub const PHOTOS: &str = "photos";
 pub const CACHE_FILE: &str = ".cache.json";
+pub const LOCK_FILE: &str = ".library.lock";
 /// The library's folder name in the user's home folder, by default.
 pub const DEFAULT_NAME: &str = "Timegrapher Data";
 
@@ -315,6 +322,11 @@ pub struct Library {
     /// Folders that look like a watch or a take but couldn't be read, and
     /// why: listed, never changed.
     pub unreadable: Vec<String>,
+    /// Why this copy of the app can only read the library (another copy
+    /// has it open, or its folder can't be written), else `None`.
+    pub read_only: Option<String>,
+    /// The lock held while the library is open here, shared by clones.
+    lock: Option<std::sync::Arc<fs::File>>,
 }
 
 /// A take's fingerprint for the cache: the bytes and newest change of
@@ -376,13 +388,32 @@ impl Library {
                 f.format
             ));
         }
+        let (lock, read_only) = match lock(root) {
+            Ok(f) => (Some(std::sync::Arc::new(f)), None),
+            Err(why) => (None, Some(why)),
+        };
         let mut lib = Library {
             root: root.to_path_buf(),
             watches: Vec::new(),
             unreadable: Vec::new(),
+            read_only,
+            lock,
         };
         lib.scan();
         Ok(lib)
+    }
+
+    /// Let go of the lock, so the library can be moved; it reads as
+    /// read-only from then on.
+    pub fn unlock(&mut self) {
+        self.lock = None;
+        self.read_only
+            .get_or_insert_with(|| "The library is being moved, so it can only be read".into());
+    }
+
+    /// `Err` saying why, where this copy of the app can only read.
+    fn writable(&self) -> Result<(), String> {
+        self.read_only.clone().map_or(Ok(()), Err)
     }
 
     /// The library at `root`, made there first when the folder is missing
@@ -461,7 +492,7 @@ impl Library {
         self.watches
             .sort_by_key(|w| (w.watch.name.to_lowercase(), w.watch.name.clone()));
         // A cache that can't be written is only slower next time.
-        if let Ok(b) = serde_json::to_vec(&cache) {
+        if let (None, Ok(b)) = (&self.read_only, serde_json::to_vec(&cache)) {
             let _ = write_atomic(&cache_path, &b);
         }
     }
@@ -482,6 +513,7 @@ impl Library {
     /// Add `watch`: its folder, named from its name, with its details,
     /// `takes/` and `photos/`. Returns the folder.
     pub fn add(&mut self, watch: &Watch) -> Result<PathBuf, String> {
+        self.writable()?;
         let name = watch.name.trim();
         if name.is_empty() {
             return Err("A watch needs a name".into());
@@ -501,6 +533,7 @@ impl Library {
     /// Write a watch's changed details into its folder (found by its id).
     /// The folder keeps its name.
     pub fn update(&mut self, watch: &Watch) -> Result<(), String> {
+        self.writable()?;
         let name = watch.name.trim();
         if name.is_empty() {
             return Err("A watch needs a name".into());
@@ -540,15 +573,66 @@ fn resolved(p: &Path) -> PathBuf {
     }
 }
 
+/// Take the library's lock: `Err` saying why it can only be read.
+fn lock(root: &Path) -> Result<fs::File, String> {
+    let f = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(root.join(LOCK_FILE))
+        .map_err(|e| {
+            format!(
+                "{} can't be written ({e}), so it can only be read",
+                root.display()
+            )
+        })?;
+    // Tried for a second: a program this app or another just started
+    // holds a lock let go of a moment before, until the program is under
+    // way.
+    let mut tries = 20;
+    loop {
+        match f.try_lock() {
+            Err(fs::TryLockError::WouldBlock) if tries > 0 => {
+                tries -= 1;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            other => break lock_outcome(root, f, other),
+        }
+    }
+}
+
+fn lock_outcome(
+    root: &Path,
+    f: fs::File,
+    tried: Result<(), fs::TryLockError>,
+) -> Result<fs::File, String> {
+    match tried {
+        Ok(()) => Ok(f),
+        Err(fs::TryLockError::WouldBlock) => Err(
+            "Another copy of Timegrapher has this library open, so this one can only read it"
+                .into(),
+        ),
+        Err(fs::TryLockError::Error(e)) => Err(format!(
+            "{} can't be locked ({e}), so it can only be read",
+            root.display()
+        )),
+    }
+}
+
 /// Move the library at `from` to `to`, which must be missing or empty
-/// and not inside `from`, links followed. A rename is tried first; where
-/// it fails (another disk), the library is copied, each file written to
-/// the disk, with `library.toml` last, the copy's bytes and entries
+/// and not inside `from`, links followed. Refused while another copy of
+/// the app has it open (so the caller [`Library::unlock`]s its own
+/// first). A rename is tried first; where it fails (another disk), the
+/// library is copied, each file written to the disk with its
+/// modification time, `library.toml` last, the copy's bytes and entries
 /// checked against `from`, and only then `from` removed, its
-/// `library.toml` first. `Ok(None)` when it is all at `to` and `from` is
-/// gone. `Ok(Some(why))` when it is all at `to` but some of `from`
-/// couldn't be removed; `why` says so. A copy that fails or doesn't match
-/// is removed and `from` left as it was.
+/// `library.toml` first. A link or any other file that is neither a
+/// plain file nor a folder stops the copy. `Ok(None)` when it is all at
+/// `to` and `from` is gone. `Ok(Some(why))` when it is all at `to` but
+/// some of `from` couldn't be removed; `why` says so. A copy that fails
+/// or doesn't match is removed, its `library.toml` first, and `from` left
+/// as it was. A copy cut short by the app ending leaves `from` whole and,
+/// at `to`, files without a `library.toml`, which is not a library.
 pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     if !Library::is_library(from) {
         return Err(format!("{} is not a Timegrapher library", from.display()));
@@ -565,20 +649,31 @@ pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
+    // Checked, then let go of: Windows renames no folder with a file in
+    // it held open.
+    drop(lock(from).map_err(|e| format!("The library can't be moved: {e}"))?);
     if fs::rename(from, to).is_ok() {
         return Ok(None);
     }
-    copy_across(from, to)
+    let held = lock(from).map_err(|e| format!("The library can't be moved: {e}"))?;
+    copy_across(from, to, Some(held))
 }
 
 /// [`move_library`] onto another disk: copy, check, then remove `from`.
-fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
+/// `held` is `from`'s lock, let go of before `from` is removed.
+fn copy_across(from: &Path, to: &Path, held: Option<fs::File>) -> Result<Option<String>, String> {
     // library.toml last, so a copy cut short is not a library.
-    let copied = copy_tree(from, to, &[LIBRARY_FILE])
+    let copied = copy_tree(from, to, &[LIBRARY_FILE, LOCK_FILE])
         .and_then(|_| copy_file(&from.join(LIBRARY_FILE), &to.join(LIBRARY_FILE)))
         .and_then(|_| {
+            // The folder's new entry written to the disk too.
+            if let Ok(d) = fs::File::open(to) {
+                let _ = d.sync_all();
+            }
+            // The lock is not copied.
+            let locks = |d: &Path| u64::from(d.join(LOCK_FILE).exists());
             let (a, b) = (stamp(from), stamp(to));
-            if (a.bytes, a.entries) == (b.bytes, b.entries) {
+            if (a.bytes, a.entries - locks(from)) == (b.bytes, b.entries - locks(to)) {
                 Ok(())
             } else {
                 Err(format!(
@@ -591,6 +686,7 @@ fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
         });
     match copied {
         Ok(()) => {
+            drop(held);
             let gone =
                 fs::remove_file(from.join(LIBRARY_FILE)).and_then(|_| fs::remove_dir_all(from));
             Ok(gone.err().map(|e| {
@@ -603,6 +699,8 @@ fn copy_across(from: &Path, to: &Path) -> Result<Option<String>, String> {
             }))
         }
         Err(e) => {
+            // library.toml first, so what can't be removed is not a library.
+            let _ = fs::remove_file(to.join(LIBRARY_FILE));
             let _ = fs::remove_dir_all(to);
             Err(e)
         }
@@ -615,10 +713,24 @@ fn copy_tree(from: &Path, to: &Path, skip: &[&str]) -> Result<(), String> {
     for e in fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))? {
         let e = e.map_err(|e| format!("{}: {e}", from.display()))?;
         let (src, dst) = (e.path(), to.join(e.file_name()));
-        if e.file_type().is_ok_and(|t| t.is_dir()) {
+        if skip.iter().any(|s| e.file_name() == *s) {
+            continue;
+        }
+        let kind = e
+            .file_type()
+            .map_err(|e| format!("{}: {e}", src.display()))?;
+        if kind.is_dir() {
             copy_tree(&src, &dst, &[])?;
-        } else if !skip.iter().any(|s| e.file_name() == *s) {
+        } else if kind.is_file() {
             copy_file(&src, &dst)?;
+        } else {
+            // A link, a named pipe or a device: reading a pipe would never
+            // end, and a link's target may be outside the library.
+            return Err(format!(
+                "{} is a link or a special file, which can't be copied to another disk: \
+                 move it out of the library first",
+                src.display()
+            ));
         }
     }
     // The folder's own entries too, where the system allows it (not on
@@ -629,14 +741,16 @@ fn copy_tree(from: &Path, to: &Path, skip: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// Copy one file and write it to the disk through the handle that wrote
-/// it, then give it the original's permissions (so a read-only file stays
-/// read-only, and is never opened for writing).
+/// Copy one file with its modification time and write it to the disk
+/// through the handle that wrote it, then give it the original's
+/// permissions (so a read-only file stays read-only, and is never opened
+/// for writing).
 fn copy_file(src: &Path, dst: &Path) -> Result<(), String> {
     let copied = (|| {
         let mut r = fs::File::open(src)?;
         let mut w = fs::File::create(dst)?;
         std::io::copy(&mut r, &mut w)?;
+        w.set_modified(r.metadata()?.modified()?)?;
         w.sync_all()?;
         drop(w);
         fs::set_permissions(dst, r.metadata()?.permissions())
@@ -853,11 +967,13 @@ mod tests {
         );
         // Found again from the folders alone, after the library is moved.
         let moved = scratch("lists-moved");
+        let takes = lib.watches[0].takes.clone();
+        lib.unlock();
         move_library(&root, &moved).unwrap();
         assert!(!root.exists());
         let again = Library::open(&moved).unwrap();
         assert_eq!(again.watches[0].watch, w);
-        assert_eq!(again.watches[0].takes, lib.watches[0].takes);
+        assert_eq!(again.watches[0].takes, takes);
         let _ = fs::remove_dir_all(&moved);
     }
 
@@ -1013,11 +1129,27 @@ mod tests {
         let mut ro = fs::metadata(&locked).unwrap().permissions();
         ro.set_readonly(true);
         fs::set_permissions(&locked, ro).unwrap();
+        // An old file keeps its modification time.
+        let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        let notes = dir.join("notes.txt");
+        fs::write(&notes, b"serviced").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&notes)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
         lib.scan();
+        let takes = lib.watches[0].takes.clone();
+        drop(lib);
         let to = scratch("across-to");
         // Removing a read-only file fails on Windows; the whole library is
         // at `to` either way.
-        let moved = copy_across(&root, &to).unwrap();
+        let moved = copy_across(&root, &to, None).unwrap();
+        let notes = to.join(file_name(&dir)).join("notes.txt");
+        assert_eq!(fs::metadata(&notes).unwrap().modified().unwrap(), old);
+        // The lock is not copied.
+        assert!(!to.join(LOCK_FILE).exists());
         let copy = to.join(file_name(&dir)).join(PHOTOS).join("dial.jpg");
         assert_eq!(fs::read(&copy).unwrap(), b"jpeg");
         assert!(fs::metadata(&copy).unwrap().permissions().readonly());
@@ -1034,7 +1166,74 @@ mod tests {
         }
         assert!(!root.exists());
         let moved = Library::open(&to).unwrap();
-        assert_eq!(moved.watches[0].takes, lib.watches[0].takes);
+        assert_eq!(moved.watches[0].takes, takes);
+        let _ = fs::remove_dir_all(&to);
+    }
+
+    /// A link, or a special file such as a named pipe (which would never
+    /// finish reading) or a socket, stops a copy onto another disk; the copy is removed and the library left.
+    #[cfg(unix)]
+    #[test]
+    fn a_move_onto_another_disk_refuses_links_and_special_files() {
+        let root = scratch("special");
+        let mut lib = Library::create(&root).unwrap();
+        let dir = lib.add(&Watch::new("Pepsi")).unwrap();
+        drop(lib);
+        let outside = scratch("special-outside");
+        fs::write(&outside, b"not the library's").unwrap();
+        let link = dir.join(PHOTOS).join("dial.jpg");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let to = scratch("special-to");
+        let refused = copy_across(&root, &to, None).unwrap_err();
+        assert!(refused.contains("link or a special file"), "{refused}");
+        assert!(!to.exists());
+        assert!(Library::is_library(&root) && link.is_symlink());
+        fs::remove_file(&link).unwrap();
+        // A socket, made without starting a program (a program started
+        // while another test drops a lock would hold it a moment).
+        let socket = std::os::unix::net::UnixListener::bind(dir.join("socket")).unwrap();
+        let refused = copy_across(&root, &to, None).unwrap_err();
+        assert!(refused.contains("link or a special file"), "{refused}");
+        assert!(!to.exists());
+        drop(socket);
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_file(&outside);
+    }
+
+    /// The second copy of the app to open a library can only read it, and
+    /// a library open elsewhere is not moved.
+    #[test]
+    fn a_second_copy_of_the_app_opens_the_library_read_only() {
+        let root = scratch("second");
+        let mut first = Library::create(&root).unwrap();
+        assert_eq!(first.read_only, None);
+        first.add(&Watch::new("Pepsi")).unwrap();
+        let mut second = Library::open(&root).unwrap();
+        let why = second.read_only.clone().unwrap();
+        assert!(why.contains("Another copy"), "{why}");
+        assert_eq!(second.watches.len(), 1);
+        assert_eq!(second.add(&Watch::new("Daytona")).unwrap_err(), why);
+        let mut w = second.watches[0].watch.clone();
+        w.notes = Some("changed".into());
+        assert!(second.update(&w).is_err());
+        // Not even its cache.
+        fs::remove_file(root.join(CACHE_FILE)).unwrap();
+        second.scan();
+        assert!(!root.join(CACHE_FILE).exists());
+        let to = scratch("second-to");
+        let refused = move_library(&root, &to).unwrap_err();
+        assert!(refused.contains("Another copy"), "{refused}");
+        assert!(Library::is_library(&root) && !to.exists());
+        // Once the first lets go, the next to open it may change it.
+        drop(first);
+        drop(second);
+        let mut third = Library::open(&root).unwrap();
+        assert_eq!(third.read_only, None);
+        third.add(&Watch::new("Daytona")).unwrap();
+        third.unlock();
+        assert!(third.read_only.is_some());
+        move_library(&root, &to).unwrap_or_else(|e| panic!("{e}"));
+        assert!(Library::is_library(&to));
         let _ = fs::remove_dir_all(&to);
     }
 

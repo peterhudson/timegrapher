@@ -115,7 +115,7 @@ pub const CLIPPING_BANNER: &[&str] = &[
      change.",
     "It shows whenever a beat in the readings has a clipped sample in its sound, \
      counted the same way `timegrapher analyze` counts them. Input Level is under \
-     Microphone in the Watch pane.",
+     Microphone in the Watches pane.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
