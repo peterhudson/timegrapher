@@ -9360,7 +9360,18 @@ impl TimegrapherApp {
             self.reshape_mask(was, now);
         }
         if input.span_factor != 1.0 {
-            self.strip.set_span(self.strip.span_s * input.span_factor);
+            let was = self.strip.span_s;
+            self.strip.set_span(was * input.span_factor);
+            // The time under the pointer stays under it.
+            if let Some(t) = input.zoom_at {
+                let latest = self.latest_s();
+                let to = t + (end - t) * self.strip.span_s / was;
+                self.view_end = if to >= latest {
+                    None
+                } else {
+                    Some(to.max(self.strip.span_s.min(latest)))
+                };
+            }
         }
         if input.width_factor != 1.0 {
             self.strip
@@ -15286,6 +15297,19 @@ mod tests {
         app.apply_strip_input(zoom, app.end_s());
         assert_eq!(app.strip.span_s, 60.0);
         assert_eq!(app.strip.half_width_ms, 5.0);
+
+        // Zoomed about a time, that time stays where it was on the strip.
+        let end = app.end_s();
+        let at = end - 15.0;
+        let zoom = StripInput {
+            span_factor: 0.5,
+            zoom_at: Some(at),
+            ..Default::default()
+        };
+        app.apply_strip_input(zoom, end);
+        assert_eq!(app.strip.span_s, 30.0);
+        let now = app.view_end.expect("looking back");
+        assert!(((now - at) / 30.0 - 15.0 / 60.0).abs() < 1e-9, "{now}");
     }
 
     /// New Session while listening, when closing the kept sound fails:

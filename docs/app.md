@@ -569,7 +569,8 @@ to a two-hour run, then **Fit**, which sets the length to the whole
 session so far, or its last 24 hours when it is longer, and shows it up
 to its latest beat.
 
-On the strip, the mouse wheel changes the length, Ctrl and the wheel (or a
+On the strip, the mouse wheel changes the length about the time under the
+pointer, which stays where it is, Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
 click returns to the newest beats and centres them. **Auto-Centre** keeps
@@ -580,7 +581,8 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Mask** leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
-the mouse), dragging a masked stretch's edge moves it, and clicking a
+the mouse), dragging a masked stretch's edge moves it, dragging with the
+right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
 back; **Unmask All** brings them all back. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
