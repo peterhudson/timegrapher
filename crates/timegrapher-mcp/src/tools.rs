@@ -31,6 +31,8 @@ pub enum Kind {
     /// Finite, positive acquisition seconds, checked before child spawn.
     CaptureSeconds,
     Text,
+    /// `true` adds the bare flag; `false` or left out adds nothing.
+    Switch,
 }
 
 pub struct Param {
@@ -91,6 +93,13 @@ const RECORDINGS: Param = p(
     true,
     "Full paths of the recording: one file, a folder of segments, or several files read \
      as one continuous recording in the order given.",
+);
+const LIBRARY: Param = p(
+    "library",
+    Kind::Path,
+    Arg::Flag("--library"),
+    false,
+    "Full path of the watch library the app keeps (the app's own if left out).",
 );
 const BPH: Param = p(
     "bph",
@@ -336,6 +345,55 @@ pub const TOOLS: &[ToolSpec] = &[
         defaults: &[],
     },
     ToolSpec {
+        name: "list_watches",
+        title: "List My Watches",
+        description: "The watches in the library the app keeps: each one's name, calibre, \
+            beat rate and lift angle as the person entered them, how many takes it has and \
+            when the newest started, and how many Quick Listen takes wait in Unsorted. \
+            Archived watches only with `all`. It only reads, so the app can be open.",
+        command: &["watches", "list"],
+        params: &[
+            LIBRARY,
+            p(
+                "all",
+                Kind::Switch,
+                Arg::Flag("--all"),
+                false,
+                "Include archived watches (gone back to their owner, or sold).",
+            ),
+        ],
+        charts: false,
+        read_only: true,
+        idempotent: true,
+        defaults: &[],
+    },
+    ToolSpec {
+        name: "show_watch",
+        title: "Show a Watch",
+        description: "One watch from the library, by its name (any case), or \"Unsorted\" \
+            for the Quick Listen takes: its details, the fields the person added, and every \
+            take, newest first, with its full folder `path`, start, length, positions, \
+            whether it kept its sound (`audio`), and the readings the app showed at its end \
+            (`at_end`, not a new analysis). Pass a take's `path` to run_session, long_run or \
+            check_steadiness to analyse it; a take with `audio` false holds only its \
+            analysis. It only reads.",
+        command: &["watches", "show"],
+        params: &[
+            p(
+                "name",
+                Kind::Text,
+                Arg::Positional,
+                true,
+                "The watch's name, as list_watches gives it, or \"Unsorted\".",
+            ),
+            LIBRARY,
+        ],
+        charts: false,
+        read_only: true,
+        idempotent: true,
+        defaults: &[],
+    },
+    ToolSpec {
         name: "record_position",
         title: "Record a Position",
         description: "Record the watch on the microphone in one position into a test \
@@ -573,6 +631,7 @@ pub fn definition(t: &ToolSpec) -> Value {
             Kind::LiftAngle => json!({"type":"number", "exclusiveMinimum":0}),
             Kind::Number => json!({"type": "number"}),
             Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
+            Kind::Switch => json!({"type": "boolean"}),
         };
         let mut schema = schema.as_object().unwrap().clone();
         schema.insert("description".into(), p.description.into());
@@ -622,6 +681,14 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
             }
             continue;
         };
+        if let Kind::Switch = p.kind {
+            match (v, p.arg) {
+                (Value::Bool(true), Arg::Flag(flag)) => options.push(flag.to_string()),
+                (Value::Bool(_), _) => {}
+                _ => return Err(format!("{}: {} must be true or false", t.name, p.name)),
+            }
+            continue;
+        }
         let values: Vec<String> = match (p.kind, v) {
             (Kind::Path, Value::String(s)) => vec![expand_home(s)?],
             (Kind::Paths, Value::Array(a)) if !a.is_empty() => a
@@ -761,6 +828,37 @@ mod tests {
                 "--json",
                 "--",
                 &full("take.flac")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_switch_is_a_bare_flag_only_when_true() {
+        let t = find("list_watches").unwrap();
+        let line = |a: Value| command_line(t, &args(a));
+        assert_eq!(
+            line(json!({"all": true})).unwrap(),
+            ["watches", "list", "--all", "--json"]
+        );
+        assert_eq!(
+            line(json!({"all": false})).unwrap(),
+            ["watches", "list", "--json"]
+        );
+        assert!(line(json!({"all": "yes"})).is_err());
+        assert_eq!(
+            definition(t)["inputSchema"]["properties"]["all"]["type"],
+            "boolean"
+        );
+        let t = find("show_watch").unwrap();
+        assert_eq!(
+            command_line(t, &args(json!({"name": "-Pepsi", "library": full("lib")}))).unwrap(),
+            [
+                "watches",
+                "show",
+                &format!("--library={}", full("lib")),
+                "--json",
+                "--",
+                "-Pepsi"
             ]
         );
     }

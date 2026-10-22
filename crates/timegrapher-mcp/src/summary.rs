@@ -94,6 +94,67 @@ fn position_name(p: &str) -> &str {
     }
 }
 
+fn count(n: u64, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The folders the library scan couldn't read, as a sentence; empty when
+/// there are none.
+fn unreadable(doc: &Value) -> String {
+    match doc["unreadable"].as_array().map_or(0, Vec::len) {
+        0 => String::new(),
+        n => format!(
+            " {} in the library couldn't be read (`unreadable`).",
+            count(n as u64, "folder", "folders")
+        ),
+    }
+}
+
+/// `watches list`: how many watches and takes, and what waits in Unsorted.
+fn watches(doc: &Value) -> String {
+    let list = doc["watches"].as_array().cloned().unwrap_or_default();
+    let takes: u64 = list.iter().filter_map(|w| w["takes"].as_u64()).sum();
+    let mut s = format!(
+        "{}, {}.",
+        count(list.len() as u64, "watch", "watches"),
+        count(takes, "take", "takes")
+    );
+    match doc["unsorted"].as_u64().unwrap_or(0) {
+        0 => {}
+        n => {
+            s += &format!(
+                " {} in Unsorted, made with Quick Listen.",
+                count(n, "take waits", "takes wait")
+            )
+        }
+    }
+    s + &unreadable(doc)
+}
+
+/// `watches show`: the watch and how many takes it has, how many kept
+/// only their analysis, and the newest.
+fn watch(doc: &Value) -> String {
+    let takes = doc["takes"].as_array().cloned().unwrap_or_default();
+    let name = if doc["unsorted"] == true {
+        "Unsorted (Quick Listen takes)".to_string()
+    } else {
+        doc["name"].as_str().unwrap_or("The watch").to_string()
+    };
+    let mut s = format!("{name}: {}", count(takes.len() as u64, "take", "takes"));
+    let only = takes.iter().filter(|t| t["audio"] == false).count() as u64;
+    if only > 0 {
+        s += &format!(", {only} kept as their analysis only");
+    }
+    if let Some(t) = takes.first().and_then(|t| t["started_utc"].as_str()) {
+        s += &format!("; the newest started {t}");
+    }
+    s += ".";
+    if doc["archived"] == true {
+        s += " Archived.";
+    }
+    s + &unreadable(doc)
+}
+
 /// The lead for `analyze`, `session`, `record` and `series` documents;
 /// `None` for others. `args` are the tool call's, to tell a given lift angle from the
 /// default.
@@ -105,6 +166,12 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     }
     if schema.starts_with("timegrapher.series/") {
         return series(doc);
+    }
+    if schema.starts_with("timegrapher.watches/") {
+        return Some(watches(doc));
+    }
+    if schema.starts_with("timegrapher.watch/") {
+        return Some(watch(doc));
     }
     if schema.starts_with("timegrapher.analyze/") {
         if doc["watch_heard"] == false {
@@ -695,5 +762,33 @@ mod tests {
             .unwrap()
             .starts_with("No regular beat found"));
         assert!(lead(&json!({ "schema": "timegrapher.doctor/2" }), &Map::new()).is_none());
+    }
+
+    #[test]
+    fn the_watches_leads_count_takes_and_say_what_is_missing() {
+        let list = json!({"schema": "timegrapher.watches/1",
+            "watches": [{"takes": 3}, {"takes": 1}], "unsorted": 1, "unreadable": ["x"]});
+        assert_eq!(
+            lead(&list, &Map::new()).unwrap(),
+            "2 watches, 4 takes. 1 take waits in Unsorted, made with Quick Listen. \
+             1 folder in the library couldn't be read (`unreadable`)."
+        );
+        let empty = json!({"schema": "timegrapher.watches/1", "watches": [], "unsorted": 0});
+        assert_eq!(lead(&empty, &Map::new()).unwrap(), "0 watches, 0 takes.");
+        let one = json!({"schema": "timegrapher.watch/1", "name": "Pepsi", "unsorted": false,
+            "archived": true, "takes": [
+                {"audio": true, "started_utc": "2026-10-20T21:32:00Z"},
+                {"audio": false, "started_utc": "2026-10-19T08:00:00Z"}]});
+        assert_eq!(
+            lead(&one, &Map::new()).unwrap(),
+            "Pepsi: 2 takes, 1 kept as their analysis only; the newest started \
+             2026-10-20T21:32:00Z. Archived."
+        );
+        let unsorted = json!({"schema": "timegrapher.watch/1", "name": "Unsorted",
+            "unsorted": true, "takes": []});
+        assert_eq!(
+            lead(&unsorted, &Map::new()).unwrap(),
+            "Unsorted (Quick Listen takes): 0 takes."
+        );
     }
 }

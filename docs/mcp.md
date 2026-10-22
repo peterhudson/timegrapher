@@ -105,6 +105,8 @@ That route has not been tried with this server yet.
 | `check_microphone` | `doctor` | Listens a few seconds and states the level, clipping, automatic gain and noise, with the sound card's controls; **uses the microphone**, changes nothing |
 | `check_recording` | `doctor --file` | A recording's level, clipping, automatic gain and noise |
 | `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
+| `list_watches` | `watches list` | The watches in the app's library: name, calibre, beat rate, lift angle, how many takes and the newest's start, and the Quick Listen takes in Unsorted; archived watches only with `all` |
+| `show_watch` | `watches show` | One watch (any case), or `Unsorted`: its details and fields, and each take, newest first, with its folder `path` for `run_session`, `long_run` or `check_steadiness`, whether it kept its sound, and the readings the app showed at its end |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
 | `read_guide` | (none) | The watchmaker skill and its pages, for the chat app to read |
@@ -122,6 +124,11 @@ label stays descriptive, while an explicit unknown calibre is an error. That
 error suggests `timegrapher calibres --search` with the name; `run_session`'s
 also lists the known names. `list_calibres` with no name lists the common
 calibres and the user's own.
+
+`list_watches` and `show_watch` only read the library (the app's own unless
+`library` names another), so they work while the app has it open. A take's
+`at_end` is what the app showed when the take was saved, not a new analysis;
+a take with `audio` false kept only its analysis and has no sound to read.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.

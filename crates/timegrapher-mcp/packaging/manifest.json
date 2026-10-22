@@ -41,6 +41,8 @@
     { "name": "check_microphone", "description": "Listen a few seconds and state the level, clipping, automatic gain and noise, with the sound card's controls (uses the microphone)" },
     { "name": "check_recording", "description": "A recording's level, clipping, automatic gain and noise" },
     { "name": "list_calibres", "description": "A calibre's beat rate, lift angle and train" },
+    { "name": "list_watches", "description": "The watches in the app's library, each with its takes counted" },
+    { "name": "show_watch", "description": "One watch's details and its takes, each with its folder" },
     { "name": "list_sound_inputs", "description": "The computer's sound inputs" },
     { "name": "make_report_bundle", "description": "A zip for a GitHub issue, saved on your computer" }
   ],

@@ -491,3 +491,77 @@ fn a_chat_app_reads_a_watch() {
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_chat_app_finds_a_watchs_takes_in_the_library() {
+    use timegrapher_core::library::{Library, Watch, TAKES};
+    let cli = cli();
+    let dir = std::env::temp_dir().join(format!("timegrapher-mcp-watches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = dir.join("Timegrapher Data");
+    let mut lib = Library::create(&root).unwrap();
+    let mut w = Watch::new("Pepsi");
+    w.calibre = Some("Rolex 3135".into());
+    w.bph = Some(28800);
+    let take = lib
+        .add(&w)
+        .unwrap()
+        .join(TAKES)
+        .join("2026-10-20 14.32 Dial Up");
+    std::fs::create_dir_all(&take).unwrap();
+    std::fs::write(
+        take.join("session.toml"),
+        "bph = 28800\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    std::fs::write(take.join("take_part01-001.flac"), vec![0u8; 2000]).unwrap();
+    std::fs::write(
+        take.join("session.json"),
+        r#"{"started_utc":"2026-10-20T21:32:00Z","duration_s":600.0}"#,
+    )
+    .unwrap();
+    let mut old = Watch::new("Sold Seiko");
+    old.archived = true;
+    lib.add(&old).unwrap();
+    drop(lib);
+
+    let mut c = Client::start(&cli, &dir.join("unused.wav"));
+    let library = root.to_str().unwrap();
+    let r = c.call("list_watches", json!({ "library": library }));
+    assert_ne!(r["isError"], true, "{r}");
+    let doc = &r["structuredContent"];
+    assert_eq!(doc["schema"], "timegrapher.watches/1");
+    assert_eq!(doc["watches"].as_array().unwrap().len(), 1, "{doc}");
+    assert!(r["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("1 watch, 1 take."));
+    let r = c.call("list_watches", json!({ "library": library, "all": true }));
+    assert_eq!(
+        r["structuredContent"]["watches"].as_array().unwrap().len(),
+        2
+    );
+
+    // A take's path from show_watch is the folder itself, ready for
+    // run_session and the other tools.
+    let r = c.call("show_watch", json!({ "name": "pepsi", "library": library }));
+    assert_ne!(r["isError"], true, "{r}");
+    let doc = &r["structuredContent"];
+    assert_eq!(doc["schema"], "timegrapher.watch/1");
+    assert_eq!(doc["takes"][0]["positions"], json!(["DU"]));
+    let path = std::path::PathBuf::from(doc["takes"][0]["path"].as_str().unwrap());
+    assert_eq!(path.canonicalize().unwrap(), take.canonicalize().unwrap());
+    assert!(r["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("Pepsi: 1 take; the newest started 2026-10-20T21:32:00Z."));
+
+    let r = c.call("show_watch", json!({ "name": "Omega", "library": library }));
+    assert_eq!(r["isError"], true, "{r}");
+    let r = c.call(
+        "list_watches",
+        json!({ "library": dir.join("none").to_str().unwrap() }),
+    );
+    assert_eq!(r["isError"], true, "{r}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
