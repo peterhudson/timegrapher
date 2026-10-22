@@ -123,6 +123,10 @@ pub fn run(o: Options) -> Result<(), String> {
         // with --views: the probability plots of the whole take's
         // distributions and the Steadiness pane's views.
         strip_points(&mut doc, o.views);
+        // Each named wheel's line sizes against amplitude; every window
+        // with --maps.
+        let lines = timegrapher_core::wheel_lines::lines_for_take(&log, clock, &long, &lc, o.maps);
+        doc["wheel_lines"] = serde_json::to_value(lines).map_err(|e| e.to_string())?;
         if o.views {
             let views = steady_views::views(&log, &rep, &long, &lc, o.check.rate_reading_s);
             if let Some(series) = doc["series"].as_array_mut() {
@@ -146,6 +150,8 @@ pub fn run(o: Options) -> Result<(), String> {
             let ls =
                 timegrapher_core::gappy::for_take(&log, clock, &long, &lc, o.check.rate_reading_s);
             doc["lomb_scargle"] = serde_json::to_value(ls).map_err(|e| e.to_string())?;
+            let turns = timegrapher_core::wheel_lines::turns_for_take(&long, &lc);
+            doc["wheel_turns"] = serde_json::to_value(turns).map_err(|e| e.to_string())?;
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
