@@ -455,6 +455,41 @@ pub struct Component {
     /// The folded profile kept to the harmonics the search used.
     pub shape: Vec<f64>,
     pub fold: Fold,
+    /// A longer cycle the search also found whose period is this one's
+    /// times a whole number from 2 to 8, within both resolutions (or 1%),
+    /// when that leaves only one whole number.
+    pub harmonic_of: Option<Harmonic>,
+}
+
+/// A found cycle's period is `period_s / n`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Harmonic {
+    pub period_s: f64,
+    pub n: u8,
+}
+
+/// For each component, the found cycle it is a harmonic of: the smallest
+/// n (2 to 8) whose n times its period lands on a longer component within
+/// n of its resolutions plus the longer one's, or 1%. When that tolerance
+/// reaches half this period, n and n + 1 could both fit, so none is given.
+fn label_harmonics(components: &mut [Component]) {
+    let found: Vec<(f64, f64)> = components
+        .iter()
+        .map(|c| (c.period_s, c.resolution_s))
+        .collect();
+    for c in components.iter_mut() {
+        c.harmonic_of = (2..=8u8).find_map(|n| {
+            let p = c.period_s * n as f64;
+            found
+                .iter()
+                .filter(|&&(q, r)| {
+                    let tol = (n as f64 * c.resolution_s + r).max(0.01 * q);
+                    tol < c.period_s / 2.0 && (p - q).abs() <= tol
+                })
+                .min_by(|a, b| (p - a.0).abs().total_cmp(&(p - b.0).abs()))
+                .map(|&(q, _)| Harmonic { period_s: q, n })
+        });
+    }
 }
 
 /// Everything found in one series.
@@ -620,9 +655,11 @@ pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
                 nearest_wheel: nearest,
                 shape,
                 fold: f,
+                harmonic_of: None,
             });
         }
     }
+    label_harmonics(&mut components);
     SeriesReport {
         grid: g.clone(),
         detrended,
@@ -758,6 +795,36 @@ mod tests {
     }
 
     #[test]
+    fn a_line_at_a_whole_fraction_of_a_found_cycle_is_labelled() {
+        // A strong 150 s line, found and taken off first, then a weaker
+        // 600 s one: the 150 s line is its 4th harmonic.
+        let tau = std::f64::consts::TAU;
+        let g = series(
+            14_400,
+            1.0,
+            |t| 2.0 * (tau * t / 150.0).sin() + 0.8 * (tau * t / 600.0).sin(),
+            1.0,
+            11,
+        );
+        let r = analyse(&g, &LongConfig::default());
+        let near = |p: f64| {
+            r.components
+                .iter()
+                .find(|c| (c.period_s / p - 1.0).abs() < 0.01)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "no {p} s in {:?}",
+                        r.components.iter().map(|c| c.period_s).collect::<Vec<_>>()
+                    )
+                })
+        };
+        let h = near(150.0).harmonic_of.expect("labelled");
+        assert_eq!(h.n, 4);
+        assert!((h.period_s / 600.0 - 1.0).abs() < 0.01, "{}", h.period_s);
+        assert!(near(600.0).harmonic_of.is_none());
+    }
+
+    #[test]
     fn two_wheels_are_separated() {
         // A 60 s sinusoid and a short dip every 450 s.
         let f = |t: f64| {
@@ -771,6 +838,10 @@ mod tests {
         periods.sort_by(f64::total_cmp);
         assert!((periods[0] - 60.0).abs() < 0.5, "{periods:?}");
         assert!((periods[1] - 450.0).abs() < 20.0, "{periods:?}");
+        // 450 s is 7.5 turns of 60 s, and over 2 h its resolution (28 s)
+        // would also reach 7 turns: no whole number is clear, so neither
+        // is labelled.
+        assert!(r.components[..2].iter().all(|c| c.harmonic_of.is_none()));
     }
 
     #[test]

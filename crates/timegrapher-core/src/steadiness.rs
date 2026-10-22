@@ -170,6 +170,9 @@ pub struct Autocorrelation {
     pub r: Vec<f64>,
     /// Half-width of the 95% band for independent readings, 1.96/√n.
     pub band: f64,
+    /// The same band at each of `lag_s`, from the pairs that lag was read
+    /// from, 1.96/√pairs: wider than `band` where gaps leave fewer pairs.
+    pub band_by_lag: Vec<f64>,
     pub ljung_box_q: f64,
     pub ljung_box_lags: usize,
     /// Chance of a Q this large from independent readings.
@@ -308,6 +311,10 @@ pub struct Period {
     /// cycle, so a slow cycle behind a stronger fast one (an escape wheel's)
     /// is still found.
     pub other_periods_s: Vec<f64>,
+    /// The longer found cycle this one's period is a whole fraction of,
+    /// and the same for each of `other_periods_s`.
+    pub harmonic_of: Option<longterm::Harmonic>,
+    pub other_harmonic_of: Vec<Option<longterm::Harmonic>>,
 }
 
 /// Everything about one series.
@@ -622,11 +629,17 @@ pub fn kolmogorov_tail(x: f64) -> f64 {
 /// Autocorrelation at lags 0..=max_lag of a series with gaps (NaN): each
 /// lag uses the pairs where both readings exist.
 pub fn acf(y: &[f64], max_lag: usize) -> Vec<f64> {
+    acf_pairs(y, max_lag).0
+}
+
+/// [`acf`], and the pairs each lag was read from.
+fn acf_pairs(y: &[f64], max_lag: usize) -> (Vec<f64>, Vec<usize>) {
     let Some((m, _)) = mean_sd(y) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let x: Vec<f64> = y.iter().map(|v| v - m).collect();
     let mut out = Vec::with_capacity(max_lag + 1);
+    let mut pairs = Vec::with_capacity(max_lag + 1);
     let mut c0 = 0.0;
     for k in 0..=max_lag.min(y.len().saturating_sub(1)) {
         let (mut s, mut n) = (0.0, 0usize);
@@ -641,8 +654,9 @@ pub fn acf(y: &[f64], max_lag: usize) -> Vec<f64> {
             c0 = c;
         }
         out.push(if c0 > 0.0 { c / c0 } else { f64::NAN });
+        pairs.push(n);
     }
-    out
+    (out, pairs)
 }
 
 /// Overlapping Allan deviation of a series of averages (frequency-type
@@ -790,6 +804,8 @@ fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
         size_unit: unit,
         wheel: c.wheel.clone(),
         other_periods_s: r.components[1..].iter().map(|c| c.period_s).collect(),
+        harmonic_of: c.harmonic_of,
+        other_harmonic_of: r.components[1..].iter().map(|c| c.harmonic_of).collect(),
     })
 }
 
@@ -800,7 +816,7 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
     let max_lag = ((cfg.max_lag_s / step) as usize)
         .min(y.len() / 3)
         .max(cfg.ljung_box_lags.min(y.len() / 3));
-    let r = acf(y, max_lag);
+    let (r, pairs) = acf_pairs(y, max_lag);
     let h = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
     let nf = n as f64;
     let q: f64 = (1..=h)
@@ -841,6 +857,17 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
             .collect(),
         r: r.iter().step_by(stride).copied().collect(),
         band,
+        band_by_lag: pairs
+            .iter()
+            .step_by(stride)
+            .map(|&k| {
+                if k > 0 {
+                    1.96 / (k as f64).sqrt()
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect(),
         ljung_box_q: q,
         ljung_box_lags: h,
         p_value: lb_p,
@@ -2133,6 +2160,11 @@ pub fn check(
                 .iter()
                 .map(|c| c.component.period_s)
                 .collect(),
+            harmonic_of: c.component.harmonic_of,
+            other_harmonic_of: long.rate_components[1..]
+                .iter()
+                .map(|c| c.component.harmonic_of)
+                .collect(),
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
@@ -2733,6 +2765,39 @@ fn wind_down(rate: &Grid, amp: &Grid, be: &Grid, cfg: &Config) -> Option<WindDow
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_band_widens_where_gaps_leave_fewer_pairs() {
+        // Readings every 10 s with every other block of 50 missing: at a
+        // lag of 50 readings no pair is left; at 60, ten in each of the
+        // first 19 blocks.
+        let mut rng = crate::synth::Rng::new(1);
+        let y: Vec<f64> = (0..2000)
+            .map(|i| {
+                if (i / 50) % 2 == 1 {
+                    f64::NAN
+                } else {
+                    rng.normal()
+                }
+            })
+            .collect();
+        let cfg = Config::default();
+        let a = autocorrelation(&y, 10.0, &cfg);
+        assert_eq!(a.band_by_lag.len(), a.lag_s.len());
+        let at = |lag: f64| {
+            let k = a.lag_s.iter().position(|&l| l == lag).unwrap();
+            a.band_by_lag[k]
+        };
+        // Lag 0: every reading pairs with itself, as for `band`.
+        assert!((at(0.0) - a.band).abs() < 1e-12);
+        assert!(at(500.0).is_nan());
+        assert!(
+            (at(600.0) - 1.96 / 190.0f64.sqrt()).abs() < 1e-9,
+            "{}",
+            at(600.0)
+        );
+        assert!(at(600.0) > 2.0 * a.band);
+    }
+
     /// Deterministic noise, roughly Gaussian (sum of uniforms).
     struct Noise(u64);
     impl Noise {
@@ -2817,6 +2882,8 @@ mod tests {
             size_unit,
             wheel: wheel.map(str::to_string),
             other_periods_s: vec![],
+            harmonic_of: None,
+            other_harmonic_of: vec![],
         }
     }
 

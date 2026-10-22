@@ -538,6 +538,8 @@ mod tests {
             size_unit: "ms",
             wheel: Some("escape wheel".into()),
             other_periods_s: vec![],
+            harmonic_of: None,
+            other_harmonic_of: vec![],
         };
         let mut r = report();
         r.series = vec![steady(None)];
