@@ -72,6 +72,18 @@ class RewriteLinks(unittest.TestCase):
         self.assertEqual(self.rewrite(page),
                          f"https://github.com/{docs_html.REPO}/blob/{REF}/{page}")
 
+    def test_a_link_to_a_missing_file_fails_check(self):
+        self.assertEqual(self.rewrite("docs/no-such-page.md"), "docs/no-such-page.md")
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp, "Documentation/README.html")
+            page.parent.mkdir()
+            mapping = docs_html.outputs("linux")
+            page.write_text(docs_html.rewrite_links(
+                '<a href="docs/no-such-page.md">x</a>', "README.md",
+                "Documentation/README.html", mapping, REF), encoding="utf-8")
+            missing, _ = docs_html.check(tmp)
+        self.assertEqual(missing, ["Documentation/README.html: docs/no-such-page.md"])
+
     def test_start_page_links_into_documentation(self):
         self.assertEqual(self.rewrite("../../docs/mcp.md", "packaging/linux/start-here.md"),
                          "Documentation/mcp.html")
