@@ -28,6 +28,113 @@ pub struct AmplitudeSpectrum {
     pub amplitude: Vec<f64>,
     /// Finite support of the actual FFT input grid, excluding zero-padding.
     pub support: SpectrumSupport,
+    /// The same sizes averaged over segments that hold no missing
+    /// reading ([`welch`]); `None` when fewer than two segments fit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub welch: Option<Welch>,
+}
+
+/// Welch's averaged spectrum: segments of one length, each wholly inside
+/// an unbroken stretch, overlapping by half, each with its mean taken off
+/// and a Hann window applied; the size at each period is from the mean
+/// power over the segments. Nothing is filled in, so gaps change the
+/// count of segments but not the sizes. Its longest period is half a
+/// segment.
+#[derive(Debug, Clone, Serialize)]
+pub struct Welch {
+    pub segment_s: f64,
+    pub segments: usize,
+    /// Periods, seconds, longest first, and sizes, thinned as the whole
+    /// series' spectrum is.
+    pub period_s: Vec<f64>,
+    pub amplitude: Vec<f64>,
+}
+
+/// Segments in a Welch average at least, and readings in one at least.
+const WELCH_MIN_SEGMENTS: usize = 2;
+const WELCH_MIN_LEN: usize = 64;
+
+/// [`Welch`]'s spectrum of `g`: segments of the largest power of two of
+/// readings that is at most a quarter of the series and fits in its
+/// longest unbroken stretch.
+pub fn welch(g: &Grid, scale: f64, max_points: usize) -> Option<Welch> {
+    let n = g.y.len();
+    let mut runs = Vec::new();
+    let mut i = 0;
+    while i < n {
+        if g.y[i].is_finite() {
+            let a = i;
+            while i < n && g.y[i].is_finite() {
+                i += 1;
+            }
+            runs.push((a, i));
+        } else {
+            i += 1;
+        }
+    }
+    let longest = runs.iter().map(|(a, b)| b - a).max()?;
+    let cap = longest.min(n / 4);
+    if cap < WELCH_MIN_LEN {
+        return None;
+    }
+    let l = 1usize << (usize::BITS - 1 - cap.leading_zeros());
+    let w: Vec<f64> = (0..l)
+        .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / l as f64).cos())
+        .collect();
+    let wsum: f64 = w.iter().sum();
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fwd = planner.plan_fft_forward(l);
+    let mut power = vec![0.0; l / 2 + 1];
+    let mut segments = 0;
+    let mut buf = vec![0.0; l];
+    let mut spec = fwd.make_output_vec();
+    for &(a, b) in &runs {
+        let mut s = a;
+        while s + l <= b {
+            let part = &g.y[s..s + l];
+            let mean = part.iter().sum::<f64>() / l as f64;
+            for ((o, &v), wi) in buf.iter_mut().zip(part).zip(&w) {
+                *o = (v - mean) * scale * wi;
+            }
+            fwd.process(&mut buf, &mut spec).ok()?;
+            for (p, c) in power.iter_mut().zip(&spec) {
+                *p += c.norm_sqr();
+            }
+            segments += 1;
+            s += l / 2;
+        }
+    }
+    if segments < WELCH_MIN_SEGMENTS {
+        return None;
+    }
+    let df = 1.0 / (l as f64 * g.step);
+    let jmin = 2;
+    let jmax = (((1.0 / (4.0 * g.step)) / df).floor() as usize).min(power.len() - 1);
+    if jmax <= jmin {
+        return None;
+    }
+    let (lo, hi) = (
+        (1.0 / (jmax as f64 * df)).ln(),
+        (1.0 / (jmin as f64 * df)).ln(),
+    );
+    let slices = max_points.max(2);
+    let mut best: Vec<Option<(f64, f64)>> = vec![None; slices];
+    for (j, &pw) in power.iter().enumerate().take(jmax + 1).skip(jmin) {
+        let p = 1.0 / (j as f64 * df);
+        let a = 2.0 * (pw / segments as f64).sqrt() / wsum;
+        let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
+        let k = k.min(slices - 1);
+        if best[k].is_none_or(|(_, b)| a > b) {
+            best[k] = Some((p, a));
+        }
+    }
+    let (period_s, amplitude) = best.into_iter().flatten().unzip();
+    Some(Welch {
+        segment_s: l as f64 * g.step,
+        segments,
+        period_s,
+        amplitude,
+    })
 }
 
 /// Input-grid availability, not acoustic coverage or share of watch beats heard.
@@ -120,6 +227,7 @@ pub fn amplitude_spectrum(
             finite_bins: fin.len(),
             total_bins: n,
         },
+        welch: welch(g, scale, max_points),
     })
 }
 
@@ -229,6 +337,48 @@ mod tests {
         .unwrap();
         assert_eq!(s.support.total_bins, 65);
         assert_eq!(s.support.finite_bins, 65);
+    }
+
+    #[test]
+    fn welch_reads_a_line_through_gaps_without_filling_them() {
+        // 0.4 deg at 60 s on 2 s windows over 4 h, with a 10 min gap every
+        // hour: the whole-series spectrum has the gaps in it; Welch's
+        // segments stay clear of them and read the size.
+        let step = 2.0;
+        let y: Vec<f64> = (0..7200)
+            .map(|i| {
+                let t = i as f64 * step;
+                if t % 3600.0 >= 3000.0 {
+                    f64::NAN
+                } else {
+                    0.4 * (std::f64::consts::TAU * t / 60.0).sin() + 250.0
+                }
+            })
+            .collect();
+        let g = Grid { t0: 0.0, step, y };
+        let w = welch(&g, 1.0, 600).unwrap();
+        // 1500 readings a stretch: segments of 1024, one per stretch.
+        assert_eq!(w.segment_s, 2048.0);
+        assert_eq!(w.segments, 4);
+        let at = |p: f64| {
+            w.period_s
+                .iter()
+                .zip(&w.amplitude)
+                .filter(|(q, _)| (*q / p - 1.0).abs() < 0.02)
+                .map(|(_, a)| *a)
+                .fold(0.0, f64::max)
+        };
+        assert!((at(60.0) - 0.4).abs() < 0.04, "{}", at(60.0));
+        assert!(at(200.0) < 0.01, "{}", at(200.0));
+        // A series with no stretch long enough has none.
+        let short = Grid {
+            t0: 0.0,
+            step,
+            y: (0..400)
+                .map(|i| if i % 50 == 0 { f64::NAN } else { 1.0 })
+                .collect(),
+        };
+        assert!(welch(&short, 1.0, 600).is_none());
     }
 
     #[test]
