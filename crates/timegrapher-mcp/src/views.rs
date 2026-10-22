@@ -30,7 +30,10 @@ pub fn page() -> &'static str {
             variables(&LIGHT),
             variables(&DARK)
         );
+        let viridis = serde_json::to_string(&timegrapher_core::palette::VIRIDIS)
+            .expect("the viridis table as JSON");
         HTML.replace("/*PALETTE*/", &css)
+            .replace("/*VIRIDIS*/null", &viridis)
     })
 }
 
@@ -196,8 +199,8 @@ fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 
 /// Takes out of a `series --views` document what only the Steadiness and
 /// Distribution charts draw (each series' `views`, the shared
-/// `period_span`, the `spectra` the FFT view draws and each distribution's
-/// probability-plot `points`, a few
+/// `period_span`, the `spectra` the FFT view draws, the time-frequency maps
+/// and each distribution's probability-plot `points`, a few
 /// hundred kB on a long take), so the model reads the headlines and not
 /// thousands of numbers; the view puts them back.
 pub fn take_series_charts(doc: &mut Value) -> Value {
@@ -231,6 +234,28 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
             })
             .collect();
     }
+    // The time-frequency maps (about 1 MB on a 2 h take) go to the view;
+    // the model reads each map's outline.
+    let maps = doc
+        .as_object_mut()
+        .and_then(|o| o.remove("time_frequency"))
+        .unwrap_or(Value::Null);
+    if let Some(maps) = maps.as_array() {
+        doc["time_frequency_maps"] = maps.iter().map(map_outline).collect();
+    }
+    // No view draws the coherence grids, which are larger still: the model
+    // keeps everything else about each pair.
+    for c in doc
+        .get_mut("coherence")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(o) = c.as_object_mut() {
+            o.remove("coherence");
+            o.remove("phase_deg");
+        }
+    }
     let mut points = Vec::new();
     if let Some(d) = doc.get_mut("distributions") {
         if let Some(all) = d.get_mut("overall").and_then(Value::as_array_mut) {
@@ -257,7 +282,40 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
             }
         }
     }
-    json!({ "views": views, "period_span": period_span, "spectra": spectra, "points": points })
+    json!({
+        "views": views, "period_span": period_span, "spectra": spectra, "points": points,
+        "maps": maps,
+    })
+}
+
+/// What a time-frequency map covers, without its cells: its periods and
+/// times, how many cells were read, and the colour scale it is drawn in.
+fn map_outline(m: &Value) -> Value {
+    let span = |k: &str| {
+        let v: Vec<f64> = m[k]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_f64)
+            .collect();
+        let lo = v.iter().copied().reduce(f64::min);
+        let hi = v.iter().copied().reduce(f64::max);
+        (v.len(), lo, hi)
+    };
+    let (rows, shortest, longest) = span("period_s");
+    let (columns, first, last) = span("t_s");
+    let cells = m["values"].as_array().into_iter().flatten();
+    let read = cells
+        .flat_map(|c| c.as_array().into_iter().flatten())
+        .filter(|v| v.is_number())
+        .count();
+    json!({
+        "series": m["series"], "method": m["method"], "unit": m["unit"],
+        "step_s": m["step_s"], "window_s": m["window_s"], "hop_s": m["hop_s"],
+        "rows": rows, "shortest_period_s": shortest, "longest_period_s": longest,
+        "columns": columns, "first_t_s": first, "last_t_s": last,
+        "cells_read": read, "cells": rows * columns, "scale": m["scale"],
+    })
 }
 
 /// What the Recording view needs beyond `analyze`'s document: the strip
@@ -421,6 +479,46 @@ mod tests {
         for c in [LIGHT.trace_rate, DARK.trace_rate, LIGHT.tick, DARK.tock] {
             assert!(page.contains(&c.css()), "{}", c.css());
         }
+    }
+
+    #[test]
+    fn the_maps_go_to_the_view_and_the_model_reads_their_outline() {
+        let map = json!({ "series": "amplitude", "method": "stft", "unit": "deg",
+            "step_s": 2.0, "window_s": 1200.0, "hop_s": 300.0,
+            "period_s": [400.0, 10.0], "t_s": [600.0, 900.0],
+            "values": [[1.0, null], [2.0, 0.5]],
+            "scale": { "linear": { "lo": 0.0, "hi": 2.0 }, "log": { "lo": 0.5, "hi": 2.0 } } });
+        let mut doc = json!({
+            "series": [{ "series": "amplitude", "headline": "Amplitude" }],
+            "time_frequency": [map.clone()],
+            "coherence": [{ "x": "rate", "y": "amplitude", "period_s": [60.0],
+                "t_s": [5.0], "coherence": [[0.9]], "phase_deg": [[10.0]], "noise_95": [0.4] }],
+        });
+        let charts = take_series_charts(&mut doc);
+        assert_eq!(charts["maps"], json!([map]));
+        assert!(doc.get("time_frequency").is_none());
+        assert_eq!(
+            doc["time_frequency_maps"],
+            json!([{ "series": "amplitude", "method": "stft", "unit": "deg",
+                "step_s": 2.0, "window_s": 1200.0, "hop_s": 300.0,
+                "rows": 2, "shortest_period_s": 10.0, "longest_period_s": 400.0,
+                "columns": 2, "first_t_s": 600.0, "last_t_s": 900.0,
+                "cells_read": 3, "cells": 4, "scale": map["scale"] }])
+        );
+        // The coherence keeps everything but its grids.
+        assert_eq!(
+            doc["coherence"],
+            json!([{ "x": "rate", "y": "amplitude", "period_s": [60.0], "t_s": [5.0],
+                "noise_95": [0.4] }])
+        );
+    }
+
+    #[test]
+    fn the_view_takes_the_cores_viridis() {
+        let page = page();
+        assert!(!page.contains("/*VIRIDIS*/"));
+        let table = serde_json::to_string(&timegrapher_core::palette::VIRIDIS).unwrap();
+        assert!(page.contains(&format!("const VIRIDIS = {table};")));
     }
 
     #[test]

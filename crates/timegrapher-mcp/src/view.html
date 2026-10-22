@@ -77,6 +77,11 @@ th { color: var(--text2); font-weight: 500; }
 .headline { color: var(--text); font-size: 12.5px; margin: 0 0 2px; }
 .stats { color: var(--text2); font-size: 11.5px; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
 .empty { color: var(--text2); padding: 24px 0; text-align: center; }
+.map-layer { position: absolute; pointer-events: none; }
+canvas.map { position: absolute; image-rendering: pixelated; cursor: crosshair; }
+.map-key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text2); font-size: 11px; margin: 2px 0 0; }
+.map-key .ramp { width: 120px; height: 10px; border-radius: 2px; }
+.map-key .unread { width: 14px; height: 10px; border: 1px solid var(--text3); border-radius: 2px; margin-left: 12px; }
 .bar { height: 4px; border-radius: 2px; background: var(--control); margin: -6px 0 12px; overflow: hidden; }
 .bar > div { height: 100%; background: var(--text2); }
 </style>
@@ -678,6 +683,8 @@ const STEADY_VIEWS = [
   ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near 0.37 of its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
   ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: an estimate of size at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
+  ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
+  ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
 ];
 // steady::reading_swing: the peak-to-peak swing, s/d, that a beat-timing
 // sine `amp` ms in size with period `period` s makes in rate readings each
@@ -707,7 +714,7 @@ const SERIES = {
 let steadyView = null;
 // The views' two-way switches, as in the app's toolbar: Periods on a log
 // scale, and the FFT's rate as the beat timing in ms.
-let periodsLog = false, fftTiming = false;
+let periodsLog = false, fftTiming = false, mapsLog = false;
 
 // steady::secs: "45 s", "12 min", "2.5 h".
 function secs(t) {
@@ -976,6 +983,16 @@ function steadyPlot(s, view, doc) {
         notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
     }
+    case "stft":
+    case "wavelet": {
+      const m = mapOf(doc, s, view === "stft" ? "stft" : "sst");
+      if (!m) {
+        return steadyNote(view === "stft"
+          ? "The STFT Map needs 20 minutes of readings with none missing."
+          : "The wavelet map needs a longer stretch of unbroken readings.");
+      }
+      return mapChart(m, doc, mapsLog);
+    }
     case "allan": {
       const a = s.allan;
       if (!a || !a.tau_s) return steadyNote("Too few readings for the Allan deviation.");
@@ -1047,7 +1064,7 @@ function steadyStats(s) {
 function steadinessCard(doc) {
   const series = doc.series || [];
   if (!series.length) return "";
-  const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold, spectrum: (s) => spectrumOf(doc, s) };
+  const has = { readings: (s) => s.views && s.views.readings, periods: (s) => s.views && s.views.search, cycle: (s) => s.views && s.views.fold, spectrum: (s) => spectrumOf(doc, s), stft: () => !!doc.time_frequency, wavelet: () => !!doc.time_frequency };
   const offered = STEADY_VIEWS.filter(([key]) => !has[key] || series.some(has[key]));
   if (!offered.some(([k]) => k === steadyView)) steadyView = offered[0][0];
   // A series too short for the tests has no autocorrelation: no plot.
@@ -1075,7 +1092,9 @@ function steadySwitch() {
     ? ["log", "Log Scale", periodsLog, "Draw the scores on a log scale, so a small peak beside a tall one still shows"]
     : steadyView === "spectrum"
       ? ["timing", "Timing", fftTiming, "Draw rate as the beat timing's spectrum, in ms, at every period, rather than the swing it makes in 10 s rate readings, in s/d"]
-      : null;
+      : steadyView === "stft" || steadyView === "wavelet"
+        ? ["mapslog", "Log Scale", mapsLog, "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines beside strong ones still show"]
+        : null;
   return sw ? `<div class="seg" role="group" aria-label="Scale"><button data-switch="${sw[0]}" aria-pressed="${sw[2]}" title="${esc(sw[3])}">${sw[1]}</button></div>` : "";
 }
 
@@ -1086,8 +1105,155 @@ function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-switch]")) {
     b.addEventListener("click", () => {
       if (b.dataset.switch === "log") periodsLog = !periodsLog;
+      else if (b.dataset.switch === "mapslog") mapsLog = !mapsLog;
       else fftTiming = !fftTiming;
       redraw();
+    });
+  }
+}
+
+// ---- The STFT and Wavelet Maps (the app's tfmap.rs) -----------------------
+//
+// A series' size at each period (up, log, longest at the top) and time
+// (across), in viridis, on the colour scale the document gives each map
+// (core timefreq::Scale, the app's). A cell nothing was read for is left
+// empty: the card shows through.
+
+// Core palette::VIRIDIS, put in by the server.
+const VIRIDIS = /*VIRIDIS*/null;
+// The maps drawn this time, painted once the page is in place.
+const mapPaints = [];
+
+// palette::viridis: the table at t, 0 to 1, between its points.
+function viridisRgb(t) {
+  const x = Math.min(Math.max(t, 0), 1) * (VIRIDIS.length - 1);
+  const i = Math.min(Math.floor(x), VIRIDIS.length - 2), f = x - i;
+  const a = VIRIDIS[i], b = VIRIDIS[i + 1];
+  return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f));
+}
+// timefreq::Scale::at: where size x falls, 0 to 1.
+function scaleAt(sc, x) {
+  const t = sc.log
+    ? (Math.log(Math.max(x, sc.lo)) - Math.log(sc.lo)) / (Math.log(sc.hi) - Math.log(sc.lo))
+    : (x - sc.lo) / (sc.hi - sc.lo);
+  return Math.min(Math.max(t, 0), 1);
+}
+// The map's scale as the document gives it; null when nothing was read.
+function mapScale(m, log) {
+  const sc = m.scale && m.scale[log ? "log" : "linear"];
+  return sc && sc.hi > 0 ? { lo: sc.lo, hi: sc.hi, log } : null;
+}
+function mapOf(doc, s, method) {
+  return (doc.time_frequency || []).find((m) => m.series === s.series && m.method === method && m.period_s && m.period_s.length && m.t_s && m.t_s.length) || null;
+}
+// tfmap::slots: one column per step of time from the first column's.
+function mapSlots(m) {
+  const t = m.t_s;
+  let dt = m.hop_s;
+  if (!(dt > 0)) {
+    const d = t.slice(1).map((v, i) => v - t[i]).filter((v) => v > 0);
+    dt = d.length ? Math.min(...d) : 1;
+  }
+  return [t[0], dt, Math.round((t[t.length - 1] - t[0]) / dt) + 1];
+}
+// tfmap::size_text: "0.12 ms", "3.1°".
+function mapSize(m, v) {
+  const d = v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3;
+  return m.unit === "deg" ? `${v.toFixed(d)}°` : `${v.toFixed(d)} ${m.unit}`;
+}
+
+function mapChart(m, doc, log) {
+  const sc = mapScale(m, log);
+  if (!sc) return steadyNote("Nothing in this stretch could be read for the map.");
+  const [t0, dt, w] = mapSlots(m);
+  const p = m.period_s, h = p.length;
+  const half = h < 2 ? 0.05 : Math.abs(Math.log10(p[0]) - Math.log10(p[h - 1])) / (h - 1) / 2;
+  const top = Math.log10(p[0]) + half, bottom = Math.log10(p[h - 1]) - half;
+  const left = t0 - dt / 2, width = dt * w;
+  const x0 = Math.min(0, left), x1 = Math.max(doc.duration_s || 0, left + width);
+  const W = chartWidth(), H = 170, T = 4, B = 20, R = 6, plotH = H - T - B;
+  const yt = logTicks(bottom, top, secs);
+  const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
+  const plotW = W - L - R;
+  const xt = linTicks(x0, x1, plotW, Math.min(80, plotW / 4), (t) => fmtTime(t), TIME_STEPS);
+  const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
+  const sy = (y) => T + (top - y) / (top - bottom) * plotH;
+  const area = plotArea(L, T, plotW, plotH);
+  let g = area.svg, grid = "";
+  for (const [v, t] of yt) {
+    grid += `<line class="grid" x1="${L}" x2="${L + plotW}" y1="${sy(v)}" y2="${sy(v)}"/>`;
+    if (t) g += `<text x="${L - 5}" y="${sy(v) + 4}" text-anchor="end">${esc(t)}</text>`;
+  }
+  for (const [v, t] of xt) {
+    grid += `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${T + plotH}"/>`;
+    const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
+    g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
+  }
+  g += `<g clip-path="url(#${area.id})">${grid}</g>`;
+  // tfmap::wheel_rows: each named wheel's turn across the map, dashed and
+  // named at the right, where it falls inside the map's periods.
+  let over = "";
+  for (const wh of (doc.input && doc.input.settings && doc.input.settings.named_wheels) || []) {
+    const y = Math.log10(wh.period_s);
+    if (!(wh.period_s > 0) || y <= bottom || y >= top) continue;
+    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--text)" stroke-opacity="0.7" stroke-width="1" stroke-dasharray="4 4"/>`;
+    over += `<text x="${L + plotW - 3}" y="${sy(y) - 3}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px">${esc(wheelTitle(wh.name))}</text>`;
+  }
+  const k = mapPaints.length;
+  const box = { left: sx(left), top: sy(top), width: sx(left + width) - sx(left), height: sy(bottom) - sy(top) };
+  mapPaints.push({ m, sc, t0, dt, w });
+  const stops = Array.from({ length: 9 }, (_, i) => `rgb(${viridisRgb(i / 8).join(",")}) ${i * 12.5}%`).join(", ");
+  const keyHint = "The colour gives the size at each period and time; the brightest also stands for every size above it. Empty cells weren't read: a gap, a window with a reading missing, or the edges of a stretch, which the wavelet map can't reach.";
+  return `<div class="chart" style="width:${W}px;height:${H}px">
+    <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${m.method === "stft" ? "STFT Map" : "Wavelet Map"}">${g}</svg>
+    <canvas class="map" data-map="${k}" width="${w}" height="${h}" style="left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px"></canvas>
+    <svg class="map-layer" style="left:0;top:0" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${over}</svg>
+  </div>
+  <div class="map-key" title="${esc(keyHint)}"><span>${esc(mapSize(m, sc.lo))}</span><span class="ramp" style="background:linear-gradient(to right, ${stops})"></span><span>${esc(mapSize(m, sc.hi))} and above</span><span class="unread"></span><span>not read</span>${sc.log ? "<span>· log scale</span>" : ""}</div>
+  <p class="sub caption" data-map-read="${k}">Point at the map to read a cell.</p>`;
+}
+
+// The cells of map `p`, as RGBA, a pixel a cell, the longest period on the
+// top row; a cell not read is clear.
+function mapPixels(p) {
+  const { m, sc, t0, dt, w } = p, h = m.period_s.length;
+  const px = new Uint8ClampedArray(w * h * 4);
+  m.t_s.forEach((t, j) => {
+    const x = Math.round((t - t0) / dt);
+    if (x < 0 || x >= w) return;
+    (m.values[j] || []).forEach((v, y) => {
+      if (y >= h || typeof v !== "number" || !Number.isFinite(v)) return;
+      const c = viridisRgb(scaleAt(sc, v)), o = (y * w + x) * 4;
+      px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
+    });
+  });
+  return px;
+}
+
+// tfmap::cell: the column nearest `t` within half a step, and row `y`.
+function mapCell(p, t, y) {
+  const { m, dt } = p;
+  let j = 0;
+  m.t_s.forEach((v, i) => { if (Math.abs(v - t) < Math.abs(m.t_s[j] - t)) j = i; });
+  if (Math.abs(m.t_s[j] - t) > dt / 2 + 1e-9 || y < 0 || y >= m.period_s.length) return null;
+  const v = (m.values[j] || [])[y];
+  return { t: m.t_s[j], period: m.period_s[y], v: typeof v === "number" && Number.isFinite(v) ? v : null };
+}
+
+function paintMaps(root) {
+  for (const c of root.querySelectorAll("canvas[data-map]")) {
+    const p = mapPaints[+c.dataset.map];
+    if (!p || !c.getContext) continue;
+    const ctx = c.getContext("2d");
+    if (!ctx) continue;
+    ctx.putImageData(new ImageData(mapPixels(p), c.width, c.height), 0, 0);
+    const read = root.querySelector(`[data-map-read="${c.dataset.map}"]`);
+    c.addEventListener("mousemove", (e) => {
+      const r = c.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left) / r.width * p.w);
+      const y = Math.floor((e.clientY - r.top) / r.height * c.height);
+      const cell = mapCell(p, p.t0 + x * p.dt, y);
+      if (read && cell) read.textContent = `${fmtTime(cell.t)}, period ${secs(cell.period)}: ${cell.v === null ? "not read" : mapSize(p.m, cell.v)}`;
     });
   }
 }
@@ -1195,6 +1361,7 @@ function seriesView(doc, extra) {
     (doc.series || []).forEach((s, i) => { if (extra.views && extra.views[i]) s.views = extra.views[i]; });
     if (extra.period_span) doc.period_span = extra.period_span;
     if (extra.spectra) doc.spectra = extra.spectra;
+    if (extra.maps) doc.time_frequency = extra.maps;
     const all = (doc.distributions && doc.distributions.overall) || [];
     all.forEach((e, i) => { if (extra.points && extra.points[i]) e.points = extra.points[i]; });
   }
@@ -1371,6 +1538,7 @@ function redraw() {
   const root = document.getElementById("root");
   if (!last && !live) return;
   charts.clear();
+  mapPaints.length = 0;
   if (!last) {
     lastWidth = root.clientWidth;
     root.innerHTML = liveView(live);
@@ -1401,6 +1569,7 @@ function redraw() {
   root.innerHTML = html;
   wireCharts(root);
   wireSteadiness(root);
+  paintMaps(root);
 }
 </script>
 </body>
