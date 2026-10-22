@@ -719,7 +719,9 @@ impl Library {
             let to = unused_file(&dir, &file_name(f));
             let part = dir.join(format!(".{}.part", file_name(&to)));
             let copied = fs::copy(f, &part)
-                .and_then(|_| fs::File::open(&part)?.sync_all())
+                // Opened to write: Windows refuses to flush a file opened
+                // only to read.
+                .and_then(|_| fs::OpenOptions::new().write(true).open(&part)?.sync_all())
                 .and_then(|_| fs::rename(&part, &to));
             match copied {
                 Ok(()) => added.push(to),
