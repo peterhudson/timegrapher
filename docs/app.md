@@ -304,7 +304,8 @@ one can show up to 4 s after the sound returns, even when no beat was
 lost, as the silence leaves the 4 s of sound the beats are found in. No
 reading or amplitude window reaches across a jump. Tick and Tock are then
 told apart by their sound, the first 16 good beats of each side after the
-jump against up to 32 before, so they keep their names. Until they are,
+jump against up to 32 before, so they keep their names; a whole
+recording's reading makes the same check on the same beats. Until they are,
 the beat error, each side's amplitude and the Tick Tock sound are left
 out, and so they are in a stretch between two jumps too close together to
 check. When the two sounds are too alike to tell, or fewer than 16 good
