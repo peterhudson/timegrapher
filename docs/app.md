@@ -46,8 +46,19 @@ calibre, how many takes it has and the date of the last, and the space
 they use, with the library's total size and folder and **Show in
 Finder** at the foot. Its toolbar has a search (in the name, calibre,
 notes and fields), **Sort** by Name, Last Take or Size, **Archived**
-(once a watch is archived, to list those too) and **New Watch…**, which
-opens a form: only the **Name** is needed, and Calibre (which fills the
+(once a watch is archived, to list those too), **Quick Listen** and
+**New Watch…**. **Quick Listen** (off while listening) listens on the
+microphone without picking or adding a watch first, for a watch handed
+over the counter: it asks first when there is unsaved sound or an
+unsaved change, as New Session does, then clears the take's name, shows **Unsorted** and starts
+a new session. **Stop**, like **Save…**, saves the take into Unsorted, named as a
+watch's takes are, and after a Resume, Stop or Save Again adds the sound
+since to the same take. Unsorted is listed above the watches while it
+holds a take, and its takes have the same menu as a watch's, with
+**File Under a Watch** (into the watch picked from it) in place of Move
+to Another Watch, so a take waits there until it is filed or deleted.
+Picking a watch ends Quick Listen. No watch can be called Unsorted.
+**New Watch…** opens a form: only the **Name** is needed, and Calibre (which fills the
 Lift Angle and Beat Rate), Lift Angle, Beat Rate and Notes can each be
 removed with its ×, then given back, with any of the suggested fields or
 one of your own, from **Add Field**; **Archived** hides the watch from the
@@ -79,8 +90,8 @@ changes that take, not the watch. With a watch picked, **Save…** saves
 the take into it with no question, in a folder named by when the take
 started (in this computer's time) and its position when it used only one;
 Save Again then saves into the same take, and Save As… still asks. A
-library another copy of the app has open is read only: New Watch… and
-Edit… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
+library another copy of the app has open is read only: Quick Listen, New
+Watch… and Edit… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
 new session, unless closing the kept sound fails), **Save…**
@@ -810,7 +821,9 @@ the Watches pane, beside what it sets.
 **The library.** The watches and their takes are to be kept in one
 folder, `Timegrapher Data` in the home folder unless another is chosen:
 `library.toml` at the top, then a folder for each watch holding its
-details (`watch.toml`), its `photos/` and its `takes/`, each take a
+details (`watch.toml`), its `photos/` and its `takes/`, and `Unsorted/`,
+whose `takes/` holds the takes Quick Listen made until each is filed;
+each take a
 standard take folder named by when it started (`2026-10-20 14.32 Dial
 Up`, with the position in words when the take used only one). Nothing in
 it records where it is, so it can be moved, synced or copied whole; a

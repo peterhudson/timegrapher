@@ -120,6 +120,8 @@ enum Confirm {
     /// Start listening to the microphone, over a recording whose masks
     /// changed.
     Microphone,
+    /// Quick Listen: a new session on the microphone, kept in Unsorted.
+    QuickListen,
     /// Open a recording (analysed whole, or replayed when `replay`).
     Open {
         path: PathBuf,
@@ -552,7 +554,8 @@ const NEW_SESSION_HINT: &str = "Clear everything and start again with the next w
      fails; a replay stops. Unsaved sound is asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
      settings, to analyse again later. With a watch picked in the Watches pane, the take is \
-     saved into that watch, named for when it started. Otherwise the first time it asks \
+     saved into that watch, named for when it started; after Quick Listen, into Unsorted. \
+     Otherwise the first time it asks \
      where: the take goes in a folder of its own, named for its time and watch, inside the \
      folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
@@ -1075,6 +1078,11 @@ pub struct TimegrapherApp {
     /// The Watches pane: the watch picked (its id), the list's search,
     /// order and whether it shows archived watches, and the details form.
     watch_open: Option<String>,
+    /// The pane shows Unsorted's takes instead of the list.
+    unsorted_open: bool,
+    /// This session began with Quick Listen: Stop saves it into Unsorted,
+    /// as Save… does.
+    quick_listen: bool,
     watch_search: String,
     watch_sort: watches::Sort,
     watch_archived: bool,
@@ -1542,6 +1550,8 @@ impl TimegrapherApp {
             library_move_ask: None,
             library_moving: None,
             watch_open: None,
+            unsorted_open: false,
+            quick_listen: false,
             watch_search: String::new(),
             watch_sort: watches::Sort::default(),
             watch_archived: false,
@@ -1913,6 +1923,17 @@ impl TimegrapherApp {
             if let Ok(Err(e)) = self.session.pause(now) {
                 self.recording_failed(format!("Couldn't close the kept sound at the pause: {e}"));
             }
+        }
+    }
+
+    /// Stop: pause, and after Quick Listen save the take into Unsorted
+    /// (or the sound since into the take saved before).
+    fn stop_listening(&mut self) {
+        self.pause();
+        // Never a folder dialog at a Stop: only where Save… needs none.
+        let quiet = self.session.saved_to().is_some() || self.watch_takes_dir().is_some();
+        if self.quick_listen && quiet && self.session.allows(Action::Save) {
+            self.save_again();
         }
     }
 
@@ -3766,7 +3787,9 @@ impl TimegrapherApp {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
-                    Confirm::Microphone => "Start listening without saving?",
+                    Confirm::Microphone | Confirm::QuickListen => {
+                        "Start listening without saving?"
+                    }
                 })
                 .font(theme::semibold(15.0)),
             );
@@ -3793,9 +3816,13 @@ impl TimegrapherApp {
                 let go = match (&fault, &what) {
                     (Some(_), Confirm::Quit) => "Leave Files and Quit",
                     (Some(_), _) => "Leave Files and Continue",
-                    (None, Confirm::NewSession | Confirm::Open { .. } | Confirm::Microphone) => {
-                        "Don't Save"
-                    }
+                    (
+                        None,
+                        Confirm::NewSession
+                        | Confirm::Open { .. }
+                        | Confirm::Microphone
+                        | Confirm::QuickListen,
+                    ) => "Don't Save",
                     (None, Confirm::Quit) => "Quit Without Saving",
                 };
                 if ui
@@ -3839,6 +3866,7 @@ impl TimegrapherApp {
             Confirm::NewSession => self.new_session(),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
             Confirm::Microphone => self.listen_after_ask(),
+            Confirm::QuickListen => self.quick_listen(true),
             Confirm::Quit => {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -3860,6 +3888,9 @@ impl TimegrapherApp {
                 let picked = self.open_watch().is_some();
                 if picked {
                     self.watch_details(ui);
+                    self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
+                } else if self.unsorted_open {
+                    watches::unsorted_details(ui);
                     self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
                 } else {
                     self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
@@ -3892,13 +3923,26 @@ impl TimegrapherApp {
         }
     }
 
-    /// Where Save… keeps a take of the watch picked: its `takes/`, where
-    /// the library can be written.
+    /// The watch picked, or Unsorted when the pane shows it.
+    fn open_group(&self) -> Option<library::WatchEntry> {
+        match &self.library {
+            Ok(Some(l)) if self.unsorted_open && self.watch_open.is_none() => {
+                Some(l.unsorted.clone())
+            }
+            _ => self.open_watch().cloned(),
+        }
+    }
+
+    /// Where Save… keeps a take: the `takes/` of the watch picked, or
+    /// Unsorted's after Quick Listen or with Unsorted shown, where the
+    /// library can be written.
     fn watch_takes_dir(&self) -> Option<PathBuf> {
         match &self.library {
-            Ok(Some(l)) if l.read_only.is_none() => {
-                self.open_watch().map(|e| e.dir.join(library::TAKES))
-            }
+            Ok(Some(l)) if l.read_only.is_none() => match self.open_watch() {
+                Some(e) => Some(e.dir.join(library::TAKES)),
+                None if self.quick_listen || self.unsorted_open => l.unsorted_dir().ok(),
+                None => None,
+            },
             _ => None,
         }
     }
@@ -3907,6 +3951,7 @@ impl TimegrapherApp {
     fn watch_list_card(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let mut show = false;
+        let mut show_unsorted = false;
         let picked = match &self.library {
             Ok(Some(l)) => {
                 let shown =
@@ -3924,7 +3969,12 @@ impl TimegrapherApp {
                         RichText::new("No watch matches the search.").color(pal.text_secondary),
                     );
                 }
+                let unsorted =
+                    !l.unsorted.takes.is_empty() && watches::unsorted_row(ui, &l.unsorted);
                 let picked = watches::list(ui, &shown);
+                if unsorted {
+                    show_unsorted = true;
+                }
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
@@ -3964,6 +4014,9 @@ impl TimegrapherApp {
         if show {
             self.library_action(settings_window::LibraryAction::Show);
         }
+        if show_unsorted {
+            self.unsorted_open = true;
+        }
         if let Some(id) = picked {
             self.pick_watch(&id);
         }
@@ -3979,7 +4032,7 @@ impl TimegrapherApp {
 
     /// The picked watch's takes.
     fn watch_takes_card(&mut self, ui: &mut egui::Ui) {
-        let Some(e) = self.open_watch().cloned() else {
+        let Some(e) = self.open_group() else {
             return;
         };
         let (others, writable) = match &self.library {
@@ -4007,6 +4060,7 @@ impl TimegrapherApp {
             others: &others,
             writable,
             keeping,
+            unsorted: e.watch.id.is_empty(),
         };
         match watches::takes(ui, &e, &cx) {
             Some(watches::TakeAction::Open(dir)) => {
@@ -4048,13 +4102,18 @@ impl TimegrapherApp {
         }
     }
 
-    /// Move a take into another watch (by its id).
+    /// Move a take into another watch (by its id): one in Unsorted is
+    /// filed under it.
     fn move_take(&mut self, take: &Path, id: &str) {
         if let Some(why) = self.take_busy(take, false) {
             return self.info_msg(why);
         }
+        let mut filed = false;
         let moved = match &mut self.library {
-            Ok(Some(l)) => l.move_take(take, id),
+            Ok(Some(l)) => {
+                filed = l.is_unsorted(take);
+                l.move_take(take, id)
+            }
             _ => Err("There is no library".into()),
         };
         match moved {
@@ -4068,7 +4127,11 @@ impl TimegrapherApp {
                     .and_then(|l| l.watch_of(&to))
                     .map(|w| w.watch.name.clone())
                     .unwrap_or_default();
-                self.info_msg(format!("Moved \"{}\" to {name}.", file_name(&to)));
+                if filed {
+                    self.info_msg(format!("Filed \"{}\" under {name}.", file_name(&to)));
+                } else {
+                    self.info_msg(format!("Moved \"{}\" to {name}.", file_name(&to)));
+                }
             }
             Err(err) => self.error(format!("The take couldn't be moved: {err}")),
         }
@@ -4357,6 +4420,8 @@ impl TimegrapherApp {
             return;
         }
         self.watch_open = Some(id.to_string());
+        self.unsorted_open = false;
+        self.quick_listen = false;
         let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
             self.watch_open = None;
             return;
@@ -4388,6 +4453,20 @@ impl TimegrapherApp {
     /// The Watches pane's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
+        if self.unsorted_open && self.watch_open.is_none() {
+            if ui
+                .button("‹ All Watches")
+                .on_hover_text("Back to the list of watches")
+                .clicked()
+            {
+                self.unsorted_open = false;
+                // A Quick Listen still going keeps saving into Unsorted.
+                if !self.running() {
+                    self.quick_listen = false;
+                }
+            }
+            return;
+        }
         if let Some(e) = self.open_watch() {
             let w = e.watch.clone();
             if ui
@@ -4435,6 +4514,23 @@ impl TimegrapherApp {
         }
         let writable = !matches!(&self.library, Ok(Some(l)) if l.read_only.is_some())
             && self.library_root().is_some();
+        let listening = self.running();
+        if ui
+            .add_enabled(writable && !listening, egui::Button::new("Quick Listen"))
+            .on_hover_text(
+                "Listen to a watch on the microphone without picking or adding it first. The \
+                 take is kept in Unsorted, saved when you Stop, until you file it under a \
+                 watch or delete it.",
+            )
+            .on_disabled_hover_text(if listening {
+                "Stop listening first"
+            } else {
+                "This copy of the app can only read the library, or there is no folder for it"
+            })
+            .clicked()
+        {
+            self.quick_listen(false);
+        }
         if ui
             .add_enabled(writable, egui::Button::new("New Watch…"))
             .on_hover_text("Add a watch to the library: only its name is needed")
@@ -4466,6 +4562,52 @@ impl TimegrapherApp {
         }
     }
 
+    /// Make the library at its folder when there is none yet.
+    fn ensure_library(&mut self) {
+        if matches!(self.library, Ok(None)) {
+            self.library = match self.library_root() {
+                Some(root) => library::Library::open_or_create(&root).map(Some),
+                None => Err("there is no folder for it: choose one in Settings".into()),
+            };
+        }
+    }
+
+    /// Quick Listen: show Unsorted and listen to the microphone in a new
+    /// session, without a watch picked, its name cleared. Stop saves the
+    /// take into Unsorted. Unsaved sound is asked about first, unless
+    /// `asked`.
+    fn quick_listen(&mut self, asked: bool) {
+        if self.running() {
+            return self.info_msg("Stop listening first.".into());
+        }
+        self.ensure_library();
+        let ready = match &self.library {
+            Ok(Some(l)) => match &l.read_only {
+                Some(why) => Err(why.clone()),
+                None => l.unsorted_dir().map(|_| ()),
+            },
+            Ok(None) => Err("There is no library".into()),
+            Err(e) => Err(format!("The library can't be read: {e}")),
+        };
+        if let Err(e) = ready {
+            return self.error(format!("Quick Listen can't keep its take: {e}"));
+        }
+        if !asked && self.needs_save_confirmation() {
+            self.confirm = Some(Confirm::QuickListen);
+            return;
+        }
+        if self.live.is_some() || self.session.recorder.is_some() {
+            self.new_session();
+        }
+        self.watch_open = None;
+        self.unsorted_open = true;
+        self.quick_listen = true;
+        self.input = Input::Microphone;
+        self.watch.clear();
+        self.note_settings();
+        self.start_microphone();
+    }
+
     /// Write the form's watch into the library, making the library first
     /// for the first watch.
     fn save_watch_form(&mut self) {
@@ -4479,12 +4621,7 @@ impl TimegrapherApp {
         w.notes = w.notes.filter(|n| !n.trim().is_empty());
         w.fields
             .retain(|x| !(x.label.trim().is_empty() && x.value.trim().is_empty()));
-        if matches!(self.library, Ok(None)) {
-            self.library = match self.library_root() {
-                Some(root) => library::Library::open_or_create(&root).map(Some),
-                None => Err("there is no folder for it: choose one in Settings".into()),
-            };
-        }
+        self.ensure_library();
         let done = match &mut self.library {
             Ok(Some(lib)) if f.new => lib.add(&w).map(|_| ()),
             Ok(Some(lib)) => lib.update(&w),
@@ -4591,7 +4728,7 @@ impl TimegrapherApp {
                     )
                     .clicked()
                 {
-                    self.pause();
+                    self.stop_listening();
                 }
             } else if self.can_resume() {
                 if ui
@@ -12193,6 +12330,128 @@ mod tests {
         app.save_watch_form();
         let refused = app.watch_form.as_ref().and_then(|f| f.error.clone());
         assert!(refused.is_some_and(|e| e.contains("already")));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Quick Listen asks before unsaved sound goes, then shows Unsorted
+    /// and listens with no watch picked; Stop saves the take into Unsorted,
+    /// which the list shows at its top, and File Under a Watch moves it
+    /// into a watch. Picking a watch ends it.
+    #[test]
+    fn quick_listen_keeps_its_take_in_unsorted_until_filed() {
+        let base = std::env::temp_dir().join(format!("tg-app-quick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        app.pick_watch(&pepsi);
+        assert_eq!(app.watch, "Pepsi");
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let pane = |ctx: &egui::Context, app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.pane_tools(ui, Pane::Watch);
+                        app.watch_pane(ui);
+                    });
+                });
+                all = format!("{:?}", out.shapes);
+            }
+            all
+        };
+        // A session with 20 s of sound not yet saved, paused.
+        let record = |app: &mut TimegrapherApp, scratch: &Path| {
+            app.session.listen();
+            let info = app.info("", 48000, 16);
+            let mut r = Recorder::start(scratch, info).unwrap();
+            r.write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 48000 * 20],
+                at: std::time::SystemTime::now(),
+            })
+            .unwrap();
+            app.session.recorder = Some(r);
+            app.session.set_state(session::State::Paused {
+                since: Instant::now(),
+            });
+        };
+        record(&mut app, &base.join("unsaved-1"));
+        app.quick_listen(false);
+        assert!(matches!(app.confirm, Some(Confirm::QuickListen)));
+        assert!(!app.quick_listen && app.watch_open.is_some(), "nothing yet");
+        // Answered, with an input that can't be opened.
+        app.confirm = None;
+        app.devices_listed = true;
+        app.device = Some("no such input".into());
+        app.quick_listen(true);
+        assert!(app.quick_listen && app.unsorted_open && app.watch_open.is_none());
+        assert_eq!(app.watch, "");
+        assert!(!app.running());
+        let drawn = pane(&ctx, &mut app);
+        for t in ["Unsorted", "No takes here", "‹ All Watches"] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+
+        // Stop saves the take into Unsorted; Save Again adds to it.
+        record(&mut app, &base.join("unsaved-2"));
+        app.stop_listening();
+        let unsorted = root.join(library::UNSORTED).join(library::TAKES);
+        let saved: Vec<PathBuf> = std::fs::read_dir(&unsorted)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(saved.len(), 1, "{saved:?}");
+        assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
+        assert!(!app.needs_save_confirmation());
+        app.stop_listening();
+        assert_eq!(std::fs::read_dir(&unsorted).unwrap().count(), 1);
+        let name = file_name(&saved[0]);
+        let drawn = pane(&ctx, &mut app);
+        assert!(drawn.contains(&name), "{drawn}");
+
+        // The list shows Unsorted at its top, with Quick Listen.
+        app.unsorted_open = false;
+        let drawn = pane(&ctx, &mut app);
+        for t in [
+            "Unsorted",
+            "1 take, made with Quick Listen",
+            "Quick Listen",
+            "Pepsi",
+        ] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+        app.unsorted_open = true;
+        let e = app.open_group().unwrap();
+        assert!(e.watch.id.is_empty() && e.takes.len() == 1);
+
+        // Filed under Pepsi, once Save Again no longer saves into it.
+        app.move_take(&saved[0], &pepsi);
+        assert!(saved[0].exists(), "busy: {:?}", app.message);
+        app.new_session();
+        app.move_take(&saved[0], &pepsi);
+        let filed = root.join("Pepsi").join(library::TAKES).join(&name);
+        assert!(filed.join(MANIFEST).is_file() && !saved[0].exists());
+        assert!(app
+            .message
+            .as_ref()
+            .is_some_and(|(m, _)| m.contains("Filed") && m.contains("Pepsi")));
+        assert!(app.open_group().unwrap().takes.is_empty());
+
+        // Picking a watch ends Quick Listen: Save… saves into the watch.
+        app.pick_watch(&pepsi);
+        assert!(!app.quick_listen && !app.unsorted_open);
+        assert_eq!(
+            app.watch_takes_dir(),
+            Some(root.join("Pepsi").join(library::TAKES))
+        );
+        app.watch_open = None;
+        assert_eq!(app.watch_takes_dir(), None, "no watch: Save… asks where");
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

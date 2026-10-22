@@ -9,6 +9,8 @@
 //!     photos/
 //!     takes/
 //!       2026-10-20 14.32 Dial Up/   one standard take, unchanged
+//!   Unsorted/                    takes made with Quick Listen
+//!     takes/
 //! ```
 //!
 //! A take folder is exactly a standard take (`session.toml`,
@@ -20,6 +22,10 @@
 //! moved, synced or restored from a backup whole. Folder names are for
 //! people; each watch also has a random id in its `watch.toml`, so
 //! renaming its folder loses nothing.
+//!
+//! `Unsorted/` (with no `watch.toml`) holds the takes made with Quick
+//! Listen, which listens without picking a watch first, until each is
+//! filed under a watch or deleted. No watch can be called Unsorted.
 //!
 //! The scan reads each take's size and what its `session.json` says, and
 //! keeps them in `.cache.json` at the top of the library, rebuilt when
@@ -48,6 +54,8 @@ pub const TAKES: &str = "takes";
 pub const PHOTOS: &str = "photos";
 pub const CACHE_FILE: &str = ".cache.json";
 pub const LOCK_FILE: &str = ".library.lock";
+/// The folder of takes not yet filed under a watch.
+pub const UNSORTED: &str = "Unsorted";
 /// The library's folder name in the user's home folder, by default.
 pub const DEFAULT_NAME: &str = "Timegrapher Data";
 
@@ -319,6 +327,9 @@ pub struct Library {
     pub root: PathBuf,
     /// By name.
     pub watches: Vec<WatchEntry>,
+    /// The takes in `Unsorted/`, newest first, as a watch called Unsorted
+    /// with an empty id (no watch has one) and no photos.
+    pub unsorted: WatchEntry,
     /// Folders that look like a watch or a take but couldn't be read, and
     /// why: listed, never changed.
     pub unreadable: Vec<String>,
@@ -395,6 +406,7 @@ impl Library {
         let mut lib = Library {
             root: root.to_path_buf(),
             watches: Vec::new(),
+            unsorted: unsorted_entry(root),
             unreadable: Vec::new(),
             read_only,
             lock,
@@ -451,29 +463,7 @@ impl Library {
                     continue;
                 }
             };
-            let folder = file_name(&dir);
-            let mut takes = Vec::new();
-            for t in subfolders(&dir.join(TAKES)) {
-                if !(t.join("session.toml").is_file() || t.join("session.json").is_file()) {
-                    continue;
-                }
-                let key = format!("{folder}/{TAKES}/{}", file_name(&t));
-                let stamp = stamp(&t);
-                let take = match old.takes.get(&key) {
-                    Some((s, take)) if *s == stamp && take.name == file_name(&t) => take.clone(),
-                    _ => match read_take(&t, stamp.bytes) {
-                        Ok(take) => take,
-                        Err(e) => {
-                            self.unreadable.push(e);
-                            continue;
-                        }
-                    },
-                };
-                cache.takes.insert(key, (stamp, take.clone()));
-                takes.push(take);
-            }
-            // Newest first: by when each started, then by name.
-            takes.sort_by(|a, b| (&b.started_utc, &b.name).cmp(&(&a.started_utc, &a.name)));
+            let takes = self.scan_takes(&dir, &old, &mut cache);
             let mut photos: Vec<PathBuf> = fs::read_dir(dir.join(PHOTOS))
                 .into_iter()
                 .flatten()
@@ -489,6 +479,11 @@ impl Library {
                 photos,
             });
         }
+        self.unsorted = unsorted_entry(&self.root);
+        if self.unsorted_dir().is_ok() {
+            let dir = self.unsorted.dir.clone();
+            self.unsorted.takes = self.scan_takes(&dir, &old, &mut cache);
+        }
         self.watches
             .sort_by_key(|w| (w.watch.name.to_lowercase(), w.watch.name.clone()));
         // A cache that can't be written is only slower next time.
@@ -497,9 +492,52 @@ impl Library {
         }
     }
 
-    /// Every take's bytes.
+    /// The takes in the folder `dir/takes`, newest first, from the cache
+    /// where unchanged; each goes into the new cache.
+    fn scan_takes(&mut self, dir: &Path, old: &Cache, cache: &mut Cache) -> Vec<Take> {
+        let folder = file_name(dir);
+        let mut takes = Vec::new();
+        for t in subfolders(&dir.join(TAKES)) {
+            if !(t.join("session.toml").is_file() || t.join("session.json").is_file()) {
+                continue;
+            }
+            let key = format!("{folder}/{TAKES}/{}", file_name(&t));
+            let stamp = stamp(&t);
+            let take = match old.takes.get(&key) {
+                Some((s, take)) if *s == stamp && take.name == file_name(&t) => take.clone(),
+                _ => match read_take(&t, stamp.bytes) {
+                    Ok(take) => take,
+                    Err(e) => {
+                        self.unreadable.push(e);
+                        continue;
+                    }
+                },
+            };
+            cache.takes.insert(key, (stamp, take.clone()));
+            takes.push(take);
+        }
+        // Newest first: by when each started, then by name.
+        takes.sort_by(|a, b| (&b.started_utc, &b.name).cmp(&(&a.started_utc, &a.name)));
+        takes
+    }
+
+    /// Every take's bytes, Unsorted's too.
     pub fn bytes(&self) -> u64 {
-        self.watches.iter().map(WatchEntry::bytes).sum()
+        self.watches.iter().map(WatchEntry::bytes).sum::<u64>() + self.unsorted.bytes()
+    }
+
+    /// Where a take made with Quick Listen is kept: `Unsorted/takes`. `Err`
+    /// saying why when the folder called Unsorted is a watch's (one made
+    /// outside the app).
+    pub fn unsorted_dir(&self) -> Result<PathBuf, String> {
+        if self.unsorted.dir.join(WATCH_FILE).exists() {
+            return Err(format!(
+                "{} holds a watch, so takes made with Quick Listen have nowhere to go: rename \
+                 that folder",
+                self.unsorted.dir.display()
+            ));
+        }
+        Ok(self.unsorted.dir.join(TAKES))
     }
 
     /// The watch named `name`, ignoring case and spaces at either end.
@@ -518,6 +556,7 @@ impl Library {
         if name.is_empty() {
             return Err("A watch needs a name".into());
         }
+        unsorted_name(name)?;
         if self.find(name).is_some() {
             return Err(format!("There is already a watch called \"{name}\""));
         }
@@ -538,6 +577,7 @@ impl Library {
         if name.is_empty() {
             return Err("A watch needs a name".into());
         }
+        unsorted_name(name)?;
         if self.find(name).is_some_and(|w| w.watch.id != watch.id) {
             return Err(format!("There is already a watch called \"{name}\""));
         }
@@ -558,10 +598,18 @@ impl Library {
         self.watches.iter().find(|w| w.dir.join(TAKES) == parent)
     }
 
-    /// `take`'s watch, where this copy of the app may change the library.
+    /// Whether `take` is a take folder in Unsorted.
+    pub fn is_unsorted(&self, take: &Path) -> bool {
+        self.unsorted_dir()
+            .is_ok_and(|d| take.parent() == Some(d.as_path()))
+    }
+
+    /// `take`'s watch (Unsorted for one there), where this copy of the app
+    /// may change the library.
     fn take_in_library(&self, take: &Path) -> Result<&WatchEntry, String> {
         self.writable()?;
         self.watch_of(take)
+            .or_else(|| self.is_unsorted(take).then_some(&self.unsorted))
             .filter(|_| take.is_dir())
             .ok_or_else(|| format!("{} is not a take in this library", take.display()))
     }
@@ -593,7 +641,8 @@ impl Library {
     }
 
     /// Move a take into another watch (by its id), keeping its name, or
-    /// with a number added where that watch has a take of that name.
+    /// with a number added where that watch has a take of that name. A
+    /// take in Unsorted is filed under a watch this way.
     pub fn move_take(&mut self, take: &Path, watch_id: &str) -> Result<PathBuf, String> {
         self.take_in_library(take)?;
         let to_watch = self
@@ -705,6 +754,36 @@ impl Library {
         self.scan();
         Ok((to, left))
     }
+}
+
+/// The entry standing for `root/Unsorted`, with no takes yet.
+fn unsorted_entry(root: &Path) -> WatchEntry {
+    WatchEntry {
+        dir: root.join(UNSORTED),
+        watch: Watch {
+            id: String::new(),
+            name: UNSORTED.into(),
+            calibre: None,
+            lift: None,
+            bph: None,
+            notes: None,
+            archived: false,
+            fields: Vec::new(),
+        },
+        takes: Vec::new(),
+        photos: Vec::new(),
+    }
+}
+
+/// `Err` for a watch name whose folder would be Unsorted's (on a system
+/// that ignores case, too).
+fn unsorted_name(name: &str) -> Result<(), String> {
+    if folder_name(name).eq_ignore_ascii_case(UNSORTED) {
+        return Err(format!(
+            "\"{UNSORTED}\" is kept for takes made with Quick Listen: please choose another name"
+        ));
+    }
+    Ok(())
 }
 
 /// `p` with links followed: the nearest folder of it that exists,
@@ -1352,6 +1431,75 @@ mod tests {
         drop(socket);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_file(&outside);
+    }
+
+    /// A take made with Quick Listen is listed in Unsorted, counted in
+    /// the library's size, can be renamed or deleted there, and is filed
+    /// under a watch by a move. No watch can take Unsorted's name, and a
+    /// folder called Unsorted that holds a watch is left to it.
+    #[test]
+    fn quick_listen_takes_wait_in_unsorted_until_filed() {
+        let root = scratch("unsorted");
+        let mut lib = Library::create(&root).unwrap();
+        lib.add(&Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        let unsorted = lib.unsorted_dir().unwrap();
+        assert_eq!(unsorted, root.join(UNSORTED).join(TAKES));
+        let t = unsorted.join("2026-10-22 09.15 Dial Up");
+        take(
+            &t,
+            &[("take_part01-001.flac", "DU")],
+            1,
+            "2026-10-22T16:15:00Z",
+        );
+        let u = unsorted.join("2026-10-22 09.40");
+        take(
+            &u,
+            &[("take_part01-001.flac", "DD")],
+            1,
+            "2026-10-22T16:40:00Z",
+        );
+        lib.scan();
+        let names: Vec<&str> = lib.unsorted.takes.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["2026-10-22 09.40", "2026-10-22 09.15 Dial Up"]);
+        assert_eq!(lib.unsorted.take_dir(&lib.unsorted.takes[1]), t);
+        assert_eq!(lib.watches.len(), 1);
+        assert!(lib.bytes() >= lib.unsorted.bytes() && lib.unsorted.bytes() > 0);
+        assert!(lib.is_unsorted(&t) && lib.watch_of(&t).is_none());
+        // The cache keeps Unsorted's takes too.
+        let cache = fs::read_to_string(root.join(CACHE_FILE)).unwrap();
+        assert!(cache.contains("Unsorted/takes/2026-10-22 09.15 Dial Up"));
+
+        let t = lib.rename_take(&t, "Handed Over").unwrap();
+        assert!(lib.is_unsorted(&t));
+        let filed = lib.move_take(&t, &pepsi).unwrap();
+        assert_eq!(lib.watch_of(&filed).unwrap().watch.name, "Pepsi");
+        assert_eq!(lib.find("Pepsi").unwrap().takes.len(), 1);
+        lib.delete_take(&u).unwrap();
+        assert!(lib.unsorted.takes.is_empty());
+        // Nothing can be moved into Unsorted by its empty id.
+        assert!(lib.move_take(&filed, "").is_err());
+
+        for name in ["Unsorted", " unsorted ", "UNSORTED.", "Unsorted?"] {
+            let refused = lib.add(&Watch::new(name));
+            if name == "Unsorted?" {
+                // A different folder: "Unsorted-".
+                assert!(refused.is_ok(), "{name}");
+                continue;
+            }
+            assert!(refused.unwrap_err().contains("Quick Listen"), "{name}");
+        }
+        let mut w = lib.find("Pepsi").unwrap().watch.clone();
+        w.name = "unsorted".into();
+        assert!(lib.update(&w).unwrap_err().contains("Quick Listen"));
+
+        // A watch someone made by hand in a folder called Unsorted.
+        Watch::new("By Hand").write(&root.join(UNSORTED)).unwrap();
+        lib.scan();
+        assert!(lib.find("By Hand").is_some());
+        assert!(lib.unsorted.takes.is_empty());
+        assert!(lib.unsorted_dir().unwrap_err().contains("holds a watch"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// A take can be renamed, moved to another watch and deleted; a take

@@ -139,7 +139,8 @@ pub fn library_section(
     });
     match lib {
         Ok(Some(l)) => {
-            let takes: usize = l.watches.iter().map(|w| w.takes.len()).sum();
+            let takes =
+                l.watches.iter().map(|w| w.takes.len()).sum::<usize>() + l.unsorted.takes.len();
             ui.label(format!(
                 "{}, {}, {}",
                 count(l.watches.len(), "watch", "watches"),
