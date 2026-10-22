@@ -33,35 +33,66 @@ pub fn claim_mic() -> Option<Mic> {
         .then_some(Mic(()))
 }
 
-/// A take ID, its resolved native destination, and the exact position.
-pub type Key = (String, PathBuf, String);
+/// Where a take goes: a test folder, or a new one among a library
+/// watch's takes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// The resolved native test folder.
+    Folder(PathBuf),
+    /// The library as given, resolved (`None`: the app's own), and the
+    /// watch's name as the library matches it: any case, without spaces at
+    /// either end.
+    Watch(Option<PathBuf>, String),
+}
+
+/// A take ID, where the take goes, and the exact position.
+pub type Key = (String, Target, String);
 
 static TAKES: Mutex<Option<HashMap<Key, Value>>> = Mutex::new(None);
 
 /// The call's take, if it named one.
-pub fn key(args: &Map<String, Value>, folder: &Path) -> Option<Key> {
+pub fn key(args: &Map<String, Value>, target: &Target) -> Option<Key> {
     let text = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
     Some((
         text(crate::tools::TAKE_ID)?,
-        folder.to_path_buf(),
+        target.clone(),
         text("position")?,
     ))
 }
 
-/// Resolve the recording folder before checking the retry cache or spawning
-/// the CLI. The child receives this same native path, including missing tails.
-pub fn destination(args: &Map<String, Value>) -> Result<PathBuf, String> {
-    let folder = args
-        .get("folder")
+/// Resolve where the take goes before checking the retry cache or spawning
+/// the CLI. The child receives a folder's same native path, including
+/// missing tails.
+pub fn destination(args: &Map<String, Value>) -> Result<Target, String> {
+    let resolve = |name: &str, s: &str| {
+        let path = crate::tools::expand_home_path(s)?;
+        resolve_destination(&path).map_err(|e| {
+            format!(
+                "record_position: cannot resolve {name} {}: {e}",
+                path.display()
+            )
+        })
+    };
+    match args.get("folder").filter(|v| !v.is_null()) {
+        Some(Value::String(folder)) => return resolve("folder", folder).map(Target::Folder),
+        Some(_) => return Err("record_position: folder must be a path".into()),
+        None => {}
+    }
+    let watch = args
+        .get("watch")
         .and_then(Value::as_str)
-        .ok_or("record_position: folder must be a path")?;
-    let path = crate::tools::expand_home_path(folder)?;
-    resolve_destination(&path).map_err(|e| {
-        format!(
-            "record_position: cannot resolve folder {}: {e}",
-            path.display()
-        )
-    })
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+        .ok_or(
+            "record_position: give folder, or watch naming a watch in the app's library \
+             (list_watches lists them)",
+        )?;
+    let library = match args.get("library").filter(|v| !v.is_null()) {
+        Some(Value::String(l)) => Some(resolve("library", l)?),
+        Some(_) => return Err("record_position: library must be a path".into()),
+        None => None,
+    };
+    Ok(Target::Watch(library, watch.to_lowercase()))
 }
 
 fn resolve_destination(path: &Path) -> Result<PathBuf, String> {
@@ -189,10 +220,23 @@ mod tests {
     }
 
     #[test]
+    fn a_library_watch_is_found_by_its_name_in_any_case() {
+        let args = json!({"watch": " Pepsi ", "position": "DU"});
+        assert_eq!(
+            destination(args.as_object().unwrap()).unwrap(),
+            Target::Watch(None, "pepsi".into())
+        );
+        let none = json!({"watch": "  ", "position": "DU"});
+        assert!(destination(none.as_object().unwrap())
+            .unwrap_err()
+            .contains("give folder, or watch"));
+    }
+
+    #[test]
     fn native_identity_does_not_merge_distinct_takes_or_positions() {
         let folder = Folder::new();
-        let a = resolve_destination(&folder.0.join("a")).unwrap();
-        let b = resolve_destination(&folder.0.join("b")).unwrap();
+        let a = Target::Folder(resolve_destination(&folder.0.join("a")).unwrap());
+        let b = Target::Folder(resolve_destination(&folder.0.join("b")).unwrap());
         let args = json!({"take_id":"one", "position":"DU"});
         let original = key(args.as_object().unwrap(), &a).unwrap();
         assert_ne!(original, key(args.as_object().unwrap(), &b).unwrap());
@@ -240,12 +284,18 @@ mod tests {
             .0
             .join(std::ffi::OsString::from_vec(b"native-\xff".to_vec()));
         let args = json!({"take_id":"one", "position":"DU"});
-        let native_key = key(args.as_object().unwrap(), &native).unwrap();
-        assert_eq!(native_key.1, native);
-        let argument = native_key.1.clone().into_os_string();
+        let native_key = key(args.as_object().unwrap(), &Target::Folder(native.clone())).unwrap();
+        let Target::Folder(path) = &native_key.1 else {
+            panic!("a folder's key keeps the folder")
+        };
+        assert_eq!(path, &native);
+        let argument = path.clone().into_os_string();
         assert_eq!(argument.as_bytes(), native.as_os_str().as_bytes());
         let lossy = PathBuf::from(native.to_string_lossy().into_owned());
-        assert_ne!(native_key, key(args.as_object().unwrap(), &lossy).unwrap());
+        assert_ne!(
+            native_key,
+            key(args.as_object().unwrap(), &Target::Folder(lossy)).unwrap()
+        );
     }
 
     // Raw-byte directory names are exercised on Linux; this local macOS
@@ -298,7 +348,8 @@ mod tests {
 
     #[test]
     fn a_retried_take_comes_back_marked() {
-        let key = |args: &Map<String, Value>| super::key(args, Path::new("/w"));
+        let key =
+            |args: &Map<String, Value>| super::key(args, &Target::Folder(PathBuf::from("/w")));
         let args = |id: &str, pos: &str| {
             json!({"folder": "/w", "position": pos, "take_id": id})
                 .as_object()

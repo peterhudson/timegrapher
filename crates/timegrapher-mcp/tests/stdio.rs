@@ -503,11 +503,8 @@ fn a_chat_app_finds_a_watchs_takes_in_the_library() {
     let mut w = Watch::new("Pepsi");
     w.calibre = Some("Rolex 3135".into());
     w.bph = Some(28800);
-    let take = lib
-        .add(&w)
-        .unwrap()
-        .join(TAKES)
-        .join("2026-10-20 14.32 Dial Up");
+    let takes = lib.add(&w).unwrap().join(TAKES);
+    let take = takes.join("2026-10-20 14.32 Dial Up");
     std::fs::create_dir_all(&take).unwrap();
     std::fs::write(
         take.join("session.toml"),
@@ -525,7 +522,9 @@ fn a_chat_app_finds_a_watchs_takes_in_the_library() {
     lib.add(&old).unwrap();
     drop(lib);
 
-    let mut c = Client::start(&cli, &dir.join("unused.wav"));
+    let sound = dir.join("take.wav");
+    synth(&cli, &sound, "6");
+    let mut c = Client::start(&cli, &sound);
     let library = root.to_str().unwrap();
     let r = c.call("list_watches", json!({ "library": library }));
     assert_ne!(r["isError"], true, "{r}");
@@ -558,6 +557,63 @@ fn a_chat_app_finds_a_watchs_takes_in_the_library() {
 
     let r = c.call("show_watch", json!({ "name": "Omega", "library": library }));
     assert_eq!(r["isError"], true, "{r}");
+
+    // With no folder, a take goes into a new test among the watch's takes,
+    // and a retry finds it by the watch's name in any case.
+    let r = c.call(
+        "record_position",
+        json!({ "watch": " pepsi ", "library": library, "position": "DU",
+                "seconds": 30, "take_id": "lib-1" }),
+    );
+    assert_ne!(r["isError"], true, "{r}");
+    let doc = &r["structuredContent"];
+    assert_eq!(doc["library_watch"], "Pepsi");
+    let folder = Path::new(doc["session_file"].as_str().unwrap())
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    assert_eq!(
+        folder.parent().unwrap().canonicalize().unwrap(),
+        takes.canonicalize().unwrap()
+    );
+    let said = r["content"][0]["text"].as_str().unwrap();
+    assert!(
+        said.ends_with(&format!(
+            "The test's folder, made among Pepsi's takes, is {}.",
+            folder.display()
+        )),
+        "{said}"
+    );
+    let again = c.call(
+        "record_position",
+        json!({ "watch": "PEPSI", "library": library, "position": "DU",
+                "seconds": 30, "take_id": "lib-1" }),
+    );
+    assert!(again["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("nothing was recorded again"));
+    assert_eq!(
+        std::fs::read_dir(&takes).unwrap().count(),
+        2,
+        "one new test"
+    );
+    let r = c.call("record_position", json!({ "position": "DU" }));
+    assert_eq!(r["isError"], true, "{r}");
+    assert!(r["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("give folder, or watch"));
+
+    // A search finds calibres by any of their names.
+    let r = c.call("list_calibres", json!({ "search": "2824" }));
+    assert_ne!(r["isError"], true, "{r}");
+    assert_eq!(r["structuredContent"]["listed"], "matching", "{r}");
+    assert!(r["structuredContent"]["calibres"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["calibre"] == "ETA 2824-2"));
     let r = c.call(
         "list_watches",
         json!({ "library": dir.join("none").to_str().unwrap() }),
