@@ -30,6 +30,7 @@ mod photos;
 mod profiles;
 mod pump;
 mod report;
+mod reserve;
 mod scope;
 mod session;
 mod settings;

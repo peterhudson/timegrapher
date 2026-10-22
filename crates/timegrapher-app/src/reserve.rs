@@ -1,0 +1,376 @@
+//! The Power Reserve Test: the watch wound fully, set on the stand in one
+//! position, and listened to until it stops. The app finds the stop
+//! (core [`power_reserve`]: the last beat heard before ten minutes with
+//! none), keeps the take in the watch's history with the run's results
+//! beside it in `power-reserve.json`, and shows the run time. No verdict
+//! is given.
+//!
+//! While it runs the computer is kept awake, the sound is kept, and the
+//! position can't change and the listening can't pause: a run is one
+//! position from wind to stop.
+
+use crate::app::Position;
+use crate::theme;
+use eframe::egui::{self, RichText};
+use std::path::PathBuf;
+use timegrapher_core::beats::Beat;
+use timegrapher_core::power_reserve::{self, Ending, Heard, Results};
+
+/// Bytes of sound written an hour at `sample_rate` and `bits`, one
+/// channel, as the recorder keeps it.
+pub fn bytes_per_hour(sample_rate: u32, bits: u16) -> u64 {
+    u64::from(sample_rate) * u64::from(bits.div_ceil(8)) * 3600
+}
+
+/// The sound a run of [`power_reserve::LIMIT_S`] could write at most.
+pub fn bytes_needed(sample_rate: u32, bits: u16) -> u64 {
+    bytes_per_hour(sample_rate, bits) * (power_reserve::LIMIT_S / 3600.0) as u64
+}
+
+/// Bytes free to this user on the disk holding `dir`.
+#[cfg(unix)]
+pub fn free_bytes(dir: &std::path::Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `path` is a valid C string and `st` a place for the answer.
+    if unsafe { libc::statvfs(path.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    #[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
+    Some(u64::from(st.f_bavail as u64) * u64::from(st.f_frsize as u64))
+}
+
+/// Bytes free to this user on the disk holding `dir`.
+#[cfg(windows)]
+pub fn free_bytes(dir: &std::path::Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let wide: Vec<u16> = dir.as_os_str().encode_wide().chain([0]).collect();
+    let mut free = 0u64;
+    // SAFETY: `wide` ends in a nul; the other answers aren't asked for.
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut free,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    (ok != 0).then_some(free)
+}
+
+/// A size in GB, one decimal: "17.3 GB".
+pub fn gb(bytes: u64) -> String {
+    format!("{:.1} GB", bytes as f64 / 1e9)
+}
+
+/// A test under way or finished.
+#[derive(Debug, Clone)]
+pub struct Test {
+    pub position: Position,
+    /// Keep the sound in the take, or keep its analysis only.
+    pub keep_sound: bool,
+    /// When it started, UTC, RFC 3339.
+    pub started_utc: String,
+    /// The session's audio seconds when it started: beats before don't
+    /// count.
+    pub began_s: f64,
+    /// The beats heard since.
+    pub heard: Heard,
+    /// The session's audio seconds when last looked at.
+    pub now_s: f64,
+    /// How it ended, once it has.
+    pub ending: Option<Ending>,
+    /// Its results, once it has ended and the stop was found.
+    pub results: Option<Results>,
+    /// The take it was saved as.
+    pub saved: Option<PathBuf>,
+}
+
+impl Test {
+    pub fn new(position: Position, keep_sound: bool, started_utc: String, began_s: f64) -> Test {
+        Test {
+            position,
+            keep_sound,
+            started_utc,
+            began_s,
+            heard: power_reserve::heard(&[], 1.0),
+            now_s: began_s,
+            ending: None,
+            results: None,
+            saved: None,
+        }
+    }
+
+    pub fn running(&self) -> bool {
+        self.ending.is_none()
+    }
+
+    /// Read the session's `beats` up to `now_s` at `beat_s` seconds a
+    /// beat: how it ended, when it just has (the watch stopped, or the
+    /// time limit).
+    pub fn update(&mut self, beats: &[Beat], beat_s: f64, now_s: f64) -> Option<Ending> {
+        if !self.running() {
+            return None;
+        }
+        let from = beats.partition_point(|b| b.time < self.began_s);
+        self.heard = power_reserve::heard(&beats[from..], beat_s);
+        self.now_s = now_s;
+        let ending = if self.heard.stopped(now_s) {
+            Ending::Stopped
+        } else if now_s - self.began_s >= power_reserve::LIMIT_S {
+            Ending::Limit
+        } else {
+            return None;
+        };
+        self.ending = Some(ending);
+        Some(ending)
+    }
+
+    /// End it by hand.
+    pub fn stop(&mut self) {
+        if self.running() {
+            self.ending = Some(Ending::ByHand);
+        }
+    }
+
+    /// Its results, with `to_true` mapping audio seconds to true seconds:
+    /// `None` until it ends, or when no beat was heard.
+    pub fn finish(&mut self, to_true: impl Fn(f64) -> f64) -> Option<&Results> {
+        let ending = self.ending?;
+        self.results = Results::of(
+            &self.heard,
+            ending,
+            &self.started_utc,
+            self.position.code(),
+            self.keep_sound,
+            to_true,
+        );
+        self.results.as_ref()
+    }
+
+    /// Seconds from the first beat heard to now, or to the last beat once
+    /// ended, in audio seconds.
+    pub fn run_so_far_s(&self) -> f64 {
+        match (self.heard.first_s, self.heard.last_s) {
+            (Some(a), Some(b)) if !self.running() => b - a,
+            (Some(a), _) => (self.now_s - a).max(0.0),
+            _ => 0.0,
+        }
+    }
+}
+
+/// What the pane's body asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Stop,
+}
+
+/// A run's ending in words.
+pub fn ending_text(e: Ending) -> &'static str {
+    match e {
+        Ending::Stopped => "The watch stopped",
+        Ending::ByHand => "Stopped by hand while the watch still ran",
+        Ending::Limit => "Reached the 80 h limit while the watch still ran",
+    }
+}
+
+/// The pane's body: the run time, how the beats stand, and at the end the
+/// result.
+pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) -> Option<Action> {
+    let pal = theme::pal(ui);
+    let mut action = None;
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            let Some(t) = test else {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "Wind the watch fully, set it to a minute marker, put it on the \
+                             stand in the position picked above, and press Start Test. The app \
+                             listens until the watch stops: the run ends at the last beat heard \
+                             before {} min with none, and the take is kept in the watch's \
+                             history with its run time. The computer is kept awake and the \
+                             sound is kept while it runs; the position can't change and the \
+                             listening can't pause.",
+                            power_reserve::STOP_AFTER_S / 60.0
+                        ))
+                        .color(pal.text_secondary),
+                    )
+                    .wrap(),
+                );
+                if let Some((have, need)) = free {
+                    let line = if have >= need {
+                        format!(
+                            "{} free where the take is kept; a run of up to 80 h writes up to {} \
+                             of sound.",
+                            gb(have),
+                            gb(need)
+                        )
+                    } else {
+                        format!(
+                            "Only {} free where the take is kept; a run of up to 80 h writes up \
+                             to {} of sound, so a long run could fill the disk.",
+                            gb(have),
+                            gb(need)
+                        )
+                    };
+                    let colour = if have >= need {
+                        pal.text_tertiary
+                    } else {
+                        pal.warn
+                    };
+                    ui.label(RichText::new(line).small().color(colour));
+                }
+                return;
+            };
+            let run = power_reserve::run_text(t.run_so_far_s());
+            ui.label(
+                RichText::new(match &t.results {
+                    Some(r) => power_reserve::run_text(r.run_s),
+                    None => run,
+                })
+                .size(34.0)
+                .strong()
+                .color(pal.text),
+            )
+            .on_hover_text(
+                "From the first beat heard to the last (or to now while it runs), in true time \
+                 once it has ended",
+            );
+            let state = if t.running() {
+                match t.heard.silent_s(t.now_s) {
+                    None => "Waiting for the first beats…".to_string(),
+                    Some(s) if s >= power_reserve::PAUSE_S => format!(
+                        "No beat heard for {}; the run ends after {} min with none.",
+                        crate::strip::fmt_time(s),
+                        power_reserve::STOP_AFTER_S / 60.0
+                    ),
+                    Some(_) => format!("Running, in {}.", t.position.label()),
+                }
+            } else {
+                match t.ending {
+                    Some(e) => format!("{}, in {}.", ending_text(e), t.position.label()),
+                    None => String::new(),
+                }
+            };
+            ui.label(RichText::new(state).color(pal.text_secondary));
+            if !t.heard.pauses.is_empty() {
+                ui.label(
+                    RichText::new(format!(
+                        "Beats stopped and came back {} time{} on the way.",
+                        t.heard.pauses.len(),
+                        if t.heard.pauses.len() == 1 { "" } else { "s" }
+                    ))
+                    .color(pal.text_secondary),
+                )
+                .on_hover_text(format!(
+                    "Silences of {:.0} s or more inside the run, after which the beats came \
+                     back: a watch near the end can stop and start again with a knock",
+                    power_reserve::PAUSE_S
+                ));
+            }
+            if t.running() {
+                ui.add_space(6.0);
+                if ui
+                    .add(theme::primary(ui, "Stop Test"))
+                    .on_hover_text(
+                        "End the run now and keep the take: its run time then says it was \
+                         stopped by hand",
+                    )
+                    .clicked()
+                {
+                    action = Some(Action::Stop);
+                }
+                ui.label(
+                    RichText::new(
+                        "A closed lid or Sleep from a menu still stops the computer, and the \
+                         run with it; a laptop is best left on mains power.",
+                    )
+                    .small()
+                    .color(pal.text_tertiary),
+                );
+            } else if let Some(p) = &t.saved {
+                ui.label(
+                    RichText::new(format!(
+                        "Kept as \"{}\"{}. Every pane reads it as any take.",
+                        p.file_name()
+                            .map_or_else(String::new, |n| n.to_string_lossy().into()),
+                        if t.keep_sound {
+                            ""
+                        } else {
+                            ", as its analysis only once that is written"
+                        }
+                    ))
+                    .small()
+                    .color(pal.text_tertiary),
+                );
+            }
+        });
+    action
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn beats(from: f64, to: f64, step: f64) -> Vec<Beat> {
+        let n = ((to - from) / step).round() as i64;
+        (0..n)
+            .map(|i| Beat {
+                index: i,
+                time: from + i as f64 * step,
+                quality: 1.0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_run_ends_ten_minutes_after_the_last_beat_and_keeps_its_results() {
+        let step = 0.125;
+        // Beats before the test started don't count.
+        let mut b = beats(0.0, 50.0, step);
+        b.extend(beats(100.0, 4000.0, step));
+        let mut t = Test::new(
+            Position::CrownLeft,
+            false,
+            "2026-10-22T09:15:00Z".into(),
+            90.0,
+        );
+        assert_eq!(t.update(&b, step, 4100.0), None);
+        assert!(t.running());
+        let last = 4000.0 - step;
+        assert_eq!(t.update(&b, step, last + 600.0), Some(Ending::Stopped));
+        assert!(!t.running());
+        assert!((t.run_so_far_s() - (last - 100.0)).abs() < 1e-9);
+        let r = t.finish(|s| s).unwrap();
+        assert_eq!(r.position, "CL");
+        assert!(!r.sound_kept);
+        assert!((r.first_beat_s - 100.0).abs() < 1e-9);
+        // Nothing moves once it has ended.
+        assert_eq!(t.update(&b, step, 1e6), None);
+    }
+
+    #[test]
+    fn stopped_by_hand_or_at_the_limit() {
+        let step = 0.2;
+        let b = beats(0.0, 1000.0, step);
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&b, step, 1000.0);
+        t.stop();
+        assert_eq!(t.finish(|s| s).unwrap().ending, Ending::ByHand);
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        let far = beats(power_reserve::LIMIT_S - 10.0, power_reserve::LIMIT_S, step);
+        let all: Vec<Beat> = b.into_iter().chain(far).collect();
+        assert_eq!(
+            t.update(&all, step, power_reserve::LIMIT_S),
+            Some(Ending::Limit)
+        );
+        assert_eq!(gb(bytes_needed(48_000, 16)), "27.6 GB");
+        assert_eq!(bytes_per_hour(48_000, 24), 48_000 * 3 * 3600);
+        assert!(free_bytes(&std::env::temp_dir()).is_some_and(|b| b > 0));
+    }
+}

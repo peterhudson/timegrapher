@@ -375,3 +375,21 @@ pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular interva
      their timing scatter (the median jitter about a straight-line fit) is 2% of a beat \
      or more, as on an empty stand, where it is about 5%. No rate, amplitude or beat \
      error is shown then, since those figures would describe noise.";
+
+pub const POWER_RESERVE: &[&str] = &[
+    "Wind the watch fully, set it to a minute marker, put it on the stand in the \
+     position picked under Position, and press Start Test. The app starts a new \
+     session and listens until the watch stops. The run ends at the last beat heard \
+     before ten minutes with none. Beats that come back sooner join the run, and the \
+     pane says how many times they stopped and came back.",
+    "While the test runs, the computer is kept awake whatever Keep Awake is set to, \
+     the sound is kept, the position can't change, and Stop ends the test. A closed \
+     lid or Sleep from a menu still stops the computer. A run that hasn't stopped \
+     after 80 hours ends there.",
+    "When it ends, the take is kept in the picked watch's history (or in Unsorted with \
+     no watch picked), named by the date and time it started and \"Power Reserve\", \
+     with its results in power-reserve.json: the run time from the first beat heard \
+     to the last, in true time, and how it ended. With Analysis Only, the take is then \
+     kept as its analysis alone and its sound deleted. Every pane reads the take as \
+     any other.",
+];

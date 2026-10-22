@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 23] = [
+const ALL: [Icon; 24] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -31,6 +31,7 @@ const ALL: [Icon; 23] = [
     Icon::Fft,
     Icon::Stft,
     Icon::Wavelet,
+    Icon::Reserve,
     Icon::Settings,
 ];
 
@@ -124,6 +125,10 @@ fn drawing(icon: Icon) -> &'static str {
         // A little breaking wave: A wavelet.
         Icon::Wavelet => {
             r#"<path d="M2 18.5c2.6 0 4-1.6 5-4.6 1.2-3.8 3.8-6.4 7.4-6.4 3 0 5.1 2 5.1 4.4 0 1.8-1.3 3-2.9 3-1.4 0-2.4-1-2.4-2.2 0-1 .7-1.8 1.6-1.8"/><path d="M2 21.5h20"/>"#
+        }
+        // A fuel gauge near empty: The power reserve, run down to the last.
+        Icon::Reserve => {
+            r#"<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 17l-5.2-4.4"/><circle cx="12" cy="17" r="1.3" fill="currentColor"/><path d="M5.2 9.6l1.2 1M18.8 9.6l-1.2 1M12 6.8v1.6"/><path d="M3 20.5h18"/>"#
         }
         // A gear: The works behind the dial, set once and left to run.
         Icon::Settings => {

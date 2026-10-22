@@ -316,6 +316,9 @@ pub struct Take {
     /// The positions `session.toml` names, in order, each once.
     pub positions: Vec<String>,
     pub at_end: Option<AtEnd>,
+    /// For a Power Reserve Test's take, its run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_reserve: Option<crate::power_reserve::Summary>,
 }
 
 /// One watch and its takes, newest first.
@@ -1202,6 +1205,10 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         duration_s: about.as_ref().and_then(|a| at(a, "duration_s")),
         positions,
         at_end,
+        power_reserve: fs::read_to_string(dir.join(crate::power_reserve::FILE))
+            .ok()
+            .and_then(|t| crate::power_reserve::Results::from_json(&t).ok())
+            .map(|r| r.summary()),
     })
 }
 

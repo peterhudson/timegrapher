@@ -394,6 +394,41 @@ CR, as in `session.toml`), `rate_s_per_day`, `amplitude_deg` and
 `beat_error_ms` (a size), each null when not measured. Files saved before
 `bph`, `lift_angle_deg`, `settle_s` and `measure_s` were kept still load.
 
+**Power Reserve.** The Power Reserve pane, a tab beside the Positions
+Test (its icon a fuel gauge near empty; in a layout kept from before it
+joins hidden, to be shown from its icon), runs the
+watch down from full wind to stop in one position. Its toolbar holds
+**Position** (any of the six), **Keep Sound** or **Analysis Only**, and
+**Start Test**. Before a test the pane says how much space is free where
+the take will be kept against the most an 80 h run writes (the sample
+rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
+16-bit). Start Test starts a new session in the picked position; while it
+runs the computer is kept awake whatever Keep Awake is set to, the
+position can't change, and **Stop** in the input bar, or **Stop Test**
+in the pane, ends the test. The run ends at the last beat heard before 10 minutes with none
+(a beat heard is one matching the beat's sound with a quality over 0.4,
+in a run of at least eight such beats each within one and a half beats of
+the last, so a lone click is not the watch); beats that come back sooner
+join the run, and each silence of 30 s or more inside it is counted as a
+stop on the way. A run still going at 80 h ends there. The pane shows the
+run time from the first beat heard (to now while it runs), and at the
+end the run time in true time (through the input's clock as measured
+while listening, else its stored correction) and how it ended. The take
+is kept in the picked watch's history (in Unsorted with none picked),
+named by its local start time and "Power Reserve", with
+`power-reserve.json` beside the standard files; with Analysis Only it is
+then kept as its analysis alone, as Keep Analysis Only does, and its sound
+deleted. The Watches pane lists it as "Power Reserve 46 h 12 min", adding
+"(still running at the end)" when it was stopped by hand or at the limit.
+Every pane reads the take as any other.
+
+`power-reserve.json` (`schema` `power-reserve/1`) holds `started_utc`,
+`position`, `sound_kept`, `ending` (`stopped`, `by_hand` or `limit`),
+`first_beat_s` and `last_beat_s` (audio seconds of the take), `run_s`
+(true seconds from the first to the last), `pauses[]` (`from_s`, `to_s`:
+the silences of 30 s or more inside the run) and `hours[]` (empty for
+now).
+
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
 middle half), the curve through them and where it turns, and under it the

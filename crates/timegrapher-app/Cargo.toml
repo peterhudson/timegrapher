@@ -31,10 +31,14 @@ heic-rs = { version = "0.1.4", default-features = false, features = ["std"] }
 # Take folders are named by the local time a take started.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
-# Keeping the computer awake during a take (see src/awake.rs), with
+# Keeping the computer awake during a take (see src/awake.rs), and the
+# free disk space before a Power Reserve Test (src/reserve.rs), with
 # crates the lock already holds.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Power", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
