@@ -557,8 +557,8 @@ const SAVE_HINT: &str = "Save the sound of this session so far, with its clock l
      folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
      carries on. New Session and quitting ask before unsaved sound is thrown away; a quit \
-     that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it, to offer back at \
-     the next start.";
+     that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it when there is \
+     more than 5 s of it, to offer back at the next start.";
 
 const SAVE_AS_HINT: &str = "Save the session so far as a new take, in a folder you choose; \
      Save Again then goes there";
@@ -7114,7 +7114,8 @@ impl TimegrapherApp {
                         format!(
                             "Saved in {}. Sound since then is kept too; Save Again adds it. \
                          New Session and quitting ask first, and a quit that can't ask \
-                         keeps it, to offer back at the next start.",
+                         keeps it when there is more than 5 s of it, \
+                         to offer back at the next start.",
                             p.display()
                         ),
                     ),
@@ -7138,7 +7139,8 @@ impl TimegrapherApp {
                                 "The analysis of the first {} was kept without the sound in {}. \
                                  The sound itself isn't saved: Save keeps it. New Session and \
                                  quitting ask before throwing it away, and a quit that can't \
-                                 ask keeps it, to offer back at the next start.",
+                                 ask keeps it when there is more than 5 s of it, \
+                                 to offer back at the next start.",
                                 strip::fmt_time(through_s),
                                 dir.display()
                             ),
@@ -7149,7 +7151,8 @@ impl TimegrapherApp {
                         pal.text_secondary,
                         "The session's sound is kept as it goes, so Save can keep it at any \
                      point. New Session and quitting ask before throwing it away, and a quit that \
-                     can't ask keeps it, to offer back at the next start."
+                     can't ask keeps it when there is more than 5 s of it, \
+                     to offer back at the next start."
                             .to_string(),
                     ),
                 }
