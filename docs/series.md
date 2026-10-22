@@ -146,6 +146,59 @@ For each series:
   series are read is transformed alone, the smoothing reads nothing
   outside it, and the times within a period's cone of influence (√2
   scales) of a stretch's end are left empty.
+- **Lomb–Scargle** (with `--maps`): the periodogram of each series'
+  readings, each at its own time, with nothing filled in across a gap,
+  so a long run with pauses gives one spectrum over the whole of it (the
+  FFT and the period search fill each gap with the mean). It is the
+  generalised periodogram (Zechmeister and Kürster, 2009), with a
+  floating mean and each reading weighted by the scatter of the readings
+  around it (from one reading to the next, the 30 either side in the
+  same stretch), so a noisy stretch counts for less; the power is the
+  share of the weighted variance a sine at that period explains. The
+  readings are the tests' (10 s), with the slow change taken off as the
+  period search takes it off, from four readings' period to a third of
+  the span. Each of up to eight peaks (a weaker maximum within two
+  resolution widths of a stronger one is its sidelobe and is left out)
+  carries its false-alarm probability over the whole band, by Baluev's
+  (2008) bound. That is the chance of a peak this tall from readings with
+  no cycle that are independent from one to the next: readings that
+  wander are not, so their peaks read far below it. Beside it is the
+  spectral window, the periodogram of the reading times alone: gaps that
+  recur put lines in it (a 5 min pause every 30 min puts 0.037 at
+  30 min), and a peak within one resolution width of a window line of
+  0.02 or more (`on_window_line`) may come from the gaps. Without gaps
+  the window stays under 0.009 in the band.
+- **Wheel lines** (sizes by amplitude in the plain JSON, every window with
+  `--maps`): for each wheel the calibre names (or, when none is given, the
+  two common escape wheels and the fourth and centre wheels), the size of a sine at its turn's
+  period, fitted by least squares (with a level and a slope) in windows
+  of ten turns, at least 20 min, stepped half a window, in the beat
+  timing (ms), the amplitude and the beat error, each with its slow
+  change taken off as the period search takes it off. Each window has its
+  standard error (from the residual scatter, as if the readings were
+  independent), the amplitude it was read at, and the sine's phase at
+  the take's start: a line locked to the wheel keeps one phase from
+  window to window. The windows are combined in 10° bins of amplitude,
+  each weighted by one over its standard error squared. A line that only
+  shows at low torque reads near zero at high amplitude and rises below
+  some amplitude; with no line in it, a window reads a size near 1.25
+  standard errors. The timing and amplitude are on the watch's own time
+  (the beats counted, as `long` reads them), so a turn keeps one length
+  however the rate moves.
+- **Wheel turns** (with `--maps`): synchronous averaging. Every whole turn
+  of each wheel, cut on the watch's own time from its zero, is averaged
+  phase bin by phase bin (one bin per reading of the series, at most 60
+  a turn), each turn less its own mean, over the take and over the turns
+  read in each 20° of amplitude (bands with ten turns or more). Whatever
+  is not locked to the wheel averages away; what is left is the wheel's
+  own shape, so a bad tooth shows at one place in the turn, and a band
+  where it grows shows at what torque. Each bin has its standard error,
+  the spread between turns over the root of their count.
+
+Both wheel views leave out a window or a turn with more than 5 s missing
+or under 90% read, and a wheel whose turn is longer than half the period
+search's detrending window (15 min), since taking off the slow change
+takes off most of its line.
 
 Across the series, the rate is correlated with the amplitude, each
 reading against the same reading. There is no lag search: the rate
@@ -312,6 +365,9 @@ headlines state facts. Everything else is as in version 1.
 | `spectra[]` | the plain amplitude spectrum of each series, as a commercial timegrapher's FFT shows it: `series` (`rate`, `amplitude`, `beat_error`), `unit` (`ms` of timing for the rate, `deg`, `ms`), `step_s`, `period_s[]` (longest first) and `amplitude[]` (an estimate of sine-wave size at each period for complete regular inputs, half its peak to peak), and `support` (`finite_bins`, `total_bins`). The rate's comes from the beat timing, so it reaches down to the escape wheel; the amplitude's and the beat error's from their 2 s windows. Each series has its slow change taken off as the period search takes it off, a Hann window is applied and its loss corrected, and the points are thinned to at most 600 on a log period axis, keeping the largest in each slice so narrow lines survive. The period search reads the same Fourier transform but whitens it and sums harmonics to decide what stands out; this keeps the raw sizes, best drawn on log axes. |
 | `time_frequency[]` | with `--maps`: the STFT maps of `rate`, `amplitude` and `beat_error`, then their SST maps, each `series`, `method` (`stft` or `sst`), `unit` (as `spectra`), `step_s` (the series' spacing: the beat timing's for the rate, 0.25 s on takes up to 12 h, and 2 s windows for the others; for the SST, after a stretch longer than 65,536 readings is averaged down to that), `window_s` and `hop_s` (the STFT's 1200 and 300; null for the SST), `period_s[]` (48 rows, longest first, evenly spaced in log period), `t_s[]` (column times on the tests' time: each STFT window's middle, or the middle of each SST slice, at most 400), and `values[][]` (one column per `t_s`, a size per `period_s`; null where nothing was read). An SST column is the mean over its slice of the values read. A series too short for a map has none. |
 | `coherence[]` | with `--maps`: the rate against the amplitude, then Tick's amplitude against Tock's, each `x` and `y` (the series: `rate` and `amplitude`, or `tick_amplitude` and `tock_amplitude`), `step_s` (10 s readings or 2 s windows, averaged down as for the SST), `period_s[]` (48 rows, longest first, as for the SST), `t_s[]` (the middle of each slice of time, at most 400), `coherence[][]` (one column per `t_s`, the mean coherence over the slice per `period_s`, 0 to 1; null where nothing was read), `phase_deg[][]` (the phase of `x` against `y`, −180 to 180: positive when `x` leads), `noise_95[]` (per period, the red-noise level above) and `noise_pairs`. A pair with no stretch long enough has no entry. |
+| `lomb_scargle[]` | with `--maps`: one per series (`rate` in s/d, `amplitude`, `beat_error`), each `series`, `unit`, `readings`, `span_s`, `period_s[]` (longest first, at most 600 on a log axis, keeping the strongest point in each slice), `power[]` (0 to 1), `window[]` (the spectral window, 0 to 1) and `peaks[]` (strongest first, at most 8: `period_s`, `power`, `false_alarm`, `window_power` (the window's highest within one resolution width), `on_window_line`, `wheel`). A series with fewer than 20 readings has none. |
+| `wheel_lines[]` | per named wheel and series (`rate`, the beat timing in ms; `amplitude`; `beat_error`): `wheel`, `period_s`, `series`, `unit`, `window_s`, `bins[]` (lowest amplitude first: `from_deg`, the bin running 10° up; `windows`; `size` and `se`, in `unit`; for the rate also `size_s_per_day` and `se_s_per_day`, 86.4 × 2π / `period_s` times the timing figures) and, with `--maps`, `windows[]` (`start_s`, `end_s`, `amplitude_deg`, `size`, `se`, `phase_deg`). A wheel with fewer than two windows in a series has no entry there. |
+| `wheel_turns[]` | with `--maps`: per named wheel and series (`rate`, the beat timing in ms; `amplitude`): `wheel`, `period_s`, `series`, `unit`, `bins`, `all` and `by_amplitude[]` (lowest first), each `from_deg` and `to_deg` (null for `all`), `turns`, `profile[]` (from the turn's start), `se[]`, `peak_to_peak`. A wheel with fewer than ten turns read has no entry. |
 | `period_span` | with `--views`: `[lo, hi]`, log10 seconds, the periods every series' search covers between them, so the Periods plots share one axis |
 | `findings[]` | one per series where a test detected structure: `code`, `series`, `title` (what was detected), `evidence` (the headline and the statistics). Codes: `periodic`, `two_states`, `measurement_split` (two levels that show on one side only, or in the beat error from the unlock but not from the drop), `shifting_mean` (level changes), `drifting` (a trend), `wandering` (correlation between readings). A series where none was detected has none. |
 
@@ -338,9 +394,9 @@ above, a few hundred kB on a long take (about 600 kB over 2 h 40 min), so
 plain `--json` stays small for agents. The MCP server asks for them and
 keeps them out of what the model reads.
 
-`--maps` (with `--json`) adds `time_frequency` and `coherence`, about
-3.7 MB on a 2 h take (the Pepsi take's parts 6 and 7, where `--views`
-adds about 0.7 MB).
+`--maps` (with `--json`) adds `time_frequency`, `coherence`,
+`lomb_scargle`, `wheel_turns` and the `wheel_lines` windows, about 3.8 MB on a 2 h take (the Pepsi take's parts 6 and
+7, where `--views` adds about 0.7 MB).
 
 The JSON's top-level `clock` describes the correction actually applied to
 these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and

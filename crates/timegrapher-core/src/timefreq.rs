@@ -746,7 +746,7 @@ pub fn coherences_for_take(
     long: &crate::longrun::LongReport,
     reading_s: f64,
 ) -> Vec<Coherence> {
-    let [rate, amp] = crate::steadiness::rate_amplitude_grids(log, clock, &long.breaks, reading_s);
+    let [rate, amp, _] = crate::steadiness::reading_grids(log, clock, &long.breaks, reading_s);
     let [tick, tock] = crate::steadiness::side_grids(log, clock, &long.breaks);
     [
         coherence(&rate, &amp, "rate", "amplitude"),

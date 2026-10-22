@@ -525,7 +525,7 @@ fn robust_diff_sigma(y: &[f64]) -> Option<f64> {
     Some(1.4826 * median(&mut a) / std::f64::consts::SQRT_2)
 }
 
-fn ln_gamma(x: f64) -> f64 {
+pub(crate) fn ln_gamma(x: f64) -> f64 {
     // Lanczos approximation (g = 7, n = 9).
     const C: [f64; 9] = [
         0.999_999_999_999_809_9,
@@ -2322,18 +2322,20 @@ pub(crate) fn side_grids(
     ]
 }
 
-/// The rate readings and the amplitude averaged into the same readings,
-/// as [`check`] correlates them: `r` seconds each on true time, one grid.
-pub(crate) fn rate_amplitude_grids(
+/// The rate readings, and the amplitude and the beat error averaged into
+/// the same readings, as [`check`] tests them: `r` seconds each on true
+/// time, one grid.
+pub(crate) fn reading_grids(
     log: &BeatLog,
     clock: Option<&ClockFit>,
     breaks: &[crate::breaks::Break],
     r: f64,
-) -> [Grid; 2] {
+) -> [Grid; 3] {
     let rate = rate_grid(&rate_windows(log, clock, breaks, r), r);
-    let [amp, _] = window_grids(log, clock, breaks);
+    let [amp, be] = window_grids(log, clock, breaks);
     let amp = rebin(&amp, rate.t0, r, rate.y.len());
-    [rate, amp]
+    let be = rebin(&be, rate.t0, r, rate.y.len());
+    [rate, amp, be]
 }
 
 /// The rate readings [`check`] tests, `r` seconds each, on true time.

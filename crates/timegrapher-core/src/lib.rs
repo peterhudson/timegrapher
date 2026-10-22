@@ -22,6 +22,7 @@ pub mod distribution;
 pub mod dsp;
 pub mod excerpt;
 pub mod filter;
+pub mod gappy;
 pub mod histogram;
 pub mod input_domain;
 pub mod library;
@@ -48,6 +49,7 @@ pub mod timing;
 pub mod twostate;
 pub mod update;
 pub mod usbclock;
+pub mod wheel_lines;
 
 pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};
 pub use audio::{load, Audio};
