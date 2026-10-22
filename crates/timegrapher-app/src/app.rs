@@ -353,6 +353,8 @@ pub enum Pane {
     SteadyAllan,
     SteadyCusum,
     SteadyFft,
+    SteadyStft,
+    SteadyWavelet,
     Scope,
     Isochronism,
     PositionsTest,
@@ -360,7 +362,7 @@ pub enum Pane {
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 19] = [
+    const ALL: [Pane; 21] = [
         Pane::Watch,
         Pane::PositionsTest,
         Pane::Strip,
@@ -380,9 +382,11 @@ impl Pane {
         Pane::SteadyAllan,
         Pane::SteadyCusum,
         Pane::SteadyFft,
+        Pane::SteadyStft,
+        Pane::SteadyWavelet,
     ];
     /// The Steadiness views, in the order the icon bar groups them.
-    const STEADY: [Pane; 7] = [
+    const STEADY: [Pane; 9] = [
         Pane::SteadyReadings,
         Pane::SteadyPeriods,
         Pane::SteadyCycle,
@@ -390,6 +394,8 @@ impl Pane {
         Pane::SteadyAllan,
         Pane::SteadyCusum,
         Pane::SteadyFft,
+        Pane::SteadyStft,
+        Pane::SteadyWavelet,
     ];
     const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
     /// The panes that average the beats, each over Readings' Average Over
@@ -428,6 +434,8 @@ impl Pane {
             Pane::SteadyAllan => "Allan Deviation",
             Pane::SteadyCusum => "CUSUM",
             Pane::SteadyFft => "FFT",
+            Pane::SteadyStft => "STFT Map",
+            Pane::SteadyWavelet => "Wavelet Map",
             Pane::Scope => "Scope",
             Pane::Isochronism => "Isochronism",
             Pane::PositionsTest => "Positions Test",
@@ -467,7 +475,9 @@ impl Pane {
             | Pane::SteadyAutocorrelation
             | Pane::SteadyAllan
             | Pane::SteadyCusum
-            | Pane::SteadyFft => self.steady_view().map_or("", steady::View::hint),
+            | Pane::SteadyFft
+            | Pane::SteadyStft
+            | Pane::SteadyWavelet => self.steady_view().map_or("", steady::View::hint),
             Pane::Scope => {
                 "The sound of the latest beats as it came in, at 20, 200 or 400 ms, the \
                  latest few drawn over each other"
@@ -497,6 +507,8 @@ impl Pane {
             Pane::SteadyAllan => View::Allan,
             Pane::SteadyCusum => View::Cusum,
             Pane::SteadyFft => View::Fft,
+            Pane::SteadyStft => View::Stft,
+            Pane::SteadyWavelet => View::Wavelet,
             _ => return None,
         })
     }
@@ -522,6 +534,8 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::SteadyAllan => (Icon::Allan, pal.unlock),
         Pane::SteadyCusum => (Icon::Cusum, pal.unlock),
         Pane::SteadyFft => (Icon::Fft, pal.unlock),
+        Pane::SteadyStft => (Icon::Stft, pal.unlock),
+        Pane::SteadyWavelet => (Icon::Wavelet, pal.unlock),
         Pane::Isochronism => (Icon::Isochronism, pal.drop),
         Pane::PositionsTest => (Icon::Positions, pal.teal),
         Pane::Rate => (Icon::RateChart, pal.trace_rate),
@@ -1225,6 +1239,8 @@ pub struct TimegrapherApp {
     periods_log: bool,
     /// The FFT pane's rate as the beat timing's spectrum, in ms.
     fft_timing: bool,
+    /// The STFT and Wavelet Map panes' colours on a log scale.
+    maps_log: bool,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
@@ -1366,6 +1382,7 @@ impl TimegrapherApp {
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
             periods_log: self.periods_log,
             fft_timing: self.fft_timing,
+            maps_log: self.maps_log,
             positions_settle_s: self.guided_settle_s,
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
@@ -1406,6 +1423,7 @@ impl TimegrapherApp {
             steady_shown,
             periods_log,
             fft_timing,
+            maps_log,
             positions_settle_s,
             positions_measure_s,
             scope,
@@ -1460,6 +1478,7 @@ impl TimegrapherApp {
         self.theme = theme;
         self.periods_log = periods_log;
         self.fft_timing = fft_timing;
+        self.maps_log = maps_log;
         self.guided_settle_s =
             positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
         self.guided_measure_s =
@@ -1596,6 +1615,7 @@ impl TimegrapherApp {
             steady_series: Default::default(),
             periods_log: false,
             fft_timing: false,
+            maps_log: false,
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -5265,6 +5285,13 @@ impl TimegrapherApp {
                  the swing it makes in 10 s rate readings, in s/d",
             );
         }
+        if matches!(view, steady::View::Stft | steady::View::Wavelet) {
+            ui.separator();
+            theme::toggle(ui, "Log Scale", &mut self.maps_log).on_hover_text(
+                "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines \
+                 beside strong ones still show",
+            );
+        }
     }
 
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
@@ -5412,6 +5439,7 @@ impl TimegrapherApp {
             steady::Opts {
                 periods_log: self.periods_log,
                 fft_timing: self.fft_timing,
+                maps_log: self.maps_log,
             },
         );
     }

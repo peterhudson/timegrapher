@@ -37,6 +37,7 @@ mod settings_window;
 mod span;
 mod steady;
 mod strip;
+mod tfmap;
 mod theme;
 mod update;
 mod watches;

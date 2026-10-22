@@ -886,6 +886,8 @@ pub enum Icon {
     Allan,
     Cusum,
     Fft,
+    Stft,
+    Wavelet,
     Isochronism,
     Positions,
     RateChart,

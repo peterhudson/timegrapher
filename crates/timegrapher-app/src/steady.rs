@@ -11,7 +11,7 @@ use crate::strip;
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{
-    GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoint, Points, Text, VLine,
+    GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoint, Points, Polygon, Text, VLine,
 };
 use serde::{Deserialize, Serialize};
 use timegrapher_core::beats::Beat;
@@ -49,11 +49,13 @@ pub enum View {
     Allan,
     Cusum,
     Fft,
+    Stft,
+    Wavelet,
 }
 
 impl View {
     #[cfg(test)]
-    const ALL: [View; 7] = [
+    const ALL: [View; 9] = [
         View::Readings,
         View::Periods,
         View::Cycle,
@@ -61,6 +63,8 @@ impl View {
         View::Allan,
         View::Cusum,
         View::Fft,
+        View::Stft,
+        View::Wavelet,
     ];
 
     pub fn label(self) -> &'static str {
@@ -72,6 +76,8 @@ impl View {
             View::Allan => "Allan Deviation",
             View::Cusum => "CUSUM",
             View::Fft => "FFT",
+            View::Stft => "STFT Map",
+            View::Wavelet => "Wavelet Map",
         }
     }
 
@@ -90,7 +96,9 @@ impl View {
             }
             View::Cycle => {
                 "The readings folded at the cycle the tests found: every cycle's readings as \
-                 dots, and their median shape as the line"
+                 dots, coloured by when the cycle came (purple first, yellow-green last), a box \
+                 round the middle half of each phase's readings, and their median shape as \
+                 the line; the note gives the line's swing beside a box's median height"
             }
             View::Autocorrelation => {
                 "How much each reading resembles the one a lag later: independent readings \
@@ -114,6 +122,23 @@ impl View {
                  with the wheels' periods marked and twice a turn dashed. Both axes are \
                  logarithmic"
             }
+            View::Stft => {
+                "Each series' size at each period (up, on a log scale) and time of the \
+                 session (across), from the amplitude spectrum of each 20 minutes of \
+                 readings, stepped 5 minutes: every period is read over the same window, so \
+                 this map gives a line's size and shows a line that comes and goes. The \
+                 rate's map is of the beat timing, in ms. Empty where a window has a \
+                 reading missing"
+            }
+            View::Wavelet => {
+                "Each series' size at each period (up, on a log scale) and time of the \
+                 session (across), from a synchrosqueezed wavelet transform: short periods \
+                 read over short times and long ones over long, each moved to the period its \
+                 own phase turns at, so a line shows sharply where and when it is; under \
+                 noise one row reads under the line's size, so read its size from the STFT \
+                 Map. Each unbroken stretch is read alone, and its ends, which a period's \
+                 wavelet can't reach, are left empty"
+            }
         }
     }
 }
@@ -135,6 +160,8 @@ pub struct Steadiness {
     /// The periods every series' search covers between them, log10 seconds,
     /// so the three Periods plots share one time axis.
     period_span: Option<(f64, f64)>,
+    /// The STFT and wavelet maps of each series (core `timefreq`).
+    maps: Vec<timegrapher_core::timefreq::TimeFrequency>,
     /// Seconds of the session the tests covered.
     pub upto_s: f64,
 }
@@ -346,6 +373,8 @@ pub fn compute_with(
         Some(fold)
     });
     let period_span = steady_views::period_span(&searches);
+    // With the same (no) clock the long-run analysis above was given.
+    let maps = timegrapher_core::timefreq::for_take(log, None, &long, &lc);
     Steadiness {
         report,
         grids,
@@ -354,6 +383,7 @@ pub fn compute_with(
         fold_from,
         period_span,
         wheels: lc.wheels,
+        maps,
         upto_s: log.duration_s,
     }
 }
@@ -455,6 +485,18 @@ fn value_text(k: SeriesKind, v: f64, step: f64) -> String {
         SeriesKind::Amplitude => format!("{v:.d$}°"),
         SeriesKind::BeatError => format!("{v:.d$} ms"),
     }
+}
+
+/// The tallest point that stands above both its neighbours, so a
+/// spectrum still climbing at either end of its axis (the rate's slow
+/// wander building up in the timing) is not labelled as a peak.
+fn tallest_peak(pts: &[[f64; 2]]) -> Option<[f64; 2]> {
+    let mut by_x = pts.to_vec();
+    by_x.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    by_x.windows(3)
+        .filter(|w| w[1][1] > w[0][1] && w[1][1] > w[2][1])
+        .map(|w| w[1])
+        .max_by(|a, b| a[1].total_cmp(&b[1]))
 }
 
 /// Seconds as a short time: "45 s", "12 min", "2.5 h".
@@ -841,17 +883,24 @@ fn row(
             };
             let bins = f.profile.len();
             let x = |b: usize| (b as f64 + 0.5) / bins as f64 * f.period_s;
-            let dots: Vec<[f64; 2]> = f
-                .raster
-                .iter()
-                .flat_map(|r| {
+            // The dots go in bands by when their cycle came, first to
+            // last, so slow wander shows as a run of colour. The map's
+            // ends are left off so both themes' cards keep every dot seen.
+            let rows = f.raster.len();
+            let bands = rows.clamp(1, TIME_BANDS);
+            let mut by_time: Vec<Vec<[f64; 2]>> = vec![Vec::new(); bands];
+            for (row, r) in f.raster.iter().enumerate() {
+                let band = row * bands / rows.max(1);
+                by_time[band].extend(
                     r.iter()
                         .enumerate()
                         .filter(|(_, v)| v.is_finite())
-                        .map(|(b, v)| [x(b), *v])
-                        .collect::<Vec<_>>()
-                })
-                .collect();
+                        .map(|(b, v)| [x(b), *v]),
+                );
+            }
+            let dots: Vec<[f64; 2]> = by_time.iter().flatten().copied().collect();
+            let boxes = columns(f);
+            let box_w = 0.3 * f.period_s / bins as f64;
             let shape: Vec<[f64; 2]> = f
                 .profile
                 .iter()
@@ -899,8 +948,39 @@ fn row(
                     f.raster.len()
                 ),
             };
+            let label = match cycle_spread(f) {
+                Some((swing, middle)) => format!(
+                    "{label}\nThe median line swings {}; the boxes' median height is {}",
+                    value_text(k, swing, swing.abs().min(middle.abs()) / 10.0),
+                    value_text(k, middle, swing.abs().min(middle.abs()) / 10.0),
+                ),
+                None => label,
+            };
             plot.show(ui, |p| {
-                p.points(Points::new("cycles", dots).color(weak).radius(1.2_f32));
+                for (band, pts) in by_time.into_iter().enumerate() {
+                    if pts.is_empty() {
+                        continue;
+                    }
+                    let t = if bands > 1 {
+                        band as f32 / (bands - 1) as f32
+                    } else {
+                        0.5
+                    };
+                    p.points(
+                        Points::new("cycles", pts)
+                            .color(crate::tfmap::viridis(0.15 + 0.75 * t))
+                            .radius(1.4_f32),
+                    );
+                }
+                for (b, q) in boxes.iter().enumerate() {
+                    let Some((q1, _, q3)) = *q else { continue };
+                    let (l, r) = (x(b) - box_w, x(b) + box_w);
+                    p.polygon(
+                        Polygon::new("middle half", vec![[l, q1], [r, q1], [r, q3], [l, q3]])
+                            .fill_color(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::new(1.0_f32, weak)),
+                    );
+                }
                 p.line(Line::new("shape", shape).color(colour).width(2.0_f32));
                 let b = p.plot_bounds();
                 p.text(
@@ -1080,6 +1160,39 @@ fn row(
                     }
                 });
         }
+        View::Stft | View::Wavelet => {
+            let name = match k {
+                SeriesKind::Rate => "rate",
+                SeriesKind::Amplitude => "amplitude",
+                _ => "beat_error",
+            };
+            let method = if view == View::Stft { "stft" } else { "sst" };
+            let Some(m) = s
+                .maps
+                .iter()
+                .find(|m| m.series == name && m.method == method)
+            else {
+                return note(
+                    ui,
+                    if view == View::Stft {
+                        "The STFT Map needs 20 minutes of readings with none missing."
+                    } else {
+                        "The wavelet map needs a longer stretch of unbroken readings."
+                    },
+                );
+            };
+            crate::tfmap::draw(
+                ui,
+                base,
+                egui::Id::new(id),
+                m,
+                s.upto_s,
+                opts.maps_log,
+                &s.wheels,
+                strip::fmt_time,
+                secs,
+            );
+        }
         View::Fft => {
             let name = match k {
                 SeriesKind::Rate => "rate",
@@ -1155,11 +1268,7 @@ fn row(
                 };
                 format!("{v:.d$}{unit}")
             };
-            let peak = pts
-                .iter()
-                .copied()
-                .max_by(|a, b| a[1].total_cmp(&b[1]))
-                .unwrap_or([0.0, 0.0]);
+            let peak = tallest_peak(&pts);
             base.x_grid_spacer(log_grid)
                 .x_axis_formatter(|m, r| log_label(m, r, secs))
                 .y_grid_spacer(log_grid)
@@ -1169,23 +1278,25 @@ fn row(
                 .show(ui, |p| {
                     wheel_marks(p, &s.wheels, (x_lo, x_hi), top, pal);
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
-                    p.points(
-                        Points::new("tallest", vec![peak])
-                            .color(colour)
-                            .radius(3.5_f32),
-                    );
-                    mark_label(
-                        p,
-                        peak,
-                        format!(
-                            "tallest at {}: {}{}",
-                            secs(10f64.powf(peak[0])),
-                            size(10f64.powf(peak[1])),
-                            if as_rate { " peak to peak" } else { "" }
-                        ),
-                        pal.text,
-                        false,
-                    );
+                    if let Some(peak) = peak {
+                        p.points(
+                            Points::new("tallest", vec![peak])
+                                .color(colour)
+                                .radius(3.5_f32),
+                        );
+                        mark_label(
+                            p,
+                            peak,
+                            format!(
+                                "tallest peak at {}: {}{}",
+                                secs(10f64.powf(peak[0])),
+                                size(10f64.powf(peak[1])),
+                                if as_rate { " peak to peak" } else { "" }
+                            ),
+                            pal.text,
+                            false,
+                        );
+                    }
                 });
         }
     }
@@ -1210,6 +1321,8 @@ pub struct Opts {
     /// FFT: rate as the beat timing's spectrum in ms, not its swing in
     /// the rate readings.
     pub fft_timing: bool,
+    /// STFT and wavelet maps: the sizes' colours on a log scale.
+    pub maps_log: bool,
 }
 
 /// The wheels' turns on a log10 period axis spanning `span`: a bold line
@@ -1360,6 +1473,59 @@ fn log_label(
 /// them don't flatten the rest: those beyond three interquartile ranges
 /// of the middle half, unless they are more than 3% of the values (then
 /// they are part of what the watch does, as in the steadiness test).
+/// How many colours the Cycle view's dots take, first cycle to last.
+const TIME_BANDS: usize = 12;
+
+/// Each phase column's quartiles (lower, median, upper) over its cycles,
+/// None for a column with fewer than four readings.
+fn columns(f: &Fold) -> Vec<Option<(f64, f64, f64)>> {
+    (0..f.profile.len())
+        .map(|b| {
+            let mut v: Vec<f64> = f
+                .raster
+                .iter()
+                .filter_map(|r| r.get(b).copied())
+                .filter(|v| v.is_finite())
+                .collect();
+            if v.len() < 4 {
+                return None;
+            }
+            v.sort_by(f64::total_cmp);
+            let q = |p: f64| {
+                let x = (v.len() - 1) as f64 * p;
+                let (i, t) = (x.floor() as usize, x.fract());
+                v[i] + (v[(i + 1).min(v.len() - 1)] - v[i]) * t
+            };
+            Some((q(0.25), q(0.5), q(0.75)))
+        })
+        .collect()
+}
+
+/// The median line's swing (highest less lowest) and the median of the
+/// columns' middle-half spans, when both can be given.
+fn cycle_spread(f: &Fold) -> Option<(f64, f64)> {
+    let shape: Vec<f64> = f
+        .profile
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    let mut mids: Vec<f64> = columns(f).iter().flatten().map(|(a, _, c)| c - a).collect();
+    if shape.len() < 2 || mids.is_empty() {
+        return None;
+    }
+    mids.sort_by(f64::total_cmp);
+    let n = mids.len();
+    let middle = if n % 2 == 1 {
+        mids[n / 2]
+    } else {
+        (mids[n / 2 - 1] + mids[n / 2]) / 2.0
+    };
+    let hi = shape.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let lo = shape.iter().copied().fold(f64::INFINITY, f64::min);
+    Some((hi - lo, middle))
+}
+
 fn spread(pts: &[[f64; 2]]) -> Option<(f64, f64)> {
     if pts.len() < 2 {
         return None;
@@ -1391,6 +1557,41 @@ fn note(ui: &mut egui::Ui, text: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_spectrum_climbing_at_its_end_labels_its_own_peak_not_the_end() {
+        // log10 period against log10 size: a hump at 60 s, then a climb
+        // to the longest period that ends higher than the hump.
+        let pts = [[1.0, 0.0], [1.78, 1.0], [2.2, 0.4], [3.0, 1.5], [3.3, 2.0]];
+        assert_eq!(super::tallest_peak(&pts), Some([1.78, 1.0]));
+        assert_eq!(
+            super::tallest_peak(&[[1.0, 0.0], [2.0, 1.0], [3.0, 2.0]]),
+            None
+        );
+    }
+
+    #[test]
+    fn the_cycle_columns_give_their_quartiles_and_the_line_its_swing() {
+        let nan = f64::NAN;
+        let f = super::Fold {
+            period_s: 60.0,
+            profile: vec![1.0, -1.0, nan],
+            counts: vec![5, 5, 1],
+            raster: vec![
+                vec![0.0, -3.0, 9.0],
+                vec![1.0, -2.0, nan],
+                vec![2.0, -1.0, nan],
+                vec![3.0, 0.0, nan],
+                vec![4.0, 1.0, nan],
+            ],
+            t0: 0.0,
+        };
+        let c = super::columns(&f);
+        assert_eq!(c[0], Some((1.0, 2.0, 3.0)));
+        assert_eq!(c[1], Some((-2.0, -1.0, 0.0)));
+        assert_eq!(c[2], None);
+        assert_eq!(super::cycle_spread(&f), Some((2.0, 2.0)));
+    }
+
     use super::*;
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
@@ -1889,6 +2090,61 @@ mod tests {
                 });
             });
             assert!(!out.shapes.is_empty());
+        }
+
+        // The map panes draw a map the core gives, with its key, and
+        // say what they need when it gives none.
+        let drawn = |s: &Steadiness, v: View| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    draw(
+                        ui,
+                        Some(s),
+                        "maps",
+                        v,
+                        &[true, false, false],
+                        Opts::default(),
+                    );
+                });
+            });
+            fn texts(shape: &egui::Shape, into: &mut String) {
+                match shape {
+                    egui::Shape::Text(t) => into.push_str(&format!("{}\n", t.galley.text())),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                    _ => {}
+                }
+            }
+            let mut all = String::new();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+            all
+        };
+        let mut s = s;
+        s.maps.clear();
+        assert!(drawn(&s, View::Stft).contains("The STFT Map needs"));
+        let nan = f64::NAN;
+        for method in ["stft", "sst"] {
+            s.maps.push(timegrapher_core::timefreq::TimeFrequency {
+                series: "rate",
+                method,
+                unit: "ms",
+                step_s: 10.0,
+                window_s: None,
+                hop_s: Some(300.0),
+                period_s: vec![600.0, 120.0, 30.0],
+                t_s: vec![600.0, 900.0],
+                values: vec![vec![0.1, 0.4, nan], vec![0.2, 0.3, 0.1]],
+            });
+        }
+        for v in [View::Stft, View::Wavelet] {
+            let t = drawn(&s, v);
+            assert!(t.contains("not read") && !t.contains("needs"), "{v:?}: {t}");
         }
     }
 
