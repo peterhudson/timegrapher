@@ -43,14 +43,18 @@ class Tree(unittest.TestCase):
     These scan for Markdown paths written out as string literals: in any Rust
     source under crates/ (include_str!, include_bytes!, a doc!-style macro or a
     file a test opens at run time), in the MCP renderer's JavaScript tests,
-    and in packaging's and .github's Python. They cannot see a path that code
-    assembles from pieces at run time, or a whole folder listed at run time;
-    nothing in CI's tests reads Markdown that way today (packaging's
-    docs_html.py lists docs/ only to map page names, whose files' existence
-    its tests check, so deleting or renaming any file is a full run).
+    and in packaging's and .github's Python, except this folder's own files,
+    whose literals are the rule and its test cases. They cannot see a path
+    that code assembles from pieces at run time, or a whole folder listed at
+    run time; nothing in CI's tests reads Markdown that way today
+    (packaging's docs_html.py lists docs/ only to map page names, whose files'
+    existence its tests check, so deleting or renaming any file is a full
+    run).
     """
 
     # Literals that name a Markdown file without reading the repository's copy.
+    # An entry covers every literal of that path in its file, so a real read
+    # of the same path added there later would be missed: remove the entry.
     NOT_READ = {
         # Writes a new README.md into the synthetic take's folder.
         ("crates/timegrapher-cli/src/synth_cmd.rs", "README.md"),
