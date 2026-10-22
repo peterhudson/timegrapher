@@ -433,6 +433,18 @@ impl Recorder {
     /// The name for a copy: the start time, then the watch's name and the
     /// calibre when they are known by the time of the copy. No position:
     /// session.json and session.toml say where the watch was and when.
+    /// When the recording started, as `2026-10-20T21:32:00Z`.
+    pub fn started_utc(&self) -> &str {
+        &self.started_utc
+    }
+
+    /// Name the first saved copy `name` (a take folder in a watch of the
+    /// library) rather than by its start, watch and calibre. A copy
+    /// already saved keeps its name, so Save Again saves into it.
+    pub fn name_first_copy(&mut self, name: std::ffi::OsString) {
+        self.saved_name.get_or_insert(name);
+    }
+
     fn copy_name(&self, calibre: &str) -> std::ffi::OsString {
         let mut name = stamp_of(&self.started_utc);
         for part in [safe_name(&self.info.watch), safe_name(calibre)] {

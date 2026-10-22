@@ -38,6 +38,7 @@ mod steady;
 mod strip;
 mod theme;
 mod update;
+mod watches;
 
 use std::io::Write;
 use std::path::PathBuf;

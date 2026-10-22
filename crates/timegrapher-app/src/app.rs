@@ -17,6 +17,7 @@ use crate::settings_window::{self, Tab};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
 use crate::theme;
+use crate::watches;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{GridMark, Line, LineStyle, Plot, Points};
 use egui_tiles::{Linear, LinearDir, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
@@ -403,7 +404,7 @@ impl Pane {
 
     fn title(self) -> &'static str {
         match self {
-            Pane::Watch => "Watch",
+            Pane::Watch => "Watches",
             Pane::Strip => "Paper Strip",
             Pane::Sound => "Tick Tock Profile",
             Pane::Rate => "Rate",
@@ -550,8 +551,10 @@ const NEW_SESSION_HINT: &str = "Clear everything and start again with the next w
      position. Listening carries on into the new session, unless closing the kept sound \
      fails; a replay stops. Unsaved sound is asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
-     settings, to analyse again later. The first time it asks where: the take goes in a \
-     folder of its own, named for its time and watch, inside the folder you choose. After \
+     settings, to analyse again later. With a watch picked in the Watches pane, the take is \
+     saved into that watch, named for when it started. Otherwise the first time it asks \
+     where: the take goes in a folder of its own, named for its time and watch, inside the \
+     folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
      carries on. Unsaved sound is thrown away by New Session or quitting.";
 
@@ -633,10 +636,10 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     tree
 }
 
-/// How much of the window's width the Watch pane starts with, at the left.
+/// How much of the window's width the Watches pane starts with, at the left.
 const WATCH_SHARE: f32 = 0.22;
 
-/// A layout saved before the Watch pane, with it added in its own column
+/// A layout saved before the Watches pane, with it added in its own column
 /// at the left, as it starts.
 fn add_watch(tree: &mut Tree<Pane>) {
     if tree.tiles.find_pane(&Pane::Watch).is_some() {
@@ -1067,6 +1070,13 @@ pub struct TimegrapherApp {
     kept: Vec<KeptSound>,
     /// The kept sound Delete… is asking about.
     kept_delete_ask: Option<PathBuf>,
+    /// The Watches pane: the watch picked (its id), the list's search,
+    /// order and whether it shows archived watches, and the details form.
+    watch_open: Option<String>,
+    watch_search: String,
+    watch_sort: watches::Sort,
+    watch_archived: bool,
+    watch_form: Option<watches::Form>,
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
@@ -1216,7 +1226,7 @@ pub struct TimegrapherApp {
     cursor_next: Option<f64>,
     /// Light, dark or following the system, kept for the next start.
     theme: egui::ThemePreference,
-    /// Watch pane groups folded down to their caption.
+    /// Watches pane groups folded down to their caption.
     folded: std::collections::BTreeSet<String>,
     /// The rate, amplitude and beat error figures above the panes.
     show_readings: bool,
@@ -1308,6 +1318,7 @@ impl TimegrapherApp {
         }
         app.crash = applog::dir().and_then(|d| applog::unseen_crashes(&d).pop());
         app.kept = kept_sounds(&scratch_dir());
+        app.read_library();
         app.check_pending = app.check_at_start;
         app
     }
@@ -1524,6 +1535,11 @@ impl TimegrapherApp {
             library: Ok(None),
             library_move_ask: None,
             library_moving: None,
+            watch_open: None,
+            watch_search: String::new(),
+            watch_sort: watches::Sort::default(),
+            watch_archived: false,
+            watch_form: None,
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -2130,7 +2146,8 @@ impl TimegrapherApp {
     }
 
     /// Save Again: the sound so far into the take saved before, with no
-    /// question; the first time, Save… asks where.
+    /// question. The first time, Save… saves into the watch picked in the
+    /// Watches pane, else asks where.
     fn save_again(&mut self) {
         if self.refuse_faulted_recording() {
             return;
@@ -2140,7 +2157,39 @@ impl TimegrapherApp {
                 let parent = parent.to_path_buf();
                 self.save_into(&parent);
             }
-            None => self.save_recording(),
+            None => match self.watch_takes_dir() {
+                Some(takes) => self.save_into_watch(&takes),
+                None => self.save_recording(),
+            },
+        }
+    }
+
+    /// Save the session as a new take in a watch's `takes`, named by when
+    /// it started (in this computer's time) and its one position, if it
+    /// used only one.
+    fn save_into_watch(&mut self, takes: &Path) {
+        let positions: Vec<timegrapher_core::session::Position> = self
+            .take_manifest()
+            .recordings
+            .iter()
+            .filter_map(|r| {
+                r.position
+                    .as_deref()
+                    .and_then(timegrapher_core::session::Position::parse)
+            })
+            .collect();
+        let Some(r) = self.session.recorder.as_mut() else {
+            return;
+        };
+        let started = watches::local_minute(r.started_utc())
+            .unwrap_or_else(|| r.started_utc().replace(':', "."));
+        let dir = library::unused_dir(takes, &library::take_name(&started, &positions));
+        if let Some(name) = dir.file_name() {
+            r.name_first_copy(name.to_owned());
+        }
+        self.save_into(takes);
+        if let Ok(Some(l)) = &mut self.library {
+            l.scan();
         }
     }
 
@@ -3789,7 +3838,7 @@ impl TimegrapherApp {
         }
     }
 
-    /// The Watch pane: where the sound comes from and what to do with it,
+    /// The Watches pane: where the sound comes from and what to do with it,
     /// then the watch itself. Before anything is open it stands beside
     /// the ways in, so the microphone and the watch can be set first.
     fn watch_pane(&mut self, ui: &mut egui::Ui) {
@@ -3800,6 +3849,14 @@ impl TimegrapherApp {
                 // Clear of the scroll bar.
                 ui.set_max_width(ui.available_width() - 8.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
+                let picked = self.open_watch().is_some();
+                if picked {
+                    self.watch_details(ui);
+                    self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
+                } else {
+                    self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
+                }
+                ui.separator();
                 match self.input {
                     Input::Microphone => {
                         self.section(ui, "Microphone", help::MICROPHONE, Self::microphone_card)
@@ -3810,11 +3867,295 @@ impl TimegrapherApp {
                 };
                 ui.separator();
                 ui.separator();
-                self.section(ui, "Watch", help::WATCH, Self::watch_settings);
+                if picked {
+                    self.section(ui, "This Take", help::WATCH, Self::watch_settings);
+                } else {
+                    self.section(ui, "Watch", help::WATCH, Self::watch_settings);
+                }
             });
     }
 
-    /// Microphone or Recording, the choice at the top of the Watch pane.
+    /// The watch picked in the Watches pane, as the library last read it.
+    fn open_watch(&self) -> Option<&library::WatchEntry> {
+        let id = self.watch_open.as_ref()?;
+        match &self.library {
+            Ok(Some(l)) => l.watches.iter().find(|e| &e.watch.id == id),
+            _ => None,
+        }
+    }
+
+    /// Where Save… keeps a take of the watch picked: its `takes/`, where
+    /// the library can be written.
+    fn watch_takes_dir(&self) -> Option<PathBuf> {
+        match &self.library {
+            Ok(Some(l)) if l.read_only.is_none() => {
+                self.open_watch().map(|e| e.dir.join(library::TAKES))
+            }
+            _ => None,
+        }
+    }
+
+    /// The library's watches, or what stands in for them.
+    fn watch_list_card(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let mut show = false;
+        let picked = match &self.library {
+            Ok(Some(l)) => {
+                let shown =
+                    watches::shown(l, &self.watch_search, self.watch_sort, self.watch_archived);
+                if l.watches.is_empty() {
+                    ui.label(
+                        RichText::new(
+                            "No watches yet. New Watch… adds one, and the takes of it you \
+                             save are kept with it.",
+                        )
+                        .color(pal.text_secondary),
+                    );
+                } else if shown.is_empty() {
+                    ui.label(
+                        RichText::new("No watch matches the search.").color(pal.text_secondary),
+                    );
+                }
+                let picked = watches::list(ui, &shown);
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new(format!("{} in {}", fmt_bytes(l.bytes()), l.root.display()))
+                            .small()
+                            .color(pal.text_secondary),
+                    );
+                    show = ui
+                        .small_button(settings_window::show_in_words())
+                        .on_hover_text("Open the library's folder")
+                        .clicked();
+                });
+                if let Some(why) = &l.read_only {
+                    ui.label(
+                        RichText::new(format!("{why}."))
+                            .small()
+                            .color(pal.text_secondary),
+                    );
+                }
+                picked
+            }
+            Ok(None) => {
+                ui.label(
+                    RichText::new(
+                        "No watches yet. New Watch… adds one, and the takes of it you save \
+                         are kept with it.",
+                    )
+                    .color(pal.text_secondary),
+                );
+                None
+            }
+            Err(e) => {
+                ui.label(RichText::new(format!("The library can't be read: {e}")).color(pal.bad));
+                None
+            }
+        };
+        if show {
+            self.library_action(settings_window::LibraryAction::Show);
+        }
+        if let Some(id) = picked {
+            self.pick_watch(&id);
+        }
+    }
+
+    /// The picked watch's details.
+    fn watch_details(&mut self, ui: &mut egui::Ui) {
+        if let Some(e) = self.open_watch() {
+            let e = e.clone();
+            watches::details(ui, &e);
+        }
+    }
+
+    /// The picked watch's takes.
+    fn watch_takes_card(&mut self, ui: &mut egui::Ui) {
+        let Some(e) = self.open_watch().cloned() else {
+            return;
+        };
+        match watches::takes(ui, &e) {
+            Some(watches::TakeAction::Open(dir)) => {
+                self.input = Input::File;
+                self.file_path = dir.display().to_string();
+                self.open_recording(&dir, false, true);
+            }
+            Some(watches::TakeAction::Replay(dir)) => {
+                self.input = Input::File;
+                self.file_path = dir.display().to_string();
+                self.open_recording(&dir, true, true);
+            }
+            Some(watches::TakeAction::Show(dir)) => {
+                if let Err(err) = reveal(&dir) {
+                    self.error(format!("Couldn't open {}: {err}", dir.display()));
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// Pick a watch: the pane shows it, and a new take starts with its
+    /// name, calibre, lift angle and beat rate. Refused while listening,
+    /// since the readings so far are of the watch already set.
+    fn pick_watch(&mut self, id: &str) {
+        if self.running() {
+            self.info_msg("Stop listening before picking another watch.".into());
+            return;
+        }
+        self.watch_open = Some(id.to_string());
+        let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
+            self.watch_open = None;
+            return;
+        };
+        self.apply_watch(&w);
+    }
+
+    /// A watch's details as this take's settings.
+    fn apply_watch(&mut self, w: &library::Watch) {
+        self.watch = w.name.clone();
+        if let Some(c) = w.calibre.clone().filter(|c| !c.is_empty()) {
+            self.set_calibre(c);
+        }
+        if let Some(l) = w.lift {
+            self.set_lift(l);
+            self.lift_context = (l, true);
+        }
+        if w.bph.is_some() && w.bph != self.bph {
+            self.bph = w.bph;
+            if let Some(l) = self.live.as_mut() {
+                l.set_bph(w.bph);
+            }
+            self.anchor = None;
+            self.clear_trends();
+        }
+        self.note_settings();
+    }
+
+    /// The Watches pane's toolbar: the list's search, order and New
+    /// Watch…, or, with a watch picked, the way back and Edit….
+    fn watches_tools(&mut self, ui: &mut egui::Ui) {
+        if let Some(e) = self.open_watch() {
+            let w = e.watch.clone();
+            if ui
+                .button("‹ All Watches")
+                .on_hover_text("Back to the list of watches")
+                .clicked()
+            {
+                self.watch_open = None;
+            }
+            let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
+            if ui
+                .add_enabled(writable, egui::Button::new("Edit…"))
+                .on_hover_text("Change this watch's details")
+                .on_disabled_hover_text("This copy of the app can only read the library")
+                .clicked()
+            {
+                self.watch_form = Some(watches::Form {
+                    watch: w,
+                    new: false,
+                    error: None,
+                });
+            }
+            return;
+        }
+        ui.add(
+            egui::TextEdit::singleline(&mut self.watch_search)
+                .hint_text("Search")
+                .desired_width(120.0),
+        )
+        .on_hover_text("Show the watches whose name, calibre, notes or fields hold this");
+        let mut sort = self.watch_sort;
+        theme::row(ui, "Sort", Some("The order of the list"), |ui| {
+            egui::ComboBox::from_id_salt("watch sort")
+                .selected_text(sort.words())
+                .show_ui(ui, |ui| {
+                    for s in watches::Sort::ALL {
+                        ui.selectable_value(&mut sort, s, s.words());
+                    }
+                });
+        });
+        self.watch_sort = sort;
+        if matches!(&self.library, Ok(Some(l)) if l.watches.iter().any(|e| e.watch.archived)) {
+            theme::toggle(ui, "Archived", &mut self.watch_archived)
+                .on_hover_text("Also list the watches marked Archived");
+        }
+        let writable = !matches!(&self.library, Ok(Some(l)) if l.read_only.is_some())
+            && self.library_root().is_some();
+        if ui
+            .add_enabled(writable, egui::Button::new("New Watch…"))
+            .on_hover_text("Add a watch to the library: only its name is needed")
+            .on_disabled_hover_text(
+                "This copy of the app can only read the library, or there is no folder for it",
+            )
+            .clicked()
+        {
+            let mut w = library::Watch::new("");
+            w.calibre = Some(String::new());
+            w.notes = Some(String::new());
+            self.watch_form = Some(watches::Form {
+                watch: w,
+                new: true,
+                error: None,
+            });
+        }
+    }
+
+    /// The form for a watch's details, while it is open.
+    fn watch_form_dialog(&mut self, ctx: &egui::Context) {
+        let Some(f) = self.watch_form.as_mut() else {
+            return;
+        };
+        match watches::form(ctx, f, &mut self.cal) {
+            Some(watches::FormAction::Save) => self.save_watch_form(),
+            Some(watches::FormAction::Cancel) => self.watch_form = None,
+            None => {}
+        }
+    }
+
+    /// Write the form's watch into the library, making the library first
+    /// for the first watch.
+    fn save_watch_form(&mut self) {
+        let Some(f) = self.watch_form.clone() else {
+            return;
+        };
+        let mut w = f.watch;
+        w.name = w.name.trim().to_string();
+        // Empty is the same as not set.
+        w.calibre = w.calibre.filter(|c| !c.trim().is_empty());
+        w.notes = w.notes.filter(|n| !n.trim().is_empty());
+        w.fields
+            .retain(|x| !(x.label.trim().is_empty() && x.value.trim().is_empty()));
+        if matches!(self.library, Ok(None)) {
+            self.library = match self.library_root() {
+                Some(root) => library::Library::open_or_create(&root).map(Some),
+                None => Err("there is no folder for it: choose one in Settings".into()),
+            };
+        }
+        let done = match &mut self.library {
+            Ok(Some(lib)) if f.new => lib.add(&w).map(|_| ()),
+            Ok(Some(lib)) => lib.update(&w),
+            Ok(None) => Err("There is no library".into()),
+            Err(e) => Err(format!("The library can't be read: {e}")),
+        };
+        match done {
+            Ok(()) => {
+                self.watch_form = None;
+                if f.new {
+                    self.pick_watch(&w.id);
+                } else if self.watch_open.as_ref() == Some(&w.id) && !self.running() {
+                    // The take not yet started follows the watch's new details.
+                    self.apply_watch(&w);
+                }
+            }
+            Err(e) => {
+                if let Some(f) = self.watch_form.as_mut() {
+                    f.error = Some(e);
+                }
+            }
+        }
+    }
+
+    /// Microphone or Recording, the choice at the top of the Watches pane.
     fn source_choice(&mut self, ui: &mut egui::Ui) {
         theme::segmented(
             ui,
@@ -4066,7 +4407,7 @@ impl TimegrapherApp {
         }
     }
 
-    /// A group of settings in the Watch pane under its caption, which
+    /// A group of settings in the Watches pane under its caption, which
     /// folds it away.
     fn section(
         &mut self,
@@ -4094,6 +4435,9 @@ impl TimegrapherApp {
     fn pane_tools(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
         let title = pane.title();
         match pane {
+            Pane::Watch => theme::pane_toolbar(ui, title, watches::HELP, |ui| {
+                self.watches_tools(ui);
+            }),
             Pane::Strip => theme::pane_toolbar(ui, title, help::STRIP, |ui| {
                 self.strip_settings(ui);
                 self.pane_average_setting(ui, Pane::Strip);
@@ -5454,7 +5798,7 @@ impl TimegrapherApp {
         self.gain_read_at = Instant::now();
     }
 
-    /// The input level control and meter, under Microphone in the Watch pane.
+    /// The input level control and meter, under Microphone in the Watches pane.
     fn gain_controls(&mut self, ui: &mut egui::Ui) {
         if self.gain_read_at.elapsed().as_secs_f64() > if self.running() { 2.0 } else { 10.0 } {
             self.read_gain();
@@ -5509,7 +5853,7 @@ impl TimegrapherApp {
             }
             _ => {
                 theme::row(ui, "Input Level", Some(hint), |ui| {
-                    // Wrapped, so a longer line doesn't widen the Watch pane.
+                    // Wrapped, so a longer line doesn't widen the Watches pane.
                     ui.add(
                         egui::Label::new(
                             RichText::new(if cfg!(target_os = "linux") {
@@ -6658,14 +7002,14 @@ impl TimegrapherApp {
                     .small()
                     .color(pal.text_secondary),
                 )
-                .on_hover_text("The position, set in the Watch pane");
+                .on_hover_text("The position, set in the Watches pane");
                 if let Some(b) = self.reading().and_then(|r| r.bph) {
                     ui.label(
                         RichText::new(format!("{b} beats per hour"))
                             .small()
                             .color(pal.text_secondary),
                     )
-                    .on_hover_text("Found from the beats, or set in the Watch pane");
+                    .on_hover_text("Found from the beats, or set in the Watches pane");
                 }
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     self.status_left(ui);
@@ -6951,7 +7295,7 @@ impl TimegrapherApp {
             theme::primary(ui, "Listen to a Watch"),
             "Start listening to the microphone chosen at the top",
             "Put the watch on the microphone, dial up. Choose the microphone and set its \
-             level in the Watch pane.",
+             level in the Watches pane.",
         ) {
             self.input = Input::Microphone;
             self.start_microphone();
@@ -7763,7 +8107,7 @@ impl TimegrapherApp {
         self.panes = panes;
     }
 
-    /// Before there is anything to show: the Watch pane at the left, as
+    /// Before there is anything to show: the Watches pane at the left, as
     /// it sits once there is, unless it is hidden, the Positions Test pane
     /// above the rest when it is shown, so a test can start from it, and
     /// `rest` beside them.
@@ -9812,6 +10156,7 @@ impl eframe::App for TimegrapherApp {
         self.panels(ctx);
         self.confirm_dialog(ctx);
         self.kept_delete_dialog(ctx);
+        self.watch_form_dialog(ctx);
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
         }
@@ -11355,6 +11700,125 @@ mod tests {
     /// Quit in the app menu or the Dock) keeps the unsaved sound, and the
     /// next start offers it back; a quit the user answered throws it away
     /// as before. A folder another copy is recording into is never offered.
+    /// The Watches pane lists the library's watches, adds one (making
+    /// the library for the first), shows a watch's details and takes, and
+    /// Save… then saves into that watch with no question.
+    #[test]
+    fn the_watches_pane_adds_a_watch_and_saves_its_takes_into_it() {
+        let base = std::env::temp_dir().join(format!("tg-app-watches-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut app = synthetic(5.0, 0.0);
+        app.use_library(Some(root.clone()));
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let pane = |ctx: &egui::Context, app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.pane_tools(ui, Pane::Watch);
+                        app.watch_pane(ui);
+                    });
+                    app.watch_form_dialog(ctx);
+                });
+                all = format!("{:?}", out.shapes);
+            }
+            all
+        };
+        let drawn = pane(&ctx, &mut app);
+        assert!(
+            drawn.contains("No watches yet") && drawn.contains("New Watch…"),
+            "{drawn}"
+        );
+        // Nothing is made on disk until the first watch.
+        assert!(!root.exists());
+
+        let mut w = library::Watch::new("Pepsi");
+        w.lift = Some(53.0);
+        w.bph = Some(28800);
+        w.notes = Some(String::new());
+        app.watch_form = Some(watches::Form {
+            watch: w,
+            new: true,
+            error: None,
+        });
+        let form = pane(&ctx, &mut app);
+        for t in [
+            "New Watch",
+            "Add Field",
+            "Add Watch",
+            "Lift Angle",
+            "Archived",
+        ] {
+            assert!(form.contains(t), "{t}: {form}");
+        }
+        app.save_watch_form();
+        assert!(app.watch_form.is_none());
+        assert!(library::Library::is_library(&root));
+        assert_eq!(
+            (app.watch.as_str(), app.lift_deg, app.bph),
+            ("Pepsi", 53.0, Some(28800))
+        );
+        let drawn = pane(&ctx, &mut app);
+        for t in [
+            "Pepsi",
+            "No takes yet",
+            "‹ All Watches",
+            "Edit…",
+            "This Take",
+        ] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+
+        // Save… with the watch picked saves into it, named by its start.
+        let scratch = base.join("unsaved");
+        app.session.listen();
+        let info = app.info("Pepsi", 48000, 16);
+        let mut r = Recorder::start(&scratch, info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        let started = watches::local_minute(r.started_utc()).unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.save_again();
+        let takes = root.join("Pepsi").join(library::TAKES);
+        let saved: Vec<PathBuf> = std::fs::read_dir(&takes)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(saved.len(), 1, "{saved:?}");
+        let name = saved[0].file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with(&started), "{name}");
+        assert!(saved[0].join(MANIFEST).is_file());
+        assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
+        let drawn = pane(&ctx, &mut app);
+        assert!(drawn.contains(&name), "{drawn}");
+        // Save Again saves into the same take.
+        app.save_again();
+        assert_eq!(std::fs::read_dir(&takes).unwrap().count(), 1);
+
+        // The list says so; a name already in use is refused.
+        app.watch_open = None;
+        let drawn = pane(&ctx, &mut app);
+        assert!(drawn.contains("1 take"), "{drawn}");
+        app.watch_form = Some(watches::Form {
+            watch: library::Watch::new("pepsi"),
+            new: true,
+            error: None,
+        });
+        app.save_watch_form();
+        let refused = app.watch_form.as_ref().and_then(|f| f.error.clone());
+        assert!(refused.is_some_and(|e| e.contains("already")));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn a_quit_that_cannot_ask_keeps_unsaved_sound_to_offer_back() {
         let base = std::env::temp_dir().join(format!("tg-app-kept-{}", std::process::id()));
@@ -13188,7 +13652,7 @@ mod tests {
         );
     }
 
-    /// A layout saved before the Watch pane gains it in a column of its
+    /// A layout saved before the Watches pane gains it in a column of its
     /// own at the left, keeping the rest as it was.
     #[test]
     fn an_old_layout_gains_the_watch_pane_at_the_left() {

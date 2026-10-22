@@ -37,10 +37,35 @@ key for Allan, and so on. A pane showing has its icon in colour on a
 tinted chip; a hidden one is faint grey. The charts and distributions
 take their reading's colour, and the Steadiness views share one green.
 
-**The Watch pane**, at the left to begin with, is where the sound comes
-from and what to do with it, then the watch itself. It is a pane like the
-others: drag it by its tab, or hide it and bring it back from its icon or
-the View menu. At its top, **Microphone** or **Recording**. For the
+**The Watches pane**, at the left to begin with, lists your watches, then
+where the sound comes from and what to do with it, then the watch itself.
+It is a pane like the others: drag it by its tab, or hide it and bring it
+back from its icon or the View menu. At its top, under **Watches**, one
+row per watch in the library (see The library, below): its name, its
+calibre, how many takes it has and the date of the last, and the space
+they use, with the library's total size and folder and **Show in
+Finder** at the foot. Its toolbar has a search (in the name, calibre,
+notes and fields), **Sort** by Name, Last Take or Size, **Archived**
+(once a watch is archived, to list those too) and **New Watch…**, which
+opens a form: only the **Name** is needed, and Calibre (which fills the
+Lift Angle and Beat Rate), Lift Angle, Beat Rate and Notes can each be
+removed with its ×, then given back, with any of the suggested fields or
+one of your own, from **Add Field**; **Archived** hides the watch from the
+list without deleting it. The first watch makes the library's folder.
+Clicking a watch shows its details and its **Takes**, newest first: each
+with its name, positions, length, the rate, amplitude and beat error (its
+size) it measured when saved, the space it uses, and **Analysis Only** or
+**Incomplete** when it is one. Clicking a take opens it as Open… does;
+right-clicking offers **Open**, **Replay** (when it has its sound) and
+**Show in Finder**. The toolbar then has **‹ All Watches** and **Edit…**.
+Picking a watch, refused while listening, sets the take's name, calibre,
+lift angle and beat rate from it; changing them under **This Take**
+changes that take, not the watch. With a watch picked, **Save…** saves
+the take into it with no question, in a folder named by when the take
+started (in this computer's time) and its position when it used only one;
+Save Again then saves into the same take, and Save As… still asks. A
+library another copy of the app has open is read only: New Watch… and
+Edit… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
 new session, unless closing the kept sound fails), **Save…**
@@ -48,8 +73,8 @@ new session, unless closing the kept sound fails), **Save…**
 peak meter, Show Every Input and **Keep Awake** (see Long takes, below).
 For a recording: **Open…**, **Open Folder…**, the path box, **Replay** (or
 **Stop**, **Cancel** while one is being analysed, and **Analyse All**) and
-**Replay Speed**. Below, under **Watch**: name, calibre, beat rate, lift
-angle and position. Opening a recording, by **Open…**, **Open Folder…**, a
+**Replay Speed**. Below, under **Watch** (**This Take** with a watch
+picked): name, calibre, beat rate, lift angle and position. Opening a recording, by **Open…**, **Open Folder…**, a
 path typed into the box and Enter, or the command line, analyses it all at
 once, which is how a watchmaker looks back through a take; **Replay**
 plays a file through as if live (a folder's files one after the other, in
@@ -80,7 +105,7 @@ tab bar: **Match Strip**, on, shows the same stretch of time as the paper
 strip, and off, the whole session. A choice between two options, such as
 Stacked and Beside, switches to the other option wherever it is clicked,
 so it can be flipped back and forth without moving the pointer. Every
-pane but the Watch pane has **Export…** in its toolbar (a chart's in its
+pane but the Watches pane has **Export…** in its toolbar (a chart's in its
 tab bar), which saves the pane as a picture: a PNG of it as it is on the
 screen, or, with a name ending `.svg`, an SVG drawing whose lines and
 text stay sharp at any size. A name with no ending is saved as a PNG.
@@ -95,7 +120,7 @@ status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
-open, the main area offers the three ways in, beside the Watch pane: **Listen to a Watch**,
+open, the main area offers the three ways in, beside the Watches pane: **Listen to a Watch**,
 **Open a Recording…** and **Open a Folder…**. While a recording is being
 analysed it shows how far the analysis has got, in hours of sound and time
 left, with **Cancel**; a problem shows in a red banner floating over the
@@ -112,7 +137,7 @@ shift as they change.
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
 recording: **Open a Folder…** on the opening screen, **Open Folder…** in
-the Watch pane or the File menu, a folder typed into the path box, or the folder's path given to the app
+the Watches pane or the File menu, a folder typed into the path box, or the folder's path given to the app
 when it is started from a terminal (`timegrapher-app FOLDER`; see
 [Without a window](#without-a-window) for its name in each download).
 A saved take opens from its own folder or from the folder it was saved
@@ -379,7 +404,7 @@ the drop and so the amplitude and the beat error; the rate is unaffected.
 The banner follows the readings: it shows while the beats being averaged
 clip and goes when they no longer do, and looking back through a
 recording shows it for the stretches that clipped. The peak meter in the
-Watch pane turns red on any clipped sample at once; the banner counts the
+Watches pane turns red on any clipped sample at once; the banner counts the
 beats in the readings. Even a watch driven several times past full scale is
 still read, with the banner, rather than taken for silence: when most of
 the beats found clip, the flattened peaks no longer count against the
@@ -669,7 +694,7 @@ shows. The plots don't pan, zoom or show values under the pointer.
 direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement,
 whether the Readings show, the distribution settings, the averaging time,
-folded groups in the Watch pane, the appearance, Keep Awake, the last
+folded groups in the Watches pane, the appearance, Keep Awake, the last
 microphone (used again when it is plugged in) and the window's size and
 place. Nothing about the watch is kept: the lift angle, beat rate and
 position start fresh, since the next watch on the pickup may differ.
@@ -727,7 +752,7 @@ or **Start** is clicked; until then the menu names the microphone kept from
 last time, or System Default. Replaying or analysing a recording never
 touches an input.
 
-**Level meter.** In the Watch pane, while listening to a microphone: a bar to
+**Level meter.** In the Watches pane, while listening to a microphone: a bar to
 the loudest sample of the last half second, grey, or red while the input
 clips, with plain reference marks at −10 and −6 dBFS, and the peak in
 dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
@@ -762,7 +787,7 @@ clock with Forget; see True Clock). It opens at the section it was last
 left on. **Done**, Escape or a click outside closes it. What belongs to
 the watch on show (its calibre, lift angle, beat rate and position) and
 to the microphone (input, level, Show Every Input, Keep Awake) stays in
-the Watch pane, beside what it sets.
+the Watches pane, beside what it sets.
 
 **The library.** The watches and their takes are to be kept in one
 folder, `Timegrapher Data` in the home folder unless another is chosen:
@@ -790,9 +815,9 @@ is not a library and can be deleted),
 for a new one; nothing is moved) and, once another is chosen, **Use the
 Default**. Only one copy of the app at a time can change a library: a
 second copy opens it to read only and says so in Settings, and the
-library can't be moved while another copy has it open. The app does not yet add watches or takes to it.
+library can't be moved while another copy has it open. The Watches pane adds watches to it and saves takes into them.
 
-- **Input.** In the Watch pane: a sound input device, or a WAV or FLAC file chosen with
+- **Input.** In the Watches pane: a sound input device, or a WAV or FLAC file chosen with
   **Open…** or typed in. On Linux the menu offers each microphone once:
   **System default (via PipeWire)**, which is whatever input the
   desktop's sound settings choose and works alongside other programs, and
@@ -808,7 +833,7 @@ library can't be moved while another copy has it open. The app does not yet add 
   or a folder on the window analyses it. The app asks the device for 48 kHz in as few
   channels as it offers, mixed to mono, and takes 16-bit samples when the
   device has them.
-- **Input level.** Under Microphone in the Watch pane: the microphone's gain and a peak meter
+- **Input level.** Under Microphone in the Watches pane: the microphone's gain and a peak meter
   with marks at the −10 dBFS target and the −6 dBFS limit. On Linux, for
   the system default the level is the sound server's input volume
   (`wpctl`, or `pactl` on PulseAudio), which the server writes back onto

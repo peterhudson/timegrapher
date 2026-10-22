@@ -24,6 +24,8 @@ rfd = "0.15"
 claxon = "0.4"
 hound = "3.5"
 png = "0.18"
+# Take folders are named by the local time a take started.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # Keeping the computer awake during a take (see src/awake.rs), with
 # crates the lock already holds.
