@@ -1,6 +1,7 @@
 """Decide whether a CI run needs the full build and tests.
 
-  changes.py EVENT BASE HEAD    prints full=true or full=false
+  changes.py EVENT BASE HEAD    prints full=true or full=false, then
+                                pages=true or pages=false
 
 For a pull request CI checks out GitHub's merge commit, so BASE is HEAD^1
 (the base branch) and HEAD is HEAD: their diff is what merging would change.
@@ -13,6 +14,11 @@ watchmaker skill, packaging, or a document the MCP server compiles in
 all five CI jobs still run and report: the test jobs run only their offline
 Python tests, regress skips its corpus and engine steps, and mcp-renderer
 runs as usual. If git fails, this exits with an error and the job fails.
+
+pages is true for a pull request, light or full, that changes a file the
+downloads carry as web pages (PAGE_FILES and PAGE_FOLDERS), so CI runs
+Release's render and link check of those pages. Release's own pull-request run
+covers packaging/. Everything but a pull request prints pages=false.
 """
 
 import subprocess
@@ -28,6 +34,9 @@ MCP_DOCS = {
 }
 # Markdown here is compiled in (the skill) or read by packaging's tests.
 FULL_PREFIXES = ("skills/", "packaging/")
+# Files and folders packaging/docs_html.py renders into the downloads' pages.
+PAGE_FILES = {"README.md", "LICENSE"}
+PAGE_FOLDERS = ("docs/", "skills/watchmaker/")
 
 
 def light(changes):
@@ -40,6 +49,11 @@ def light(changes):
         if path in MCP_DOCS or path.startswith(FULL_PREFIXES):
             return False
     return True
+
+
+def pages(changes):
+    """True when a (status, path) change touches a page the downloads carry."""
+    return any(path in PAGE_FILES or path.startswith(PAGE_FOLDERS) for _, path in changes)
 
 
 def changed(base, head):
@@ -56,8 +70,10 @@ def main(argv):
     if len(argv) != 4:
         raise SystemExit(__doc__)
     event, base, head = argv[1:]
-    full = event != "pull_request" or not light(changed(base, head))
+    changes = changed(base, head) if event == "pull_request" else []
+    full = event != "pull_request" or not light(changes)
     print(f"full={'true' if full else 'false'}")
+    print(f"pages={'true' if pages(changes) else 'false'}")
 
 
 if __name__ == "__main__":

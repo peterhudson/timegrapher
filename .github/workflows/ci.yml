@@ -5,7 +5,9 @@ name: CI
 # is a light run (.github/ci/changes.py): all five jobs still run and report,
 # the test jobs run only their offline Python tests, regress skips its corpus
 # and engine steps, and mcp-renderer runs as usual. The watchmaker skill and
-# the docs the MCP server compiles in always run in full.
+# the docs the MCP server compiles in always run in full. A pull request that
+# changes a page the downloads carry also runs Release's render and link
+# check of those pages, in the ubuntu test job.
 on:
   push:
     branches: [main]
@@ -56,6 +58,20 @@ jobs:
         run: python3 -m unittest discover -s packaging -p 'test_*.py' -v
       - name: Light-run rule tests (offline)
         run: python3 -m unittest discover -s .github/ci -p 'test_changes.py' -v
+      # A pull request that changes README, LICENSE, docs/ or the watchmaker
+      # skill runs release.yml's render and link check of the downloads'
+      # pages, so what would fail there fails here, not at the next draft.
+      - name: Documentation pages
+        if: runner.os == 'Linux' && steps.changes.outputs.pages == 'true'
+        env:
+          REF: ${{ github.event.pull_request.head.sha }}
+        run: |
+          command -v pandoc >/dev/null || { sudo apt-get update && sudo apt-get install -y pandoc; }
+          pandoc --version | head -1
+          for p in linux macos windows; do
+            python3 packaging/docs_html.py render "$RUNNER_TEMP/docs-html/$p" "$p" --ref "$REF"
+            python3 packaging/docs_html.py check "$RUNNER_TEMP/docs-html/$p"
+          done
       # Exercise the supported compiler floor without another build/job.
       # Keep this version aligned with workspace.package.rust-version and
       # docs/building.md. Other hosts continue checking current stable.
