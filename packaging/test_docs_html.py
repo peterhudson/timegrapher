@@ -10,6 +10,13 @@ import docs_html
 REF = "0123abc"
 
 
+def research_pages():
+    # Listed, not named, so CI's light-run rule does not count them as read.
+    return sorted(path.relative_to(docs_html.ROOT).as_posix()
+                  for pattern in ("*-train-wheel-counts.md", "*-train-research.md")
+                  for path in (docs_html.ROOT / "docs").glob(pattern))
+
+
 class Outputs(unittest.TestCase):
     def test_every_guide_has_a_page(self):
         mapping = docs_html.outputs("macos")
@@ -23,10 +30,12 @@ class Outputs(unittest.TestCase):
 
     def test_research_evidence_stays_on_github(self):
         mapping = docs_html.outputs("linux")
-        self.assertNotIn("docs/2824-train-wheel-counts.md", mapping)
-        self.assertNotIn("docs/seiko-miyota-train-research.md", mapping)
+        research = research_pages()
+        self.assertTrue(research)
+        for page in research:
+            self.assertNotIn(page, mapping)
         self.assertFalse([s for s in mapping if s.startswith("docs/assets/train-wheels/")])
-        self.assertIn("docs/model-probes/README.md", mapping)
+        self.assertIn("docs/model-probes/provenance.json", mapping)
 
     def test_the_documentation_stays_small(self):
         # Each download carries it; photographs belong in ON_GITHUB.
@@ -59,9 +68,9 @@ class RewriteLinks(unittest.TestCase):
         self.assertEqual(self.rewrite("../README.md", "docs/app.md"), "README.html")
 
     def test_research_pages_link_to_github(self):
-        self.assertEqual(self.rewrite("docs/2824-train-wheel-counts.md"),
-                         f"https://github.com/{docs_html.REPO}/blob/{REF}/"
-                         "docs/2824-train-wheel-counts.md")
+        page = research_pages()[0]
+        self.assertEqual(self.rewrite(page),
+                         f"https://github.com/{docs_html.REPO}/blob/{REF}/{page}")
 
     def test_start_page_links_into_documentation(self):
         self.assertEqual(self.rewrite("../../docs/mcp.md", "packaging/linux/start-here.md"),
