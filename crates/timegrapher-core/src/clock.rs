@@ -12,6 +12,12 @@ use crate::dsp::{median, robust_sd};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// What a clock `ppm` slow (negative: fast) does to a rate, s/d: the
+/// rate read on it less the true rate, to first order.
+pub fn rate_error_s_per_day(ppm: f64) -> f64 {
+    ppm * 1e-6 * 86400.0
+}
+
 /// The fitted mapping from audio time to true time.
 #[derive(Debug, Clone, Serialize)]
 pub struct ClockFit {
@@ -253,7 +259,7 @@ impl ClockFit {
             rejected: total - p.len(),
             span_s: span,
             ppm: (b - 1.0) * 1e6,
-            rate_error_s_per_day: (b - 1.0) * 86400.0,
+            rate_error_s_per_day: rate_error_s_per_day((b - 1.0) * 1e6),
             ppm_sd: b_sd * 1e6,
             residual_ms: 0.0,
             tracks_drift,
@@ -309,7 +315,7 @@ impl ClockFit {
             rejected: 0,
             span_s: d,
             ppm,
-            rate_error_s_per_day: ppm * 1e-6 * 86400.0,
+            rate_error_s_per_day: rate_error_s_per_day(ppm),
             ppm_sd: 0.0,
             residual_ms: 0.0,
             tracks_drift: false,

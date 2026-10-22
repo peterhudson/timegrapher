@@ -281,7 +281,7 @@ pub fn analyse_with_breaks(
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
     let listened = duration - breaks.iter().map(|b| b.gap_s.max(0.0)).sum::<f64>();
-    let expected = listened * log.bph as f64 / 3600.0;
+    let expected = crate::beats::expected_beats(listened, log.bph);
     LongReport {
         duration_s: duration,
         sample_rate: log.sample_rate,

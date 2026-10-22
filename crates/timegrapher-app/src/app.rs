@@ -7559,7 +7559,7 @@ impl TimegrapherApp {
                                 if c.ppm >= 0.0 { "slow" } else { "fast" },
                                 day_of(&c.measured_utc),
                                 off.abs(),
-                                off.abs() * 0.0864
+                                timegrapher_core::clock::rate_error_s_per_day(off.abs())
                             );
                         }
                         ui.label(RichText::new(text).small().color(pal.text_secondary))

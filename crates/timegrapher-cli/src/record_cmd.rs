@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use timegrapher_core::analysis::Clipping;
 use timegrapher_core::audio;
+use timegrapher_core::beats;
 use timegrapher_core::calibre_store::{self, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres;
@@ -35,6 +36,7 @@ use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
 use timegrapher_core::session::{self, Manifest, Position};
 use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::timing::Anchor;
 use timegrapher_core::{analyze, AnalysisConfig};
 
 const MANIFEST: &str = "session.toml";
@@ -463,7 +465,7 @@ struct Feed {
     seconds: f64,
     live: LiveAnalyzer,
     /// The strip's anchor, set once from the first beats as the app does.
-    anchor: Option<(i64, f64)>,
+    anchor: Option<Anchor>,
     /// Time, rate, amplitude and beat error from the unlock, once a second.
     trend: Vec<[Option<f64>; 4]>,
     next_s: f64,
@@ -507,13 +509,7 @@ impl Feed {
         let beats = self.live.beats();
         if self.anchor.is_none() && beats.len() >= 16 {
             if let Some(p) = period {
-                let last = &beats[15];
-                let mid = beats[..16]
-                    .iter()
-                    .map(|b| b.time - (b.index - last.index) as f64 * p)
-                    .sum::<f64>()
-                    / 16.0;
-                self.anchor = Some((last.index, mid));
+                self.anchor = Anchor::centre_on(&beats[..16], p, 16);
             }
         }
         if r.beats_used > 0 {
@@ -536,17 +532,10 @@ impl Feed {
         // Each beat's lead on the anchor, ms (positive: early), as the
         // app's strip draws it; Tick is side 0.
         let strip: Vec<[f64; 3]> = match (self.anchor, period) {
-            (Some((index, time)), Some(p)) => beats
+            (Some(anchor), Some(p)) => beats
                 .iter()
                 .filter(|b| b.time >= t - STRIP_S)
-                .map(|b| {
-                    let expected = time + (b.index - index) as f64 * p;
-                    [
-                        b.time,
-                        (expected - b.time) * 1000.0,
-                        b.index.rem_euclid(2) as f64,
-                    ]
-                })
+                .map(|b| [b.time, anchor.lead_ms(b, p), b.index.rem_euclid(2) as f64])
                 .collect(),
             _ => Vec::new(),
         };
@@ -679,10 +668,10 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         to_s: m.end_s,
         watch_heard: whole.watch_heard,
         timing_scatter_ms: whole.jitter_us.map(|j| j / 1000.0),
-        timing_scatter_fraction: whole.jitter_us.map(|j| j * 1e-6 * log.bph as f64 / 3600.0),
+        timing_scatter_fraction: beats::timing_scatter_fraction(whole.jitter_us, log.bph),
         bph: log.bph,
         beats_found: m.beats,
-        beats_expected: ((m.end_s - m.start_s) * log.bph as f64 / 3600.0).round() as usize,
+        beats_expected: beats::expected_beats(m.end_s - m.start_s, log.bph).round() as usize,
         rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
         amplitude_deg: m.amplitude_deg.filter(|_| heard),
         beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),

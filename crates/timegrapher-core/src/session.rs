@@ -520,7 +520,7 @@ pub fn measure_masked(
         _ => 0.0,
     };
     let span = map(to_s) - map(from_s) - gaps - masked_s;
-    let expected = span * log.bph as f64 / 3600.0;
+    let expected = crate::beats::expected_beats(span, log.bph);
     let clean = beats.iter().filter(|b| b.quality > 0.4).count();
     let clipped = log
         .clipped_beats
@@ -1066,12 +1066,11 @@ const SHORT_MEASURE_S: f64 = 40.0;
 /// beat found (timing scatter 8.6 ms, 6.9% of a beat)", as every surface
 /// states it.
 pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
-    match jitter_us.filter(|j| j.is_finite()) {
-        Some(j) => format!(
-            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
-            j / 1000.0,
-            100.0 * j * 1e-6 * bph as f64 / 3600.0
-        ),
+    let j = jitter_us.filter(|j| j.is_finite());
+    match j {
+        Some(_) => {
+            crate::beats::no_regular_beat_text(j, crate::beats::timing_scatter_fraction(j, bph))
+        }
         None => "No regular beat found".into(),
     }
 }

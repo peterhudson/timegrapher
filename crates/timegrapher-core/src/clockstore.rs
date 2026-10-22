@@ -57,7 +57,7 @@ impl DeviceClock {
     /// What the card's error does to a rate, s/d: subtract it from a rate
     /// read on the card's clock.
     pub fn rate_error_s_per_day(&self) -> f64 {
-        self.ppm * 1e-6 * 86400.0
+        crate::clock::rate_error_s_per_day(self.ppm)
     }
 
     /// A rate read on the card's clock, corrected onto true time, s/d.
@@ -77,7 +77,7 @@ pub fn correction_json(ppm: f64, from: &str, card_rate: Option<f64>) -> serde_js
     serde_json::json!({
         "ppm": ppm,
         "from": from,
-        "rate_error_s_per_day": ppm * 1e-6 * 86400.0,
+        "rate_error_s_per_day": crate::clock::rate_error_s_per_day(ppm),
         "rate_s_per_day": card_rate.map(|r| correct_rate(r, ppm)),
     })
 }

@@ -174,10 +174,16 @@ impl AmplitudeWindow {
     }
 
     pub fn mean(&self) -> Option<f64> {
-        match (self.even_deg, self.odd_deg) {
-            (Some(a), Some(b)) => Some((a + b) / 2.0),
-            (a, b) => a.or(b),
-        }
+        mean_of_sides(self.even_deg, self.odd_deg)
+    }
+}
+
+/// A window's amplitude from its two sides': their mean, or the one side
+/// read when the other is not.
+pub fn mean_of_sides(even_deg: Option<f64>, odd_deg: Option<f64>) -> Option<f64> {
+    match (even_deg, odd_deg) {
+        (Some(a), Some(b)) => Some((a + b) / 2.0),
+        (a, b) => a.or(b),
     }
 }
 
