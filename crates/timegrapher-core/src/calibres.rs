@@ -727,6 +727,69 @@ mod tests {
     }
 
     #[test]
+    fn dd324_indirect_hand_drives_close_and_do_not_leak_to_genuine_patek() {
+        for name in ["DD324", "Dandong 324 S C", "SL1258"] {
+            let c = find(name).unwrap();
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            let third = wheel("third wheel");
+            let seconds = wheel("seconds pinion");
+            let cannon = wheel("cannon pinion");
+            // These branches are outside the generic adjacent-train check.
+            // Both independently known hand speeds must close through the third.
+            assert_eq!(seconds.period_s, 60.0);
+            assert_eq!(cannon.period_s, 3600.0);
+            assert_eq!(
+                third.period_s * seconds.pinion.unwrap() as f64 / third.teeth.unwrap() as f64,
+                seconds.period_s
+            );
+            assert_eq!(
+                third.period_s * cannon.teeth.unwrap() as f64 / third.pinion.unwrap() as f64,
+                cannon.period_s
+            );
+            assert_eq!(wheel("fourth wheel").period_s, seconds.period_s);
+            assert_eq!(wheel("fourth wheel").teeth, Some(84));
+            assert_eq!(wheel("escape wheel").pinion, Some(7));
+            assert_eq!(wheel("barrel").period_s, 18600.0);
+            assert!(c.wheels.iter().all(|w| w.name != "seconds wheel"));
+        }
+        assert!(find("SL1258")
+            .unwrap()
+            .wheels
+            .iter()
+            .find(|w| w.name == "third wheel")
+            .unwrap()
+            .basis
+            .as_deref()
+            .unwrap()
+            .contains("INFERRED family transfer"));
+        assert_eq!(find("DD324").unwrap().lift_angle_deg, Some(52.0));
+        assert_eq!(find("SL1258").unwrap().lift_angle_deg, None);
+        let covered: Vec<_> = all()
+            .iter()
+            .filter(|c| {
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("dd324-train-wheel-counts.md"))
+            })
+            .map(|c| c.calibre.as_str())
+            .collect();
+        assert_eq!(covered, ["Dandong 324", "Peacock SL1258"]);
+        for name in [
+            "324",
+            "Patek Philippe 324 S C",
+            "324 S QA LU",
+            "324 S C FUS",
+        ] {
+            let c = find(name).unwrap();
+            assert_eq!(c.maker, "Patek Philippe");
+            assert!(c
+                .wheels
+                .iter()
+                .all(|w| w.teeth.is_none() && w.pinion.is_none()));
+        }
+    }
+
+    #[test]
     fn finds_by_name_family_and_session_names() {
         let c = find("ETA 2824-2").expect("ETA 2824-2");
         assert_eq!(c.bph, Some(28800));
