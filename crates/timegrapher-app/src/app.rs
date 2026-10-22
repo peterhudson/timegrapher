@@ -2397,8 +2397,8 @@ impl TimegrapherApp {
     }
 
     /// The take's results files, written beside its session.toml by both
-    /// Save… and Save Analysis Only…: the positions test's, when there is
-    /// one.
+    /// Save… and Save Analysis Only…: the positions test's and the power
+    /// reserve test's, when there are.
     fn results_files(&self) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
         let about = self.guided_about();
         let mut files = Vec::new();
@@ -2406,6 +2406,9 @@ impl TimegrapherApp {
             let text = serde_json::to_string_pretty(&k)
                 .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
             files.push((guided::RESULTS_FILE, (text + "\n").into_bytes()));
+        }
+        if let Some(r) = self.reserve.as_ref().and_then(|t| t.results.as_ref()) {
+            files.push((power_reserve::FILE, r.to_json().into_bytes()));
         }
         Ok(files)
     }
@@ -8797,11 +8800,15 @@ impl TimegrapherApp {
                 r.last_beat_s,
             );
         }
-        let keep_sound = t.keep_sound;
         let takes = match self.reserve_takes_dir() {
             Ok(d) => d,
             Err(e) => return self.error(format!("The test's take couldn't be kept: {e}")),
         };
+        // The results go into the take with its sound, through
+        // `results_files`.
+        if let Some(t) = self.reserve.as_mut() {
+            t.results = results;
+        }
         let Some(r) = self.session.recorder.as_mut() else {
             return;
         };
@@ -8812,17 +8819,26 @@ impl TimegrapherApp {
             r.name_first_copy(name.to_owned());
         }
         self.save_into(&takes);
+        if let Some(t) = self.reserve.as_mut() {
+            t.saving = self.saving.is_some();
+        }
+        self.reserve_saved();
+    }
+
+    /// Once the test's take is written: note where, and keep it as its
+    /// analysis only if so picked.
+    fn reserve_saved(&mut self) {
+        if self.saving.is_some() {
+            return;
+        }
+        let Some(t) = self.reserve.as_mut().filter(|t| t.saving) else {
+            return;
+        };
+        t.saving = false;
+        let keep_sound = t.keep_sound;
         let Some(saved) = self.session.saved_to().map(Path::to_path_buf) else {
             return;
         };
-        if let Some(res) = &results {
-            if let Err(e) = power_reserve::write(&saved, res) {
-                self.error(format!(
-                    "Couldn't write the test's {}: {e}",
-                    power_reserve::FILE
-                ));
-            }
-        }
         if let Some(t) = self.reserve.as_mut() {
             t.saved = Some(saved.clone());
         }
@@ -11328,6 +11344,7 @@ impl eframe::App for TimegrapherApp {
         }
         self.guided_tick(ctx);
         self.reserve_tick(ctx);
+        self.reserve_saved();
         self.panels(ctx);
         self.confirm_dialog(ctx);
         self.kept_delete_dialog(ctx);
@@ -13217,7 +13234,11 @@ mod tests {
         // Stop ends the test and keeps the take in the watch's history.
         app.stop_listening();
         assert!(!app.reserve_running());
+        assert!(app.reserve.as_ref().unwrap().saving);
+        app.wait_for_save();
+        app.reserve_saved();
         let saved = app.session.saved_to().unwrap().to_path_buf();
+        assert_eq!(app.reserve.as_ref().unwrap().saved.as_ref(), Some(&saved));
         assert!(
             saved.starts_with(root.join("Pepsi").join(library::TAKES)),
             "{saved:?}"

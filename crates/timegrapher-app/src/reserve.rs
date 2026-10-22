@@ -86,6 +86,8 @@ pub struct Test {
     pub results: Option<Results>,
     /// The take it was saved as.
     pub saved: Option<PathBuf>,
+    /// Its take is being written.
+    pub saving: bool,
 }
 
 impl Test {
@@ -100,6 +102,7 @@ impl Test {
             ending: None,
             results: None,
             saved: None,
+            saving: false,
         }
     }
 
@@ -292,6 +295,12 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
                     )
                     .small()
                     .color(pal.text_tertiary),
+                );
+            } else if t.saving {
+                ui.label(
+                    RichText::new("Saving the test's take…")
+                        .small()
+                        .color(pal.text_secondary),
                 );
             } else if let Some(p) = &t.saved {
                 ui.label(
