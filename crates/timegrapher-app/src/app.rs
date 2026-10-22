@@ -4024,7 +4024,7 @@ impl TimegrapherApp {
                     );
                     show = ui
                         .small_button(settings_window::show_in_words())
-                        .on_hover_text("Open the library's folder")
+                        .on_hover_text("Open the Watches folder")
                         .clicked();
                 });
                 if let Some(why) = &l.read_only {
@@ -4047,7 +4047,7 @@ impl TimegrapherApp {
                 None
             }
             Err(e) => {
-                ui.label(RichText::new(format!("The library can't be read: {e}")).color(pal.bad));
+                ui.label(RichText::new(format!("Your watches can't be read: {e}")).color(pal.bad));
                 None
             }
         };
@@ -4226,7 +4226,7 @@ impl TimegrapherApp {
                 filed = l.is_unsorted(take);
                 l.move_take(take, id)
             }
-            _ => Err("There is no library".into()),
+            _ => Err("There is no Watches folder".into()),
         };
         match moved {
             Ok(to) => {
@@ -4340,7 +4340,7 @@ impl TimegrapherApp {
             return self.info_msg(why);
         }
         let Ok(Some(lib)) = &mut self.library else {
-            return self.error("There is no library.".into());
+            return self.error("There is no Watches folder.".into());
         };
         match ask {
             watches::Ask::Rename { take, name } => match lib.rename_take(&take, &name) {
@@ -4513,7 +4513,7 @@ impl TimegrapherApp {
             }),
             (Ok(kept), _) => {
                 let _ = std::fs::remove_dir_all(&kept);
-                Err("the library is no longer open".into())
+                Err("the Watches folder is no longer open".into())
             }
             (Err(e), _) => Err(e),
         };
@@ -4600,7 +4600,7 @@ impl TimegrapherApp {
             if ui
                 .add_enabled(writable, egui::Button::new("Edit…"))
                 .on_hover_text("Change this watch's details")
-                .on_disabled_hover_text("This copy of the app can only read the library")
+                .on_disabled_hover_text("This copy of the app can only read your watches")
                 .clicked()
             {
                 self.watch_form = Some(watches::Form {
@@ -4615,7 +4615,7 @@ impl TimegrapherApp {
                     "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an \
                      iPhone, or TIFF). The first by name leads its row in the list.",
                 )
-                .on_disabled_hover_text("This copy of the app can only read the library")
+                .on_disabled_hover_text("This copy of the app can only read your watches")
                 .clicked()
             {
                 self.add_photos();
@@ -4656,7 +4656,7 @@ impl TimegrapherApp {
             .on_disabled_hover_text(if listening {
                 "Stop listening first"
             } else {
-                "This copy of the app can only read the library, or there is no folder for it"
+                "This copy of the app can only read your watches, or there is no folder for them"
             })
             .clicked()
         {
@@ -4664,9 +4664,9 @@ impl TimegrapherApp {
         }
         if ui
             .add_enabled(writable, egui::Button::new("New Watch…"))
-            .on_hover_text("Add a watch to the library: only its name is needed")
+            .on_hover_text("Add a watch: only its name is needed")
             .on_disabled_hover_text(
-                "This copy of the app can only read the library, or there is no folder for it",
+                "This copy of the app can only read your watches, or there is no folder for them",
             )
             .clicked()
         {
@@ -4734,8 +4734,8 @@ impl TimegrapherApp {
                 Some(why) => Err(why.clone()),
                 None => l.unsorted_dir().map(|_| ()),
             },
-            Ok(None) => Err("There is no library".into()),
-            Err(e) => Err(format!("The library can't be read: {e}")),
+            Ok(None) => Err("There is no Watches folder".into()),
+            Err(e) => Err(format!("Your watches can't be read: {e}")),
         };
         if let Err(e) = ready {
             self.error(format!("Quick Listen can't keep its take: {e}"));
@@ -4774,8 +4774,8 @@ impl TimegrapherApp {
         let done = match &mut self.library {
             Ok(Some(lib)) if f.new => lib.add(&w).map(|_| ()),
             Ok(Some(lib)) => lib.update(&w),
-            Ok(None) => Err("There is no library".into()),
-            Err(e) => Err(format!("The library can't be read: {e}")),
+            Ok(None) => Err("There is no Watches folder".into()),
+            Err(e) => Err(format!("Your watches can't be read: {e}")),
         };
         match done {
             Ok(()) => {
@@ -4964,7 +4964,7 @@ impl TimegrapherApp {
                 if ui
                     .button("Add to a Watch…")
                     .on_hover_text(
-                        "Copy or move the take opened, from outside the library, into one of \
+                        "Copy or move the take opened, from outside your watches, into one of \
                          your watches",
                     )
                     .clicked()
@@ -6612,7 +6612,7 @@ impl TimegrapherApp {
         };
     }
 
-    /// Act on a button in Settings' Library section.
+    /// Act on a button in Settings' Watches Folder section.
     fn library_action(&mut self, act: settings_window::LibraryAction) {
         use settings_window::LibraryAction;
         match act {
@@ -6641,7 +6641,7 @@ impl TimegrapherApp {
             }
             LibraryAction::Choose => {
                 let Some(dir) = rfd::FileDialog::new()
-                    .set_title("Choose a Library, or an Empty Folder for a New One")
+                    .set_title("Choose a Watches Folder, or an Empty Folder for a New One")
                     .pick_folder()
                 else {
                     return;
@@ -6649,7 +6649,7 @@ impl TimegrapherApp {
                 let empty = std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none());
                 if !library::Library::is_library(&dir) && !empty {
                     return self.error(format!(
-                        "{} holds files but no library: choose a library, or an empty folder \
+                        "{} holds files but no watches: choose a Watches folder, or an empty folder \
                          for a new one",
                         dir.display()
                     ));
@@ -6688,7 +6688,7 @@ impl TimegrapherApp {
         let modal = egui::Modal::new(egui::Id::new("move library")).show(ctx, |ui| {
             ui.set_width(420.0);
             ui.label(
-                RichText::new(format!("Move the library to {}?", to.display()))
+                RichText::new(format!("Move your watches to {}?", to.display()))
                     .font(theme::semibold(15.0)),
             );
             ui.add_space(4.0);
@@ -6749,19 +6749,19 @@ impl TimegrapherApp {
                 self.library_moving = None;
                 self.use_library(Some(to.clone()));
                 match left {
-                    None => self.info_msg(format!("Moved the library to {}.", to.display())),
+                    None => self.info_msg(format!("Moved your watches to {}.", to.display())),
                     Some(why) => self.error(why),
                 }
             }
             Ok(Err(e)) => {
                 self.library_moving = None;
                 self.read_library();
-                self.error(format!("The library couldn't be moved: {e}"));
+                self.error(format!("Your watches couldn't be moved: {e}"));
             }
             Err(TryRecvError::Disconnected) => {
                 self.library_moving = None;
                 self.read_library();
-                self.error("The library's move stopped without finishing.".into());
+                self.error("Moving your watches stopped without finishing.".into());
             }
         }
     }
@@ -6801,19 +6801,33 @@ impl TimegrapherApp {
             });
             ui.separator();
             match tab {
-                Tab::General => self.general_settings(ui),
-                Tab::Library => {
-                    let root = self.library_root();
-                    let act = settings_window::library_section(
-                        ui,
-                        root.as_deref(),
-                        &self.library,
-                        self.library_moving.as_ref().map(|(to, _)| to.as_path()),
-                        self.library_dir.is_some(),
-                    );
-                    if let Some(act) = act {
-                        self.library_action(act);
-                    }
+                Tab::General => {
+                    egui::ScrollArea::vertical()
+                        .id_salt("general settings")
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            self.general_settings(ui);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            let root = self.library_root();
+                            let act = settings_window::library_section(
+                                ui,
+                                root.as_deref(),
+                                &self.library,
+                                self.library_moving.as_ref().map(|(to, _)| to.as_path()),
+                                self.library_dir.is_some(),
+                            );
+                            if let Some(act) = act {
+                                self.library_action(act);
+                            }
+                            ui.add_space(8.0);
+                            ui.separator();
+                            if let Some(device) =
+                                settings_window::clock_section(ui, &self.kept_clocks)
+                            {
+                                self.forget_ask = Some(device);
+                            }
+                        });
                 }
                 Tab::Calibres => {
                     let current = self.calibre.clone();
@@ -6822,11 +6836,6 @@ impl TimegrapherApp {
                     self.calibre_changed(&name, out.change);
                     if let Some(p) = out.picked {
                         self.set_calibre(p);
-                    }
-                }
-                Tab::Clock => {
-                    if let Some(device) = settings_window::clock_section(ui, &self.kept_clocks) {
-                        self.forget_ask = Some(device);
                     }
                 }
             }
@@ -10847,7 +10856,7 @@ impl eframe::App for TimegrapherApp {
         if ctx.input(|i| i.viewport().close_requested()) && self.library_moving.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.info_msg(
-                "The library is still being moved: Timegrapher can be closed once it is done."
+                "Your watches are still being moved: Timegrapher can be closed once it is done."
                     .into(),
             );
         }
@@ -14855,7 +14864,7 @@ mod tests {
         lib.add(&library::Watch::new("Pepsi")).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
         app.use_library(Some(root.clone()));
-        app.open_settings(Tab::Library);
+        app.open_settings(Tab::General);
         assert_eq!(
             app.library
                 .as_ref()
@@ -14878,22 +14887,29 @@ mod tests {
         };
         let drawn = text(&ctx, &mut app);
         assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
-        assert!(drawn.contains("Move Library…") && drawn.contains("Use the Default"));
-        // While another copy holds it, this one can only read it, and says so.
-        assert!(drawn.contains("can only read it"), "{drawn}");
+        assert!(drawn.contains("Move Watches…") && drawn.contains("Use the Default"));
+        // One General tab holds the Watches folder and the sound card's
+        // clock, with Calibres beside it; nothing is called Library.
+        assert!(drawn.contains("Watches Folder") && drawn.contains("Sound Card Clock Calibration"));
+        assert!(
+            drawn.contains("Calibres") && !drawn.contains("Library"),
+            "{drawn}"
+        );
+        // While another copy holds them, this one can only read them, and says so.
+        assert!(drawn.contains("can only read them"), "{drawn}");
         drop(lib);
         app.read_library();
-        assert!(!text(&ctx, &mut app).contains("can only read it"));
+        assert!(!text(&ctx, &mut app).contains("can only read them"));
         // Opening Settings again reads it afresh, and this copy's own lock
         // is no other copy.
-        app.open_settings(Tab::Library);
-        assert!(!text(&ctx, &mut app).contains("can only read it"));
+        app.open_settings(Tab::General);
+        assert!(!text(&ctx, &mut app).contains("can only read them"));
 
         // Move it into another folder, and it is used there.
         let to = base.join("there").join("Timegrapher Data");
         app.library_move_ask = Some(to.clone());
         let asked = text(&ctx, &mut app);
-        assert!(asked.contains("Move the library to"), "{asked}");
+        assert!(asked.contains("Move your watches to"), "{asked}");
         app.library_move_ask = None;
         app.move_library(root.clone(), to.clone());
         let t = Instant::now();
@@ -14979,7 +14995,7 @@ mod tests {
             .get("USB Mic")
             .cloned();
         assert!(app.clock.is_some());
-        app.open_settings(Tab::Clock);
+        app.open_settings(Tab::General);
         let listed = app.kept_clocks.as_ref().unwrap();
         assert_eq!(listed.devices.len(), 2);
         assert_eq!(
