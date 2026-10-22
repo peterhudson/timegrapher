@@ -1707,7 +1707,7 @@ mod tests {
         assert_eq!(caveat(ma, "sides_by_count"), caveat(mb, "sides_by_count"));
         let rate = |m: &serde_json::Value| m["rate_s_per_day"].as_f64().unwrap();
         assert!(
-            (rate(ma) - rate(mb)).abs() < 0.05,
+            (rate(ma) - rate(mb)).abs() < 0.001,
             "{} and {}",
             rate(ma),
             rate(mb)

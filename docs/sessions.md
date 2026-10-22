@@ -362,7 +362,9 @@ reading, e.g. "two amplitude levels, 239° and 250°, switching about every
 30 s (ΔBIC 42, separation 3.1)".
 
 The windows are reduced to 10 s medians (outliers beyond 5 MAD dropped
-first, so a stray window reading 130° is not a level) and a running
+first, so a stray window reading 130° is not a level; but when those on
+one side are at least 10% of the windows they are kept, since a level
+held under half the time can sit that far from the median) and a running
 median over ±5 minutes is taken off, so the slow fall of amplitude as the
 mainspring runs down is not read as two levels. One Gaussian and a
 mixture of two of equal width are fitted to the blocks. Two levels are
@@ -417,9 +419,9 @@ Per state of wind (readings with the same `wind_h`), following Witschi:
 
 Across states of wind: isochronism per position (the change in rate,
 amplitude and beat error from the fullest to the least wound reading;
-`rate_change`, `amplitude_change` and `beat_error_change` in the JSON), Im (the largest, excluding 12H, as in
-NIHS 93-10), Im\* (over all positions), Ie (change in X over the
-positions measured in both).
+`rate_change`, `amplitude_change` and `beat_error_change` in the JSON),
+Im (the largest, excluding 12H, as in NIHS 93-10), Im\* (over all
+positions), Ie (change in X over the positions measured in both).
 
 ## Findings
 

@@ -200,8 +200,23 @@ fn blocks(samples: &[Sample], p: &Params) -> (Vec<Block>, f64) {
     let med = median(&mut vals);
     let mut dev: Vec<f64> = samples.iter().map(|s| (s.value - med).abs()).collect();
     let mad = 1.4826 * median(&mut dev);
-    let keep =
-        |s: &&Sample| s.value.is_finite() && (mad == 0.0 || (s.value - med).abs() < 5.0 * mad);
+    // Windows more than 5 MAD from the median are stray and dropped,
+    // unless those on one side hold at least the smaller state's least
+    // share of the windows: then they are a level, which can sit that far
+    // out when it holds under half the time (the MAD is then the spread
+    // of the other level alone), and are kept.
+    let far = |s: &Sample, side: f64| {
+        mad > 0.0 && (s.value - med).abs() >= 5.0 * mad && (s.value - med) * side > 0.0
+    };
+    let finite = samples.iter().filter(|s| s.value.is_finite()).count();
+    let is_level = |side: f64| {
+        let n = samples.iter().filter(|s| far(s, side)).count();
+        n > 0 && n as f64 >= p.min_share * finite as f64
+    };
+    let (keep_low, keep_high) = (is_level(-1.0), is_level(1.0));
+    let keep = |s: &&Sample| {
+        s.value.is_finite() && (!far(s, -1.0) || keep_low) && (!far(s, 1.0) || keep_high)
+    };
     let kept: Vec<&Sample> = samples.iter().filter(keep).collect();
     let len = samples
         .iter()
@@ -683,6 +698,83 @@ mod tests {
         assert!(r.switching_levels(), "{r:?}");
         assert!((r.low - 293.0).abs() < 2.0 && (r.high - 312.0).abs() < 2.0);
         assert!(r.switches >= 20);
+    }
+
+    #[test]
+    fn a_far_level_held_under_half_the_time_is_kept() {
+        // 2 s amplitude windows over 30 minutes: 36 s at 280°, then 24 s at
+        // 213°, over and over, with a scatter of about 3°. The low level
+        // holds 40% of the time and sits more than five median absolute
+        // deviations below the median, which sits in the high level; it is
+        // a level, not stray windows, so it is fitted and not dropped.
+        let mut seed = 12345u64;
+        let mut noise = || {
+            (0..12)
+                .map(|_| {
+                    seed = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (seed >> 11) as f64 / (1u64 << 53) as f64
+                })
+                .sum::<f64>()
+                - 6.0
+        };
+        let samples: Vec<Sample> = (0..900)
+            .map(|i| {
+                let t = i as f64 * 2.0;
+                let v = if t % 60.0 < 36.0 { 280.0 } else { 213.0 };
+                Sample {
+                    start_s: t,
+                    end_s: t + 2.0,
+                    value: v + 3.0 * noise(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let r = find(&samples, &Params::default());
+        assert!(r.two_levels, "{r:?}");
+        assert!((r.low - 213.0).abs() < 2.0, "{r:?}");
+        assert!((r.high - 280.0).abs() < 2.0, "{r:?}");
+        // Of each minute's six blocks, the two wholly at 213° are low; the
+        // one that is 4 s low and 6 s high has its median high.
+        assert!((r.low_share - 1.0 / 3.0).abs() < 0.02, "{r:?}");
+        assert_eq!(r.period_s, Some(60.0), "{r:?}");
+    }
+
+    #[test]
+    fn stray_windows_far_out_are_still_dropped() {
+        // One steady level of 280° with a scatter of about 3°, and a knock
+        // every two and a half minutes: five 2 s windows in a row reading
+        // 130°, a whole 10 s block, 7% of the windows in all. They are
+        // fewer than the smaller state's least share, so they are stray and
+        // dropped: no block sits at 130°.
+        let mut seed = 777u64;
+        let mut noise = || {
+            (0..12)
+                .map(|_| {
+                    seed = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (seed >> 11) as f64 / (1u64 << 53) as f64
+                })
+                .sum::<f64>()
+                - 6.0
+        };
+        let samples: Vec<Sample> = (0..900)
+            .map(|i| {
+                let t = i as f64 * 2.0;
+                let v = if t % 150.0 < 10.0 { 130.0 } else { 280.0 };
+                Sample {
+                    start_s: t,
+                    end_s: t + 2.0,
+                    value: v + 3.0 * noise(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let r = find(&samples, &Params::default());
+        assert!(!r.two_levels, "{r:?}");
+        assert!(r.low > 270.0, "{r:?}");
     }
 
     #[test]
