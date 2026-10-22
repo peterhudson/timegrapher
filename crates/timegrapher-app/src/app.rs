@@ -569,8 +569,10 @@ const MASK_HINT: &str = "Leave stretches out of the readings, such as a bump of 
      with Mask on, drag along the strip over the beats to mask them, drag a masked \
      stretch's edge to move it, and click a masked stretch to bring it back. A right click \
      on one brings it back too, Mask on or off. Stretches that overlap join into one. A take \
-     saved from the app keeps them; a recording opened from disk keeps them once Save Masks \
-     is used.";
+     saved from the app keeps them; a recording opened from disk keeps them when it is \
+     saved. Each point on the strip's line is the reading over the Average Over that ends \
+     there, so just after a masked stretch the line is blank for about one Average Over, \
+     while the sound after it builds up.";
 const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
      .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
@@ -3996,7 +3998,7 @@ impl TimegrapherApp {
             });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                let save = if masks { "Save Masks" } else { "Save…" };
+                let save = if masks { "Save" } else { "Save…" };
                 if fault.is_none() && ui.add(theme::primary(ui, save)).clicked() {
                     choice = Some(0);
                 }
@@ -6179,21 +6181,6 @@ impl TimegrapherApp {
             {
                 self.set_masked(Vec::new());
             }
-            // A recording opened from disk keeps its masks in its session
-            // file once saved.
-            if self.opened_masks.is_some()
-                && !self.session.mic()
-                && ui
-                    .add_enabled(self.masks_unsaved(), egui::Button::new("Save Masks"))
-                    .on_hover_text(SAVE_MASKS_HINT)
-                    .on_disabled_hover_text(
-                        "The masked stretches haven't changed since the recording was opened \
-                         or last saved",
-                    )
-                    .clicked()
-            {
-                self.save_masks();
-            }
         });
         if !self.masked.is_empty() {
             let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
@@ -6334,7 +6321,10 @@ impl TimegrapherApp {
         let saving = self.saving.is_some();
         if self.masks_unsaved() {
             if ui
-                .button("Save Masks")
+                .add(
+                    egui::Button::new("Save")
+                        .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::S))),
+                )
                 .on_hover_text(SAVE_MASKS_HINT)
                 .clicked()
             {

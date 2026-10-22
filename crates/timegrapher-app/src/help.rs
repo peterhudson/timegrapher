@@ -191,7 +191,9 @@ pub const STRIP: &[&str] = &[
      back with Mask on or off. Nothing is read inside a masked stretch and no reading \
      reaches across one; the charts, the steadiness tests and a Positions Test leave it \
      out too. A take saved from the app keeps them; a recording opened from disk keeps \
-     them once Save Masks is used. While Mask is on, dragging masks instead of sliding \
+     them when it is saved. Each point on the strip's line is the reading over the \
+     Average Over that ends there, so just after a masked stretch the line is blank \
+     for about one Average Over, while the sound after it builds up. While Mask is on, dragging masks instead of sliding \
      the trace.",
 ];
 
