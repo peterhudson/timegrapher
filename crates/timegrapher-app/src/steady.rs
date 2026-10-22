@@ -1911,7 +1911,7 @@ mod tests {
             serde_json::to_value(&actual.report).unwrap(),
             serde_json::to_value(&expected).unwrap()
         );
-        let cuts = longrun::cuts(None, &breaks);
+        let cuts = timegrapher_core::clean::Cuts::new(None, &breaks, &[]).piece_cuts();
         let whole = timegrapher_core::timing::fit_pieces(&log.beats, log.bph, &cuts).unwrap();
         assert!((whole.rate_s_per_day + 5.0).abs() < 0.1);
         assert_eq!(
