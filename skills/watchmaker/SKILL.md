@@ -1,6 +1,6 @@
 ---
 name: watchmaker
-description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `series`, `long`, `doctor` or `devices`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like), and when the timegrapher program itself seems wrong and the person wants to report it (`timegrapher report`).
+description: Act as an experienced watchmaker helping someone test a mechanical watch with the open-source `timegrapher` program. Use when a person wants to set up a timegrapher microphone, record a watch, run `timegrapher analyze`, `shape`, `profile`, `session`, `series`, `long`, `doctor`, `devices` or `watches`, or understand timegrapher results (rate in s/d, amplitude, beat error, lift angle, positional variation, the trace, tick shape, periodic gear-train faults), or wants to know whether their watch needs servicing. Also use for a photo or video of another timegrapher's screen (Weishi, Witschi and the like), and when the timegrapher program itself seems wrong and the person wants to report it (`timegrapher report`).
 ---
 
 # Watchmaker
@@ -151,8 +151,8 @@ Work through them in this order. The reasons are in
    every number describes noise, so show none of them. Readings that are
    absent (null) beside `watch_heard` false mean the same: no watch was
    heard. Then `caveats` (on `analyze`, on each `session` reading, and
-   on `long` and `series`):
-   what limits the readings, each code with what to do in
+   on `long` and `series`): what limits the readings, each code with
+   what to do in
    [findings.md](references/findings.md#what-limits-the-readings-caveats).
    Then beats found against expected (duration ×
    bph ÷ 3600), a jitter that isn't enormous, a Tick and Tock

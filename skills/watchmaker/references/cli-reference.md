@@ -3,8 +3,9 @@
 `timegrapher --help` and `timegrapher <command> --help` are always
 complete and current; check them when this file and the program disagree.
 
-Commands: `update`, `devices`, `doctor`, `calibres`, `record`, `analyze`, `shape`, `profile`,
-`long`, `series`, `session`, `clock`, `report`, `regress`, `synth`. `session` (the
+Commands: `update`, `devices`, `doctor`, `calibres`, `watches`, `record`,
+`analyze`, `shape`, `profile`, `long`, `series`, `session`, `clock`,
+`report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
 `docs/sessions.md`, `series` in `docs/series.md`. How to read what
 `doctor`, `session` and `series` measure, and what to do about it, is in
@@ -142,12 +143,35 @@ with the reason on stderr when GitHub can't be reached or is limiting
 requests. Builds without
 the `update-check` feature say they have no network code.
 
+## watches
+
+```
+timegrapher watches list [--all] [--library DIR] [--json]
+timegrapher watches show NAME [--library DIR] [--json]
+```
+
+The library the desktop app keeps its watches and their takes in:
+`Timegrapher Data` in the home folder, or the folder `--library` names.
+It only reads, so it can run while the app is open. `list`
+(`watches/1`) gives each watch with its calibre, number of takes,
+newest take and size, and how many takes wait in Unsorted; archived
+watches only with `--all`. `show NAME` (`watch/1`) gives one watch's
+details and every take, newest first, found by its name ignoring case;
+`show Unsorted` gives the takes Quick Listen made. A field the user
+never set is `null`. Each take's `path` is a take folder to pass to
+`session`, `long` or `series`; `audio` false means the take kept only
+its analysis, so it can't be measured again; `at_end` is the readings
+the app showed when the take was saved, not a new analysis. A NAME that
+matches no watch exits 1. Through the MCP server: `list_watches` and
+`show_watch`.
+
 ## record
 
 ```
 timegrapher record FOLDER --position P [--seconds 120] [--device NAME]
                    [--watch TEXT] [--calibre NAME] [--bph N] [--lift DEG]
                    [--wind-h H] [--file AUDIO] [--json]
+timegrapher record --watch NAME [--library DIR] --position P [...]
 ```
 
 Records one position for `--seconds`, then stops; it listens only while
@@ -158,7 +182,19 @@ first take with the watch, calibre, bph, lift and `settle_s = 30`) with
 its position and `--wind-h`, and a comment line for no regular beat or
 clipping. `timegrapher session FOLDER` then reads them all.
 
-JSON body (`record/2`): `take`, `session_file`, `position`, `wind_h`,
+Without a FOLDER, `--watch NAME` names a watch in the desktop app's
+library (see `watches`): the session folder is made among that watch's
+takes, named by the local time it started (`2026-10-22 09.15`), and the
+watch's calibre, bph and lift fill in those not given. Give that new
+folder (the one `session_file` is in) as FOLDER to record the next
+position into the same test. Recording into the library is refused
+(exit 1, before anything is made) while the app has the library open,
+and so is a FOLDER that is one of a library watch's takes. With a
+FOLDER, `--watch` is the owner's own words for the watch. The MCP
+server's `record_position` always takes a folder.
+
+JSON body (`record/2`): `take`, `library_watch` (null when FOLDER was
+given), `session_file`, `position`, `wind_h`,
 `seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
 `timing_scatter_ms`, `timing_scatter_fraction`, `bph`, `beats_found`,
 `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`,
@@ -340,7 +376,7 @@ it: [long-runs.md](long-runs.md).
 
 ```
 timegrapher series FILES... [--clock LOG] [--bph N] [--lift DEG]
-                   [--calibre NAME] [--reading S] [--json]
+                   [--calibre NAME] [--reading S] [--views] [--maps] [--json]
 ```
 
 Is the take steady? Reads rate, amplitude and beat error in time order
@@ -357,11 +393,14 @@ name not in the table is an error that points to `timegrapher calibres
 stored for the input the recording names, else the recording's USB
 lines, else none (`series` has no `--card-ppm` or `--device`). The beat
 error series is the unlock's; where the drop fit's sign turns over
-across a break,
-its readings, and so its median and the tests on them, are sizes, given
-as positive. `caveats[]` holds `sides_by_count` (`count`) and
-`beat_error_as_size` as for `analyze`, and printed `Sides` and
-`Conditions` lines say the same.
+across a break, its readings, and so its median and the tests on them,
+are sizes, given as positive. `caveats[]` holds `sides_by_count`
+(`count`) and `beat_error_as_size` as for `analyze`, and printed `Sides`
+and `Conditions` lines say the same. `--views` (with `--json`) adds the
+chart data the app's Steadiness pane draws; `--maps` (with `--json`)
+adds `time_frequency[]`, an STFT and a synchrosqueezed wavelet map of
+each series against time (about 1.6 MB on a 2 h take; the repository's
+`docs/series.md`).
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
 
 ## report
