@@ -79998,5 +79998,64 @@
     "escape_teeth": 20,
     "seconds": "centre, direct",
     "notes": "GMT variant has its own fourth wheel and cannon-pinion parts; only the documented escape count and hand-arbor periods are transferred. No lift angle inferred from 9015. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
+  },
+  {
+    "calibre": "Patek 240 Clone",
+    "maker": "(clone)",
+    "family": [
+      "PP 240 Clone",
+      "Patek Philippe 240 Clone"
+    ],
+    "escape_teeth": 20,
+    "wheels": [
+      {
+        "name": "barrel",
+        "period_s": 21600,
+        "teeth": 96,
+        "basis": "Photographed barrel 96 teeth; Peter Hudson confirmed the far 16-leaf second-wheel section receives the barrel drive. 3600 × 96/16 = 21600 s for the running drum."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 75,
+        "basis": "Second wheel in the centre-wheel slot: third wheel 480 × second wheel 75 / third pinion 10 = 3600 s. Far 16-leaf section receives the barrel drive; near 15-leaf section meshes with the dial-side motion works, as confirmed by Peter Hudson.",
+        "pinion": 16
+      },
+      {
+        "name": "third wheel",
+        "period_s": 480,
+        "teeth": 64,
+        "pinion": 10,
+        "basis": "Photographed counts: fourth wheel 60 × third wheel 64 / fourth pinion 8 = 480 s."
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60,
+        "teeth": 72,
+        "pinion": 8,
+        "basis": "Photographed counts: escape wheel (20/3) × fourth wheel 72 / escape pinion 8 = 60 s; derived independently of any seconds-hand assumption."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 6.666666666666667,
+        "teeth": 20,
+        "pinion": 8,
+        "basis": "20 photographed escape teeth × 7200 / 21600 vph = 20/3 s. Peter Hudson confirmed the clone specimen beats at 21600 vph on 2026-10-21."
+      },
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "7200 / contributor-confirmed 21600 vph = 1/3 s."
+      }
+    ],
+    "sources": [
+      "docs/pp240-clone-train-wheel-counts.md — Peter Hudson, six microscope photographs of a Patek 240 clone, 2026-10-21",
+      "Peter Hudson, 2026-10-21: confirmed this Patek 240 clone beats at 21600 vph.",
+      "Peter Hudson, 2026-10-21: near second-wheel section corrected to 15 leaves, far section 16; confirmed by recount.",
+      "Peter Hudson, 2026-10-21: bench-confirmed far 16-leaf second-wheel section meshes with the barrel; near 15-leaf section meshes with the dial-side motion works."
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "Manufacturer unconfirmed; no Dandong attribution. Direct counts: barrel 96; second wheel 75 with 15 leaves on the near steel section and 16 on the far section; third 64/10; fourth 72/8; escape 20/8. Peter Hudson corrected the near-section count on 2026-10-21; recount confirms 15. He confirmed the far 16-leaf section meshes with the barrel and the near 15-leaf section meshes with the dial-side motion works. The pinion field records the 16-leaf barrel input; the separate 15-leaf section is documented here. All periods derive from these counts and the contributor-confirmed 21600 vph beat rate. The centre-wheel slot denotes the second wheel; its one-hour period is calculated, not independently timed. Barrel drum period is 21600 s (6 h), not power reserve. Lift angle, seconds-hand arrangement and the exact motion-works mating wheel remain unspecified. Genuine Patek records are outside this contribution.",
+    "bph": 21600
   }
 ]
