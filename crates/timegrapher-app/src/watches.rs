@@ -22,6 +22,11 @@ pub const HELP: &[&str] = &[
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
      Another Watch and Delete…. A take opened from outside the library can be copied or \
      moved into a watch with Add to a Watch…, beside Open….",
+    "Quick Listen listens on the microphone without picking or adding a watch first, for a \
+     watch handed over the counter. Its take is saved into Unsorted when you Stop (and \
+     Save Again adds to it after a Resume), and waits there, listed at the top of the \
+     watches, until you file it under a watch (right-click it, then File Under a Watch) \
+     or delete it.",
     "The Microphone and Recording controls below work with a watch picked or without one; \
      without one, Save… asks where.",
 ];
@@ -169,6 +174,34 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry]) -> Option<String> {
     picked
 }
 
+/// Unsorted's row, at the top of the list: whether it was clicked.
+pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry) -> bool {
+    row(
+        ui,
+        &e.watch.name,
+        &fmt_bytes(e.bytes()),
+        &format!(
+            "{}, made with Quick Listen",
+            count(e.takes.len(), "take", "takes")
+        ),
+        "Show the takes not yet filed under a watch",
+    )
+    .clicked()
+}
+
+/// What stands for a watch's details above Unsorted's takes.
+pub fn unsorted_details(ui: &mut egui::Ui) {
+    let pal = theme::pal(ui);
+    ui.label(RichText::new(timegrapher_core::library::UNSORTED).font(theme::semibold(16.0)));
+    ui.label(
+        RichText::new(
+            "Takes made with Quick Listen, kept here until you file each under a watch or \
+             delete it.",
+        )
+        .color(pal.text_secondary),
+    );
+}
+
 /// A watch's details, as rows.
 pub fn details(ui: &mut egui::Ui, e: &WatchEntry) {
     let pal = theme::pal(ui);
@@ -217,12 +250,14 @@ pub enum TakeAction {
 }
 
 /// What the takes list needs besides the watch: the other watches (id,
-/// name) to move a take to, whether the library can be changed, and the
-/// take being kept as its analysis with how far along it is (0 to 1).
+/// name) to move a take to, whether the library can be changed, the
+/// take being kept as its analysis with how far along it is (0 to 1),
+/// and whether these are Unsorted's takes, to be filed under a watch.
 pub struct TakesContext<'a> {
     pub others: &'a [(String, String)],
     pub writable: bool,
     pub keeping: Option<(&'a std::path::Path, f32)>,
+    pub unsorted: bool,
 }
 
 /// What a take measured and is, in a line: its positions, length, rate,
@@ -265,8 +300,12 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
     let pal = theme::pal(ui);
     if e.takes.is_empty() {
         ui.label(
-            RichText::new("No takes yet: Start, then Save…, keeps one here.")
-                .color(pal.text_secondary),
+            RichText::new(if cx.unsorted {
+                "No takes here: each take Quick Listen makes waits here until it is filed."
+            } else {
+                "No takes yet: Start, then Save…, keeps one here."
+            })
+            .color(pal.text_secondary),
         );
         return None;
     }
@@ -370,8 +409,21 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
             {
                 act = Some(TakeAction::KeepAnalysis(dir.clone()));
             }
+            let (move_words, move_hint, no_watch) = if cx.unsorted {
+                (
+                    "File Under a Watch",
+                    "Move the take into a watch's takes",
+                    "There is no watch yet: New Watch… adds one",
+                )
+            } else {
+                (
+                    "Move to Another Watch",
+                    "Move the take into another watch's takes",
+                    "There is no other watch to move it to",
+                )
+            };
             ui.add_enabled_ui(changes && !cx.others.is_empty(), |ui| {
-                ui.menu_button("Move to Another Watch", |ui| {
+                ui.menu_button(move_words, |ui| {
                     for (id, name) in cx.others {
                         if ui.button(name).clicked() {
                             act = Some(TakeAction::MoveTo(dir.clone(), id.clone()));
@@ -380,12 +432,8 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
                     }
                 })
                 .response
-                .on_hover_text("Move the take into another watch's takes")
-                .on_disabled_hover_text(if cx.others.is_empty() {
-                    "There is no other watch to move it to"
-                } else {
-                    why
-                });
+                .on_hover_text(move_hint)
+                .on_disabled_hover_text(if cx.others.is_empty() { no_watch } else { why });
             });
             if ui
                 .add_enabled(changes, theme::destructive(ui, "Delete…"))
