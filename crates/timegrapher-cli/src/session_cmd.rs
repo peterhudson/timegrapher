@@ -404,7 +404,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         }
         t.push_str("# date = \"\"\n# notes = \"\"\n");
         t.push_str(
-            "# reference = { rate = 0.0, amplitude = 0, beat_error = 0.0, source = \"\" }\n",
+            "# reference = { rate = 0.0, amplitude = 0, beat_error = 0.0, source = \"\", clock = \"own\" }  # clock: \"own\" (the instrument's own time base) or \"sound_card\" (read from this recording)\n",
         );
     }
     fs::write(&target, t).map_err(|e| format!("{}: {e}", target.display()))?;
