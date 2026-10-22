@@ -865,6 +865,8 @@ pub struct StateIndices {
     /// 6H minus CH.
     pub di: Option<f64>,
     pub amplitude_mean: Option<f64>,
+    /// Mean unsigned beat error over the positions, ms.
+    pub beat_error_mean: Option<f64>,
 }
 
 /// How one position's rate and amplitude change as the watch runs down.
@@ -930,18 +932,41 @@ fn wind_key(w: Option<f64>) -> i64 {
 }
 
 fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
+    let figures: Vec<Figures> = readings
+        .iter()
+        .map(|r| {
+            let m = &r.measurement;
+            (
+                r.position,
+                m.rate_s_per_day,
+                m.amplitude_deg,
+                m.beat_error(),
+            )
+        })
+        .collect();
+    indices(wind_h, &figures)
+}
+
+/// One reading's position, rate (s/d), amplitude (deg) and unsigned beat
+/// error (ms; see [`Measurement::beat_error`]).
+pub type Figures = (Position, Option<f64>, Option<f64>, Option<f64>);
+
+/// Witschi's characteristic values for one state of wind `wind_h`, from
+/// each reading's figures, repeat readings of a position averaged: the
+/// values `session` gives, for any interface that shows them.
+pub fn indices(wind_h: f64, figures: &[Figures]) -> StateIndices {
     let positions: Vec<PositionValue> = Position::ALL
         .iter()
         .filter_map(|&p| {
-            let rs: Vec<&&Reading> = readings.iter().filter(|r| r.position == p).collect();
+            let rs: Vec<&Figures> = figures.iter().filter(|f| f.0 == p).collect();
             if rs.is_empty() {
                 return None;
             }
             Some(PositionValue {
                 position: p,
-                rate_s_per_day: mean(rs.iter().filter_map(|r| r.measurement.rate_s_per_day)),
-                amplitude_deg: mean(rs.iter().filter_map(|r| r.measurement.amplitude_deg)),
-                beat_error_ms: mean(rs.iter().filter_map(|r| r.measurement.beat_error())),
+                rate_s_per_day: mean(rs.iter().filter_map(|f| f.1)),
+                amplitude_deg: mean(rs.iter().filter_map(|f| f.2)),
+                beat_error_ms: mean(rs.iter().filter_map(|f| f.3)),
                 readings: rs.len(),
             })
         })
@@ -986,6 +1011,7 @@ fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
         dvh_amplitude: av.zip(ah).map(|(v, h)| v - h),
         di: get(Position::H6).zip(get(Position::CH)).map(|(a, b)| a - b),
         amplitude_mean: mean(amp(&all).into_iter()),
+        beat_error_mean: mean(positions.iter().filter_map(|v| v.beat_error_ms)),
         positions,
     }
 }

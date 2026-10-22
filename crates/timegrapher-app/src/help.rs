@@ -105,7 +105,8 @@ pub const RATE: &[&str] = &[
      the run so far: a property of the measurement, not of the watch. \
      It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
      missing beats) is named beside the title. Stopped after a long run, a line \
-     under the figure gives the whole take's mean and spread.",
+     under the figure gives the whole take as timegrapher session reads it, with \
+     the 5th to 95th percentile of its 10-second rates.",
 ];
 
 pub const CLIPPING_BANNER: &[&str] = &[
