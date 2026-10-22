@@ -26,6 +26,7 @@
 //! time, from 0 to 1, with the phase between them, beside the level that
 //! pairs of unrelated red-noise series stay under 95% of the time.
 
+use crate::dsp::detrend_line;
 use crate::longterm::Grid;
 use realfft::num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner};
@@ -136,23 +137,6 @@ fn period_axis(lo: f64, hi: f64, rows: usize) -> Vec<f64> {
     (0..rows)
         .map(|r| (a + (b - a) * r as f64 / (rows - 1) as f64).exp())
         .collect()
-}
-
-/// `y` less its least-squares line, in place.
-fn detrend_line(y: &mut [f64]) {
-    let n = y.len() as f64;
-    let mx = (n - 1.0) / 2.0;
-    let my = y.iter().sum::<f64>() / n;
-    let (mut sxy, mut sxx) = (0.0, 0.0);
-    for (i, v) in y.iter().enumerate() {
-        let dx = i as f64 - mx;
-        sxy += dx * (v - my);
-        sxx += dx * dx;
-    }
-    let slope = if sxx > 0.0 { sxy / sxx } else { 0.0 };
-    for (i, v) in y.iter_mut().enumerate() {
-        *v -= my + slope * (i as f64 - mx);
-    }
 }
 
 /// The STFT of `g`: windows of `window_s` stepped `hop_s`, each with

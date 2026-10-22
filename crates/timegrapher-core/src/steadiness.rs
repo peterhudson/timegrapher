@@ -2498,8 +2498,7 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
             .filter(|v| v.is_finite())
             .unwrap_or(0.0)
     };
-    let rr = (rho(&xd) * rho(&yd)).clamp(-0.99, 0.99);
-    let n_eff = (n * (1.0 - rr) / (1.0 + rr)).clamp(4.0, n);
+    let n_eff = crate::confidence::effective_readings(n, rho(&xd) * rho(&yd)).max(4.0);
     let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
     let p_value = chi2_tail(z * z, 1);
     let step = rate.step;

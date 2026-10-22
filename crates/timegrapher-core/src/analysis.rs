@@ -1,6 +1,6 @@
 //! The whole pipeline: recording in, per-beat log and summary out.
 
-use crate::amplitude::{self, AmplitudeConfig, AmplitudeWindow};
+use crate::amplitude::{AmplitudeConfig, AmplitudeWindow};
 use crate::audio::Audio;
 use crate::beats::{self, Beat};
 use crate::confidence::{Confidence, Doubts};
@@ -79,7 +79,7 @@ pub struct Summary {
     pub amplitude_odd_deg: Option<f64>,
     /// Standard errors of the three amplitudes above, degrees: their
     /// precision from the spread between windows, not their accuracy,
-    /// which rests on the lift angle (see [`amplitude::standard_error`]).
+    /// which rests on the lift angle (see [`crate::confidence::standard_error`]).
     pub amplitude_se_deg: Option<f64>,
     pub amplitude_even_se_deg: Option<f64>,
     pub amplitude_odd_se_deg: Option<f64>,
@@ -290,7 +290,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let jitter_us = median_of(rate_windows.iter().map(|w| w.fit.jitter_us));
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
-        amplitude::standard_error(&v)
+        crate::confidence::standard_error(&v)
     };
     let watch_heard = crate::measure::watch_heard(jitter_us, bph, duration);
     let clipping = Clipping::measure(&audio.samples, fs, &beats);

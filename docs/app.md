@@ -214,7 +214,8 @@ time names it in its tab ("Rate · 30 s"). A pane's own time sets everything
 in it that Average Over would. Changing Readings' Average Over puts every
 pane back on it, dropping their own times. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
-median of its 2 s windows, estimated from successive window differences.
+median of its 2 s windows, estimated from successive window differences
+and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Under it are the amplitude from the ticks (blue dot) and from the tocks
@@ -239,8 +240,10 @@ each reading explains it at length.
 **What limits a reading.** Each figure carries its ±, worked out as
 `analyze` and `session` work out theirs (`timegrapher_core::measure`),
 over the averaging time. These are model-based precision estimates, not
-bounds on total error or measures of the watch's true variation. Correlated
-window readings can make the estimates too small. The
+bounds on total error or measures of the watch's true variation. Window
+readings that follow one another are counted as fewer independent ones,
+from their lag-one correlation; memory of another shape can still make
+the estimates too small. The
 [precision assumptions and probes](measurement-precision.md) explain what
 is calculated and what has been checked. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±

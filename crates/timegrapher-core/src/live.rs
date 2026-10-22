@@ -82,7 +82,7 @@ pub struct LiveReading {
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
-    /// the 2 s windows alone, as `amplitude::standard_error` gives it for a
+    /// the 2 s windows alone, as `confidence::standard_error` gives it for a
     /// recording: precision, not accuracy, since a wrong lift angle moves
     /// every amplitude together.
     pub amplitude_error_deg: Option<f64>,
@@ -888,7 +888,7 @@ impl LiveAnalyzer {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
         };
-        let amplitude_error_deg = crate::amplitude::standard_error(
+        let amplitude_error_deg = crate::confidence::standard_error(
             &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
         );
         // Beats scattered like noise are no regular beat: no readings, as
