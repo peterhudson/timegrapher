@@ -4,7 +4,7 @@
 
 /// One mark: its period, its label, and its level, 0 for the marks always
 /// shown and 1 and 2 for those added as the axis has room.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct PeriodTick {
     pub period_s: f64,
     pub label: &'static str,
