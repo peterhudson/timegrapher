@@ -298,6 +298,9 @@ the scale. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
 A period axis is marked, as in the app, at times a watchmaker reads (5 s,
 1 min, 1 h, 24 h), as many as have room, from the same list in the core.
+With no calibre, no wheel is named: the Periods and FFT views and the
+maps then mark 1 min and 1 h, the document's `reference_lines`, as plain
+dotted lines with no name, periods alone and not wheels.
 Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
