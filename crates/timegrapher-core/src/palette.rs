@@ -131,9 +131,63 @@ pub fn palette(dark: bool) -> &'static Palette {
     }
 }
 
+/// The time-frequency maps' colours, from the smallest size to the
+/// largest: viridis at 17 evenly spaced points, from matplotlib's table.
+/// The same in both themes.
+pub const VIRIDIS: [[u8; 3]; 17] = [
+    [68, 1, 84],
+    [72, 24, 106],
+    [71, 45, 123],
+    [66, 64, 134],
+    [59, 82, 139],
+    [51, 99, 141],
+    [44, 114, 142],
+    [38, 130, 142],
+    [33, 145, 140],
+    [31, 160, 136],
+    [40, 174, 128],
+    [63, 188, 115],
+    [94, 201, 98],
+    [132, 212, 75],
+    [173, 220, 48],
+    [216, 226, 25],
+    [253, 231, 37],
+];
+
+/// Viridis at `t`, 0 to 1 (clamped), between the table's points.
+pub fn viridis(t: f32) -> Rgb {
+    let x = t.clamp(0.0, 1.0) * (VIRIDIS.len() - 1) as f32;
+    let i = (x.floor() as usize).min(VIRIDIS.len() - 2);
+    let f = x - i as f32;
+    let [a, b] = [VIRIDIS[i], VIRIDIS[i + 1]];
+    let mix = |k: usize| (a[k] as f32 + (b[k] as f32 - a[k] as f32) * f).round() as u8;
+    Rgb {
+        r: mix(0),
+        g: mix(1),
+        b: mix(2),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn viridis_runs_from_purple_to_yellow_between_its_points() {
+        assert_eq!(viridis(0.0).css(), "#440154");
+        assert_eq!(viridis(1.0).css(), "#fde725");
+        assert_eq!(viridis(-1.0), viridis(0.0));
+        assert_eq!(viridis(2.0), viridis(1.0));
+        // Halfway between the first two points.
+        assert_eq!(
+            viridis(1.0 / 32.0),
+            Rgb {
+                r: 70,
+                g: 13,
+                b: 95
+            }
+        );
+    }
 
     #[test]
     fn colours_read_as_css() {

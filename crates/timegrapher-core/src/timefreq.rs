@@ -59,6 +59,61 @@ pub struct TimeFrequency {
     pub values: Vec<Vec<f64>>,
 }
 
+/// How a map's sizes map to colour, for the app and the MCP view alike:
+/// from `lo` (the darkest) to `hi` (the brightest, and every size above
+/// it), on a linear or a log scale.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Scale {
+    pub lo: f64,
+    pub hi: f64,
+    #[serde(skip)]
+    pub log: bool,
+}
+
+impl Scale {
+    /// For the sizes `values`: up to the size 99.5% of the cells read
+    /// stay under, so one bright cell doesn't darken the rest; from 0 on a
+    /// linear scale, or over a range of 300 to 1 on a log scale. `None`
+    /// when nothing was read.
+    pub fn of(values: &[Vec<f64>], log: bool) -> Option<Scale> {
+        let mut v: Vec<f64> = values
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|x| x.is_finite() && *x >= 0.0)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_by(f64::total_cmp);
+        let hi = v[((v.len() - 1) as f64 * 0.995).round() as usize];
+        if hi <= 0.0 {
+            return None;
+        }
+        let lo = if log {
+            let floor = hi / 300.0;
+            v.iter()
+                .copied()
+                .find(|&x| x > 0.0)
+                .unwrap_or(floor)
+                .max(floor)
+        } else {
+            0.0
+        };
+        Some(Scale { lo, hi, log })
+    }
+
+    /// Where `x` falls, 0 to 1.
+    pub fn at(self, x: f64) -> f32 {
+        let t = if self.log {
+            (x.max(self.lo).ln() - self.lo.ln()) / (self.hi.ln() - self.lo.ln())
+        } else {
+            (x - self.lo) / (self.hi - self.lo)
+        };
+        t.clamp(0.0, 1.0) as f32
+    }
+}
+
 /// Rows of the period axis.
 pub const ROWS: usize = 48;
 /// STFT window and step, seconds.
@@ -760,6 +815,22 @@ pub fn coherences_for_take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maps_scale_tops_at_the_size_most_cells_stay_under() {
+        // 1000 cells of 1 to 1000: the top is the 995th, so the brightest
+        // also stands for the five above it.
+        let values: Vec<Vec<f64>> = (1..=1000).map(|v| vec![v as f64, f64::NAN]).collect();
+        let s = Scale::of(&values, false).unwrap();
+        assert_eq!((s.lo, s.hi, s.log), (0.0, 995.0, false));
+        assert_eq!(s.at(497.5), 0.5);
+        assert_eq!(s.at(2000.0), 1.0);
+        let l = Scale::of(&values, true).unwrap();
+        assert_eq!(l.lo, 995.0 / 300.0);
+        assert_eq!(l.at(1.0), 0.0);
+        assert!(Scale::of(&[vec![f64::NAN]], false).is_none());
+        assert!(Scale::of(&[vec![0.0]], true).is_none());
+    }
 
     fn grid(step: f64, n: usize, mut f: impl FnMut(f64) -> f64) -> Grid {
         let mut g = Grid {

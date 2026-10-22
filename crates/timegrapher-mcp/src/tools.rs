@@ -221,7 +221,12 @@ pub const TOOLS: &[ToolSpec] = &[
             two levels, level changes, a trend, or none) with its statistics: \
             autocorrelation, Allan deviation, the period and its size, the wheel whose \
             turn matches a cycle, level changes and an amplitude spectrum, and findings \
-            with their evidence. Facts only: the reading of them is the caller's.",
+            with their evidence. With `maps`, also each series' time-frequency maps (an \
+            STFT and a synchrosqueezed wavelet map, drawn in the chart view; the result \
+            gives each map's outline in `time_frequency_maps`), its Lomb-Scargle \
+            periodogram, gaps and all, the coherences without their grids, and each named \
+            wheel's averaged turn; it takes longer. Facts only: the reading of them is the \
+            caller's.",
         command: &["series", "--views"],
         params: &[
             RECORDINGS,
@@ -234,6 +239,13 @@ pub const TOOLS: &[ToolSpec] = &[
                 Arg::Flag("--reading"),
                 false,
                 "Length of each rate reading in seconds (10 if left out).",
+            ),
+            p(
+                "maps",
+                Kind::Switch,
+                Arg::Flag("--maps"),
+                false,
+                "Add the time-frequency maps and the analyses that come with them.",
             ),
         ],
         charts: true,

@@ -4,8 +4,8 @@
     python3 packaging/docs_html.py check FOLDER
 
 render writes OUT/Start Here.html (from packaging/PLATFORM/start-here.md),
-OUT/Documentation/ (README.md, docs/, and the watchmaker skill with its
-reference pages) and
+OUT/Documentation/ (README.md, docs/ apart from the calibre research
+evidence, and the watchmaker skill with its reference pages) and
 OUT/LICENSE.txt, for the platform script to copy into the download's
 folder. Links between those files are rewritten to the pages beside them;
 links to anything else in the repository (source files, workflows) go to
@@ -16,6 +16,7 @@ warns about a link to a heading that is not there.
 """
 
 import argparse
+import fnmatch
 import html
 import os
 import posixpath
@@ -31,6 +32,10 @@ ROOT = Path(__file__).resolve().parent.parent
 REPO = os.environ.get("GITHUB_REPOSITORY") or "peterhudson/timegrapher"
 PLATFORMS = ("linux", "macos", "windows")
 INDEX = "docs/index.md"
+# Research evidence, the calibre train counts with their photographs (over
+# 200 MB), stays on GitHub: links to it from the download go there.
+ON_GITHUB = ("docs/*-train-wheel-counts.md", "docs/*-train-research.md",
+             "docs/assets/train-wheels/*", "docs/assets/seiko-miyota/*")
 
 STYLE = """
 :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --bg: #fff;
@@ -88,8 +93,8 @@ def outputs(platform):
         INDEX: "Documentation/index.html",
     }
     for path in sorted((ROOT / "docs").rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(ROOT).as_posix()
+        rel = path.relative_to(ROOT).as_posix()
+        if path.is_file() and not any(fnmatch.fnmatch(rel, p) for p in ON_GITHUB):
             dest = "Documentation/" + rel[len("docs/"):]
             out[rel] = dest[:-3] + ".html" if dest.endswith(".md") else dest
     # The skill's reference pages, which SKILL.md links to throughout.

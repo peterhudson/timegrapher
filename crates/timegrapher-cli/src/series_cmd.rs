@@ -139,7 +139,8 @@ pub fn run(o: Options) -> Result<(), String> {
         }
         if o.maps {
             let tf = timegrapher_core::timefreq::for_take(&log, clock, &long, &lc);
-            doc["time_frequency"] = serde_json::to_value(tf).map_err(|e| e.to_string())?;
+            doc["time_frequency"] = serde_json::to_value(&tf).map_err(|e| e.to_string())?;
+            add_scales(&mut doc["time_frequency"], &tf);
             let coh = timegrapher_core::timefreq::coherences_for_take(
                 &log,
                 clock,
@@ -425,9 +426,43 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     }
 }
 
+/// Each map's `scale`: the colour scale the app draws it in, linear and
+/// log, so every drawing of it agrees.
+fn add_scales(maps: &mut serde_json::Value, tf: &[timegrapher_core::timefreq::TimeFrequency]) {
+    for (j, m) in maps.as_array_mut().into_iter().flatten().zip(tf) {
+        let scale = |log| timegrapher_core::timefreq::Scale::of(&m.values, log);
+        j["scale"] = serde_json::json!({ "linear": scale(false), "log": scale(true) });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_map_carries_the_scale_the_app_draws_it_in() {
+        use timegrapher_core::timefreq::{Scale, TimeFrequency};
+        let tf = vec![TimeFrequency {
+            series: "amplitude",
+            method: "sst",
+            unit: "deg",
+            step_s: 2.0,
+            window_s: None,
+            hop_s: None,
+            period_s: vec![100.0, 10.0],
+            t_s: vec![5.0, 15.0],
+            values: vec![vec![1.0, f64::NAN], vec![4.0, 0.002]],
+        }];
+        let mut maps = serde_json::to_value(&tf).unwrap();
+        add_scales(&mut maps, &tf);
+        let at = |log| serde_json::to_value(Scale::of(&tf[0].values, log)).unwrap();
+        assert_eq!(maps[0]["scale"]["linear"], at(false));
+        assert_eq!(maps[0]["scale"]["log"], at(true));
+        assert_eq!(
+            maps[0]["scale"]["log"],
+            serde_json::json!({ "lo": 4.0 / 300.0, "hi": 4.0 })
+        );
+    }
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
 

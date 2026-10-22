@@ -10,88 +10,12 @@ use egui_plot::{LineStyle, Plot, PlotImage, PlotPoint, Text};
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::timefreq::TimeFrequency;
 
-/// Viridis at 17 evenly spaced points, from matplotlib's table.
-const VIRIDIS: [[u8; 3]; 17] = [
-    [68, 1, 84],
-    [72, 24, 106],
-    [71, 45, 123],
-    [66, 64, 134],
-    [59, 82, 139],
-    [51, 99, 141],
-    [44, 114, 142],
-    [38, 130, 142],
-    [33, 145, 140],
-    [31, 160, 136],
-    [40, 174, 128],
-    [63, 188, 115],
-    [94, 201, 98],
-    [132, 212, 75],
-    [173, 220, 48],
-    [216, 226, 25],
-    [253, 231, 37],
-];
+pub use timegrapher_core::timefreq::Scale;
 
-/// Viridis at `t`, 0 to 1 (clamped).
+/// Viridis at `t`, 0 to 1 (clamped), from the core's table.
 pub fn viridis(t: f32) -> Color32 {
-    let x = t.clamp(0.0, 1.0) * (VIRIDIS.len() - 1) as f32;
-    let i = (x.floor() as usize).min(VIRIDIS.len() - 2);
-    let f = x - i as f32;
-    let [a, b] = [VIRIDIS[i], VIRIDIS[i + 1]];
-    let mix = |k: usize| (a[k] as f32 + (b[k] as f32 - a[k] as f32) * f).round() as u8;
-    Color32::from_rgb(mix(0), mix(1), mix(2))
-}
-
-/// How sizes map to colour: from `lo` (the darkest) to `hi` (the
-/// brightest, and every size above it), on a linear or a log scale.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Scale {
-    pub lo: f64,
-    pub hi: f64,
-    pub log: bool,
-}
-
-impl Scale {
-    /// For the sizes `values`: up to the size 99.5% of the cells read
-    /// stay under, so one bright cell doesn't darken the rest; from 0 on a
-    /// linear scale, or over a range of 300 to 1 on a log scale. `None`
-    /// when nothing was read.
-    pub fn of(values: &[Vec<f64>], log: bool) -> Option<Scale> {
-        let mut v: Vec<f64> = values
-            .iter()
-            .flatten()
-            .copied()
-            .filter(|x| x.is_finite() && *x >= 0.0)
-            .collect();
-        if v.is_empty() {
-            return None;
-        }
-        v.sort_by(f64::total_cmp);
-        let hi = v[((v.len() - 1) as f64 * 0.995).round() as usize];
-        if hi <= 0.0 {
-            return None;
-        }
-        let lo = if log {
-            let floor = hi / 300.0;
-            v.iter()
-                .copied()
-                .find(|&x| x > 0.0)
-                .unwrap_or(floor)
-                .max(floor)
-        } else {
-            0.0
-        };
-        Some(Scale { lo, hi, log })
-    }
-
-    /// Where `x` falls, 0 to 1.
-    pub fn at(self, x: f64) -> f32 {
-        let t = if self.log {
-            (x.max(self.lo).ln() - self.lo.ln()) / (self.hi.ln() - self.lo.ln())
-        } else {
-            (x - self.lo) / (self.hi - self.lo)
-        };
-        t.clamp(0.0, 1.0) as f32
-    }
+    let c = timegrapher_core::palette::viridis(t);
+    Color32::from_rgb(c.r, c.g, c.b)
 }
 
 /// The map's cells, one column per slot of time `dt` from the first
