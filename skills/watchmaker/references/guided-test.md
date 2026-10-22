@@ -322,8 +322,11 @@ attention. Keep each watch separate and the set-up fixed:
   calibre, the last service as they remember it, amplitude dial up, the
   rate spread over positions, beat error, the verdict and the next step
   (nothing, re-test in six months, demagnetise and re-test, service).
-  The program keeps no history of its own; the folders and this table
-  are the record, and next year's test is compared against them.
+  Session folders made with `record FOLDER` are kept only where they
+  were made; a test recorded with `record --watch NAME` into the desktop
+  app's library stays among that watch's takes, which `watches show
+  NAME` lists. The folders and this table are the record, and next
+  year's test is compared against them.
 
 ## Figures for a sale listing
 

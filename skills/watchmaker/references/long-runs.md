@@ -75,8 +75,8 @@ kept to two harmonics, which round off a short dip; the repository's
   lines in the recording, nothing is corrected and the rates are on the
   card's clock.
 - **Beat error.** Measured from the unlock (the figure to quote), with
-  the drop's in brackets. Where its sign turns over across a break, it
-  and the slices' beat errors are sizes, given as positive.
+  the drop's in brackets. Where the drop fit's sign turns over across a
+  break, it and the slices' beat errors are sizes, given as positive.
 - **Sides** (only on a paused take). Present when Tick and Tock were
   named by the beat count across a break, not told apart by their
   sound (the `sides_by_count` caveat).
