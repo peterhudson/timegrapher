@@ -839,3 +839,39 @@ fn a_clock_step_no_listed_pause_explains_is_cut() {
         assert!((rate - 5.0).abs() < 0.01, "{short:?}: rate {rate} s/d");
     }
 }
+
+#[test]
+fn a_stretch_of_exactly_ten_seconds_is_heard() {
+    // Perfect beats at 28,800 bph over exactly 10 s, and just either side
+    // of it (issue #228): with no beat at or after the 10 s window's end,
+    // the stretch still has one whole window, so its scatter is measured
+    // and the watch is heard. Before, 10 s exactly read "no watch heard".
+    for duration in [9.999_f64, 10.0, 10.125, 20.0] {
+        let log = timegrapher_core::stream::BeatLog {
+            sample_rate: 48_000,
+            duration_s: duration,
+            bph: 28_800,
+            lift_deg: 52.0,
+            beats: (0..)
+                .take_while(|&i| i as f64 * 0.125 < duration)
+                .map(|i| timegrapher_core::beats::Beat {
+                    index: i,
+                    time: i as f64 * 0.125,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+        };
+        let m = session::measure(&log, None, 0.0, duration);
+        assert!(m.watch_heard, "{duration} s: {:?}", m.caveats);
+        assert!(m.rate_s_per_day.unwrap().abs() < 1e-6, "{duration} s");
+        if duration >= 10.0 {
+            assert!(m.jitter_us.is_some(), "{duration} s");
+        }
+    }
+}

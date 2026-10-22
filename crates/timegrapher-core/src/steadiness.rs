@@ -3565,7 +3565,8 @@ mod tests {
             (gap.start_s - 300.0).abs() < 1e-5 && gap.end_s == 301.0,
             "{gap:?}"
         );
-        let cut = crate::longrun::cuts(None, &breaks)[0];
+        // The old cut, halfway through the gap.
+        let cut = holes.true_time(300.0) - 0.5 - 1e-6;
         assert!(!(290.3 < cut && cut < 300.3));
         assert!(!holes.clear(290.3, 300.3));
         assert!(!holes.clear(300.8, 310.8));

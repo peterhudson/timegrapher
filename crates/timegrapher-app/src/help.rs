@@ -180,12 +180,14 @@ pub const STRIP: &[&str] = &[
     "With Direction: Across and the charts set to the strip's length (Time Span: Strip), the \
      strip and the charts below it share one time axis, and the pointer's time is \
      marked on all of them at once.",
-    "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
+    "Mouse: the wheel changes the length about the time under the pointer, Ctrl and the \
+     wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
     "Mask leaves stretches out of the readings, such as a bump of the stand: with it \
      on, drag along the strip over the beats to mask them, drag a masked stretch's edge \
-     to move it, and click a masked stretch to bring it back; a right click brings one \
+     to move it, drag with the right button to look back, and click a masked stretch to \
+     bring it back; a right click brings one \
      back with Mask on or off. Nothing is read inside a masked stretch and no reading \
      reaches across one; the charts, the steadiness tests and a Positions Test leave it \
      out too. A take saved from the app keeps them; a recording opened from disk keeps \

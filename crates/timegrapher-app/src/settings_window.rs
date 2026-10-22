@@ -1,9 +1,9 @@
 //! The Settings window: what isn't about the watch on show. General holds
-//! the app's own preferences, Library where the watches and their takes
-//! are kept, Calibres the calibre list to browse and the user's own
-//! calibres, and Sound Card Clock each input's kept clock error with
-//! Forget beside it, from the same file `timegrapher clock list` and
-//! `clock forget` use.
+//! the app's own preferences, the Watches folder where the watches and
+//! their takes are kept, and Sound Card Clock Calibration, each input's
+//! kept clock error with Forget beside it, from the same file
+//! `timegrapher clock list` and `clock forget` use. Calibres holds the
+//! calibre list to browse and the user's own calibres.
 
 use crate::theme;
 use eframe::egui::{self, RichText};
@@ -15,31 +15,20 @@ use timegrapher_core::library::Library;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     General,
-    Library,
     Calibres,
-    Clock,
 }
 
-pub const TABS: [(Tab, &str, &str); 4] = [
+pub const TABS: [(Tab, &str, &str); 2] = [
     (
         Tab::General,
         "General",
-        "How the app looks and whether it asks about updates",
-    ),
-    (
-        Tab::Library,
-        "Library",
-        "The folder your watches and their takes are kept in, and moving it",
+        "How the app looks, whether it asks about updates, the folder your watches are kept \
+         in, and each input's kept clock error",
     ),
     (
         Tab::Calibres,
         "Calibres",
         "Every calibre to search, your short list and your own calibres",
-    ),
-    (
-        Tab::Clock,
-        "Sound Card Clock",
-        "Each input's clock error, kept to correct its rates, with Forget beside it",
     ),
 ];
 
@@ -57,18 +46,18 @@ pub const CLOCK_HELP: &[&str] = &[
 ];
 
 pub const LIBRARY_HELP: &[&str] = &[
-    "The library is one folder holding a folder for each watch: its details, its photos and \
-     every take made of it. Each take inside is a standard take folder, so the command line \
-     and the MCP server read it as they read one anywhere else.",
+    "Your watches are kept in one folder, holding a folder for each watch: its details, its \
+     photos and every take made of it. Each take inside is a standard take folder, so the \
+     command line and the MCP server read it as they read one anywhere else.",
     "Nothing in it records where it is, so the whole folder can be moved, synced or copied to \
-     another computer. Move Library… moves it and keeps using it there; Choose Another… uses \
-     a library somewhere else, such as one copied from another computer, or an empty folder \
-     for a new one. Use the Default goes back to Timegrapher Data in your home folder.",
-    "Only one copy of the app at a time can change a library. A second copy opens it to read \
-     only, and says so here; the library can't be moved while another copy has it open.",
+     another computer. Move Watches… moves it and keeps using it there; Choose Another… uses \
+     a Watches folder somewhere else, such as one copied from another computer, or an empty \
+     folder for a new one. Use the Default goes back to Timegrapher Data in your home folder.",
+    "Only one copy of the app at a time can change your watches. A second copy opens them to \
+     read only, and says so here; the folder can't be moved while another copy has it open.",
 ];
 
-/// What the Library section asks the app to do.
+/// What the Watches Folder section asks the app to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryAction {
     Show,
@@ -93,7 +82,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-/// The Library section: where the library is, what it holds, and the
+/// The Watches Folder section: where the watches are kept, what it holds, and the
 /// ways to move it or use another. `lib` is the library as last read:
 /// `Ok(None)` when none is at `root` yet. `moving` names where it is being
 /// moved to, while it is. `chosen` is true when the user picked the
@@ -108,20 +97,20 @@ pub fn library_section(
     let pal = theme::pal(ui);
     let mut act = None;
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Library").strong());
-        theme::help(ui, "Library", LIBRARY_HELP);
+        ui.label(RichText::new("Watches Folder").strong());
+        theme::help(ui, "Watches Folder", LIBRARY_HELP);
     });
     ui.add_space(4.0);
     let Some(root) = root else {
         ui.label(
             RichText::new(
-                "There is no home folder to keep the library in: choose a folder for it.",
+                "There is no home folder to keep your watches in: choose a folder for them.",
             )
             .color(pal.text_secondary),
         );
         if ui
             .add(theme::secondary(ui, "Choose Another…"))
-            .on_hover_text("Use a library in another folder, or an empty folder for a new one")
+            .on_hover_text("Use a Watches folder somewhere else, or an empty folder for a new one")
             .clicked()
         {
             act = Some(LibraryAction::Choose);
@@ -170,24 +159,24 @@ pub fn library_section(
             }
         }
         Ok(None) => {
-            ui.label(RichText::new("No library is here yet.").color(pal.text_secondary));
+            ui.label(RichText::new("No watches are kept here yet.").color(pal.text_secondary));
         }
         Err(e) => {
-            ui.label(RichText::new(format!("The library can't be read: {e}")).color(pal.bad));
+            ui.label(RichText::new(format!("Your watches can't be read: {e}")).color(pal.bad));
         }
     }
     ui.add_space(8.0);
     if let Some(to) = moving {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(format!("Moving the library to {}", to.display()));
+            ui.label(format!("Moving your watches to {}", to.display()));
         });
         return None;
     }
     ui.horizontal_wrapped(|ui| {
         if ui
             .add_enabled(root.is_dir(), theme::secondary(ui, show_in_words()))
-            .on_hover_text("Open the library's folder")
+            .on_hover_text("Open the Watches folder")
             .on_disabled_hover_text("The folder isn't there yet")
             .clicked()
         {
@@ -196,13 +185,13 @@ pub fn library_section(
         if ui
             .add_enabled(
                 matches!(lib, Ok(Some(_))),
-                theme::secondary(ui, "Move Library…"),
+                theme::secondary(ui, "Move Watches…"),
             )
             .on_hover_text(
-                "Move the whole library into another folder and keep using it there. It asks \
-                 first.",
+                "Move the whole Watches folder into another folder and keep using it there. It \
+                 asks first.",
             )
-            .on_disabled_hover_text("There is no library here to move")
+            .on_disabled_hover_text("No watches are kept here to move")
             .clicked()
         {
             act = Some(LibraryAction::Move);
@@ -210,8 +199,8 @@ pub fn library_section(
         if ui
             .add(theme::secondary(ui, "Choose Another…"))
             .on_hover_text(
-                "Use a library in another folder, such as one copied from another computer, \
-                 or an empty folder for a new one. Nothing is moved.",
+                "Use a Watches folder somewhere else, such as one copied from another \
+                 computer, or an empty folder for a new one. Nothing is moved.",
             )
             .clicked()
         {
@@ -274,8 +263,8 @@ pub fn clock_section(ui: &mut egui::Ui, store: &Result<ClockStore, String>) -> O
     let pal = theme::pal(ui);
     let mut forget = None;
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Sound Card Clock").strong());
-        theme::help(ui, "Sound Card Clock", CLOCK_HELP);
+        ui.label(RichText::new("Sound Card Clock Calibration").strong());
+        theme::help(ui, "Sound Card Clock Calibration", CLOCK_HELP);
     });
     ui.add_space(4.0);
     let store = match store {
