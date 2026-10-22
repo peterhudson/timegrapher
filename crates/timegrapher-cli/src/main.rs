@@ -278,7 +278,7 @@ enum Command {
         #[arg(long)]
         json: bool,
         /// With --json, add what the app's Steadiness pane draws behind
-        /// each verdict (the readings, the period search and the fold):
+        /// each headline (the readings, the period search and the fold):
         /// a few hundred kB on a long take.
         #[arg(long, requires = "json")]
         views: bool,
