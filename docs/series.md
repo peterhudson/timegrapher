@@ -129,6 +129,23 @@ For each series:
   the wavelet transform runs on each unbroken stretch of at least 64
   readings alone, with the times too near a stretch's ends for a period's
   wavelet (its cone of influence) left empty.
+- **Coherence** (with `--maps`): the wavelet coherence of two series read
+  at the same times, from 0 to 1, against time and period on the SST's
+  axis: how tightly the two move together at each period and time, and
+  the phase between them, so which leads and by how much (the phase's
+  share of 360 of a period). Two pairs: the rate against the amplitude,
+  on the 10 s readings the correlation below uses, and Tick's amplitude
+  against Tock's, on the 2 s windows, where a cycle both sides share
+  shows in phase. Each transform is smoothed over time (a Gaussian as
+  wide as the wavelet's scale) and over about 0.6 of an octave of periods
+  (Torrence and Webster, 1999). Beside each period is the coherence that
+  95% of the values from pairs of unrelated red-noise series stay under,
+  with the two series' own lag-one correlations (Grinsted, Moore and
+  Jevrejeva, 2004), from 40 pairs with a fixed seed: by chance, about one
+  value in twenty lies above it. As for the SST, each stretch where both
+  series are read is transformed alone, the smoothing reads nothing
+  outside it, and the times within a period's cone of influence (√2
+  scales) of a stretch's end are left empty.
 
 Across the series, the rate is correlated with the amplitude, each
 reading against the same reading. There is no lag search: the rate
@@ -294,6 +311,7 @@ headlines state facts. Everything else is as in version 1.
 | `rate_amplitude` | the rate against the amplitude: `step_s`, `readings` (pairs), `r`, `effective_readings`, `p_value`, `s_per_day_per_deg` (within half an hour), `take_r` and `take_s_per_day_per_deg` (whole take, no lag, drift included), `headline` (all of these as numbers, whatever their size) |
 | `spectra[]` | the plain amplitude spectrum of each series, as a commercial timegrapher's FFT shows it: `series` (`rate`, `amplitude`, `beat_error`), `unit` (`ms` of timing for the rate, `deg`, `ms`), `step_s`, `period_s[]` (longest first) and `amplitude[]` (an estimate of sine-wave size at each period for complete regular inputs, half its peak to peak), and `support` (`finite_bins`, `total_bins`). The rate's comes from the beat timing, so it reaches down to the escape wheel; the amplitude's and the beat error's from their 2 s windows. Each series has its slow change taken off as the period search takes it off, a Hann window is applied and its loss corrected, and the points are thinned to at most 600 on a log period axis, keeping the largest in each slice so narrow lines survive. The period search reads the same Fourier transform but whitens it and sums harmonics to decide what stands out; this keeps the raw sizes, best drawn on log axes. |
 | `time_frequency[]` | with `--maps`: the STFT maps of `rate`, `amplitude` and `beat_error`, then their SST maps, each `series`, `method` (`stft` or `sst`), `unit` (as `spectra`), `step_s` (the series' spacing: the beat timing's for the rate, 0.25 s on takes up to 12 h, and 2 s windows for the others; for the SST, after a stretch longer than 65,536 readings is averaged down to that), `window_s` and `hop_s` (the STFT's 1200 and 300; null for the SST), `period_s[]` (48 rows, longest first, evenly spaced in log period), `t_s[]` (column times on the tests' time: each STFT window's middle, or the middle of each SST slice, at most 400), and `values[][]` (one column per `t_s`, a size per `period_s`; null where nothing was read). An SST column is the mean over its slice of the values read. A series too short for a map has none. |
+| `coherence[]` | with `--maps`: the rate against the amplitude, then Tick's amplitude against Tock's, each `x` and `y` (the series: `rate` and `amplitude`, or `tick_amplitude` and `tock_amplitude`), `step_s` (10 s readings or 2 s windows, averaged down as for the SST), `period_s[]` (48 rows, longest first, as for the SST), `t_s[]` (the middle of each slice of time, at most 400), `coherence[][]` (one column per `t_s`, the mean coherence over the slice per `period_s`, 0 to 1; null where nothing was read), `phase_deg[][]` (the phase of `x` against `y`, −180 to 180: positive when `x` leads), `noise_95[]` (per period, the red-noise level above) and `noise_pairs`. A pair with no stretch long enough has no entry. |
 | `period_span` | with `--views`: `[lo, hi]`, log10 seconds, the periods every series' search covers between them, so the Periods plots share one axis |
 | `findings[]` | one per series where a test detected structure: `code`, `series`, `title` (what was detected), `evidence` (the headline and the statistics). Codes: `periodic`, `two_states`, `measurement_split` (two levels that show on one side only, or in the beat error from the unlock but not from the drop), `shifting_mean` (level changes), `drifting` (a trend), `wandering` (correlation between readings). A series where none was detected has none. |
 
@@ -320,8 +338,9 @@ above, a few hundred kB on a long take (about 600 kB over 2 h 40 min), so
 plain `--json` stays small for agents. The MCP server asks for them and
 keeps them out of what the model reads.
 
-`--maps` (with `--json`) adds `time_frequency`, about 1.6 MB on a 2 h
-take (the Pepsi take's parts 6 and 7, where `--views` adds about 0.7 MB).
+`--maps` (with `--json`) adds `time_frequency` and `coherence`, about
+3.7 MB on a 2 h take (the Pepsi take's parts 6 and 7, where `--views`
+adds about 0.7 MB).
 
 The JSON's top-level `clock` describes the correction actually applied to
 these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and

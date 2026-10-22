@@ -136,6 +136,13 @@ pub fn run(o: Options) -> Result<(), String> {
         if o.maps {
             let tf = timegrapher_core::timefreq::for_take(&log, clock, &long, &lc);
             doc["time_frequency"] = serde_json::to_value(tf).map_err(|e| e.to_string())?;
+            let coh = timegrapher_core::timefreq::coherences_for_take(
+                &log,
+                clock,
+                &long,
+                o.check.rate_reading_s,
+            );
+            doc["coherence"] = serde_json::to_value(coh).map_err(|e| e.to_string())?;
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
