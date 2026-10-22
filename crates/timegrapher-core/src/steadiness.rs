@@ -2243,6 +2243,48 @@ pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
     }
 }
 
+/// One value per amplitude window on true time, one grid point every
+/// window length, so each gap is left empty; a window that reaches into
+/// a break's gap is left out.
+fn windows_grid(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>,
+) -> Grid {
+    let map = crate::longrun::true_time(clock, breaks);
+    let gaps = crate::longrun::gaps(clock, breaks);
+    let aw = &log.amplitude_windows;
+    // One window's length on true time, so the grid keeps step with the
+    // windows when the clock fit stretches time (2.9 s over 16 h at
+    // 50 ppm on the audio's own spacing).
+    let astep = aw.first().map_or(2.0, |w| map(w.end_s) - map(w.start_s));
+    let Some(w0) = aw.first() else {
+        return Grid {
+            t0: 0.0,
+            step: astep,
+            y: Vec::new(),
+        };
+    };
+    // On true time, so each gap is left empty.
+    let n = ((map(aw.last().unwrap().start_s) - map(w0.start_s)) / astep).round() as usize + 1;
+    let mut y = vec![f64::NAN; n];
+    for w in aw {
+        if crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)) {
+            continue;
+        }
+        let i = ((map(w.start_s) - map(w0.start_s)) / astep).round() as usize;
+        if i < n {
+            y[i] = f(w).unwrap_or(f64::NAN);
+        }
+    }
+    Grid {
+        t0: map(w0.start_s),
+        step: astep,
+        y,
+    }
+}
+
 /// The amplitude and beat error windows on true time, one grid point
 /// every window length, so each gap is left empty. A window that reaches
 /// into a break's gap is left out, as the rate readings are. The beat
@@ -2253,38 +2295,8 @@ pub(crate) fn window_grids(
     clock: Option<&ClockFit>,
     breaks: &[crate::breaks::Break],
 ) -> [Grid; 2] {
-    let map = crate::longrun::true_time(clock, breaks);
-    let gaps = crate::longrun::gaps(clock, breaks);
-    let aw = &log.amplitude_windows;
-    // One window's length on true time, so the grid keeps step with the
-    // windows when the clock fit stretches time (2.9 s over 16 h at
-    // 50 ppm on the audio's own spacing).
-    let astep = aw.first().map_or(2.0, |w| map(w.end_s) - map(w.start_s));
     let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
-        let Some(w0) = aw.first() else {
-            return Grid {
-                t0: 0.0,
-                step: astep,
-                y: Vec::new(),
-            };
-        };
-        // On true time, so each gap is left empty.
-        let n = ((map(aw.last().unwrap().start_s) - map(w0.start_s)) / astep).round() as usize + 1;
-        let mut y = vec![f64::NAN; n];
-        for w in aw {
-            if crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)) {
-                continue;
-            }
-            let i = ((map(w.start_s) - map(w0.start_s)) / astep).round() as usize;
-            if i < n {
-                y[i] = f(w).unwrap_or(f64::NAN);
-            }
-        }
-        Grid {
-            t0: map(w0.start_s),
-            step: astep,
-            y,
-        }
+        windows_grid(log, clock, breaks, f)
     };
     let amp_grid = grid_of(&|w| w.mean());
     // As sizes when the sign turns over across a break, as the take's
@@ -2295,6 +2307,33 @@ pub(crate) fn window_grids(
             .map(|v| if turned { v.abs() } else { v })
     });
     [amp_grid, be_grid]
+}
+
+/// Tick's and Tock's amplitudes, each on the amplitude windows' grid as
+/// [`window_grids`] puts them.
+pub(crate) fn side_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+) -> [Grid; 2] {
+    [
+        windows_grid(log, clock, breaks, &|w| w.even_deg),
+        windows_grid(log, clock, breaks, &|w| w.odd_deg),
+    ]
+}
+
+/// The rate readings and the amplitude averaged into the same readings,
+/// as [`check`] correlates them: `r` seconds each on true time, one grid.
+pub(crate) fn rate_amplitude_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    r: f64,
+) -> [Grid; 2] {
+    let rate = rate_grid(&rate_windows(log, clock, breaks, r), r);
+    let [amp, _] = window_grids(log, clock, breaks);
+    let amp = rebin(&amp, rate.t0, r, rate.y.len());
+    [rate, amp]
 }
 
 /// The rate readings [`check`] tests, `r` seconds each, on true time.

@@ -283,8 +283,10 @@ enum Command {
         #[arg(long, requires = "json")]
         views: bool,
         /// With --json, add the time-frequency maps of each series (an
-        /// STFT and a synchrosqueezed wavelet transform): about 1.6 MB on
-        /// a 2 h take.
+        /// STFT and a synchrosqueezed wavelet transform) and the wavelet
+        /// coherence of the rate with the amplitude and of Tick's
+        /// amplitude with Tock's: about 3.7 MB on a 2 h take (the Pepsi
+        /// 3235 take's parts 6 and 7).
         #[arg(long, requires = "json")]
         maps: bool,
     },

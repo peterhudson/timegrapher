@@ -19,10 +19,16 @@
 //! (half its peak to peak) for a steady line, in the series' units. Under
 //! noise the SST spreads a line over neighbouring rows, so one row reads
 //! under the line's size: the STFT gives the size, the SST where and when.
+//!
+//! The **wavelet coherence** of two series read at the same times (the
+//! rate and the amplitude, Tick's amplitude and Tock's) uses the same
+//! Morlet wavelet: how tightly the two move together at each period and
+//! time, from 0 to 1, with the phase between them, beside the level that
+//! pairs of unrelated red-noise series stay under 95% of the time.
 
 use crate::longterm::Grid;
 use realfft::num_complex::Complex;
-use realfft::RealFftPlanner;
+use realfft::{ComplexToReal, RealFftPlanner};
 use serde::Serialize;
 
 /// One map, thinned for drawing.
@@ -179,6 +185,44 @@ fn stretches(y: &[f64]) -> Vec<(usize, usize)> {
     out
 }
 
+/// The Morlet filter's gain at `sw` (scale times angular frequency):
+/// 2 at the scale's own frequency, so a sine of size A reads A there.
+fn morlet_gain(sw: f64) -> f64 {
+    2.0 * (-(sw - OMEGA0).powi(2) / 2.0).exp()
+}
+
+/// The first `m` values of the analytic signal whose one-sided spectrum
+/// (of a zero-padded length `inv.len()`) is `z`. Real inverse transforms
+/// take a one-sided spectrum, so it comes from two of them: the real part
+/// from `z`, the imaginary from `-i z`.
+fn analytic(
+    inv: &dyn ComplexToReal<f64>,
+    m: usize,
+    z: &dyn Fn(usize) -> Complex<f64>,
+) -> Option<Vec<Complex<f64>>> {
+    let l = inv.len();
+    let mut half = inv.make_input_vec();
+    let mut out = vec![0.0; l];
+    let last = half.len() - 1;
+    let mut part = |rot: Complex<f64>| -> Option<Vec<f64>> {
+        for (j, h) in half.iter_mut().enumerate() {
+            *h = z(j) * rot;
+        }
+        half[0] = Complex::new(0.0, 0.0);
+        half[last] = Complex::new(0.0, 0.0);
+        inv.process(&mut half, &mut out).ok()?;
+        Some(out[..m].to_vec())
+    };
+    let re = part(Complex::new(1.0, 0.0))?;
+    let im = part(Complex::new(0.0, -1.0))?;
+    Some(
+        re.iter()
+            .zip(&im)
+            .map(|(&r, &i)| Complex::new(r, i) * (0.5 / l as f64))
+            .collect(),
+    )
+}
+
 /// The synchrosqueezed Morlet wavelet transform of `g`, on each unbroken
 /// stretch of at least 64 readings alone, at `ROWS` periods from 4
 /// readings to [`SST_MAX_PERIOD_S`] (or a quarter of the longest
@@ -235,45 +279,19 @@ pub fn sst(
         // The squeezed transform, accumulated per row at each reading.
         let mut tre = vec![vec![0.0f32; m]; ROWS];
         let mut tim = vec![vec![0.0f32; m]; ROWS];
-        let mut half = inv.make_input_vec();
-        let mut out = vec![0.0; l];
-        // Real inverse transforms of a one-sided spectrum, so the analytic
-        // signal comes from two real transforms: the real part from `z`,
-        // the imaginary from `-i z`.
-        let mut analytic = |z: &dyn Fn(usize) -> Complex<f64>| -> Option<Vec<Complex<f64>>> {
-            let mut re = vec![0.0; m];
-            for (j, h) in half.iter_mut().enumerate() {
-                *h = z(j);
-            }
-            half[0] = Complex::new(0.0, 0.0);
-            let last = half.len() - 1;
-            half[last] = Complex::new(0.0, 0.0);
-            inv.process(&mut half, &mut out).ok()?;
-            re.copy_from_slice(&out[..m]);
-            for (j, h) in half.iter_mut().enumerate() {
-                *h = z(j) * Complex::new(0.0, -1.0);
-            }
-            half[0] = Complex::new(0.0, 0.0);
-            half[last] = Complex::new(0.0, 0.0);
-            inv.process(&mut half, &mut out).ok()?;
-            Some(
-                re.iter()
-                    .zip(&out[..m])
-                    .map(|(&r, &i)| Complex::new(r, i) * (0.5 / l as f64))
-                    .collect(),
-            )
-        };
         let dw = std::f64::consts::TAU / (l as f64 * step);
         for &p in &period_s {
             let sc = OMEGA0 * p / std::f64::consts::TAU;
             let filt = |j: usize| {
                 let om = j as f64 * dw;
-                // Gain 2 at the scale's own frequency, so a sine of size A
-                // reads A there.
-                spec[j] * (2.0 * (-(sc * om - OMEGA0).powi(2) / 2.0).exp())
+                spec[j] * morlet_gain(sc * om)
             };
-            let Some(w) = analytic(&filt) else { continue };
-            let Some(dwt) = analytic(&|j| filt(j) * Complex::new(0.0, j as f64 * dw)) else {
+            let Some(w) = analytic(inv.as_ref(), m, &filt) else {
+                continue;
+            };
+            let Some(dwt) = analytic(inv.as_ref(), m, &|j| {
+                filt(j) * Complex::new(0.0, j as f64 * dw)
+            }) else {
                 continue;
             };
             // The wavelet's e-folding time: readings nearer a stretch's
@@ -343,6 +361,355 @@ pub fn sst(
     })
 }
 
+/// The wavelet coherence of two series read at the same times: how
+/// tightly they move together at each period and time, and which leads.
+#[derive(Debug, Clone, Serialize)]
+pub struct Coherence {
+    /// The two series, `x` first: `rate` and `amplitude` (the rate
+    /// readings), or `tick_amplitude` and `tock_amplitude` (the 2 s
+    /// windows).
+    pub x: &'static str,
+    pub y: &'static str,
+    /// Spacing of the series, seconds (after averaging a long series
+    /// down, see [`MAX_SAMPLES`]).
+    pub step_s: f64,
+    /// Periods, seconds, longest first, evenly spaced in log period.
+    pub period_s: Vec<f64>,
+    /// Column times, seconds: the middle of each slice of time.
+    pub t_s: Vec<f64>,
+    /// One column per `t_s`, a coherence from 0 to 1 per `period_s` (the
+    /// mean over the slice); `null` (NaN) where nothing was read.
+    pub coherence: Vec<Vec<f64>>,
+    /// The phase of `x` against `y`, degrees from -180 to 180: positive
+    /// when `x` leads, by the phase's share of 360 of a period. `null`
+    /// where `coherence` is.
+    pub phase_deg: Vec<Vec<f64>>,
+    /// Per period, the coherence that 95% of the values from pairs of
+    /// unrelated red-noise series, with the two series' own lag-one
+    /// correlations, stay under.
+    pub noise_95: Vec<f64>,
+    /// How many red-noise pairs `noise_95` comes from.
+    pub noise_pairs: usize,
+}
+
+/// Red-noise pairs behind [`Coherence::noise_95`].
+pub const NOISE_PAIRS: usize = 40;
+/// Length of each red-noise series at most, readings.
+const NOISE_MAX: usize = 1 << 14;
+/// Readings each red-noise series holds beyond the longest period's
+/// cones of influence at its two ends.
+const NOISE_INSIDE: usize = 1024;
+/// Values kept per period from each red-noise pair.
+const NOISE_KEEP: usize = 200;
+/// Width of the smoothing across periods, octaves (Torrence and Webster
+/// 1999 give 0.6 for the Morlet wavelet).
+const SCALE_SMOOTH_OCTAVES: f64 = 0.6;
+
+/// `v[a..b]` smoothed by a Gaussian of `sigma` readings (three passes of
+/// a running mean), each value divided by the share of the kernel inside
+/// `a..b`, so nothing from outside is read.
+fn smooth(v: &mut [f64], sigma: f64) {
+    let n = v.len();
+    if n == 0 {
+        return;
+    }
+    // Three boxes of width w have the variance of a Gaussian of sigma
+    // when w^2 = 4 sigma^2 + 1.
+    let half = (((4.0 * sigma * sigma + 1.0).sqrt() - 1.0) / 2.0).round() as usize;
+    let mut ones = vec![1.0; n];
+    let pass = |x: &mut [f64]| {
+        let mut c = vec![0.0; n + 1];
+        for i in 0..n {
+            c[i + 1] = c[i] + x[i];
+        }
+        for (i, xi) in x.iter_mut().enumerate() {
+            let lo = i.saturating_sub(half);
+            let hi = (i + half + 1).min(n);
+            *xi = (c[hi] - c[lo]) / (2 * half + 1) as f64;
+        }
+    };
+    for _ in 0..3 {
+        pass(v);
+        pass(&mut ones);
+    }
+    for (x, o) in v.iter_mut().zip(&ones) {
+        *x /= o;
+    }
+}
+
+/// One reading of a coherence map: the coherence and the cross spectrum
+/// divided by the root of the two auto spectra's product.
+type Cell = (f64, Complex<f64>);
+
+/// The smoothed cross and auto wavelet spectra of one stretch of `x` and
+/// `y` (each with its line taken off), per period: for each reading in
+/// the period's cone of influence, `(coherence, normalised cross
+/// spectrum)`, NaN outside it.
+fn coherence_stretch(
+    planner: &mut RealFftPlanner<f64>,
+    x: &[f64],
+    y: &[f64],
+    period_s: &[f64],
+    step: f64,
+) -> Option<Vec<Vec<Cell>>> {
+    let m = x.len();
+    let l = (2 * m).next_power_of_two();
+    let fwd = planner.plan_fft_forward(l);
+    let inv = planner.plan_fft_inverse(l);
+    let spectrum = |v: &[f64]| -> Option<Vec<Complex<f64>>> {
+        let mut buf = vec![0.0; l];
+        buf[..m].copy_from_slice(v);
+        detrend_line(&mut buf[..m]);
+        let mut spec = fwd.make_output_vec();
+        fwd.process(&mut buf, &mut spec).ok()?;
+        Some(spec)
+    };
+    let (sx, sy) = (spectrum(x)?, spectrum(y)?);
+    let dw = std::f64::consts::TAU / (l as f64 * step);
+    let rows = period_s.len();
+    // Per row: the smoothed |Wx|^2, |Wy|^2 and Wx Wy*, each over the
+    // scale, inside the row's cone of influence.
+    let mut auto_x = vec![vec![f64::NAN; m]; rows];
+    let mut auto_y = vec![vec![f64::NAN; m]; rows];
+    let mut cross = vec![vec![Complex::new(f64::NAN, f64::NAN); m]; rows];
+    for (r, &p) in period_s.iter().enumerate() {
+        let sc = OMEGA0 * p / std::f64::consts::TAU;
+        let coi = (std::f64::consts::SQRT_2 * sc / step).ceil() as usize;
+        if 2 * coi >= m {
+            continue;
+        }
+        let wx = analytic(inv.as_ref(), m, &|j| {
+            sx[j] * morlet_gain(sc * j as f64 * dw)
+        })?;
+        let wy = analytic(inv.as_ref(), m, &|j| {
+            sy[j] * morlet_gain(sc * j as f64 * dw)
+        })?;
+        let (a, b) = (coi, m - coi);
+        let sigma = sc / step;
+        let mut parts: Vec<Vec<f64>> = vec![
+            wx[a..b].iter().map(|w| w.norm_sqr() / sc).collect(),
+            wy[a..b].iter().map(|w| w.norm_sqr() / sc).collect(),
+            (a..b).map(|i| (wx[i] * wy[i].conj()).re / sc).collect(),
+            (a..b).map(|i| (wx[i] * wy[i].conj()).im / sc).collect(),
+        ];
+        for v in parts.iter_mut() {
+            smooth(v, sigma);
+        }
+        for (k, i) in (a..b).enumerate() {
+            auto_x[r][i] = parts[0][k];
+            auto_y[r][i] = parts[1][k];
+            cross[r][i] = Complex::new(parts[2][k], parts[3][k]);
+        }
+    }
+    // Across periods: a running mean over SCALE_SMOOTH_OCTAVES, of the
+    // rows read at each reading.
+    let du = if rows > 1 {
+        (period_s[0] / period_s[1]).ln()
+    } else {
+        1.0
+    };
+    let reach = (SCALE_SMOOTH_OCTAVES * std::f64::consts::LN_2 / du / 2.0).round() as usize;
+    let mut out = vec![vec![(f64::NAN, Complex::new(f64::NAN, f64::NAN)); m]; rows];
+    for r in 0..rows {
+        let (lo, hi) = (r.saturating_sub(reach), (r + reach + 1).min(rows));
+        for i in 0..m {
+            if !auto_x[r][i].is_finite() {
+                continue;
+            }
+            let (mut ax, mut ay, mut c) = (0.0, 0.0, Complex::new(0.0, 0.0));
+            for q in lo..hi {
+                if auto_x[q][i].is_finite() {
+                    ax += auto_x[q][i];
+                    ay += auto_y[q][i];
+                    c += cross[q][i];
+                }
+            }
+            let d = (ax * ay).sqrt();
+            if d > 0.0 {
+                out[r][i] = ((c.norm_sqr() / (ax * ay)).min(1.0), c / d);
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The wavelet coherence of `x` and `y` (on one grid), on each stretch
+/// where both are read, of at least 64 readings, alone, at `ROWS`
+/// periods as for [`sst`], averaged into [`MAX_COLUMNS`] slices of time,
+/// with the red-noise level each period's coherence is read against.
+/// `None` when no stretch is long enough.
+pub fn coherence(
+    x: &Grid,
+    y: &Grid,
+    x_name: &'static str,
+    y_name: &'static str,
+) -> Option<Coherence> {
+    let n = x.y.len().min(y.y.len());
+    let both: Vec<f64> = (0..n)
+        .map(|i| {
+            if x.y[i].is_finite() && y.y[i].is_finite() {
+                0.0
+            } else {
+                f64::NAN
+            }
+        })
+        .collect();
+    let runs: Vec<(usize, usize)> = stretches(&both)
+        .into_iter()
+        .filter(|(a, b)| b - a >= 64)
+        .collect();
+    let longest = runs.iter().map(|(a, b)| b - a).max()?;
+    let k = longest.div_ceil(MAX_SAMPLES).max(1);
+    let step = x.step * k as f64;
+    let lo = 4.0 * step;
+    let hi = SST_MAX_PERIOD_S.min(longest as f64 * x.step / 4.0);
+    if hi <= lo {
+        return None;
+    }
+    let period_s = period_axis(lo, hi, ROWS);
+    let down = |g: &Grid, a: usize, b: usize| -> Vec<f64> {
+        g.y[a..b]
+            .chunks_exact(k)
+            .map(|c| c.iter().sum::<f64>() / k as f64)
+            .collect()
+    };
+    let t_first = x.time(0);
+    let span = n as f64 * x.step;
+    let ncols = MAX_COLUMNS.min(n / k).max(1);
+    let col_w = span / ncols as f64;
+    let mut sums = vec![vec![(0.0, Complex::new(0.0, 0.0), 0usize); ROWS]; ncols];
+    let mut planner = RealFftPlanner::<f64>::new();
+    // Lag-one correlations, over every stretch, for the red noise.
+    let (mut lag, mut var) = ([0.0; 2], [0.0; 2]);
+    let mut longest_down = 0;
+    for &(a, b) in &runs {
+        let (mut xs, mut ys) = (down(x, a, b), down(y, a, b));
+        let m = xs.len();
+        if m < 64 {
+            continue;
+        }
+        longest_down = longest_down.max(m);
+        let Some(rows) = coherence_stretch(&mut planner, &xs, &ys, &period_s, step) else {
+            continue;
+        };
+        detrend_line(&mut xs);
+        detrend_line(&mut ys);
+        for (j, v) in [&xs, &ys].into_iter().enumerate() {
+            lag[j] += v.windows(2).map(|w| w[0] * w[1]).sum::<f64>();
+            var[j] += v.iter().map(|q| q * q).sum::<f64>();
+        }
+        let t0 = x.time(a) + (k as f64 - 1.0) / 2.0 * x.step;
+        for (r, row) in rows.iter().enumerate() {
+            for (i, &(c, z)) in row.iter().enumerate() {
+                if !c.is_finite() {
+                    continue;
+                }
+                let t = t0 + i as f64 * step;
+                let col = (((t - t_first + 0.5 * x.step) / col_w) as usize).min(ncols - 1);
+                let cell = &mut sums[col][r];
+                cell.0 += c;
+                cell.1 += z;
+                cell.2 += 1;
+            }
+        }
+    }
+    if longest_down == 0 {
+        return None;
+    }
+    let ar = [0, 1].map(|j| {
+        if var[j] > 0.0 {
+            (lag[j] / var[j]).clamp(0.0, 0.99)
+        } else {
+            0.0
+        }
+    });
+    // Long enough for the longest period to be read on NOISE_INSIDE
+    // readings, and no longer than the take's longest stretch.
+    let coi_hi = std::f64::consts::SQRT_2 * OMEGA0 * period_s[0] / std::f64::consts::TAU / step;
+    let noise_len = (2 * coi_hi.ceil() as usize + NOISE_INSIDE)
+        .min(NOISE_MAX)
+        .min(longest_down);
+    let noise_95 = red_noise_level(&mut planner, ar, noise_len, &period_s, step);
+    let (mut coherence, mut phase_deg) = (Vec::new(), Vec::new());
+    for col in sums {
+        coherence.push(
+            col.iter()
+                .map(|&(c, _, n)| if n > 0 { c / n as f64 } else { f64::NAN })
+                .collect(),
+        );
+        phase_deg.push(
+            col.iter()
+                .map(|&(_, z, n)| {
+                    if n > 0 {
+                        z.arg().to_degrees()
+                    } else {
+                        f64::NAN
+                    }
+                })
+                .collect(),
+        );
+    }
+    let t_s = (0..ncols)
+        .map(|c| t_first - 0.5 * x.step + (c as f64 + 0.5) * col_w)
+        .collect();
+    Some(Coherence {
+        x: x_name,
+        y: y_name,
+        step_s: step,
+        period_s,
+        t_s,
+        coherence,
+        phase_deg,
+        noise_95,
+        noise_pairs: NOISE_PAIRS,
+    })
+}
+
+/// Per period, the 95th percentile of the coherence of [`NOISE_PAIRS`]
+/// pairs of unrelated red-noise series of `len` readings, with lag-one
+/// correlations `ar` (Grinsted, Moore and Jevrejeva 2004). The seed is
+/// fixed, so a take always gives the same levels.
+fn red_noise_level(
+    planner: &mut RealFftPlanner<f64>,
+    ar: [f64; 2],
+    len: usize,
+    period_s: &[f64],
+    step: f64,
+) -> Vec<f64> {
+    let mut rng = crate::synth::Rng::new(1);
+    let mut red = |a: f64| -> Vec<f64> {
+        let s = (1.0 - a * a).sqrt();
+        let mut v = Vec::with_capacity(len);
+        let mut prev = rng.normal();
+        for _ in 0..len {
+            prev = a * prev + s * rng.normal();
+            v.push(prev);
+        }
+        v
+    };
+    let mut kept = vec![Vec::<f64>::new(); period_s.len()];
+    for _ in 0..NOISE_PAIRS {
+        let (nx, ny) = (red(ar[0]), red(ar[1]));
+        let Some(rows) = coherence_stretch(planner, &nx, &ny, period_s, step) else {
+            continue;
+        };
+        for (r, row) in rows.iter().enumerate() {
+            let read: Vec<f64> = row.iter().map(|q| q.0).filter(|c| c.is_finite()).collect();
+            let every = read.len().div_ceil(NOISE_KEEP).max(1);
+            kept[r].extend(read.iter().step_by(every));
+        }
+    }
+    kept.into_iter()
+        .map(|mut v| {
+            if v.is_empty() {
+                return f64::NAN;
+            }
+            v.sort_by(|a, b| a.total_cmp(b));
+            v[((v.len() - 1) as f64 * 0.95).round() as usize]
+        })
+        .collect()
+}
+
 /// Both maps of each series a take's period searches and spectra read:
 /// the beat timing (in ms, so the rate's map reaches the escape wheel),
 /// the amplitude, and the beat error from the unlock, each with its slow
@@ -367,6 +734,27 @@ pub fn for_take(
         .iter()
         .filter_map(|(g, name, unit, k)| sst(g, name, unit, *k));
     stfts.chain(ssts).collect()
+}
+
+/// The coherence maps of a take: the rate against the amplitude, on the
+/// `reading_s` readings [`crate::steadiness::check`] correlates them on,
+/// and Tick's amplitude against Tock's, on the 2 s windows, so a cycle
+/// both sides share shows in phase.
+pub fn coherences_for_take(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    long: &crate::longrun::LongReport,
+    reading_s: f64,
+) -> Vec<Coherence> {
+    let [rate, amp] = crate::steadiness::rate_amplitude_grids(log, clock, &long.breaks, reading_s);
+    let [tick, tock] = crate::steadiness::side_grids(log, clock, &long.breaks);
+    [
+        coherence(&rate, &amp, "rate", "amplitude"),
+        coherence(&tick, &tock, "tick_amplitude", "tock_amplitude"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 #[cfg(test)]
@@ -536,5 +924,117 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(near.iter().all(|(_, c)| c[long].is_nan()));
         assert!(near.iter().any(|(_, c)| c[r].is_finite()));
+    }
+
+    fn row_of(period_s: &[f64], p: f64) -> usize {
+        (0..period_s.len())
+            .min_by(|&i, &j| {
+                (period_s[i] / p)
+                    .ln()
+                    .abs()
+                    .total_cmp(&(period_s[j] / p).ln().abs())
+            })
+            .unwrap()
+    }
+
+    /// The coherence map's row nearest `p`, and the columns whose middles
+    /// lie between `a` and `b` seconds and were read there.
+    fn coh_cells(c: &Coherence, p: f64, a: f64, b: f64) -> Vec<(f64, f64)> {
+        let r = row_of(&c.period_s, p);
+        c.t_s
+            .iter()
+            .enumerate()
+            .filter(|(_, &t)| t >= a && t <= b)
+            .map(|(i, _)| (c.coherence[i][r], c.phase_deg[i][r]))
+            .filter(|q| q.0.is_finite())
+            .collect()
+    }
+
+    #[test]
+    fn a_shared_cycle_is_coherent_and_its_lead_is_read() {
+        // Two series sharing a 120 s cycle, y 30 s behind x (a quarter
+        // turn), each with its own noise as large as the cycle.
+        let mut rng = crate::synth::Rng::new(3);
+        let w = std::f64::consts::TAU / 120.0;
+        let x = grid(10.0, 2160, |t| (w * t).sin() + rng.normal());
+        let mut rng = crate::synth::Rng::new(4);
+        let y = grid(10.0, 2160, |t| (w * (t - 30.0)).sin() + rng.normal());
+        let c = coherence(&x, &y, "x", "y").unwrap();
+        let cells = coh_cells(&c, 120.0, 0.0, 1e9);
+        assert!(cells.len() > 100);
+        let mean = cells.iter().map(|q| q.0).sum::<f64>() / cells.len() as f64;
+        let r = row_of(&c.period_s, 120.0);
+        assert!(
+            mean > 0.75 && mean > c.noise_95[r],
+            "{mean} {}",
+            c.noise_95[r]
+        );
+        let phase = cells.iter().map(|q| q.1).sum::<f64>() / cells.len() as f64;
+        assert!((phase - 90.0).abs() < 15.0, "{phase}");
+    }
+
+    #[test]
+    fn unrelated_noise_stays_near_the_noise_level() {
+        let mut rng = crate::synth::Rng::new(5);
+        let x = grid(10.0, 2160, |_| rng.normal());
+        let mut rng = crate::synth::Rng::new(6);
+        let y = grid(10.0, 2160, |_| rng.normal());
+        let c = coherence(&x, &y, "x", "y").unwrap();
+        // Over every period and time, about one value in twenty above the
+        // 95% level, as the level means.
+        let (mut above, mut all) = (0, 0);
+        for col in &c.coherence {
+            for (r, v) in col.iter().enumerate() {
+                if v.is_finite() {
+                    all += 1;
+                    above += (*v > c.noise_95[r]) as usize;
+                }
+            }
+        }
+        let share = above as f64 / all as f64;
+        assert!(all > 1000 && share < 0.12, "{share} of {all}");
+    }
+
+    #[test]
+    fn coherence_that_starts_halfway_shows_from_then() {
+        let w = std::f64::consts::TAU / 120.0;
+        let mut rng = crate::synth::Rng::new(7);
+        let x = grid(10.0, 4320, |t| (w * t).sin() + 0.5 * rng.normal());
+        let mut rng = crate::synth::Rng::new(8);
+        let y = grid(10.0, 4320, |t| {
+            let shared = if t >= 21600.0 { (w * t).sin() } else { 0.0 };
+            shared + 0.5 * rng.normal()
+        });
+        let c = coherence(&x, &y, "x", "y").unwrap();
+        let mean = |v: Vec<(f64, f64)>| v.iter().map(|q| q.0).sum::<f64>() / v.len() as f64;
+        let before = mean(coh_cells(&c, 120.0, 0.0, 19000.0));
+        let after = mean(coh_cells(&c, 120.0, 24000.0, 1e9));
+        let r = row_of(&c.period_s, 120.0);
+        assert!(before < c.noise_95[r], "{before} {}", c.noise_95[r]);
+        assert!(after > 0.8, "{after}");
+    }
+
+    #[test]
+    fn coherence_is_not_read_across_a_gap() {
+        let w = std::f64::consts::TAU / 120.0;
+        let gap = |t: f64| (10000.0..12000.0).contains(&t);
+        let x = grid(
+            10.0,
+            2160,
+            |t| if gap(t) { f64::NAN } else { (w * t).sin() },
+        );
+        let y = grid(10.0, 2160, |t| (w * t).cos());
+        let c = coherence(&x, &y, "x", "y").unwrap();
+        // The period's cone of influence: sqrt 2 scales, a scale being
+        // 6 / 2 pi of the period.
+        let coi = std::f64::consts::SQRT_2 * 6.0 / std::f64::consts::TAU * 120.0;
+        let r = row_of(&c.period_s, 120.0);
+        for (i, &t) in c.t_s.iter().enumerate() {
+            let half = (c.t_s[1] - c.t_s[0]) / 2.0;
+            if t - half >= 10000.0 - coi && t + half <= 12000.0 + coi {
+                assert!(c.coherence[i][r].is_nan(), "read at {t}");
+            }
+        }
+        assert!(coh_cells(&c, 120.0, 0.0, 1e9).len() > 50);
     }
 }
