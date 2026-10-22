@@ -358,7 +358,7 @@ fn hour_table(ui: &mut egui::Ui, r: &Results) {
                 ("Amplitude", "The hour's median amplitude"),
                 (
                     "Beat Error",
-                    "The hour's beat error from the unlock, ms, signed",
+                    "The hour's beat error from the unlock, ms (its size)",
                 ),
                 ("Read", "How much of the hour its whole 10 s readings cover"),
             ] {
@@ -370,7 +370,7 @@ fn hour_table(ui: &mut egui::Ui, r: &Results) {
                 ui.label(hour_label(h));
                 ui.label(cell(h.rate_s_per_day, 1, " s/d"));
                 ui.label(cell(h.amplitude_deg, 0, "°"));
-                ui.label(cell(h.beat_error_ms, 1, " ms"));
+                ui.label(cell(h.beat_error_ms.map(f64::abs), 1, " ms"));
                 ui.label(format!("{:.0}%", 100.0 * h.read_s / h.span_s.max(1.0)));
                 ui.end_row();
             }
@@ -478,7 +478,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
             format!("{:.0}", h.span_s),
             num(h.rate_s_per_day, 1),
             num(h.amplitude_deg, 0),
-            num(h.beat_error_ms, 2),
+            num(h.beat_error_ms.map(f64::abs), 2),
             format!("{:.0}", h.read_s),
         ]);
     }
@@ -557,7 +557,7 @@ mod tests {
             span_s: 99.8,
             rate_s_per_day: Some(4.25),
             amplitude_deg: Some(281.4),
-            beat_error_ms: None,
+            beat_error_ms: Some(-0.4),
             read_s: 90.0,
         }];
         let text = results_text(&r, "Pepsi, 1972", ',');
@@ -567,7 +567,8 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.ends_with("0,100,4.2,281,,90\n") || text.ends_with("0,100,4.3,281,,90\n"),
+            // Beat error as its size, as every text gives it.
+            text.ends_with("0,100,4.2,281,0.40,90\n") || text.ends_with("0,100,4.3,281,0.40,90\n"),
             "{text}"
         );
         assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
