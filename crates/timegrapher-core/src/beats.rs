@@ -234,6 +234,11 @@ pub fn watch_heard(jitter_us: Option<f64>, bph: u32) -> bool {
     timing_scatter_fraction(jitter_us, bph).is_some_and(|f| f < NO_WATCH_JITTER_FRACTION)
 }
 
+/// The beats `seconds` of a watch at `bph` hold.
+pub fn expected_beats(seconds: f64, bph: u32) -> f64 {
+    seconds * bph as f64 / 3600.0
+}
+
 /// The timing scatter as a share of the beat period (0 to 1): `jitter_us`
 /// over the beat period in microseconds, 3.6e9 / `bph`.
 pub fn timing_scatter_fraction(jitter_us: Option<f64>, bph: u32) -> Option<f64> {

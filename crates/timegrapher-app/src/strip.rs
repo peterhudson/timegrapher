@@ -13,43 +13,12 @@
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
+pub use timegrapher_core::timing::Anchor;
 
 /// Colours of the ticks (even beats) and tocks (odd beats).
 pub fn side_colors(dark: bool) -> [Color32; 2] {
     let p = crate::theme::palette(dark);
     [p.tick, p.tock]
-}
-
-/// Where the strip is anchored: a beat number and the time it is drawn at
-/// the centre line.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Anchor {
-    pub index: i64,
-    pub time: f64,
-}
-
-impl Anchor {
-    /// Centre the strip on the last `n` beats (tick and tock together).
-    pub fn centre_on(beats: &[Beat], period_s: f64, n: usize) -> Option<Anchor> {
-        let last = beats.last()?;
-        let recent = &beats[beats.len().saturating_sub(n)..];
-        let t = recent
-            .iter()
-            .map(|b| b.time - (b.index - last.index) as f64 * period_s)
-            .sum::<f64>()
-            / recent.len() as f64;
-        Some(Anchor {
-            index: last.index,
-            time: t,
-        })
-    }
-
-    /// How early the beat came, in ms, against this anchor and a beat
-    /// period of `period_s`. Positive means early (the watch gains).
-    pub fn lead_ms(&self, b: &Beat, period_s: f64) -> f64 {
-        let expected = self.time + (b.index - self.index) as f64 * period_s;
-        (expected - b.time) * 1000.0
-    }
 }
 
 /// Fold `x` into `[-half, half)`.

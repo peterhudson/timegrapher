@@ -316,7 +316,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let clipping = Clipping::measure(&audio.samples, fs, &beats);
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
     let amplitude_se_deg = se(&|w| w.mean());
-    let expected = duration * bph as f64 / 3600.0;
+    let expected = crate::beats::expected_beats(duration, bph);
     let assessment = crate::measure::assess(
         &rate_windows,
         &amplitude_windows.iter().collect::<Vec<_>>(),

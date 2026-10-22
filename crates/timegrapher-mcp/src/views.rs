@@ -162,9 +162,8 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 // As the app's Amplitude chart: the average of the two sides,
                 // and each side's own (the Tick is the even beats).
                 let (tick, tock) = (get(amp[0]), get(amp[1]));
-                let sides: Vec<f64> = [tick, tock].into_iter().flatten().collect();
-                if !sides.is_empty() {
-                    amps.push([t, sides.iter().sum::<f64>() / sides.len() as f64]);
+                if let Some(v) = timegrapher_core::amplitude::mean_of_sides(tick, tock) {
+                    amps.push([t, v]);
                 }
                 if let Some(v) = tick {
                     ticks.push([t, v]);
