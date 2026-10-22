@@ -6,22 +6,26 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const html = fs.readFileSync(process.env.TIMEGRAPHER_TEST_VIEW_HTML || path.join(__dirname, "../src/view.html"), "utf8");
-// The table the server puts in the page, read from core palette.rs.
+// The tables the server puts in the page, read from core palette.rs and
+// period_ticks.rs.
 const palette = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/palette.rs"), "utf8");
 const VIRIDIS = JSON.parse(palette.match(/pub const VIRIDIS: \[\[u8; 3\]; 17\] = (\[[\s\S]*?\]);/)[1].replace(/,\s*\]$/, "]"));
+const ticksRs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/period_ticks.rs"), "utf8");
+const PERIOD_TICKS = [...ticksRs.matchAll(/tick\(([\d.]+), "([^"]+)", (\d)\)/g)]
+  .map(([, p, label, level]) => ({ period_s: +p, label, level: +level }));
 function definition(name) {
   const match = html.match(new RegExp(`^function ${name}\\([^\\n]*\\{[\\s\\S]*?^\\}`, "m"));
   if (!match) throw new Error(`Missing renderer ${name}`);
   return match[0];
 }
 const context = vm.createContext({
-  VIRIDIS, mapPaints: [], mapsLog: false, Uint8ClampedArray,
+  VIRIDIS, PERIOD_TICKS, mapPaints: [], mapsLog: false, Uint8ClampedArray,
   chartWidth: () => 600, logTicks: () => [], linTicks: () => [], fmtTime: (t) => `t${t}`, TIME_STEPS: [],
   plotArea: () => ({ id: "c", svg: "" }), CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
-  ["esc", "steadyNote", "steadyPlot", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
+  ["esc", "steadyNote", "steadyPlot", "periodTicks", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints;", context);
 
 // Values made in the renderer's context, as plain ones.
@@ -79,4 +83,16 @@ test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
   // A map with nothing read has no scale.
   const blank = { ...map, scale: { linear: null, log: null } };
   assert.ok(context.steadyPlot({ series: "amplitude" }, "stft", { time_frequency: [blank] }).includes("Nothing in this stretch could be read"));
+});
+
+test("period axes are marked as core's period_ticks marks them", () => {
+  assert.equal(PERIOD_TICKS.length, 19, "every mark read from period_ticks.rs");
+  assert.ok(html.includes("const PERIOD_TICKS = /*PERIOD_TICKS*/null;"), "the server fills the list in");
+  const labels = (px) => context.periodTicks(Math.log10(4), Math.log10(60000), px).map(([, l]) => l).join(", ");
+  // period_ticks.rs's own test, at 64 px a mark: room for 20, 10 and 6.
+  assert.equal(labels(20 * 64), "5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h, 2 h, 6 h, 12 h");
+  assert.equal(labels(10 * 64), "5 s, 10 s, 30 s, 1 min, 5 min, 10 min, 30 min, 1 h, 6 h, 12 h");
+  assert.equal(labels(6 * 64), "10 s, 1 min, 10 min, 1 h, 6 h");
+  // Each mark sits at its period, in log10 seconds.
+  assert.deepEqual(plain(context.periodTicks(Math.log10(50), Math.log10(70), 640)), [[Math.log10(60), "1 min"]]);
 });

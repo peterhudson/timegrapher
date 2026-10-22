@@ -32,8 +32,11 @@ pub fn page() -> &'static str {
         );
         let viridis = serde_json::to_string(&timegrapher_core::palette::VIRIDIS)
             .expect("the viridis table as JSON");
+        let period_ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS)
+            .expect("the period marks as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
+            .replace("/*PERIOD_TICKS*/null", &period_ticks)
     })
 }
 
@@ -518,6 +521,14 @@ mod tests {
         assert!(!page.contains("/*VIRIDIS*/"));
         let table = serde_json::to_string(&timegrapher_core::palette::VIRIDIS).unwrap();
         assert!(page.contains(&format!("const VIRIDIS = {table};")));
+    }
+
+    #[test]
+    fn the_view_marks_periods_from_the_cores_list() {
+        let page = page();
+        assert!(!page.contains("/*PERIOD_TICKS*/"));
+        let ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS).unwrap();
+        assert!(page.contains(&format!("const PERIOD_TICKS = {ticks};")));
     }
 
     #[test]
