@@ -2091,6 +2091,61 @@ mod tests {
             });
             assert!(!out.shapes.is_empty());
         }
+
+        // The map panes draw a map the core gives, with its key, and
+        // say what they need when it gives none.
+        let drawn = |s: &Steadiness, v: View| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    draw(
+                        ui,
+                        Some(s),
+                        "maps",
+                        v,
+                        &[true, false, false],
+                        Opts::default(),
+                    );
+                });
+            });
+            fn texts(shape: &egui::Shape, into: &mut String) {
+                match shape {
+                    egui::Shape::Text(t) => into.push_str(&format!("{}\n", t.galley.text())),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                    _ => {}
+                }
+            }
+            let mut all = String::new();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+            all
+        };
+        let mut s = s;
+        s.maps.clear();
+        assert!(drawn(&s, View::Stft).contains("The STFT Map needs"));
+        let nan = f64::NAN;
+        for method in ["stft", "sst"] {
+            s.maps.push(timegrapher_core::timefreq::TimeFrequency {
+                series: "rate",
+                method,
+                unit: "ms",
+                step_s: 10.0,
+                window_s: None,
+                hop_s: Some(300.0),
+                period_s: vec![600.0, 120.0, 30.0],
+                t_s: vec![600.0, 900.0],
+                values: vec![vec![0.1, 0.4, nan], vec![0.2, 0.3, 0.1]],
+            });
+        }
+        for v in [View::Stft, View::Wavelet] {
+            let t = drawn(&s, v);
+            assert!(t.contains("not read") && !t.contains("needs"), "{v:?}: {t}");
+        }
     }
 
     /// Two wild readings among a hundred steady ones don't set the scale.
