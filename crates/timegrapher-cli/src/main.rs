@@ -17,6 +17,7 @@ mod session_report;
 mod shape_cmd;
 mod synth_cmd;
 mod update_cmd;
+mod watches_cmd;
 
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -553,6 +554,20 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// The watches in the library the app keeps, with their details and
+    /// takes, and the takes Quick Listen left in Unsorted. It only reads.
+    Watches {
+        #[command(subcommand)]
+        action: WatchesAction,
+        /// The library's folder (default: Timegrapher Data in the home
+        /// folder). A library chosen elsewhere in the app's Settings has to
+        /// be named here.
+        #[arg(long, global = true)]
+        library: Option<PathBuf>,
+        /// Print JSON instead of text.
+        #[arg(long, global = true)]
+        json: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         /// The WAV file to write, or with --scenario the take folder.
@@ -593,6 +608,21 @@ enum Command {
         #[arg(long, default_value_t = -15.0)]
         fault_amplitude: f64,
     },
+}
+
+#[derive(Subcommand)]
+enum WatchesAction {
+    /// Each watch with its calibre, number of takes, newest take and size,
+    /// and how many takes wait in Unsorted.
+    List {
+        /// Also list the watches marked Archived.
+        #[arg(long)]
+        all: bool,
+    },
+    /// One watch's details and every take, newest first, each with its
+    /// folder to pass to `session`, `long` or `series`. `Unsorted` shows
+    /// the takes Quick Listen made.
+    Show { name: String },
 }
 
 #[derive(Subcommand)]
@@ -801,6 +831,14 @@ fn main() -> ExitCode {
         Command::Calibres { name, search, json } => {
             calibres_cmd::run(name.as_deref(), search.as_deref(), json)
         }
+        Command::Watches {
+            action,
+            library,
+            json,
+        } => match action {
+            WatchesAction::List { all } => watches_cmd::list(library.as_deref(), all, json),
+            WatchesAction::Show { name } => watches_cmd::show(&name, library.as_deref(), json),
+        },
         Command::Devices { json } => run_devices(json),
         Command::Update { json } => update_cmd::run(json),
         Command::Clock { action, json } => {

@@ -379,6 +379,17 @@ impl Library {
     /// The library at `root`, scanned. Its `library.toml` must be one this
     /// version reads.
     pub fn open(root: &Path) -> Result<Library, String> {
+        Library::open_as(root, true)
+    }
+
+    /// The library at `root`, scanned, to read only: it takes no lock and
+    /// writes nothing, not even the cache, so a copy of the app that has
+    /// it open is not disturbed. For the command line.
+    pub fn read(root: &Path) -> Result<Library, String> {
+        Library::open_as(root, false)
+    }
+
+    fn open_as(root: &Path, locked: bool) -> Result<Library, String> {
         let p = root.join(LIBRARY_FILE);
         let text = fs::read_to_string(&p).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -399,9 +410,10 @@ impl Library {
                 f.format
             ));
         }
-        let (lock, read_only) = match lock(root) {
-            Ok(f) => (Some(std::sync::Arc::new(f)), None),
-            Err(why) => (None, Some(why)),
+        let (lock, read_only) = match locked.then(|| lock(root)) {
+            Some(Ok(f)) => (Some(std::sync::Arc::new(f)), None),
+            Some(Err(why)) => (None, Some(why)),
+            None => (None, Some("It was opened to read only".into())),
         };
         let mut lib = Library {
             root: root.to_path_buf(),
@@ -1064,7 +1076,16 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     let audio = manifest.as_ref().and_then(|m| m.audio) != Some(false);
     let incomplete = match &manifest {
         Some(_) if !audio => !dir.join("analysis").is_dir(),
-        Some(m) => m.recordings.iter().any(|r| !dir.join(&r.file).is_file()),
+        // An entry naming a folder (`file = "."`, as the app's own takes
+        // do) is there when the folder holds sound files.
+        Some(m) => m.recordings.iter().any(|r| {
+            let p = dir.join(&r.file);
+            if p.is_dir() {
+                crate::recording_order::recordings_in(&p, &[]).is_err()
+            } else {
+                !p.is_file()
+            }
+        }),
         None => false,
     };
     let mut positions: Vec<String> = Vec::new();
@@ -1431,6 +1452,54 @@ mod tests {
         drop(socket);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_file(&outside);
+    }
+
+    /// A take whose session file names its whole folder, as the app's own
+    /// takes do, is complete while the folder holds its sound.
+    #[test]
+    fn a_take_naming_its_folder_is_complete_with_its_sound() {
+        let root = scratch("folder-entry");
+        let mut lib = Library::create(&root).unwrap();
+        let dir = lib.add(&Watch::new("Pepsi")).unwrap();
+        let t = dir.join(TAKES).join("2026-10-22 09.15");
+        take(&t, &[(".", "DU")], 0, "2026-10-22T16:15:00Z");
+        lib.scan();
+        assert!(lib.watches[0].takes[0].incomplete, "no sound yet");
+        fs::write(t.join("take_part01-001.flac"), vec![0u8; 1000]).unwrap();
+        lib.scan();
+        assert!(!lib.watches[0].takes[0].incomplete);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Reading a library to list it (the command line) takes no lock and
+    /// writes nothing, so it neither shuts out the app nor is shut out.
+    #[test]
+    fn a_library_read_to_list_it_takes_no_lock_and_writes_nothing() {
+        let root = scratch("read");
+        let mut app = Library::create(&root).unwrap();
+        let dir = app.add(&Watch::new("Pepsi")).unwrap();
+        take(
+            &dir.join(TAKES).join("2026-10-22 09.15"),
+            &[("take_part01-001.flac", "DU")],
+            1,
+            "2026-10-22T16:15:00Z",
+        );
+        let _ = fs::remove_file(root.join(CACHE_FILE));
+        let mut listed = Library::read(&root).unwrap();
+        assert_eq!(listed.watches[0].takes.len(), 1);
+        assert!(listed.read_only.is_some());
+        assert!(!root.join(CACHE_FILE).exists(), "the cache is left alone");
+        assert!(listed.add(&Watch::new("Daytona")).is_err());
+        // The app, which has it open, still changes it; and a copy opened
+        // while the command line reads it is not made read-only.
+        app.add(&Watch::new("Daytona")).unwrap();
+        drop(app);
+        let reopened = Library::open(&root).unwrap();
+        assert_eq!(reopened.read_only, None);
+        listed.scan();
+        assert_eq!(listed.watches.len(), 2);
+        drop(reopened);
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// A take made with Quick Listen is listed in Unsorted, counted in
