@@ -142,9 +142,11 @@ A recording on a corpus holdout take may also carry
 watchmaker confirmed; `session` reads past it, and `regress --holdout`
 checks it (see [regress.md](regress.md#holdout-takes)).
 
-`escape_teeth` (default 15) sets the escape wheel's turn period, and
+`escape_teeth` (default 15 when the calibre gives none) sets the escape
+wheel's turn period, and
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
-names more wheels in the cycle search (seconds per turn).
+names more wheels in the cycle search (seconds per turn). With no
+calibre, only the wheels these two give are named.
 
 The `calibre` line, when the calibre table knows the name (the same table
 the app's picker, `calibres` and `long --calibre` use; "3235", "2824-2" and

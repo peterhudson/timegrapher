@@ -74,16 +74,21 @@ plus three that name the periodic components after wheels:
   It also sets the lift angle when `--lift` is not given (52° when the
   table has no lift angle for the calibre); it does not set the beat
   rate, which `--bph` gives or the recording shows.
-- `--escape-teeth N` sets the escape wheel's teeth. Without it or a
-  calibre that gives them, both common escape wheels are named, 15 teeth
-  (30 beats a turn) and 20 teeth (40 beats, the ETA 2824 family and
-  Rolex's): at 28,800 bph 3.75 s and 5 s, and the line the recording
-  shows picks one.
+- `--escape-teeth N` sets the escape wheel's teeth. With a calibre whose
+  table gives no escape wheel and no `--escape-teeth`, both common escape
+  wheels are named, 15 teeth (30 beats a turn) and 20 teeth (40 beats,
+  the ETA 2824 family and Rolex's): at 28,800 bph 3.75 s and 5 s, and the
+  line the recording shows picks one. With no calibre, no wheel is named
+  but the escape wheel `--escape-teeth` gives, if any: which wheel turns
+  once a minute or once an hour is the calibre's to say. The JSON then
+  gives 1 min and 1 h as `input.settings.reference_lines` (`label`,
+  `period_s`), periods to mark on a chart, not wheels.
 - `--wheel "third wheel=450"` (repeatable) names another wheel whose turn
   period you know.
 
 `series` takes the same three. Both list the wheels they used in the
-JSON's `input.settings.named_wheels`.
+JSON's `input.settings.named_wheels`, and the reference lines in
+`input.settings.reference_lines` (empty when a wheel is named).
 
 ## Calibrating the sound card
 
