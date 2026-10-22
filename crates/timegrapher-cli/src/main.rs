@@ -17,6 +17,7 @@ mod session_report;
 mod shape_cmd;
 mod synth_cmd;
 mod update_cmd;
+mod watches_cmd;
 
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -553,6 +554,23 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// The watches in the library the app keeps, with their details and
+    /// takes, and the takes Quick Listen left in Unsorted. It only reads.
+    Watches {
+        /// Show only this watch (or Unsorted), with every take.
+        name: Option<String>,
+        /// The library's folder (default: Timegrapher Data in the home
+        /// folder). A library chosen elsewhere in the app's Settings has to
+        /// be named here.
+        #[arg(long)]
+        library: Option<PathBuf>,
+        /// Also list the watches marked Archived.
+        #[arg(long)]
+        archived: bool,
+        /// Print the library as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Write a synthetic watch recording (for testing).
     Synth {
         /// The WAV file to write, or with --scenario the take folder.
@@ -801,6 +819,12 @@ fn main() -> ExitCode {
         Command::Calibres { name, search, json } => {
             calibres_cmd::run(name.as_deref(), search.as_deref(), json)
         }
+        Command::Watches {
+            name,
+            library,
+            archived,
+            json,
+        } => watches_cmd::run(name.as_deref(), library.as_deref(), archived, json),
         Command::Devices { json } => run_devices(json),
         Command::Update { json } => update_cmd::run(json),
         Command::Clock { action, json } => {

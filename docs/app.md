@@ -50,16 +50,17 @@ notes and fields), **Sort** by Name, Last Take or Size, **Archived**
 **New Watch…**. **Quick Listen** (off while listening) listens on the
 microphone without picking or adding a watch first, for a watch handed
 over the counter: it asks first when there is unsaved sound or an
-unsaved change, as New Session does, then clears the take's name, shows **Unsorted** and starts
-a new session. **Stop**, like **Save…**, saves the take into Unsorted, named as a
-watch's takes are, and after a Resume, Stop or Save Again adds the sound
-since to the same take. Unsorted is listed above the watches while it
-holds a take, and its takes have the same menu as a watch's, with
-**File Under a Watch** (into the watch picked from it) in place of Move
-to Another Watch, so a take waits there until it is filed or deleted.
-Picking a watch ends Quick Listen. No watch can be called Unsorted.
-**New Watch…** opens a form: only the **Name** is needed, and Calibre (which fills the
-Lift Angle and Beat Rate), Lift Angle, Beat Rate and Notes can each be
+unsaved change, as New Session does, then clears the take's name, shows
+**Unsorted** and starts a new session. **Stop**, like **Save…**, saves
+the take into Unsorted, named as a watch's takes are, and after a
+Resume, Stop or Save Again adds the sound since to the same take.
+Unsorted is listed above the watches while it holds a take, and its
+takes have the same menu as a watch's, with **File Under a Watch** (into
+the watch picked from it) in place of Move to Another Watch, so a take
+waits there until it is filed or deleted. Picking a watch ends Quick
+Listen. No watch can be called Unsorted. **New Watch…** opens a form:
+only the **Name** is needed, and Calibre (which fills the Lift Angle and
+Beat Rate), Lift Angle, Beat Rate and Notes can each be
 removed with its ×, then given back, with any of the suggested fields or
 one of your own, from **Add Field**; **Archived** hides the watch from the
 list without deleting it. The first watch makes the library's folder.
@@ -823,9 +824,10 @@ folder, `Timegrapher Data` in the home folder unless another is chosen:
 `library.toml` at the top, then a folder for each watch holding its
 details (`watch.toml`), its `photos/` and its `takes/`, and `Unsorted/`,
 whose `takes/` holds the takes Quick Listen made until each is filed;
-each take a
-standard take folder named by when it started (`2026-10-20 14.32 Dial
-Up`, with the position in words when the take used only one). Nothing in
+each take a standard take folder named by when it started (`2026-10-20
+14.32 Dial Up`, with the position in words when the take used only one).
+`timegrapher watches` lists it from the command line, without changing
+it ([agent-interface.md](agent-interface.md#watches)). Nothing in
 it records where it is, so it can be moved, synced or copied whole; a
 take with sound files missing is listed as incomplete and never changed.
 Settings' **Library** section shows where it is and how many watches and
