@@ -257,6 +257,23 @@ pub fn robust_sd(v: &[f64]) -> f64 {
     1.4826 * median(&mut dev)
 }
 
+/// `y` less its least-squares line against the index, in place.
+pub fn detrend_line(y: &mut [f64]) {
+    let n = y.len() as f64;
+    let mx = (n - 1.0) / 2.0;
+    let my = y.iter().sum::<f64>() / n;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for (i, v) in y.iter().enumerate() {
+        let dx = i as f64 - mx;
+        sxy += dx * (v - my);
+        sxx += dx * dx;
+    }
+    let slope = if sxx > 0.0 { sxy / sxx } else { 0.0 };
+    for (i, v) in y.iter_mut().enumerate() {
+        *v -= my + slope * (i as f64 - mx);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

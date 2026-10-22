@@ -1,4 +1,4 @@
-use timegrapher_core::{amplitude::standard_error, dsp::median, synth::Rng};
+use timegrapher_core::{confidence::standard_error, dsp::median, synth::Rng};
 fn main() {
     let n = 300usize;
     let repeats = 2000;

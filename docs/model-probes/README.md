@@ -17,7 +17,11 @@ binary-to-source identity for the historical executable.
 
 [provenance.json](provenance.json) records the original source/output SHA-256
 hashes, copied-file hashes and the documentation baseline. The example sources
-are the original programs with `rustfmt` formatting only. Seeds, series lengths,
+are the original programs with `rustfmt` formatting only, except that the
+precision probe now imports `confidence::standard_error`, where the function
+moved when it gained the lag-one correction; a new run therefore measures the
+corrected estimator, and provenance.json's copied-file hash is of the copy
+before that one-line change. Seeds, series lengths,
 recursions, missing-data masks, calls and output formats are unchanged. The
 original compiled binary is not distributed.
 
