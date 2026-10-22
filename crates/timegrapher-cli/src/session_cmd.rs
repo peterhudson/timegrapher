@@ -800,6 +800,9 @@ pub struct Session<'a> {
     pub lift_deg: f64,
     pub readings: Vec<Reading>,
     pub report: SessionReport,
+    /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
 }
 
 pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
@@ -865,6 +868,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         lift_deg: o.lift(&m, cal),
         readings,
         report,
+        power_reserve: power_reserve_of(&base)?,
     };
 
     let out = o.out.clone().unwrap_or_else(|| base.join("session_report"));
@@ -891,6 +895,21 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// The Power Reserve Test's results in the session folder `base`, if it
+/// holds them; an unreadable file is an error, not left out.
+fn power_reserve_of(
+    base: &Path,
+) -> Result<Option<timegrapher_core::power_reserve::Results>, String> {
+    use timegrapher_core::power_reserve::{Results, FILE};
+    match fs::read_to_string(base.join(FILE)) {
+        Ok(t) => Results::from_json(&t)
+            .map(Some)
+            .map_err(|e| format!("{}: {e}", base.join(FILE).display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", base.join(FILE).display())),
+    }
 }
 
 /// For a session file whose take was kept as its analysis alone: the fact,
@@ -996,6 +1015,19 @@ fn print_summary(s: &Session) {
         s.bph,
         s.lift_deg
     );
+    if let Some(p) = &s.power_reserve {
+        use timegrapher_core::power_reserve::{run_text, Ending};
+        println!(
+            "Power reserve {} in {}, {}",
+            run_text(p.run_s),
+            p.position,
+            match p.ending {
+                Ending::Stopped => "to the watch stopping",
+                Ending::ByHand => "stopped by hand while the watch still ran",
+                Ending::Limit => "reached the 80 h limit while the watch still ran",
+            }
+        );
+    }
     println!();
     println!(
         "{:<21} {:<18} {:>7} {:>5} {:>5} {:>5} {:>7} {:>15} {:>6} {:>5} {:>17}  Recording",
@@ -1714,6 +1746,61 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    /// A Power Reserve Test's folder gives its run in `power_reserve`; a
+    /// folder without one has no such key, and a broken file is an error.
+    #[test]
+    fn a_power_reserve_take_gives_its_run() {
+        use timegrapher_core::power_reserve::{self, Ending, Heard, Results};
+        let base = std::env::temp_dir().join(format!("tg-session-reserve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        assert_eq!(power_reserve_of(&base), Ok(None));
+        let heard = Heard {
+            first_s: Some(2.0),
+            last_s: Some(2.0 + 151_200.0),
+            pauses: Vec::new(),
+        };
+        let r = Results::of(
+            &heard,
+            Ending::Stopped,
+            "2026-10-22T16:15:00Z",
+            "CL",
+            true,
+            |s| s,
+        )
+        .unwrap();
+        power_reserve::write(&base, &r).unwrap();
+        assert_eq!(power_reserve_of(&base), Ok(Some(r.clone())));
+        let s = Session {
+            schema: String::new(),
+            software: serde_json::Value::Null,
+            input: serde_json::Value::Null,
+            watch: None,
+            calibre: None,
+            owner: None,
+            notes: None,
+            bph: 28800,
+            lift_deg: 52.0,
+            readings: Vec::new(),
+            report: session::evaluate(&[]),
+            power_reserve: Some(r),
+        };
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["power_reserve"]["run_s"], 151_200.0);
+        assert_eq!(v["power_reserve"]["ending"], "stopped");
+        let none = Session {
+            power_reserve: None,
+            ..s
+        };
+        assert!(serde_json::to_value(&none)
+            .unwrap()
+            .get("power_reserve")
+            .is_none());
+        fs::write(base.join(power_reserve::FILE), "{").unwrap();
+        assert!(power_reserve_of(&base).is_err());
+        let _ = fs::remove_dir_all(&base);
+    }
+
     /// A take kept as its analysis alone reads as the take with its sound
     /// did: the same readings and beat shape for each position, with the
     /// report saying no sound was kept.
@@ -1808,6 +1895,7 @@ mod tests {
             lift_deg: 52.0,
             readings: Vec::new(),
             report: session::evaluate(&[]),
+            power_reserve: None,
         };
         let html = crate::session_report::html(&s);
         assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));

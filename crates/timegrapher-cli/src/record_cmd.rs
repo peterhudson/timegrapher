@@ -16,6 +16,13 @@
 //! beat rate and lift angle fill in what isn't given. Recording into the library holds its lock, so it is refused
 //! while the app has the library open, as a second copy of the app
 //! would be.
+//!
+//! With `--power-reserve` the run is a Power Reserve Test: it records in
+//! one position until the watch stops (the last beat heard before ten
+//! minutes with none, core `power_reserve`) or 80 hours pass, then keeps
+//! the run's results, hour by hour, in the session folder's
+//! `power-reserve.json`, as the app's Power Reserve pane does. In the
+//! library its folder is named by the date and time and "Power Reserve".
 
 use crate::long::Train;
 use crate::output;
@@ -32,6 +39,7 @@ use timegrapher_core::calibres;
 use timegrapher_core::capture::Block;
 use timegrapher_core::library::{self, Library};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
+use timegrapher_core::power_reserve;
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
 use timegrapher_core::session::{self, Manifest, Position};
 use timegrapher_core::stream::{self, StreamConfig};
@@ -65,6 +73,8 @@ pub struct Options {
     pub json: bool,
     /// Keep the latest readings here while recording (`timegrapher.live/1`).
     pub live: Option<PathBuf>,
+    /// Run until the watch stops: a Power Reserve Test.
+    pub power_reserve: bool,
 }
 
 /// A quick look at the take: the stretch `session` will read, after the
@@ -103,6 +113,9 @@ struct Report {
     source: String,
     sample_rate: u32,
     check: Check,
+    /// A Power Reserve Test's run, as `power-reserve.json` keeps it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    power_reserve: Option<power_reserve::Results>,
 }
 
 /// The session settings: what the folder's session file says, filled in
@@ -199,7 +212,10 @@ fn place(o: &mut Options) -> Result<Placed, String> {
     }
     o.bph = o.bph.or(w.bph);
     o.lift = o.lift.or(w.lift);
-    let started = chrono::Local::now().format("%Y-%m-%d %H.%M").to_string();
+    let mut started = chrono::Local::now().format("%Y-%m-%d %H.%M").to_string();
+    if o.power_reserve {
+        started.push_str(" Power Reserve");
+    }
     o.folder = Some(library::unused_dir(&e.dir.join(library::TAKES), &started));
     Ok(Placed {
         watch: Some(w.name.clone()),
@@ -211,6 +227,10 @@ fn place(o: &mut Options) -> Result<Placed, String> {
 /// was measured.
 pub fn run(o: &Options) -> Result<(), String> {
     let mut o = o.clone();
+    if o.power_reserve {
+        // As long as the watch runs, up to the limit.
+        o.seconds = power_reserve::LIMIT_S;
+    }
     // Checked before anything is made.
     Position::parse(&o.position).ok_or_else(|| {
         format!(
@@ -243,6 +263,14 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
         .finish(None)
         .map_err(|e| format!("{}: {e}", take.display()))?;
     write_take_manifest(&dir, pos, &set)?;
+    let reserve = if o.power_reserve {
+        let r = reserve_results(&dir, &started, pos, set.bph)?;
+        power_reserve::write(o.dir(), &r)
+            .map_err(|e| format!("{}: {e}", o.dir().join(power_reserve::FILE).display()))?;
+        Some(r)
+    } else {
+        None
+    };
 
     let check = check(&dir, &set)?;
     let session_file = add_to_session(o, pos, &set, &dir, &started, &check)?;
@@ -257,6 +285,7 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
         source,
         sample_rate,
         check,
+        power_reserve: reserve,
     };
     if o.json {
         let files: Vec<PathBuf> = o.file.iter().cloned().collect();
@@ -418,6 +447,7 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
             .live
             .as_ref()
             .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
+        let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
         let mut n = 0;
         while n < want {
             let m = (want - n).min(block);
@@ -428,6 +458,9 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
             rec.write(&b)
                 .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
             n += m;
+            if stop.as_mut().is_some_and(|s| s.push(&b.samples)) {
+                break;
+            }
             // With a live view, played back as it would have been heard.
             if let Some(f) = feed.as_mut() {
                 f.push(&b.samples);
@@ -444,6 +477,86 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
         return Ok((rec, label, fs_hz));
     }
     live(o, pos, set, info, start)
+}
+
+/// Listening for the watch to stop during a Power Reserve Test: the beats
+/// as the app hears them, looked at every couple of seconds of sound.
+struct StopWatch {
+    live: LiveAnalyzer,
+    next_s: f64,
+}
+
+impl StopWatch {
+    fn new(fs_hz: u32, set: &Settings) -> StopWatch {
+        let mut cfg = LiveConfig::default();
+        cfg.analysis.bph = set.bph;
+        cfg.analysis.amplitude.lift_deg = set.lift;
+        StopWatch {
+            live: LiveAnalyzer::new(fs_hz, cfg),
+            next_s: 2.0,
+        }
+    }
+
+    /// Take in `samples`: whether the watch has now stopped.
+    fn push(&mut self, samples: &[f32]) -> bool {
+        self.live.push(samples);
+        let now = self.live.duration_s();
+        if now < self.next_s {
+            return false;
+        }
+        self.next_s = now + 2.0;
+        let beat_s = 3600.0 / f64::from(self.live.bph().unwrap_or(18_000).max(1));
+        power_reserve::heard(self.live.beats(), beat_s).stopped(now)
+    }
+}
+
+/// A Power Reserve Test's results from its take `dir`, read from the
+/// sound as `session` reads it, on the take's clock log: the stop, the run
+/// time and each hour.
+fn reserve_results(
+    dir: &Path,
+    started: &str,
+    pos: Position,
+    bph: Option<u32>,
+) -> Result<power_reserve::Results, String> {
+    use power_reserve::{Ending, Results, LIMIT_S};
+    let files = timegrapher_core::recording_order::recordings_in(dir, &[])
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut cfg = StreamConfig::default();
+    cfg.analysis.bph = bph;
+    let paths: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
+    let log = stream::analyze_files(&paths, &cfg, |_| {})
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let info = audio::info(paths[0]).map_err(|e| format!("{}: {e}", paths[0].display()))?;
+    let clock = fs::read_to_string(dir.join("clock.csv"))
+        .ok()
+        .and_then(|t| {
+            timegrapher_core::clock::parse_log(&t, info.sample_rate, info.bytes_per_frame).ok()
+        })
+        .and_then(|pairs| timegrapher_core::clock::ClockFit::new(&pairs).ok());
+    let beat_s = 3600.0 / f64::from(log.bph.max(1));
+    let heard = power_reserve::heard(&log.beats, beat_s);
+    let ending = if heard.stopped(log.duration_s) {
+        Ending::Stopped
+    } else if log.duration_s >= LIMIT_S - 1.0 {
+        Ending::Limit
+    } else {
+        Ending::ByHand
+    };
+    let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
+        clock.as_ref().map_or(s, |c| c.map(s))
+    })
+    .ok_or("no beat was heard in the take")?;
+    let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+    r.hours = power_reserve::hours(
+        &log,
+        clock.as_ref(),
+        &breaks,
+        &[],
+        r.first_beat_s,
+        r.last_beat_s,
+    );
+    Ok(r)
 }
 
 /// Seconds of beats on the live strip, and the strip's half width, ms: the
@@ -593,18 +706,30 @@ fn live(
     let (cap, _, want) = capture::open_for_duration(&dev, &device_info, None, o.seconds)?;
     let mut rec = start(info(cap.label.clone(), cap.sample_rate, cap.bits))?;
     let fs_hz = cap.sample_rate;
-    eprintln!(
-        "recording {} ({}) for {:.0} s from '{}' into {}; keep the watch still until it says done",
-        pos.common(),
-        pos.description(),
-        o.seconds,
-        cap.label,
-        rec.dir().display()
-    );
+    if o.power_reserve {
+        eprintln!(
+            "recording {} ({}) from '{}' into {} until the watch stops (at most 80 h); \
+             keep the watch still and the computer awake",
+            pos.common(),
+            pos.description(),
+            cap.label,
+            rec.dir().display()
+        );
+    } else {
+        eprintln!(
+            "recording {} ({}) for {:.0} s from '{}' into {}; keep the watch still until it says done",
+            pos.common(),
+            pos.description(),
+            o.seconds,
+            cap.label,
+            rec.dir().display()
+        );
+    }
     let mut feed = o
         .live
         .as_ref()
         .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
+    let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
     let mut got = 0usize;
     let mut next_note = 10.0;
     while got < want {
@@ -625,10 +750,19 @@ fn live(
             f.push(&b.samples);
         }
         got += take;
+        if stop.as_mut().is_some_and(|s| s.push(&b.samples)) {
+            eprintln!("the watch has stopped");
+            break;
+        }
         let s = got as f64 / fs_hz as f64;
         if s >= next_note && got < want {
-            eprintln!("  {s:.0} of {:.0} s", o.seconds);
-            next_note += 10.0;
+            if o.power_reserve {
+                eprintln!("  {}", power_reserve::run_text(s));
+                next_note += 600.0;
+            } else {
+                eprintln!("  {s:.0} of {:.0} s", o.seconds);
+                next_note += 10.0;
+            }
         }
     }
     eprintln!("done: the watch can be moved");
@@ -834,6 +968,17 @@ fn print_report(r: &Report) {
             );
         }
     }
+    if let Some(p) = &r.power_reserve {
+        println!(
+            "Power reserve {} ({})",
+            power_reserve::run_text(p.run_s),
+            match p.ending {
+                power_reserve::Ending::Stopped => "the watch stopped",
+                power_reserve::Ending::ByHand => "the recording ended while the watch still ran",
+                power_reserve::Ending::Limit => "reached the 80 h limit while the watch still ran",
+            }
+        );
+    }
     println!("Added to     {}", r.session_file);
 }
 
@@ -856,7 +1001,62 @@ mod tests {
             wind_h: None,
             json: false,
             live: None,
+            power_reserve: false,
         }
+    }
+
+    /// A Power Reserve run from a file: recording stops ten minutes after
+    /// the watch does, and the run and its hour are kept beside the take.
+    #[test]
+    fn a_power_reserve_run_stops_with_the_watch_and_keeps_its_run() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-record-reserve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let mut a = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                rate_s_per_day: 5.0,
+                ..Default::default()
+            },
+            |_| 260.0,
+            |_| 0.0,
+        );
+        // The watch stops at 120 s; the file runs on silent to 760 s.
+        a.samples.resize(a.sample_rate as usize * 760, 0.0);
+        let wav = base.join("run.wav");
+        audio::write_wav(&wav, &a).unwrap();
+        let folder = base.join("session");
+        let mut o = options(folder.clone());
+        o.position = "CL".into();
+        o.file = Some(wav);
+        o.bph = Some(28800);
+        o.power_reserve = true;
+        run(&o).unwrap();
+        let r = power_reserve::Results::from_json(
+            &fs::read_to_string(folder.join(power_reserve::FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(r.ending, power_reserve::Ending::Stopped);
+        assert_eq!(r.position, "CL");
+        assert!((r.run_s - 120.0).abs() < 1.0, "{}", r.run_s);
+        assert_eq!(r.hours.len(), 1);
+        assert!(
+            (r.hours[0].rate_s_per_day.unwrap() - 5.0).abs() < 1.0,
+            "{:?}",
+            r.hours
+        );
+        // It stopped listening once the watch had been silent ten minutes.
+        let take = fs::read_dir(&folder)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| p.is_dir())
+            .unwrap();
+        let files = timegrapher_core::recording_order::recordings_in(&take, &[]).unwrap();
+        let info = audio::info(&files[0]).unwrap();
+        let secs = info.frames.unwrap() as f64 / f64::from(info.sample_rate);
+        assert!(secs > 715.0 && secs < 740.0, "{secs}");
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

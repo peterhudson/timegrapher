@@ -888,6 +888,7 @@ pub enum Icon {
     Fft,
     Stft,
     Wavelet,
+    Reserve,
     Isochronism,
     Positions,
     RateChart,
