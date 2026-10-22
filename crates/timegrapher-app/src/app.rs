@@ -1079,6 +1079,10 @@ pub struct TimegrapherApp {
     watch_sort: watches::Sort,
     watch_archived: bool,
     watch_form: Option<watches::Form>,
+    /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
+    /// a Watch), and the take being kept as its analysis in the background.
+    take_ask: Option<watches::Ask>,
+    take_keep: Option<(PathBuf, AnalysisSave)>,
     /// Report a Problem.
     report: ReportDialog,
     updates: crate::update::Updates,
@@ -1542,6 +1546,8 @@ impl TimegrapherApp {
             watch_sort: watches::Sort::default(),
             watch_archived: false,
             watch_form: None,
+            take_ask: None,
+            take_keep: None,
             pane_average: Default::default(),
             other_trends: Default::default(),
             strip_points: None,
@@ -3976,7 +3982,33 @@ impl TimegrapherApp {
         let Some(e) = self.open_watch().cloned() else {
             return;
         };
-        match watches::takes(ui, &e) {
+        let (others, writable) = match &self.library {
+            Ok(Some(l)) => (
+                l.watches
+                    .iter()
+                    .filter(|w| w.watch.id != e.watch.id)
+                    .map(|w| (w.watch.id.clone(), w.watch.name.clone()))
+                    .collect(),
+                l.read_only.is_none(),
+            ),
+            _ => (Vec::new(), false),
+        };
+        let keeping = self.take_keep.as_ref().map(|(t, job)| {
+            let read = f64::from_bits(job.progress.load(std::sync::atomic::Ordering::Relaxed));
+            (
+                t.as_path(),
+                (read / (2.0 * job.total_s).max(1e-9)).clamp(0.0, 1.0) as f32,
+            )
+        });
+        if keeping.is_some() {
+            ui.ctx().request_repaint_after(Duration::from_millis(250));
+        }
+        let cx = watches::TakesContext {
+            others: &others,
+            writable,
+            keeping,
+        };
+        match watches::takes(ui, &e, &cx) {
             Some(watches::TakeAction::Open(dir)) => {
                 self.input = Input::File;
                 self.file_path = dir.display().to_string();
@@ -3992,7 +4024,327 @@ impl TimegrapherApp {
                     self.error(format!("Couldn't open {}: {err}", dir.display()));
                 }
             }
+            Some(watches::TakeAction::Rename(take)) => {
+                let name = file_name(&take);
+                self.take_ask = Some(watches::Ask::Rename { take, name });
+            }
+            Some(watches::TakeAction::Delete(take)) => {
+                let bytes = folder_size(&take);
+                self.take_ask = Some(watches::Ask::Delete { take, bytes });
+            }
+            Some(watches::TakeAction::KeepAnalysis(take)) => {
+                let sound = recordings_in(&take)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|f| std::fs::metadata(f).ok())
+                    .map(|m| m.len())
+                    .sum();
+                let bytes = folder_size(&take);
+                self.take_ask = Some(watches::Ask::Keep { take, bytes, sound });
+            }
+            Some(watches::TakeAction::MoveTo(take, id)) => self.move_take(&take, &id),
+            Some(watches::TakeAction::CancelKeep) => self.take_keep = None,
             None => {}
+        }
+    }
+
+    /// Move a take into another watch (by its id).
+    fn move_take(&mut self, take: &Path, id: &str) {
+        if let Some(why) = self.take_busy(take, false) {
+            return self.info_msg(why);
+        }
+        let moved = match &mut self.library {
+            Ok(Some(l)) => l.move_take(take, id),
+            _ => Err("There is no library".into()),
+        };
+        match moved {
+            Ok(to) => {
+                self.take_moved(take, &to);
+                let name = self
+                    .library
+                    .as_ref()
+                    .ok()
+                    .and_then(|l| l.as_ref())
+                    .and_then(|l| l.watch_of(&to))
+                    .map(|w| w.watch.name.clone())
+                    .unwrap_or_default();
+                self.info_msg(format!("Moved \"{}\" to {name}.", file_name(&to)));
+            }
+            Err(err) => self.error(format!("The take couldn't be moved: {err}")),
+        }
+    }
+
+    /// The take folder of the recording opened, when it is outside the
+    /// library and the library has a watch it can be added to.
+    fn addable_take(&self) -> Option<PathBuf> {
+        let Ok(Some(l)) = &self.library else {
+            return None;
+        };
+        if l.read_only.is_some() || l.watches.is_empty() || self.opened_path.is_empty() {
+            return None;
+        }
+        let p = Path::new(&self.opened_path);
+        let dir = if p.is_dir() { p } else { p.parent()? };
+        let take = dir.join(MANIFEST).is_file() || dir.join("session.json").is_file();
+        (take && !dir.starts_with(&l.root)).then(|| dir.to_path_buf())
+    }
+
+    /// Why `take` can't be renamed, moved or deleted now (or, with
+    /// `keep`, kept as its analysis), if it can't: Save Again saves into
+    /// it, it is being replayed, or its analysis is being kept.
+    fn take_busy(&self, take: &Path, keep: bool) -> Option<String> {
+        let inside = |p: &Path| p.starts_with(take);
+        if self.session.saved_to().is_some_and(inside) {
+            return Some(
+                "This take is the one Save Again saves into: press New Session first.".into(),
+            );
+        }
+        if self.running() && inside(Path::new(&self.opened_path)) {
+            return Some("This take is being replayed: Stop it first.".into());
+        }
+        if self.take_keep.as_ref().is_some_and(|(t, _)| t == take) {
+            return Some("This take's analysis is being kept: wait, or Cancel.".into());
+        }
+        if !keep && self.batch.is_some() && inside(Path::new(&self.opened_path)) {
+            return Some("This take is being analysed: wait, or Cancel.".into());
+        }
+        None
+    }
+
+    /// A take renamed or moved: the recording opened from it follows.
+    fn take_moved(&mut self, from: &Path, to: &Path) {
+        if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
+            let now = to.join(rest);
+            self.opened_path = now.display().to_string();
+            if Path::new(self.file_path.trim()).starts_with(from) {
+                self.file_path = self.opened_path.clone();
+            }
+        }
+    }
+
+    /// The question about a take, while it is open, and what follows a yes.
+    fn take_ask_dialog(&mut self, ctx: &egui::Context) {
+        let Some(ask) = self.take_ask.as_mut() else {
+            return;
+        };
+        let watches: Vec<(String, String)> = match &self.library {
+            Ok(Some(l)) => l
+                .watches
+                .iter()
+                .map(|w| (w.watch.id.clone(), w.watch.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        match watches::ask_dialog(ctx, ask, &watches) {
+            Some(true) => {
+                if let Some(ask) = self.take_ask.take() {
+                    self.answer_take_ask(ask);
+                }
+            }
+            Some(false) => self.take_ask = None,
+            None => {}
+        }
+    }
+
+    fn answer_take_ask(&mut self, ask: watches::Ask) {
+        let busy = match &ask {
+            watches::Ask::Rename { take, .. } | watches::Ask::Delete { take, .. } => {
+                self.take_busy(take, false)
+            }
+            watches::Ask::Keep { take, .. } => self.take_busy(take, true),
+            watches::Ask::Add {
+                from,
+                keep_original,
+                ..
+            } => (!keep_original)
+                .then(|| self.take_busy(from, false))
+                .flatten(),
+        };
+        if let Some(why) = busy {
+            return self.info_msg(why);
+        }
+        let Ok(Some(lib)) = &mut self.library else {
+            return self.error("There is no library.".into());
+        };
+        match ask {
+            watches::Ask::Rename { take, name } => match lib.rename_take(&take, &name) {
+                Ok(to) => self.take_moved(&take, &to),
+                Err(e) => self.error(format!("The take couldn't be renamed: {e}")),
+            },
+            watches::Ask::Delete { take, .. } => match lib.delete_take(&take) {
+                Ok(()) => self.info_msg(format!("Deleted \"{}\".", file_name(&take))),
+                Err(e) => self.error(format!("The take couldn't be deleted: {e}")),
+            },
+            watches::Ask::Keep { take, .. } => self.start_take_keep(take),
+            watches::Ask::Add {
+                from,
+                watch: Some(id),
+                keep_original,
+            } => match lib.add_take(&from, &id, keep_original) {
+                Ok((to, left)) => {
+                    if !keep_original {
+                        self.take_moved(&from, &to);
+                    }
+                    match left {
+                        Some(why) => self.error(why),
+                        None => self.info_msg(format!(
+                            "Added \"{}\" to the watch's takes.",
+                            file_name(&to)
+                        )),
+                    }
+                }
+                Err(e) => self.error(format!("The take couldn't be added: {e}")),
+            },
+            watches::Ask::Add { watch: None, .. } => {}
+        }
+    }
+
+    /// Read a saved take's sound again for its analysis, in the
+    /// background, writing it beside the take; [`Self::poll_take_keep`]
+    /// then puts it in the take's place. Only a take whose session file
+    /// names the whole folder in each entry, as the app's own takes do.
+    fn start_take_keep(&mut self, take: PathBuf) {
+        if self.take_keep.is_some() {
+            return;
+        }
+        let prepared = (|| -> Result<_, String> {
+            let file = take.join(MANIFEST);
+            let text =
+                std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let m: Manifest =
+                toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+            if m.audio == Some(false) {
+                return Err("it is already kept as its analysis alone".into());
+            }
+            if m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".") {
+                return Err(format!(
+                    "its {MANIFEST} lists its sound file by file, and a take kept as its \
+                     analysis names the whole folder in each entry, as the app's own takes do"
+                ));
+            }
+            let files = recordings_in(&take)?;
+            let mut total_s = 0.0;
+            for f in &files {
+                let i = timegrapher_core::audio::info(f)
+                    .map_err(|e| format!("{}: {e}", f.display()))?;
+                let frames = i
+                    .frames
+                    .ok_or_else(|| format!("{} doesn't say how long it is", f.display()))?;
+                total_s += frames as f64 / f64::from(i.sample_rate.max(1));
+            }
+            let mut doc: toml_edit::DocumentMut = text
+                .parse()
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            doc.insert("audio", toml_edit::value(false));
+            let mut companions = vec![(MANIFEST.to_string(), doc.to_string().into_bytes())];
+            for e in std::fs::read_dir(&take).map_err(|e| format!("{}: {e}", take.display()))? {
+                let e = e.map_err(|e| e.to_string())?;
+                let name = e.file_name().to_string_lossy().into_owned();
+                if !e.file_type().is_ok_and(|t| t.is_file())
+                    || name == MANIFEST
+                    || files
+                        .iter()
+                        .any(|f| f.file_name() == Some(e.file_name().as_os_str()))
+                {
+                    continue;
+                }
+                let bytes = std::fs::read(e.path()).map_err(|err| format!("{name}: {err}"))?;
+                companions.push((name, bytes));
+            }
+            let mut cfg = StreamConfig::default();
+            cfg.analysis.bph = m.bph;
+            cfg.analysis.amplitude.lift_deg = m.lift.unwrap_or(DEFAULT_LIFT_DEG);
+            cfg.analysis.lift_known = m.lift_known.unwrap_or(m.lift.is_some());
+            let shapes = timegrapher_core::analysis_take::shape_stretches(&m, total_s);
+            Ok((files, total_s, companions, cfg, shapes))
+        })();
+        let (files, total_s, companions, cfg, shapes) = match prepared {
+            Ok(p) => p,
+            Err(e) => return self.error(format!("The take can't be kept as its analysis: {e}")),
+        };
+        let dest = take.with_file_name(format!(".{}.analysis", file_name(&take)));
+        let _ = std::fs::remove_dir_all(&dest);
+        let software = report::software();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (p2, c2) = (progress.clone(), cancel.clone());
+        std::thread::spawn(move || {
+            let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let stored = timegrapher_core::analysis_take::measure(
+                    &paths,
+                    &cfg,
+                    &shapes,
+                    software,
+                    |s| {
+                        p2.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                        if c2.load(std::sync::atomic::Ordering::Relaxed) {
+                            std::panic::resume_unwind(Box::new(Cancelled));
+                        }
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+                timegrapher_core::analysis_take::save(&dest, &companions, &stored)
+                    .map_err(|e| e.to_string())
+            }));
+            match r {
+                Ok(r) => {
+                    if let Err(std::sync::mpsc::SendError(Ok(dir))) = tx.send(r) {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
+                }
+                Err(e) if e.is::<Cancelled>() => {}
+                Err(e) => std::panic::resume_unwind(e),
+            }
+        });
+        self.take_keep = Some((
+            take,
+            AnalysisSave {
+                rx,
+                progress,
+                cancel,
+                total_s,
+            },
+        ));
+    }
+
+    /// The kept analysis, once written, put in its take's place.
+    fn poll_take_keep(&mut self) {
+        let Some((_, job)) = &self.take_keep else {
+            return;
+        };
+        let done = match job.rx.try_recv() {
+            Ok(r) => r,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => Err("it stopped part way".into()),
+        };
+        // Its outcome taken, the job has nothing left to clean up.
+        let Some((take, _)) = self.take_keep.take() else {
+            return;
+        };
+        let before = folder_size(&take);
+        let placed = match (done, &mut self.library) {
+            (Ok(kept), Ok(Some(l))) => l.replace_take(&take, &kept).inspect_err(|_| {
+                let _ = std::fs::remove_dir_all(&kept);
+            }),
+            (Ok(kept), _) => {
+                let _ = std::fs::remove_dir_all(&kept);
+                Err("the library is no longer open".into())
+            }
+            (Err(e), _) => Err(e),
+        };
+        match placed {
+            Ok(None) => self.info_msg(format!(
+                "Kept \"{}\" as its analysis alone: {} now, from {}.",
+                file_name(&take),
+                fmt_bytes(folder_size(&take)),
+                fmt_bytes(before)
+            )),
+            Ok(Some(why)) => self.error(why),
+            Err(e) => self.error(format!(
+                "The take couldn't be kept as its analysis, and is left with its sound: {e}"
+            )),
         }
     }
 
@@ -4321,6 +4673,22 @@ impl TimegrapherApp {
                 .clicked()
             {
                 self.open_from_menu(true);
+            }
+            if let Some(from) = self.addable_take() {
+                if ui
+                    .button("Add to a Watch…")
+                    .on_hover_text(
+                        "Copy or move the take opened, from outside the library, into one of \
+                         your watches",
+                    )
+                    .clicked()
+                {
+                    self.take_ask = Some(watches::Ask::Add {
+                        from,
+                        watch: self.watch_open.clone(),
+                        keep_original: true,
+                    });
+                }
             }
         });
         let r = ui
@@ -10165,6 +10533,8 @@ impl eframe::App for TimegrapherApp {
         self.confirm_dialog(ctx);
         self.kept_delete_dialog(ctx);
         self.watch_form_dialog(ctx);
+        self.take_ask_dialog(ctx);
+        self.poll_take_keep();
         if let Some(m) = self.report.ui(ctx) {
             self.info_msg(m);
         }
@@ -11823,6 +12193,144 @@ mod tests {
         app.save_watch_form();
         let refused = app.watch_form.as_ref().and_then(|f| f.error.clone());
         assert!(refused.is_some_and(|e| e.contains("already")));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A watch's takes are kept as their analysis alone, renamed, moved
+    /// and deleted from the Watches pane, and a take from outside is added
+    /// to a watch; the recording opened follows a take that moves.
+    #[test]
+    fn a_watchs_takes_are_kept_renamed_moved_deleted_and_added() {
+        let base = std::env::temp_dir().join(format!("tg-app-take-ops-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let a = lib.add(&library::Watch::new("Pepsi")).unwrap();
+        lib.add(&library::Watch::new("Daytona")).unwrap();
+        drop(lib);
+        // A take with its sound, as the app saves one.
+        let take_at = |dir: &Path| {
+            std::fs::create_dir_all(dir).unwrap();
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 40.0,
+                    rate_s_per_day: 4.0,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            timegrapher_core::audio::write_wav(&dir.join("take_part01-001.wav"), &audio).unwrap();
+            std::fs::write(
+                dir.join(MANIFEST),
+                "# kept as written\nbph = 28800\nlift = 52\n\n[[recording]]\nfile = \".\"\n\
+                 position = \"DU\"\n",
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join("session.json"),
+                r#"{"started_utc":"2026-10-20T17:00:00Z","duration_s":40.0}"#,
+            )
+            .unwrap();
+        };
+        let take = a.join(library::TAKES).join("2026-10-20 10.00 Dial Up");
+        take_at(&take);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        let pepsi = app
+            .library
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .find("Pepsi")
+            .unwrap();
+        let daytona_id = app
+            .library
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .find("Daytona")
+            .unwrap()
+            .watch
+            .id
+            .clone();
+        let pepsi_id = pepsi.watch.id.clone();
+        app.pick_watch(&pepsi_id);
+
+        // Keep Analysis Only: the sound goes only once the analysis is in place.
+        app.start_take_keep(take.clone());
+        assert!(app.take_busy(&take, false).is_some());
+        let t = Instant::now();
+        while app.take_keep.is_some() && t.elapsed().as_secs() < 120 {
+            app.poll_take_keep();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(app.take_keep.is_none(), "it finished");
+        assert!(analysis_take::is_analysis_only(&take), "{:?}", app.message);
+        assert!(!take.join("take_part01-001.wav").exists());
+        let toml = std::fs::read_to_string(take.join(MANIFEST)).unwrap();
+        assert!(
+            toml.contains("# kept as written") && toml.contains("audio = false"),
+            "{toml}"
+        );
+        assert!(take.join("session.json").is_file());
+        let e = app.open_watch().unwrap();
+        assert!(!e.takes[0].audio && !e.takes[0].incomplete);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.watch_takes_card(ui));
+        });
+        assert!(format!("{:?}", out.shapes).contains("Analysis Only"));
+        // Its opened analysis reads back.
+        app.open_recording(&take, false, true);
+        let t = Instant::now();
+        while app.batch.is_some() && t.elapsed().as_secs() < 60 {
+            app.poll();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(app.live.is_some());
+
+        // Renamed: the recording opened follows.
+        app.answer_take_ask(watches::Ask::Rename {
+            take: take.clone(),
+            name: "Before Service".into(),
+        });
+        let renamed = take.with_file_name("Before Service");
+        assert!(renamed.is_dir() && !take.exists());
+        assert_eq!(Path::new(&app.opened_path), renamed);
+
+        // Moved to Daytona, then deleted there.
+        app.move_take(&renamed, &daytona_id);
+        let d = root
+            .join("Daytona")
+            .join(library::TAKES)
+            .join("Before Service");
+        assert!(d.is_dir() && !renamed.exists());
+        assert_eq!(Path::new(&app.opened_path), d);
+        app.answer_take_ask(watches::Ask::Delete {
+            take: d.clone(),
+            bytes: 0,
+        });
+        assert!(!d.exists());
+
+        // A take from outside, opened, is added by a move.
+        let outside = base.join("From a USB Stick");
+        take_at(&outside);
+        app.opened_path = outside.display().to_string();
+        assert_eq!(app.addable_take(), Some(outside.clone()));
+        app.answer_take_ask(watches::Ask::Add {
+            from: outside.clone(),
+            watch: Some(pepsi_id.clone()),
+            keep_original: false,
+        });
+        let added = a.join(library::TAKES).join("From a USB Stick");
+        assert!(added.join("take_part01-001.wav").is_file() && !outside.exists());
+        assert_eq!(Path::new(&app.opened_path), added);
+        assert_eq!(app.addable_take(), None);
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

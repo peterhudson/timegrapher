@@ -56,8 +56,23 @@ Clicking a watch shows its details and its **Takes**, newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
 size) it measured when saved, the space it uses, and **Analysis Only** or
 **Incomplete** when it is one. Clicking a take opens it as Open… does;
-right-clicking offers **Open**, **Replay** (when it has its sound) and
-**Show in Finder**. The toolbar then has **‹ All Watches** and **Edit…**.
+right-clicking offers **Open**, **Replay** (when it has its sound),
+**Show in Finder**, **Rename…** (its folder; nothing relies on the name),
+**Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
+first, with its size; it can't be undone). Keep Analysis Only… asks
+first, saying the take's size and its sound's and what is lost: the take
+can't be measured again without its sound, and Scope and Replay don't
+work on it, while the readings, charts, Steadiness and the Positions Test
+still do. It then reads the sound once more in the background, with
+progress and **Cancel** under the take, writes the analysis beside the
+take, checks it reads back, and only then puts it in the take's place
+and deletes the sound; `session.toml` gains `audio = false` and keeps
+everything else it says. It works on a take whose `session.toml` names
+the whole folder in each recording entry, as the app's own takes do; a
+take that lists its sound file by file is refused with a message saying
+so. A take Save Again saves into, one being replayed or analysed, or one
+whose analysis is being kept is not renamed, moved or deleted until that
+is done. The toolbar then has **‹ All Watches** and **Edit…**.
 Picking a watch, refused while listening, sets the take's name, calibre,
 lift angle and beat rate from it; changing them under **This Take**
 changes that take, not the watch. With a watch picked, **Save…** saves
@@ -71,7 +86,10 @@ microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 new session, unless closing the kept sound fails), **Save…**
 (then **Save Again** and **Save As…**), and the microphone's Input Level,
 peak meter, Show Every Input and **Keep Awake** (see Long takes, below).
-For a recording: **Open…**, **Open Folder…**, the path box, **Replay** (or
+For a recording: **Open…**, **Open Folder…**, **Add to a Watch…** (once a
+take folder from outside the library is open: into the watch picked
+above or another, copied or moved; a copy is made beside its new place
+and moved in whole, so one cut short is not a take), the path box, **Replay** (or
 **Stop**, **Cancel** while one is being analysed, and **Analyse All**) and
 **Replay Speed**. Below, under **Watch** (**This Take** with a watch
 picked): name, calibre, beat rate, lift angle and position. Opening a recording, by **Open…**, **Open Folder…**, a

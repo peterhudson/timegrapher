@@ -18,8 +18,12 @@ pub const HELP: &[&str] = &[
     "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
      set up each new take of it, and can be changed for one take without changing the watch.",
     "Each take shows what it measured when it was saved, its length and the space it uses. \
-     Picking one opens it as Open does. The Microphone and Recording controls below work \
-     with a watch picked or without one; without one, Save… asks where.",
+     Picking one opens it as Open does; right-clicking it offers Rename…, Keep Analysis \
+     Only… (keeping what was measured and deleting the sound, to save space), Move to \
+     Another Watch and Delete…. A take opened from outside the library can be copied or \
+     moved into a watch with Add to a Watch…, beside Open….",
+    "The Microphone and Recording controls below work with a watch picked or without one; \
+     without one, Save… asks where.",
 ];
 
 /// How the list is sorted.
@@ -203,6 +207,22 @@ pub enum TakeAction {
     Open(PathBuf),
     Replay(PathBuf),
     Show(PathBuf),
+    Rename(PathBuf),
+    KeepAnalysis(PathBuf),
+    /// To the watch of this id.
+    MoveTo(PathBuf, String),
+    Delete(PathBuf),
+    /// Stop keeping a take as its analysis.
+    CancelKeep,
+}
+
+/// What the takes list needs besides the watch: the other watches (id,
+/// name) to move a take to, whether the library can be changed, and the
+/// take being kept as its analysis with how far along it is (0 to 1).
+pub struct TakesContext<'a> {
+    pub others: &'a [(String, String)],
+    pub writable: bool,
+    pub keeping: Option<(&'a std::path::Path, f32)>,
 }
 
 /// What a take measured and is, in a line: its positions, length, rate,
@@ -241,7 +261,7 @@ pub fn take_line(t: &Take) -> String {
 }
 
 /// The watch's takes, newest first. What was asked for, if anything.
-pub fn takes(ui: &mut egui::Ui, e: &WatchEntry) -> Option<TakeAction> {
+pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<TakeAction> {
     let pal = theme::pal(ui);
     if e.takes.is_empty() {
         ui.label(
@@ -269,6 +289,33 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry) -> Option<TakeAction> {
         if r.clicked() {
             act = Some(TakeAction::Open(dir.clone()));
         }
+        if let Some((_, done)) = cx.keeping.filter(|(k, _)| *k == dir) {
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::ProgressBar::new(done)
+                        .desired_width(ui.available_width() - 70.0)
+                        .text("Keeping its analysis"),
+                )
+                .on_hover_text(
+                    "Reading the take's sound again for its analysis. Its sound is deleted \
+                     only once the analysis is written and reads back.",
+                );
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Stop, and keep the take with its sound as it was")
+                    .clicked()
+                {
+                    act = Some(TakeAction::CancelKeep);
+                }
+            });
+        }
+        let busy = cx.keeping.is_some_and(|(k, _)| k == dir);
+        let changes = cx.writable && !busy;
+        let why = if busy {
+            "Wait until its analysis is kept, or Cancel"
+        } else {
+            "This copy of the app can only read the library"
+        };
         r.context_menu(|ui| {
             if ui
                 .button("Open")
@@ -292,9 +339,223 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry) -> Option<TakeAction> {
             {
                 act = Some(TakeAction::Show(dir.clone()));
             }
+            ui.separator();
+            if ui
+                .add_enabled(changes, egui::Button::new("Rename…"))
+                .on_hover_text("Give the take's folder another name")
+                .on_disabled_hover_text(why)
+                .clicked()
+            {
+                act = Some(TakeAction::Rename(dir.clone()));
+            }
+            if ui
+                .add_enabled(
+                    changes && t.audio && !t.incomplete && cx.keeping.is_none(),
+                    egui::Button::new("Keep Analysis Only…"),
+                )
+                .on_hover_text(
+                    "Keep what was measured and delete the sound, to save space. It asks \
+                     first and says what is lost.",
+                )
+                .on_disabled_hover_text(if !t.audio {
+                    "This take is already kept as its analysis alone"
+                } else if t.incomplete {
+                    "Files this take lists are missing"
+                } else if cx.keeping.is_some() {
+                    "Another take's analysis is being kept"
+                } else {
+                    why
+                })
+                .clicked()
+            {
+                act = Some(TakeAction::KeepAnalysis(dir.clone()));
+            }
+            ui.add_enabled_ui(changes && !cx.others.is_empty(), |ui| {
+                ui.menu_button("Move to Another Watch", |ui| {
+                    for (id, name) in cx.others {
+                        if ui.button(name).clicked() {
+                            act = Some(TakeAction::MoveTo(dir.clone(), id.clone()));
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("Move the take into another watch's takes")
+                .on_disabled_hover_text(if cx.others.is_empty() {
+                    "There is no other watch to move it to"
+                } else {
+                    why
+                });
+            });
+            if ui
+                .add_enabled(changes, theme::destructive(ui, "Delete…"))
+                .on_hover_text("Delete the take and its sound. It asks first.")
+                .on_disabled_hover_text(why)
+                .clicked()
+            {
+                act = Some(TakeAction::Delete(dir.clone()));
+            }
         });
     }
     act
+}
+
+/// A question about a take, in a window of its own.
+#[derive(Debug, Clone)]
+pub enum Ask {
+    Rename {
+        take: PathBuf,
+        name: String,
+    },
+    Delete {
+        take: PathBuf,
+        bytes: u64,
+    },
+    /// Keep as its analysis alone: the take's size and its sound's.
+    Keep {
+        take: PathBuf,
+        bytes: u64,
+        sound: u64,
+    },
+    /// A take from outside: into which watch (by id), copied or moved.
+    Add {
+        from: PathBuf,
+        watch: Option<String>,
+        keep_original: bool,
+    },
+}
+
+fn folder_label(p: &std::path::Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// The window asking `ask`: `Some(true)` when the user goes ahead,
+/// `Some(false)` when they cancel.
+pub fn ask_dialog(
+    ctx: &egui::Context,
+    ask: &mut Ask,
+    watches: &[(String, String)],
+) -> Option<bool> {
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::new("take question")).show(ctx, |ui| {
+        ui.set_width(420.0);
+        let pal = theme::pal(ui);
+        let (go, ready, red) = match ask {
+            Ask::Rename { take, name } => {
+                ui.label(
+                    RichText::new(format!("Rename \"{}\"", folder_label(take)))
+                        .font(theme::semibold(15.0)),
+                );
+                ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY))
+                    .on_hover_text("The take's new folder name; nothing relies on it");
+                ("Rename", !name.trim().is_empty(), false)
+            }
+            Ask::Delete { take, bytes } => {
+                ui.label(
+                    RichText::new(format!("Delete \"{}\"?", folder_label(take)))
+                        .font(theme::semibold(15.0)),
+                );
+                ui.label(format!(
+                    "Its folder and everything in it, {}, are deleted. This can't be undone.",
+                    fmt_bytes(*bytes)
+                ));
+                ("Delete", true, true)
+            }
+            Ask::Keep { take, bytes, sound } => {
+                ui.label(
+                    RichText::new(format!(
+                        "Keep \"{}\" as Its Analysis Only?",
+                        folder_label(take)
+                    ))
+                    .font(theme::semibold(15.0)),
+                );
+                ui.label(format!(
+                    "The take uses {} now, {} of it its sound. Its sound is read once more \
+                     for its analysis, which is written beside it and checked, and only then \
+                     is the sound deleted.",
+                    fmt_bytes(*bytes),
+                    fmt_bytes(*sound)
+                ));
+                ui.label(
+                    RichText::new(
+                        "Without its sound the take can't be measured again (by a later \
+                         version of the app, or with other settings), and Scope and Replay \
+                         don't work on it. The readings, charts, Steadiness and the Positions \
+                         Test still do. This can't be undone.",
+                    )
+                    .color(pal.text_secondary),
+                );
+                ("Keep Analysis Only", true, true)
+            }
+            Ask::Add {
+                from,
+                watch,
+                keep_original,
+            } => {
+                ui.label(
+                    RichText::new(format!("Add \"{}\" to a Watch", folder_label(from)))
+                        .font(theme::semibold(15.0)),
+                );
+                let shown = watch
+                    .as_ref()
+                    .and_then(|id| watches.iter().find(|(w, _)| w == id))
+                    .map_or("Choose a Watch", |(_, n)| n.as_str());
+                theme::row(ui, "Watch", Some("The watch the take is added to"), |ui| {
+                    egui::ComboBox::from_id_salt("add to watch")
+                        .width(ui.available_width())
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (id, name) in watches {
+                                ui.selectable_value(watch, Some(id.clone()), name);
+                            }
+                        });
+                });
+                theme::row(ui, "", None, |ui| {
+                    theme::segmented(
+                        ui,
+                        keep_original,
+                        &[
+                            (
+                                true,
+                                "Copy",
+                                "Copy the take in; the original stays where it is",
+                            ),
+                            (
+                                false,
+                                "Move",
+                                "Move the take in; the original is gone from where it was",
+                            ),
+                        ],
+                    );
+                });
+                ("Add", watch.is_some(), false)
+            }
+        };
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            let b = if red {
+                theme::destructive(ui, go)
+            } else {
+                theme::primary(ui, go)
+            };
+            if ui.add_enabled(ready, b).on_hover_text("Go ahead").clicked() {
+                answer = Some(true);
+            }
+            if ui
+                .add(theme::secondary(ui, "Cancel"))
+                .on_hover_text("Close without changing anything")
+                .clicked()
+            {
+                answer = Some(false);
+            }
+        });
+    });
+    if modal.should_close() && answer.is_none() {
+        answer = Some(false);
+    }
+    answer
 }
 
 /// A watch's details being written: a new watch or one being edited.
