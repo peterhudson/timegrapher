@@ -143,6 +143,9 @@ pub fn run(o: Options) -> Result<(), String> {
                 o.check.rate_reading_s,
             );
             doc["coherence"] = serde_json::to_value(coh).map_err(|e| e.to_string())?;
+            let ls =
+                timegrapher_core::gappy::for_take(&log, clock, &long, &lc, o.check.rate_reading_s);
+            doc["lomb_scargle"] = serde_json::to_value(ls).map_err(|e| e.to_string())?;
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {

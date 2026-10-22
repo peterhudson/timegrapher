@@ -22,6 +22,7 @@ pub mod distribution;
 pub mod dsp;
 pub mod excerpt;
 pub mod filter;
+pub mod gappy;
 pub mod histogram;
 pub mod input_domain;
 pub mod library;
