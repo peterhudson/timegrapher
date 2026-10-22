@@ -5,25 +5,19 @@
 
 use crate::output;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use timegrapher_core::library::{self, Library, Take, WatchEntry, UNSORTED};
 use timegrapher_core::session::Position;
 
-/// The library at `library`, or at `~/Timegrapher Data`.
-fn root(library: Option<&Path>) -> Result<PathBuf, String> {
-    library
+/// The library at `library`, or at `~/Timegrapher Data`, read: an error
+/// naming the folder when there is none there.
+fn open(library: Option<&Path>) -> Result<Library, String> {
+    let root = library
         .map(Path::to_path_buf)
         .or_else(library::default_location)
-        .ok_or_else(|| "there is no home folder: give the library with --library".into())
-}
-
-pub fn run(
-    name: Option<&str>,
-    library: Option<&Path>,
-    archived: bool,
-    json: bool,
-) -> Result<(), String> {
-    let root = root(library)?;
+        .ok_or("there is no home folder: give the library with --library")?;
+    // Absolute, so every folder in the document can be passed on as it is.
+    let root = std::path::absolute(&root).unwrap_or(root);
     if !Library::is_library(&root) {
         return Err(format!(
             "{} is not a Timegrapher library (it has no {}); the app makes one with its \
@@ -32,75 +26,118 @@ pub fn run(
             library::LIBRARY_FILE
         ));
     }
-    let lib = Library::read(&root)?;
-    let unsorted_named = name.is_some_and(|n| n.trim().eq_ignore_ascii_case(UNSORTED));
-    let watches: Vec<&WatchEntry> = match name {
-        Some(_) if unsorted_named => Vec::new(),
-        Some(n) => vec![lib
-            .find(n)
-            .ok_or_else(|| format!("there is no watch called \"{}\" in the library", n.trim()))?],
-        None => lib
-            .watches
-            .iter()
-            .filter(|e| archived || !e.watch.archived)
-            .collect(),
-    };
-    let unsorted = (name.is_none() || unsorted_named).then_some(&lib.unsorted);
-    if json {
-        let input = json!({
-            "library": root.display().to_string(),
-            "name": name,
-            "archived": archived,
-        });
-        let body = json!({
-            "bytes": lib.bytes(),
-            "watches": watches.iter().map(|e| watch_json(e)).collect::<Vec<_>>(),
-            "unsorted": unsorted.map(|u| json!({
-                "folder": u.dir.display().to_string(),
-                "bytes": u.bytes(),
-                "takes": takes_json(u),
-            })),
-            "unreadable": lib.unreadable,
-        });
-        return output::print("watches", input, &body);
-    }
-    match (name, unsorted) {
-        (Some(_), Some(u)) => print_takes(u),
-        (Some(_), None) => watches.iter().for_each(|e| print_watch(e)),
-        (None, _) => {
-            println!(
-                "{}: {}, {}",
-                root.display(),
-                count(watches.len(), "watch", "watches"),
-                bytes(lib.bytes())
-            );
-            if !lib.unsorted.takes.is_empty() {
-                println!(
-                    "  {UNSORTED}: {}, made with Quick Listen, {}",
-                    count(lib.unsorted.takes.len(), "take", "takes"),
-                    bytes(lib.unsorted.bytes())
-                );
-            }
-            for e in &watches {
-                let mut parts = Vec::new();
-                if let Some(c) = e.watch.calibre.as_deref().filter(|c| !c.is_empty()) {
-                    parts.push(c.to_string());
-                }
-                parts.push(count(e.takes.len(), "take", "takes"));
-                if let Some(t) = last_take(e) {
-                    parts.push(format!("last started {t}"));
-                }
-                parts.push(bytes(e.bytes()));
-                if e.watch.archived {
-                    parts.push("Archived".into());
-                }
-                println!("  {}: {}", e.watch.name, parts.join(", "));
-            }
-        }
-    }
+    Library::read(&root)
+}
+
+fn warn_unreadable(lib: &Library) {
     for why in &lib.unreadable {
         eprintln!("couldn't read: {why}");
     }
+}
+
+/// `watches list`: one line or entry per watch, archived ones only with
+/// `all`, and how many takes wait in Unsorted.
+pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String> {
+    let lib = open(library)?;
+    let watches: Vec<&WatchEntry> = lib
+        .watches
+        .iter()
+        .filter(|e| all || !e.watch.archived)
+        .collect();
+    if json {
+        let input = json!({ "library": lib.root.display().to_string(), "all": all });
+        let body = json!({
+            "library": lib.root.display().to_string(),
+            "bytes": lib.bytes(),
+            "watches": watches.iter().map(|e| {
+                let w = &e.watch;
+                json!({
+                    "name": w.name,
+                    "calibre": w.calibre,
+                    "bph": w.bph,
+                    "lift_deg": w.lift,
+                    "archived": w.archived,
+                    "takes": e.takes.len(),
+                    "bytes": e.bytes(),
+                    "newest_started_utc": last_take(e),
+                })
+            }).collect::<Vec<_>>(),
+            "unsorted": lib.unsorted.takes.len(),
+            "unreadable": lib.unreadable,
+            "caveats": [],
+        });
+        return output::print("watches", input, &body);
+    }
+    println!(
+        "{}: {}, {}",
+        lib.root.display(),
+        count(watches.len(), "watch", "watches"),
+        bytes(lib.bytes())
+    );
+    if !lib.unsorted.takes.is_empty() {
+        println!(
+            "  {UNSORTED}: {}, made with Quick Listen, {}",
+            count(lib.unsorted.takes.len(), "take", "takes"),
+            bytes(lib.unsorted.bytes())
+        );
+    }
+    for e in &watches {
+        let mut parts = Vec::new();
+        if let Some(c) = e.watch.calibre.as_deref().filter(|c| !c.is_empty()) {
+            parts.push(c.to_string());
+        }
+        parts.push(count(e.takes.len(), "take", "takes"));
+        if let Some(t) = last_take(e) {
+            parts.push(format!("newest started {t}"));
+        }
+        parts.push(bytes(e.bytes()));
+        if e.watch.archived {
+            parts.push("Archived".into());
+        }
+        println!("  {}: {}", e.watch.name, parts.join(", "));
+    }
+    warn_unreadable(&lib);
+    Ok(())
+}
+
+/// `watches show NAME`: one watch (by its name, ignoring case and spaces
+/// at either end; archived or not), or Unsorted, with every take.
+pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String> {
+    let lib = open(library)?;
+    let e = if name.trim().eq_ignore_ascii_case(UNSORTED) {
+        &lib.unsorted
+    } else {
+        lib.find(name).ok_or_else(|| {
+            format!(
+                "there is no watch called \"{}\" in the library",
+                name.trim()
+            )
+        })?
+    };
+    if json {
+        let w = &e.watch;
+        let input = json!({ "library": lib.root.display().to_string(), "name": name });
+        let body = json!({
+            "library": lib.root.display().to_string(),
+            "name": w.name,
+            "unsorted": w.id.is_empty(),
+            "folder": e.dir.display().to_string(),
+            "calibre": w.calibre,
+            "bph": w.bph,
+            "lift_deg": w.lift,
+            "notes": w.notes,
+            "archived": w.archived,
+            "fields": w.fields,
+            "photos": e.photos.len(),
+            "bytes": e.bytes(),
+            "takes": takes_json(e),
+            "unreadable": lib.unreadable,
+            "caveats": [],
+        });
+        return output::print("watch", input, &body);
+    }
+    print_watch(e);
+    warn_unreadable(&lib);
     Ok(())
 }
 
@@ -128,32 +165,13 @@ fn last_take(e: &WatchEntry) -> Option<&str> {
         .max()
 }
 
-fn watch_json(e: &WatchEntry) -> Value {
-    let w = &e.watch;
-    json!({
-        "name": w.name,
-        "id": w.id,
-        "folder": e.dir.display().to_string(),
-        "calibre": w.calibre,
-        "lift_deg": w.lift,
-        "bph": w.bph,
-        "notes": w.notes,
-        "archived": w.archived,
-        "fields": w.fields,
-        "photos": e.photos.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
-        "bytes": e.bytes(),
-        "last_take_utc": last_take(e),
-        "takes": takes_json(e),
-    })
-}
-
 fn takes_json(e: &WatchEntry) -> Vec<Value> {
     e.takes
         .iter()
         .map(|t| {
             json!({
+                "path": e.take_dir(t).display().to_string(),
                 "name": t.name,
-                "folder": e.take_dir(t).display().to_string(),
                 "started_utc": t.started_utc,
                 "duration_s": t.duration_s,
                 "positions": t.positions,

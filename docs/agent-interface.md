@@ -63,7 +63,8 @@ readings: anything that compares two documents should leave `software` out.
 | `long` | `long FILES --json` | rate and amplitude over the run, clock calibration, periodic components named after wheels (`--calibre`, or both common escape wheels; `input.settings.named_wheels`) with false-alarm probability; also written to `summary.json` beside `report.html`; see [long-runs.md](long-runs.md) Without a clock log, the clock is corrected as `analyze` corrects it: a stored or given error, else the recording's USB lines. tg and a session's `reference` rates are on the sound card's clock. `breaks` (`audio_s`, `gap_s`; present only for a take that was paused or resumed): times run on with each gap in, rate and beat error are fitted on each side of a break apart (the beat error combined as for `analyze`, and where it combines as sizes the slices' beat errors are sizes too), and no window or slice spans one. `clock.breaks` lists the pauses the clock log shows. `caveats[]`: `sides_by_count` (`count`) and `beat_error_as_size` (the take's beat errors, its slices' and `series`' beat error readings are sizes, positive, not signed) as for `analyze`; empty when none. |
 | `series` | `series FILES --json` | schema `timegrapher.series/2` (version 2 removed `verdict`, the findings' `severity` and `advice`, and `moves_with`); `clock` (`ppm`, `rate_error_s_per_day`, `from`, `tracks_drift`) describes the fit actually applied, or is `null` when uncorrected. Positive ppm means the card runs slow; for a drifting log, ppm summarizes the fit. No calibration uncertainty is claimed. An explicit `--clock` log takes precedence, otherwise the first recording's stored device correction (including zero), then its USB lines; `series` has no `--card-ppm` or `--device` options. Per series (`rate`, `amplitude`, `beat_error`): `headline` (what the tests detected, stated as facts with their statistics), `unlock_hopping`, and the tests behind it (`autocorrelation`, `allan`, `cusum`, `changes`, `trend`, `period` (with `other_periods_s`), `two_state`, `cycle`), all three on readings of the rate's length; `isochronism` (rate by 2° amplitude bins, `s_per_day_per_deg`, `turn_deg`, `headline`); `wind_down` (first half hour against 24 h after full wind or the last half hour, `--wind-h`: `rate_change_s_per_day`, `amplitude_change_deg`, `beat_error_change_ms`); `rate_amplitude` (`r`, `p_value`, `effective_readings`, `s_per_day_per_deg`, `take_r`, `take_s_per_day_per_deg`, `headline`; always given, with no threshold); `distributions` (the app's histograms over the take and each `--stretch-min` stretch: `series`, `values` (`readings` or `2 s`), `edges`, `counts`, `below`, `above`, `median`, `p10`, `p90`, `peaks`, `normal_line`, `quantiles`, `summary`); `findings` (`code`, `series`, `title`, `evidence`: one per series where structure was detected); `spectra` (per series: `series`, `unit`, `step_s`, `period_s[]` longest first, `amplitude[]`: the plain Hann-windowed amplitude spectrum, at most 600 points on a log period axis; `support` gives finite/total FFT input-grid samples before padding, not acoustic coverage; missing samples are zero-filled after mean removal without missing-data renormalization); with `--views`, the chart data as well (each series' `views`: `readings`, `search`, `fold`; `period_span`; the whole take's distributions' `points`, `[value, z]`); see [series.md](series.md) tg reference rates remain on the sound card's clock; session `reference` values are supplied by the caller and their clock basis is not recorded. `breaks` (`audio_s`, `gap_s`; present only for a take that was paused or resumed): times run on with each gap in, rate and beat error are fitted on each side of a break apart, and no window or slice spans one; where the beat error's sign turns over across a break (as for `analyze`), the beat error series is read as sizes, given as positive. `caveats[]`: `sides_by_count` (`count`) and `beat_error_as_size` (the `beat_error` series' readings, and so its `median` and the tests on it, are sizes, positive, not signed) as for `analyze`; empty when none. |
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
-| `watches` | `watches [NAME] [--library DIR] [--archived] --json` | the app's library of watches, read only: `bytes`, `watches[]` (`name`, `id`, `folder`, `calibre`, `lift_deg`, `bph`, `notes`, `archived`, `fields[]` (`label`, `kind`, `value`), `photos[]`, `bytes`, `last_take_utc`, `takes[]`), `unsorted` (`folder`, `bytes`, `takes[]`: the takes Quick Listen made, not yet filed under a watch), `unreadable[]`; each take `name`, `folder`, `started_utc`, `duration_s`, `positions[]`, `audio` (false for one kept as its analysis alone), `incomplete`, `bytes`, `at_end` (see [`watches`](#watches)) |
+| `watches` | `watches list [--all] [--library DIR] --json` | the app's library of watches, read only: `library`, `bytes`, `watches[]` (`name`, `calibre`, `bph`, `lift_deg`, `archived`, `takes` (how many), `bytes`, `newest_started_utc`), `unsorted` (how many takes Quick Listen made are not yet filed under a watch), `unreadable[]`, `caveats[]` (none yet) (see [`watches`](#watches)) |
+| `watch` | `watches show NAME [--library DIR] --json` | one watch, or `Unsorted`: `library`, `name`, `unsorted`, `folder`, `calibre`, `bph`, `lift_deg`, `notes`, `archived`, `fields[]` (`label`, `kind`, `value`), `photos` (how many), `bytes`, `takes[]` newest first (`path`, `name`, `started_utc`, `duration_s`, `positions[]`, `audio`, `incomplete`, `bytes`, `at_end`), `unreadable[]`, `caveats[]` (none yet) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | Schema `timegrapher.doctor/2`. `source`, `check`, `mixer`, `fixes[]`, `applied`, `after` (below). Version 2 removed `verdict`, `check.signal_band`, `issues[].severity`, `issues[].advice` and the `noisy` issue. |
 | `record` | `record FOLDER --position P --json` | (`record/2`) `take` (the take's folder), `session_file` (the session file the take was added to), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `timing_scatter_ms` and `timing_scatter_fraction` (the median timing scatter over the whole take, in ms and as a share of the beat; 2% or more is no regular beat), `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no regular beat is found or the stretch after settling is too short); `record/1` also had `verdict` (`ok`, `no_watch_heard`, `clipping`) and left a take with no watch heard or clipping out of the session; see [`record`](#record) |
@@ -339,27 +340,33 @@ from `latest.url` ([install.md](install.md)). Builds without the default
 ## `watches`
 
 ```sh
-timegrapher watches [NAME] [--library DIR] [--archived] [--json]
+timegrapher watches list [--all] [--library DIR] [--json]
+timegrapher watches show NAME [--library DIR] [--json]
 ```
 
-Lists the library the app keeps its watches and their takes in (schema
-`timegrapher.watches/1`): `Timegrapher Data` in the home folder, or the
-folder `--library` names (a library chosen elsewhere in the app's
-Settings has to be named this way). `input` gives `library`, `name` and
-`archived`. It only reads: it takes no lock and writes nothing, not even
-the library's cache, so it can run while the app has the library open. Archived watches
-are left out unless `--archived` is given or the watch is named. With
-NAME (a watch's name, any case), `watches[]` holds only that watch and
-`unsorted` is `null`; with `Unsorted`, `watches[]` is empty. Each take is
-a standard take folder that `session`, `long`, `series` and `analyze` read
-as they read any other; `at_end` is the readings the app showed when it
-was saved (`rate_s_per_day`, `amplitude_deg`, `beat_error_ms` signed, from
-the unlock), `null` for a take saved without them. A take is `incomplete`
-when a file its session file lists is not there, or a folder it lists
-holds no sound. A NAME that matches no watch, or a folder that holds no
-library, exits 1. The text form lists the watches with each one's
-calibre, number of takes, the UTC start of the last, and size; with
-NAME, the watch's details and each take on a line.
+Lists the library the app keeps its watches and their takes in: schema
+`timegrapher.watches/1` for `list`, `timegrapher.watch/1` for `show`. The
+library is `Timegrapher Data` in the home folder, or the folder
+`--library` names (a library chosen elsewhere in the app's Settings has
+to be named this way); `library` is its absolute folder, and every
+folder in the document is absolute too. It only reads: it takes no lock
+and writes nothing, not even the library's cache, so it can run while the
+app has the library open. `list` leaves archived watches out unless
+`--all` is given; `show` finds a watch by its name, ignoring case and
+spaces at either end, archived or not, and `show Unsorted` gives the
+takes Quick Listen made (`unsorted` true, the watch's own fields null).
+A field the user never set is `null`. Each take's `path` is a standard
+take folder to pass to `session`, `long` or `series` as it is; `audio` is
+false for a take kept as its analysis alone, which can't be measured
+again from its sound; `at_end` is the readings the app showed when the
+take was saved (`rate_s_per_day`, `amplitude_deg`, `beat_error_ms`
+signed, from the unlock), not a new analysis, and `null` for a take saved
+without them. A take is `incomplete` when a file its session file lists
+is not there, or a folder it lists holds no sound. A NAME that matches no
+watch, or a folder with no library in it, exits 1 with one line on
+stderr naming it. The text form of `list` gives each watch's calibre,
+number of takes, the UTC start of its newest take and its size; `show`
+gives the watch's details and each take on a line.
 
 ## Building without sound input
 
