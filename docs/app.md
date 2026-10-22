@@ -638,10 +638,10 @@ masking or by moving an edge, join into one and stay joined. Masked stretches ar
 and the toolbar says how many there are and how long they add up to.
 They are cut like a pause, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
-once nine tenths of an averaging time of beats has been heard after it
-(as at the start of a session and after a pause; each point on a line
-is the reading over the averaging time that ends there, which is why the
-line is blank just after one), the steadiness tests
+once a whole averaging time has been heard after it, a beat in each 2
+seconds of it (as at the start of a session and after a pause; each
+point on a line is the reading over the averaging time that ends there,
+which is why the line is blank just after one), the steadiness tests
 and their views leave out any 10-second reading (rate, amplitude or beat
 error) that takes in either end of one, as they do one with a 2-second
 stretch of no beats in it, and the charts, the whole-take figures, the

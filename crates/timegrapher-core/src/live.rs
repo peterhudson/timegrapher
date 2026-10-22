@@ -12,15 +12,14 @@
 use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
+use crate::breaks::Break;
+use crate::clean::Cuts;
 use crate::dsp::{envelope, median, median_f32};
 use crate::measure::{self, Caveat};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
 
-/// A pause between beats longer than this, seconds, breaks the beat log:
-/// the readings never fit across it, since the watch may have been moved
-/// or handled, and beats may have been counted wrongly across it.
-pub const GAP_S: f64 = 2.0;
+pub use crate::clean::GAP_S;
 
 /// Longest stretch the tick and tock profiles can cover, seconds.
 pub const MAX_PROFILE_S: f64 = 60.0;
@@ -98,6 +97,10 @@ pub struct LiveReading {
     /// latest unbroken run in the averaging time to the reading's time.
     /// Shorter than the averaging time early in a session or after a gap.
     pub span_s: f64,
+    /// Whether the averaging time is a whole bin ([`Cuts::whole`]): it
+    /// reaches into no break or masked stretch, and each 2 s of it holds
+    /// a beat. A reading that is not is over less than its averaging time.
+    pub whole: bool,
     /// Beat peak over the envelope's median on the latest pass.
     pub snr: Option<f32>,
     /// Beats in the reading with a clipped sample in their sound, counted as
@@ -700,45 +703,37 @@ impl LiveAnalyzer {
         self.reading_at(self.settled_to, average_s)
     }
 
-    /// Readings over the `average_s` seconds before `end_s`.
-    pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
-        let mut from = end_s - average_s;
-        let masked_s = crate::session::masked_within(&self.masked, from, end_s);
-        // A masked stretch is cut like a break: readings start again at
-        // its end, and inside one there is nothing to read.
-        let mask_cut = self
-            .masked
-            .iter()
-            .filter(|m| m.0 <= end_s)
-            .map(|m| m.1.min(end_s))
-            .fold(f64::NEG_INFINITY, f64::max);
-        let latest_break = self
+    /// The cuts in what has been heard: every break, as a hole of no
+    /// width, and every masked stretch. Live time is true time.
+    pub fn cuts(&self) -> Cuts<'static> {
+        let breaks: Vec<Break> = self
             .breaks
             .iter()
-            .rev()
-            .find(|&&b| b <= end_s)
-            .copied()
-            .unwrap_or(f64::NEG_INFINITY)
-            .max(mask_cut);
+            .map(|&audio_s| Break {
+                audio_s,
+                gap_s: 0.0,
+            })
+            .collect();
+        Cuts::new(None, &breaks, &self.masked)
+    }
+
+    /// Readings over the `average_s` seconds before `end_s`.
+    pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
+        let window_from = end_s - average_s;
+        let masked_s = crate::session::masked_within(&self.masked, window_from, end_s);
+        // Breaks and masked stretches cut the readings: they start again
+        // at the latest one's end, and inside a masked one there is nothing
+        // to read. So does a pause between beats (clean::GAP_S).
+        let holes = self.cuts();
         // The sound heard over the averaging time, since the start or the
         // latest break.
-        let since = latest_break.max(0.0);
-        let listened_s = (end_s - from.max(since).max(0.0)).max(0.0);
-        let mut lo = self.beats.partition_point(|b| b.time < from);
-        let hi = self.beats.partition_point(|b| b.time <= end_s);
+        let since = holes.stretch_from(end_s).max(0.0);
+        let listened_s = (end_s - window_from.max(since).max(0.0)).max(0.0);
         // Only the latest unbroken run of beats.
-        if let Some(gap) = (lo + 1..hi)
-            .rev()
-            .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
-        {
-            lo = gap;
-            from = self.beats[gap].time - 1e-6;
-        }
-        // Nor across the start of a new stretch or a masked one.
-        if latest_break > from {
-            from = latest_break;
-            lo = lo.max(self.beats.partition_point(|x| x.time < latest_break));
-        }
+        let cut = holes.run_cut(&self.beats, window_from, end_s);
+        let from = window_from.max(cut);
+        let lo = self.beats.partition_point(|b| b.time < from);
+        let hi = self.beats.partition_point(|b| b.time <= end_s);
         let lo = lo.min(hi);
         let span_s = if lo < hi {
             end_s - self.beats[lo].time.max(from)
@@ -753,17 +748,12 @@ impl LiveAnalyzer {
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
         let a0 = self.amp.partition_point(|w| w.end_s <= from);
         let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
-        // Nor a window that reaches back across the latest break: a jump
-        // in a recording read whole falls inside one.
-        let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)]
-            .iter()
-            .filter(|w| w.start_s >= latest_break - 1e-9)
-            .filter(|w| {
-                !self
-                    .masked
-                    .iter()
-                    .any(|&(a, b)| w.start_s < b && w.end_s > a)
-            })
+        // Nor a window that reaches back across the latest cut: a jump in
+        // a recording read whole falls inside one.
+        let wins: Vec<&AmplitudeWindow> = holes
+            .amplitude_windows(&self.amp[a0..a1.max(a0)])
+            .into_iter()
+            .filter(|w| w.start_s >= cut - 1e-9)
             .collect();
         let med = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Option<f64> {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
@@ -788,15 +778,16 @@ impl LiveAnalyzer {
         // unbroken run of beats, back to a break, up to RATE_RUN_S), scaled
         // to the averaging time by `measure`.
         let rate_windows = bph.map_or_else(Vec::new, |b| {
-            let floor = from.min(end_s - RATE_RUN_S).max(latest_break);
-            let mut r0 = self.beats.partition_point(|x| x.time < floor);
-            if let Some(gap) = (r0 + 1..hi)
-                .rev()
-                .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
-            {
-                r0 = gap;
-            }
-            timing::windows(&self.beats[r0.min(lo)..hi], b, 10.0, 5.0)
+            let floor = from.min(end_s - RATE_RUN_S);
+            holes.windows(
+                &self.beats[..hi],
+                b,
+                floor.max(holes.run_cut(&self.beats, floor, end_s)),
+                end_s,
+                10.0,
+                5.0,
+                GAP_S,
+            )
         });
         let assessment = measure::assess(
             &rate_windows,
@@ -826,6 +817,7 @@ impl LiveAnalyzer {
         if masked_s > 0.0 {
             measure::add(&mut caveats, Caveat::Masked { seconds: masked_s });
         }
+        let whole = holes.whole(&self.beats, window_from, end_s, GAP_S);
         LiveReading {
             time_s: end_s,
             bph,
@@ -840,6 +832,7 @@ impl LiveAnalyzer {
             timing_scatter_fraction,
             beats_used: fit.map_or(0, |f| f.beats_used),
             span_s,
+            whole,
             snr: self.snr,
             clipped_beats,
             clipped_fraction,
@@ -1222,6 +1215,27 @@ mod tests {
             .any(|c| matches!(c, Caveat::Masked { .. })));
         a.set_masked(&[]);
         assert_eq!(a.reading_at(90.0, 60.0).span_s, before.span_s);
+    }
+
+    /// A reading is whole only when its averaging time reaches into no
+    /// cut and each 2 s of it holds a beat.
+    #[test]
+    fn a_reading_is_whole_only_clear_of_every_cut() {
+        let mut log = viewer_phase_log(10.0, 10.0);
+        log.jumps.clear();
+        // No beats from 40 to 43 s.
+        log.beats.retain(|b| !(40.0..43.0).contains(&b.time));
+        let mut a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        assert!(a.reading_at(30.0, 20.0).whole);
+        assert!(!a.reading_at(50.0, 20.0).whole);
+        assert!(a.reading_at(53.0, 10.0).whole);
+        a.set_masked(&[(70.0, 80.0)]);
+        assert!(!a.reading_at(90.0, 20.0).whole);
+        assert!(!a.reading_at(89.0, 10.0).whole);
+        assert!(a.reading_at(90.0, 10.0).whole);
+        a.set_breaks(vec![95.0]);
+        assert!(!a.reading_at(100.0, 10.0).whole);
+        assert!(a.reading_at(105.0, 10.0).whole);
     }
 
     #[test]
