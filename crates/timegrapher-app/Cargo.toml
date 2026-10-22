@@ -24,6 +24,10 @@ rfd = "0.15"
 claxon = "0.4"
 hound = "3.5"
 png = "0.18"
+# Watch photos, as thumbnails: JPEG, PNG and TIFF (the last two already
+# in eframe's copy), and HEIC, as an iPhone takes them, in pure Rust.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff"] }
+heic-rs = { version = "0.1.4", default-features = false, features = ["std"] }
 # Take folders are named by the local time a take started.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
