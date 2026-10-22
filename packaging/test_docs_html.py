@@ -10,6 +10,13 @@ import docs_html
 REF = "0123abc"
 
 
+def research_pages():
+    # Listed, not named, so CI's light-run rule does not count them as read.
+    return sorted(path.relative_to(docs_html.ROOT).as_posix()
+                  for pattern in ("*-train-wheel-counts.md", "*-train-research.md")
+                  for path in (docs_html.ROOT / "docs").glob(pattern))
+
+
 class Outputs(unittest.TestCase):
     def test_every_guide_has_a_page(self):
         mapping = docs_html.outputs("macos")
@@ -20,6 +27,21 @@ class Outputs(unittest.TestCase):
         for source in mapping:
             if source != docs_html.INDEX:
                 self.assertTrue((docs_html.ROOT / source).is_file(), source)
+
+    def test_research_evidence_stays_on_github(self):
+        mapping = docs_html.outputs("linux")
+        research = research_pages()
+        self.assertTrue(research)
+        for page in research:
+            self.assertNotIn(page, mapping)
+        self.assertFalse([s for s in mapping if s.startswith("docs/assets/train-wheels/")])
+        self.assertIn("docs/model-probes/provenance.json", mapping)
+
+    def test_the_documentation_stays_small(self):
+        # Each download carries it; photographs belong in ON_GITHUB.
+        mapping = docs_html.outputs("linux")
+        size = sum((docs_html.ROOT / s).stat().st_size for s in mapping if s != docs_html.INDEX)
+        self.assertLess(size, 20_000_000)
 
     def test_each_platform_has_a_start_page(self):
         for platform in docs_html.PLATFORMS:
@@ -44,6 +66,11 @@ class RewriteLinks(unittest.TestCase):
                          "../watchmaker-skill.html")
         self.assertEqual(self.rewrite("sessions.md", "docs/app.md"), "sessions.html")
         self.assertEqual(self.rewrite("../README.md", "docs/app.md"), "README.html")
+
+    def test_research_pages_link_to_github(self):
+        page = research_pages()[0]
+        self.assertEqual(self.rewrite(page),
+                         f"https://github.com/{docs_html.REPO}/blob/{REF}/{page}")
 
     def test_start_page_links_into_documentation(self):
         self.assertEqual(self.rewrite("../../docs/mcp.md", "packaging/linux/start-here.md"),
