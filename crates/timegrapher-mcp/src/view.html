@@ -529,7 +529,7 @@ function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc, doc.bph)}</div>`;
+    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc.jitter_us, doc.timing_scatter_fraction)}</div>`;
   }
   const o = doc.overall || {};
   // The headline beat error is the unlock's, with the drop's beside it, as
@@ -565,10 +565,11 @@ function recordingView(doc, extra, limits) {
 
 // The canonical sentence for no regular beat, with the timing scatter of
 // the beats when the document gives it (as the server's caveats.rs says it).
-function noRegularBeat(m, bph) {
-  const j = m && m.jitter_us;
-  const scatter = Number.isFinite(j) && bph > 0
-    ? ` (timing scatter ${num(j / 1000, 1)} ms, ${num(j / (3.6e9 / bph) * 100, 1)}% of a beat)` : "";
+// The timing scatter in µs and as the share of a beat core gives with it
+// (timing_scatter_fraction).
+function noRegularBeat(jitterUs, fraction) {
+  const scatter = Number.isFinite(jitterUs) && Number.isFinite(fraction)
+    ? ` (timing scatter ${num(jitterUs / 1000, 1)} ms, ${num(fraction * 100, 1)}% of a beat)` : "";
   return `No regular beat found${scatter}. There are no rate, amplitude or beat error readings.`;
 }
 
@@ -686,16 +687,6 @@ const STEADY_VIEWS = [
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
 ];
-// steady::reading_swing: the peak-to-peak swing, s/d, that a beat-timing
-// sine `amp` ms in size with period `period` s makes in rate readings each
-// averaged over `reading` s: the timing's slope, 2π·amp/period ms per
-// second, is 86.4 s/d for each ms per second, and averaging over a reading
-// keeps sin(x)/x of it, x = π·reading/period.
-function readingSwing(amp, period, reading) {
-  const x = Math.PI * reading / period;
-  const kept = x === 0 ? 1 : Math.abs(Math.sin(x) / x);
-  return 2 * amp * 2 * Math.PI / period * 86.4 * kept;
-}
 // A series' amplitude spectrum from the document's spectra[], if any.
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
@@ -969,12 +960,11 @@ function steadyPlot(s, view, doc) {
       if (!sp) return steadyNote("The spectrum needs a longer session.");
       // Rate's spectrum is of the beat timing, in ms: drawn, unless Timing
       // asks for that, as the swing it makes in the rate readings, peak to
-      // peak in s/d, over the periods those readings can show.
-      const asRate = sp.series === "rate" && sp.unit === "ms" && !fftTiming;
-      const reading = (doc.config && doc.config.rate_reading_s) || 10;
-      const pts = sp.period_s.map((t, i) => [t, sp.amplitude[i]])
-        .filter(([t]) => !asRate || t >= 2 * reading)
-        .map(([t, a]) => [t, asRate ? readingSwing(a, t, reading) : a])
+      // peak in s/d, over the periods those readings can show, as core
+      // works it out (reading_swing).
+      const swing = !fftTiming && sp.reading_swing && Array.isArray(sp.reading_swing.period_s) ? sp.reading_swing : null;
+      const asRate = !!swing;
+      const pts = (asRate ? swing.period_s.map((t, i) => [t, swing.swing_s_per_day[i]]) : sp.period_s.map((t, i) => [t, sp.amplitude[i]]))
         .filter(([t, a]) => t > 0 && a > 0 && Number.isFinite(a))
         .map(([t, a]) => [Math.log10(t), Math.log10(a)]);
       if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
@@ -1522,7 +1512,7 @@ function recordView(doc, heard) {
   }
   const clipped = c.clipping && c.clipping.beats > 0 ? `${num(c.clipping.beat_fraction * 100, 1)}% of beats were clipped.` : "";
   if (c.watch_heard === false) {
-    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat({ jitter_us: Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null }, c.bph))}${clipped ? ` ${clipped}` : ""}</div>`;
+    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat(Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null, c.timing_scatter_fraction))}${clipped ? ` ${clipped}` : ""}</div>`;
     return html;
   }
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${clipped}</div>`;

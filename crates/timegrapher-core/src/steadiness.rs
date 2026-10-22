@@ -2184,6 +2184,7 @@ pub fn check(
     .into_iter()
     .filter_map(|(g, name, unit, scale)| {
         crate::spectrum::amplitude_spectrum(g, name, unit, scale, cfg.max_points)
+            .map(|s| s.with_reading_swing(cfg.rate_reading_s))
     })
     .collect();
 

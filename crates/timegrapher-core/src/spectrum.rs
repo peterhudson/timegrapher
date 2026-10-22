@@ -32,6 +32,55 @@ pub struct AmplitudeSpectrum {
     /// reading ([`welch`]); `None` when fewer than two segments fit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub welch: Option<Welch>,
+    /// The rate's spectrum (of the beat timing, in ms) as the swing it
+    /// makes in the rate readings ([`reading_swing`]); `None` for the
+    /// other series.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reading_swing: Option<ReadingSwing>,
+}
+
+/// The rate's spectrum as the swing, peak to peak in s/d, that each line
+/// of the beat timing makes in rate readings of `reading_s`, over the
+/// periods those readings can show (twice a reading or longer).
+#[derive(Debug, Clone, Serialize)]
+pub struct ReadingSwing {
+    pub reading_s: f64,
+    /// Periods, seconds, longest first, and the swing at each, s/d.
+    pub period_s: Vec<f64>,
+    pub swing_s_per_day: Vec<f64>,
+}
+
+/// The peak-to-peak swing, s/d, that a beat-timing sine `amp_ms` in size
+/// with period `period_s` makes in rate readings each averaged over
+/// `reading_s`: the timing's slope, `2π·amp/period` ms per second, is
+/// 86.4 s/d for each ms per second, and averaging over a reading keeps
+/// `sin(x)/x` of it, `x = π·reading/period`.
+pub fn reading_swing(amp_ms: f64, period_s: f64, reading_s: f64) -> f64 {
+    let x = std::f64::consts::PI * reading_s / period_s;
+    let kept = if x == 0.0 { 1.0 } else { (x.sin() / x).abs() };
+    2.0 * amp_ms * std::f64::consts::TAU / period_s * 86.4 * kept
+}
+
+impl AmplitudeSpectrum {
+    /// This spectrum with its [`ReadingSwing`] for rate readings of
+    /// `reading_s`, when it is the rate's (the beat timing, in ms).
+    pub fn with_reading_swing(mut self, reading_s: f64) -> Self {
+        if self.series == "rate" && self.unit == "ms" {
+            let (period_s, swing_s_per_day) = self
+                .period_s
+                .iter()
+                .zip(&self.amplitude)
+                .filter(|(&p, _)| p >= 2.0 * reading_s)
+                .map(|(&p, &a)| (p, reading_swing(a, p, reading_s)))
+                .unzip();
+            self.reading_swing = Some(ReadingSwing {
+                reading_s,
+                period_s,
+                swing_s_per_day,
+            });
+        }
+        self
+    }
 }
 
 /// Welch's averaged spectrum: segments of one length, each wholly inside
@@ -228,12 +277,49 @@ pub fn amplitude_spectrum(
             total_bins: n,
         },
         welch: welch(g, scale, max_points),
+        reading_swing: None,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {
+        // 0.157 ms of timing at 46 s is 3.7 s/d peak to peak in the rate
+        // itself; a 10 s reading keeps sin(x)/x of it, x = π·10/46.
+        let x = std::f64::consts::PI * 10.0 / 46.0;
+        let swing = reading_swing(0.157, 46.0, 10.0);
+        assert!((swing - 3.70 * x.sin() / x).abs() < 0.02, "{swing}");
+        // A wave as long as a reading averages away.
+        assert!(reading_swing(1.0, 10.0, 10.0) < 1e-9);
+    }
+
+    #[test]
+    fn only_the_rate_carries_its_swing_from_twice_a_reading() {
+        let g = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..400)
+                .map(|i| 1e-4 * (std::f64::consts::TAU * i as f64 / 9.0).sin())
+                .collect(),
+        };
+        let rate = amplitude_spectrum(&g, "rate", "ms", 1000.0, 600)
+            .unwrap()
+            .with_reading_swing(10.0);
+        let s = rate.reading_swing.as_ref().expect("the rate's swing");
+        assert_eq!(s.reading_s, 10.0);
+        assert!(s.period_s.iter().all(|&p| p >= 20.0));
+        for (p, w) in s.period_s.iter().zip(&s.swing_s_per_day) {
+            let k = rate.period_s.iter().position(|q| q == p).unwrap();
+            assert_eq!(*w, reading_swing(rate.amplitude[k], *p, 10.0));
+        }
+        let amp = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 600)
+            .unwrap()
+            .with_reading_swing(10.0);
+        assert!(amp.reading_swing.is_none());
+    }
 
     #[test]
     fn a_sine_reads_its_size_at_its_period() {

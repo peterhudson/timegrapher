@@ -15,10 +15,11 @@ const context = vm.createContext({
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
-  ["esc", "spectrumOf", "readingSwing", "steadyNote", "steadyPlot"].map(n => definition(n)).join("\n") + "\n" + definition("spectrumSupportText", true), context);
+  ["esc", "spectrumOf", "steadyNote", "steadyPlot"].map(n => definition(n)).join("\n") + "\n" + definition("spectrumSupportText", true), context);
 function render(support, timing = true) {
   context.fftTiming = timing;
-  const sp = { series: "rate", unit: "ms", step_s: 1, period_s: [128, 64, 32], amplitude: [1, 5, 2] };
+  const sp = { series: "rate", unit: "ms", step_s: 1, period_s: [128, 64, 32], amplitude: [1, 5, 2],
+    reading_swing: { reading_s: 10, period_s: [128, 64, 32], swing_s_per_day: [8, 60, 40] } };
   if (support !== undefined) sp.support = support;
   const doc = { spectra: [sp], config: { rate_reading_s: 10 } };
   const before = structuredClone(doc);
@@ -42,6 +43,10 @@ for (const timing of [true, false]) {
     assert.ok(full.chart.lines[0].pts.every(p => p.every(Number.isFinite)));
   });
 }
+test("the rate's swing in readings is the document's, as core works it out", () => {
+  const { chart } = render({ finite_bins: 256, total_bins: 256 }, false);
+  assert.deepEqual(chart.lines[0].pts, [[128, 8], [64, 60], [32, 40]].map(([t, w]) => [Math.log10(t), Math.log10(w)]));
+});
 test("malformed support cannot claim complete FFT input", () => {
   for (const support of [null, {}, { finite_bins: true, total_bins: 10 }, { finite_bins: 11, total_bins: 10 }, { finite_bins: 0, total_bins: 0 }]) {
     assert.ok(render(support).markup.includes("FFT input support was not recorded."));
