@@ -454,10 +454,20 @@ pub fn take_line(t: &Take) -> String {
         .iter()
         .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
         .collect();
+    if let Some(r) = &t.power_reserve {
+        parts.push(format!(
+            "Power Reserve {}{}",
+            timegrapher_core::power_reserve::run_text(r.run_s),
+            match r.ending {
+                timegrapher_core::power_reserve::Ending::Stopped => "",
+                _ => " (still running at the end)",
+            }
+        ));
+    }
     if !names.is_empty() {
         parts.push(names.join(", "));
     }
-    if let Some(d) = t.duration_s {
+    if let Some(d) = t.duration_s.filter(|_| t.power_reserve.is_none()) {
         parts.push(crate::strip::fmt_time(d));
     }
     if let Some(a) = &t.at_end {
@@ -1199,11 +1209,27 @@ mod tests {
                 amplitude_deg: Some(281.0),
                 beat_error_ms: Some(-0.4),
             }),
+            power_reserve: None,
         };
         let line = take_line(&t);
         assert!(line.starts_with("Dial Up, Crown Left · "), "{line}");
         assert!(
             line.contains("+3.5 s/d · 281° · 0.4 ms · Analysis Only · Incomplete"),
+            "{line}"
+        );
+        // A Power Reserve take leads with its run, not its length.
+        let r = Take {
+            positions: vec!["CL".into()],
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 166_320.0,
+                ending: timegrapher_core::power_reserve::Ending::Stopped,
+                position: "CL".into(),
+            }),
+            ..t.clone()
+        };
+        let line = take_line(&r);
+        assert!(
+            line.starts_with("Power Reserve 46 h 12 min · Crown Left · +3.5"),
             "{line}"
         );
         assert!(local_minute("2026-10-20T21:32:00Z").is_some_and(|m| m.len() == 16));

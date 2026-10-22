@@ -266,6 +266,22 @@ whole take, so it is refused (exit 1, before anything is made) while the
 app has the library open, as a second copy of the app would be; the
 same holds for a FOLDER that is one of a library watch's takes.
 
+`--power-reserve` makes the run a Power Reserve Test, in place of
+`--seconds`: it records in the one position until the watch stops (the
+last beat heard before 10 minutes with none, as the app's Power Reserve
+pane finds it) or 80 hours pass, then reads the take's sound as `session`
+reads it, on the take's clock log, and writes the run to the session
+folder's `power-reserve.json` (see [app.md](app.md), Power Reserve: the
+start, position, `ending` (`stopped`, `by_hand` for a recording that ended
+while the watch still ran, or `limit`), the first and last beats heard,
+`run_s` in true seconds, the silences of 30 s or more inside the run, and
+`hours[]`, each hour measured as `session` measures a stretch, with
+`read_s`, its seconds of whole 10 s readings). Without a FOLDER the folder
+is named by the date and time and "Power Reserve". The `--json` document
+adds `power_reserve` with the same contents. `session FOLDER --json` gives
+it too, as `power_reserve`, whenever the folder holds `power-reserve.json`
+(the app's Power Reserve takes do), and leaves the key out otherwise.
+
 `--live PATH` keeps the take's latest readings in PATH while it records,
 for a live view (the MCP server's Live view reads it). The file is
 replaced whole about once a second of audio, through `PATH` with a `.tmp`

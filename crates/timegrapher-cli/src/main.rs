@@ -415,6 +415,12 @@ enum Command {
         /// session file when not given.
         #[arg(long)]
         wind_h: Option<f64>,
+        /// A Power Reserve Test: record until the watch stops (the last
+        /// beat heard before 10 minutes with none) or 80 hours pass, in
+        /// place of --seconds, and keep the run, hour by hour, in the
+        /// session folder's power-reserve.json.
+        #[arg(long, conflicts_with = "seconds")]
+        power_reserve: bool,
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -923,6 +929,7 @@ fn main() -> ExitCode {
             wind_h,
             json,
             live,
+            power_reserve,
         } => {
             let o = record_cmd::Options {
                 folder,
@@ -938,6 +945,7 @@ fn main() -> ExitCode {
                 wind_h,
                 json,
                 live,
+                power_reserve,
             };
             record_cmd::run(&o)
         }
