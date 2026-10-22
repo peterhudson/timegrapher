@@ -532,8 +532,9 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
     // listed at the frame where the sound resumes, and the clock log, a
     // line every 10 s and one per block around the pause, writes its
     // first line after the pause one 10 ms block later, with the frames
-    // counted to the end of that block. The clock fit puts its own break
-    // at that line.
+    // counted to the end of that block. The clock fit takes the two lines
+    // either side of the step as the recorder's pair at a pause and puts
+    // its own break at the line at the pause.
     let bph = 28_800;
     let period = 3600.0 / bph as f64 / (1.0 + 5.0 / 86400.0);
     let (pause_s, gap_s, block_s) = (100.0, 103.0, 0.01);
@@ -550,8 +551,8 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
     }));
     let mut clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
     assert_eq!(clock.breaks.len(), 1);
-    assert!((clock.breaks[0].audio_s - (pause_s + block_s)).abs() < 1e-9);
-    // As `session` reads it: the clock fit's break moved to the listed one.
+    assert!((clock.breaks[0].audio_s - pause_s).abs() < 1e-9);
+    // As `session` reads it: the clock fit's break matched to the listed one.
     clock.place_breaks(&[brk]);
     assert!((clock.breaks[0].audio_s - pause_s).abs() < 1e-9);
     // Then the same with a second pause of 0.3 s at 207 s of true time,
