@@ -259,6 +259,23 @@ pub fn unused_dir(parent: &Path, base: &str) -> PathBuf {
         .expect("a free name")
 }
 
+/// `dir/name`, or with ` 2`, ` 3`… before its extension (`dial 2.jpg`)
+/// for the first that isn't there.
+fn unused_file(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if fs::symlink_metadata(&first).is_err() {
+        return first;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s, format!(".{e}")),
+        _ => (name, String::new()),
+    };
+    (2..)
+        .map(|n| dir.join(format!("{stem} {n}{ext}")))
+        .find(|p| fs::symlink_metadata(p).is_err())
+        .expect("a free name")
+}
+
 /// A take folder's name: the date and time it started, as
 /// `2026-10-20 14.32`, plus the position in words when it used only one
 /// (`2026-10-20 14.32 Dial Up`).
@@ -673,6 +690,68 @@ impl Library {
         Ok(to)
     }
 
+    /// Copy the image files `files` into the `photos/` of the watch of id
+    /// `watch_id`, each keeping its name, with a number added where the
+    /// watch has a photo of that name. A copy that fails leaves nothing
+    /// behind. Returns the copies.
+    pub fn add_photos(
+        &mut self,
+        watch_id: &str,
+        files: &[PathBuf],
+    ) -> Result<Vec<PathBuf>, String> {
+        self.writable()?;
+        let dir = self
+            .watches
+            .iter()
+            .find(|w| w.watch.id == watch_id)
+            .map(|w| w.dir.join(PHOTOS))
+            .ok_or("That watch is no longer in the library")?;
+        if let Some(f) = files.iter().find(|f| !is_image(f)) {
+            return Err(format!(
+                "{} is not a photo the app can show (JPEG, PNG, HEIC or TIFF)",
+                f.display()
+            ));
+        }
+        fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let mut added = Vec::new();
+        let mut failed = None;
+        for f in files {
+            let to = unused_file(&dir, &file_name(f));
+            let part = dir.join(format!(".{}.part", file_name(&to)));
+            let copied = fs::copy(f, &part)
+                .and_then(|_| fs::File::open(&part)?.sync_all())
+                .and_then(|_| fs::rename(&part, &to));
+            match copied {
+                Ok(()) => added.push(to),
+                Err(e) => {
+                    let _ = fs::remove_file(&part);
+                    failed = Some(format!("Copying {}: {e}", f.display()));
+                    break;
+                }
+            }
+        }
+        self.scan();
+        failed.map_or(Ok(added), Err)
+    }
+
+    /// Delete one of a watch's photos.
+    pub fn delete_photo(&mut self, photo: &Path) -> Result<(), String> {
+        self.writable()?;
+        if !self
+            .watches
+            .iter()
+            .any(|w| w.photos.iter().any(|p| p == photo))
+        {
+            return Err(format!(
+                "{} is not a photo in this library",
+                photo.display()
+            ));
+        }
+        let gone = fs::remove_file(photo);
+        self.scan();
+        gone.map_err(|e| format!("Deleting {}: {e}", photo.display()))
+    }
+
     /// Delete a take's folder and everything in it.
     pub fn delete_take(&mut self, take: &Path) -> Result<(), String> {
         self.take_in_library(take)?;
@@ -1023,11 +1102,13 @@ fn subfolders(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
-fn is_image(p: &Path) -> bool {
+/// A photo the app can show: JPEG, PNG, HEIC (as an iPhone takes them)
+/// or TIFF.
+pub fn is_image(p: &Path) -> bool {
     p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
         matches!(
             e.to_ascii_lowercase().as_str(),
-            "jpg" | "jpeg" | "png" | "heic" | "webp" | "gif" | "tif" | "tiff"
+            "jpg" | "jpeg" | "png" | "heic" | "heif" | "tif" | "tiff"
         )
     })
 }
@@ -1506,6 +1587,50 @@ mod tests {
     /// the library's size, can be renamed or deleted there, and is filed
     /// under a watch by a move. No watch can take Unsorted's name, and a
     /// folder called Unsorted that holds a watch is left to it.
+    #[test]
+    fn photos_are_copied_in_under_free_names_and_deleted_one_at_a_time() {
+        let root = scratch("photos");
+        let mut lib = Library::create(&root).unwrap();
+        let dir = lib.add(&Watch::new("Pepsi")).unwrap();
+        let id = lib.watches[0].watch.id.clone();
+        let from = root.join("from phone");
+        fs::create_dir_all(&from).unwrap();
+        let a = from.join("IMG_0001.HEIC");
+        let b = from.join("dial.jpg");
+        fs::write(&a, b"heic").unwrap();
+        fs::write(&b, b"jpeg").unwrap();
+        let added = lib.add_photos(&id, &[a.clone(), b.clone()]).unwrap();
+        let photos = dir.join(PHOTOS);
+        assert_eq!(
+            added,
+            [photos.join("IMG_0001.HEIC"), photos.join("dial.jpg")]
+        );
+        // The same again: numbered, the first copies untouched.
+        let again = lib.add_photos(&id, std::slice::from_ref(&b)).unwrap();
+        assert_eq!(again, [photos.join("dial 2.jpg")]);
+        assert_eq!(fs::read(&again[0]).unwrap(), b"jpeg");
+        assert_eq!(
+            lib.watches[0].photos,
+            [
+                photos.join("IMG_0001.HEIC"),
+                photos.join("dial 2.jpg"),
+                photos.join("dial.jpg")
+            ]
+        );
+        // Not a photo, or a watch that's gone: nothing is copied.
+        let txt = from.join("notes.txt");
+        fs::write(&txt, b"x").unwrap();
+        assert!(lib.add_photos(&id, &[b.clone(), txt]).is_err());
+        assert!(lib.add_photos("gone", std::slice::from_ref(&b)).is_err());
+        assert_eq!(fs::read_dir(&photos).unwrap().count(), 3);
+        // Deleting: only the library's own photos.
+        assert!(lib.delete_photo(&b).is_err());
+        assert!(b.exists());
+        lib.delete_photo(&photos.join("dial.jpg")).unwrap();
+        assert_eq!(lib.watches[0].photos.len(), 2);
+        let _ = fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn quick_listen_takes_wait_in_unsorted_until_filed() {
         let root = scratch("unsorted");

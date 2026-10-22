@@ -41,8 +41,9 @@ take their reading's colour, and the Steadiness views share one green.
 where the sound comes from and what to do with it, then the watch itself.
 It is a pane like the others: drag it by its tab, or hide it and bring it
 back from its icon or the View menu. At its top, under **Watches**, one
-row per watch in the library (see The library, below): its name, its
-calibre, how many takes it has and the date of the last, and the space
+row per watch in the library (see The library, below): its first photo
+(by name; a tile with its initial while it has none, or one that can't be
+read), its name, its calibre, how many takes it has and the date of the last, and the space
 they use, with the library's total size and folder and **Show in
 Finder** at the foot. Its toolbar has a search (in the name, calibre,
 notes and fields), **Sort** by Name, Last Take or Size, **Archived**
@@ -64,7 +65,11 @@ Beat Rate), Lift Angle, Beat Rate and Notes can each be
 removed with its ×, then given back, with any of the suggested fields or
 one of your own, from **Add Field**; **Archived** hides the watch from the
 list without deleting it. The first watch makes the library's folder.
-Clicking a watch shows its details and its **Takes**, newest first: each
+Clicking a watch shows its details, its photos as a strip of thumbnails
+(clicking one opens it in the computer's own viewer; right-clicking offers
+**Open**, **Show in Finder** and **Delete…**, asking first; one that can't
+be read shows its name and "Can't be shown" instead), and its **Takes**,
+newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
 size) it measured when saved, the space it uses, and **Analysis Only** or
 **Incomplete** when it is one. Clicking a take opens it as Open… does;
@@ -84,7 +89,13 @@ the whole folder in each recording entry, as the app's own takes do; a
 take that lists its sound file by file is refused with a message saying
 so. A take Save Again saves into, one being replayed or analysed, or one
 whose analysis is being kept is not renamed, moved or deleted until that
-is done. The toolbar then has **‹ All Watches** and **Edit…**.
+is done. The toolbar then has **‹ All Watches**, **Edit…** and **Add
+Photos…**, which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
+an iPhone takes them, each kept as it is) into the watch's `photos/`,
+adding a number to a name already there. Thumbnails are read in the
+background, turned the way the camera says, and kept in this computer's
+cache folder (never in the library), so the next start shows them at
+once.
 Picking a watch, refused while listening, sets the take's name, calibre,
 lift angle and beat rate from it; changing them under **This Take**
 changes that take, not the watch. With a watch picked, **Save…** saves
@@ -92,7 +103,7 @@ the take into it with no question, in a folder named by when the take
 started (in this computer's time) and its position when it used only one;
 Save Again then saves into the same take, and Save As… still asks. A
 library another copy of the app has open is read only: Quick Listen, New
-Watch… and Edit… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
+Watch…, Edit…, Add Photos… and a photo's Delete… are off, and Save… asks where. Then **Microphone** or **Recording**. For the
 microphone: the microphone menu and **Rescan**, **Start** (or **Stop** and
 **Resume**), **New Session** (listening or not: listening carries on into the
 new session, unless closing the kept sound fails), **Save…**

@@ -4,6 +4,7 @@
 
 use crate::app::fmt_bytes;
 use crate::calibre_ui::Calibres;
+use crate::photos::{Thumb, Thumbs};
 use crate::theme;
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,10 @@ pub const HELP: &[&str] = &[
      new one; Save… then saves the take into that watch, named by when it started.",
     "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
      set up each new take of it, and can be changed for one take without changing the watch.",
+    "Add Photos… copies photos of the picked watch into its folder, each kept as it is \
+     (JPEG, PNG, TIFF, or HEIC as an iPhone takes them). They show as a strip under its \
+     details, and the first by name leads its row in the list. Click one to open it in your \
+     photo viewer, or right-click it to show its folder or delete it.",
     "Each take shows what it measured when it was saved, its length and the space it uses. \
      Picking one opens it as Open does; right-clicking it offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
@@ -108,17 +113,70 @@ fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// What leads a row in the list: nothing, when no watch listed has a
+/// photo; else the watch's first photo, or a tile with its initial while
+/// there is none (or it is still being read, or can't be).
+#[derive(Clone, Copy)]
+pub enum Lead<'a> {
+    None,
+    Photo(Option<&'a egui::TextureHandle>, &'a str),
+}
+
+/// A square tile `rect` holding `tex` cropped to a square, or the
+/// initial of `name` on a plain tile.
+fn tile(ui: &egui::Ui, rect: egui::Rect, tex: Option<&egui::TextureHandle>, name: &str) {
+    let pal = theme::pal(ui);
+    let p = ui.painter_at(rect);
+    match tex {
+        Some(t) => {
+            let [w, h] = t.size().map(|v| v as f32);
+            let (cw, ch) = if w > h { (h / w, 1.0) } else { (1.0, w / h) };
+            let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), Vec2::new(cw, ch));
+            egui::Image::new((t.id(), rect.size()))
+                .uv(uv)
+                .corner_radius(rect.width().min(rect.height()) * 0.15)
+                .paint_at(ui, rect);
+        }
+        None => {
+            p.rect_filled(rect, rect.width() * 0.15, pal.control);
+            let initial: String = name.trim().chars().take(1).collect();
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                initial.to_uppercase(),
+                theme::semibold(rect.height() * 0.45),
+                pal.text_secondary,
+            );
+        }
+    }
+}
+
 /// A row that can be clicked: `top` and its `right` on one line, `below`
-/// in small grey type under it.
-fn row(ui: &mut egui::Ui, top: &str, right: &str, below: &str, hint: &str) -> egui::Response {
+/// in small grey type under it, after its `lead`.
+fn row(
+    ui: &mut egui::Ui,
+    lead: Lead,
+    top: &str,
+    right: &str,
+    below: &str,
+    hint: &str,
+) -> egui::Response {
     let pal = theme::pal(ui);
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 40.0), Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(rect, 6.0, pal.control_hover);
     }
+    let mut left = rect.left() + 8.0;
+    if let Lead::Photo(tex, name) = lead {
+        let r = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
+            Vec2::splat(32.0),
+        );
+        tile(ui, r, tex, name);
+        left = r.right() + 8.0;
+    }
     let p = ui.painter_at(rect);
-    let left = rect.left() + 8.0;
     p.text(
         egui::pos2(left, rect.top() + 12.0),
         egui::Align2::LEFT_CENTER,
@@ -143,11 +201,25 @@ fn row(ui: &mut egui::Ui, top: &str, right: &str, below: &str, hint: &str) -> eg
     resp.on_hover_text(hint)
 }
 
-/// The list: one row per watch. The id of the watch clicked, if any.
-pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry]) -> Option<String> {
+/// The list: one row per watch, led by its first photo when any watch
+/// listed has one. The id of the watch clicked, if any.
+pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> Option<String> {
     let mut picked = None;
+    let photos = watches.iter().any(|e| !e.photos.is_empty());
     for e in watches {
         let w = &e.watch;
+        let tex = e
+            .photos
+            .first()
+            .and_then(|p| match thumbs.get(ui.ctx(), p) {
+                Thumb::Ready(t) => Some(t.clone()),
+                _ => None,
+            });
+        let lead = if photos {
+            Lead::Photo(tex.as_ref(), &w.name)
+        } else {
+            Lead::None
+        };
         let mut below = Vec::new();
         if let Some(c) = w.calibre.as_deref().filter(|c| !c.is_empty()) {
             below.push(c.to_string());
@@ -161,6 +233,7 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry]) -> Option<String> {
         }
         if row(
             ui,
+            lead,
             &w.name,
             &fmt_bytes(e.bytes()),
             &below.join(" · "),
@@ -174,10 +247,16 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry]) -> Option<String> {
     picked
 }
 
-/// Unsorted's row, at the top of the list: whether it was clicked.
-pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry) -> bool {
+/// Unsorted's row, at the top of the list (led by a tile when the
+/// watches' rows have photos): whether it was clicked.
+pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool) -> bool {
     row(
         ui,
+        if tiled {
+            Lead::Photo(None, &e.watch.name)
+        } else {
+            Lead::None
+        },
         &e.watch.name,
         &fmt_bytes(e.bytes()),
         &format!(
@@ -220,9 +299,6 @@ pub fn details(ui: &mut egui::Ui, e: &WatchEntry) {
     for f in &w.fields {
         rows.push((f.label.clone(), f.value.clone()));
     }
-    if !e.photos.is_empty() {
-        rows.push(("Photos".into(), count(e.photos.len(), "photo", "photos")));
-    }
     for (label, value) in rows {
         theme::row(ui, &label, None, |ui| ui.label(value));
     }
@@ -232,6 +308,102 @@ pub fn details(ui: &mut egui::Ui, e: &WatchEntry) {
     if w.archived {
         ui.label(RichText::new("Archived: hidden from the list").color(pal.text_secondary));
     }
+}
+
+/// What to do with one of a watch's photos.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhotoAction {
+    /// In the computer's own viewer.
+    Open(PathBuf),
+    /// Its folder, in the file manager.
+    Show(PathBuf),
+    Delete(PathBuf),
+}
+
+/// A watch's photos as a row of tiles, in name order (the first leads
+/// the watch's row in the list); one that can't be read says so, with
+/// its name, instead of a picture.
+pub fn photo_strip(
+    ui: &mut egui::Ui,
+    e: &WatchEntry,
+    thumbs: &mut Thumbs,
+    writable: bool,
+) -> Option<PhotoAction> {
+    let mut act = None;
+    let pal = theme::pal(ui);
+    egui::ScrollArea::horizontal()
+        .id_salt("photo strip")
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for p in &e.photos {
+                    let name = folder_label(p);
+                    let (tex, failed) = match thumbs.get(ui.ctx(), p) {
+                        Thumb::Ready(t) => (Some(t.clone()), None),
+                        Thumb::Loading => (None, None),
+                        Thumb::Failed(why) => (None, Some(why.clone())),
+                    };
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(88.0), Sense::click());
+                    let hint = match (&tex, &failed) {
+                        (Some(_), _) => format!("{name}. Click to open it in your photo viewer."),
+                        (None, Some(why)) => format!(
+                            "{name} can't be shown here ({why}). Click to open it in your \
+                             photo viewer."
+                        ),
+                        (None, None) => format!("{name}, being read"),
+                    };
+                    if tex.is_some() {
+                        tile(ui, rect, tex.as_ref(), &name);
+                    } else {
+                        ui.painter().rect_filled(rect, 88.0 * 0.15, pal.control);
+                        if failed.is_some() {
+                            let galley = ui.painter().layout(
+                                format!("{name}\nCan't be shown"),
+                                egui::FontId::proportional(11.0),
+                                pal.text_secondary,
+                                rect.width() - 12.0,
+                            );
+                            let at = rect.center() - galley.size() / 2.0;
+                            ui.painter().galley(at, galley, pal.text_secondary);
+                        } else {
+                            let r = egui::Rect::from_center_size(rect.center(), Vec2::splat(16.0));
+                            ui.put(r, egui::Spinner::new().size(16.0).color(pal.text_secondary));
+                        }
+                    }
+                    let resp = resp.on_hover_text(hint);
+                    if resp.clicked() {
+                        act = Some(PhotoAction::Open(p.clone()));
+                    }
+                    resp.context_menu(|ui| {
+                        if ui
+                            .button("Open")
+                            .on_hover_text("Open this photo in your photo viewer")
+                            .clicked()
+                        {
+                            act = Some(PhotoAction::Open(p.clone()));
+                        }
+                        if ui
+                            .button(crate::settings_window::show_in_words())
+                            .on_hover_text("Open the folder holding this watch's photos")
+                            .clicked()
+                        {
+                            act = Some(PhotoAction::Show(p.clone()));
+                        }
+                        ui.separator();
+                        if ui
+                            .add_enabled(writable, egui::Button::new("Delete…"))
+                            .on_hover_text("Delete this photo for good. It asks first.")
+                            .on_disabled_hover_text(
+                                "This copy of the app can only read the library",
+                            )
+                            .clicked()
+                        {
+                            act = Some(PhotoAction::Delete(p.clone()));
+                        }
+                    });
+                }
+            });
+        });
+    act
 }
 
 /// What to do with a take.
@@ -315,6 +487,7 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
         let replays = t.audio && !t.incomplete;
         let r = row(
             ui,
+            Lead::None,
             &t.name,
             &fmt_bytes(t.bytes),
             &take_line(t),
@@ -465,6 +638,10 @@ pub enum Ask {
         bytes: u64,
         sound: u64,
     },
+    /// One of a watch's photos.
+    DeletePhoto {
+        photo: PathBuf,
+    },
     /// A take from outside: into which watch (by id), copied or moved.
     Add {
         from: PathBuf,
@@ -509,6 +686,14 @@ pub fn ask_dialog(
                     "Its folder and everything in it, {}, are deleted. This can't be undone.",
                     fmt_bytes(*bytes)
                 ));
+                ("Delete", true, true)
+            }
+            Ask::DeletePhoto { photo } => {
+                ui.label(
+                    RichText::new(format!("Delete \"{}\"?", folder_label(photo)))
+                        .font(theme::semibold(15.0)),
+                );
+                ui.label("The photo is deleted from the watch's photos. This can't be undone.");
                 ("Delete", true, true)
             }
             Ask::Keep { take, bytes, sound } => {
