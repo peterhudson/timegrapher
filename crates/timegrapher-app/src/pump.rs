@@ -8,9 +8,10 @@
 //! own now does that work every few tenths of a second, whether the window
 //! is drawing or not; the frames share the same app and read the sound
 //! too while they draw. Work a frame does while holding the app (a file
-//! dialog, a save copying the take) holds this thread up too, and the
-//! sound waits in memory meanwhile. It also holds the computer awake
-//! while listening, when Keep Awake is on.
+//! dialog) holds this thread up too, and the sound waits in memory
+//! meanwhile; a save copies the take on a thread of its own, so it
+//! doesn't. It also holds the computer awake while listening, when Keep
+//! Awake is on.
 
 use crate::app::TimegrapherApp;
 use crate::applog;
