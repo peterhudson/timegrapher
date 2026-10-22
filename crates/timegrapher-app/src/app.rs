@@ -4577,8 +4577,16 @@ impl TimegrapherApp {
     /// take into Unsorted. Unsaved sound is asked about first, unless
     /// `asked`.
     fn quick_listen(&mut self, asked: bool) {
+        if self.quick_listen_ready(asked) {
+            self.start_microphone();
+        }
+    }
+
+    /// All of Quick Listen but opening the microphone: whether to open it.
+    fn quick_listen_ready(&mut self, asked: bool) -> bool {
         if self.running() {
-            return self.info_msg("Stop listening first.".into());
+            self.info_msg("Stop listening first.".into());
+            return false;
         }
         self.ensure_library();
         let ready = match &self.library {
@@ -4590,11 +4598,12 @@ impl TimegrapherApp {
             Err(e) => Err(format!("The library can't be read: {e}")),
         };
         if let Err(e) = ready {
-            return self.error(format!("Quick Listen can't keep its take: {e}"));
+            self.error(format!("Quick Listen can't keep its take: {e}"));
+            return false;
         }
         if !asked && self.needs_save_confirmation() {
             self.confirm = Some(Confirm::QuickListen);
-            return;
+            return false;
         }
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
@@ -4605,7 +4614,7 @@ impl TimegrapherApp {
         self.input = Input::Microphone;
         self.watch.clear();
         self.note_settings();
-        self.start_microphone();
+        true
     }
 
     /// Write the form's watch into the library, making the library first
@@ -12382,14 +12391,13 @@ mod tests {
             });
         };
         record(&mut app, &base.join("unsaved-1"));
-        app.quick_listen(false);
+        assert!(!app.quick_listen_ready(false));
         assert!(matches!(app.confirm, Some(Confirm::QuickListen)));
         assert!(!app.quick_listen && app.watch_open.is_some(), "nothing yet");
-        // Answered, with an input that can't be opened.
+        // Answered (no input is opened here: the test touches no device).
         app.confirm = None;
-        app.devices_listed = true;
-        app.device = Some("no such input".into());
-        app.quick_listen(true);
+        assert!(app.quick_listen_ready(true));
+        assert!(app.session.recorder.is_none(), "the unsaved session went");
         assert!(app.quick_listen && app.unsorted_open && app.watch_open.is_none());
         assert_eq!(app.watch, "");
         assert!(!app.running());
