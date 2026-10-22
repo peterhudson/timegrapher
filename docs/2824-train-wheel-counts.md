@@ -81,8 +81,8 @@ The [Sellita catalogue](https://www.sellita.ch/images/documents/Catalogue2024_EN
 groups these derivatives and specifies their frequencies. Complication
 gears and relocated seconds mechanisms are not counted here. Separate
 rows preserve the small-seconds versus centre-seconds distinction. New
-complication rows leave lift angle unspecified rather than inheriting it
-from gear ratios. The [SW210 technical manual](https://www.cousinsuk.com/pdf/categories/8190_sellita%20sw210_1.pdf)
+complication rows take no lift angle from gear ratios; the 50° they
+carry is the contributor's figure, below. The [SW210 technical manual](https://www.cousinsuk.com/pdf/categories/8190_sellita%20sw210_1.pdf)
 and [ETA 2826-2 manual](https://www.cousinsuk.com/PDF/categories/1470_ETA2826.2.pdf)
 provide additional family and specification evidence.
 
@@ -98,6 +98,11 @@ Other specification sources are the
 These establish identities/specifications, not independent counts of the
 transferred trains. STP's sheet explicitly specifies **52°**; ETA's manuals
 specify **50°**. Equal train counts do not imply equal lift angles.
+
+The rows' lift angles do not come from the train counts. Peter Hudson
+gives **50°** for all 2824-2 movements and their derivatives, clones and
+variations (2026-10-22); the 28,800 bph rows that had no lift angle carry
+that figure, and STP1-11 keeps its own 52°.
 
 ### Explicit exclusions and unresolved names
 
