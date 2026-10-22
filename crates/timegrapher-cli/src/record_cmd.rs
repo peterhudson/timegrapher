@@ -11,8 +11,8 @@
 //!
 //! Without a FOLDER, `--watch NAME` names a watch in the app's library
 //! (`timegrapher_core::library`): the session folder is made in that
-//! watch's `takes/`, named by when it started as the app names a take,
-//! and the watch's calibre, beat rate and lift angle fill in what isn't
+//! watch's `takes/`, named by the local date and time it started (with
+//! no position, as more can be added later), and the watch's calibre, beat rate and lift angle fill in what isn't
 //! given. Recording into the library holds its lock, so it is refused
 //! while the app has the library open, as a second copy of the app
 //! would be.

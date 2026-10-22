@@ -250,9 +250,10 @@ Without a FOLDER, `--watch NAME` names a watch in the app's library
 (found as `watches show` finds it: by its name, ignoring case and spaces
 at either end; the library is `--library DIR`, default `Timegrapher Data`
 in the home folder). The session folder is made among that watch's
-takes, named by when it started in this computer's time as the app names
-a take (`2026-10-22 09.15`, with ` 2` and so on added when that name is
-taken), and the watch's calibre, beat rate and lift angle fill in those
+takes, named by the date and time it started in this computer's time
+(`2026-10-22 09.15`, with ` 2` and so on added when that name is taken;
+unlike the app's one-position takes, no position is added, since more
+positions can go into the folder later), and the watch's calibre, beat rate and lift angle fill in those
 not given; the session file's `watch` is the watch's name. The `--json`
 document's `library_watch` names the watch (null when FOLDER was given),
 and `session_file` is in the new folder: give that folder as FOLDER to
