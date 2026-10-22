@@ -207,8 +207,9 @@ The skill names command-line commands; here each is a tool that runs it for you 
 returns the same JSON: analyze is analyze_recording, session is run_session, series is \
 check_steadiness, long is long_run, profile is tick_tock_profile, shape is beat_shape, \
 doctor --file is check_recording, doctor is check_microphone, devices is \
-list_sound_inputs, calibres is list_calibres, watches list is list_watches, watches show \
-is show_watch, record is record_position and report is make_report_bundle. Two tools use the microphone, record_position and check_microphone: \
+list_sound_inputs, calibres is list_calibres (calibres --search is its search), watches \
+list is list_watches, watches show is show_watch, record is record_position (record \
+--watch with no folder is its watch with no folder) and report is make_report_bundle. Two tools use the microphone, record_position and check_microphone: \
 before each, tell the person how to place the watch and wait until they say it is ready. \
 For a multi-position test, record each position into one folder with record_position, \
 then read the folder with run_session. Recordings made elsewhere work too: ask for the \

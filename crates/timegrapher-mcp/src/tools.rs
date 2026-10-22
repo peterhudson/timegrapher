@@ -327,18 +327,28 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Look Up a Calibre",
         description: "The calibre table: each movement's beat rate, lift angle, escape \
             wheel and train, how sure the figures are and their sources. Give a name for \
-            one calibre (an unknown name is an error that suggests a wider search); with no \
-            name, the common calibres and the user's own are listed. Amplitude depends on the \
-            lift angle.",
+            one calibre (an unknown name is an error), or `search` for the calibres that \
+            answer it, best first; with neither, the common calibres and the user's own are \
+            listed. Amplitude depends on the lift angle.",
         command: &["calibres"],
-        params: &[p(
-            "name",
-            Kind::Text,
-            Arg::Positional,
-            false,
-            "A calibre, e.g. \"ETA 2824-2\" (the common ones and the user's own if left \
-             out).",
-        )],
+        params: &[
+            p(
+                "name",
+                Kind::Text,
+                Arg::Positional,
+                false,
+                "A calibre, e.g. \"ETA 2824-2\" (the common ones and the user's own if left \
+                 out).",
+            ),
+            p(
+                "search",
+                Kind::Text,
+                Arg::Flag("--search"),
+                false,
+                "Words to look for in calibres' names, other names and makers, e.g. \
+                 \"dd 3235\" or \"AP 3120\"; not with `name`.",
+            ),
+        ],
         charts: false,
         read_only: true,
         idempotent: true,
@@ -370,7 +380,8 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "show_watch",
         title: "Show a Watch",
-        description: "One watch from the library, by its name (any case), or \"Unsorted\" \
+        description: "One watch from the library, by its name (any case, spaces at either \
+            end ignored), or \"Unsorted\" \
             for the Quick Listen takes: its details, the fields the person added, and every \
             take, newest first, with its full folder `path`, start, length, positions, \
             whether it kept its sound (`audio`), and the readings the app showed at its end \
@@ -397,8 +408,11 @@ pub const TOOLS: &[ToolSpec] = &[
         name: "record_position",
         title: "Record a Position",
         description: "Record the watch on the microphone in one position into a test \
-            folder, with a quick check of the take. Every take is added to the folder's \
-            session.toml, ready for run_session; the check states the facts about its \
+            folder, with a quick check of the take. Without `folder`, `watch` names a watch in \
+            the app's library and a new test folder is made among its takes; give that \
+            folder (the result's `session_file` is in it) as `folder` for the next position. \
+            Recording into the library is refused while the app has it open. Every take is \
+            added to the folder's session.toml, ready for run_session; the check states the facts about its \
             sound (`watch_heard` and the timing scatter, and the beats clipped). This \
             uses the microphone: before every call, tell the person which position to put the \
             watch in (DU dial up, DD dial down, CU crown up, CD crown down, CL crown left, \
@@ -410,9 +424,10 @@ pub const TOOLS: &[ToolSpec] = &[
                 "folder",
                 Kind::Path,
                 Arg::Positional,
-                true,
+                false,
                 "Full path of the test folder, one per watch and test (created if missing), \
-                 e.g. ~/Timegrapher/my-watch-2026-10-11.",
+                 e.g. ~/Timegrapher/my-watch-2026-10-11. Leave it out to start a new test \
+                 under a library watch named by `watch`.",
             ),
             p(
                 "position",
@@ -441,8 +456,11 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::Text,
                 Arg::Flag("--watch"),
                 false,
-                "The watch, in the owner's words (written to a new session file).",
+                "With `folder`: the watch, in the owner's words (written to a new session \
+                 file). Without: a watch in the app's library, by its name as list_watches \
+                 gives it; its calibre, beat rate and lift angle fill in those not given.",
             ),
+            LIBRARY,
             CALIBRE_READING,
             BPH,
             p(

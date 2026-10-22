@@ -286,8 +286,19 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
     }
     // Every take joins the test, whatever its sound: the clipping and
     // no-regular-beat facts above go with it.
-    if doc["session_file"].is_string() {
+    if let Some(file) = doc["session_file"].as_str() {
         lines.push("The take was added to the test.".to_string());
+        // Without a folder the test's folder is new: the next position
+        // goes into it.
+        if let (Some(w), Some(dir)) = (
+            doc["library_watch"].as_str(),
+            std::path::Path::new(file).parent(),
+        ) {
+            lines.push(format!(
+                "The test's folder, made among {w}'s takes, is {}.",
+                dir.display()
+            ));
+        }
     }
     lines.retain(|l| !l.is_empty());
     lines.join(" ")
@@ -573,6 +584,26 @@ mod tests {
              beats (2.5%) were clipped. The take was added to the test."
         );
         assert!(!s.contains("not added"));
+    }
+
+    #[test]
+    fn a_take_in_a_library_watch_names_its_new_folder() {
+        let doc = json!({
+            "schema": "timegrapher.record/2",
+            "position": "DU", "seconds": 30.0,
+            "library_watch": "Pepsi",
+            "session_file": "/lib/Pepsi/takes/2026-10-22 09.15/session.toml",
+            "check": { "from_s": 15.0, "to_s": 30.0, "watch_heard": false,
+                "beats_found": 0, "beats_expected": 120 },
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert!(
+            s.ends_with(
+                "The take was added to the test. The test's folder, made among Pepsi's \
+                 takes, is /lib/Pepsi/takes/2026-10-22 09.15."
+            ),
+            "{s}"
+        );
     }
 
     #[test]

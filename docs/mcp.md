@@ -101,12 +101,12 @@ That route has not been tried with this server yet.
 | `long_run` | `long` | Rate and amplitude over hours and the periodic changes that point at a wheel of the train; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
-| `record_position` | `record` | Records the watch in one position into a test folder and checks the take; **uses the microphone** |
+| `record_position` | `record` | Records the watch in one position into a test folder, or a new one among a library watch's takes, and checks the take; **uses the microphone** |
 | `check_microphone` | `doctor` | Listens a few seconds and states the level, clipping, automatic gain and noise, with the sound card's controls; **uses the microphone**, changes nothing |
 | `check_recording` | `doctor --file` | A recording's level, clipping, automatic gain and noise |
-| `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train |
+| `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train, or with `search` the calibres that answer some words |
 | `list_watches` | `watches list` | The watches in the app's library: name, calibre, beat rate, lift angle, how many takes and the newest's start, and the Quick Listen takes in Unsorted; archived watches only with `all` |
-| `show_watch` | `watches show` | One watch (any case), or `Unsorted`: its details and fields, and each take, newest first, with its folder `path` for `run_session`, `long_run` or `check_steadiness`, whether it kept its sound, and the readings the app showed at its end |
+| `show_watch` | `watches show` | One watch (any case, spaces at either end ignored), or `Unsorted`: its details and fields, and each take, newest first, with its folder `path` for `run_session`, `long_run` or `check_steadiness`, whether it kept its sound, and the readings the app showed at its end |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |
 | `read_guide` | (none) | The watchmaker skill and its pages, for the chat app to read |
@@ -121,9 +121,10 @@ angle for a calibre, 52° is used. `record_position` and
 `run_session` also resolve the same custom catalogue. Existing session
 numeric settings and lift context retain precedence; an unknown manifest
 label stays descriptive, while an explicit unknown calibre is an error. That
-error suggests `timegrapher calibres --search` with the name; `run_session`'s
-also lists the known names. `list_calibres` with no name lists the common
-calibres and the user's own.
+error suggests `timegrapher calibres --search` with the name, which is
+`list_calibres` with `search`; `run_session`'s also lists the known names.
+`list_calibres` with no name or search lists the common calibres and the
+user's own.
 
 `list_watches` and `show_watch` only read the library (the app's own unless
 `library` names another), so they work while the app has it open. A take's
@@ -132,6 +133,12 @@ a take with `audio` false kept only its analysis and has no sound to read.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
+Without a `folder`, `watch` names a watch in the app's library (as
+`show_watch` finds it): the first take makes a new test folder among that
+watch's takes, the watch's calibre, beat rate and lift angle fill in those
+not given, and the lead names the folder, which the next positions take as
+`folder`. Recording into the library, or into a folder that is one of its
+takes, is refused while the app has the library open.
 Before each take it tells you how to place the watch and waits for you; your
 chat app also asks you to allow each tool call. Every take is added to the
 test; the check says when no regular beat was found or beats were clipped.
@@ -162,7 +169,9 @@ already made then comes back, marked as such, instead of a second
 recording. The server remembers takes only while it runs.
 
 For `record_position`, retry identity uses the resolved physical destination,
-`take_id` and position. Existing directory aliases (including symbolic links,
+`take_id` and position; with no folder, the library as given (resolved the
+same way) and the watch's name in any case, without spaces at either end,
+stand in for the destination. Existing directory aliases (including symbolic links,
 `~`, `.` and `..`) share an identity; missing destination components are retained
 under the resolved existing ancestor, so creating the folder does not invalidate
 a retry. Symbolic links are resolved before applying `..`. Relative paths remain

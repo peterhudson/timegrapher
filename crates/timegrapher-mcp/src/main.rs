@@ -102,8 +102,8 @@ async fn call(
     // A recording the chat app retries with the same take_id is answered
     // from the take already made; two calls never share the microphone.
     let take = destination
-        .as_deref()
-        .and_then(|folder| takes::key(args, folder));
+        .as_ref()
+        .and_then(|target| takes::key(args, target));
     if let Some(r) = take.as_ref().and_then(takes::recorded) {
         return complete(r);
     }
@@ -144,10 +144,11 @@ async fn call(
     let progress = (tool.name == "record_position")
         .then(|| progress::report(context, args, feed.as_ref().map(|f| f.path().to_path_buf())))
         .flatten();
-    let out = if let Some(folder) = destination {
+    let out = if let Some(takes::Target::Folder(folder)) = destination {
         let mut native: Vec<std::ffi::OsString> =
             line.iter().map(std::ffi::OsString::from).collect();
-        // record_position has exactly one positional argument, its folder.
+        // record_position has at most one positional argument, its folder,
+        // and a folder makes it last.
         *native.last_mut().expect("record folder argument") = folder.into_os_string();
         scope.run(&native, None).await
     } else {
