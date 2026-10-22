@@ -98,6 +98,22 @@ pub fn all() -> Vec<Scenario> {
             beat_error: steady(BEAT_ERROR),
         },
         Scenario {
+            name: "line-switches-on",
+            summary: "From 60 min on, the rate swings 3 s/d peak to peak every 60 s, one turn of the fourth wheel; before that it is steady.",
+            expect: "Rate repeats every 60 s (the fourth wheel) over the take as a whole; the STFT and SST maps (series --json --maps) show the 60 s line only from about 60 min.",
+            finds: &[("rate", "Rate repeats every 60 s (the fourth wheel)")],
+            duration_s: HOURS_2,
+            rate: Box::new(|t| {
+                if t < 3600.0 {
+                    RATE
+                } else {
+                    RATE + 1.5 * (std::f64::consts::TAU * t / 60.0).sin()
+                }
+            }),
+            amplitude: steady(AMPLITUDE),
+            beat_error: steady(BEAT_ERROR),
+        },
+        Scenario {
             name: "slow-cycle",
             summary: "The amplitude swings 6° peak to peak every 8 min, an arbitrary slow cycle (no wheel of the 2824-2 layout turns in 8 min).",
             expect: "Amplitude repeats every 8 min, about 6° peak to peak: Period search, FFT and Cycle at 480 s, and a bump in the Allan deviation near 0.37 of the period (about 180 s).",
@@ -354,6 +370,52 @@ mod tests {
         .unwrap();
         assert_eq!(whole.len(), 20 * 48000);
         assert!(whole == parts);
+    }
+
+    #[test]
+    fn the_time_frequency_maps_show_when_a_line_switches_on() {
+        use crate::longterm::LongConfig;
+        let s = find("line-switches-on").unwrap();
+        let log = beat_log(&s, 1);
+        let lc = LongConfig {
+            wheels: crate::periodicity::standard_wheels(BPH, 20),
+            ..Default::default()
+        };
+        let long = crate::longrun::analyse(&log, None, &lc);
+        let maps = crate::timefreq::for_take(&log, None, &long, &lc);
+        // The swing's timing: 1.5 s/d over 60 s is 0.17 ms of timing
+        // either way.
+        let size = 1.5 / 86400.0 * 60.0 / std::f64::consts::TAU * 1000.0;
+        for m in maps.iter().filter(|m| m.series == "rate") {
+            let r = (0..m.period_s.len())
+                .min_by(|&a, &b| {
+                    let d = |i: usize| (m.period_s[i] / 60.0).ln().abs();
+                    d(a).total_cmp(&d(b))
+                })
+                .unwrap();
+            let reach = m.window_s.map_or(300.0, |w| w / 2.0 + 60.0);
+            let (mut before, mut after) = (Vec::new(), Vec::new());
+            for (t, col) in m.t_s.iter().zip(&m.values) {
+                let v = col[r - 1].max(col[r]).max(col[r + 1]);
+                if !v.is_finite() {
+                    continue;
+                }
+                if *t < 3600.0 - reach {
+                    before.push(v);
+                } else if *t > 3600.0 + reach {
+                    after.push(v);
+                }
+            }
+            let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+            assert!(before.len() > 2 && after.len() > 2, "{}", m.method);
+            assert!(
+                mean(&before) < 0.25 * size,
+                "{}: {}",
+                m.method,
+                mean(&before)
+            );
+            assert!(mean(&after) > 0.6 * size, "{}: {}", m.method, mean(&after));
+        }
     }
 
     #[test]

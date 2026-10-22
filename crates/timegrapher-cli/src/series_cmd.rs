@@ -26,6 +26,8 @@ pub struct Options<'a> {
     pub json: bool,
     /// Add the Steadiness pane's views to each series in the JSON.
     pub views: bool,
+    /// Add the time-frequency maps of each series to the JSON.
+    pub maps: bool,
 }
 
 pub fn run(o: Options) -> Result<(), String> {
@@ -130,6 +132,10 @@ pub fn run(o: Options) -> Result<(), String> {
             }
             doc["period_span"] =
                 serde_json::to_value(views.period_span).map_err(|e| e.to_string())?;
+        }
+        if o.maps {
+            let tf = timegrapher_core::timefreq::for_take(&log, clock, &long, &lc);
+            doc["time_frequency"] = serde_json::to_value(tf).map_err(|e| e.to_string())?;
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {

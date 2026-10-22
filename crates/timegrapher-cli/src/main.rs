@@ -282,6 +282,11 @@ enum Command {
         /// a few hundred kB on a long take.
         #[arg(long, requires = "json")]
         views: bool,
+        /// With --json, add the time-frequency maps of each series (an
+        /// STFT and a synchrosqueezed wavelet transform): about 1.6 MB on
+        /// a 2 h take.
+        #[arg(long, requires = "json")]
+        maps: bool,
     },
     /// Check GitHub for a newer published release (one request; nothing
     /// is downloaded or installed).
@@ -805,6 +810,7 @@ fn main() -> ExitCode {
             stretch_min,
             json,
             views,
+            maps,
         } => {
             let mut cfg = StreamConfig::default();
             cfg.analysis.bph = bph;
@@ -833,6 +839,7 @@ fn main() -> ExitCode {
                     },
                     json,
                     views,
+                    maps,
                 })
             }
         }
