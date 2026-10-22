@@ -169,8 +169,8 @@ For each series:
   0.02 or more (`on_window_line`) may come from the gaps. Without gaps
   the window stays under 0.009 in the band.
 - **Wheel lines** (sizes by amplitude in the plain JSON, every window with
-  `--maps`): for each wheel the calibre names (or, when none is given, the
-  two common escape wheels and the fourth and centre wheels), the size of a sine at its turn's
+  `--maps`): for each wheel the calibre names (with no calibre, none, unless
+  `--escape-teeth` names the escape wheel), the size of a sine at its turn's
   period, fitted by least squares (with a level and a slope) in windows
   of ten turns, at least 20 min, stepped half a window, in the beat
   timing (ms), the amplitude and the beat error, each with its slow

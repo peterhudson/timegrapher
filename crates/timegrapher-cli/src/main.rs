@@ -1116,12 +1116,11 @@ fn run_analyze(
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let mut a = analyze(&audio, cfg);
     let calibre = train.calibre.as_ref();
-    // A calibre's own wheels name the periodic components.
-    if calibre.is_some() {
-        let wheels = train.analysis_wheels(a.summary.bph);
-        calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
-        calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
-    }
+    // A calibre's own wheels name the periodic components; with none,
+    // only an escape wheel `--escape-teeth` gives does.
+    let wheels = train.analysis_wheels(a.summary.bph);
+    calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
+    calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
     // A stored or given correction wins; otherwise the USB lines in the
     // recording, when it has them.
     let clock = match clock {

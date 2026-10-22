@@ -9,7 +9,7 @@ use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
-use timegrapher_core::periodicity::{default_wheels, standard_wheels, Wheel};
+use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::{audio, breaks, session, timing};
 
@@ -40,7 +40,8 @@ impl Train<'_> {
 
     /// The wheels for a recording at `bph`. A calibre whose table gives no
     /// escape wheel gets one from its teeth, or `--escape-teeth`, or both
-    /// common ones.
+    /// common ones. With no calibre, only `--escape-teeth`'s escape wheel
+    /// is named, or none.
     pub(crate) fn wheels(&self, bph: u32) -> Result<Vec<Wheel>, String> {
         Ok(self.wheels_for(self.calibre()?, bph))
     }
@@ -48,10 +49,10 @@ impl Train<'_> {
     fn wheels_for(&self, calibre: Option<&Calibre>, bph: u32) -> Vec<Wheel> {
         let escape = |teeth: Option<u32>| match teeth {
             Some(t) => standard_wheels(bph, t),
-            None => default_wheels(bph),
+            None => common_escape_wheels(bph),
         };
         let Some(c) = calibre else {
-            return escape(self.escape_teeth);
+            return uncalibred(bph, self.escape_teeth);
         };
         if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
@@ -70,6 +71,30 @@ impl Train<'_> {
         }
         w
     }
+}
+
+/// The periods to mark for reference when no wheel is named: 1 min and
+/// 1 h ([`timegrapher_core::periodicity::reference_lines`]), else none.
+pub(crate) fn reference_lines(
+    named: &[Wheel],
+) -> Vec<timegrapher_core::periodicity::ReferenceLine> {
+    if named.is_empty() {
+        timegrapher_core::periodicity::reference_lines()
+    } else {
+        Vec::new()
+    }
+}
+
+/// The wheels to name with no calibre: the escape wheel `--escape-teeth`
+/// gives, or none. Which wheel turns once a minute or once an hour is the
+/// calibre's to say.
+fn uncalibred(bph: u32, teeth: Option<u32>) -> Vec<Wheel> {
+    teeth.map_or_else(Vec::new, |t| {
+        standard_wheels(bph, t)
+            .into_iter()
+            .filter(|w| w.name == "escape wheel")
+            .collect()
+    })
 }
 
 /// Owned catalogue selection shared by CLI analysis and recording commands.
@@ -174,10 +199,10 @@ impl ResolvedTrain {
     pub(crate) fn wheels(&self, bph: u32) -> Vec<Wheel> {
         let escape = |teeth| match teeth {
             Some(t) => standard_wheels(bph, t),
-            None => default_wheels(bph),
+            None => common_escape_wheels(bph),
         };
         let Some(c) = &self.calibre else {
-            return escape(self.escape_teeth);
+            return uncalibred(bph, self.escape_teeth);
         };
         if let Some(cb) = c.bph.filter(|&cb| cb != bph) {
             eprintln!(
@@ -418,6 +443,7 @@ pub fn run(
         "escape_teeth": train.escape_teeth,
         "wheels": wheels,
         "named_wheels": lc.wheels,
+        "reference_lines": reference_lines(&lc.wheels),
         "out": out.display().to_string(),
     });
     let summary = crate::output::to_json(
@@ -1125,12 +1151,7 @@ mod catalogue_tests {
         assert!(train.calibre.as_ref().unwrap().bph.is_none());
         assert_eq!(
             pairs(train.wheels(28800)),
-            pairs(
-                default_wheels(28800)
-                    .into_iter()
-                    .filter(|w| w.name == "escape wheel")
-                    .collect()
-            )
+            pairs(common_escape_wheels(28800))
         );
     }
 }
