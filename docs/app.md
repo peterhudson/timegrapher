@@ -696,8 +696,12 @@ axis, with the 1% false-alarm line dashed, the escape, fourth and centre
 wheels' periods marked, and the strongest component labelled; **Log
 Scale** in its toolbar draws the scores on a log scale, so a small peak
 beside a tall one still shows), **Cycle**
-(the readings folded at the cycle the tests found: every cycle as dots and
-the median shape as a line), **Autocorrelation** (with the ±1.96/√n band
+(the readings folded at the cycle the tests found: every cycle as dots,
+coloured by when it came from purple for the first to yellow-green for the
+last, so slow wander shows as a run of colour; a box round the middle half
+of each phase's readings, for a phase with at least four; the median shape
+as a line; and a note giving the line's swing, highest less lowest, beside
+the boxes' median height), **Autocorrelation** (with the ±1.96/√n band
 dashed, the repeat marked and the Ljung–Box p-value), **Allan Deviation**
 (log-log, against the dashed line independent readings follow, labelled
 where it ends, with the averaging time of least scatter labelled),
@@ -710,7 +714,23 @@ spectrum (a timing sine of *a* ms at period *P* swings the rate by
 2·*a*·2π/*P*·86.4 s/d, of which a 10 s reading keeps sin *x*/*x*, *x* =
 π·10/*P*); **Timing** in its toolbar draws rate as the beat timing's own
 spectrum, in ms, at every period; the wheels' periods are marked and the
-tallest point labelled). In Periods and FFT each wheel's
+tallest peak labelled: the highest point above both its neighbours, so a
+spectrum still climbing at either end of its axis, as the rate's slow
+wander builds up in the timing at the longest periods, labels its own
+peak rather than the end, and none when it has no peak), **STFT Map** and
+**Wavelet Map** (each series' size at each period, up on a log axis with
+the longest at the top, and time of the session, across, from core's
+time-frequency maps: the STFT from the amplitude spectrum of each 20
+minutes of readings stepped 5 minutes, the rate's of the beat timing in
+ms, and the wavelet map from a synchrosqueezed wavelet transform, with
+each unbroken stretch read alone; coloured in viridis from dark purple
+for the smallest size to yellow for the size 99.5% of the cells read stay
+under and above; a cell nothing was read for, such as a window with a
+reading missing or a stretch's ends the wavelet can't reach, is left
+empty and shown as "not read" in the key under the map; the wheels' turns are
+dashed across it and named at the right; **Log Scale** in the toolbar
+colours the sizes on a log scale over a range of 300 to 1; the pointer
+over a cell shows its time, period and size). In Periods and FFT each wheel's
 period is a bold line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dashed line marked ×2; the grid behind is pale. The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
@@ -718,7 +738,8 @@ minute while it grows; for a recording they cover what has been replayed,
 or the whole file once it is opened. Rows stack and fill the pane when it is
 tall enough, sit side by side when it is wide and short, and scroll
 otherwise. A line at the top says in plain words what the view
-shows. The plots don't pan, zoom or show values under the pointer.
+shows. The plots don't pan or zoom, and only the two maps show values under the
+pointer.
 
 **Remembered settings.** The app keeps its views between runs: the strip's
 direction, width and length and what is drawn over it, the profile's
