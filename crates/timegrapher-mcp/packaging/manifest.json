@@ -33,7 +33,7 @@
     { "name": "read_guide", "description": "The watchmaker skill and its pages, for the chat app to read before guiding you" },
     { "name": "analyze_recording", "description": "Rate, amplitude and beat error of one recording, with charts" },
     { "name": "run_session", "description": "A multi-position test read as one, with findings and charts" },
-    { "name": "check_steadiness", "description": "How the rate, amplitude and beat error move over a long recording, with the statistics" },
+    { "name": "check_steadiness", "description": "How the rate, amplitude and beat error move over a long recording, with the statistics and, if asked, the time-frequency maps" },
     { "name": "long_run", "description": "Rate and amplitude over hours, and the periodic changes that point at a wheel of the train" },
     { "name": "tick_tock_profile", "description": "The Tick and Tock sounds with the marks the engine measured" },
     { "name": "beat_shape", "description": "Unlock, impulse and drop of each side's beat" },

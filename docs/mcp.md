@@ -97,7 +97,7 @@ That route has not been tried with this server yet.
 |---|---|---|
 | `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
 | `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
-| `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics |
+| `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics; with `maps`, the time-frequency maps too |
 | `long_run` | `long` | Rate and amplitude over hours and the periodic changes that point at a wheel of the train; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
 | `beat_shape` | `shape` | Unlock, impulse and drop of each side's beat |
@@ -279,7 +279,16 @@ the timegrapher app draws them:
   probability paper as the app's Distribution panes draw them (one steady
   state falls on the dashed straight line, two states bend it). The chart
   data rides beside the result, so the model reads the headlines and not the
-  thousands of numbers behind the plots.
+  thousands of numbers behind the plots. With `maps`, the STFT Map and
+  Wavelet Map views draw each series' size at each period and time, as the
+  app's panes do: viridis from the core's table, on the colour scale the
+  document gives each map (Log Scale switches it to the log one), empty
+  where nothing was read, with the named wheels' turns dashed across them;
+  pointing at a map reads a cell under it. The model reads each map's
+  outline in `time_frequency_maps` (its periods, times, cells read and
+  scale) rather than its cells, and the coherences without their
+  `coherence` and `phase_deg` grids, which no view draws; the CLI's
+  `series --maps --json` gives both whole.
 
 The charts use the app's colours for each reading (rate red, amplitude
 purple, beat error yellow, Tick blue, Tock orange) and its scales: like the

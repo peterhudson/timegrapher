@@ -1,0 +1,82 @@
+// Execute the view's own time-frequency map renderer against the core's
+// colour table and the colour scale the document gives each map.
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+const html = fs.readFileSync(process.env.TIMEGRAPHER_TEST_VIEW_HTML || path.join(__dirname, "../src/view.html"), "utf8");
+// The table the server puts in the page, read from core palette.rs.
+const palette = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/palette.rs"), "utf8");
+const VIRIDIS = JSON.parse(palette.match(/pub const VIRIDIS: \[\[u8; 3\]; 17\] = (\[[\s\S]*?\]);/)[1].replace(/,\s*\]$/, "]"));
+function definition(name) {
+  const match = html.match(new RegExp(`^function ${name}\\([^\\n]*\\{[\\s\\S]*?^\\}`, "m"));
+  if (!match) throw new Error(`Missing renderer ${name}`);
+  return match[0];
+}
+const context = vm.createContext({
+  VIRIDIS, mapPaints: [], mapsLog: false, Uint8ClampedArray,
+  chartWidth: () => 600, logTicks: () => [], linTicks: () => [], fmtTime: (t) => `t${t}`, TIME_STEPS: [],
+  plotArea: () => ({ id: "c", svg: "" }), CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
+});
+assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
+vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
+  ["esc", "steadyNote", "steadyPlot", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
+    .map(definition).join("\n") + "\nthis.mapPaints = mapPaints;", context);
+
+// Values made in the renderer's context, as plain ones.
+const plain = (v) => JSON.parse(JSON.stringify(v));
+const nan = null;
+// Windows at 600, 900 and 1500 s: the one at 1200 s was left out (tfmap.rs's test).
+const map = {
+  series: "amplitude", method: "stft", unit: "deg", step_s: 2, window_s: 1200, hop_s: 300,
+  period_s: [100, 10, 1], t_s: [600, 900, 1500],
+  values: [[1, 2, nan], [0, 4, 4], [nan, nan, 2]],
+  scale: { linear: { lo: 0, hi: 4 }, log: { lo: 4 / 300, hi: 4 } },
+};
+
+test("the colours are the core's viridis, between its points", () => {
+  assert.deepEqual(plain(context.viridisRgb(0)), [68, 1, 84]);
+  assert.deepEqual(plain(context.viridisRgb(1)), [253, 231, 37]);
+  assert.deepEqual(plain(context.viridisRgb(-1)), plain(context.viridisRgb(0)));
+  // palette.rs's own test: halfway between the first two points.
+  assert.deepEqual(plain(context.viridisRgb(1 / 32)), [70, 13, 95]);
+});
+
+test("a map is coloured on the document's scale, its empty cells clear", () => {
+  const sc = context.mapScale(map, false);
+  assert.deepEqual(plain(sc), { lo: 0, hi: 4, log: false });
+  const [t0, dt, w] = context.mapSlots(map);
+  assert.deepEqual([t0, dt, w], [600, 300, 4]);
+  const px = context.mapPixels({ m: map, sc, t0, dt, w });
+  const at = (x, y) => Array.from(px.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
+  assert.deepEqual(at(0, 2), [0, 0, 0, 0], "not read");
+  assert.deepEqual(at(2, 0), [0, 0, 0, 0], "the window left out");
+  assert.deepEqual(at(1, 0), [68, 1, 84, 255]);
+  assert.deepEqual(at(1, 1), [253, 231, 37, 255]);
+  assert.deepEqual(at(3, 2), [...plain(context.viridisRgb(0.5)), 255]);
+  // Under the pointer: the column's time, the row's period and its size.
+  const p = { m: map, sc, t0, dt, w };
+  assert.deepEqual(plain(context.mapCell(p, 910, 1)), { t: 900, period: 10, v: 4 });
+  assert.deepEqual(plain(context.mapCell(p, 600, 2)), { t: 600, period: 1, v: null });
+  assert.equal(context.mapCell(p, 1200, 1), null, "between windows");
+  // On a log scale the bottom is the document's, not worked out here.
+  const log = context.mapScale(map, true);
+  assert.equal(log.lo, 4 / 300);
+  assert.equal(context.scaleAt(log, 4), 1);
+});
+
+test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
+  const doc = { duration_s: 1800, time_frequency: [map], input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }] } } };
+  context.mapPaints.length = 0;
+  const drawn = context.steadyPlot({ series: "amplitude" }, "stft", doc);
+  assert.ok(drawn.includes('canvas class="map" data-map="0" width="4" height="3"'), drawn);
+  assert.ok(drawn.includes("0.000°") && drawn.includes("4.0° and above"), drawn);
+  assert.ok(drawn.includes("fourth wheel"));
+  assert.equal(context.mapPaints.length, 1);
+  assert.ok(context.steadyPlot({ series: "amplitude" }, "wavelet", doc).includes("needs a longer stretch of unbroken readings"));
+  assert.ok(context.steadyPlot({ series: "rate" }, "stft", doc).includes("needs 20 minutes of readings"));
+  // A map with nothing read has no scale.
+  const blank = { ...map, scale: { linear: null, log: null } };
+  assert.ok(context.steadyPlot({ series: "amplitude" }, "stft", { time_frequency: [blank] }).includes("Nothing in this stretch could be read"));
+});
