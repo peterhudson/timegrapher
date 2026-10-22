@@ -317,3 +317,20 @@ The fourth wheel was subsequently photographed, so its 84/9 counts and
 Peacock SL1258 receives a contributor-confirmed family transfer from the
 DD324 specimen. Genuine Patek 324 entries and all other rows are unchanged.
 DD324 retains the existing 52° lift setting; SL1258 remains unspecified.
+
+## AP3120 clone microscope contribution
+
+[AP3120 clone counts and mesh checks](../../../docs/ap3120-clone-train-wheel-counts.md)
+extends the existing SA3120 entry from six Peter Hudson photographs and
+bench confirmations. The 21,600 bph train is barrel 104, simple intermediate
+40 (physically confirmed to have no pinion), centre 80/13, third 75/10,
+fourth 81/10 and escape 20/9. The intermediate rim directly meshes with
+the barrel and drives both the centre and minutes-drive pinions (13 each).
+
+Periods are eight hours, 144000/13 seconds, one hour, 450 seconds, 60 seconds
+and 20/3 seconds respectively; the cannon/minutes assembly also turns hourly.
+Original Third/Fourth/Fifth filenames map to centre/third/fourth roles.
+The genuine AP3120 and Miyota-based replicas receive no transferred counts.
+The existing 53° lift setting is retained. Peter Hudson identifies Jinghe as
+the SA3120 manufacturer; it is listed under Shanghai Jinghe (clone), with
+APS/ZF retained as marketed aliases.

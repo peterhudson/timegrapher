@@ -727,6 +727,51 @@ mod tests {
     }
 
     #[test]
+    fn ap3120_clone_simple_idler_closes_both_one_hour_branches() {
+        for name in [
+            "SA3120",
+            "AP3120 Clone",
+            "Audemars Piguet 3120 Clone",
+            "APS 3120",
+            "ZF 3120",
+        ] {
+            let c = find(name).unwrap();
+            assert_eq!(c.calibre, "SA3120");
+            let wheel = |n: &str| c.wheels.iter().find(|w| w.name == n).unwrap();
+            let idler = wheel("intermediate wheel");
+            let barrel = wheel("barrel");
+            assert_eq!(idler.teeth, Some(40));
+            assert_eq!(idler.pinion, None);
+            // This rim-to-rim mesh and the branching minute drive are outside
+            // the generic wheel-to-pinion train check.
+            let expected_barrel =
+                idler.period_s * barrel.teeth.unwrap() as f64 / idler.teeth.unwrap() as f64;
+            assert!((expected_barrel - barrel.period_s).abs() < 1e-6);
+            assert_eq!(barrel.period_s, 28800.0);
+            for role in ["centre wheel", "cannon pinion"] {
+                let receiver = wheel(role);
+                assert_eq!(receiver.pinion, Some(13));
+                assert_eq!(receiver.period_s, 3600.0);
+                let expected =
+                    idler.period_s * receiver.pinion.unwrap() as f64 / idler.teeth.unwrap() as f64;
+                assert!((expected - receiver.period_s).abs() < 1e-6);
+            }
+            assert_eq!(wheel("fourth wheel").period_s, 60.0);
+            assert!(c.wheels.iter().all(|w| w.name != "seconds wheel"));
+        }
+        let covered: Vec<_> = all()
+            .iter()
+            .filter(|c| {
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("ap3120-clone-train-wheel-counts.md"))
+            })
+            .map(|c| c.calibre.as_str())
+            .collect();
+        assert_eq!(covered, ["SA3120"]);
+    }
+
+    #[test]
     fn dd324_indirect_hand_drives_close_and_do_not_leak_to_genuine_patek() {
         for name in ["DD324", "Dandong 324 S C", "SL1258"] {
             let c = find(name).unwrap();
