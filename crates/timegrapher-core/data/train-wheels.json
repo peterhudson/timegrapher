@@ -1403,11 +1403,15 @@
   },
   {
     "calibre": "SA3120",
-    "maker": "APS / ZF (clone)",
+    "maker": "Shanghai Jinghe (clone)",
     "family": [
       "3120 (clone)",
       "APS 3120",
-      "ZF 3120"
+      "ZF 3120",
+      "AP3120 Clone",
+      "Audemars Piguet 3120 Clone",
+      "Jinghe 3120",
+      "Jinghe SA3120"
     ],
     "common": true,
     "bph": 21600,
@@ -1415,29 +1419,68 @@
     "seconds": "centre",
     "wheels": [
       {
-        "name": "seconds wheel",
+        "name": "barrel",
+        "period_s": 28800,
+        "teeth": 104,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; 3600 × 104/13 = 28800 s; the simple intermediate wheel cancels from the ratio; running drum, not power reserve"
+      },
+      {
+        "name": "intermediate wheel",
+        "period_s": 11076.923076923076,
+        "teeth": 40,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; flat wheel with two pivots and NO pinion, physically confirmed by contributor; rim meshes directly with barrel and both 13-leaf receivers; 3600 × 40/13 s"
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600,
+        "teeth": 80,
+        "pinion": 13,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; offset centre (second) wheel, supplied as Third Wheel.JPG; 450 × 80/10 = 3600 s"
+      },
+      {
+        "name": "third wheel",
+        "period_s": 450,
+        "teeth": 75,
+        "pinion": 10,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; supplied as Fourth Wheel.JPG; 60 × 75/10 = 450 s"
+      },
+      {
+        "name": "fourth wheel",
         "period_s": 60,
-        "basis": "derived: the seconds hand turns once a minute"
+        "teeth": 81,
+        "pinion": 10,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; supplied as Fifth Wheel.JPG; carries centre seconds, contributor confirms 60 s; (20/3) × 81/9 = 60 s"
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 6.666666666666667,
+        "teeth": 20,
+        "pinion": 9,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; 20 × 7200/21600 = 20/3 s; independently 60 × 9/81 s"
       },
       {
         "name": "cannon pinion",
         "period_s": 3600,
-        "basis": "derived: carries the minute hand"
+        "pinion": 13,
+        "basis": "photographed AP3120 clone tooth counts, Peter Hudson, 2026-10-21; 13 leaves counted on the minutes-drive pinion carrying the cannon pinion; driven by intermediate rim: (144000/13) × 13/40 = 3600 s, matching contributor confirmation; no separate motion-works tooth count asserted"
       },
       {
         "name": "balance",
-        "period_s": 0.333333,
-        "basis": "derived from the beat rate"
+        "period_s": 0.3333333333333333,
+        "basis": "derived from contributor-confirmed 21600 beats/hour; full oscillation"
       }
     ],
     "sources": [
+      "Peter Hudson, 2026-10-21: identifies Jinghe as the manufacturer of SA3120; APS and ZF retained as marketed movement aliases",
+      "docs/ap3120-clone-train-wheel-counts.md — Peter Hudson, six AP3120 clone microscope photographs, 21600 bph, hand periods and physically checked pinionless intermediate wheel, 2026-10-21",
       "https://forum.replica-watch.info/threads/aps-15400-super-clone-3120mvt.10248933/page-10 ('This movement is 21600bph')",
       "https://forum.replica-watch.info/threads/zf-new-release-15400-with-cal-3120.10367719/page-2 ('21600 vph')",
       "https://clonology.is/product/audemars-piguet-royal-oak-ref15710st-oo-a027ca-01-off-shore-diver-swiss-3120-clone-movement-replica/ (21,600)",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)"
     ],
-    "confidence": "derived from the beat rate",
-    "notes": "The 3120 clones from APS and ZF run at 21,600 bph like the genuine (forum posts and a dealer page; no timegrapher readout found). Lift 53° as the genuine 3120. Older AP replicas on a Miyota 9015 base run at 28,800: use that entry. Its 53° lift angle rests only on one author's forum guide to lift angles, which gives it for the genuine 3120."
+    "confidence": "derived from tooth counts",
+    "notes": "Photographed AP3120 clone train: barrel 104, simple intermediate 40 with no pinion, offset centre 80/13, third 75/10, fourth 81/10, escape 20/9, minutes-drive pinion 13. Contributor physically confirms the intermediate rim meshes directly with the barrel; its two pivots carry no pinion. It drives both the centre and minutes pinions. The one-hour cannon and one-minute fourth/centre-seconds periods agree with the counted train at 21600 bph. Original Third/Fourth/Fifth filenames map to centre/third/fourth roles. SA3120 is made by Jinghe, confirmed by Peter Hudson on 2026-10-21. APS/ZF names are retained as marketed aliases, not movement manufacturers. Genuine AP3120 and older 28800 bph Miyota 9015-based replicas are outside this contribution. Existing 53° lift setting is retained from the forum guide; photographs do not establish lift angle.",
+    "escape_teeth": 20
   },
   {
     "calibre": "SA4302",

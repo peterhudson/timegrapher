@@ -1,0 +1,43 @@
+{
+  "specimen": "AP3120 Clone",
+  "contributor": "Peter Hudson",
+  "date": "2026-10-21",
+  "originals": [
+    {
+      "file": "originals/barrel.jpg",
+      "supplied_filename": "Barrel.JPG",
+      "role": "Barrel",
+      "sha256": "403d84b0e0969351791cc4d4f634937f271bb5209838627695e60cbe5e91c8ad"
+    },
+    {
+      "file": "originals/second-wheel-and-cannon-pinion.jpg",
+      "supplied_filename": "Second Wheel and Cannon Pinion.JPG",
+      "role": "Intermediate wheel and minutes pinion",
+      "sha256": "a5bcc3b6f6706047abb703a8daf90756d01b443e1dafb2534f253536fe15703a"
+    },
+    {
+      "file": "originals/third-wheel.jpg",
+      "supplied_filename": "Third Wheel.JPG",
+      "role": "Centre (second) wheel",
+      "sha256": "6a94677a035667218060e7191a53355ef62c916b887dfb8f2aa1bee130a148a6"
+    },
+    {
+      "file": "originals/fourth-wheel.jpg",
+      "supplied_filename": "Fourth Wheel.JPG",
+      "role": "Third wheel",
+      "sha256": "1bbdc038a3eaadaac2bb854f4fae02fb7b3067329a0e52d064854a1fe64b29b0"
+    },
+    {
+      "file": "originals/fifth-wheel.jpg",
+      "supplied_filename": "Fifth Wheel.JPG",
+      "role": "Fourth / centre-seconds wheel",
+      "sha256": "9265a99e540bba44c38672e2412f9a3538b44dfb27b5aec79793d06f232901ad"
+    },
+    {
+      "file": "originals/escape-wheel.jpg",
+      "supplied_filename": "Escape Wheel.JPG",
+      "role": "Escape wheel",
+      "sha256": "ba976412602ba3fcd2b5ee7114225286d1f874e6b7763c6fe93c7c57ad1cf5bc"
+    }
+  ]
+}
