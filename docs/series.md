@@ -57,7 +57,9 @@ All three series are tested on readings of the same length, the rate's.
 The amplitude and the beat error are measured in 2 s windows; the
 windows that fall in each rate reading are averaged into one reading.
 No reading is averaged over part of its span: an amplitude or beat
-error reading needs every 2 s window its span holds, and a rate reading
+error reading needs every 2 s window its span holds (a 2 s window that
+reaches into a break's gap is left out, so a reading beside a gap is
+too), and a rate reading
 needs beats in each 2 s piece of it and must not reach into a break's
 gap from either side, so a reading at the edge of a gap or a masked
 stretch, or with a window missing, is left out rather than averaged

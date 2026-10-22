@@ -485,16 +485,17 @@ mod tests {
         assert_eq!(phase_bins(41.4, 10.0), 6);
         assert_eq!(phase_bins(58.0, 10.0), 6);
         // A 45 s cycle read every 10 s keeps its size: its readings' peak
-        // to peak, at 9 phases 40 degrees apart. 45.003 s keeps each phase
-        // off a bin edge, where rounding would split it across two bins.
+        // to peak, at 9 phases 40 degrees apart. Each phase falls on a bin
+        // edge, and its readings all go to one bin.
         let g = Grid {
             t0: 0.0,
             step: 10.0,
             y: (0..360)
-                .map(|i| (std::f64::consts::TAU * (i as f64 * 10.0 + 2.5) / 45.003).sin())
+                .map(|i| (std::f64::consts::TAU * (i as f64 * 10.0 + 2.5) / 45.0).sin())
                 .collect(),
         };
-        let f = longterm::fold(&g, 45.003, phase_bins(45.003, 10.0));
+        let f = longterm::fold(&g, 45.0, phase_bins(45.0, 10.0));
+        assert_eq!(f.counts, vec![40; 9]);
         let max = f.profile.iter().copied().fold(f64::MIN, f64::max);
         let min = f.profile.iter().copied().fold(f64::MAX, f64::min);
         let want = 2.0 * (80f64.to_radians()).sin();
@@ -576,7 +577,10 @@ mod tests {
         assert!(g1.y[k..k + 3].iter().all(|v| v.is_nan()));
         let same = |a: f64, b: f64| a == b || (a.is_nan() && b.is_nan());
         assert!(same(g1.y[k + 3], g0.y[k]));
-        assert!(same(g1.y[k - 1], g0.y[k - 1]));
+        // The window the pause falls in holds sound from both sides, so
+        // it is left out too; the one before it is kept.
+        assert!(g1.y[k - 1].is_nan() && g0.y[k - 1].is_finite());
+        assert!(same(g1.y[k - 2], g0.y[k - 2]));
 
         // The tests' own beat-error spectrum comes from this grid, and not
         // from the readings' grid without the pause.

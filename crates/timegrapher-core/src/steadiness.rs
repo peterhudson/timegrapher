@@ -2098,8 +2098,10 @@ pub fn check(
             distribution::distributions(&[], 0.0, 0.0, 0.0)
         }
     };
+    let gaps = crate::longrun::gaps(clock, &long.breaks);
     let amp_samples: Vec<twostate::Sample> = aw
         .iter()
+        .filter(|w| !crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)))
         .filter_map(|w| {
             Some(twostate::Sample {
                 start_s: map(w.start_s),
@@ -2242,17 +2244,22 @@ pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
 }
 
 /// The amplitude and beat error windows on true time, one grid point
-/// every window length, so each gap is left empty. The beat errors are
-/// sizes, given as positive, when the sign turns over across a break
-/// ([`crate::longrun::beat_error_turns`]).
+/// every window length, so each gap is left empty. A window that reaches
+/// into a break's gap is left out, as the rate readings are. The beat
+/// errors are sizes, given as positive, when the sign turns over across a
+/// break ([`crate::longrun::beat_error_turns`]).
 pub(crate) fn window_grids(
     log: &BeatLog,
     clock: Option<&ClockFit>,
     breaks: &[crate::breaks::Break],
 ) -> [Grid; 2] {
     let map = crate::longrun::true_time(clock, breaks);
+    let gaps = crate::longrun::gaps(clock, breaks);
     let aw = &log.amplitude_windows;
-    let astep = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
+    // One window's length on true time, so the grid keeps step with the
+    // windows when the clock fit stretches time (2.9 s over 16 h at
+    // 50 ppm on the audio's own spacing).
+    let astep = aw.first().map_or(2.0, |w| map(w.end_s) - map(w.start_s));
     let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
         let Some(w0) = aw.first() else {
             return Grid {
@@ -2261,12 +2268,14 @@ pub(crate) fn window_grids(
                 y: Vec::new(),
             };
         };
-        // With breaks, on true time, so each gap is left empty.
-        let pos = |t: f64| if breaks.is_empty() { t } else { map(t) };
-        let n = ((pos(aw.last().unwrap().start_s) - pos(w0.start_s)) / astep).round() as usize + 1;
+        // On true time, so each gap is left empty.
+        let n = ((map(aw.last().unwrap().start_s) - map(w0.start_s)) / astep).round() as usize + 1;
         let mut y = vec![f64::NAN; n];
         for w in aw {
-            let i = ((pos(w.start_s) - pos(w0.start_s)) / astep).round() as usize;
+            if crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)) {
+                continue;
+            }
+            let i = ((map(w.start_s) - map(w0.start_s)) / astep).round() as usize;
             if i < n {
                 y[i] = f(w).unwrap_or(f64::NAN);
             }
@@ -3480,5 +3489,88 @@ mod tests {
         assert!(crate::longrun::touches_gap(&gaps, 300.8, 310.8));
         assert!(!crate::longrun::touches_gap(&gaps, 290.0, 300.0));
         assert!(!crate::longrun::touches_gap(&gaps, 301.0, 311.0));
+    }
+}
+
+#[cfg(test)]
+mod window_grid_tests {
+    use super::*;
+    use crate::amplitude::AmplitudeWindow;
+    use crate::breaks::Break;
+
+    fn log_of(windows: usize) -> BeatLog {
+        BeatLog {
+            sample_rate: 48000,
+            duration_s: windows as f64 * 2.0,
+            bph: 18000,
+            lift_deg: 52.0,
+            beats: vec![],
+            amplitude_windows: (0..windows)
+                .map(|k| {
+                    let start_s = k as f64 * 2.0;
+                    AmplitudeWindow {
+                        start_s,
+                        end_s: start_s + 2.0,
+                        even_deg: Some(k as f64),
+                        odd_deg: Some(k as f64),
+                        beat_error_ms: None,
+                        beat_error_unlock_ms: Some(0.3),
+                        even_unlock_ms: None,
+                        odd_unlock_ms: None,
+                        even_drop_ms: None,
+                        odd_drop_ms: None,
+                    }
+                })
+                .collect(),
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+        }
+    }
+
+    #[test]
+    fn a_window_across_a_break_is_left_out() {
+        // A pause at 301 s of audio, inside the window from 300 to 302 s:
+        // that window holds sound from both sides, so it gives no reading.
+        let log = log_of(300);
+        let breaks = [Break {
+            audio_s: 301.0,
+            gap_s: 30.0,
+        }];
+        let [amp, _] = window_grids(&log, None, &breaks);
+        let at = |t: f64| amp.y[((t - amp.t0) / amp.step).round() as usize];
+        assert_eq!(at(298.0), 149.0);
+        assert!(at(300.0).is_nan());
+        assert_eq!(at(302.0 + 30.0), 151.0);
+        // 15 empty points for the gap, and the window across it.
+        assert_eq!(amp.y.iter().filter(|v| v.is_nan()).count(), 16);
+        assert_eq!(amp.y.iter().filter(|v| v.is_finite()).count(), 299);
+    }
+
+    #[test]
+    fn windows_keep_step_with_a_stretched_clock() {
+        // 16 h of 2 s windows on a sound card 50 ppm fast and no breaks:
+        // every window keeps its own grid point, and the grid's time for
+        // it is the window's true time.
+        let n = 28800;
+        let log = log_of(n);
+        let k = 1.0 + 50e-6;
+        let pairs: Vec<(f64, f64)> = (0..=576)
+            .map(|i| {
+                let t = i as f64 * 100.0;
+                (t, 1.79e9 + t * k)
+            })
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let map = crate::longrun::true_time(Some(&clock), &[]);
+        let [amp, _] = window_grids(&log, Some(&clock), &[]);
+        assert_eq!(amp.y.len(), n);
+        for (i, w) in log.amplitude_windows.iter().enumerate() {
+            assert_eq!(amp.y[i], w.even_deg.unwrap(), "{i}");
+            let t = amp.t0 + i as f64 * amp.step;
+            assert!((t - map(w.start_s)).abs() < 0.01, "{i}: {t}");
+        }
     }
 }

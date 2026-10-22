@@ -363,9 +363,8 @@ pub fn fold(g: &Grid, period: f64, bins: usize) -> Fold {
         if !v.is_finite() {
             continue;
         }
-        let x = (g.time(i) - g.t0) / period;
-        let row = (x.floor() as usize).min(rs.len() - 1);
-        let b = (((x - x.floor()) * bins as f64) as usize).min(bins - 1);
+        let (row, b) = phase_bin(g.time(i) - g.t0, period, bins);
+        let row = row.min(rs.len() - 1);
         vals[b].push(v);
         rs[row][b] += v;
         rc[row][b] += 1;
@@ -481,12 +480,20 @@ fn variance(y: &[f64]) -> f64 {
 fn subtract(g: &mut Grid, f: &Fold) {
     let bins = f.profile.len();
     for i in 0..g.y.len() {
-        let x = (g.time(i) - g.t0) / f.period_s;
-        let b = (((x - x.floor()) * bins as f64) as usize).min(bins - 1);
+        let (_, b) = phase_bin(g.time(i) - g.t0, f.period_s, bins);
         if g.y[i].is_finite() && f.profile[b].is_finite() {
             g.y[i] -= f.profile[b];
         }
     }
+}
+
+/// The cycle and phase bin of time `t` from the grid's start. A reading
+/// whose phase falls on a bin edge (a 45 s period read every 10 s, in 9
+/// bins) goes to the bin above it every time, rather than to either side
+/// as rounding in the division happens to fall.
+fn phase_bin(t: f64, period: f64, bins: usize) -> (usize, usize) {
+    let q = (t / period * bins as f64 + 1e-6).floor().max(0.0) as usize;
+    (q / bins, q % bins)
 }
 
 /// Variance explained by folding at `period` with the mean in each phase
@@ -497,8 +504,7 @@ fn explained_at(g: &Grid, period: f64, bins: usize) -> f64 {
     let mut n = vec![0usize; bins];
     for (i, &v) in g.y.iter().enumerate() {
         if v.is_finite() {
-            let x = (g.time(i) - g.t0) / period;
-            let b = (((x - x.floor()) * bins as f64) as usize).min(bins - 1);
+            let (_, b) = phase_bin(g.time(i) - g.t0, period, bins);
             sum[b] += v;
             n[b] += 1;
         }
@@ -648,6 +654,23 @@ pub fn rate_profile(profile: &[f64], period_s: f64) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_phase_on_a_bin_edge_stays_in_one_bin() {
+        // A 45 s cycle read every 10 s, in 9 bins: each reading's phase
+        // (its time is the middle of its 10 s) is a whole number of ninths,
+        // a bin edge. Each phase's readings all go to one bin, so every
+        // bin holds one phase and its value.
+        let g = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..360).map(|i| ((i * 10 + 5) % 45) as f64 / 5.0).collect(),
+        };
+        let f = fold(&g, 45.0, 9);
+        assert_eq!(f.counts, vec![40; 9]);
+        assert_eq!(f.profile, (0..9).map(|b| b as f64).collect::<Vec<_>>());
+        assert!((explained_at(&g, 45.0, 9) - variance(&g.y)).abs() < 1e-9);
+    }
     use crate::synth::Rng;
 
     fn series(n: usize, step: f64, f: impl Fn(f64) -> f64, noise: f64, seed: u64) -> Grid {
