@@ -210,10 +210,10 @@ def check(folder):
                 continue
             target = (page.parent / unquote(parts.path)) if parts.path else page
             if not target.exists():
-                missing.append(f"{page.relative_to(folder)}: {url}")
+                missing.append(f"{page.relative_to(folder).as_posix()}: {url}")
             elif parts.fragment and target.suffix == ".html" and \
                     unquote(parts.fragment) not in ids(target):
-                unknown.append(f"{page.relative_to(folder)}: {url}")
+                unknown.append(f"{page.relative_to(folder).as_posix()}: {url}")
     if not pages:
         missing.append("no pages")
     return missing, unknown
