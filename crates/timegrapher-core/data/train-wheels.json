@@ -80066,9 +80066,10 @@
     "notes": "GMT variant has its own fourth wheel and cannon-pinion parts; only the documented escape count and hand-arbor periods are transferred. No lift angle inferred from 9015. Escape count is illustrated, not bench-measured. Third-wheel and barrel periods remain unestablished; no pinion-leaf counts are asserted."
   },
   {
-    "calibre": "Patek 240 Clone",
-    "maker": "(clone)",
+    "calibre": "SH240",
+    "maker": "Shanghai (clone)",
     "family": [
+      "Patek 240 Clone",
       "PP 240 Clone",
       "Patek Philippe 240 Clone"
     ],
@@ -80116,12 +80117,13 @@
     ],
     "sources": [
       "docs/pp240-clone-train-wheel-counts.md — Peter Hudson, six microscope photographs of a Patek 240 clone, 2026-10-21",
+      "Peter Hudson, 2026-10-22: this Patek 240 clone is made by Shanghai.",
       "Peter Hudson, 2026-10-21: confirmed this Patek 240 clone beats at 21600 vph.",
       "Peter Hudson, 2026-10-21: near second-wheel section corrected to 15 leaves, far section 16; confirmed by recount.",
       "Peter Hudson, 2026-10-21: bench-confirmed far 16-leaf second-wheel section meshes with the barrel; near 15-leaf section meshes with the dial-side motion works."
     ],
     "confidence": "derived from tooth counts",
-    "notes": "Manufacturer unconfirmed; no Dandong attribution. Direct counts: barrel 96; second wheel 75 with 15 leaves on the near steel section and 16 on the far section; third 64/10; fourth 72/8; escape 20/8. Peter Hudson corrected the near-section count on 2026-10-21; recount confirms 15. He confirmed the far 16-leaf section meshes with the barrel and the near 15-leaf section meshes with the dial-side motion works. The pinion field records the 16-leaf barrel input; the separate 15-leaf section is documented here. All periods derive from these counts and the contributor-confirmed 21600 vph beat rate. The centre-wheel slot denotes the second wheel; its one-hour period is calculated, not independently timed. Barrel drum period is 21600 s (6 h), not power reserve. Lift angle, seconds-hand arrangement and the exact motion-works mating wheel remain unspecified. Genuine Patek records are outside this contribution.",
+    "notes": "Made by Shanghai, per the contributor (2026-10-22). Direct counts: barrel 96; second wheel 75 with 15 leaves on the near steel section and 16 on the far section; third 64/10; fourth 72/8; escape 20/8. Peter Hudson corrected the near-section count on 2026-10-21; recount confirms 15. He confirmed the far 16-leaf section meshes with the barrel and the near 15-leaf section meshes with the dial-side motion works. The pinion field records the 16-leaf barrel input; the separate 15-leaf section is documented here. All periods derive from these counts and the contributor-confirmed 21600 vph beat rate. The centre-wheel slot denotes the second wheel; its one-hour period is calculated, not independently timed. Barrel drum period is 21600 s (6 h), not power reserve. Lift angle, seconds-hand arrangement and the exact motion-works mating wheel remain unspecified. Genuine Patek records are outside this contribution.",
     "bph": 21600
   }
 ]

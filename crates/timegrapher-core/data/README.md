@@ -318,12 +318,12 @@ Peacock SL1258 receives a contributor-confirmed family transfer from the
 DD324 specimen. Genuine Patek 324 entries and all other rows are unchanged.
 DD324 retains the existing 52° lift setting; SL1258 remains unspecified.
 
-## Patek 240 clone photographs
+## SH240 (Patek 240 clone) photographs
 
-The [Patek 240 Clone count record](../../../docs/pp240-clone-train-wheel-counts.md)
+The [SH240 count record](../../../docs/pp240-clone-train-wheel-counts.md)
 preserves six original photographs and ten numbered figures. All six rotation
 periods derive from the counted train and the contributor-confirmed 21,600 vph
 beat rate. The second wheel has 15 leaves on its near section and 16 on its far
 section. The confirmed 16-leaf barrel input gives a 6-hour barrel period; the
 15-leaf section serves the dial-side motion works.
-Manufacturer and lift angle remain unconfirmed.
+The maker is Shanghai, per the contributor; lift angle remains unconfirmed.
