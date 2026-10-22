@@ -260,13 +260,16 @@ default (calibre not set)" when no calibre or lift angle is set
 (amplitude), a beat rate set that differs from the one heard, and pauses
 in the stretch. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
-Tock named by the beat count across 1 break"). Where the beat error's
-sign differs either side of a cut (a pause, a jump, a move or its
-settling) among the beats of the position the whole-take line covers
-(the decision `analyze` makes over its stretches), that line under the
-Beat Error card is the mean and spread of every reading's size, and a
-line under it says "whole take given as a size: its sign differs either
-side of a cut".
+Tock named by the beat count across 1 break"). Once stopped, a line under each card gives the whole take in the
+position the watch is in, settling left out, as `timegrapher session`
+reads it (core `session::measure_masked`, the time in other positions
+masked): the rate fitted over every beat, the amplitude and beat error
+the median of the 2 s windows, each with its ±, and the 5th to 95th
+percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
+error's sign differs either side of a cut (a pause, a jump, a move or
+its settling) in that stretch, the line combines the sizes either side,
+as `session` does, and a line under it says "whole take given as a
+size: its sign differs either side of a cut".
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
@@ -357,7 +360,8 @@ measured clock when there is one): each position by name ("Crown Up
 its amplitude and its beat error (a size); the position under way says
 how far its settling or measuring has got. Then a Mean row, the largest
 difference between the rates (D), vertical less horizontal for rate and
-amplitude (DVH), and a plain line for each condition found in a
+amplitude (DVH), all from core `session::indices`, the values
+`session` gives (a position read twice is averaged first), and a plain line for each condition found in a
 position's sound: no regular beat (with its timing scatter), clipping,
 under 10 s of beats, a beat error given as a size because its sign
 differs either side of a cut, or Tick and Tock named by the beat count

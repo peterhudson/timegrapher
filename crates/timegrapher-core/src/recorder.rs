@@ -20,7 +20,7 @@
 use crate::capture::Block;
 use serde::Serialize;
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -536,8 +536,28 @@ impl Recorder {
         calibre: &str,
         result: Option<&serde_json::Value>,
         required_files: &[(&str, &[u8])],
-        mut before: impl FnMut(SaveStep, &Path) -> io::Result<()>,
+        before: impl FnMut(SaveStep, &Path) -> io::Result<()>,
     ) -> io::Result<PathBuf> {
+        let copy = self
+            .begin_save(parent, calibre, result, required_files)?
+            .write_using(before)?;
+        self.note_saved(&copy);
+        Ok(copy.dir)
+    }
+
+    /// The quick part of [`Recorder::save_copy_with_files`]: check where
+    /// the copy goes and note the recording as it stands now, for
+    /// [`PendingSave::write`] to copy on another thread while recording
+    /// carries on here. The copy holds the sound up to now and no more:
+    /// the open audio file up to its frames now, with its header as it is
+    /// now, and clock.csv up to its last line now.
+    pub fn begin_save(
+        &mut self,
+        parent: &Path,
+        calibre: &str,
+        result: Option<&serde_json::Value>,
+        required_files: &[(&str, &[u8])],
+    ) -> io::Result<PendingSave> {
         let mut names = std::collections::BTreeSet::new();
         for &(name, _) in required_files {
             let mut parts = Path::new(name).components();
@@ -583,7 +603,6 @@ impl Recorder {
         }
         self.flush()?;
         let session = self.session_text(Some(utc(SystemTime::now())), result)?;
-        let mut update = SaveUpdate::new(parent, &dest)?;
         let open = self.writer.as_ref().and_then(|_| self.segments.last());
         // Enumerate required sources explicitly: a missing segment must not
         // disappear from read_dir and turn an incomplete take into a success.
@@ -596,6 +615,7 @@ impl Recorder {
                 sources.insert(e.path());
             }
         }
+        let mut files = Vec::new();
         for source in sources {
             let metadata = fs::symlink_metadata(&source)?;
             if !metadata.is_file() {
@@ -604,38 +624,50 @@ impl Recorder {
                     format!("{} is not a regular file", source.display()),
                 ));
             }
-            let file = source.file_name().expect("recording file");
-            let to = dest.join(file);
-            let closed = file.to_str().is_some_and(|n| {
-                self.segments.iter().any(|s| s == n) && open.is_none_or(|s| s != n)
-            });
-            let there = match fs::symlink_metadata(&to) {
-                Ok(m) if !m.is_file() => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::AlreadyExists,
-                        format!("{} is not a regular file", to.display()),
-                    ))
-                }
-                Ok(m) => m.len() == metadata.len(),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => false,
-                Err(e) => return Err(e),
+            let closed = source
+                .file_name()
+                .and_then(|f| f.to_str())
+                .is_some_and(|n| {
+                    self.segments.iter().any(|s| s == n) && open.is_none_or(|s| s != n)
+                });
+            // A file still being written only grows, but each flush writes
+            // the open audio file's header again: keep its start as it is
+            // now. A closed audio file never changes again.
+            let head = if closed {
+                Vec::new()
+            } else {
+                let mut head = Vec::new();
+                File::open(&source)?
+                    .take(SNAPSHOT_HEAD.min(metadata.len()))
+                    .read_to_end(&mut head)?;
+                head
             };
-            if closed && there {
-                continue;
-            }
-            let staged = update.staged.join(file);
-            before(SaveStep::Stage, &to)?;
-            fs::copy(&source, &staged)?;
+            files.push(PendingFile {
+                source,
+                len: metadata.len(),
+                head,
+                closed,
+            });
         }
-        for (file, bytes) in std::iter::once(("session.json", session.as_bytes()))
-            .chain(required_files.iter().copied())
-        {
-            before(SaveStep::Stage, &dest.join(file))?;
-            fs::write(update.staged.join(file), bytes)?;
-        }
-        update.install(&mut before)?;
-        self.saved_name = Some(name);
-        Ok(dest)
+        let mut written = vec![("session.json".to_string(), session.into_bytes())];
+        written.extend(
+            required_files
+                .iter()
+                .map(|&(n, b)| (n.to_string(), b.to_vec())),
+        );
+        Ok(PendingSave {
+            parent: parent.to_path_buf(),
+            dest,
+            name,
+            files,
+            written,
+        })
+    }
+
+    /// Note a copy [`PendingSave::write`] wrote, so Save Again saves into
+    /// it.
+    pub fn note_saved(&mut self, copy: &SavedCopy) {
+        self.saved_name = Some(copy.name.clone());
     }
 
     /// Close the files, saving `result` (the readings at the end) with the
@@ -655,6 +687,118 @@ impl Recorder {
 
 /// Files by name, with their bytes.
 pub type NamedFiles = Vec<(String, Vec<u8>)>;
+
+/// How much of the start of a file still being written a save keeps as
+/// it was when the save began: the open audio file's header lies within
+/// it, and every flush writes that header again.
+const SNAPSHOT_HEAD: u64 = 4096;
+
+/// A copy of a recording as it stood at [`Recorder::begin_save`], to write
+/// on any thread with [`PendingSave::write`] while the recording carries
+/// on.
+#[derive(Debug)]
+pub struct PendingSave {
+    parent: PathBuf,
+    dest: PathBuf,
+    name: std::ffi::OsString,
+    files: Vec<PendingFile>,
+    /// session.json and the companion files, written whole.
+    written: NamedFiles,
+}
+
+#[derive(Debug)]
+struct PendingFile {
+    source: PathBuf,
+    /// Its length at the start of the save: no more is copied.
+    len: u64,
+    /// Its first bytes then, copied instead of what is there by the time
+    /// of the copy. Empty for a closed audio file.
+    head: Vec<u8>,
+    /// A closed audio file, left alone when the copy already holds it whole.
+    closed: bool,
+}
+
+/// A copy [`PendingSave::write`] wrote.
+#[derive(Debug, Clone)]
+pub struct SavedCopy {
+    /// The copy's folder, as the caller spelled its parent.
+    pub dir: PathBuf,
+    name: std::ffi::OsString,
+}
+
+impl PendingSave {
+    /// Where the copy goes.
+    pub fn dest(&self) -> &Path {
+        &self.dest
+    }
+
+    /// Write the copy: stage every changed file, then put them in place
+    /// together, keeping the copy saved before until they all are (see
+    /// [`Recorder::save_copy_with_files`]). Pass the result to
+    /// [`Recorder::note_saved`].
+    pub fn write(self) -> io::Result<SavedCopy> {
+        self.write_using(|_, _| Ok(()))
+    }
+
+    fn write_using(
+        self,
+        mut before: impl FnMut(SaveStep, &Path) -> io::Result<()>,
+    ) -> io::Result<SavedCopy> {
+        let mut update = SaveUpdate::new(&self.parent, &self.dest)?;
+        for f in &self.files {
+            let file = f.source.file_name().expect("recording file");
+            let to = self.dest.join(file);
+            let there = match fs::symlink_metadata(&to) {
+                Ok(m) if !m.is_file() => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!("{} is not a regular file", to.display()),
+                    ))
+                }
+                Ok(m) => m.len() == f.len,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+                Err(e) => return Err(e),
+            };
+            if f.closed && there {
+                continue;
+            }
+            let staged = update.staged.join(file);
+            before(SaveStep::Stage, &to)?;
+            if f.closed {
+                fs::copy(&f.source, &staged)?;
+            } else {
+                copy_as_it_was(f, &staged)?;
+            }
+        }
+        for (file, bytes) in &self.written {
+            before(SaveStep::Stage, &self.dest.join(file))?;
+            fs::write(update.staged.join(file), bytes)?;
+        }
+        update.install(&mut before)?;
+        Ok(SavedCopy {
+            dir: self.dest,
+            name: self.name,
+        })
+    }
+}
+
+/// Copy `f` as it was at the start of the save: its first bytes as they
+/// were then, and the rest up to its length then.
+fn copy_as_it_was(f: &PendingFile, to: &Path) -> io::Result<()> {
+    let mut out = File::create(to)?;
+    out.write_all(&f.head)?;
+    let mut from = File::open(&f.source)?;
+    from.seek(io::SeekFrom::Start(f.head.len() as u64))?;
+    let rest = f.len - f.head.len() as u64;
+    let copied = io::copy(&mut from.take(rest), &mut out)?;
+    if copied != rest {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            format!("{} got shorter during the save", f.source.display()),
+        ));
+    }
+    Ok(())
+}
 
 /// Narrow fault-injection points for the save transaction's filesystem work.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -964,6 +1108,44 @@ mod tests {
                 (e.file_name(), fs::read(e.path()).unwrap())
             })
             .collect()
+    }
+
+    /// A save copies the recording as it stood when it began, though the
+    /// recording carries on before the copy is written: more sound, a
+    /// clock line, and the file it was writing closed with its full length
+    /// in its header.
+    #[test]
+    fn a_save_copies_the_recording_as_it_stood_when_it_began() {
+        let (mut r, base) = save_fixture("as-it-stood");
+        append_second(&mut r, 2);
+        let pending = r.begin_save(&base.join("saved"), "", None, &[]).unwrap();
+        let clock_then = fs::read(r.dir().join("clock.csv")).unwrap();
+        for second in 3..=14 {
+            append_second(&mut r, second);
+        }
+        r.pause().unwrap();
+        r.resume("test");
+        append_second(&mut r, 20);
+        r.flush().unwrap();
+        let copy = pending.write().unwrap();
+        r.note_saved(&copy);
+        let first = crate::audio::load(&copy.dir.join("audio-001.wav")).unwrap();
+        assert_eq!(first.samples.len(), 2 * 8000);
+        assert!(!copy.dir.join("audio-002.wav").exists());
+        assert_eq!(fs::read(copy.dir.join("clock.csv")).unwrap(), clock_then);
+        // Save Again brings the same copy up to now.
+        let again = r.save_copy(&base.join("saved"), "", None).unwrap();
+        assert_eq!(again, copy.dir);
+        let first = crate::audio::load(&again.join("audio-001.wav")).unwrap();
+        assert_eq!(first.samples.len(), 14 * 8000);
+        let second = crate::audio::load(&again.join("audio-002.wav")).unwrap();
+        assert_eq!(second.samples.len(), 8000);
+        assert_eq!(
+            fs::read(again.join("clock.csv")).unwrap(),
+            fs::read(r.dir().join("clock.csv")).unwrap()
+        );
+        drop(r);
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

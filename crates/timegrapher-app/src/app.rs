@@ -109,7 +109,7 @@ const CLOCK_UNKNOWN: &str = "input clock not measured";
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
-use timegrapher_core::recorder::{Recorder, SessionInfo};
+use timegrapher_core::recorder::{Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -579,9 +579,13 @@ const SAVE_HINT: &str = "Save the sound of this session so far, with its clock l
      where: the take goes in a folder of its own, named for its time and watch, inside the \
      folder you choose. After \
      that, Save Again adds the sound since into the same take without asking. Listening \
-     carries on. New Session and quitting ask before unsaved sound is thrown away; a quit \
+     carries on, and so does the window: the copy is written in the background, with \
+     Saving… in the status bar until it is done, and the take saved before stays as it was \
+     until then. New Session and quitting ask before unsaved sound is thrown away; a quit \
      that can't ask (on macOS, Cmd+Q, the app menu or the Dock) keeps it when there is \
      more than 5 s of it, to offer back at the next start.";
+
+const SAVING_HINT: &str = "Saving now: wait until the sound so far is copied into its take";
 
 const SAVE_AS_HINT: &str = "Save the session so far as a new take, in a folder you choose; \
      Save Again then goes there";
@@ -1047,6 +1051,21 @@ struct AnalysisSave {
     total_s: f64,
 }
 
+/// A copy of the session's sound being written on a thread of its own,
+/// so the window and listening carry on meanwhile.
+struct Saving {
+    thread: std::thread::JoinHandle<std::io::Result<SavedCopy>>,
+    /// The take's folder.
+    dest: PathBuf,
+    /// The folder it is in, for the next Save… to start in.
+    parent: PathBuf,
+    /// Seconds of sound it holds.
+    secs: f64,
+    metadata: session::MetadataSnapshot,
+    /// Read the library again once it is written: a new take in a watch.
+    rescan: bool,
+}
+
 impl Drop for AnalysisSave {
     fn drop(&mut self) {
         self.cancel
@@ -1295,6 +1314,8 @@ pub struct TimegrapherApp {
     batch: Option<Batch>,
     anchor: Option<Anchor>,
     trend: Vec<TrendPoint>,
+    /// The last [`Self::whole_take`] and what it was read from.
+    whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
     level: Level,
     level_at: Instant,
     /// When the input last clipped.
@@ -1324,6 +1345,8 @@ pub struct TimegrapherApp {
     sound_at: Option<(f64, Profiles)>,
     /// Keeping the session as its analysis alone, while that is worked out.
     analysis_save: Option<AnalysisSave>,
+    /// Saving the session's sound, while the copy is written.
+    saving: Option<Saving>,
     /// The take on show was kept as its analysis alone, without its sound.
     no_sound: bool,
     /// Where this session's analysis was last kept without its sound, and
@@ -1652,6 +1675,7 @@ impl TimegrapherApp {
             batch: None,
             anchor: None,
             trend: Vec::new(),
+            whole_take: Default::default(),
             level: Level::default(),
             level_at: Instant::now(),
             clipped_at: None,
@@ -1669,6 +1693,7 @@ impl TimegrapherApp {
             sound_history: Vec::new(),
             sound_at: None,
             analysis_save: None,
+            saving: None,
             no_sound: false,
             analysis_kept_to: None,
             jumps_seen: Vec::new(),
@@ -1804,6 +1829,8 @@ impl TimegrapherApp {
     }
 
     fn reset_session(&mut self, sample_rate: u32, label: String) {
+        // Never throw away the sound a save is still copying.
+        self.wait_for_save();
         self.session.discard_recording();
         self.session.clear();
         self.clock = None;
@@ -1872,6 +1899,11 @@ impl TimegrapherApp {
     fn start_microphone(&mut self) {
         let let_go = std::mem::take(&mut self.masks_let_go);
         if self.refuse_faulted_recording() || self.analysis_save_busy() {
+            return;
+        }
+        // A save being written carries on through a resume, but not a new
+        // session, which throws away the sound it copies.
+        if !self.can_resume() && self.saving_busy() {
             return;
         }
         // Listening replaces the recording on show: changed masks on it
@@ -2041,7 +2073,7 @@ impl TimegrapherApp {
     /// Clear everything for the next watch or position. Listening to the
     /// microphone carries on in the new session; a replay stops.
     fn new_session(&mut self) {
-        if self.analysis_save_busy() {
+        if self.analysis_save_busy() || self.saving_busy() {
             return;
         }
         let listening = self.running() && self.session.mic();
@@ -2217,7 +2249,7 @@ impl TimegrapherApp {
     /// question. The first time, Save… saves into the watch picked in the
     /// Watches pane, else asks where.
     fn save_again(&mut self) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         match self.session.saved_to().and_then(|p| p.parent()) {
@@ -2256,15 +2288,15 @@ impl TimegrapherApp {
             r.name_first_copy(name.to_owned());
         }
         self.save_into(takes);
-        if let Ok(Some(l)) = &mut self.library {
-            l.scan();
+        if let Some(s) = &mut self.saving {
+            s.rescan = true;
         }
     }
 
     /// Save a copy of the session's sound so far, with its clock log and
     /// settings, in a folder the user picks. Listening carries on.
     fn save_recording(&mut self) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         let mut d = rfd::FileDialog::new()
@@ -2283,8 +2315,11 @@ impl TimegrapherApp {
         self.save_into(&parent);
     }
 
+    /// Save the session's sound so far into a take in `parent`. The copy
+    /// is written on a thread of its own ([`Saving`]): listening carries
+    /// on, and the window with it.
     fn save_into(&mut self, parent: &Path) {
-        if self.refuse_faulted_recording() {
+        if self.refuse_faulted_recording() || self.saving_busy() {
             return;
         }
         let metadata = self.session.metadata_snapshot(self.save_metadata());
@@ -2297,14 +2332,7 @@ impl TimegrapherApp {
                 .map_err(|e| format!("Couldn't prepare the saved reading: {e}"))?;
             let manifest = toml::to_string_pretty(&self.take_manifest())
                 .map_err(|e| format!("Couldn't prepare {MANIFEST}: {e}"))?;
-            let about = self.guided_about();
-            let kept = self
-                .guided
-                .as_ref()
-                .and_then(|t| t.kept(&about))
-                .map(|k| serde_json::to_string_pretty(&k).map(|s| s + "\n"))
-                .transpose()
-                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            let kept = self.results_files()?;
             Ok((result, manifest, kept))
         })();
         let (result, manifest, kept) = match prepared {
@@ -2318,22 +2346,92 @@ impl TimegrapherApp {
         };
         let secs = r.duration_s();
         let mut files = vec![(MANIFEST, manifest.as_bytes())];
-        if let Some(k) = &kept {
-            files.push((guided::RESULTS_FILE, k.as_bytes()));
-        }
+        files.extend(kept.iter().map(|(n, b)| (*n, b.as_slice())));
         // With no new full-wind result (including a 24-hour half), preserve
         // the earlier result file for comparison, as Save Again always has.
-        match r.save_copy_with_files(parent, &self.calibre, result.as_ref(), &files) {
-            Ok(dir) => {
-                self.info_msg(format!(
-                    "Saved {} of sound in {}",
-                    strip::fmt_time(secs),
-                    dir.display()
-                ));
-                self.save_dir = parent.display().to_string();
-                self.session.mark_saved(secs, dir, metadata);
+        let pending = match r.begin_save(parent, &self.calibre, result.as_ref(), &files) {
+            Ok(p) => p,
+            Err(e) => return self.error(format!("Saving the recording failed: {e}")),
+        };
+        let dest = pending.dest().to_path_buf();
+        let spawned = std::thread::Builder::new()
+            .name("saving".into())
+            .spawn(move || pending.write());
+        match spawned {
+            Ok(thread) => {
+                self.saving = Some(Saving {
+                    thread,
+                    dest,
+                    parent: parent.to_path_buf(),
+                    secs,
+                    metadata,
+                    rescan: false,
+                })
             }
             Err(e) => self.error(format!("Saving the recording failed: {e}")),
+        }
+    }
+
+    /// The take's results files, written beside its session.toml by both
+    /// Save… and Save Analysis Only…: the positions test's, when there is
+    /// one.
+    fn results_files(&self) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
+        let about = self.guided_about();
+        let mut files = Vec::new();
+        if let Some(k) = self.guided.as_ref().and_then(|t| t.kept(&about)) {
+            let text = serde_json::to_string_pretty(&k)
+                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            files.push((guided::RESULTS_FILE, (text + "\n").into_bytes()));
+        }
+        Ok(files)
+    }
+
+    /// While a save is being written, say so and refuse what would start
+    /// another or throw the sound it is copying away.
+    fn saving_busy(&mut self) -> bool {
+        if self.saving.is_none() {
+            return false;
+        }
+        self.info_msg(
+            "Saving: the sound so far is being copied into its take, so wait until it is done."
+                .into(),
+        );
+        true
+    }
+
+    /// The save being written, once it is done.
+    fn poll_saving(&mut self) {
+        if self.saving.as_ref().is_some_and(|s| s.thread.is_finished()) {
+            self.wait_for_save();
+        }
+    }
+
+    /// Wait for the save being written, if there is one, and say how it
+    /// went.
+    fn wait_for_save(&mut self) {
+        let Some(s) = self.saving.take() else {
+            return;
+        };
+        match s.thread.join() {
+            Ok(Ok(copy)) => {
+                if let Some(r) = self.session.recorder.as_mut() {
+                    r.note_saved(&copy);
+                }
+                self.info_msg(format!(
+                    "Saved {} of sound in {}",
+                    strip::fmt_time(s.secs),
+                    copy.dir.display()
+                ));
+                self.save_dir = s.parent.display().to_string();
+                self.session.mark_saved(s.secs, copy.dir, s.metadata);
+                if s.rescan {
+                    if let Ok(Some(l)) = &mut self.library {
+                        l.scan();
+                    }
+                }
+            }
+            Ok(Err(e)) => self.error(format!("Saving the recording failed: {e}")),
+            Err(_) => self.error("Saving the recording failed: it stopped part way".into()),
         }
     }
 
@@ -2396,14 +2494,7 @@ impl TimegrapherApp {
                 .map_err(|e| format!("Couldn't prepare the saved reading: {e}"))?;
             let text = toml::to_string_pretty(&manifest)
                 .map_err(|e| format!("Couldn't prepare {MANIFEST}: {e}"))?;
-            let about = self.guided_about();
-            let kept = self
-                .guided
-                .as_ref()
-                .and_then(|t| t.kept(&about))
-                .map(|k| serde_json::to_string_pretty(&k).map(|s| s + "\n"))
-                .transpose()
-                .map_err(|e| format!("Couldn't prepare {}: {e}", guided::RESULTS_FILE))?;
+            let kept = self.results_files()?;
             Ok((result, text, kept))
         })();
         let (result, text, kept) = match prepared {
@@ -2416,9 +2507,7 @@ impl TimegrapherApp {
         };
         let total_s = r.duration_s();
         let mut required = vec![(MANIFEST, text.as_bytes())];
-        if let Some(k) = &kept {
-            required.push((guided::RESULTS_FILE, k.as_bytes()));
-        }
+        required.extend(kept.iter().map(|(n, b)| (*n, b.as_slice())));
         let (name, companions) =
             match r.analysis_copy_files(&self.calibre, result.as_ref(), &required) {
                 Ok(c) => c,
@@ -2738,7 +2827,7 @@ impl TimegrapherApp {
     /// sound from a microphone session is not thrown away without asking
     /// first.
     fn open_recording(&mut self, path: &Path, replay: bool, ask: bool) {
-        if self.analysis_save_busy() {
+        if self.analysis_save_busy() || self.saving_busy() {
             return;
         }
         if ask && (self.session.mic() || self.masks_unsaved()) && self.needs_save_confirmation() {
@@ -3402,6 +3491,7 @@ impl TimegrapherApp {
         self.locked_bph = bph;
 
         self.poll_analysis_save();
+        self.poll_saving();
         let mut done = None;
         if let Some(b) = &self.batch {
             match b.rx.try_recv() {
@@ -3619,63 +3709,70 @@ impl TimegrapherApp {
             .map_or(f64::INFINITY, |p| p.t)
     }
 
-    /// Over the whole take in the position the watch is in now, once it is
-    /// stopped and longer than a few readings: the mean of each reading's
-    /// points with a watch heard, their spread (standard deviation) and the
-    /// time they cover.
-    fn whole_take(&self, f: impl Fn(&TrendPoint) -> Option<f64>) -> Option<(f64, f64, f64)> {
-        self.whole_take_as(f, false)
-    }
-
-    /// [`Self::whole_take`] for a signed figure, the beat error, and
-    /// whether it was taken as sizes: where its sign turns over across a
-    /// cut within the beats of the position the readings are taken in
-    /// ([`timegrapher_core::timing::sign_turns`], the decision `analyze`
-    /// and `session` make over their stretches), each reading counts by
-    /// its size, so a turn at a jump does not cancel the size either side.
-    fn whole_take_signed(
-        &self,
-        f: impl Fn(&TrendPoint) -> Option<f64>,
-    ) -> Option<((f64, f64, f64), bool)> {
-        let turned = self.live.as_ref().is_some_and(|l| {
-            let beats: Vec<_> = l
-                .beats()
-                .iter()
-                .filter(|b| self.in_position(b.time))
-                .copied()
-                .collect();
-            !l.breaks().is_empty()
-                && l.bph().is_some_and(|bph| {
-                    timegrapher_core::timing::sign_turns(&beats, bph, l.breaks())
-                })
-        });
-        Some((self.whole_take_as(f, turned)?, turned))
-    }
-
-    /// The mean, spread and span of `f` over the take, of its sizes when
-    /// `sizes`.
-    fn whole_take_as(
-        &self,
-        f: impl Fn(&TrendPoint) -> Option<f64>,
-        sizes: bool,
-    ) -> Option<(f64, f64, f64)> {
+    /// The take in the position the watch is in now, once it is stopped
+    /// and longer than a few readings: its settled stretches up to the
+    /// last reading with a watch heard, read as `timegrapher session`
+    /// reads a recording (core `session::measure_masked`), the time
+    /// between them masked, and the seconds they cover.
+    fn whole_take(&self) -> Option<WholeTake> {
         if self.running() || self.view_end.is_some() {
             return None;
         }
-        let pts: Vec<(f64, f64)> = self
-            .trend
-            .iter()
-            .filter(|p| p.heard && self.in_position(p.t))
-            .filter_map(|p| Some((p.t, f(p).map(|v| if sizes { v.abs() } else { v })?)))
+        let live = self.live.as_ref()?;
+        let end = self.last_heard_s().min(self.latest_s());
+        let spans: Vec<(f64, f64)> = self
+            .current_spans()
+            .into_iter()
+            .map(|(a, b)| (a.max(0.0), b.min(end)))
+            .filter(|(a, b)| a < b)
             .collect();
-        let span = pts.last()?.0 - pts.first()?.0;
-        if pts.len() < 6 || span < 3.0 * self.average_s {
-            return None;
+        let key: WholeKey = (
+            live.beats().len(),
+            spans.clone(),
+            self.masked.clone(),
+            self.clock.as_ref().map(|c| c.ppm),
+        );
+        if let Some((k, w)) = self.whole_take.borrow().as_ref() {
+            if *k == key {
+                return w.clone();
+            }
         }
-        let n = pts.len() as f64;
-        let mean = pts.iter().map(|p| p.1).sum::<f64>() / n;
-        let sd = (pts.iter().map(|p| (p.1 - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
-        Some((mean, sd, span))
+        let read = || {
+            let span: f64 = spans.iter().map(|(a, b)| b - a).sum();
+            let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
+            if span < 3.0 * self.average_s {
+                return None;
+            }
+            let log = steady::log_of(live)?;
+            let clock = self
+                .clock
+                .as_ref()
+                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
+            let breaks: Vec<_> = log
+                .jumps
+                .iter()
+                .map(|&audio_s| timegrapher_core::breaks::Break {
+                    audio_s,
+                    gap_s: 0.0,
+                })
+                .collect();
+            // The time between the stretches, another position or its
+            // settling, is left out as a mask is.
+            let mut masked = self.masked.clone();
+            masked.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
+            let m = timegrapher_core::session::measure_masked(
+                &log,
+                clock.as_ref(),
+                &breaks,
+                &masked,
+                from,
+                to,
+            );
+            Some(WholeTake { m, span })
+        };
+        let w = read();
+        *self.whole_take.borrow_mut() = Some((key, w.clone()));
+        w
     }
 
     /// Show the whole session so far along the strip, ending at its latest
@@ -3814,6 +3911,17 @@ impl TimegrapherApp {
         let Some(what) = self.confirm.clone() else {
             return;
         };
+        // A save is being written (its Save… started it, or one before):
+        // wait for it. Once nothing is left unsaved, carry on; otherwise
+        // (it failed, and the status bar says why, or there is sound since)
+        // ask as before.
+        if self.saving.is_some() {
+            return self.confirm_saving_dialog(ctx);
+        }
+        if !self.needs_save_confirmation() {
+            self.confirm = None;
+            return self.confirmed(what, ctx);
+        }
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         let metadata = self.metadata_unsaved();
@@ -3888,6 +3996,9 @@ impl TimegrapherApp {
             Some(0) => {
                 // Saved before: the rest goes to the same copy.
                 self.save_again();
+                if self.saving.is_some() {
+                    return; // asked again, or carried on, once it is written
+                }
                 if self.needs_save_confirmation() {
                     return; // the folder dialog was cancelled, or saving failed
                 }
@@ -3901,6 +4012,38 @@ impl TimegrapherApp {
             None => return,
         }
         self.confirm = None;
+        self.confirmed(what, ctx);
+    }
+
+    /// The question before throwing away unsaved sound, while a save is
+    /// written.
+    fn confirm_saving_dialog(&mut self, ctx: &egui::Context) {
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new().size(14.0));
+                ui.label(RichText::new("Saving…").font(theme::semibold(15.0)));
+            });
+            ui.add_space(4.0);
+            ui.label(
+                "The sound so far is being copied into its take. This carries on once it is saved.",
+            );
+            ui.add_space(8.0);
+            cancel = ui
+                .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                .on_hover_text("Stay here; the save carries on")
+                .clicked();
+        });
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        if cancel {
+            self.confirm = None;
+            self.guided_after_ask = None;
+        }
+    }
+
+    /// Do what the question before throwing away unsaved sound asked about.
+    fn confirmed(&mut self, what: Confirm, ctx: &egui::Context) {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
@@ -4745,6 +4888,10 @@ impl TimegrapherApp {
             self.confirm = Some(Confirm::QuickListen);
             return false;
         }
+        // Not even a resume: Quick Listen starts a new session.
+        if self.saving_busy() {
+            return false;
+        }
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
@@ -4917,21 +5064,28 @@ impl TimegrapherApp {
         });
         if self.session.allows(Action::Save) {
             let saved = self.session.saved_to().is_some();
+            let saving = self.saving.is_some();
             ui.horizontal_wrapped(|ui| {
                 if ui
-                    .add(
+                    .add_enabled(
+                        !saving,
                         egui::Button::new(if saved { "Save Again" } else { "Save…" })
                             .min_size(Vec2::new(0.0, 26.0)),
                     )
                     .on_hover_text(SAVE_HINT)
+                    .on_disabled_hover_text(SAVING_HINT)
                     .clicked()
                 {
                     self.save_again();
                 }
                 if saved
                     && ui
-                        .add(egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)))
+                        .add_enabled(
+                            !saving,
+                            egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)),
+                        )
                         .on_hover_text(SAVE_AS_HINT)
+                        .on_disabled_hover_text(SAVING_HINT)
                         .clicked()
                 {
                     self.save_recording();
@@ -6128,6 +6282,7 @@ impl TimegrapherApp {
         ui.separator();
         let saved = self.session.saved_to().is_some();
         let can_save = self.session.allows(Action::Save);
+        let saving = self.saving.is_some();
         if self.masks_unsaved() {
             if ui
                 .button("Save Masks")
@@ -6139,12 +6294,16 @@ impl TimegrapherApp {
             }
         } else if ui
             .add_enabled(
-                can_save,
+                can_save && !saving,
                 egui::Button::new(if saved { "Save Again" } else { "Save…" })
                     .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::S))),
             )
             .on_hover_text(SAVE_HINT)
-            .on_disabled_hover_text("Nothing to save yet: listen to a watch first")
+            .on_disabled_hover_text(if saving {
+                SAVING_HINT
+            } else {
+                "Nothing to save yet: listen to a watch first"
+            })
             .clicked()
         {
             ui.close();
@@ -6152,12 +6311,16 @@ impl TimegrapherApp {
         }
         if ui
             .add_enabled(
-                can_save && saved,
+                can_save && saved && !saving,
                 egui::Button::new("Save As…")
                     .shortcut_text(ui.ctx().format_shortcut(&save_as_shortcut())),
             )
             .on_hover_text(SAVE_AS_HINT)
-            .on_disabled_hover_text("Save once first; Save… asks where")
+            .on_disabled_hover_text(if saving {
+                SAVING_HINT
+            } else {
+                "Save once first; Save… asks where"
+            })
             .clicked()
         {
             ui.close();
@@ -7121,21 +7284,25 @@ impl TimegrapherApp {
         let be_pm = r.and_then(|r| r.beat_error_unlock_error_ms);
         let lift_now = self.lift_deg;
         let beats = r.map_or(0, |r| r.beats_used);
-        // Over the whole take, once it is stopped: the mean and spread of
-        // the readings beside the last window's figure.
-        let whole_line = |ui: &mut egui::Ui, mean: String, sd: String, span: f64| {
+        // Over the whole take, once it is stopped: `session`'s reading of
+        // it beside the last window's figure.
+        let whole = self.whole_take();
+        let whole_line = |ui: &mut egui::Ui, figure: String, spread: Option<String>, span: f64| {
+            let spread = spread.map_or_else(String::new, |s| format!(", {s}"));
             ui.label(
                 RichText::new(format!(
-                    "whole take {mean}, spread {sd} over {}",
+                    "whole take {figure}{spread} over {}",
                     strip::fmt_time(span)
                 ))
                 .small()
                 .color(pal.text_secondary),
             )
             .on_hover_text(
-                "The big figure is the last stretch of Average Over. This is every reading \
-                 of the take in this position with a watch heard, settling left out: their \
-                 mean, and their spread as a standard deviation.",
+                "The big figure is the last stretch of Average Over. This is the take in \
+                 this position, settling left out, read as timegrapher session reads a \
+                 recording: the rate fitted over every beat, the amplitude and beat error \
+                 the median of the 2 s windows, with the ± of each, and the 5th to 95th \
+                 percentile of the 10 s rates and the 2 s amplitudes.",
             );
         };
         let unheard = |ui: &mut egui::Ui| {
@@ -7406,13 +7573,20 @@ impl TimegrapherApp {
                         }
                     });
                 }
-                if let Some((m, sd, span)) = self.whole_take(|p| p.rate) {
-                    whole_line(
-                        ui,
-                        format!("{m:+.1} s/d").replace('-', "−"),
-                        format!("{sd:.1} s/d"),
-                        span,
-                    );
+                if let Some(w) = &whole {
+                    if let Some(v) = w.m.rate_s_per_day {
+                        let se = w.m.confidence.and_then(|c| c.rate.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                        let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
+                            format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
+                        });
+                        whole_line(
+                            ui,
+                            format!("{v:+.1}{pm} s/d").replace('-', "−"),
+                            spread,
+                            w.span,
+                        );
+                    }
                 }
             });
             let amp = r.and_then(|r| r.amplitude_deg);
@@ -7459,8 +7633,15 @@ impl TimegrapherApp {
                                 .color(pal.text_secondary),
                         );
                     });
-                    if let Some((m, sd, span)) = self.whole_take(|p| p.amplitude) {
-                        whole_line(ui, format!("{m:.0}°"), format!("{sd:.0}°"), span);
+                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?)))
+                    {
+                        let se = w.m.confidence.and_then(|c| c.amplitude.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
+                        let spread =
+                            w.m.amplitude_p05
+                                .zip(w.m.amplitude_p95)
+                                .map(|(a, b)| format!("2 s windows {a:.0}° to {b:.0}°"));
+                        whole_line(ui, format!("{v:.0}{pm}°"), spread, w.span);
                     }
                 },
             );
@@ -7504,16 +7685,12 @@ impl TimegrapherApp {
                         "The big figure is timed from the unlock, as tg shows it: quote \
                          that one. The drop figure is a second opinion.",
                     );
-                    if let Some(((m, sd, span), sizes)) =
-                        self.whole_take_signed(|p| p.beat_error_unlock)
+                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?)))
                     {
-                        whole_line(
-                            ui,
-                            format!("{:.2} ms", m.abs()),
-                            format!("{sd:.2} ms"),
-                            span,
-                        );
-                        if sizes {
+                        let se = w.m.confidence.and_then(|c| c.beat_error.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                        whole_line(ui, format!("{v:.2}{pm} ms"), None, w.span);
+                        if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
                             ui.label(
                                 RichText::new(WHOLE_AS_SIZES)
                                     .small()
@@ -7521,8 +7698,9 @@ impl TimegrapherApp {
                             )
                             .on_hover_text(
                                 "The beat error's sign differs either side of a cut in the \
-                                 take, so the whole take's mean and spread are of each \
-                                 reading's size rather than of the signed readings.",
+                                 take, so the whole take's figure combines the sizes either \
+                                 side rather than the signed values, as timegrapher session \
+                                 does.",
                             );
                         }
                     }
@@ -7728,6 +7906,16 @@ impl TimegrapherApp {
             if cancel {
                 self.analysis_save = None;
             }
+        }
+        if let Some(s) = &self.saving {
+            ui.add(egui::Spinner::new().size(12.0).color(pal.text_secondary));
+            ui.label(RichText::new("Saving…").small().color(pal.text_secondary))
+                .on_hover_text(format!(
+                    "Copying {} of sound into {}. Listening carries on; the take saved before \
+                     stays as it was until the copy is done.",
+                    strip::fmt_time(s.secs),
+                    s.dest.display()
+                ));
         }
         if let Some(b) = &self.batch {
             let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
@@ -10871,8 +11059,21 @@ impl eframe::App for TimegrapherApp {
                     .into(),
             );
         }
+        // Closing the window while a save is written waits for it: the
+        // take would be left half copied.
+        if ctx.input(|i| i.viewport().close_requested())
+            && self.saving.is_some()
+            && self.library_moving.is_none()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.info_msg(
+                "Saving: Timegrapher can be closed once the sound so far is copied into its take."
+                    .into(),
+            );
+        }
         // Closing the window with unsaved sound asks first.
         if ctx.input(|i| i.viewport().close_requested())
+            && self.saving.is_none()
             && !self.may_close
             && self.needs_save_confirmation()
         {
@@ -10899,7 +11100,10 @@ impl eframe::App for TimegrapherApp {
 
         if self.running() || self.batch.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
-        } else if self.sound_job.is_some() || self.scope_job.is_some() || self.steady_job.is_some()
+        } else if self.sound_job.is_some()
+            || self.scope_job.is_some()
+            || self.steady_job.is_some()
+            || self.saving.is_some()
         {
             // Show the profile when it's worked out, without waiting for
             // the pointer to move.
@@ -10921,6 +11125,9 @@ impl eframe::App for TimegrapherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.stop();
+        // A save being written finishes first: quitting part way would
+        // leave half a take, and the sound it copies is let go below.
+        self.wait_for_save();
         // Sound the user hasn't been asked about is kept for the next start
         // to offer back: on macOS, Cmd+Q and Quit in the app menu or the
         // Dock quit without the window's close being asked first, and
@@ -11044,6 +11251,17 @@ fn no_regular_beat(r: &LiveReading) -> String {
 }
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
+/// What [`TimegrapherApp::whole_take`] was read from: the beats heard,
+/// the stretches, the masks and the clock's ppm.
+type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
+
+/// The whole take in one position, and the seconds it covers.
+#[derive(Clone)]
+struct WholeTake {
+    m: timegrapher_core::session::Measurement,
+    span: f64,
+}
+
 const WHOLE_AS_SIZES: &str = "whole take given as a size: its sign differs either side of a cut";
 
 fn reading_limits(
@@ -11286,17 +11504,17 @@ mod tests {
     }
 
     /// The whole take's beat error, where its sign turns over at a jump
-    /// in the beats (`timing::sign_turns`), is the mean of the readings'
-    /// sizes, and says so, not a mean that cancels to nothing; where the
+    /// in the beats, combines the sizes either side and says so, as
+    /// `session` does, not a figure that cancels to nothing; where the
     /// beats agree in sign either side it stays signed.
     #[test]
     fn whole_take_beat_error_keeps_its_size_across_a_turn() {
-        // 120 s at 28,800 bph with a jump at 60 s: the tock 0.6 ms late
-        // before it and `after` ms after it.
+        // 120 s at 28,800 bph with a jump at 80 s: the tock 0.6 ms late
+        // for the 640 beats before it and `after` ms for the 320 after.
         let app_with = |after: f64| {
             let beats = (0..960)
                 .map(|index| {
-                    let be = if index < 480 { 0.6 } else { after };
+                    let be = if index < 640 { 0.6 } else { after };
                     let half = be / 2000.0 * if index % 2 == 1 { 1.0 } else { -1.0 };
                     timegrapher_core::beats::Beat {
                         time: index as f64 * 0.125 + half,
@@ -11314,7 +11532,7 @@ mod tests {
                 amplitude_windows: Vec::new(),
                 clipped_beats: Vec::new(),
                 clipped_samples: 0,
-                jumps: vec![60.0],
+                jumps: vec![80.0],
                 sided: Vec::new(),
                 by_count: Vec::new(),
             };
@@ -11322,50 +11540,52 @@ mod tests {
             app.live = Some(LiveAnalyzer::from_log(log, LiveConfig::default()));
             app
         };
-        let point = |t: f64, be: f64| TrendPoint {
-            t,
-            rate: Some(5.0),
-            amplitude: None,
-            amplitude_a: None,
-            amplitude_b: None,
-            beat_error_unlock: Some(be),
-            beat_error_drop: None,
-            heard: true,
-        };
-        // 0.6 ms one way for 40 readings, then 0.4 ms the other for 20.
-        let trend: Vec<TrendPoint> = (0..40)
-            .map(|i| point(10.0 + i as f64, 0.6))
-            .chain((0..20).map(|i| point(70.0 + i as f64, -0.4)))
-            .collect();
-        let mut app = app_with(-0.4);
-        app.trend = trend.clone();
-        let ((m, sd, _), sizes) = app
-            .whole_take_signed(|p| p.beat_error_unlock)
-            .expect("whole take");
-        assert!(sizes);
-        assert!((m - (0.6 * 40.0 + 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
-        assert!(sd < 0.11, "the spread is of the sizes: {sd}");
-        // The plain mean would have all but cancelled.
-        let (plain, _, _) = app.whole_take(|p| p.beat_error_unlock).unwrap();
-        assert!(plain < m - 0.2, "{plain}");
-        // Where the beats keep one sign either side, the readings keep theirs.
-        let mut app = app_with(0.4);
-        app.trend = trend;
-        let ((m, _, _), sizes) = app.whole_take_signed(|p| p.beat_error_unlock).unwrap();
-        assert!(!sizes);
-        assert!((m - (0.6 * 40.0 - 0.4 * 20.0) / 60.0).abs() < 1e-9, "{m}");
+        let sizes = |w: &WholeTake| w.m.caveats.contains(&Caveat::BeatErrorAsSize);
+        // Sizes across the turn, beat-weighted: (0.6 × 640 + 0.4 × 320) / 960.
+        let size = (0.6 * 640.0 + 0.4 * 320.0) / 960.0;
+        // What a signed combination would cancel to: (0.6 × 640 − 0.4 × 320) / 960.
+        let cancelled = (0.6 * 640.0 - 0.4 * 320.0) / 960.0;
+        let w = app_with(-0.4).whole_take().expect("whole take");
+        let be = w.m.beat_error_ms.unwrap();
+        assert!(sizes(&w));
+        assert!((be - size).abs() < 1e-3, "{be} vs {size}");
+        assert_eq!(w.m.beat_error(), Some(be));
+        assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");
+        // Where the beats keep one sign either side, the figure keeps it:
+        // the same size, signed.
+        let w = app_with(0.4).whole_take().expect("whole take");
+        let be = w.m.beat_error_ms.unwrap();
+        assert!(!sizes(&w));
+        assert!((be.abs() - size).abs() < 1e-3, "{be} vs {size}");
+        assert!(be < 0.0, "signed: {be}");
+    }
+
+    /// The whole take line is `session`'s reading of the same stretch:
+    /// the rate fitted over every beat, not a mean of the readings shown.
+    #[test]
+    fn whole_take_is_the_session_reading() {
+        let app = synthetic(60.0, 12.0);
+        let w = app.whole_take().expect("whole take");
+        let log = steady::log_of(app.live.as_ref().unwrap()).unwrap();
+        let spans = app.current_spans();
+        let (from, to) = (spans[0].0.max(0.0), app.latest_s());
+        let m = timegrapher_core::session::measure(&log, None, from, to);
+        assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
+        assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
+        assert!((w.span - (to - from)).abs() < 1e-9, "{}", w.span);
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on
     /// the last stretch with a watch heard, and a long enough take shows
-    /// its whole-take mean and spread.
+    /// its whole-take reading.
     #[test]
     fn stopping_keeps_the_last_heard_readings() {
         let mut app = synthetic(60.0, 12.0);
         let before = app.reading().unwrap();
-        let whole = app.whole_take(|p| p.rate).expect("whole take");
-        assert!((whole.0 - 12.0).abs() < 2.0, "{whole:?}");
-        assert!(whole.2 > 40.0, "{whole:?}");
+        let whole = app.whole_take().expect("whole take");
+        let rate = whole.m.rate_s_per_day.unwrap();
+        assert!((rate - 12.0).abs() < 2.0, "{rate}");
+        assert!(whole.span > 40.0, "{}", whole.span);
         // Then 20 s of hiss with the watch gone.
         let mut seed = 1u32;
         let noise: Vec<f32> = (0..48000 * 20)
@@ -11953,6 +12173,7 @@ mod tests {
                 "recording-only"
             });
             app.save_into(&base.join("saved"));
+            app.wait_for_save();
             let saved = app.session.saved_to().unwrap().to_path_buf();
             let saved_bytes = saved_file_bytes(&saved);
             let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
@@ -11992,8 +12213,11 @@ mod tests {
             assert!(!app.devices_listed);
             assert!(!app.running());
             app.save_into(&base.join("must-not-exist"));
+            app.wait_for_save();
             app.save_again();
+            app.wait_for_save();
             app.save_recording();
+            app.wait_for_save();
             assert!(!base.join("must-not-exist").exists());
             assert_eq!(saved_file_bytes(&saved), saved_bytes);
             app.info_msg("Another notice".into());
@@ -12028,6 +12252,7 @@ mod tests {
         assert!(app.session.allows(Action::Save));
         assert!(app.session.recording_fault().is_none());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert!(app.session.saved_to().unwrap().join(MANIFEST).is_file());
         app.new_session();
         drop(tx);
@@ -12127,6 +12352,7 @@ mod tests {
     fn persisted_lift_context_only_edit_stays_dirty_until_successful_save() {
         let (mut app, base) = save_failure_fixture("lift-context");
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let old = std::fs::read(dest.join(MANIFEST)).unwrap();
         let explicit: Manifest = toml::from_str("lift = 52\nlift_known = true").unwrap();
@@ -12139,11 +12365,13 @@ mod tests {
         std::fs::remove_file(dest.join(MANIFEST)).unwrap();
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(app.metadata_unsaved());
         assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         std::fs::write(dest.join(MANIFEST), old).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.metadata_unsaved());
         let m: Manifest =
             toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
@@ -12152,11 +12380,82 @@ mod tests {
         std::fs::remove_dir_all(base).unwrap();
     }
 
+    /// Save hands the copy to a thread of its own and returns: the session
+    /// isn't marked saved until the copy is written, listening carries on
+    /// meanwhile, and nothing that would start another save or throw the
+    /// sound away runs until it is done. The copy holds the sound up to
+    /// the Save.
+    #[test]
+    fn save_copies_in_the_background_while_listening_carries_on() {
+        let (mut app, base) = save_failure_fixture("background");
+        append_save_test_second(&mut app, 2);
+        app.save_into(&base.join("saved"));
+        assert!(
+            app.saving.is_some(),
+            "the copy is written on its own thread"
+        );
+        assert_eq!(
+            app.session.saved_to(),
+            None,
+            "not saved until it is written"
+        );
+        append_save_test_second(&mut app, 3);
+        app.save_again();
+        app.new_session();
+        assert!(
+            app.session.recorder.is_some(),
+            "the sound being copied is kept"
+        );
+        assert!(app.saving.is_some());
+        app.wait_for_save();
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 2 * 48000);
+        assert_eq!(app.unsaved_s(), 1.0);
+        app.save_again();
+        app.wait_for_save();
+        assert_eq!(app.session.saved_to(), Some(dest.as_path()));
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 3 * 48000);
+        app.session.discard_recording();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// The question before a new session, answered Save…, waits for the
+    /// save it started, then carries on.
+    #[test]
+    fn a_save_from_the_question_carries_on_once_it_is_written() {
+        let (mut app, base) = save_failure_fixture("confirm-wait");
+        app.save_into(&base.join("saved"));
+        app.wait_for_save();
+        let dest = app.session.saved_to().unwrap().to_path_buf();
+        for second in 2..=8 {
+            append_save_test_second(&mut app, second);
+        }
+        assert!(app.needs_save_confirmation());
+        app.confirm = Some(Confirm::NewSession);
+        // What the question's Save… does.
+        app.save_again();
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let _ = ctx.run(Default::default(), |ctx| app.confirm_dialog(ctx));
+        assert!(app.confirm.is_some(), "still waiting for the save");
+        assert!(app.session.recorder.is_some());
+        app.wait_for_save();
+        let _ = ctx.run(Default::default(), |ctx| app.confirm_dialog(ctx));
+        assert!(app.confirm.is_none());
+        assert!(app.session.recorder.is_none(), "the new session started");
+        let audio = timegrapher_core::audio::load(&dest.join("audio-001.wav")).unwrap();
+        assert_eq!(audio.samples.len(), 8 * 48000);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
     #[test]
     fn saved_metadata_edits_warn_without_new_sound_and_reverts_are_clean() {
         let (mut app, base) = save_failure_fixture("metadata-edits");
         app.watch = "original".into();
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         app.session
             .pause(app.live.as_ref().unwrap().duration_s())
             .unwrap()
@@ -12195,6 +12494,7 @@ mod tests {
             "returning to DU retains appended position notes"
         );
         app.save_again();
+        app.wait_for_save();
         assert!(!app.needs_save_confirmation());
         app.session.discard_recording();
         std::fs::remove_dir_all(base).unwrap();
@@ -12205,6 +12505,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-audio");
         app.change_position(Position::DialDown);
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let ranges = app.take_manifest().recordings;
         append_save_test_second(&mut app, 2);
         assert_eq!(app.unsaved_s(), 1.0);
@@ -12223,6 +12524,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-failure");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         app.session
             .pause(app.live.as_ref().unwrap().duration_s())
@@ -12234,6 +12536,7 @@ mod tests {
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         let before = saved_file_bytes(&dest);
         app.save_again();
+        app.wait_for_save();
         assert!(app.message.as_ref().is_some_and(|(_, error)| *error));
         assert!(app.metadata_unsaved());
         assert!(
@@ -12246,6 +12549,7 @@ mod tests {
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         std::fs::write(dest.join(MANIFEST), previous).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.needs_save_confirmation());
         let manifest: Manifest =
             toml::from_str(&std::fs::read_to_string(dest.join(MANIFEST)).unwrap()).unwrap();
@@ -12262,6 +12566,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("metadata-guided");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let mut test = guided::Test::new();
         test.readings = Some(Vec::new());
         app.guided = Some(test);
@@ -12269,9 +12574,11 @@ mod tests {
         let dest = app.session.saved_to().unwrap().to_path_buf();
         std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(app.metadata_unsaved());
         std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_again();
+        app.wait_for_save();
         assert!(!app.metadata_unsaved());
         assert!(dest.join(guided::RESULTS_FILE).is_file());
         app.session.discard_recording();
@@ -12283,6 +12590,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("caller-path");
         let parent = base.join("saved").join("..").join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap();
         assert_eq!(dest.parent().unwrap().as_os_str(), parent.as_os_str());
         assert_eq!(
@@ -12318,6 +12626,7 @@ mod tests {
         std::fs::create_dir(dest.join(MANIFEST)).unwrap();
         let before = saved_file_bytes(&dest);
         app.save_into(&parent);
+        app.wait_for_save();
         assert!(app
             .message
             .as_ref()
@@ -12327,6 +12636,7 @@ mod tests {
         assert_eq!(saved_file_bytes(&dest), before);
         std::fs::remove_dir(dest.join(MANIFEST)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(app.session.saved_to(), Some(dest.as_path()));
         assert_eq!(app.unsaved_s(), 0.0);
         let manifest: Manifest =
@@ -12348,6 +12658,7 @@ mod tests {
         let (mut app, base) = save_failure_fixture("guided");
         let parent = base.join("saved");
         app.save_into(&parent);
+        app.wait_for_save();
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let before = saved_file_bytes(&dest);
         append_save_test_second(&mut app, 2);
@@ -12358,6 +12669,7 @@ mod tests {
         app.guided = Some(test);
         std::fs::create_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert!(app
             .message
             .as_ref()
@@ -12367,6 +12679,7 @@ mod tests {
         assert_eq!(saved_file_bytes(&dest), before);
         std::fs::remove_dir(dest.join(guided::RESULTS_FILE)).unwrap();
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         let kept = std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&kept).unwrap();
@@ -12375,6 +12688,7 @@ mod tests {
         // result. Preserve the earlier result as a separate comparison artifact.
         app.guided = Some(guided::Test::new());
         app.save_into(&parent);
+        app.wait_for_save();
         assert_eq!(
             std::fs::read(dest.join(guided::RESULTS_FILE)).unwrap(),
             kept
@@ -12411,6 +12725,7 @@ mod tests {
         app.session.recorder = Some(r);
         assert!(app.unsaved_s() > 5.0, "unsaved sound to ask about");
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let saved = app
             .session
             .saved_to()
@@ -12555,6 +12870,7 @@ mod tests {
             since: Instant::now(),
         });
         app.save_again();
+        app.wait_for_save();
         let takes = root.join("Pepsi").join(library::TAKES);
         let saved: Vec<PathBuf> = std::fs::read_dir(&takes)
             .unwrap()
@@ -12569,6 +12885,7 @@ mod tests {
         assert!(drawn.contains(&name), "{drawn}");
         // Save Again saves into the same take.
         app.save_again();
+        app.wait_for_save();
         assert_eq!(std::fs::read_dir(&takes).unwrap().count(), 1);
 
         // The list says so; a name already in use is refused.
@@ -12721,6 +13038,7 @@ mod tests {
         // Stop saves the take into Unsorted; Save Again adds to it.
         record(&mut app, &base.join("unsaved-2"));
         app.stop_listening();
+        app.wait_for_save();
         let unsorted = root.join(library::UNSORTED).join(library::TAKES);
         let saved: Vec<PathBuf> = std::fs::read_dir(&unsorted)
             .unwrap()
@@ -12730,6 +13048,7 @@ mod tests {
         assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
         assert!(!app.needs_save_confirmation());
         app.stop_listening();
+        app.wait_for_save();
         assert_eq!(std::fs::read_dir(&unsorted).unwrap().count(), 1);
         let name = file_name(&saved[0]);
         let drawn = pane(&ctx, &mut app);
@@ -13108,6 +13427,7 @@ mod tests {
         assert!(kept.join("session.json").is_file() && kept.join("clock.csv").is_file());
         // The same session with its sound, to compare.
         app.save_into(&base.join("full"));
+        app.wait_for_save();
         let full = app
             .session
             .saved_to()
@@ -13248,6 +13568,7 @@ mod tests {
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
         feed(&mut app, 0);
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         // Carrying on after the save: that sound isn't saved yet.
         feed(&mut app, 1);
@@ -13280,6 +13601,7 @@ mod tests {
         assert_eq!(app.session.audio_of(150.0), Some(90.0));
         assert!((app.unsaved_s() - 60.0).abs() < 0.1, "{}", app.unsaved_s());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         assert_eq!(app.unsaved_s(), 0.0);
         let saved = app
             .session
@@ -13876,6 +14198,7 @@ mod tests {
         // hour half.
         app.guided.as_mut().unwrap().readings = Some(Vec::new());
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let dir = app.session.saved_to().unwrap().to_path_buf();
         let kept: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join(guided::RESULTS_FILE)).unwrap())
@@ -13954,6 +14277,7 @@ mod tests {
             .unwrap();
         }
         app.save_into(&base.join("saved"));
+        app.wait_for_save();
         let saved = app
             .session
             .saved_to()

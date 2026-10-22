@@ -310,7 +310,6 @@ pub fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::longrun;
 
     fn window(start_s: f64, end_s: f64) -> AmplitudeWindow {
         AmplitudeWindow {
@@ -358,37 +357,32 @@ mod tests {
     }
 
     #[test]
-    fn gaps_and_cuts_are_where_long_runs_put_them() {
-        let clock = paused_clock();
-        let mut placed = clock.clone();
-        let listed = [brk(305.0, 30.0)];
-        placed.place_breaks(&listed);
-        let cases: Vec<(Option<&ClockFit>, Vec<Break>)> = vec![
-            (None, vec![]),
-            (None, vec![brk(100.0, 0.0)]),
-            (None, vec![brk(100.0, 30.0), brk(400.0, 0.0)]),
-            (None, vec![brk(100.0, -0.2)]),
-            (Some(&clock), listed.to_vec()),
-            (Some(&placed), listed.to_vec()),
-        ];
-        for (clock, breaks) in cases {
-            let cuts = Cuts::new(clock, &breaks, &[]);
-            let gaps = longrun::gaps(clock, &breaks);
-            let held: Vec<(f64, f64)> = cuts.holes().iter().map(|h| (h.start_s, h.end_s)).collect();
-            assert_eq!(held, gaps, "{breaks:?}");
-            assert_eq!(cuts.piece_cuts(), longrun::piece_cuts(&gaps), "{breaks:?}");
-            let map = longrun::true_time(clock, &breaks);
-            for t in [0.0, 99.0, 100.0, 150.0, 305.0, 305.05, 305.1, 400.0, 500.0] {
-                assert_eq!(cuts.true_time(t), map(t), "{breaks:?} at {t}");
-            }
-            for s in (0..120).map(|i| i as f64 * 5.0 - 0.3) {
-                assert_eq!(
-                    cuts.clear(s, s + 10.0),
-                    !longrun::touches_gap(&gaps, s, s + 10.0),
-                    "{breaks:?} from {s}"
-                );
-            }
-        }
+    fn gaps_are_from_the_last_sound_to_the_first_after() {
+        let held = |breaks: &[Break]| -> Vec<(f64, f64)> {
+            Cuts::new(None, breaks, &[])
+                .holes()
+                .iter()
+                .map(|h| (h.start_s, h.end_s))
+                .collect()
+        };
+        assert!(held(&[]).is_empty());
+        // A jump, or a gap under 0 s, is a point.
+        assert_eq!(held(&[brk(100.0, 0.0)]), [(100.0, 100.0)]);
+        assert_eq!(held(&[brk(100.0, -0.2)]), [(100.0, 100.0)]);
+        // A pause runs from just before its audio second to 30 s later on
+        // true time, and moves the jump after it on by its gap.
+        let h = held(&[brk(100.0, 30.0), brk(400.0, 0.0)]);
+        assert_eq!(h.len(), 2);
+        assert!(
+            (h[0].0 - (100.0 - EDGE_S)).abs() < 1e-9 && h[0].1 == 130.0,
+            "{h:?}"
+        );
+        assert_eq!(h[1], (430.0, 430.0));
+        let cuts = Cuts::new(None, &[brk(100.0, 30.0)], &[]);
+        assert_eq!(cuts.true_time(99.0), 99.0);
+        assert_eq!(cuts.true_time(100.0), 130.0);
+        assert!(cuts.clear(90.0, 100.0 - EDGE_S) && cuts.clear(130.0, 140.0));
+        assert!(!cuts.clear(95.0, 105.0) && !cuts.clear(125.0, 135.0));
     }
 
     #[test]
@@ -512,22 +506,5 @@ mod tests {
         assert_eq!(h.kind, HoleKind::ClockStep);
         assert!(!cuts.clear(h.start_s - 5.0, h.end_s + 5.0));
         assert!(cuts.clear(h.end_s, h.end_s + 10.0));
-    }
-
-    #[test]
-    fn covered_is_the_steadiness_tests_own() {
-        let beats: Vec<Beat> = beats_to(100.0)
-            .into_iter()
-            .filter(|b| !(52.0..55.0).contains(&b.time) && !(71.0..72.5).contains(&b.time))
-            .collect();
-        for s in (0..180).map(|i| i as f64 * 0.5) {
-            for part in [1.0, 2.0, 5.0] {
-                assert_eq!(
-                    covered(&beats, s, s + 10.0, part),
-                    crate::steadiness::covered(&beats, s, s + 10.0, part),
-                    "{s} {part}"
-                );
-            }
-        }
     }
 }

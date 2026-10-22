@@ -14,7 +14,6 @@ use egui_plot::{
     GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoint, Points, Polygon, Text, VLine,
 };
 use serde::{Deserialize, Serialize};
-use timegrapher_core::beats::Beat;
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
@@ -349,22 +348,10 @@ pub fn compute_with(
     stage.store(2, Relaxed);
     let report = steadiness::check(log, None, &long, &lc, &cfg);
     stage.store(3, Relaxed);
-    let mut grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
-    // As sizes when the beat error's sign turns over across a jump, as the
-    // tests beside them and the take's own figures give it.
-    if longrun::beat_error_turns(log, None, &breaks) {
-        for v in &mut grids[2].y {
-            *v = v.abs();
-        }
-    }
-    // The tests leave out a rate reading with a 2-second stretch that holds
-    // no beat (a dropout with no listed break, or the edge of a masked
-    // stretch); so do the views drawn beside them.
-    let part = log
-        .amplitude_windows
-        .first()
-        .map_or(2.0, |w| w.end_s - w.start_s);
-    drop_partial_readings(&mut grids[0], &log.beats, part);
+    // The tests' own grids: a rate reading over a dropout or a jump is left
+    // out, and the beat error is given as sizes when its sign turns over
+    // across a jump, as the tests beside them and the take's figures give it.
+    let grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
     let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
     let folds = steady_views::folds(&grids, &report, &lc);
@@ -386,25 +373,6 @@ pub fn compute_with(
         wheels: lc.wheels,
         maps,
         upto_s: log.duration_s,
-    }
-}
-
-/// Blank each reading of `grid` with a `part`-second stretch of its span
-/// that holds none of `beats`: it would be taken from part of its span.
-fn drop_partial_readings(grid: &mut Grid, beats: &[Beat], part: f64) {
-    let step = grid.step;
-    let k = (step / part).round().max(1.0) as usize;
-    let len = step / k as f64;
-    for i in 0..grid.y.len() {
-        let start = grid.t0 + i as f64 * step;
-        let whole = (0..k).all(|j| {
-            let a = start + j as f64 * len;
-            let p = beats.partition_point(|b| b.time < a);
-            beats.get(p).is_some_and(|b| b.time < a + len)
-        });
-        if !whole {
-            grid.y[i] = f64::NAN;
-        }
     }
 }
 
@@ -1641,6 +1609,7 @@ mod tests {
         assert!(few.len() < marks.len() && few.len() >= 3);
         assert_eq!(period_label(1000f64.log10()), "");
     }
+    use timegrapher_core::beats::Beat;
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
 
@@ -1952,9 +1921,9 @@ mod tests {
             sided: vec![],
             by_count: vec![],
         };
-        let raw = steady_views::grids_with_breaks(&log, 10.0, &[]);
         let at = |g: &Grid, t: f64| g.y[((t - g.t0) / g.step).floor() as usize];
-        assert!(at(&raw[0], 34.5).is_finite(), "kept without the check");
+        let raw = steady_views::grids_with_breaks(&log, 10.0, &[]);
+        assert!(at(&raw[0], 34.5).is_nan(), "the core grids leave it out");
         let s = compute(&log, None);
         assert!(at(&s.grids[0], 34.5).is_nan());
         assert!(at(&s.grids[0], 54.5).is_finite());

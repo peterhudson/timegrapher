@@ -13,7 +13,7 @@ use crate::app::Position;
 use crate::theme;
 use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
-use timegrapher_core::session::{self, Measurement, Reading};
+use timegrapher_core::session::{self, Figures, Measurement, Reading};
 use timegrapher_core::stream::BeatLog;
 
 /// The file a finished test just after winding is saved to, from the
@@ -1072,11 +1072,12 @@ pub struct Table {
 fn conditions(label: &str, bph: u32, m: &Measurement) -> Vec<String> {
     let mut out = Vec::new();
     if !m.watch_heard {
-        out.push(match m.jitter_us {
-            Some(j) => format!(
+        let fraction = timegrapher_core::beats::timing_scatter_fraction(m.jitter_us, bph);
+        out.push(match m.jitter_us.zip(fraction) {
+            Some((j, f)) => format!(
                 "{label}: no regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
                 j / 1000.0,
-                j / (3.6e9 / bph.max(1) as f64) * 100.0
+                f * 100.0
             ),
             None => format!("{label}: no regular beat found"),
         });
@@ -1110,15 +1111,6 @@ fn caveat_condition(label: &str, c: &timegrapher_core::measure::Caveat) -> Optio
         _ => None,
     }
 }
-
-fn mean(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
-    let v: Vec<f64> = v.flatten().collect();
-    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
-}
-
-/// One position's figures for a table: rate, amplitude and beat error
-/// (a size).
-type Figures = (session::Position, Option<f64>, Option<f64>, Option<f64>);
 
 /// The table from the readings, with the figures `timegrapher session`
 /// prints for the same stretches and its position names.
@@ -1159,24 +1151,11 @@ pub fn kept_table(full: &FullWind) -> Table {
     table_of(&figures, Vec::new())
 }
 
+/// The table's summary lines are core `session::indices`, the values
+/// `timegrapher session` gives for the same readings (repeat readings of
+/// a position averaged first).
 fn table_of(figures: &[Figures], notes: Vec<String>) -> Table {
-    let mean_rate = mean(figures.iter().map(|f| f.1));
-    let rates: Vec<f64> = figures.iter().filter_map(|f| f.1).collect();
-    let largest_difference = (rates.len() >= 2).then(|| {
-        rates.iter().copied().fold(f64::MIN, f64::max)
-            - rates.iter().copied().fold(f64::MAX, f64::min)
-    });
-    // Vertical less horizontal, as `session` takes it.
-    let side = |vertical: bool, f: fn(&Figures) -> Option<f64>| {
-        mean(
-            figures
-                .iter()
-                .filter(|x| x.0.is_vertical() == vertical)
-                .map(f),
-        )
-    };
-    let dvh =
-        |f: fn(&Figures) -> Option<f64>| side(true, f).zip(side(false, f)).map(|(v, h)| v - h);
+    let ix = session::indices(0.0, figures);
     Table {
         rows: figures
             .iter()
@@ -1184,18 +1163,18 @@ fn table_of(figures: &[Figures], notes: Vec<String>) -> Table {
                 (
                     position_label(p),
                     rate,
-                    rate.zip(mean_rate).map(|(x, x0)| x - x0),
+                    rate.zip(ix.x).map(|(x, x0)| x - x0),
                     amp,
                     be,
                 )
             })
             .collect(),
-        mean_rate,
-        mean_amplitude: mean(figures.iter().map(|f| f.2)),
-        mean_beat_error: mean(figures.iter().map(|f| f.3)),
-        largest_difference,
-        dvh_rate: dvh(|f| f.1),
-        dvh_amplitude: dvh(|f| f.2),
+        mean_rate: ix.x,
+        mean_amplitude: ix.amplitude_mean,
+        mean_beat_error: ix.beat_error_mean,
+        largest_difference: ix.d_rate,
+        dvh_rate: ix.dvh_rate,
+        dvh_amplitude: ix.dvh_amplitude,
         notes,
     }
 }
@@ -1846,6 +1825,31 @@ mod tests {
         let s = 600.0 + sm + 10.0;
         t.tick(s + sm + m);
         assert_eq!(t.measured(s + sm + m + 30.0), [(s + sm, s + sm + m)]);
+    }
+
+    /// The table's means and differences are `session`'s: a position read
+    /// twice counts once, its readings averaged, as core
+    /// `session::indices` takes it.
+    #[test]
+    fn the_table_summary_is_the_session_values() {
+        use session::Position as P;
+        let figures: Vec<Figures> = vec![
+            (P::CH, Some(10.0), Some(280.0), Some(0.2)),
+            (P::CH, Some(20.0), Some(290.0), Some(0.4)),
+            (P::H3, Some(0.0), Some(250.0), Some(0.1)),
+        ];
+        let t = table_of(&figures, Vec::new());
+        let ix = session::indices(0.0, &figures);
+        // Dial Up averages to 15 s/d before the mean and the difference.
+        assert_eq!(t.mean_rate, Some(7.5));
+        assert_eq!(t.largest_difference, Some(15.0));
+        assert_eq!(t.mean_rate, ix.x);
+        assert_eq!(t.mean_amplitude, ix.amplitude_mean);
+        assert_eq!(t.mean_beat_error, ix.beat_error_mean);
+        assert_eq!(t.dvh_rate, ix.dvh_rate);
+        assert_eq!(t.dvh_amplitude, ix.dvh_amplitude);
+        assert_eq!(t.rows.len(), 3);
+        assert_eq!(t.rows[0].2, Some(2.5));
     }
 
     /// The table saved and copied: a label holding the comma is quoted in

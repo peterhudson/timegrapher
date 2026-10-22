@@ -6,16 +6,15 @@
 //! draw the same thing.
 //!
 //! The grids are the ones `steadiness::check` builds, from its own
-//! functions (on true time when the take has pauses or a clock fit). On the
-//! app's own takes, with no clock fit and only zero-length breaks, the app's
-//! pane builds the same grids. The searches and folds are the app's, and
+//! functions (on true time when the take has pauses or a clock fit), and
+//! [`grids_with_breaks`] builds them the same way for the app's own takes,
+//! with no clock fit and only zero-length breaks. The searches and folds are the app's, and
 //! only the output is thinned, so a day's take stays small.
 
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
 use crate::steadiness::Report;
 use crate::stream::BeatLog;
-use crate::timing;
 use serde::Serialize;
 
 /// Most readings drawn per series, as on the app's Readings view.
@@ -98,67 +97,16 @@ pub fn grids(log: &BeatLog, rate_s: f64) -> [Grid; 3] {
     grids_with_breaks(log, rate_s, &[])
 }
 
-/// The same grids with explicit zero-gap fit boundaries on the log's timeline,
-/// using the report's existing cut convention. This does not map a recording
-/// clock or insert elapsed pauses. Callers supply the boundaries used for their
-/// analysis; the legacy entry point does not infer them from log metadata.
+/// The same grids with `breaks` on the log's own clock (no clock fit),
+/// built by `steadiness::check`'s own functions: no rate reading or
+/// amplitude window reaches into a break's gap, and no rate reading lacks
+/// beats in any of its 2 s stretches. A legacy entry point does not infer
+/// breaks from the log's jumps; callers pass the ones their analysis used.
 pub fn grids_with_breaks(log: &BeatLog, rate_s: f64, breaks: &[crate::breaks::Break]) -> [Grid; 3] {
-    // Match the report's existing explicit-break endpoint convention,
-    // including its small offset before a boundary; do not redefine it here.
-    let cuts = crate::longrun::cuts(None, breaks);
-    let mut wins = timing::windows(&log.beats, log.bph, rate_s, rate_s);
-    wins.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
-    let rate = match (wins.first(), wins.last()) {
-        (Some(w0), Some(last)) => {
-            let n = ((last.start_s - w0.start_s) / rate_s).round() as usize + 1;
-            let mut y = vec![f64::NAN; n];
-            for w in &wins {
-                let i = ((w.start_s - w0.start_s) / rate_s).round() as usize;
-                if i < n {
-                    y[i] = w.fit.rate_s_per_day;
-                }
-            }
-            Grid {
-                t0: w0.start_s,
-                step: rate_s,
-                y,
-            }
-        }
-        _ => Grid {
-            t0: 0.0,
-            step: rate_s,
-            y: Vec::new(),
-        },
-    };
-    let aw = &log.amplitude_windows;
-    let step = aw.first().map_or(2.0, |w| w.end_s - w.start_s);
-    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
-        let (Some(w0), Some(last)) = (aw.first(), aw.last()) else {
-            return Grid {
-                t0: 0.0,
-                step,
-                y: Vec::new(),
-            };
-        };
-        let n = ((last.start_s - w0.start_s) / step).round() as usize + 1;
-        let mut y = vec![f64::NAN; n];
-        for w in aw {
-            let i = ((w.start_s - w0.start_s) / step).round() as usize;
-            if i < n {
-                y[i] = f(w).unwrap_or(f64::NAN);
-            }
-        }
-        Grid {
-            t0: w0.start_s,
-            step,
-            y,
-        }
-    };
-    [
-        rate,
-        grid_of(&|w| w.mean()),
-        grid_of(&|w| w.beat_error_unlock_ms),
-    ]
+    use crate::steadiness::{rate_grid, rate_windows, window_grids};
+    let rate = rate_grid(&rate_windows(log, None, breaks, rate_s), rate_s);
+    let [amplitude, beat_error] = window_grids(log, None, breaks);
+    [rate, amplitude, beat_error]
 }
 
 /// The period search behind each series: the long-run analysis's for the
@@ -415,9 +363,10 @@ mod tests {
     use crate::periodicity::default_wheels;
     use crate::steadiness::{self, Config};
     use crate::synth::{generate, SynthConfig};
+    use crate::timing;
 
     #[test]
-    fn derived_rate_grid_uses_the_reports_known_cut_convention() {
+    fn derived_rate_grid_cuts_jumps_as_the_tests_do() {
         let mut log = BeatLog {
             sample_rate: 48000,
             duration_s: 40.0,
@@ -447,19 +396,20 @@ mod tests {
             })
             .collect();
         let baseline = grids_with_breaks(&log, 10.0, &breaks)[0].clone();
-        let cuts = crate::longrun::cuts(None, &breaks);
+        let holes = crate::clean::Cuts::new(None, &breaks, &[]);
         let expected: Vec<_> = timing::windows(&log.beats, log.bph, 10.0, 10.0)
             .into_iter()
-            .filter(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s))
+            .filter(|w| holes.clear(w.start_s, w.end_s))
             .collect();
-        assert_eq!(expected.len(), 1);
-        assert_eq!(
-            baseline.y.len(),
-            1,
-            "both the interior and exact-end cut use the existing report convention"
-        );
+        // 0 to 10 s and 20 to 30 s: the reading across the jump at 15 s is
+        // left out, and the one ending at the jump at 30 s is whole, as the
+        // tests' grids have them.
+        assert_eq!(expected.len(), 2);
+        assert_eq!(baseline.y.len(), 3, "time grid is not compacted");
         assert_eq!(baseline.t0, expected[0].start_s);
         assert_eq!(baseline.y[0], expected[0].fit.rate_s_per_day);
+        assert!(baseline.y[1].is_nan());
+        assert_eq!(baseline.y[2], expected[1].fit.rate_s_per_day);
         log.jumps.clear();
         let uncut = grids(&log, 10.0);
         assert_eq!(uncut[0].y.len(), 3);
@@ -684,21 +634,13 @@ mod tests {
         // Cutting only at the pause's middle, as the tests did before,
         // keeps readings that reach into the pause from either side, so
         // this test bites.
-        let map = longrun::true_time(None, &paused.breaks);
+        let holes = crate::clean::Cuts::new(None, &paused.breaks, &[]);
         let cut = longrun::cuts(None, &paused.breaks);
-        let beats: Vec<_> = log
-            .beats
-            .iter()
-            .map(|b| crate::beats::Beat {
-                time: map(b.time),
-                ..*b
-            })
-            .collect();
+        let beats = holes.beats(&log.beats);
         // Without the 2 s check, reading 5 would be kept.
-        let gaps = longrun::gaps(None, &paused.breaks);
         let outside = timing::windows(&beats, log.bph, 10.0, 10.0)
             .iter()
-            .filter(|w| !longrun::touches_gap(&gaps, w.start_s, w.end_s))
+            .filter(|w| holes.clear(w.start_s, w.end_s))
             .count();
         assert_eq!(outside, tests.n + 1);
         let mut wins = timing::windows(&beats, log.bph, 10.0, 10.0);
