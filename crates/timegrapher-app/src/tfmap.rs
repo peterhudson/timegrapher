@@ -126,7 +126,7 @@ pub fn draw(
     m: &TimeFrequency,
     upto_s: f64,
     log: bool,
-    wheels: &[Wheel],
+    wheels: Option<&[Wheel]>,
     time_label: impl Fn(f64) -> String + 'static,
     period_label: impl Fn(f64) -> String + Clone + 'static,
 ) {
@@ -205,34 +205,45 @@ pub fn draw(
     key_row(ui, m, scale, pal);
 }
 
-/// The wheels' turns across the map, dashed and named at the right, where
-/// they fall inside its periods.
+/// The wheels' turns across the map, dashed in the wheels' colour and
+/// named at the right, where they fall inside its periods; with no wheels,
+/// the reference periods in grey; with `None`, nothing.
 fn wheel_rows(
     p: &mut egui_plot::PlotUi<'_>,
-    wheels: &[Wheel],
+    wheels: Option<&[Wheel]>,
     (lo, hi): (f64, f64),
     right: f64,
     pal: &theme::Palette,
 ) {
-    for w in wheels {
-        let y = w.period_s.log10();
+    let Some(wheels) = wheels else {
+        return;
+    };
+    let rows: Vec<(String, f64, Color32)> = if wheels.is_empty() {
+        timegrapher_core::periodicity::reference_lines()
+            .into_iter()
+            .map(|r| (r.label.to_string(), r.period_s, pal.text_secondary))
+            .collect()
+    } else {
+        wheels
+            .iter()
+            .map(|w| (title_case(&w.name), w.period_s, pal.wheel))
+            .collect()
+    };
+    for (name, period_s, colour) in rows {
+        let y = period_s.log10();
         if y <= lo || y >= hi {
             continue;
         }
         p.hline(
-            egui_plot::HLine::new(w.name.clone(), y)
-                .color(pal.text.gamma_multiply(0.7))
+            egui_plot::HLine::new(name.clone(), y)
+                .color(colour)
                 .style(LineStyle::Dashed { length: 4.0 })
-                .width(1.0_f32),
+                .width(1.25_f32),
         );
         p.text(
-            Text::new(
-                "wheel",
-                PlotPoint::new(right, y),
-                format!("{} ", title_case(&w.name)),
-            )
-            .color(pal.text)
-            .anchor(egui::Align2::RIGHT_BOTTOM),
+            Text::new("wheel", PlotPoint::new(right, y), format!("{name} "))
+                .color(colour)
+                .anchor(egui::Align2::RIGHT_BOTTOM),
         );
     }
 }

@@ -65,6 +65,10 @@ pub struct Palette {
     pub trace_amplitude: Rgb,
     pub trace_rate: Rgb,
     pub trace_beat_error: Rgb,
+    /// A calibre's wheels where their turns are marked on a period axis:
+    /// a colour of its own, so a wheel's line never reads as the grid or
+    /// as a reading.
+    pub wheel: Rgb,
 }
 
 const fn rgb(hex: u32) -> Rgb {
@@ -95,6 +99,7 @@ pub const DARK: Palette = Palette {
     trace_amplitude: rgb(0xbf5af2),
     trace_rate: rgb(0xff453a),
     trace_beat_error: rgb(0xffd60a),
+    wheel: rgb(0xa3e635),
 };
 
 pub const LIGHT: Palette = Palette {
@@ -121,6 +126,7 @@ pub const LIGHT: Palette = Palette {
     trace_amplitude: rgb(0x8944ab),
     trace_rate: rgb(0xd70015),
     trace_beat_error: rgb(0x8a6d00),
+    wheel: rgb(0x4d7c0f),
 };
 
 pub fn palette(dark: bool) -> &'static Palette {
