@@ -8479,6 +8479,39 @@ impl TimegrapherApp {
                 self.start_reserve();
             }
         }
+        let done = self.reserve.as_ref().and_then(|t| t.results.clone());
+        ui.separator();
+        let watch = self.watch.trim().to_string();
+        if ui
+            .add_enabled(done.is_some(), egui::Button::new("Save as CSV…"))
+            .on_hover_text(
+                "Save the watch, the run and its hour-by-hour table as a CSV file a \
+                 spreadsheet opens",
+            )
+            .on_disabled_hover_text("No run ended yet")
+            .clicked()
+        {
+            if let Some(r) = &done {
+                let dir = self.guided_dir();
+                if let Some(m) = reserve::save_csv(&reserve::results_text(r, &watch, ','), &dir) {
+                    self.info_msg(m);
+                }
+            }
+        }
+        if ui
+            .add_enabled(done.is_some(), egui::Button::new("Copy"))
+            .on_hover_text(
+                "Copy the watch, the run and its hour-by-hour table with tabs between the \
+                 columns, to paste into a spreadsheet or a message",
+            )
+            .on_disabled_hover_text("No run ended yet")
+            .clicked()
+        {
+            if let Some(r) = &done {
+                ui.ctx().copy_text(reserve::results_text(r, &watch, '\t'));
+                self.info_msg("Copied the Power Reserve Test".to_string());
+            }
+        }
     }
 
     /// Begin a Power Reserve Test: a new microphone session in the
@@ -8576,7 +8609,31 @@ impl TimegrapherApp {
                 reserve::ending_text(e)
             ));
         }
-        let results = t.finish(to_true).cloned();
+        let mut results = t.finish(to_true).cloned();
+        // Hour by hour, as `timegrapher session` reads each stretch.
+        if let (Some(r), Some(log)) = (
+            results.as_mut(),
+            self.live.as_ref().and_then(steady::log_of),
+        ) {
+            let fit = self
+                .clock_track
+                .as_ref()
+                .and_then(|c| c.fit.clone())
+                .or_else(|| {
+                    self.clock
+                        .as_ref()
+                        .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s))
+                });
+            let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+            r.hours = power_reserve::hours(
+                &log,
+                fit.as_ref(),
+                &breaks,
+                &self.masked,
+                r.first_beat_s,
+                r.last_beat_s,
+            );
+        }
         let keep_sound = t.keep_sound;
         let takes = match self.reserve_takes_dir() {
             Ok(d) => d,

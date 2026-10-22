@@ -413,7 +413,13 @@ join the run, and each silence of 30 s or more inside it is counted as a
 stop on the way. A run still going at 80 h ends there. The pane shows the
 run time from the first beat heard (to now while it runs), and at the
 end the run time in true time (through the input's clock as measured
-while listening, else its stored correction) and how it ended. The take
+while listening, else its stored correction) and how it ended, then
+the rate and amplitude against hours since the first beat, and a table
+of each hour (the last as long as is left): its rate, median amplitude
+and beat error from the unlock, each measured as `timegrapher session`
+measures a stretch (core `session::measure_masked`), and how much of it
+its whole 10 s readings cover (core `clean`). **Save as CSV…** and
+**Copy** give the watch, the run and the table. The take
 is kept in the picked watch's history (in Unsorted with none picked),
 named by its local start time and "Power Reserve", with
 `power-reserve.json` beside the standard files; with Analysis Only it is
@@ -426,8 +432,11 @@ Every pane reads the take as any other.
 `position`, `sound_kept`, `ending` (`stopped`, `by_hand` or `limit`),
 `first_beat_s` and `last_beat_s` (audio seconds of the take), `run_s`
 (true seconds from the first to the last), `pauses[]` (`from_s`, `to_s`:
-the silences of 30 s or more inside the run) and `hours[]` (empty for
-now).
+the silences of 30 s or more inside the run) and `hours[]`: `hour` (0,
+1, 2, ...), `span_s` (true seconds, 3,600 but for the last),
+`rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the
+unlock) and `read_s` (seconds of whole 10 s readings), each value null
+when not read.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the

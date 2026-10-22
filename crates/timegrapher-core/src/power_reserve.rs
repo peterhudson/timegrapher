@@ -188,6 +188,51 @@ impl Results {
     }
 }
 
+/// The run from audio second `first_s` to `last_s` of `log`, hour by
+/// hour from the first beat (the last hour as long as is left). Each hour
+/// is measured as `timegrapher session` measures a stretch
+/// ([`crate::session::measure_masked`], with the take's `clock`, `breaks`
+/// and `masked` stretches), and `read_s` counts its whole 10 s bins
+/// ([`crate::clean::Cuts::bins`]), so a mostly cut hour says how little
+/// of it was read.
+pub fn hours(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    breaks: &[crate::breaks::Break],
+    masked: &[(f64, f64)],
+    first_s: f64,
+    last_s: f64,
+) -> Vec<Hour> {
+    let cuts = crate::clean::Cuts::new(clock, breaks, masked);
+    let on_true = cuts.beats(&log.beats);
+    let mut out = Vec::new();
+    let mut a = first_s;
+    let mut hour = 0u32;
+    while a < last_s {
+        let b = (a + 3600.0).min(last_s);
+        let (ta, tb) = (cuts.true_time(a), cuts.true_time(b));
+        let n = ((tb - ta) / 10.0).floor() as usize;
+        let read_s = cuts
+            .bins(&on_true, ta, 10.0, n, 2.0)
+            .iter()
+            .filter(|x| x.whole)
+            .count() as f64
+            * 10.0;
+        let m = crate::session::measure_masked(log, clock, breaks, masked, a, b);
+        out.push(Hour {
+            hour,
+            span_s: tb - ta,
+            rate_s_per_day: m.rate_s_per_day,
+            amplitude_deg: m.amplitude_deg,
+            beat_error_ms: m.beat_error_unlock_ms,
+            read_s,
+        });
+        a = b;
+        hour += 1;
+    }
+    out
+}
+
 /// A run in brief, as a take's listing gives it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Summary {
@@ -268,6 +313,36 @@ mod tests {
         let h = heard(&b, step);
         assert!((h.last_s.unwrap() - (30.0 - step)).abs() < 1e-9);
         assert!(h.pauses.is_empty(), "15 s is under {PAUSE_S} s");
+    }
+
+    #[test]
+    fn a_run_is_read_hour_by_hour_as_session_reads_a_stretch() {
+        use crate::synth::{generate, SynthConfig};
+        let cfg = SynthConfig {
+            duration_s: 300.0,
+            rate_s_per_day: 6.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 250.0, |_| 0.0);
+        let log = crate::stream::analyze_samples(
+            &audio.samples,
+            audio.sample_rate,
+            &crate::stream::StreamConfig::default(),
+        );
+        let first = log.beats[0].time;
+        let last = log.beats[log.beats.len() - 1].time;
+        // A short run, one part hour, read as the stretch is measured,
+        // with a mask leaving its bins out.
+        let h = hours(&log, None, &[], &[(150.0, 170.0)], first, last);
+        assert_eq!(h.len(), 1, "a run under an hour is one part hour");
+        let m = crate::session::measure_masked(&log, None, &[], &[(150.0, 170.0)], first, last);
+        assert_eq!(h[0].rate_s_per_day, m.rate_s_per_day);
+        assert_eq!(h[0].amplitude_deg, m.amplitude_deg);
+        assert!((h[0].rate_s_per_day.unwrap() - 6.0).abs() < 1.0, "{h:?}");
+        assert!((h[0].span_s - (last - first)).abs() < 1e-9);
+        // The masked 20 s and the bins it touches are not read.
+        assert!(h[0].read_s <= h[0].span_s - 20.0, "{h:?}");
+        assert!(h[0].read_s >= h[0].span_s - 50.0, "{h:?}");
     }
 
     #[test]

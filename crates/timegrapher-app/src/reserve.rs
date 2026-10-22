@@ -309,8 +309,171 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
                     .color(pal.text_tertiary),
                 );
             }
+            if let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) {
+                ui.add_space(8.0);
+                hour_chart(ui, r);
+                ui.add_space(8.0);
+                hour_table(ui, r);
+            }
         });
     action
+}
+
+/// A value or a dash.
+fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
+    v.map_or_else(|| "–".to_string(), |x| format!("{x:.d$}{unit}"))
+}
+
+/// The hour column's words: "0–1 h", and the last part hour's length.
+fn hour_label(h: &power_reserve::Hour) -> String {
+    if h.span_s >= 3599.0 {
+        format!("{}–{} h", h.hour, h.hour + 1)
+    } else {
+        format!("{} h + {}", h.hour, crate::strip::fmt_time(h.span_s))
+    }
+}
+
+/// The run hour by hour as a table.
+fn hour_table(ui: &mut egui::Ui, r: &Results) {
+    let pal = theme::pal(ui);
+    egui::Grid::new("reserve hours")
+        .striped(true)
+        .spacing([18.0, 3.0])
+        .show(ui, |ui| {
+            for (head, hint) in [
+                ("Hours", "Hours since the first beat heard"),
+                (
+                    "Rate",
+                    "The hour's rate, s/d, as `timegrapher session` reads a stretch",
+                ),
+                ("Amplitude", "The hour's median amplitude"),
+                (
+                    "Beat Error",
+                    "The hour's beat error from the unlock, ms, signed",
+                ),
+                ("Read", "How much of the hour its whole 10 s readings cover"),
+            ] {
+                ui.label(RichText::new(head).strong().color(pal.text_secondary))
+                    .on_hover_text(hint);
+            }
+            ui.end_row();
+            for h in &r.hours {
+                ui.label(hour_label(h));
+                ui.label(cell(h.rate_s_per_day, 1, " s/d"));
+                ui.label(cell(h.amplitude_deg, 0, "°"));
+                ui.label(cell(h.beat_error_ms, 1, " ms"));
+                ui.label(format!("{:.0}%", 100.0 * h.read_s / h.span_s.max(1.0)));
+                ui.end_row();
+            }
+        });
+}
+
+/// Rate and amplitude against hours since the first beat, one above the
+/// other on the same hours.
+fn hour_chart(ui: &mut egui::Ui, r: &Results) {
+    use egui_plot::{Line, Plot, PlotPoints};
+    let pal = theme::pal(ui);
+    let x = |h: &power_reserve::Hour| f64::from(h.hour) + h.span_s / 7200.0;
+    for (name, colour, unit, get) in [
+        (
+            "rate",
+            pal.trace_rate,
+            " s/d",
+            (|h: &power_reserve::Hour| h.rate_s_per_day) as fn(&power_reserve::Hour) -> Option<f64>,
+        ),
+        ("amplitude", pal.trace_amplitude, "°", |h| h.amplitude_deg),
+    ] {
+        let pts: Vec<[f64; 2]> = r
+            .hours
+            .iter()
+            .filter_map(|h| get(h).map(|v| [x(h), v]))
+            .collect();
+        Plot::new(format!("reserve {name}"))
+            .height(110.0)
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_scroll(false)
+            .x_axis_formatter(|m, _| format!("{:.0} h", m.value))
+            .y_axis_formatter(move |m, _| format!("{:.0}{unit}", m.value))
+            .show(ui, |p| {
+                p.line(
+                    Line::new(name, PlotPoints::from(pts))
+                        .color(colour)
+                        .width(1.5_f32),
+                );
+            });
+    }
+}
+
+/// Save the run as a CSV file, in a folder the user picks from `dir`:
+/// what the app said.
+pub fn save_csv(text: &str, dir: &std::path::Path) -> Option<String> {
+    let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == 'T')
+        .take(15)
+        .collect();
+    let mut d = rfd::FileDialog::new()
+        .set_title("Save the Power Reserve Test as CSV")
+        .set_file_name(format!("power-reserve-{stamp}Z.csv"))
+        .add_filter("CSV", &["csv"]);
+    if dir.is_dir() {
+        d = d.set_directory(dir);
+    }
+    let path = d.save_file()?;
+    Some(match std::fs::write(&path, text) {
+        Ok(()) => format!("Saved the Power Reserve Test to {}", path.display()),
+        Err(e) => format!(
+            "Couldn't save the Power Reserve Test to {}: {e}",
+            path.display()
+        ),
+    })
+}
+
+/// The run as text with `sep` between columns, for Copy and a CSV file:
+/// the run, then the hours.
+pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
+    let mut out = String::new();
+    let line = |cells: &[String]| {
+        cells
+            .iter()
+            .map(|c| {
+                if sep == ',' && c.contains(',') {
+                    format!("\"{c}\"")
+                } else {
+                    c.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(&sep.to_string())
+            + "\n"
+    };
+    out += &line(&["Watch".into(), watch.into()]);
+    out += &line(&["Started (UTC)".into(), r.started_utc.clone()]);
+    out += &line(&["Position".into(), r.position.clone()]);
+    out += &line(&["Power reserve".into(), power_reserve::run_text(r.run_s)]);
+    out += &line(&["Ended".into(), ending_text(r.ending).into()]);
+    out += "\n";
+    out += &line(&[
+        "Hour".into(),
+        "Length (s)".into(),
+        "Rate (s/d)".into(),
+        "Amplitude (deg)".into(),
+        "Beat error (ms)".into(),
+        "Read (s)".into(),
+    ]);
+    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| format!("{x:.d$}"));
+    for h in &r.hours {
+        out += &line(&[
+            h.hour.to_string(),
+            format!("{:.0}", h.span_s),
+            num(h.rate_s_per_day, 1),
+            num(h.amplitude_deg, 0),
+            num(h.beat_error_ms, 2),
+            format!("{:.0}", h.read_s),
+        ]);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -372,5 +535,32 @@ mod tests {
         assert_eq!(gb(bytes_needed(48_000, 16)), "27.6 GB");
         assert_eq!(bytes_per_hour(48_000, 24), 48_000 * 3 * 3600);
         assert!(free_bytes(&std::env::temp_dir()).is_some_and(|b| b > 0));
+    }
+
+    #[test]
+    fn the_results_copy_as_a_table() {
+        let mut t = Test::new(Position::DialUp, true, "2026-10-22T16:15:00Z".into(), 0.0);
+        t.update(&beats(0.0, 100.0, 0.2), 0.2, 100.0);
+        t.stop();
+        let mut r = t.finish(|s| s).unwrap().clone();
+        r.hours = vec![power_reserve::Hour {
+            hour: 0,
+            span_s: 99.8,
+            rate_s_per_day: Some(4.25),
+            amplitude_deg: Some(281.4),
+            beat_error_ms: None,
+            read_s: 90.0,
+        }];
+        let text = results_text(&r, "Pepsi, 1972", ',');
+        assert!(text.starts_with("Watch,\"Pepsi, 1972\"\n"), "{text}");
+        assert!(
+            text.contains("Ended,Stopped by hand while the watch still ran"),
+            "{text}"
+        );
+        assert!(
+            text.ends_with("0,100,4.2,281,,90\n") || text.ends_with("0,100,4.3,281,,90\n"),
+            "{text}"
+        );
+        assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
     }
 }
