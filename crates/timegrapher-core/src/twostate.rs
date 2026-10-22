@@ -742,6 +742,42 @@ mod tests {
     }
 
     #[test]
+    fn stray_windows_far_out_are_still_dropped() {
+        // One steady level of 280° with a scatter of about 3°, and a knock
+        // every two and a half minutes: five 2 s windows in a row reading
+        // 130°, a whole 10 s block, 7% of the windows in all. They are
+        // fewer than the smaller state's least share, so they are stray and
+        // dropped: no block sits at 130°.
+        let mut seed = 777u64;
+        let mut noise = || {
+            (0..12)
+                .map(|_| {
+                    seed = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (seed >> 11) as f64 / (1u64 << 53) as f64
+                })
+                .sum::<f64>()
+                - 6.0
+        };
+        let samples: Vec<Sample> = (0..900)
+            .map(|i| {
+                let t = i as f64 * 2.0;
+                let v = if t % 150.0 < 10.0 { 130.0 } else { 280.0 };
+                Sample {
+                    start_s: t,
+                    end_s: t + 2.0,
+                    value: v + 3.0 * noise(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let r = find(&samples, &Params::default());
+        assert!(!r.two_levels, "{r:?}");
+        assert!(r.low > 270.0, "{r:?}");
+    }
+
+    #[test]
     fn holes_in_the_blocks_are_time_that_passed() {
         // Low, low, high, high, one 10 s block each: a 40 s pattern. The
         // same 120 blocks heard 30 s apart, with 20 s holes between them,
