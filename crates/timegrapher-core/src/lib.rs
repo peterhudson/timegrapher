@@ -14,6 +14,7 @@ pub mod breaks;
 pub mod calibre_store;
 pub mod calibres;
 pub mod capture;
+pub mod clean;
 pub mod clock;
 pub mod clockstore;
 pub mod confidence;
