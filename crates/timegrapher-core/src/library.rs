@@ -551,6 +551,160 @@ impl Library {
         self.scan();
         Ok(())
     }
+
+    /// The watch whose `takes/` holds the take folder `take`.
+    pub fn watch_of(&self, take: &Path) -> Option<&WatchEntry> {
+        let parent = take.parent()?;
+        self.watches.iter().find(|w| w.dir.join(TAKES) == parent)
+    }
+
+    /// `take`'s watch, where this copy of the app may change the library.
+    fn take_in_library(&self, take: &Path) -> Result<&WatchEntry, String> {
+        self.writable()?;
+        self.watch_of(take)
+            .filter(|_| take.is_dir())
+            .ok_or_else(|| format!("{} is not a take in this library", take.display()))
+    }
+
+    /// Rename a take's folder to `name` (cleaned for every system, as a
+    /// watch's is). Returns the folder.
+    pub fn rename_take(&mut self, take: &Path, name: &str) -> Result<PathBuf, String> {
+        self.take_in_library(take)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("A take needs a name".into());
+        }
+        let to = take.with_file_name(folder_name(name));
+        if to == take {
+            return Ok(to);
+        }
+        // Another take of that name; a change of case alone renames.
+        if fs::symlink_metadata(&to).is_ok()
+            && !file_name(&to).eq_ignore_ascii_case(&file_name(take))
+        {
+            return Err(format!(
+                "There is already a take called \"{}\"",
+                file_name(&to)
+            ));
+        }
+        fs::rename(take, &to).map_err(|e| format!("Renaming {}: {e}", take.display()))?;
+        self.scan();
+        Ok(to)
+    }
+
+    /// Move a take into another watch (by its id), keeping its name, or
+    /// with a number added where that watch has a take of that name.
+    pub fn move_take(&mut self, take: &Path, watch_id: &str) -> Result<PathBuf, String> {
+        self.take_in_library(take)?;
+        let to_watch = self
+            .watches
+            .iter()
+            .find(|w| w.watch.id == watch_id)
+            .ok_or("That watch is no longer in the library")?;
+        let takes = to_watch.dir.join(TAKES);
+        if take.parent() == Some(takes.as_path()) {
+            return Ok(take.to_path_buf());
+        }
+        fs::create_dir_all(&takes).map_err(|e| format!("{}: {e}", takes.display()))?;
+        let to = unused_dir(&takes, &file_name(take));
+        fs::rename(take, &to).map_err(|e| format!("Moving {}: {e}", take.display()))?;
+        self.scan();
+        Ok(to)
+    }
+
+    /// Delete a take's folder and everything in it.
+    pub fn delete_take(&mut self, take: &Path) -> Result<(), String> {
+        self.take_in_library(take)?;
+        let gone = fs::remove_dir_all(take);
+        self.scan();
+        gone.map_err(|e| format!("Deleting {}: {e}", take.display()))
+    }
+
+    /// Put `kept` (the take kept as its analysis alone, written beside it)
+    /// in place of `take`: the take is moved aside, `kept` takes its name,
+    /// and only then is the take with its sound deleted. `Ok(Some(why))`
+    /// when the kept take is in place but some of the old one couldn't be
+    /// deleted.
+    pub fn replace_take(&mut self, take: &Path, kept: &Path) -> Result<Option<String>, String> {
+        self.take_in_library(take)?;
+        if kept.parent() != take.parent() || !crate::analysis_take::is_analysis_only(kept) {
+            return Err(format!("{} is not a kept take beside it", kept.display()));
+        }
+        let aside = take.with_file_name(format!(".{}.with-sound", file_name(take)));
+        let _ = fs::remove_dir_all(&aside);
+        fs::rename(take, &aside).map_err(|e| format!("Moving {} aside: {e}", take.display()))?;
+        if let Err(e) = fs::rename(kept, take) {
+            // Put back as it was.
+            let _ = fs::rename(&aside, take);
+            return Err(format!("Putting the kept take in place: {e}"));
+        }
+        let gone = fs::remove_dir_all(&aside);
+        self.scan();
+        Ok(gone.err().map(|e| {
+            format!(
+                "The take is kept as its analysis, but some of its sound in {} couldn't be \
+                 deleted ({e})",
+                aside.display()
+            )
+        }))
+    }
+
+    /// Add the take folder `from`, from outside the library, to a watch
+    /// (by its id): copied, or moved when `keep_original` is false. It is
+    /// copied beside its new place first and moved in whole, so a copy cut
+    /// short is not a take; a move onto another disk copies, then deletes
+    /// the original. `Ok((folder, Some(why)))` when it is in the watch but
+    /// some of the original couldn't be deleted.
+    pub fn add_take(
+        &mut self,
+        from: &Path,
+        watch_id: &str,
+        keep_original: bool,
+    ) -> Result<(PathBuf, Option<String>), String> {
+        self.writable()?;
+        if !(from.join("session.toml").is_file() || from.join("session.json").is_file()) {
+            return Err(format!(
+                "{} is not a take folder (it has no session.toml or session.json)",
+                from.display()
+            ));
+        }
+        if resolved(from).starts_with(resolved(&self.root)) {
+            return Err(format!("{} is already in the library", from.display()));
+        }
+        let to_watch = self
+            .watches
+            .iter()
+            .find(|w| w.watch.id == watch_id)
+            .ok_or("That watch is no longer in the library")?;
+        let takes = to_watch.dir.join(TAKES);
+        fs::create_dir_all(&takes).map_err(|e| format!("{}: {e}", takes.display()))?;
+        let to = unused_dir(&takes, &file_name(from));
+        if !keep_original && fs::rename(from, &to).is_ok() {
+            self.scan();
+            return Ok((to, None));
+        }
+        let staged = takes.join(format!(".adding-{}", file_name(&to)));
+        let _ = fs::remove_dir_all(&staged);
+        let copied = copy_tree(from, &staged, &[])
+            .and_then(|_| fs::rename(&staged, &to).map_err(|e| format!("{}: {e}", to.display())));
+        if let Err(e) = copied {
+            let _ = fs::remove_dir_all(&staged);
+            return Err(e);
+        }
+        let left = if keep_original {
+            None
+        } else {
+            fs::remove_dir_all(from).err().map(|e| {
+                format!(
+                    "The take is in the watch, but some of {} couldn't be deleted ({e}): what \
+                     is left there is a copy",
+                    from.display()
+                )
+            })
+        };
+        self.scan();
+        Ok((to, left))
+    }
 }
 
 /// `p` with links followed: the nearest folder of it that exists,
@@ -1198,6 +1352,98 @@ mod tests {
         drop(socket);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_file(&outside);
+    }
+
+    /// A take can be renamed, moved to another watch and deleted; a take
+    /// from outside is added by a copy or a move; a kept take replaces
+    /// the take it was kept from. None of it in a library open elsewhere.
+    #[test]
+    fn takes_are_renamed_moved_deleted_added_and_replaced() {
+        let root = scratch("take-ops");
+        let mut lib = Library::create(&root).unwrap();
+        let a = lib.add(&Watch::new("Pepsi")).unwrap();
+        let b = lib.add(&Watch::new("Daytona")).unwrap();
+        let b_id = lib.find("Daytona").unwrap().watch.id.clone();
+        let t = a.join(TAKES).join("2026-10-20 10.00 Dial Up");
+        take(
+            &t,
+            &[("take_part01-001.flac", "DU")],
+            1,
+            "2026-10-20T17:00:00Z",
+        );
+        lib.scan();
+        assert_eq!(lib.watch_of(&t).unwrap().dir, a);
+
+        // Rename: cleaned, never over another take.
+        let t = lib.rename_take(&t, "Before Service: DU").unwrap();
+        assert_eq!(file_name(&t), "Before Service- DU");
+        take(
+            &a.join(TAKES).join("Other"),
+            &[("take_part01-001.flac", "DU")],
+            1,
+            "2026-10-21T17:00:00Z",
+        );
+        lib.scan();
+        assert!(lib
+            .rename_take(&t, "Other")
+            .unwrap_err()
+            .contains("already"));
+        assert!(lib.rename_take(&t, "  ").is_err());
+
+        // Move into Daytona, then delete there.
+        let moved = lib.move_take(&t, &b_id).unwrap();
+        assert_eq!(moved, b.join(TAKES).join("Before Service- DU"));
+        assert!(!t.exists());
+        assert_eq!(lib.find("Daytona").unwrap().takes.len(), 1);
+        lib.delete_take(&moved).unwrap();
+        assert!(!moved.exists() && lib.find("Daytona").unwrap().takes.is_empty());
+        assert!(lib.delete_take(&root.join("elsewhere")).is_err());
+
+        // Added from outside: a copy keeps the original, a move doesn't.
+        let outside = scratch("take-ops-outside");
+        take(
+            &outside,
+            &[("take_part01-001.flac", "CL")],
+            1,
+            "2026-10-22T17:00:00Z",
+        );
+        let (copy, left) = lib.add_take(&outside, &b_id, true).unwrap();
+        assert_eq!(left, None);
+        assert!(outside.join("session.toml").is_file() && copy.join("session.toml").is_file());
+        let (second, _) = lib.add_take(&outside, &b_id, false).unwrap();
+        assert!(!outside.exists());
+        assert_ne!(copy, second);
+        assert_eq!(lib.find("Daytona").unwrap().takes.len(), 2);
+        assert!(lib
+            .add_take(&copy, &b_id, true)
+            .unwrap_err()
+            .contains("already in"));
+        assert!(lib
+            .add_take(&root, &b_id, true)
+            .unwrap_err()
+            .contains("not a take"));
+
+        // A kept take replaces the one it was kept from, under its name.
+        let kept = second.with_file_name(".kept");
+        fs::create_dir_all(kept.join(crate::analysis_take::DIR)).unwrap();
+        fs::write(
+            kept.join(crate::analysis_take::DIR)
+                .join(crate::analysis_take::HEADER),
+            "{}",
+        )
+        .unwrap();
+        fs::write(kept.join("session.toml"), "audio = false\n").unwrap();
+        assert!(lib.replace_take(&second, &kept).unwrap().is_none());
+        assert!(crate::analysis_take::is_analysis_only(&second));
+        assert!(!kept.exists());
+        assert_eq!(fs::read_dir(b.join(TAKES)).unwrap().count(), 2);
+
+        // A second copy of the app changes none of it.
+        let mut other = Library::open(&root).unwrap();
+        assert!(other.rename_take(&copy, "x").is_err());
+        assert!(other.delete_take(&copy).is_err() && copy.exists());
+        drop(lib);
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// The second copy of the app to open a library can only read it, and

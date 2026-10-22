@@ -223,7 +223,8 @@ winding is unknown is not logged as freshly wound.
 
 ## A take kept as its analysis alone
 
-The app's **Save Analysis Only…** keeps a take without its sound: a take
+The app's **Save Analysis Only…**, and **Keep Analysis Only…** on a
+saved take in the Watches pane, keep a take without its sound: a take
 folder in the standard layout with every audio file left out and an
 `analysis/` folder in their place. `session.toml` says `audio = false` at
 the top; its recordings, positions and masks are as for the take with its
