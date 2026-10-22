@@ -365,7 +365,13 @@ enum Command {
     /// it runs, for --seconds.
     Record {
         /// The session folder (created if missing); one per watch and test.
-        folder: PathBuf,
+        /// Left out, --watch names a watch in the app's library, and the
+        /// folder is made among its takes.
+        folder: Option<PathBuf>,
+        /// The app's library, for --watch without a FOLDER (default:
+        /// Timegrapher Data in the home folder).
+        #[arg(long)]
+        library: Option<PathBuf>,
         /// Position: DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H).
         #[arg(long)]
         position: String,
@@ -381,6 +387,8 @@ enum Command {
         #[arg(long)]
         file: Option<PathBuf>,
         /// The watch, in the owner's words (for a new session file).
+        /// Without a FOLDER, a watch in the app's library: its calibre,
+        /// beat rate and lift angle fill in those not given.
         #[arg(long)]
         watch: Option<String>,
         /// The movement, from the calibre table: gives bph and lift when
@@ -893,6 +901,7 @@ fn main() -> ExitCode {
         }
         Command::Record {
             folder,
+            library,
             position,
             seconds,
             device,
@@ -907,6 +916,7 @@ fn main() -> ExitCode {
         } => {
             let o = record_cmd::Options {
                 folder,
+                library,
                 position,
                 seconds,
                 device,

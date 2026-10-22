@@ -67,7 +67,7 @@ readings: anything that compares two documents should leave `software` out.
 | `watch` | `watches show NAME [--library DIR] --json` | one watch, or `Unsorted`: `library`, `name`, `unsorted`, `folder`, `calibre`, `bph`, `lift_deg`, `notes`, `archived`, `fields[]` (`label`, `kind`, `value`), `photos` (how many), `bytes`, `takes[]` newest first (`path`, `name`, `started_utc`, `duration_s`, `positions[]`, `audio`, `incomplete`, `bytes`, `at_end`), `unreadable[]`, `caveats[]` (none yet) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `doctor` | `doctor --json` | Schema `timegrapher.doctor/2`. `source`, `check`, `mixer`, `fixes[]`, `applied`, `after` (below). Version 2 removed `verdict`, `check.signal_band`, `issues[].severity`, `issues[].advice` and the `noisy` issue. |
-| `record` | `record FOLDER --position P --json` | (`record/2`) `take` (the take's folder), `session_file` (the session file the take was added to), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `timing_scatter_ms` and `timing_scatter_fraction` (the median timing scatter over the whole take, in ms and as a share of the beat; 2% or more is no regular beat), `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no regular beat is found or the stretch after settling is too short); `record/1` also had `verdict` (`ok`, `no_watch_heard`, `clipping`) and left a take with no watch heard or clipping out of the session; see [`record`](#record) |
+| `record` | `record FOLDER --position P --json` | (`record/2`) `take` (the take's folder), `library_watch` (the library watch the session folder was made under, without a FOLDER; else null), `session_file` (the session file the take was added to), `position`, `wind_h` (null when not given), `seconds`, `source`, `sample_rate`, `check` (`from_s`, `to_s`: the stretch read, after the settling time; `watch_heard`, `timing_scatter_ms` and `timing_scatter_fraction` (the median timing scatter over the whole take, in ms and as a share of the beat; 2% or more is no regular beat), `bph`, `beats_found`, `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the unlock), `clipping`; `watch_heard` and `clipping` cover the whole take; the readings are those `session` gives for the take, null when no regular beat is found or the stretch after settling is too short); `record/1` also had `verdict` (`ok`, `no_watch_heard`, `clipping`) and left a take with no watch heard or clipping out of the session; see [`record`](#record) |
 | `session` | `session PATHS --json` | `input.settings.calibre` (the table calibre used, from `--calibre` or the session file's `calibre` line) and `calibre_notes` (where explicit values disagree with it), per-position `readings`, Witschi's characteristic values (`d_rate`, `d_amplitude`: the largest difference between any two positions; `dv_rate`, `dh_rate`: the same among the vertical or the horizontal positions; `dvh_rate`, `dvh_amplitude`: the vertical mean minus the horizontal mean), `isochronism` per position across states of wind (`from_wind_h`, `to_wind_h`, `rate_change` s/d, `amplitude_change` deg, `beat_error_change` ms) and `findings` (`code`, `recording`, `title`, `evidence`: conditions found in the sound, such as `no_regular_beat`, `clipping` or `cycle_wheel`, with no severity or advice); each measurement's `amplitude_states` and `rate_states` give the two-state finder's figures: `two_levels` (all the tests hold), `blocks`, `block_s`, `low`, `high`, `low_share`, `separation` (Ashman's D), `delta_bic` (BIC of one level minus two), `switches`, `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`, `regularity`, and for amplitude `tick_change`, `tock_change`, `beat_error_unlock_ms`, `beat_error_drop_ms`, `tick_unlock_ms`, `tock_unlock_ms` (each a low and high pair), `tick_split_alone`, `tock_split_alone`, `tick_edge_split_alone`, `tock_edge_split_alone`, `one_sided` (one side carries the split alone) and `unlock_jump` (the unlock beat error jumps between the levels while the drop's does not); see [sessions.md](sessions.md#two-states). Schema `timegrapher.session/2`: no tolerance, limits, verdicts, quality factor N, finding severity or advice, or two-state verdict or confidence, and no `--tolerance` flag; a session file's `tolerance` and `[limits]` are read and ignored. Also written to `summary.json`; see [sessions.md](sessions.md) Each reading's measurement has `breaks` too, with the same meaning, when its stretch holds one, and `masked_s` (the seconds masked out of the measured stretch by the session file's `masked`; present only when some are) with the caveat `masked`. Each reading's `measurement` also carries `confidence` (`rate`, `amplitude`, `beat_error`, each `se`, the standard error in the reading's unit, as `analyze` gives it; `null` when no regular beat is found) and `caveats[]` (as for `analyze`; `lift_unknown` when no `--lift`, session-file `lift` or known calibre gave the lift angle). A take kept as its analysis alone (`audio = false` in its session file, an `analysis/` folder and no sound; see [sessions.md](sessions.md#a-take-kept-as-its-analysis-alone)) is read from its kept beats, and `input.settings.analysis_only` gives `note` (no sound was kept) and `measured_by` (the software that measured it, whose beat shape each reading's `shape` is); it is `null` for a take with its sound. |
 | `report` | `report [RECORDING] --json` | the bundle's manifest: `created_utc`, `kind`, `note`, `os_version`, `recording`, `commands[]` (`args`, `cwd`, `output`, `replayable`), `files[]` (`path`, `bytes`, `sha256`), `consent`, `redacted`, `left_out`; the zip's path goes to stdout without `--json`; see [reports.md](reports.md) |
 | `replay` | `report --replay BUNDLE --json` | `bundle` (when and by which build it was made), `damaged[]`, `commands[]` (`args`, `output`, `ran`, `error`, `moved[]` of `path`, `then`, `now`) |
@@ -193,6 +193,9 @@ timegrapher record FOLDER --position DU [--seconds 120] [--device NAME]
                    [--watch TEXT] [--calibre NAME] [--bph N] [--lift DEG]
                    [--wind-h H] [--file AUDIO] [--live PATH] [--json]
 ```
+```sh
+timegrapher record --watch NAME [--library DIR] --position DU [...]
+```
 
 Records one position of a test, for `--seconds` (default 120), and stops.
 It listens only while it runs, says on stderr what it is recording and
@@ -242,6 +245,24 @@ take carries no `wind_h`, and the report says the state of wind was not
 given. `--file` reads a
 recording instead of the microphone, at once rather than in real time,
 to try the command.
+
+Without a FOLDER, `--watch NAME` names a watch in the app's library
+(found as `watches show` finds it: by its name, ignoring case and spaces
+at either end; the library is `--library DIR`, default `Timegrapher Data`
+in the home folder). The session folder is made among that watch's
+takes, named by when it started in this computer's time as the app names
+a take (`2026-10-22 09.15`, with ` 2` and so on added when that name is
+taken), and the watch's calibre, beat rate and lift angle fill in those
+not given; the session file's `watch` is the watch's name. The `--json`
+document's `library_watch` names the watch (null when FOLDER was given),
+and `session_file` is in the new folder: give that folder as FOLDER to
+record the next position into the same test. The session folder is then
+one take in the library, with the positions of every take in it; it has
+no `session.json` of its own, so `watches` lists it with no start time,
+length or `at_end`. Recording into the library holds its lock for the
+whole take, so it is refused (exit 1, before anything is made) while the
+app has the library open, as a second copy of the app would be; the
+same holds for a FOLDER that is one of a library watch's takes.
 
 `--live PATH` keeps the take's latest readings in PATH while it records,
 for a live view (the MCP server's Live view reads it). The file is
