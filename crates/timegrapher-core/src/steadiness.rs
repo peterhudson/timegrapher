@@ -24,7 +24,7 @@
 //!
 //! These sit beside the period search of the long-run analysis (which
 //! scores each period with a false-alarm chance and names the wheel) and
-//! the two-state finder, and one verdict is drawn from all of them.
+//! the two-state finder, and one headline is drawn from all of them.
 
 use crate::beats::Beat;
 use crate::clock::ClockFit;
@@ -52,15 +52,15 @@ pub struct Config {
     pub max_lag_s: f64,
     /// Lags summed by the Ljung–Box test.
     pub ljung_box_lags: usize,
-    /// A period is the verdict when it explains this share of the
+    /// A period is what the headline names when it explains this share of the
     /// detrended variance.
     pub periodic_min_explained: f64,
     /// Block length for the change points, seconds, and the shortest
     /// stretch of constant mean.
     pub change_block_s: f64,
     pub change_min_segment_s: f64,
-    /// A trend or a set of steps is the verdict when it explains this
-    /// share of the variance.
+    /// A trend or a set of steps is what the headline names when it
+    /// explains this share of the variance.
     pub min_explained: f64,
     /// Readings further than this many short-term σ from the running
     /// median are left out as outliers.
@@ -266,7 +266,7 @@ pub enum CycleSource {
     PeriodSearch,
 }
 
-/// The cycle behind a `periodic` verdict.
+/// The cycle behind a `periodic` headline.
 #[derive(Debug, Clone, Serialize)]
 pub struct Cycle {
     pub period_s: f64,
@@ -880,7 +880,7 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
 
 /// Test one series. `g` is on a uniform grid of readings with gaps as NaN.
 /// `fine`, when given, holds the same series in shorter windows: the
-/// verdict is judged on `g`, but cycles are looked for in `fine`, which
+/// headline is read from `g`, but cycles are looked for in `fine`, which
 /// keeps cycles too short for `g`'s readings.
 #[allow(clippy::too_many_arguments)]
 pub fn check_series(
@@ -1155,7 +1155,7 @@ fn search_also(s: &SeriesCheck) -> Option<String> {
     ))
 }
 
-/// A second sentence for structure the verdict does not name: a cycle
+/// A second sentence for structure the headline does not name: a cycle
 /// under steps or a slide, or steps or a slide under a cycle.
 fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
     let k = s.series;
@@ -1241,7 +1241,7 @@ fn wheel_for(period: f64, wheels: &[Wheel]) -> Option<String> {
         .map(|w| w.name.clone())
 }
 
-/// The cycle a `periodic` verdict would rest on. Candidates come from
+/// The cycle a `periodic` headline would rest on. Candidates come from
 /// the two-state finder (a low level that comes back on a period), from
 /// a repeat in the autocorrelation and from the period search; each is
 /// tested by folding the readings at it, and the one whose cycle explains
@@ -2084,7 +2084,7 @@ pub fn check(
     // Amplitude and beat error windows.
     let aw = &log.amplitude_windows;
     let [amp_grid, be_grid] = window_grids(log, clock, &long.breaks);
-    // The verdicts judge every series at the rate's reading length: the
+    // The tests read every series at the rate's reading length: the
     // amplitude and beat error windows are averaged into the rate's
     // readings, so one reading means the same time for all three. The
     // short windows are kept for finding cycles.

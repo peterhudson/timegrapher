@@ -5,7 +5,7 @@
 
 use crate::session_cmd::{opt, signed, wind, Session};
 use std::fmt::Write;
-use timegrapher_core::session::{Position, Reading, StateIndices};
+use timegrapher_core::session::{Position, Reading, ReferenceClock, StateIndices};
 use timegrapher_core::twostate;
 
 fn esc(s: &str) -> String {
@@ -178,19 +178,29 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
         .iter()
         .filter_map(|v| v.amplitude_deg.map(|r| (v.position, r)))
         .collect();
-    // Reference.source is descriptive text, not a clock-basis declaration.
-    // Avoid overlaying an unknown-basis reference on even a partly corrected
-    // position aggregate; all supplied values remain in the reference table.
+    // The position aggregates mix every reading at a position, so the
+    // reference rates are overlaid only when every reading is on one clock
+    // and every reference rate is on that clock too (`Reference::clock`);
+    // all supplied values remain in the reference table.
     let calibrated = readings.iter().any(|r| r.measurement.calibrated);
+    let one_clock = readings
+        .iter()
+        .all(|r| r.measurement.calibrated == calibrated);
     let rref = refs(&|r| r.reference.as_ref()?.rate_s_per_day);
-    let omitted = calibrated && !rref.is_empty();
+    let matched = one_clock
+        && readings.iter().all(|r| {
+            r.reference
+                .as_ref()
+                .is_none_or(|f| f.rate_s_per_day.is_none() || f.same_clock_as(calibrated))
+        });
+    let omitted = !matched && !rref.is_empty();
     let aref = refs(&|r| r.reference.as_ref()?.amplitude_deg);
     let mut rs = vec![Series {
         class: "dot",
         label: "this recording",
         points: rate_pts,
     }];
-    if !calibrated && !rref.is_empty() {
+    if matched && !rref.is_empty() {
         rs.push(Series {
             class: "ref",
             label: "reference timegrapher",
@@ -213,7 +223,7 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
         r#"<h3>Rate by position</h3>{}{}<h3>Amplitude by position</h3>{}"#,
         position_chart("seconds per day", &rs, true),
         if omitted {
-            r#"<p class="note">Reference rates are omitted from this rate chart because it includes clock-corrected readings and the reference clock basis is not recorded. Reference values remain in the table.</p>"#
+            r#"<p class="note">Reference rates are omitted from this rate chart because its readings and the reference rates are not all on one clock (a clock-corrected reading beside a reference whose clock basis is not recorded or is the sound card's, or the other way round). Reference values remain in the table.</p>"#
         } else {
             ""
         },
@@ -387,21 +397,27 @@ fn reference_table(sn: &Session) -> String {
         } else {
             "sound-card clock"
         };
-        let rate_difference = if m.calibrated {
-            "—".to_string()
-        } else {
+        let rate_difference = if f.same_clock_as(m.calibrated) {
             signed(
                 m.rate_s_per_day.zip(f.rate_s_per_day).map(|(a, b)| a - b),
                 1,
             )
+        } else {
+            "—".to_string()
+        };
+        let ref_basis = match f.clock {
+            Some(ReferenceClock::Own) => "reference, its own clock",
+            Some(ReferenceClock::SoundCard) => "reference, sound-card clock",
+            None => "reference as supplied",
         };
         let _ = write!(
             s,
-            r#"<tr><th>{}</th><td class="num">{} <span class="sub">{}</span><br>/ {} <span class="sub">reference as supplied</span></td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
+            r#"<tr><th>{}</th><td class="num">{} <span class="sub">{}</span><br>/ {} <span class="sub">{}</span></td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td class="num">{} / {}</td><td class="num">{}</td><td>{}</td><td class="file">{}</td></tr>"#,
             r.position.display_label(),
             signed(m.rate_s_per_day, 1),
             basis,
             signed(f.rate_s_per_day, 1),
+            ref_basis,
             rate_difference,
             opt(m.amplitude_deg, 0),
             opt(f.amplitude_deg, 0),
@@ -413,7 +429,7 @@ fn reference_table(sn: &Session) -> String {
             esc(&r.label)
         );
     }
-    s.push_str(r#"</tbody></table><p class="note">Rate difference is omitted for clock-corrected readings because the reference clock basis is not recorded. Reference values are shown as supplied. Uncorrected differences use the supplied rates; check their clock basis against the source.</p><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few seconds per day from either.</p>"#);
+    s.push_str(r#"</tbody></table><p class="note">Rate difference is shown where the reference's clock is the reading's: a reference on its own clock beside a clock-corrected reading, one on the sound card's clock beside an uncorrected reading. It is omitted otherwise, as for a clock-corrected reading whose reference clock basis is not recorded. Where the basis is not recorded, an uncorrected reading's difference uses the supplied rate; check its clock basis against the source. Reference values are shown as supplied, and a reference's own clock error is not corrected here.</p><p class="note">The reading here is the whole recording after settling; a bench timegrapher shows its average over a few seconds, so a watch whose rate wanders can differ by a few seconds per day from either.</p>"#);
     s
 }
 
@@ -755,6 +771,7 @@ mod tests {
                 amplitude_deg: Some(250.0),
                 beat_error_ms: None,
                 source: Some("tg on the same file".into()),
+                clock: None,
             }),
         }
     }
@@ -898,6 +915,66 @@ mod tests {
         corrected.reference.as_mut().unwrap().rate_s_per_day = None;
         let html = render(vec![corrected]);
         assert_eq!(reference_cells(&html)[0][1], "—");
+    }
+
+    #[test]
+    fn a_reference_on_its_own_clock_sits_beside_a_clock_corrected_reading() {
+        let mut r = reading(Some(100.0), Position::CH);
+        let f = r.reference.as_mut().unwrap();
+        f.rate_s_per_day = Some(2.0);
+        f.clock = Some(ReferenceClock::Own);
+        let expected = signed(r.measurement.rate_s_per_day.map(|v| v - 2.0), 1);
+        let html = render(vec![r]);
+        let cells = reference_cells(&html);
+        assert_eq!(cells[0][1], expected);
+        assert!(
+            cells[0][0].contains("reference, its own clock"),
+            "{}",
+            cells[0][0]
+        );
+        assert!(rate_chart(&html).contains("<path class=\"ref\""));
+        assert!(!rate_chart(&html).contains("Reference rates are omitted"));
+        // Beside an uncorrected reading, the same reference is on another
+        // clock: no difference, no overlay.
+        let mut r = reading(None, Position::CH);
+        r.reference.as_mut().unwrap().clock = Some(ReferenceClock::Own);
+        let html = render(vec![r]);
+        assert_eq!(reference_cells(&html)[0][1], "—");
+        assert!(!rate_chart(&html).contains("<path class=\"ref\""));
+        assert!(rate_chart(&html).contains("Reference rates are omitted"));
+    }
+
+    #[test]
+    fn a_reference_on_the_sound_cards_clock_sits_beside_an_uncorrected_reading() {
+        let mut r = reading(None, Position::CH);
+        let f = r.reference.as_mut().unwrap();
+        f.rate_s_per_day = Some(2.0);
+        f.clock = Some(ReferenceClock::SoundCard);
+        let expected = signed(r.measurement.rate_s_per_day.map(|v| v - 2.0), 1);
+        let html = render(vec![r]);
+        let cells = reference_cells(&html);
+        assert_eq!(cells[0][1], expected);
+        assert!(cells[0][0].contains("reference, sound-card clock"));
+        assert!(rate_chart(&html).contains("<path class=\"ref\""));
+        let mut r = reading(Some(100.0), Position::CH);
+        r.reference.as_mut().unwrap().clock = Some(ReferenceClock::SoundCard);
+        let html = render(vec![r]);
+        assert_eq!(reference_cells(&html)[0][1], "—");
+        assert!(!rate_chart(&html).contains("<path class=\"ref\""));
+    }
+
+    #[test]
+    fn a_reference_clock_is_read_from_the_session_file_and_given_back_as_set() {
+        use timegrapher_core::session::Reference;
+        let f: Reference = toml::from_str("rate = 1.5\nclock = \"own\"").unwrap();
+        assert_eq!(f.clock, Some(ReferenceClock::Own));
+        assert_eq!(serde_json::to_value(&f).unwrap()["clock"], "own");
+        let f: Reference = toml::from_str("rate = 1.5\nclock = \"sound_card\"").unwrap();
+        assert_eq!(f.clock, Some(ReferenceClock::SoundCard));
+        let f: Reference = toml::from_str("rate = 1.5").unwrap();
+        assert_eq!(f.clock, None);
+        assert!(serde_json::to_value(&f).unwrap().get("clock").is_none());
+        assert!(toml::from_str::<Reference>("rate = 1.5\nclock = \"quartz\"").is_err());
     }
 
     #[test]
