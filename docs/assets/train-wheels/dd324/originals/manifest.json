@@ -1,0 +1,78 @@
+{
+  "specimen": "Dandong 324 SC clone",
+  "scope": "Peacock SL1258 train equivalence supplied by Peter Hudson; no genuine Patek extrapolation",
+  "contributor": "Peter Hudson",
+  "date": "2026-10-21",
+  "originals": [
+    {
+      "sha256": "2ebeed2fdbfe8c60b323954440609b4618d62c5595846f1ecba5a0ae38811981",
+      "counts": {
+        "rim": 93
+      },
+      "supplied_filename": "Barrel.JPG",
+      "file": "originals/barrel.jpg"
+    },
+    {
+      "sha256": "74d8e7e7ec0caae8c3ed874d2908676b0b6a19911bb128b6762851ea9c41137f",
+      "counts": {
+        "rim": 60,
+        "pinion": 18
+      },
+      "supplied_filename": "Second Wheel.JPG",
+      "file": "originals/second-wheel.jpg"
+    },
+    {
+      "sha256": "91b5fda09765901157fc79ed4fe16174346a0cd4bd68cb3d096e313f4a753074",
+      "counts": {
+        "rim": 90,
+        "pinion": 10
+      },
+      "supplied_filename": "Third Wheel top.JPG",
+      "file": "originals/third-wheel-top.jpg"
+    },
+    {
+      "sha256": "0a7d2d089ee263681ab47a83a781af2321ce51040fe6d5c673def4c04370ca78",
+      "counts": {
+        "rim": 90,
+        "pinion": 10
+      },
+      "supplied_filename": "Third Wheel Botom.JPG",
+      "file": "originals/third-wheel-bottom.jpg"
+    },
+    {
+      "sha256": "9e73cb55dc2785a282d81804e73f00ededea9b3f183821ea912b363a46baa8e4",
+      "counts": {
+        "rim": 60,
+        "motion_works_pinion": 28
+      },
+      "supplied_filename": "Cannon Wheel.JPG",
+      "file": "originals/cannon-wheel.jpg"
+    },
+    {
+      "sha256": "5e5a6155ac1e26c0e9bb0d08ba6a5391c84aa29679f0754a9f46832e012494df",
+      "counts": {
+        "pinion": 9
+      },
+      "supplied_filename": "Centre Secodns Pinion.JPG",
+      "file": "originals/centre-seconds-pinion.jpg"
+    },
+    {
+      "sha256": "769875b4c87683fcf72a8f6accd1d2d1fa21c0452034fbe05cb14056e5c10d68",
+      "counts": {
+        "rim": 20,
+        "pinion": 7
+      },
+      "supplied_filename": "Escape Wheel.JPG",
+      "file": "originals/escape-wheel.jpg"
+    },
+    {
+      "sha256": "11b2441ecbae67711654f2f2b82b945703e4618fcef5dc2f1917ab26458f452e",
+      "counts": {
+        "rim": 84,
+        "pinion": 9
+      },
+      "supplied_filename": "Fourth Wheel.JPG",
+      "file": "originals/fourth-wheel.jpg"
+    }
+  ]
+}
