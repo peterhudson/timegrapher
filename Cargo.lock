@@ -3941,6 +3941,7 @@ dependencies = [
 name = "timegrapher-cli"
 version = "0.4.2"
 dependencies = [
+ "chrono",
  "clap",
  "serde",
  "serde_json",

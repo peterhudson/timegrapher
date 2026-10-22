@@ -8,6 +8,14 @@
 //! `session.toml` with its position and state of wind, and `timegrapher
 //! session FOLDER` reads them all together. The microphone is open only
 //! while the command runs, for the time it says it will.
+//!
+//! Without a FOLDER, `--watch NAME` names a watch in the app's library
+//! (`timegrapher_core::library`): the session folder is made in that
+//! watch's `takes/`, named by the local date and time it started (with
+//! no position, as more can be added later), and the watch's calibre,
+//! beat rate and lift angle fill in what isn't given. Recording into the library holds its lock, so it is refused
+//! while the app has the library open, as a second copy of the app
+//! would be.
 
 use crate::long::Train;
 use crate::output;
@@ -22,6 +30,7 @@ use timegrapher_core::calibre_store::{self, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres;
 use timegrapher_core::capture::Block;
+use timegrapher_core::library::{self, Library};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
 use timegrapher_core::session::{self, Manifest, Position};
@@ -35,8 +44,14 @@ const MANIFEST: &str = "session.toml";
 /// quick check skips the same, so it reads what `session` will.
 const SETTLE_S: f64 = 30.0;
 
+#[derive(Clone)]
 pub struct Options {
-    pub folder: PathBuf,
+    /// The session folder; `None` to make one in the library watch
+    /// `watch` names.
+    pub folder: Option<PathBuf>,
+    /// The library, for a watch named without a FOLDER (default:
+    /// Timegrapher Data in the home folder).
+    pub library: Option<PathBuf>,
     pub position: String,
     pub seconds: f64,
     pub device: Option<String>,
@@ -77,6 +92,9 @@ struct Check {
 struct Report {
     /// The take's folder.
     take: String,
+    /// The library watch the session folder was made under, when no
+    /// FOLDER was given.
+    library_watch: Option<String>,
     /// The session file the take was added to.
     session_file: String,
     position: &'static str,
@@ -100,9 +118,111 @@ struct Settings {
     existing: bool,
 }
 
+impl Options {
+    /// The session folder, once [`place`] has chosen it.
+    fn dir(&self) -> &Path {
+        self.folder.as_deref().unwrap_or(Path::new("."))
+    }
+}
+
+/// Where the session folder is, and the library's lock while it is in a
+/// library.
+struct Placed {
+    /// Held until the command ends.
+    _library: Option<Library>,
+    /// The watch it was made under, without a FOLDER.
+    watch: Option<String>,
+}
+
+/// The library holding `folder` as one of a watch's takes, if it is one.
+fn library_of(folder: &Path) -> Option<PathBuf> {
+    let abs = std::path::absolute(folder).ok()?;
+    let takes = abs.parent()?;
+    let root = takes.parent()?.parent()?;
+    (takes.file_name()? == library::TAKES && Library::is_library(root)).then(|| root.to_path_buf())
+}
+
+/// The library at `root`, held: an error saying why where it can only be
+/// read (the app has it open).
+fn hold(root: &Path) -> Result<Library, String> {
+    let lib = Library::open(root)?;
+    if let Some(why) = &lib.read_only {
+        return Err(format!(
+            "{}: {why}; quit the app (or close the library) first, or record into a folder \
+             outside the library",
+            root.display()
+        ));
+    }
+    Ok(lib)
+}
+
+/// Choose the session folder: FOLDER as given (holding the library's lock
+/// when it is a take in one), or a new one in the library watch `--watch`
+/// names, whose settings fill in the options not given.
+fn place(o: &mut Options) -> Result<Placed, String> {
+    if let Some(f) = &o.folder {
+        let held = library_of(f).map(|root| hold(&root)).transpose()?;
+        return Ok(Placed {
+            _library: held,
+            watch: None,
+        });
+    }
+    let name = o.watch.clone().ok_or(
+        "give the session FOLDER, or --watch NAME to record into a watch in the app's library",
+    )?;
+    let root = o
+        .library
+        .clone()
+        .or_else(library::default_location)
+        .ok_or("there is no home folder: give the library with --library")?;
+    if !Library::is_library(&root) {
+        return Err(format!(
+            "{} is not a Timegrapher library (it has no {}): give the session FOLDER, or the \
+             library with --library",
+            root.display(),
+            library::LIBRARY_FILE
+        ));
+    }
+    let lib = hold(&root)?;
+    let e = lib.find(&name).ok_or_else(|| {
+        format!(
+            "there is no watch called \"{}\" in {}: add it in the app, or give the session \
+             FOLDER",
+            name.trim(),
+            root.display()
+        )
+    })?;
+    let w = &e.watch;
+    o.watch = Some(w.name.clone());
+    if o.calibre.is_none() {
+        o.calibre = w.calibre.clone().filter(|c| !c.trim().is_empty());
+    }
+    o.bph = o.bph.or(w.bph);
+    o.lift = o.lift.or(w.lift);
+    let started = chrono::Local::now().format("%Y-%m-%d %H.%M").to_string();
+    o.folder = Some(library::unused_dir(&e.dir.join(library::TAKES), &started));
+    Ok(Placed {
+        watch: Some(w.name.clone()),
+        _library: Some(lib),
+    })
+}
+
 /// Every take is kept and added to the session; the report states what
 /// was measured.
 pub fn run(o: &Options) -> Result<(), String> {
+    let mut o = o.clone();
+    // Checked before anything is made.
+    Position::parse(&o.position).ok_or_else(|| {
+        format!(
+            "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
+            o.position
+        )
+    })?;
+    let placed = place(&mut o)?;
+    run_in(&o, placed.watch)
+}
+
+fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
             "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
@@ -113,7 +233,7 @@ pub fn run(o: &Options) -> Result<(), String> {
     if o.wind_h.is_some_and(|w| !w.is_finite() || w < 0.0) {
         return Err("--wind-h must be 0 or more".into());
     }
-    fs::create_dir_all(&o.folder).map_err(|e| format!("{}: {e}", o.folder.display()))?;
+    fs::create_dir_all(o.dir()).map_err(|e| format!("{}: {e}", o.dir().display()))?;
     let set = settings(o)?;
 
     let started = recorder::utc(SystemTime::now());
@@ -129,6 +249,7 @@ pub fn run(o: &Options) -> Result<(), String> {
 
     let rep = Report {
         take: dir.display().to_string(),
+        library_watch,
         session_file: session_file.display().to_string(),
         position: pos.common(),
         wind_h: o.wind_h,
@@ -151,7 +272,7 @@ pub fn run(o: &Options) -> Result<(), String> {
 }
 
 fn settings(o: &Options) -> Result<Settings, String> {
-    let file = o.folder.join(MANIFEST);
+    let file = o.dir().join(MANIFEST);
     let m: Option<Manifest> = if file.is_file() {
         let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
         Some(toml::from_str(&text).map_err(|e| format!("Can't read {}: {e}", file.display()))?)
@@ -183,7 +304,7 @@ fn settings_with(
     m: Option<Manifest>,
     user: &UserCalibres,
 ) -> Result<Settings, String> {
-    let file = o.folder.join(MANIFEST);
+    let file = o.dir().join(MANIFEST);
     let named = o
         .calibre
         .as_deref()
@@ -280,7 +401,7 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
         software: format!("timegrapher {}", env!("CARGO_PKG_VERSION")),
     };
     let start = |i: SessionInfo| {
-        Recorder::start(&o.folder, i).map_err(|e| format!("{}: {e}", o.folder.display()))
+        Recorder::start(o.dir(), i).map_err(|e| format!("{}: {e}", o.dir().display()))
     };
     if let Some(f) = &o.file {
         // A file stands in for the microphone, read at once rather than
@@ -617,7 +738,7 @@ fn add_to_session(
     started: &str,
     c: &Check,
 ) -> Result<PathBuf, String> {
-    let file = o.folder.join(MANIFEST);
+    let file = o.dir().join(MANIFEST);
     let before = if set.existing {
         fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?
     } else {
@@ -722,7 +843,8 @@ mod tests {
 
     fn options(folder: PathBuf) -> Options {
         Options {
-            folder,
+            folder: Some(folder),
+            library: None,
             position: "DU".into(),
             seconds: 1.0,
             device: None,
