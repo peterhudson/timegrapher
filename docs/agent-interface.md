@@ -354,7 +354,9 @@ and writes nothing, not even the library's cache, so it can run while the
 app has the library open. `list` leaves archived watches out unless
 `--all` is given; `show` finds a watch by its name, ignoring case and
 spaces at either end, archived or not, and `show Unsorted` gives the
-takes Quick Listen made (`unsorted` true, the watch's own fields null).
+takes Quick Listen made (`unsorted` true, `name` `"Unsorted"`,
+`archived` false, `fields` empty, `photos` 0, and `calibre`, `bph`,
+`lift_deg` and `notes` null).
 A field the user never set is `null`. Each take's `path` is a standard
 take folder to pass to `session`, `long` or `series` as it is; `audio` is
 false for a take kept as its analysis alone, which can't be measured

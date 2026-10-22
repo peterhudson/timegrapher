@@ -130,6 +130,14 @@ fn watches_lists_and_shows_the_library_as_json() {
     let out = run(&["watches", "show", "Unsorted", "--library", &lib, "--json"]);
     let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(doc["unsorted"], true);
+    // As agent-interface.md describes it.
+    assert_eq!(doc["name"], "Unsorted");
+    assert_eq!(doc["archived"], false);
+    assert_eq!(doc["fields"], serde_json::json!([]));
+    assert_eq!(doc["photos"], 0);
+    for k in ["calibre", "bph", "lift_deg", "notes"] {
+        assert!(doc[k].is_null(), "{k}: {doc}");
+    }
     assert_eq!(doc["takes"][0]["name"], "2026-10-22 09.15");
     let _ = std::fs::remove_dir_all(&root);
 }
