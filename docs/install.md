@@ -208,7 +208,8 @@ skill with pandoc, and each platform's **Start Here** page from
 `packaging/PLATFORM/start-here.md`. The calibre train-count research and its
 photographs (over 200 MB) stay out of the download. Links between the files
 it carries point at the pages beside them; links to the research and to
-other repository files go to GitHub at the commit built.
+other repository files go to GitHub at the commit built. A link to a file the
+repository lacks fails `docs_html.py check`.
 
 Each pair generates the existing deterministic 40-second synthetic-watch recipe
 (48 kHz, seed 1, 28,800 bph, rate +6 s/day, amplitude 280°, beat error 0.4 ms,

@@ -9,7 +9,8 @@ evidence, and the watchmaker skill with its reference pages) and
 OUT/LICENSE.txt, for the platform script to copy into the download's
 folder. Links between those files are rewritten to the pages beside them;
 links to anything else in the repository (source files, workflows) go to
-GitHub at COMMIT (default: HEAD). Needs pandoc.
+GitHub at COMMIT (default: HEAD), and links to files the repository lacks
+are left as written. Needs pandoc.
 
 check fails when a page in FOLDER links to a file that is not there, and
 warns about a link to a heading that is not there.
@@ -119,6 +120,9 @@ def rewrite_links(fragment, source, dest, mapping, ref):
         if target in mapping:
             rel = posixpath.relpath(mapping[target], there or ".")
             new = quote(rel) + fragment_id
+        elif not (ROOT / target).exists():
+            # Left as written, so check reports it as a broken link.
+            return match.group(0)
         else:
             kind = "tree" if (ROOT / target).is_dir() else "blob"
             new = f"https://github.com/{REPO}/{kind}/{ref}/{quote(target)}{fragment_id}"
