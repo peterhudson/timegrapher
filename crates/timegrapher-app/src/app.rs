@@ -6764,8 +6764,9 @@ impl TimegrapherApp {
                         },
                         pal.text_secondary,
                         format!(
-                            "Saved in {}. Sound since then is kept too; Save Again adds it, \
-                         and New Session or quitting asks first.",
+                            "Saved in {}. Sound since then is kept too; Save Again adds it. \
+                         New Session and quitting ask first, and a quit that can't ask \
+                         keeps it, to offer back at the next start.",
                             p.display()
                         ),
                     ),
@@ -6787,8 +6788,9 @@ impl TimegrapherApp {
                             pal.text_secondary,
                             format!(
                                 "The analysis of the first {} was kept without the sound in {}. \
-                                 The sound itself isn't saved: Save keeps it, and New Session \
-                                 or quitting throws it away unless saved.",
+                                 The sound itself isn't saved: Save keeps it. New Session and \
+                                 quitting ask before throwing it away, and a quit that can't \
+                                 ask keeps it, to offer back at the next start.",
                                 strip::fmt_time(through_s),
                                 dir.display()
                             ),
@@ -6798,7 +6800,8 @@ impl TimegrapherApp {
                         format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
                         pal.text_secondary,
                         "The session's sound is kept as it goes, so Save can keep it at any \
-                     point. New Session or quitting throws it away unless saved."
+                     point. New Session and quitting ask before throwing it away, and a quit that \
+                     can't ask keeps it, to offer back at the next start."
                             .to_string(),
                     ),
                 }
