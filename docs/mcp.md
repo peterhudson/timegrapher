@@ -296,6 +296,8 @@ app, a chart over time is scaled to all but the highest and lowest 2% of
 its readings, so one glitch doesn't flatten it, and says how many are off
 the scale. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
+A period axis is marked, as in the app, at times a watchmaker reads (5 s,
+1 min, 1 h, 24 h), as many as have room, from the same list in the core.
 Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
