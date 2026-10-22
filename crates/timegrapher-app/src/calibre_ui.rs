@@ -1312,6 +1312,15 @@ fn period_field(
 /// starts with the maker under one of its names ("Rolex 3235", not "Rolex
 /// Rolex 3235"; "Seagull ST36", not "Tianjin Seagull Seagull ST36").
 fn with_maker_name(maker: &str, name: &str) -> String {
+    // A generic clone category is already represented by a standalone marker
+    // in the calibre name, including a trailing "Clone" or "(clone)".
+    if maker == "(clone)"
+        && name
+            .split(|ch: char| !ch.is_alphanumeric())
+            .any(|word| word.eq_ignore_ascii_case("clone"))
+    {
+        return name.to_string();
+    }
     let starts_with = |word: &str| {
         !word.is_empty()
             && name
@@ -1367,6 +1376,15 @@ mod tests {
         assert_eq!(
             with_maker_name("APS (clone)", "APS 4401"),
             "APS 4401 (clone)"
+        );
+        for name in ["Patek 240 Clone", "Patek 240 (clone)", "Patek 240 CLONE"] {
+            assert_eq!(with_maker_name("(clone)", name), name);
+        }
+        // Do not lose the clone marker when it is absent or only a substring.
+        assert_eq!(with_maker_name("(clone)", "240"), "(clone) 240");
+        assert_eq!(
+            with_maker_name("(clone)", "Clonecraft 240"),
+            "(clone) Clonecraft 240"
         );
     }
 
