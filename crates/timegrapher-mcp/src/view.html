@@ -678,12 +678,12 @@ function profileView(doc) {
 
 const STEADY_VIEWS = [
   ["readings", "Readings", "Every reading in time order, with the stretches of constant level the change finder split them into, and the two levels when there are two states"],
-  ["periods", "Periods", "How strongly the series repeats at each period, from the period search: the horizontal dashed line is the score a period needs for the search to list it, and the strongest line it lists is labelled with its period and with the wheel whose turn it matches, when it matches one; the headline names any cycle the tests found"],
-  ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, and their median shape as the line"],
+  ["periods", "Periods", "How strongly the readings repeat at each period, from the period search: the horizontal dashed line is the score a period needs for the search to list it, and the strongest line it lists is labelled with its period and with the wheel whose turn it matches, when it matches one; the headline names any cycle the tests found"],
+  ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, coloured by when the cycle came (purple first, yellow-green last), a box round the middle half of each phase's readings, and their median shape as the line; the note gives the line's swing beside a box's median height"],
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
-  ["allan", "Allan Deviation", "The scatter of averages over each averaging time, against the dashed line independent readings would follow: wander and drift lift the curve at long times, a cycle puts a bump near 0.37 of its period. Both axes are logarithmic"],
+  ["allan", "Allan Deviation", "How much the rate's average scatters when averaged over longer and longer times; lower is steadier. On or below the dashed line, the rate only jitters from moment to moment; above it towards the right, it wanders or drifts, and a cycle puts a bump near 0.37 of its period. Both axes are logarithmic"],
   ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
-  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: an estimate of size at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
+  ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size estimated at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
 ];
@@ -705,6 +705,8 @@ const SERIES = {
 let steadyView = null;
 // The views' two-way switches, as in the app's toolbar: Periods on a log
 // scale, and the FFT's rate as the beat timing in ms.
+// steady::TIME_BANDS: the Cycle view's dots, coloured by when they came.
+const TIME_BANDS = 12;
 let periodsLog = false, fftTiming = false, mapsLog = false, showWheels = true;
 
 // steady::secs: "45 s", "12 min", "2.5 h".
@@ -763,7 +765,9 @@ function linTicks(lo, hi, px, minPx, fmt, ladder) {
 //   x, y: [lo, hi]; xTicks(lo, hi, plotW), yTicks(lo, hi, plotH): [[v, label]]
 //   hlines: [{y, color, dash}]; vlines: [{x, color, opacity, width, dash, label, ink, left}]
 //   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
-//   notes: [{x, y, text, above}] beside a point; corner: {text, top}
+//   notes: [{x, y, text, above}] beside a point; corner: {text, top}, a line
+//   per "\n"; rects: [{x0, x1, y0, y1, color}] outlined; a dot set's rgb
+//   overrides its color
 function xyChart(o) {
   const W = chartWidth(), H = o.height || 150, T = 4, B = 20, R = 6;
   const plotH = H - T - B;
@@ -803,8 +807,12 @@ function xyChart(o) {
     taken.push([a, a + w]);
     inside += `<text x="${a}" y="${T + 12}"${v.ink ? ` style="fill:var(${v.ink})"` : ""}>${esc(v.label)}</text>`;
   }
+  for (const r of o.rects || []) {
+    const [a, b] = [sx(r.x0), sx(r.x1)], [c, d] = [sy(r.y1), sy(r.y0)];
+    inside += `<rect x="${a.toFixed(1)}" y="${c.toFixed(1)}" width="${(b - a).toFixed(1)}" height="${Math.max(0, d - c).toFixed(1)}" fill="none" stroke="var(${r.color})" stroke-width="1"/>`;
+  }
   for (const d of o.dots || []) {
-    inside += `<g fill="var(${d.color})">${d.pts.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+    inside += `<g fill="${d.rgb || `var(${d.color})`}">${d.pts.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
       .map(([x, y]) => `<circle cx="${sx(x).toFixed(1)}" cy="${sy(y).toFixed(1)}" r="${d.r}"/>`).join("")}</g>`;
   }
   for (const l of o.lines || []) {
@@ -825,7 +833,12 @@ function xyChart(o) {
     inside += `<text x="${sx(n.x) + (right ? -8 : 8)}" y="${sy(n.y) + (n.above ? -6 : 14)}" text-anchor="${right ? "end" : "start"}" style="fill:var(--text)">${esc(n.text)}</text>`;
   }
   if (o.corner) {
-    inside += `<text x="${L + plotW - 6}" y="${o.corner.top ? T + 13 : T + plotH - 6}" text-anchor="end">${esc(o.corner.text)}</text>`;
+    // One line per "\n", the last at the corner.
+    const lines = String(o.corner.text).split("\n");
+    lines.forEach((t, i) => {
+      const y = o.corner.top ? T + 13 + i * 14 : T + plotH - 6 - (lines.length - 1 - i) * 14;
+      inside += `<text x="${L + plotW - 6}" y="${y}" text-anchor="end">${esc(t)}</text>`;
+    });
   }
   g += `<g clip-path="url(#${area.id})">${inside}</g>`;
   return `<div class="chart"><svg${o.faint ? ` class="faint"` : ""} viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
@@ -926,11 +939,22 @@ function steadyPlot(s, view, doc) {
       const f = v.fold;
       if (!f || !f.profile || !f.profile.length) return steadyNote("No cycle found to fold these readings at.");
       const bins = f.profile.length, at = (b) => (b + 0.5) / bins * f.period_s;
-      const dots = [];
-      for (const row of f.raster || []) row.forEach((y, b) => { if (Number.isFinite(y)) dots.push([at(b), y]); });
+      // steady.rs: the dots in bands by when their cycle came, first to
+      // last, so slow wander shows as a run of colour; the map's ends are
+      // left off so both themes keep every dot seen.
+      const rows = (f.raster || []).length, bands = Math.min(Math.max(rows, 1), TIME_BANDS);
+      const byTime = Array.from({ length: bands }, () => []), dots = [];
+      (f.raster || []).forEach((row, r) => row.forEach((y, b) => {
+        if (!Number.isFinite(y)) return;
+        byTime[Math.floor(r * bands / Math.max(rows, 1))].push([at(b), y]);
+        dots.push([at(b), y]);
+      }));
       const shape = f.profile.map((y, b) => [at(b), y]);
       const [lo, hi] = spreadRange(dots.length ? dots.map((q) => q[1]) : shape.map((q) => q[1]));
-      const n = f.cycles || (f.raster || []).length;
+      // Each phase's middle half, over every cycle folded (core's columns).
+      const boxW = 0.3 * f.period_s / bins;
+      const rects = (f.columns || []).map((q, b) => q && { x0: at(b) - boxW, x1: at(b) + boxW, y0: q[0], y1: q[2], color: "--text3" }).filter(Boolean);
+      const n = f.cycles || rows;
       let label;
       if (f.from === "own") {
         const w = (s.cycle && s.cycle.wheel) || (s.period && s.period.wheel);
@@ -940,11 +964,16 @@ function steadyPlot(s, view, doc) {
       } else {
         label = `Folded at the ${String(f.wheel || "wheel").toLowerCase()}'s ${secs(f.period_s)} turn, ${n} cycles`;
       }
+      if (Number.isFinite(f.swing) && Number.isFinite(f.middle_half)) {
+        const st = Math.min(Math.abs(f.swing), Math.abs(f.middle_half)) / 10;
+        label += `\nThe median line swings ${stepText(f.swing, st, unit)}; the boxes' median height is ${stepText(f.middle_half, st, unit)}`;
+      }
       return xyChart({
         title: "Cycle", x: [0, f.period_s], y: [lo, hi],
         xTicks: (a, b, w) => linTicks(a, b, w, Math.min(80, w / 4), (t) => lagText(t), TIME_STEPS),
         yTicks: (a, b, h) => linTicks(a, b, h, 24, (y, st) => stepText(y, st, unit)),
-        dots: [{ pts: dots, color: "--text3", r: 1.2 }],
+        dots: byTime.map((pts, k) => ({ pts, rgb: `rgb(${viridisRgb(0.15 + 0.75 * (bands > 1 ? k / (bands - 1) : 0.5)).join(",")})`, r: 1.4 })),
+        rects,
         lines: [{ pts: shape, color, width: 2 }],
         corner: { text: label },
       });

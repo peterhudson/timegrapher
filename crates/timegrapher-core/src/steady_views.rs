@@ -78,6 +78,64 @@ pub struct FoldView {
     /// row per cycle and one value per phase bin (null where empty).
     pub cycles: usize,
     pub raster: Vec<Vec<f64>>,
+    /// Each phase bin's quartiles (lower, median, upper) over every cycle
+    /// folded, not only the rows kept; null for a bin with fewer than four
+    /// readings. The app draws the middle half as a box.
+    pub columns: Vec<Option<[f64; 3]>>,
+    /// The median line's swing (highest less lowest), and the median of
+    /// the columns' middle-half heights: null unless both can be given.
+    pub swing: Option<f64>,
+    pub middle_half: Option<f64>,
+}
+
+/// Each phase bin's quartiles over the fold's cycles (lower, median,
+/// upper, interpolated), `None` for a bin with fewer than four readings.
+pub fn fold_columns(f: &longterm::Fold) -> Vec<Option<[f64; 3]>> {
+    (0..f.profile.len())
+        .map(|b| {
+            let mut v: Vec<f64> = f
+                .raster
+                .iter()
+                .filter_map(|r| r.get(b).copied())
+                .filter(|v| v.is_finite())
+                .collect();
+            if v.len() < 4 {
+                return None;
+            }
+            v.sort_by(f64::total_cmp);
+            let q = |p: f64| {
+                let x = (v.len() - 1) as f64 * p;
+                let (i, t) = (x.floor() as usize, x.fract());
+                v[i] + (v[(i + 1).min(v.len() - 1)] - v[i]) * t
+            };
+            Some([q(0.25), q(0.5), q(0.75)])
+        })
+        .collect()
+}
+
+/// The median line's swing (highest less lowest) and the median of the
+/// columns' middle-half heights, when both can be given.
+pub fn fold_spread(f: &longterm::Fold, columns: &[Option<[f64; 3]>]) -> Option<(f64, f64)> {
+    let shape: Vec<f64> = f
+        .profile
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+    let mut mids: Vec<f64> = columns.iter().flatten().map(|[a, _, c]| c - a).collect();
+    if shape.len() < 2 || mids.is_empty() {
+        return None;
+    }
+    mids.sort_by(f64::total_cmp);
+    let n = mids.len();
+    let middle = if n % 2 == 1 {
+        mids[n / 2]
+    } else {
+        (mids[n / 2 - 1] + mids[n / 2]) / 2.0
+    };
+    let hi = shape.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let lo = shape.iter().copied().fold(f64::INFINITY, f64::min);
+    Some((hi - lo, middle))
 }
 
 /// The views for each series, in the report's order.
@@ -323,6 +381,8 @@ pub fn views(
                     FoldFrom::Series(j) => (NAMES[*j], None),
                     FoldFrom::Wheel(w) => ("wheel", Some(w.clone())),
                 };
+                let columns = fold_columns(f);
+                let spread_of = fold_spread(f, &columns);
                 FoldView {
                     period_s: f.period_s,
                     from,
@@ -333,6 +393,9 @@ pub fn views(
                         .into_iter()
                         .map(|k| f.raster[k].clone())
                         .collect(),
+                    columns,
+                    swing: spread_of.map(|s| s.0),
+                    middle_half: spread_of.map(|s| s.1),
                 }
             });
             SeriesViews {
@@ -739,8 +802,34 @@ mod tests {
         assert_eq!(f.profile.len(), 6);
         assert_eq!(f.raster.len(), f.cycles);
         assert!(f.raster.iter().all(|row| row.len() == f.profile.len()));
+        assert_eq!(f.columns.len(), f.profile.len());
+        assert!(f.swing.is_some() && f.middle_half.is_some());
         let fa = v.series[1].fold.as_ref().expect("amplitude fold");
         assert_ne!(fa.from, "own");
+    }
+
+    #[test]
+    fn a_folds_columns_are_its_quartiles_over_every_cycle() {
+        let nan = f64::NAN;
+        let f = longterm::Fold {
+            period_s: 30.0,
+            profile: vec![2.0, 5.0, nan],
+            counts: vec![5, 5, 3],
+            // Five cycles in the first two bins, three in the last.
+            raster: vec![
+                vec![1.0, 4.0, 1.0],
+                vec![2.0, 5.0, nan],
+                vec![3.0, 6.0, 2.0],
+                vec![4.0, 5.0, 3.0],
+                vec![0.0, 5.0, nan],
+            ],
+            t0: 0.0,
+        };
+        let c = fold_columns(&f);
+        assert_eq!(c, vec![Some([1.0, 2.0, 3.0]), Some([5.0, 5.0, 5.0]), None]);
+        // The line swings 5 - 2; the columns' middle halves are 2 and 0.
+        assert_eq!(fold_spread(&f, &c), Some((3.0, 1.0)));
+        assert_eq!(fold_spread(&f, &[None, None, None]), None);
     }
 
     #[test]
