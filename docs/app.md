@@ -119,11 +119,15 @@ picked, **Quick Listen** stands in its place. Listening: **Stop**, then
 **Resume** to carry on in the same session; **Save…** (then **Save
 Again** and **Save As…**); and **Keep in a Watch…** for an unsaved Quick
 Listen take. **New Session**, in the File menu, clears what is shown,
-listening or not (listening carries on into the new session, unless
-closing the kept sound fails). A recording on show: **Add to a Watch…** (once
-a take folder from outside the Watches folder is open: into the watch
-picked above or another, copied or moved; a copy is made beside its new
-place and moved in whole, so one cut short is not a take), **Replay** (or
+and lets go of a recording opened, listening or not (listening carries
+on into the new session, unless closing the kept sound fails). Picking or
+adding a watch while readings are on show leaves them as they were
+measured: the watch's details apply to its next take. A recording on
+show: **Keep in a Watch…** (once a recording from outside the Watches
+folder is open, a lone file or a take folder: into one of your watches,
+or **New Watch…**, kept in the new watch when you press its button; it
+is copied in, asking only what neither its files nor the watch say, and
+the original stays where it is), **Replay** (or
 **Stop**, **Cancel** while one is being analysed, and **Analyse All**),
 **Listen**, which starts a new take on the microphone in its place, and
 **Replay Speed**. Then the take's **Position**, **Keep Awake** (see Long
@@ -1011,9 +1015,12 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   says nothing about it.
 - **Calibre.** Not Set, a calibre from the list (`timegrapher_core::calibres`,
   some 4,500 of them, each with its sources), or one of your own.
-  - **The menu.** It offers Not Set, the calibres picked lately
-    (**Recent**), the **Short List** by maker and **Your Calibres**, with
-    **Manage Calibres…** at its foot and as a button under it.
+  - **The menu.** A **Search every calibre** box at its top, ready to
+    type into, lists every calibre matching a name, another name or the
+    maker (the first 200, with how many more). Empty, the menu offers Not
+    Set, the calibres picked lately (**Recent**), the **Short List** by
+    maker and **Your Calibres**, with **Manage Calibres…** at its foot and
+    as a button under it. The New Watch form uses the same menu.
   - **Manage Calibres.** The Calibres section of Settings, which
     Manage Calibres… opens, with every calibre in a
     list down the left, by maker (the common and modern makers first, your
