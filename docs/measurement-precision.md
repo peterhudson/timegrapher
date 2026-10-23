@@ -3,34 +3,45 @@
 Timegrapher reports short-window precision estimates and searches for periodic
 variation. Both use statistical reference models. Neither is a universal error
 bound, a probability that a watch is faulty, or a substitute for checking the
-recording and measurement context. This page describes the existing calculations;
-it does not change thresholds, estimators or reading eligibility.
+recording and measurement context. This page describes the calculations as the code
+does them.
 
 ## What the ± estimates
 
 For time-ordered window values `x[0] … x[n−1]`,
-[`amplitude::standard_error`](../crates/timegrapher-core/src/amplitude.rs) computes:
+[`confidence::standard_error`](../crates/timegrapher-core/src/confidence.rs)
+computes:
 
 ```text
 d[i] = x[i+1] − x[i]
 s = 1.4826 × median(|d − median(d)|) / sqrt(2)
-SE = 1.2533 × s / sqrt(n)
+rho = lag-one correlation of x less its least-squares line, held to 0 … 0.99
+n_eff = n × (1 − rho) / (1 + rho)
+SE = 1.2533 × s / sqrt(1 − rho) / sqrt(n_eff)
 ```
 
 Fewer than three values gives no estimate. The constants are Gaussian reference
-factors: the MAD estimates a standard deviation, independent successive noise
-values have difference variance twice their individual variance, and the median's
-asymptotic standard error is about `1.2533 × sigma / sqrt(n)`. The function is
-used for different reading units, despite living in the amplitude module.
+factors: the MAD estimates a standard deviation, successive differences of
+values with lag-one correlation `rho` have variance `2 × sigma² × (1 − rho)`,
+and the median's asymptotic standard error is about `1.2533 × sigma / sqrt(n)`
+for independent values. `n_eff` is the AR(1) effective number of readings
+(Bretherton et al. 1999, *J. Climate* 12:1990): positively correlated readings
+are worth fewer independent ones. A negative `rho` is taken as 0, so it never
+narrows the ±. With `rho` 0 the formula is the independent-noise one,
+`1.2533 × s / sqrt(n)`. The same
+[`confidence::effective_readings`](../crates/timegrapher-core/src/confidence.rs)
+gives `series`' rate-amplitude `effective_readings`, there with the product of
+the two series' lag-one correlations. One function serves every reading unit
+and every interface: the app, `analyze`, `session`, the live screen and the
+MCP server all read the ± from it.
 
 Amplitude uses the available means of 2 s amplitude windows; unlock beat error
 uses the available unlock-error values. Rate uses every other available 10 s
 window, then filters non-finite rates before applying the same function
 ([`confidence`](../crates/timegrapher-core/src/confidence.rs)). Taking every other
-window removes ordinary 5 s overlap. It does **not** establish independence of
-the readings: the watch, stand or input can produce serial correlation across
-non-overlapping windows. Missing windows also affect which observations are
-adjacent in the input to the estimator.
+window removes ordinary 5 s overlap; the correlation the watch, stand or input
+leaves between the windows taken is what `rho` allows for. Missing windows also
+affect which observations are adjacent in the input to the estimator.
 
 For the live averaging-time display,
 [`measure::rate_se_over`](../crates/timegrapher-core/src/measure.rs) further uses:
@@ -41,22 +52,26 @@ a = clamp(average_s / 10, 1, m)
 displayed SE = rate_se(rate_windows) × sqrt(m / a)
 ```
 
-Here `m` counts supplied windows before the finite-rate filter; it is not a
-measured effective sample size. The live rate-window history reaches back to a
+Here `m` counts supplied windows before the finite-rate filter. The lag-one
+correction scales the effective count of the whole run and of a shorter average
+alike, so their ratio stays `m / a` until `n_eff` reaches its limits. The live rate-window history reaches back to a
 known break or gap, up to five minutes. This scaling is a window-scatter model,
 not the fitted beat-time slope's covariance, nor a calibrated uncertainty model
 for every averaging time or missing-data pattern.
 
-Differencing intentionally limits the contribution of slow variation. Adding a
-linear drift to the window values shifts every difference by the same amount,
-so the centered MAD is unchanged. A slower cycle can contribute less than a
-rapid fluctuation; it need not vanish. This preserves the distinction between
-true watch variation and short-range scatter. The ± does not describe the full
-range of a drifting watch, and the samples alone cannot identify how much
-short-range scatter belongs to the watch rather than extraction or the stand.
+Differencing and the line taken off before `rho` limit the contribution of
+slow variation. Adding a linear drift to the window values shifts every
+difference by the same amount and leaves the residuals about the line
+unchanged, so the SE is unchanged. A slower curve or cycle does not cancel:
+it raises `rho` and so widens the ±, since the take's median then depends on
+where the take starts and stops. The ± does not describe the full range of a
+drifting watch, and the samples alone cannot identify how much short-range
+scatter belongs to the watch rather than extraction or the stand.
 
 A supplied lift angle or clock correction can affect accuracy without appearing
-in this SE. Correlation can affect precision without being removed by thinning.
+in this SE. The lag-one correction models memory as AR(1); correlation of
+another shape (a cycle, a level shift) is allowed for only as far as it shows
+in the lag-one value.
 The displayed ± is therefore an estimate conditional on the model, not a
 confidence interval with guaranteed coverage on another recording.
 
@@ -75,11 +90,21 @@ and median are zero. These are synthetic values, not detected watch beats.
 | 0.9 | 0.255929 | 0.022965 | 0.0685 |
 
 Under these positively correlated models, successive differences get smaller
-while the median's repeated-sample error grows. The experiment demonstrates a
-limit of the estimator, not that real watch recordings follow these models or
-have these errors. It directly exercises the generic median SE, not the complete
-live rate fit and averaging-time pipeline. It supplies no universal correction
-factor. Sources, original output and reproduction instructions are in
+while the median's repeated-sample error grows. That table is the estimator
+before the lag-one correction. The same program, with the same seed, against
+the corrected `confidence::standard_error` (a new run, not archived):
+
+| Lag-one correlation | RMS error of sample median | Mean reported SE | Fraction within ±SE of zero |
+| --- | ---: | ---: | ---: |
+| 0 | 0.070913 | 0.074751 | 0.7120 |
+| 0.5 | 0.107391 | 0.123305 | 0.7440 |
+| 0.9 | 0.255929 | 0.277851 | 0.7095 |
+
+The probes demonstrate the estimator on these models, not that real watch
+recordings follow them or have these errors. They exercise the generic median
+SE, not the complete live rate fit and averaging-time pipeline. A unit test
+(`standard_error_allows_for_correlated_readings`) keeps the coverage at these
+three correlations between 55% and 85%. Sources, original output and reproduction instructions are in
 [model probes](model-probes/README.md).
 
 ## Period-search reference model

@@ -12,15 +12,14 @@
 use crate::amplitude::{self, AmplitudeWindow};
 use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
+use crate::breaks::Break;
+use crate::clean::Cuts;
 use crate::dsp::{envelope, median, median_f32};
 use crate::measure::{self, Caveat};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
 
-/// A pause between beats longer than this, seconds, breaks the beat log:
-/// the readings never fit across it, since the watch may have been moved
-/// or handled, and beats may have been counted wrongly across it.
-pub const GAP_S: f64 = 2.0;
+pub use crate::clean::GAP_S;
 
 /// Longest stretch the tick and tock profiles can cover, seconds.
 pub const MAX_PROFILE_S: f64 = 60.0;
@@ -82,7 +81,7 @@ pub struct LiveReading {
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
-    /// the 2 s windows alone, as `amplitude::standard_error` gives it for a
+    /// the 2 s windows alone, as `confidence::standard_error` gives it for a
     /// recording: precision, not accuracy, since a wrong lift angle moves
     /// every amplitude together.
     pub amplitude_error_deg: Option<f64>,
@@ -98,6 +97,10 @@ pub struct LiveReading {
     /// latest unbroken run in the averaging time to the reading's time.
     /// Shorter than the averaging time early in a session or after a gap.
     pub span_s: f64,
+    /// Whether the averaging time is a whole bin ([`Cuts::whole`]): it
+    /// reaches into no break or masked stretch, and each 2 s of it holds
+    /// a beat. A reading that is not is over less than its averaging time.
+    pub whole: bool,
     /// Beat peak over the envelope's median on the latest pass.
     pub snr: Option<f32>,
     /// Beats in the reading with a clipped sample in their sound, counted as
@@ -168,58 +171,16 @@ pub struct LiveAnalyzer {
     masked: Vec<(f64, f64)>,
     /// Whether the sound card's clock is corrected, for the caveats.
     clock_known: bool,
-    /// The sound of the latest good beats on each side (even, odd), newest
-    /// last: what Tick and Tock sounded like, to tell them apart after a
-    /// jump.
-    side_snips: [VecDeque<Snip>; 2],
-    /// A jump whose sides are still to be checked: its time, and the sound
-    /// of each side's good beats since.
-    side_check: Option<(f64, [Vec<Snip>; 2])>,
-    /// Stretches, start and end in seconds, whose sides were never told
-    /// apart: between two jumps too close for a check. Readings that name
-    /// a side are left out in them.
-    unsided: Vec<(f64, f64)>,
+    /// Tick and Tock told apart across each jump by their sound, as a
+    /// whole file's reading tells them. Readings that name a side are left
+    /// out until it has, and in a stretch it never could.
+    sides: beats::SideCheck,
 }
-
-/// A good beat's envelope window, by the beat's time.
-type Snip = (f64, Vec<f32>);
-
-/// Good beats of each side kept to compare the sides by, before a jump
-/// and after it.
-const SIDE_SNIPS: usize = 2 * beats::MIN_SIDE_BEATS;
 
 /// Good beats looked at for a step in their timing ([`beats::jumps`]) on
 /// each pass: enough for its typical intervals, and the beats around a
 /// step.
 const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
-
-/// The median sound of each side's beats, each scaled to a peak of 1, or
-/// `None` when either side has fewer than [`beats::MIN_SIDE_BEATS`].
-fn side_sounds_of<'a>(
-    even: impl Iterator<Item = &'a Snip>,
-    odd: impl Iterator<Item = &'a Snip>,
-) -> Option<beats::SideSounds> {
-    fn side<'a>(v: impl Iterator<Item = &'a Snip>) -> Option<Vec<f32>> {
-        let v: Vec<&[f32]> = v.map(|s| s.1.as_slice()).collect();
-        let len = v.iter().map(|s| s.len()).min()?;
-        if v.len() < beats::MIN_SIDE_BEATS || len == 0 {
-            return None;
-        }
-        let mut w: Vec<f32> = (0..len)
-            .map(|i| median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
-            .collect();
-        let top = w.iter().copied().fold(0.0f32, f32::max);
-        if top <= 0.0 {
-            return None;
-        }
-        w.iter_mut().for_each(|x| *x /= top);
-        Some(w)
-    }
-    Some(beats::SideSounds {
-        even: side(even)?,
-        odd: side(odd)?,
-    })
-}
 
 impl LiveAnalyzer {
     pub fn new(sample_rate: u32, cfg: LiveConfig) -> Self {
@@ -239,9 +200,7 @@ impl LiveAnalyzer {
             next_amp_s: None,
             profiles: [None, None],
             snippets: VecDeque::new(),
-            side_snips: [VecDeque::new(), VecDeque::new()],
-            side_check: None,
-            unsided: Vec::new(),
+            sides: beats::SideCheck::default(),
             snr: None,
             quiet_passes: 0,
             logged_bph: None,
@@ -339,9 +298,7 @@ impl LiveAnalyzer {
         self.intrinsic_breaks.clear();
         self.by_count.clear();
         self.breaks.clear();
-        self.side_snips = [VecDeque::new(), VecDeque::new()];
-        self.side_check = None;
-        self.unsided.clear();
+        self.sides = beats::SideCheck::default();
     }
 
     /// Start a new stretch now, for a new position: the beats so far are
@@ -377,8 +334,7 @@ impl LiveAnalyzer {
     /// by their sound, and in a stretch between two jumps too close for
     /// that. Readings that name a side are left out there.
     pub fn sides_known_at(&self, t: f64) -> bool {
-        !self.side_check.as_ref().is_some_and(|c| c.0 <= t)
-            && !self.unsided.iter().any(|&(a, b)| a <= t && t < b)
+        self.sides.known_at(t)
     }
 
     /// A jump in the beats at `t` seconds: no reading or amplitude window
@@ -407,93 +363,34 @@ impl LiveAnalyzer {
         self.check_sides_from(t);
     }
 
-    /// Start checking the sides of the beats from `t` against those before,
-    /// once enough of them are heard. A check still owed from an earlier
-    /// jump moves here, and the stretch between the two is never told
-    /// apart. Without enough good beats a side before, the count stands.
+    /// Check the sides of the beats from `t` against those before, once
+    /// enough of them are heard ([`beats::SideCheck::jump`]). A stretch
+    /// that can never be told apart has its sounds join neither side's
+    /// profile.
     fn check_sides_from(&mut self, t: f64) {
-        match self.side_check.take() {
-            Some((t0, got)) if t0 < t => {
-                self.never_sided(t0, t);
-                let got = got.map(|g| g.into_iter().filter(|s| s.0 >= t).collect());
-                self.side_check = Some((t, got));
-            }
-            Some((t0, got)) => {
-                // Found after a later jump: the sound before is cut back to
-                // this one, and the stretch between can't be told apart.
-                self.never_sided(t, t0);
-                self.side_snips
-                    .iter_mut()
-                    .for_each(|s| s.retain(|x| x.0 < t));
-                let known = self
-                    .side_snips
-                    .iter()
-                    .all(|s| s.len() >= beats::MIN_SIDE_BEATS);
-                self.side_check = known.then_some((t0, got));
-            }
-            None => {
-                let known = self
-                    .side_snips
-                    .iter()
-                    .all(|s| s.iter().filter(|x| x.0 < t).count() >= beats::MIN_SIDE_BEATS);
-                if known {
-                    let got = self.side_snips.each_mut().map(|s| {
-                        let k = s.partition_point(|x| x.0 < t);
-                        s.split_off(k).into()
-                    });
-                    self.side_check = Some((t, got));
-                }
-            }
+        if let Some((a, b)) = self.sides.jump(t) {
+            self.snippets.retain(|s| !(a <= s.0 && s.0 < b));
         }
     }
 
-    /// The stretch from `a` to `b` seconds is never told apart: readings
-    /// that name a side are left out in it, and its sounds join neither
-    /// side's profile.
-    fn never_sided(&mut self, a: f64, b: f64) {
-        self.unsided.push((a, b));
-        self.snippets.retain(|s| !(a <= s.0 && s.0 < b));
-    }
-
-    /// Once the beats after a jump have enough of each side, compare their
-    /// sound with the sides' before ([`beats::side_margin`]); when they
-    /// match the other way round, number every beat from the jump on one
-    /// further, which swaps the sides back, as a whole file is read. Too
-    /// alike to tell, the count stands.
+    /// Once the beats after a jump have been compared with those before
+    /// ([`beats::SideCheck::settle`]) and they match the other way round,
+    /// number every beat from the jump on one further, which swaps the
+    /// sides back, as a whole file is read. Too alike to tell, the count
+    /// stands.
     fn settle_sides(&mut self) {
-        if self
-            .side_check
-            .as_ref()
-            .is_none_or(|(_, got)| got.iter().any(|g| g.len() < beats::MIN_SIDE_BEATS))
-        {
-            return;
-        }
-        let Some((t, mut got)) = self.side_check.take() else {
+        let Some((t, beats::SideCall::Swapped)) = self.sides.settle() else {
             return;
         };
-        let [even, odd] = &self.side_snips;
-        let was = side_sounds_of(even.iter(), odd.iter());
-        let now = side_sounds_of(got[0].iter(), got[1].iter());
-        let swapped = matches!(
-            (&was, &now),
-            (Some(b), Some(a)) if beats::side_margin(b, a) <= -beats::SIDE_MARGIN_MIN
-        );
-        if swapped {
-            for b in self.beats.iter_mut().filter(|b| b.time >= t) {
-                b.index += 1;
-            }
-            for s in self.snippets.iter_mut().filter(|s| s.0 >= t) {
-                s.1 = !s.1;
-            }
-            for w in self.amp.iter_mut().filter(|w| w.start_s >= t) {
-                w.swap_sides();
-            }
-            got.swap(0, 1);
+        for b in self.beats.iter_mut().filter(|b| b.time >= t) {
+            b.index += 1;
         }
-        self.side_snips = got.map(|g| {
-            let skip = g.len().saturating_sub(SIDE_SNIPS);
-            g.into_iter().skip(skip).collect()
-        });
+        for s in self.snippets.iter_mut().filter(|s| s.0 >= t) {
+            s.1 = !s.1;
+        }
+        for w in self.amp.iter_mut().filter(|w| w.start_s >= t) {
+            w.swap_sides();
+        }
     }
 
     /// Replace caller-supplied position/settling boundaries, retaining known
@@ -714,20 +611,7 @@ impl LiveAnalyzer {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
                     let even = b.index.rem_euclid(2) == 0;
                     self.snippets.push_back((t, even, w.to_vec()));
-                    if b.quality > 0.5 {
-                        let side = usize::from(!even);
-                        let snip = (t, w.to_vec());
-                        match &mut self.side_check {
-                            Some((_, got)) => got[side].push(snip),
-                            None => {
-                                let kept = &mut self.side_snips[side];
-                                kept.push_back(snip);
-                                if kept.len() > SIDE_SNIPS {
-                                    kept.pop_front();
-                                }
-                            }
-                        }
-                    }
+                    self.sides.beat(t, b.index, b.quality, w);
                 }
             }
         }
@@ -800,7 +684,7 @@ impl LiveAnalyzer {
             self.snippets.pop_front();
         }
         // Until the sides are told apart there is no Tick or Tock to show.
-        let sided = self.side_check.is_none();
+        let sided = self.sides.pending().is_none();
         self.profiles = [Side::A, Side::B].map(|side| {
             let even = side == Side::A;
             let w: Vec<&[f32]> = self
@@ -819,45 +703,37 @@ impl LiveAnalyzer {
         self.reading_at(self.settled_to, average_s)
     }
 
-    /// Readings over the `average_s` seconds before `end_s`.
-    pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
-        let mut from = end_s - average_s;
-        let masked_s = crate::session::masked_within(&self.masked, from, end_s);
-        // A masked stretch is cut like a break: readings start again at
-        // its end, and inside one there is nothing to read.
-        let mask_cut = self
-            .masked
-            .iter()
-            .filter(|m| m.0 <= end_s)
-            .map(|m| m.1.min(end_s))
-            .fold(f64::NEG_INFINITY, f64::max);
-        let latest_break = self
+    /// The cuts in what has been heard: every break, as a hole of no
+    /// width, and every masked stretch. Live time is true time.
+    pub fn cuts(&self) -> Cuts<'static> {
+        let breaks: Vec<Break> = self
             .breaks
             .iter()
-            .rev()
-            .find(|&&b| b <= end_s)
-            .copied()
-            .unwrap_or(f64::NEG_INFINITY)
-            .max(mask_cut);
+            .map(|&audio_s| Break {
+                audio_s,
+                gap_s: 0.0,
+            })
+            .collect();
+        Cuts::new(None, &breaks, &self.masked)
+    }
+
+    /// Readings over the `average_s` seconds before `end_s`.
+    pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
+        let window_from = end_s - average_s;
+        let masked_s = crate::session::masked_within(&self.masked, window_from, end_s);
+        // Breaks and masked stretches cut the readings: they start again
+        // at the latest one's end, and inside a masked one there is nothing
+        // to read. So does a pause between beats (clean::GAP_S).
+        let holes = self.cuts();
         // The sound heard over the averaging time, since the start or the
         // latest break.
-        let since = latest_break.max(0.0);
-        let listened_s = (end_s - from.max(since).max(0.0)).max(0.0);
-        let mut lo = self.beats.partition_point(|b| b.time < from);
-        let hi = self.beats.partition_point(|b| b.time <= end_s);
+        let since = holes.stretch_from(end_s).max(0.0);
+        let listened_s = (end_s - window_from.max(since).max(0.0)).max(0.0);
         // Only the latest unbroken run of beats.
-        if let Some(gap) = (lo + 1..hi)
-            .rev()
-            .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
-        {
-            lo = gap;
-            from = self.beats[gap].time - 1e-6;
-        }
-        // Nor across the start of a new stretch or a masked one.
-        if latest_break > from {
-            from = latest_break;
-            lo = lo.max(self.beats.partition_point(|x| x.time < latest_break));
-        }
+        let cut = holes.run_cut(&self.beats, window_from, end_s);
+        let from = window_from.max(cut);
+        let lo = self.beats.partition_point(|b| b.time < from);
+        let hi = self.beats.partition_point(|b| b.time <= end_s);
         let lo = lo.min(hi);
         let span_s = if lo < hi {
             end_s - self.beats[lo].time.max(from)
@@ -872,23 +748,18 @@ impl LiveAnalyzer {
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
         let a0 = self.amp.partition_point(|w| w.end_s <= from);
         let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
-        // Nor a window that reaches back across the latest break: a jump
-        // in a recording read whole falls inside one.
-        let wins: Vec<&AmplitudeWindow> = self.amp[a0..a1.max(a0)]
-            .iter()
-            .filter(|w| w.start_s >= latest_break - 1e-9)
-            .filter(|w| {
-                !self
-                    .masked
-                    .iter()
-                    .any(|&(a, b)| w.start_s < b && w.end_s > a)
-            })
+        // Nor a window that reaches back across the latest cut: a jump in
+        // a recording read whole falls inside one.
+        let wins: Vec<&AmplitudeWindow> = holes
+            .amplitude_windows(&self.amp[a0..a1.max(a0)])
+            .into_iter()
+            .filter(|w| w.start_s >= cut - 1e-9)
             .collect();
         let med = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Option<f64> {
             let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
             (!v.is_empty()).then(|| median(&mut v))
         };
-        let amplitude_error_deg = crate::amplitude::standard_error(
+        let amplitude_error_deg = crate::confidence::standard_error(
             &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
         );
         // Beats scattered like noise are no regular beat: no readings, as
@@ -907,15 +778,16 @@ impl LiveAnalyzer {
         // unbroken run of beats, back to a break, up to RATE_RUN_S), scaled
         // to the averaging time by `measure`.
         let rate_windows = bph.map_or_else(Vec::new, |b| {
-            let floor = from.min(end_s - RATE_RUN_S).max(latest_break);
-            let mut r0 = self.beats.partition_point(|x| x.time < floor);
-            if let Some(gap) = (r0 + 1..hi)
-                .rev()
-                .find(|&i| self.beats[i].time - self.beats[i - 1].time > GAP_S)
-            {
-                r0 = gap;
-            }
-            timing::windows(&self.beats[r0.min(lo)..hi], b, 10.0, 5.0)
+            let floor = from.min(end_s - RATE_RUN_S);
+            holes.windows(
+                &self.beats[..hi],
+                b,
+                floor.max(holes.run_cut(&self.beats, floor, end_s)),
+                end_s,
+                10.0,
+                5.0,
+                GAP_S,
+            )
         });
         let assessment = measure::assess(
             &rate_windows,
@@ -945,6 +817,7 @@ impl LiveAnalyzer {
         if masked_s > 0.0 {
             measure::add(&mut caveats, Caveat::Masked { seconds: masked_s });
         }
+        let whole = holes.whole(&self.beats, window_from, end_s, GAP_S);
         LiveReading {
             time_s: end_s,
             bph,
@@ -959,6 +832,7 @@ impl LiveAnalyzer {
             timing_scatter_fraction,
             beats_used: fit.map_or(0, |f| f.beats_used),
             span_s,
+            whole,
             snr: self.snr,
             clipped_beats,
             clipped_fraction,
@@ -1297,14 +1171,17 @@ mod tests {
             assert!(between(&live) > 0);
             let (a, b) = if later_first { (t2, t1) } else { (t1, t2) };
             live.jump_at(a, false);
-            assert!(live.side_check.is_some(), "a check from the first jump");
+            assert!(
+                live.sides.pending().is_some(),
+                "a check from the first jump"
+            );
             live.jump_at(b, false);
             assert!(!live.sides_known_at(t1 + 0.5));
             assert_eq!(between(&live), 0, "kept for the profiles");
             // Once the sides are told apart again, the profiles are made of
             // the kept sounds alone.
             feed(&mut live, &rest);
-            assert!(live.side_check.is_none(), "sides settled");
+            assert!(live.sides.pending().is_none(), "sides settled");
             assert_eq!(between(&live), 0);
             let used: usize = live.tick_profiles().iter().flatten().map(|p| p.beats).sum();
             assert!(used > 0);
@@ -1338,6 +1215,27 @@ mod tests {
             .any(|c| matches!(c, Caveat::Masked { .. })));
         a.set_masked(&[]);
         assert_eq!(a.reading_at(90.0, 60.0).span_s, before.span_s);
+    }
+
+    /// A reading is whole only when its averaging time reaches into no
+    /// cut and each 2 s of it holds a beat.
+    #[test]
+    fn a_reading_is_whole_only_clear_of_every_cut() {
+        let mut log = viewer_phase_log(10.0, 10.0);
+        log.jumps.clear();
+        // No beats from 40 to 43 s.
+        log.beats.retain(|b| !(40.0..43.0).contains(&b.time));
+        let mut a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        assert!(a.reading_at(30.0, 20.0).whole);
+        assert!(!a.reading_at(50.0, 20.0).whole);
+        assert!(a.reading_at(53.0, 10.0).whole);
+        a.set_masked(&[(70.0, 80.0)]);
+        assert!(!a.reading_at(90.0, 20.0).whole);
+        assert!(!a.reading_at(89.0, 10.0).whole);
+        assert!(a.reading_at(90.0, 10.0).whole);
+        a.set_breaks(vec![95.0]);
+        assert!(!a.reading_at(100.0, 10.0).whole);
+        assert!(a.reading_at(105.0, 10.0).whole);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! The whole pipeline: recording in, per-beat log and summary out.
 
-use crate::amplitude::{self, AmplitudeConfig, AmplitudeWindow};
+use crate::amplitude::{AmplitudeConfig, AmplitudeWindow};
 use crate::audio::Audio;
 use crate::beats::{self, Beat};
 use crate::confidence::{Confidence, Doubts};
@@ -79,7 +79,7 @@ pub struct Summary {
     pub amplitude_odd_deg: Option<f64>,
     /// Standard errors of the three amplitudes above, degrees: their
     /// precision from the spread between windows, not their accuracy,
-    /// which rests on the lift angle (see [`amplitude::standard_error`]).
+    /// which rests on the lift angle (see [`crate::confidence::standard_error`]).
     pub amplitude_se_deg: Option<f64>,
     pub amplitude_even_se_deg: Option<f64>,
     pub amplitude_odd_se_deg: Option<f64>,
@@ -244,14 +244,34 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let amplitude_windows = log.amplitude_windows;
     // Where listening stopped and started again the beats jump, and no
     // count of beats across the hole is known: rate and timing are fitted
-    // on each stretch between jumps, and no window spans one.
-    let cuts: Vec<f64> = log.jumps.iter().map(|&t| t - 1e-6).collect();
+    // on each stretch between jumps, and no window spans one or takes in a
+    // stretch with no beats.
+    let jumps: Vec<crate::breaks::Break> = log
+        .jumps
+        .iter()
+        .map(|&audio_s| crate::breaks::Break {
+            audio_s,
+            gap_s: 0.0,
+        })
+        .collect();
+    let holes = crate::clean::Cuts::new(None, &jumps, &[]);
+    let cuts = holes.piece_cuts();
     let overall = timing::fit_pieces(&beats, bph, &cuts);
     let turned = timing::sign_turns(&beats, bph, &cuts);
     let residuals =
         timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
-    let mut rate_windows = timing::windows(&beats, bph, cfg.rate_window_s, cfg.rate_window_s / 2.0);
-    rate_windows.retain(|w| !cuts.iter().any(|&c| w.start_s < c && c < w.end_s));
+    let part = amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    let rate_windows = holes.windows(
+        &beats,
+        bph,
+        0.0,
+        audio.duration(),
+        cfg.rate_window_s,
+        cfg.rate_window_s / 2.0,
+        part,
+    );
     let rates: Vec<f64> = rate_windows.iter().map(|w| w.fit.rate_s_per_day).collect();
 
     // Periodicity: timing residuals and amplitude, in 1 s bins.
@@ -290,13 +310,13 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let jitter_us = median_of(rate_windows.iter().map(|w| w.fit.jitter_us));
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
-        amplitude::standard_error(&v)
+        crate::confidence::standard_error(&v)
     };
     let watch_heard = crate::measure::watch_heard(jitter_us, bph, duration);
     let clipping = Clipping::measure(&audio.samples, fs, &beats);
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
     let amplitude_se_deg = se(&|w| w.mean());
-    let expected = duration * bph as f64 / 3600.0;
+    let expected = crate::beats::expected_beats(duration, bph);
     let assessment = crate::measure::assess(
         &rate_windows,
         &amplitude_windows.iter().collect::<Vec<_>>(),

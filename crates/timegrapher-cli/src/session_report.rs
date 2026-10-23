@@ -790,6 +790,7 @@ mod tests {
             lift_deg: 52.0,
             readings,
             report,
+            power_reserve: None,
         })
     }
 

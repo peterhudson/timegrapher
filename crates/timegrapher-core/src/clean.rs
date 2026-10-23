@@ -23,11 +23,19 @@ use crate::amplitude::AmplitudeWindow;
 use crate::beats::Beat;
 use crate::breaks::{Break, JUMP_MATCH_S};
 use crate::clock::ClockFit;
+use crate::timing::WindowFit;
 use serde::Serialize;
 
 /// Seconds a bin or a hole's edge may be off by and still count as
 /// meeting it rather than reaching across.
 const EDGE_S: f64 = 1e-6;
+
+/// Seconds with no beat that cut the beats like a hole: a reading never
+/// fits across a longer pause between two beats, since the watch may have
+/// been moved or handled, and beats may have been counted wrongly across
+/// it. It is also the part of a bin that must hold a beat for the bin to
+/// be whole ([`Cuts::whole`]).
+pub const GAP_S: f64 = 2.0;
 
 /// What cut the take at a hole.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -205,6 +213,33 @@ impl<'a> Cuts<'a> {
         &self.holes
     }
 
+    /// Where the whole stretch holding `end` (true time) starts: the end
+    /// of the latest hole begun by `end`, or `end` itself inside one.
+    /// Minus infinity with no hole by then.
+    pub fn stretch_from(&self, end: f64) -> f64 {
+        self.holes
+            .iter()
+            .filter(|h| h.start_s <= end)
+            .map(|h| h.end_s.min(end))
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    /// The latest cut a reading over `beats` (true time, sorted) from
+    /// `from` to `end` may not reach back across: the start of the whole
+    /// stretch holding `end` ([`stretch_from`](Self::stretch_from)), or
+    /// just before the first beat after the latest pause of more than
+    /// [`GAP_S`] between two of its beats, whichever is later. Minus
+    /// infinity with neither.
+    pub fn run_cut(&self, beats: &[Beat], from: f64, end: f64) -> f64 {
+        let lo = beats.partition_point(|b| b.time < from);
+        let hi = beats.partition_point(|b| b.time <= end);
+        let pause = (lo + 1..hi)
+            .rev()
+            .find(|&i| beats[i].time - beats[i - 1].time > GAP_S)
+            .map_or(f64::NEG_INFINITY, |i| beats[i].time - EDGE_S);
+        pause.max(self.stretch_from(end))
+    }
+
     /// Whether audio second `t` falls in a masked stretch, ends included.
     pub fn is_masked(&self, t: f64) -> bool {
         crate::session::in_mask(&self.masked, t)
@@ -281,6 +316,45 @@ impl<'a> Cuts<'a> {
             .collect()
     }
 
+    /// Fits over whole bins of `len` seconds, one every `step` seconds
+    /// from the first beat at or after `from` up to `to` (true time). A
+    /// bin is fitted on the beats from its start up to its end when it is
+    /// [`whole`](Self::whole) with parts of `part` seconds, so none spans
+    /// a hole or a dropout, and none needs a beat at or past its end.
+    /// `beats` on true time, sorted.
+    #[allow(clippy::too_many_arguments)]
+    pub fn windows(
+        &self,
+        beats: &[Beat],
+        bph: u32,
+        from: f64,
+        to: f64,
+        len: f64,
+        step: f64,
+        part: f64,
+    ) -> Vec<WindowFit> {
+        let mut out = Vec::new();
+        let Some(first) = beats.get(beats.partition_point(|x| x.time < from)) else {
+            return out;
+        };
+        let mut s = first.time;
+        while s + len <= to + 1e-9 {
+            if self.whole(beats, s, s + len, part) {
+                let lo = beats.partition_point(|x| x.time < s);
+                let hi = beats.partition_point(|x| x.time < s + len);
+                if let Some(fit) = crate::timing::fit(&beats[lo..hi], bph) {
+                    out.push(WindowFit {
+                        start_s: s,
+                        end_s: s + len,
+                        fit,
+                    });
+                }
+            }
+            s += step;
+        }
+        out
+    }
+
     /// The amplitude windows a reading may use: those whose span on true
     /// time is [`clear`](Self::clear) of every hole.
     pub fn amplitude_windows<'w>(
@@ -292,6 +366,24 @@ impl<'a> Cuts<'a> {
             .filter(|w| self.clear(self.true_time(w.start_s), self.true_time(w.end_s)))
             .collect()
     }
+}
+
+/// The cuts masked stretches make (audio seconds), for a reading that
+/// takes its cuts as breaks: a break of no width at each end, sorted. The
+/// stretches' beats are left out as well ([`crate::session::mask_log`]),
+/// so no reading reaches across one or takes in a ragged edge beside one.
+pub fn mask_breaks(masked: &[(f64, f64)]) -> Vec<Break> {
+    let mut out: Vec<Break> = masked
+        .iter()
+        .flat_map(|&(a, b)| [a, b])
+        .map(|audio_s| Break {
+            audio_s,
+            gap_s: 0.0,
+        })
+        .collect();
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    out.dedup_by(|a, b| a.audio_s == b.audio_s);
+    out
 }
 
 /// Whether every stretch of about `part` seconds from `start` to `end`
@@ -310,7 +402,6 @@ pub fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::longrun;
 
     fn window(start_s: f64, end_s: f64) -> AmplitudeWindow {
         AmplitudeWindow {
@@ -358,37 +449,120 @@ mod tests {
     }
 
     #[test]
-    fn gaps_and_cuts_are_where_long_runs_put_them() {
+    fn gaps_are_from_the_last_sound_to_the_first_after() {
+        let held = |breaks: &[Break]| -> Vec<(f64, f64)> {
+            Cuts::new(None, breaks, &[])
+                .holes()
+                .iter()
+                .map(|h| (h.start_s, h.end_s))
+                .collect()
+        };
+        assert!(held(&[]).is_empty());
+        // A jump, or a gap under 0 s, is a point.
+        assert_eq!(held(&[brk(100.0, 0.0)]), [(100.0, 100.0)]);
+        assert_eq!(held(&[brk(100.0, -0.2)]), [(100.0, 100.0)]);
+        // A pause runs from just before its audio second to 30 s later on
+        // true time, and moves the jump after it on by its gap.
+        let h = held(&[brk(100.0, 30.0), brk(400.0, 0.0)]);
+        assert_eq!(h.len(), 2);
+        assert!(
+            (h[0].0 - (100.0 - EDGE_S)).abs() < 1e-9 && h[0].1 == 130.0,
+            "{h:?}"
+        );
+        assert_eq!(h[1], (430.0, 430.0));
+        let cuts = Cuts::new(None, &[brk(100.0, 30.0)], &[]);
+        assert_eq!(cuts.true_time(99.0), 99.0);
+        assert_eq!(cuts.true_time(100.0), 130.0);
+        assert!(cuts.clear(90.0, 100.0 - EDGE_S) && cuts.clear(130.0, 140.0));
+        assert!(!cuts.clear(95.0, 105.0) && !cuts.clear(125.0, 135.0));
+        // With a clock fit whose break sits at the log's first line after
+        // the resume (305.1 s), the gap runs from the last sound before the
+        // listed pause to there; moved to the listed break, to the resume.
         let clock = paused_clock();
-        let mut placed = clock.clone();
         let listed = [brk(305.0, 30.0)];
+        let cuts = Cuts::new(Some(&clock), &listed, &[]);
+        assert_eq!(cuts.holes().len(), 1, "{:?}", cuts.holes());
+        let h = cuts.holes()[0];
+        assert!(
+            (h.start_s - clock.map(305.0 - EDGE_S)).abs() < 1e-9,
+            "{h:?}"
+        );
+        assert!((h.end_s - clock.map(305.1)).abs() < 1e-9, "{h:?}");
+        assert!((h.end_s - h.start_s - 30.1).abs() < 0.01, "{h:?}");
+        assert!(!cuts.clear(clock.map(305.05), clock.map(305.05) + 10.0));
+        let mut placed = clock.clone();
         placed.place_breaks(&listed);
-        let cases: Vec<(Option<&ClockFit>, Vec<Break>)> = vec![
-            (None, vec![]),
-            (None, vec![brk(100.0, 0.0)]),
-            (None, vec![brk(100.0, 30.0), brk(400.0, 0.0)]),
-            (None, vec![brk(100.0, -0.2)]),
-            (Some(&clock), listed.to_vec()),
-            (Some(&placed), listed.to_vec()),
+        let cuts = Cuts::new(Some(&placed), &listed, &[]);
+        let h = cuts.holes()[0];
+        assert!((h.end_s - placed.map(305.0)).abs() < 1e-9, "{h:?}");
+        assert!(cuts.true_time(305.05) > h.end_s);
+    }
+
+    #[test]
+    fn covered_needs_a_beat_in_every_part() {
+        // Beats every 0.2 s with none from 52 s to 55 s.
+        let beats: Vec<Beat> = beats_to(100.0)
+            .into_iter()
+            .filter(|b| !(52.0..55.0).contains(&b.time))
+            .collect();
+        assert!(covered(&beats, 40.0, 50.0, 2.0));
+        assert!(!covered(&beats, 50.0, 60.0, 2.0));
+        // Parts of 5 s each hold a beat; the hole is under one part.
+        assert!(covered(&beats, 50.0, 60.0, 5.0));
+        // A span not a whole number of parts is split into equal ones:
+        // 11 s at about 2 s: six parts of 1.83 s, the second empty.
+        assert!(!covered(&beats, 51.0, 62.0, 2.0));
+        // Past the last beat, or with no beats, nothing is covered.
+        assert!(!covered(&beats, 95.0, 105.0, 2.0));
+        assert!(!covered(&[], 0.0, 10.0, 2.0));
+        // A beat on a part's start counts; one on its end is the next's.
+        let two = [
+            Beat {
+                index: 0,
+                time: 0.0,
+                quality: 1.0,
+            },
+            Beat {
+                index: 1,
+                time: 2.0,
+                quality: 1.0,
+            },
         ];
-        for (clock, breaks) in cases {
-            let cuts = Cuts::new(clock, &breaks, &[]);
-            let gaps = longrun::gaps(clock, &breaks);
-            let held: Vec<(f64, f64)> = cuts.holes().iter().map(|h| (h.start_s, h.end_s)).collect();
-            assert_eq!(held, gaps, "{breaks:?}");
-            assert_eq!(cuts.piece_cuts(), longrun::piece_cuts(&gaps), "{breaks:?}");
-            let map = longrun::true_time(clock, &breaks);
-            for t in [0.0, 99.0, 100.0, 150.0, 305.0, 305.05, 305.1, 400.0, 500.0] {
-                assert_eq!(cuts.true_time(t), map(t), "{breaks:?} at {t}");
-            }
-            for s in (0..120).map(|i| i as f64 * 5.0 - 0.3) {
-                assert_eq!(
-                    cuts.clear(s, s + 10.0),
-                    !longrun::touches_gap(&gaps, s, s + 10.0),
-                    "{breaks:?} from {s}"
-                );
-            }
-        }
+        assert!(covered(&two, 0.0, 4.0, 2.0));
+        assert!(!covered(&two, -2.0, 2.0, 2.0));
+    }
+
+    #[test]
+    fn a_reading_starts_after_the_latest_cut() {
+        // A jump at 30 s, a mask from 60 to 70 s, and no beats from 82 to
+        // 85 s.
+        let cuts = Cuts::new(None, &[brk(30.0, 0.0)], &[(60.0, 70.0)]);
+        let beats: Vec<Beat> = beats_to(100.0)
+            .into_iter()
+            .filter(|b| !(82.0..85.0).contains(&b.time))
+            .collect();
+        assert_eq!(cuts.stretch_from(20.0), f64::NEG_INFINITY);
+        assert_eq!(cuts.stretch_from(40.0), 30.0);
+        // Inside a mask, at the reading's own time: nothing to read.
+        assert_eq!(cuts.stretch_from(65.0), 65.0);
+        assert_eq!(cuts.stretch_from(75.0), 70.0);
+        assert_eq!(cuts.run_cut(&beats, 10.0, 20.0), f64::NEG_INFINITY);
+        assert_eq!(cuts.run_cut(&beats, 25.0, 40.0), 30.0);
+        // The pause is a cut once the reading takes in both its sides.
+        assert_eq!(cuts.run_cut(&beats, 75.0, 81.0), 70.0);
+        let at = cuts.run_cut(&beats, 75.0, 90.0);
+        assert!((at - (85.0 - EDGE_S)).abs() < 1e-9, "{at}");
+        // A pause of 1.8 s is no cut.
+        let even: Vec<Beat> = beats_to(100.0)
+            .into_iter()
+            .filter(|b| !(82.1..83.7).contains(&b.time))
+            .collect();
+        assert_eq!(cuts.run_cut(&even, 75.0, 90.0), 70.0);
+        // A masked stretch cuts at both ends, as a break of no width.
+        let m = mask_breaks(&[(60.0, 70.0), (20.0, 25.0), (25.0, 26.0)]);
+        let at: Vec<f64> = m.iter().map(|b| b.audio_s).collect();
+        assert_eq!(at, [20.0, 25.0, 26.0, 60.0, 70.0]);
+        assert!(m.iter().all(|b| b.gap_s == 0.0));
     }
 
     #[test]
@@ -515,19 +689,39 @@ mod tests {
     }
 
     #[test]
-    fn covered_is_the_steadiness_tests_own() {
-        let beats: Vec<Beat> = beats_to(100.0)
-            .into_iter()
-            .filter(|b| !(52.0..55.0).contains(&b.time) && !(71.0..72.5).contains(&b.time))
+    fn windows_lie_inside_each_stretch_and_need_no_beat_past_their_end() {
+        // Beats every 0.125 s for exactly 10 s: one whole 10 s window,
+        // though no beat falls at or after its end.
+        let beats: Vec<Beat> = (0..80)
+            .map(|i| Beat {
+                index: i,
+                time: i as f64 * 0.125,
+                quality: 1.0,
+            })
             .collect();
-        for s in (0..180).map(|i| i as f64 * 0.5) {
-            for part in [1.0, 2.0, 5.0] {
-                assert_eq!(
-                    covered(&beats, s, s + 10.0, part),
-                    crate::steadiness::covered(&beats, s, s + 10.0, part),
-                    "{s} {part}"
-                );
-            }
-        }
+        let w = Cuts::none().windows(&beats, 28800, 0.0, 10.0, 10.0, 5.0, 2.0);
+        assert_eq!(w.len(), 1);
+        assert_eq!(
+            (w[0].start_s, w[0].end_s, w[0].fit.beats_used),
+            (0.0, 10.0, 80)
+        );
+        // A pause after 100 s and a mask: the windows keep one grid from
+        // the first beat, none reaches into a hole, and a window over a
+        // dropout no break lists is left out.
+        let cuts = Cuts::new(None, &[brk(100.0, 30.0)], &[(150.0, 160.0)]);
+        let beats: Vec<Beat> = cuts
+            .beats(&beats_to(300.0))
+            .into_iter()
+            .filter(|b| !(250.0..253.0).contains(&b.time))
+            .collect();
+        let w = cuts.windows(&beats, 18000, 0.0, 330.0, 10.0, 5.0, 2.0);
+        let starts: Vec<f64> = w.iter().map(|w| w.start_s).collect();
+        let want: Vec<f64> = (0..65)
+            .map(|i| i as f64 * 5.0)
+            .filter(|&s| cuts.clear(s, s + 10.0) && !(241.0..253.0).contains(&s))
+            .collect();
+        assert_eq!(starts, want);
+        assert!(starts.contains(&90.0) && starts.contains(&130.0) && starts.contains(&320.0));
+        assert!(!starts.contains(&95.0) && !starts.contains(&175.0) && !starts.contains(&185.0));
     }
 }

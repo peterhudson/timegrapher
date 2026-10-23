@@ -13,8 +13,8 @@ use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEnt
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
-    "Your watches, each with its details and every take made of it, kept in the library \
-     folder (Settings > Library says where). Pick a watch to see its takes and to start a \
+    "Your watches, each with its details and every take made of it, kept in the Watches \
+     folder (Settings > General says where). Pick a watch to see its takes and to start a \
      new one; Save… then saves the take into that watch, named by when it started.",
     "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
      set up each new take of it, and can be changed for one take without changing the watch.",
@@ -23,17 +23,20 @@ pub const HELP: &[&str] = &[
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
     "Each take shows what it measured when it was saved, its length and the space it uses. \
-     Picking one opens it as Open does; right-clicking it offers Rename…, Keep Analysis \
+     Clicking one picks it and shows its Open and Replay buttons; double-clicking opens it \
+     as Open does, and the take already on show is not read again. Right-clicking it \
+     offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
-     Another Watch and Delete…. A take opened from outside the library can be copied or \
-     moved into a watch with Add to a Watch…, beside Open….",
+     Another Watch and Delete…. Open Recording… and Open Folder… in the File menu ask \
+     whether to add a recording from outside your watches to one of them, asking for \
+     anything its files don't say, or just to open it.",
     "Quick Listen listens on the microphone without picking or adding a watch first, for a \
      watch handed over the counter. Its take is saved into Unsorted when you Stop (and \
      Save Again adds to it after a Resume), and waits there, listed at the top of the \
      watches, until you file it under a watch (right-click it, then File Under a Watch) \
      or delete it.",
-    "The Microphone and Recording controls below work with a watch picked or without one; \
-     without one, Save… asks where.",
+    "The Take card below works with a watch picked or without one; without one, Save… asks \
+     where.",
 ];
 
 /// How the list is sorted.
@@ -155,6 +158,7 @@ fn tile(ui: &egui::Ui, rect: egui::Rect, tex: Option<&egui::TextureHandle>, name
 /// in small grey type under it, after its `lead`.
 fn row(
     ui: &mut egui::Ui,
+    picked: bool,
     lead: Lead,
     top: &str,
     right: &str,
@@ -164,7 +168,9 @@ fn row(
     let pal = theme::pal(ui);
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 40.0), Sense::click());
-    if resp.hovered() {
+    if picked {
+        ui.painter().rect_filled(rect, 6.0, pal.control_active);
+    } else if resp.hovered() {
         ui.painter().rect_filled(rect, 6.0, pal.control_hover);
     }
     let mut left = rect.left() + 8.0;
@@ -233,6 +239,7 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
         }
         if row(
             ui,
+            false,
             lead,
             &w.name,
             &fmt_bytes(e.bytes()),
@@ -252,6 +259,7 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
 pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool) -> bool {
     row(
         ui,
+        false,
         if tiled {
             Lead::Photo(None, &e.watch.name)
         } else {
@@ -393,7 +401,7 @@ pub fn photo_strip(
                             .add_enabled(writable, egui::Button::new("Delete…"))
                             .on_hover_text("Delete this photo for good. It asks first.")
                             .on_disabled_hover_text(
-                                "This copy of the app can only read the library",
+                                "This copy of the app can only read your watches",
                             )
                             .clicked()
                         {
@@ -409,6 +417,8 @@ pub fn photo_strip(
 /// What to do with a take.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TakeAction {
+    /// Picked in the list, not opened.
+    Pick(PathBuf),
     Open(PathBuf),
     Replay(PathBuf),
     Show(PathBuf),
@@ -430,6 +440,10 @@ pub struct TakesContext<'a> {
     pub writable: bool,
     pub keeping: Option<(&'a std::path::Path, f32)>,
     pub unsorted: bool,
+    /// The take picked in the list, and the one on show (open, or
+    /// opening).
+    pub picked: Option<&'a std::path::Path>,
+    pub on_show: Option<&'a std::path::Path>,
 }
 
 /// What a take measured and is, in a line: its positions, length, rate,
@@ -441,10 +455,20 @@ pub fn take_line(t: &Take) -> String {
         .iter()
         .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
         .collect();
+    if let Some(r) = &t.power_reserve {
+        parts.push(format!(
+            "Power Reserve {}{}",
+            timegrapher_core::power_reserve::run_text(r.run_s),
+            match r.ending {
+                timegrapher_core::power_reserve::Ending::Stopped => "",
+                _ => " (still running at the end)",
+            }
+        ));
+    }
     if !names.is_empty() {
         parts.push(names.join(", "));
     }
-    if let Some(d) = t.duration_s {
+    if let Some(d) = t.duration_s.filter(|_| t.power_reserve.is_none()) {
         parts.push(crate::strip::fmt_time(d));
     }
     if let Some(a) = &t.at_end {
@@ -485,21 +509,53 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
     for t in &e.takes {
         let dir = e.take_dir(t);
         let replays = t.audio && !t.incomplete;
+        let on_show = cx.on_show == Some(dir.as_path());
+        let picked = cx.picked == Some(dir.as_path());
         let r = row(
             ui,
+            picked,
             Lead::None,
             &t.name,
-            &fmt_bytes(t.bytes),
-            &take_line(t),
-            if t.incomplete {
-                "Files this take lists are missing (still syncing, or copied in part): it is \
-                 left as it is. Click to open what is there."
+            &if on_show {
+                format!("On Show · {}", fmt_bytes(t.bytes))
             } else {
-                "Open this take, as Open does. Right-click for more."
+                fmt_bytes(t.bytes)
+            },
+            &take_line(t),
+            if on_show {
+                "This take is on show. Right-click for more."
+            } else if t.incomplete {
+                "Files this take lists are missing (still syncing, or copied in part): it is \
+                 left as it is. Double-click to open what is there."
+            } else {
+                "Click to pick this take, double-click to open it. Right-click for more."
             },
         );
-        if r.clicked() {
+        if r.double_clicked() {
             act = Some(TakeAction::Open(dir.clone()));
+        } else if r.clicked() {
+            act = Some(TakeAction::Pick(dir.clone()));
+        }
+        // The picked take's own buttons: nothing opens until asked.
+        if picked && !on_show {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                if ui
+                    .button("Open")
+                    .on_hover_text("Analyse the whole take; a long take takes a while to read")
+                    .clicked()
+                {
+                    act = Some(TakeAction::Open(dir.clone()));
+                }
+                if ui
+                    .add_enabled(replays, egui::Button::new("Replay"))
+                    .on_hover_text("Play the take through as if live")
+                    .on_disabled_hover_text("This take has no sound to replay")
+                    .clicked()
+                {
+                    act = Some(TakeAction::Replay(dir.clone()));
+                }
+            });
         }
         if let Some((_, done)) = cx.keeping.filter(|(k, _)| *k == dir) {
             ui.horizontal(|ui| {
@@ -526,7 +582,7 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
         let why = if busy {
             "Wait until its analysis is kept, or Cancel"
         } else {
-            "This copy of the app can only read the library"
+            "This copy of the app can only read your watches"
         };
         r.context_menu(|ui| {
             if ui
@@ -1154,11 +1210,27 @@ mod tests {
                 amplitude_deg: Some(281.0),
                 beat_error_ms: Some(-0.4),
             }),
+            power_reserve: None,
         };
         let line = take_line(&t);
         assert!(line.starts_with("Dial Up, Crown Left · "), "{line}");
         assert!(
             line.contains("+3.5 s/d · 281° · 0.4 ms · Analysis Only · Incomplete"),
+            "{line}"
+        );
+        // A Power Reserve take leads with its run, not its length.
+        let r = Take {
+            positions: vec!["CL".into()],
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 166_320.0,
+                ending: timegrapher_core::power_reserve::Ending::Stopped,
+                position: "CL".into(),
+            }),
+            ..t.clone()
+        };
+        let line = take_line(&r);
+        assert!(
+            line.starts_with("Power Reserve 46 h 12 min · Crown Left · +3.5"),
             "{line}"
         );
         assert!(local_minute("2026-10-20T21:32:00Z").is_some_and(|m| m.len() == 16));

@@ -1,8 +1,35 @@
 //! The longer explanations behind the "?" buttons, one per part of the
 //! window, so they read alike and live in one place.
 
-pub const WATCH: &[&str] = &[
-    "The watch on the microphone. Its name and position are saved with a recording.",
+pub const TAKE: &[&str] = &[
+    "The take running or on show: its name, its watch and what it is doing. With a \
+     watch picked, New Take starts Listen, the Positions Test or the Power Reserve Test \
+     on the microphone set in the Microphone pane, and the take is saved into the watch \
+     when it stops; with none, Quick Listen listens, and its take is kept only when \
+     Keep in a Watch… or Save… keeps it. Stop lets go of the microphone, and Resume \
+     carries on in the same session. A recording opened from the File menu \
+     shows here too, with Replay, which plays it through as if the watch were on the \
+     microphone at the Replay Speed set below it (a folder plays its files one after \
+     the other), and Analyse All, which goes back to the whole recording analysed at \
+     once.",
+    "Each reading is fitted to the beats of the last Average Over seconds. A longer \
+     time gives steadier figures that follow changes more slowly. Early in a session, \
+     or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
+     of beats than asked for: the readings use what there is, and say how much under \
+     the rate. They never reach back across a pause, since the watch may have been \
+     moved or handled.",
+    "Average Over reaches further than the readings. It also sets every point on the \
+     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
+     Paper Strip, \
+     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
+     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
+     Each of those panes can take a time of its own instead, in its toolbar's Average \
+     Over, and then names it on its tab, until Average Over here is changed: that puts \
+     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
+     the Positions Test the time set in its pane, whatever it is set to.",
+    "Beat Rate and Lift Angle show when the take's watch has no calibre, or no watch \
+     is picked. A watch with a calibre names it, with the beat rate and lift angle it \
+     sets, on one line; Edit… on the watch changes them.",
     "Beat rate is how many beats the watch makes an hour (28,800 for most modern \
      automatics, 21,600 and 18,000 for older ones). Auto finds it from the first few \
      seconds of beats; set it by hand if Auto picks the wrong one.",
@@ -26,7 +53,7 @@ pub const WATCH: &[&str] = &[
 
 pub const MICROPHONE: &[&str] = &[
     "The app looks for microphones only when the microphone menu opens, Rescan is \
-     pressed or Start is clicked, never at launch: asking an input what it supports \
+     pressed or listening starts, never at launch: asking an input what it supports \
      briefly opens it, which could disturb another program recording from it. \
      Replaying a recording never touches the microphone.",
     "Input Level is the microphone's gain. The meter has plain marks at -10 and -6 dBFS \
@@ -36,43 +63,6 @@ pub const MICROPHONE: &[&str] = &[
      card's own capture level.",
     "The Peak meter shows the loudest sample in the last half second, in dBFS \
      (decibels below the most the input can carry). It turns red when the sound clips.",
-];
-
-pub const RECORDING: &[&str] = &[
-    "Open… analyses a WAV or FLAC recording all at once, which is how to look back \
-     through a take; Open Folder… does the same for a take saved as segments.",
-    "Replay plays the recording through as if the watch were on the microphone, at the \
-     Replay Speed set below it; a folder plays its files one after the other. Analyse All goes back to the whole recording analysed \
-     at once.",
-];
-
-pub const READINGS: &[&str] = &[
-    "Rate is how many seconds a day the watch gains (+) or loses (−), from how often it \
-     beats compared with how often it should.",
-    "Amplitude is how far the balance swings each way from rest, in degrees. The big \
-     figure is the average; beside it are the amplitude measured from the ticks and \
-     from the tocks.",
-    "Beat error is how unevenly the tick and the tock are spaced, in milliseconds: \
-     zero when the balance rests exactly midway. The big figure is timed from the \
-     unlock, as tg measures it; the smaller one is timed \
-     from the beat as a whole, nearer the drop.",
-    "Each reading is fitted to the beats of the last Average Over seconds (under Readings). A longer \
-     time gives steadier figures that follow changes more slowly. Early in a session, \
-     or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
-     of beats than asked for: the readings use what there is, and say how much under \
-     the rate. They never reach back across a pause, since the watch may have been \
-     moved or handled.",
-    "Average Over reaches further than the readings. It also sets every point on the \
-     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
-     Paper Strip, \
-     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
-     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
-     Each of those panes can take a time of its own instead, in its toolbar's Average \
-     Over, and then names it on its tab, until Average Over here is changed: that puts \
-     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
-     the Positions Test the time set in its pane, whatever it is set to.",
-    "The tick is simply the first beat heard: the sound can't tell which pallet stone \
-     made which beat.",
 ];
 
 pub const RATE: &[&str] = &[
@@ -105,7 +95,8 @@ pub const RATE: &[&str] = &[
      the run so far: a property of the measurement, not of the watch. \
      It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
      missing beats) is named beside the title. Stopped after a long run, a line \
-     under the figure gives the whole take's mean and spread.",
+     under the figure gives the whole take as timegrapher session reads it, with \
+     the 5th to 95th percentile of its 10-second rates.",
 ];
 
 pub const CLIPPING_BANNER: &[&str] = &[
@@ -114,8 +105,8 @@ pub const CLIPPING_BANNER: &[&str] = &[
      read wrong. The rate comes from when the beats arrive, which clipping doesn't \
      change.",
     "It shows whenever a beat in the readings has a clipped sample in its sound, \
-     counted the same way `timegrapher analyze` counts them. Input Level is under \
-     Microphone in the Watches pane.",
+     counted the same way `timegrapher analyze` counts them. Input Level is in the \
+     Microphone pane.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -123,7 +114,7 @@ pub const AMPLITUDE: &[&str] = &[
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
      solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
-     only as right as the lift angle under Watch.",
+     only as right as the lift angle in the Take card.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
      with the lift angle in proportion (1° of lift moves it about 5° at 260° with a \
@@ -149,8 +140,8 @@ pub const BEAT_ERROR: &[&str] = &[
 pub const BEAT_RATE: &[&str] = &[
     "How many beats the watch makes an hour, ticks and tocks counted alike: 28,800 \
      for a balance swinging 4 times a second each way, 21,600 for 3, 18,000 for 2.5.",
-    "With Beat Rate under Watch on Auto, it is the standard rate nearest to the beats \
-     of the first few seconds. Set it under Watch when the watch beats at an unusual \
+    "With Beat Rate in the Take card on Auto, it is the standard rate nearest to the beats \
+     of the first few seconds. Set it in the Take card when the watch beats at an unusual \
      rate, or to read a watch that runs far off.",
 ];
 
@@ -179,16 +170,20 @@ pub const STRIP: &[&str] = &[
     "With Direction: Across and the charts set to the strip's length (Time Span: Strip), the \
      strip and the charts below it share one time axis, and the pointer's time is \
      marked on all of them at once.",
-    "Mouse: the wheel changes the length, Ctrl and the wheel (or a pinch) the width; \
+    "Mouse: the wheel changes the length about the time under the pointer, Ctrl and the \
+     wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
     "Mask leaves stretches out of the readings, such as a bump of the stand: with it \
      on, drag along the strip over the beats to mask them, drag a masked stretch's edge \
-     to move it, and click a masked stretch to bring it back; a right click brings one \
+     to move it, drag with the right button to look back, and click a masked stretch to \
+     bring it back; a right click brings one \
      back with Mask on or off. Nothing is read inside a masked stretch and no reading \
      reaches across one; the charts, the steadiness tests and a Positions Test leave it \
      out too. A take saved from the app keeps them; a recording opened from disk keeps \
-     them once Save Masks is used. While Mask is on, dragging masks instead of sliding \
+     them when it is saved. Each point on the strip's line is the reading over the \
+     Average Over that ends there, so just after a masked stretch the line is blank \
+     for about one Average Over, while the sound after it builds up. While Mask is on, dragging masks instead of sliding \
      the trace.",
 ];
 
@@ -274,7 +269,10 @@ pub const STEADINESS: &[&str] = &[
      Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
      period instead. In both, each wheel's period is a bold line, and half of \
      it, twice a turn as an off-centre wheel shows, is a fainter dashed line marked \
-     ×2.",
+     ×2, in the wheels' own green; the STFT and Wavelet Maps dash the wheels' turns \
+     across the map. With no calibre picked, or none of its wheels known, one minute \
+     and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
+     hides these marks.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
      in the background, again every minute while it grows; for a recording, they \
@@ -375,3 +373,21 @@ pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular interva
      their timing scatter (the median jitter about a straight-line fit) is 2% of a beat \
      or more, as on an empty stand, where it is about 5%. No rate, amplitude or beat \
      error is shown then, since those figures would describe noise.";
+
+pub const POWER_RESERVE: &[&str] = &[
+    "Wind the watch fully, set it to a minute marker, put it on the stand in the \
+     position picked under Position, and press Start Test. The app starts a new \
+     session and listens until the watch stops. The run ends at the last beat heard \
+     before ten minutes with none. Beats that come back sooner join the run, and the \
+     pane says how many times they stopped and came back.",
+    "While the test runs, the computer is kept awake whatever Keep Awake is set to, \
+     the sound is kept, the position can't change, and Stop ends the test. A closed \
+     lid or Sleep from a menu still stops the computer. A run that hasn't stopped \
+     after 80 hours ends there.",
+    "When it ends, the take is kept in the picked watch's history (or in Unsorted with \
+     no watch picked), named by the date and time it started and \"Power Reserve\", \
+     with its results in power-reserve.json: the run time from the first beat heard \
+     to the last, in true time, and how it ended. With Analysis Only, the take is then \
+     kept as its analysis alone and its sound deleted. Every pane reads the take as \
+     any other.",
+];

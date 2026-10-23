@@ -174,10 +174,16 @@ impl AmplitudeWindow {
     }
 
     pub fn mean(&self) -> Option<f64> {
-        match (self.even_deg, self.odd_deg) {
-            (Some(a), Some(b)) => Some((a + b) / 2.0),
-            (a, b) => a.or(b),
-        }
+        mean_of_sides(self.even_deg, self.odd_deg)
+    }
+}
+
+/// A window's amplitude from its two sides': their mean, or the one side
+/// read when the other is not.
+pub fn mean_of_sides(even_deg: Option<f64>, odd_deg: Option<f64>) -> Option<f64> {
+    match (even_deg, odd_deg) {
+        (Some(a), Some(b)) => Some((a + b) / 2.0),
+        (a, b) => a.or(b),
     }
 }
 
@@ -240,25 +246,6 @@ pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize 
         n += usize::from(e) + usize::from(o);
     }
     n
-}
-
-/// Estimated standard error of a median from values in time order, in their
-/// own units: 1.2533 s / sqrt(n), with s = 1.4826 MAD(successive differences)
-/// / sqrt(2). The scale assumes independent Gaussian noise; serial correlation
-/// can invalidate that interpretation. Differencing limits the contribution
-/// of slow true variation (a linear drift cancels exactly), rather than
-/// measuring the watch's total variation. None with fewer than three values.
-pub fn standard_error(values: &[f64]) -> Option<f64> {
-    if values.len() < 3 {
-        return None;
-    }
-    let mut d: Vec<f64> = values.windows(2).map(|w| w[1] - w[0]).collect();
-    let mid = crate::dsp::median(&mut d.clone());
-    for v in d.iter_mut() {
-        *v = (*v - mid).abs();
-    }
-    let s = 1.4826 * crate::dsp::median(&mut d) / std::f64::consts::SQRT_2;
-    Some(1.2533 * s / (values.len() as f64).sqrt())
 }
 
 /// Amplitude in consecutive windows of `window_s` seconds.
@@ -414,36 +401,6 @@ mod tests {
         assert_eq!(wins[30].odd_deg, None);
         assert!(wins[30].even_deg.is_some());
         assert_eq!(wins[30].beat_error_unlock_ms, Some(0.3));
-    }
-
-    #[test]
-    fn standard_error_ignores_slow_change() {
-        // Gaussian noise of SD 2 from a fixed seed, alone and on a steep
-        // ramp: the ramp must not count as noise.
-        let mut seed = 12345u64;
-        let mut uniform = || {
-            seed = seed
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            ((seed >> 11) as f64 + 0.5) / (1u64 << 53) as f64
-        };
-        let noise: Vec<f64> = (0..400)
-            .map(|_| {
-                let (u, v) = (uniform(), uniform());
-                2.0 * (-2.0 * u.ln()).sqrt() * (2.0 * std::f64::consts::PI * v).cos()
-            })
-            .collect();
-        let want = 1.2533 * 2.0 / 20.0;
-        let flat = super::standard_error(&noise).unwrap();
-        let ramp: Vec<f64> = noise
-            .iter()
-            .enumerate()
-            .map(|(i, n)| 200.0 + 0.5 * i as f64 + n)
-            .collect();
-        let sloped = super::standard_error(&ramp).unwrap();
-        assert!((flat / want - 1.0).abs() < 0.2, "{flat} vs {want}");
-        assert!((sloped - flat).abs() < 1e-9, "{sloped} vs {flat}");
-        assert_eq!(super::standard_error(&[1.0, 2.0]), None);
     }
 
     use super::*;

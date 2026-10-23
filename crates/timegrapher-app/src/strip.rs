@@ -13,43 +13,12 @@
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
+pub use timegrapher_core::timing::Anchor;
 
 /// Colours of the ticks (even beats) and tocks (odd beats).
 pub fn side_colors(dark: bool) -> [Color32; 2] {
     let p = crate::theme::palette(dark);
     [p.tick, p.tock]
-}
-
-/// Where the strip is anchored: a beat number and the time it is drawn at
-/// the centre line.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Anchor {
-    pub index: i64,
-    pub time: f64,
-}
-
-impl Anchor {
-    /// Centre the strip on the last `n` beats (tick and tock together).
-    pub fn centre_on(beats: &[Beat], period_s: f64, n: usize) -> Option<Anchor> {
-        let last = beats.last()?;
-        let recent = &beats[beats.len().saturating_sub(n)..];
-        let t = recent
-            .iter()
-            .map(|b| b.time - (b.index - last.index) as f64 * period_s)
-            .sum::<f64>()
-            / recent.len() as f64;
-        Some(Anchor {
-            index: last.index,
-            time: t,
-        })
-    }
-
-    /// How early the beat came, in ms, against this anchor and a beat
-    /// period of `period_s`. Positive means early (the watch gains).
-    pub fn lead_ms(&self, b: &Beat, period_s: f64) -> f64 {
-        let expected = self.time + (b.index - self.index) as f64 * period_s;
-        (expected - b.time) * 1000.0
-    }
 }
 
 /// Fold `x` into `[-half, half)`.
@@ -94,6 +63,9 @@ pub struct StripInput {
     pub lead_shift_ms: f64,
     /// Factor for the length (below 1 zooms in).
     pub span_factor: f64,
+    /// The time under the pointer the length is zoomed about, which stays
+    /// where it is on the strip; `None` zooms about the newest edge.
+    pub zoom_at: Option<f64>,
     /// Factor for the width (below 1 zooms in).
     pub width_factor: f64,
     /// Double-clicked: back to the newest beats, centred.
@@ -117,6 +89,7 @@ impl Default for StripInput {
             time_shift_s: 0.0,
             lead_shift_ms: 0.0,
             span_factor: 1.0,
+            zoom_at: None,
             width_factor: 1.0,
             reset: false,
             hover_t: None,
@@ -743,7 +716,9 @@ pub fn draw_strip(
         horizontal: view.horizontal,
     };
     let mut input = StripInput::default();
-    let d = if extras.masking {
+    // A drag moves the strip; with the Mask tool on, the left button masks
+    // and the right one still moves it.
+    let d = if extras.masking && !resp.dragged_by(egui::PointerButton::Secondary) {
         Vec2::ZERO
     } else {
         resp.drag_delta()
@@ -760,6 +735,10 @@ pub fn draw_strip(
         let wheel = scroll.x + scroll.y;
         if wheel != 0.0 {
             input.span_factor = (-wheel as f64 * 0.003).exp();
+            input.zoom_at = resp
+                .hover_pos()
+                .filter(|p| r.contains(*p))
+                .map(|p| g.time_at(p));
         }
         if zoom != 1.0 {
             input.width_factor = 1.0 / zoom as f64;
@@ -783,8 +762,11 @@ pub fn draw_strip(
     if extras.masking {
         let id = resp.id.with("mask-from");
         let edge_id = resp.id.with("mask-edge");
-        if resp.drag_started() {
-            if let Some(p) = resp.interact_pointer_pos() {
+        if resp.drag_started_by(egui::PointerButton::Primary) {
+            // Where the button went down: a drag only starts once the
+            // pointer has moved a few points on, past an edge's reach.
+            let origin = ui.input(|i| i.pointer.press_origin());
+            if let Some(p) = origin.or(resp.interact_pointer_pos()) {
                 match edge_near(extras.masked, p, &g) {
                     Some(e) => ui.data_mut(|d| d.insert_temp(edge_id, e)),
                     None => {
@@ -808,7 +790,7 @@ pub fn draw_strip(
             reshaping = Some((a, b));
             masking_now = Some((fixed.min(t), fixed.max(t)));
         }
-        if resp.drag_stopped() {
+        if resp.drag_stopped_by(egui::PointerButton::Primary) {
             match (edge, masking_now) {
                 (Some((a, b, _)), Some(new)) => input.reshape = Some(((a, b), new)),
                 _ => input.mask = masking_now,
@@ -823,7 +805,9 @@ pub fn draw_strip(
         let on_edge = resp
             .hover_pos()
             .is_some_and(|p| edge_near(extras.masked, p, &g).is_some());
-        if resp.hovered() && (on_edge || edge.is_some()) {
+        if resp.dragged_by(egui::PointerButton::Secondary) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if resp.hovered() && (on_edge || edge.is_some()) {
             ui.ctx().set_cursor_icon(if view.horizontal {
                 egui::CursorIcon::ResizeHorizontal
             } else {
@@ -1197,6 +1181,132 @@ mod tests {
         // A real hole in the readings stays a hole.
         let holed: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] < 20.0 || p[0] > 50.0).collect();
         assert_eq!(joined(&holed, (2.5 * step).max(5.0)).len(), holed.len() - 2);
+    }
+
+    /// Frames of the strip lying across, 100 s long with 40 to 60 s
+    /// masked and the Mask tool on, each given `events`: what it asked for.
+    fn masking_frames(ctx: &egui::Context, frames: &[Vec<egui::Event>]) -> Vec<StripInput> {
+        let view = StripView {
+            half_width_ms: 10.0,
+            span_s: 100.0,
+            horizontal: true,
+        };
+        let masked = [(40.0, 60.0)];
+        let extras = Extras {
+            masked: &masked,
+            masking: true,
+            ..Default::default()
+        };
+        frames
+            .iter()
+            .map(|events| {
+                let input = egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 400.0))),
+                    events: events.clone(),
+                    ..Default::default()
+                };
+                let mut got = StripInput::default();
+                let _ = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        got = draw_strip(
+                            ui,
+                            &[],
+                            0.125,
+                            None,
+                            100.0,
+                            &view,
+                            &extras,
+                            Vec2::new(860.0, 360.0),
+                        );
+                    });
+                });
+                got
+            })
+            .collect()
+    }
+
+    /// A drag that begins on a masked stretch's edge moves the edge, even
+    /// though the drag only starts once the pointer has moved on past the
+    /// edge's reach; the right button moves the strip instead of masking.
+    #[test]
+    fn a_masked_edge_can_be_grabbed_and_the_right_button_pans() {
+        let ctx = egui::Context::default();
+        let moved = |x: f32| egui::Event::PointerMoved(Pos2::new(x, 200.0));
+        let button = |x: f32, b: egui::PointerButton, pressed: bool| egui::Event::PointerButton {
+            pos: Pos2::new(x, 200.0),
+            button: b,
+            pressed,
+            modifiers: Default::default(),
+        };
+        // Where 40 s is: the time under the pointer, across the strip.
+        let mut edge = None;
+        for x in (60..860).step_by(2) {
+            let got = masking_frames(&ctx, &[vec![moved(x as f32)]]);
+            if got[0].hover_t.is_some_and(|t| t >= 40.0) {
+                edge = Some(x as f32);
+                break;
+            }
+        }
+        let x = edge.expect("40 s is on the strip");
+        let primary = egui::PointerButton::Primary;
+        let got = masking_frames(
+            &ctx,
+            &[
+                vec![moved(x)],
+                vec![button(x, primary, true)],
+                vec![moved(x + 4.0)],
+                vec![moved(x + 12.0)],
+                vec![moved(x + 20.0)],
+                vec![button(x + 20.0, primary, false)],
+                vec![],
+            ],
+        );
+        let reshaped = got.iter().find_map(|i| i.reshape);
+        let ((a, b), (c, d)) = reshaped.expect("the edge moved, no new mask");
+        assert_eq!((a, b), (40.0, 60.0));
+        assert!(c > 40.0 && d == 60.0, "{c} {d}");
+        assert!(got.iter().all(|i| i.mask.is_none()));
+
+        let secondary = egui::PointerButton::Secondary;
+        let got = masking_frames(
+            &ctx,
+            &[
+                vec![moved(x - 100.0)],
+                vec![button(x - 100.0, secondary, true)],
+                vec![moved(x - 90.0)],
+                vec![moved(x - 60.0)],
+                vec![button(x - 60.0, secondary, false)],
+                vec![],
+            ],
+        );
+        assert!(got.iter().all(|i| i.mask.is_none() && i.reshape.is_none()));
+        assert!(got.iter().any(|i| i.time_shift_s < 0.0), "{got:?}");
+    }
+
+    /// The wheel zooms about the time under the pointer.
+    #[test]
+    fn the_wheel_zooms_about_the_pointer() {
+        let ctx = egui::Context::default();
+        let p = egui::Event::PointerMoved(Pos2::new(300.0, 200.0));
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, -50.0),
+            modifiers: Default::default(),
+        };
+        let got = masking_frames(
+            &ctx,
+            &[
+                vec![p.clone()],
+                vec![p.clone()],
+                vec![p, wheel],
+                vec![],
+                vec![],
+            ],
+        );
+        let zoom = got.iter().find(|i| i.span_factor != 1.0).expect("zoomed");
+        let at = zoom.zoom_at.expect("about the pointer");
+        let under = got.iter().find_map(|i| i.hover_t).expect("hovered");
+        assert!((at - under).abs() < 1e-9 && at < 90.0, "{at} {under}");
     }
 
     fn beat(index: i64, time: f64) -> Beat {

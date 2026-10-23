@@ -316,6 +316,9 @@ pub struct Take {
     /// The positions `session.toml` names, in order, each once.
     pub positions: Vec<String>,
     pub at_end: Option<AtEnd>,
+    /// For a Power Reserve Test's take, its run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_reserve: Option<crate::power_reserve::Summary>,
 }
 
 /// One watch and its takes, newest first.
@@ -378,7 +381,7 @@ impl Library {
     pub fn create(root: &Path) -> Result<Library, String> {
         if fs::read_dir(root).is_ok_and(|mut d| d.next().is_some()) {
             return Err(format!(
-                "{} already holds files, and a new library needs an empty folder",
+                "{} already holds files, and a new Watches folder needs an empty folder",
                 root.display()
             ));
         }
@@ -411,7 +414,7 @@ impl Library {
         let text = fs::read_to_string(&p).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 format!(
-                    "{} is not a Timegrapher library (it has no {LIBRARY_FILE})",
+                    "{} is not a Timegrapher Watches folder (it has no {LIBRARY_FILE})",
                     root.display()
                 )
             } else {
@@ -448,8 +451,9 @@ impl Library {
     /// read-only from then on.
     pub fn unlock(&mut self) {
         self.lock = None;
-        self.read_only
-            .get_or_insert_with(|| "The library is being moved, so it can only be read".into());
+        self.read_only.get_or_insert_with(|| {
+            "The Watches folder is being moved, so it can only be read".into()
+        });
     }
 
     /// `Err` saying why, where this copy of the app can only read.
@@ -615,7 +619,7 @@ impl Library {
             .iter()
             .find(|w| w.watch.id == watch.id)
             .map(|w| w.dir.clone())
-            .ok_or_else(|| format!("\"{name}\" is no longer in the library"))?;
+            .ok_or_else(|| format!("\"{name}\" is no longer in your watches"))?;
         watch.write(&dir)?;
         self.scan();
         Ok(())
@@ -640,7 +644,7 @@ impl Library {
         self.watch_of(take)
             .or_else(|| self.is_unsorted(take).then_some(&self.unsorted))
             .filter(|_| take.is_dir())
-            .ok_or_else(|| format!("{} is not a take in this library", take.display()))
+            .ok_or_else(|| format!("{} is not a take of these watches", take.display()))
     }
 
     /// Rename a take's folder to `name` (cleaned for every system, as a
@@ -678,7 +682,7 @@ impl Library {
             .watches
             .iter()
             .find(|w| w.watch.id == watch_id)
-            .ok_or("That watch is no longer in the library")?;
+            .ok_or("That watch is no longer in your watches")?;
         let takes = to_watch.dir.join(TAKES);
         if take.parent() == Some(takes.as_path()) {
             return Ok(take.to_path_buf());
@@ -705,7 +709,7 @@ impl Library {
             .iter()
             .find(|w| w.watch.id == watch_id)
             .map(|w| w.dir.join(PHOTOS))
-            .ok_or("That watch is no longer in the library")?;
+            .ok_or("That watch is no longer in your watches")?;
         if let Some(f) = files.iter().find(|f| !is_image(f)) {
             return Err(format!(
                 "{} is not a photo the app can show (JPEG, PNG, HEIC or TIFF)",
@@ -745,7 +749,7 @@ impl Library {
             .any(|w| w.photos.iter().any(|p| p == photo))
         {
             return Err(format!(
-                "{} is not a photo in this library",
+                "{} is not a photo of these watches",
                 photo.display()
             ));
         }
@@ -811,13 +815,13 @@ impl Library {
             ));
         }
         if resolved(from).starts_with(resolved(&self.root)) {
-            return Err(format!("{} is already in the library", from.display()));
+            return Err(format!("{} is already in your watches", from.display()));
         }
         let to_watch = self
             .watches
             .iter()
             .find(|w| w.watch.id == watch_id)
-            .ok_or("That watch is no longer in the library")?;
+            .ok_or("That watch is no longer in your watches")?;
         let takes = to_watch.dir.join(TAKES);
         fs::create_dir_all(&takes).map_err(|e| format!("{}: {e}", takes.display()))?;
         let to = unused_dir(&takes, &file_name(from));
@@ -846,6 +850,55 @@ impl Library {
         };
         self.scan();
         Ok((to, left))
+    }
+
+    /// Add a recording from outside the library that has no session file
+    /// (a lone WAV or FLAC file, or a folder of them) to a watch (by its
+    /// id), as a new take named `name`: the file, or everything in the
+    /// folder, is copied in with `written` (file name and text: the session
+    /// files that make it a take) beside it. It is put together beside its
+    /// new place and moved in whole, so a copy cut short is not a take.
+    pub fn add_recording(
+        &mut self,
+        from: &Path,
+        watch_id: &str,
+        name: &str,
+        written: &[(&str, String)],
+    ) -> Result<PathBuf, String> {
+        self.writable()?;
+        if resolved(from).starts_with(resolved(&self.root)) {
+            return Err(format!("{} is already in your watches", from.display()));
+        }
+        let to_watch = self
+            .watches
+            .iter()
+            .find(|w| w.watch.id == watch_id)
+            .ok_or("That watch is no longer in your watches")?;
+        let takes = to_watch.dir.join(TAKES);
+        fs::create_dir_all(&takes).map_err(|e| format!("{}: {e}", takes.display()))?;
+        let to = unused_dir(&takes, name);
+        let staged = takes.join(format!(".adding-{}", file_name(&to)));
+        let _ = fs::remove_dir_all(&staged);
+        let put = (|| {
+            if from.is_dir() {
+                copy_tree(from, &staged, &[])?;
+            } else {
+                fs::create_dir_all(&staged).map_err(|e| format!("{}: {e}", staged.display()))?;
+                let dst = staged.join(from.file_name().ok_or("The recording has no name")?);
+                fs::copy(from, &dst).map_err(|e| format!("{}: {e}", from.display()))?;
+            }
+            for (file, text) in written {
+                let dst = staged.join(file);
+                fs::write(&dst, text).map_err(|e| format!("{}: {e}", dst.display()))?;
+            }
+            fs::rename(&staged, &to).map_err(|e| format!("{}: {e}", to.display()))
+        })();
+        if let Err(e) = put {
+            let _ = fs::remove_dir_all(&staged);
+            return Err(e);
+        }
+        self.scan();
+        Ok(to)
     }
 }
 
@@ -935,7 +988,7 @@ fn lock_outcome(
     match tried {
         Ok(()) => Ok(f),
         Err(fs::TryLockError::WouldBlock) => Err(
-            "Another copy of Timegrapher has this library open, so this one can only read it"
+            "Another copy of Timegrapher has these watches open, so this one can only read them"
                 .into(),
         ),
         Err(fs::TryLockError::Error(e)) => Err(format!(
@@ -961,11 +1014,14 @@ fn lock_outcome(
 /// at `to`, files without a `library.toml`, which is not a library.
 pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     if !Library::is_library(from) {
-        return Err(format!("{} is not a Timegrapher library", from.display()));
+        return Err(format!(
+            "{} is not a Timegrapher Watches folder",
+            from.display()
+        ));
     }
     let (real_from, real_to) = (resolved(from), resolved(to));
     if real_to.starts_with(&real_from) {
-        return Err("A library can't be moved inside itself".into());
+        return Err("A Watches folder can't be moved inside itself".into());
     }
     if fs::read_dir(to).is_ok_and(|mut d| d.next().is_some()) {
         return Err(format!("{} already holds files", to.display()));
@@ -977,11 +1033,11 @@ pub fn move_library(from: &Path, to: &Path) -> Result<Option<String>, String> {
     }
     // Checked, then let go of: Windows renames no folder with a file in
     // it held open.
-    drop(lock(from).map_err(|e| format!("The library can't be moved: {e}"))?);
+    drop(lock(from).map_err(|e| format!("The Watches folder can't be moved: {e}"))?);
     if fs::rename(from, to).is_ok() {
         return Ok(None);
     }
-    let held = lock(from).map_err(|e| format!("The library can't be moved: {e}"))?;
+    let held = lock(from).map_err(|e| format!("The Watches folder can't be moved: {e}"))?;
     copy_across(from, to, Some(held))
 }
 
@@ -1003,7 +1059,7 @@ fn copy_across(from: &Path, to: &Path, held: Option<fs::File>) -> Result<Option<
                 Ok(())
             } else {
                 Err(format!(
-                    "The copy in {} doesn't match the library ({} of {} bytes)",
+                    "The copy in {} doesn't match the Watches folder ({} of {} bytes)",
                     to.display(),
                     b.bytes,
                     a.bytes
@@ -1017,7 +1073,7 @@ fn copy_across(from: &Path, to: &Path, held: Option<fs::File>) -> Result<Option<
                 fs::remove_file(from.join(LIBRARY_FILE)).and_then(|_| fs::remove_dir_all(from));
             Ok(gone.err().map(|e| {
                 format!(
-                    "The library is now in {}, but some of {} couldn't be removed ({e}): \
+                    "The Watches folder is now in {}, but some of {} couldn't be removed ({e}): \
                      what is left there is a copy and can be deleted",
                     to.display(),
                     from.display()
@@ -1054,7 +1110,7 @@ fn copy_tree(from: &Path, to: &Path, skip: &[&str]) -> Result<(), String> {
             // end, and a link's target may be outside the library.
             return Err(format!(
                 "{} is a link or a special file, which can't be copied to another disk: \
-                 move it out of the library first",
+                 move it out of the Watches folder first",
                 src.display()
             ));
         }
@@ -1202,12 +1258,60 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         duration_s: about.as_ref().and_then(|a| at(a, "duration_s")),
         positions,
         at_end,
+        power_reserve: fs::read_to_string(dir.join(crate::power_reserve::FILE))
+            .ok()
+            .and_then(|t| crate::power_reserve::Results::from_json(&t).ok())
+            .map(|r| r.summary()),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_recording_without_a_session_file_is_added_as_a_new_take() {
+        let root = scratch("add-recording");
+        let mut lib = Library::create(&root).unwrap();
+        lib.add(&Watch::new("Pepsi")).unwrap();
+        let id = lib.find("Pepsi").unwrap().watch.id.clone();
+        let outside = scratch("add-recording-outside");
+        fs::create_dir_all(&outside).unwrap();
+        let file = outside.join("pepsi_DU.flac");
+        fs::write(&file, vec![0u8; 100]).unwrap();
+        let written = [
+            (
+                "session.toml",
+                "bph = 28800\n\n[[recording]]\nfile = \".\"\n".to_string(),
+            ),
+            (
+                "session.json",
+                "{\"started_utc\": \"2026-10-22T17:00:00Z\"}".to_string(),
+            ),
+        ];
+        let to = lib
+            .add_recording(&file, &id, "2026-10-22 10.00 Dial Up", &written)
+            .unwrap();
+        assert_eq!(to.file_name().unwrap(), "2026-10-22 10.00 Dial Up");
+        assert!(to.join("pepsi_DU.flac").is_file() && file.is_file());
+        let takes = &lib.find("Pepsi").unwrap().takes;
+        assert_eq!(takes.len(), 1);
+        assert_eq!(
+            takes[0].started_utc.as_deref(),
+            Some("2026-10-22T17:00:00Z")
+        );
+        assert!(!takes[0].incomplete);
+        // A folder is copied whole, under a name of its own.
+        let again = lib.add_recording(&outside, &id, "2026-10-22 10.00 Dial Up", &written);
+        assert!(again.unwrap().join("pepsi_DU.flac").is_file());
+        assert_eq!(lib.find("Pepsi").unwrap().takes.len(), 2);
+        assert!(lib
+            .add_recording(&to, &id, "x", &written)
+            .unwrap_err()
+            .contains("already in"));
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("tg-library-{name}-{}", std::process::id()));
@@ -1418,7 +1522,7 @@ mod tests {
         assert!(Library::create(&root).is_err());
         assert!(Library::open(&root)
             .unwrap_err()
-            .contains("not a Timegrapher library"));
+            .contains("not a Timegrapher Watches folder"));
         assert!(Library::open_or_create(&root).is_err());
         fs::remove_file(root.join("something.txt")).unwrap();
         Library::open_or_create(&root).unwrap();

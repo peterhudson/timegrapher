@@ -529,7 +529,7 @@ function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc, doc.bph)}</div>`;
+    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc.jitter_us, doc.timing_scatter_fraction)}</div>`;
   }
   const o = doc.overall || {};
   // The headline beat error is the unlock's, with the drop's beside it, as
@@ -565,10 +565,11 @@ function recordingView(doc, extra, limits) {
 
 // The canonical sentence for no regular beat, with the timing scatter of
 // the beats when the document gives it (as the server's caveats.rs says it).
-function noRegularBeat(m, bph) {
-  const j = m && m.jitter_us;
-  const scatter = Number.isFinite(j) && bph > 0
-    ? ` (timing scatter ${num(j / 1000, 1)} ms, ${num(j / (3.6e9 / bph) * 100, 1)}% of a beat)` : "";
+// The timing scatter in µs and as the share of a beat core gives with it
+// (timing_scatter_fraction).
+function noRegularBeat(jitterUs, fraction) {
+  const scatter = Number.isFinite(jitterUs) && Number.isFinite(fraction)
+    ? ` (timing scatter ${num(jitterUs / 1000, 1)} ms, ${num(fraction * 100, 1)}% of a beat)` : "";
   return `No regular beat found${scatter}. There are no rate, amplitude or beat error readings.`;
 }
 
@@ -686,16 +687,6 @@ const STEADY_VIEWS = [
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
 ];
-// steady::reading_swing: the peak-to-peak swing, s/d, that a beat-timing
-// sine `amp` ms in size with period `period` s makes in rate readings each
-// averaged over `reading` s: the timing's slope, 2π·amp/period ms per
-// second, is 86.4 s/d for each ms per second, and averaging over a reading
-// keeps sin(x)/x of it, x = π·reading/period.
-function readingSwing(amp, period, reading) {
-  const x = Math.PI * reading / period;
-  const kept = x === 0 ? 1 : Math.abs(Math.sin(x) / x);
-  return 2 * amp * 2 * Math.PI / period * 86.4 * kept;
-}
 // A series' amplitude spectrum from the document's spectra[], if any.
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
@@ -714,7 +705,7 @@ const SERIES = {
 let steadyView = null;
 // The views' two-way switches, as in the app's toolbar: Periods on a log
 // scale, and the FFT's rate as the beat timing in ms.
-let periodsLog = false, fftTiming = false, mapsLog = false;
+let periodsLog = false, fftTiming = false, mapsLog = false, showWheels = true;
 
 // steady::secs: "45 s", "12 min", "2.5 h".
 function secs(t) {
@@ -750,6 +741,18 @@ function logTicks(lo, hi, fmt) {
   }
   return ticks;
 }
+// Core period_ticks::TICKS, put in by the server.
+const PERIOD_TICKS = /*PERIOD_TICKS*/null;
+// A period axis in log10 seconds, as the app's steady::period_grid marks it:
+// core's period_ticks, the finest level with no more marks than one per
+// 64 px, and at least the level 0 ones. [[log10 s, label]].
+function periodTicks(lo, hi, px) {
+  const room = Math.max(2, Math.floor(px / 64));
+  const a = Math.pow(10, lo), b = Math.pow(10, hi);
+  const at = (level) => PERIOD_TICKS.filter((t) => t.period_s >= a && t.period_s <= b && t.level <= level);
+  const fit = [2, 1, 0].map(at).find((v) => v.length <= room) || at(0);
+  return fit.map((t) => [Math.log10(t.period_s), t.label]);
+}
 function linTicks(lo, hi, px, minPx, fmt, ladder) {
   const g = gridFor(lo, hi, px, minPx, ladder);
   return g.ticks.map((v) => [v, fmt(v, g.step)]);
@@ -758,7 +761,7 @@ function linTicks(lo, hi, px, minPx, fmt, ladder) {
 // A plot as the steadiness views draw theirs: an x and a y scale with their
 // own tick labels, and lines, dots, rules and notes, all inside the plot.
 //   x, y: [lo, hi]; xTicks(lo, hi, plotW), yTicks(lo, hi, plotH): [[v, label]]
-//   hlines: [{y, color, dash}]; vlines: [{x, color, width, dash, label, ink, left}]
+//   hlines: [{y, color, dash}]; vlines: [{x, color, opacity, width, dash, label, ink, left}]
 //   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
 //   notes: [{x, y, text, above}] beside a point; corner: {text, top}
 function xyChart(o) {
@@ -791,7 +794,7 @@ function xyChart(o) {
   // a name with no room inside the plot, or over another, is left off.
   const taken = [];
   for (const v of o.vlines || []) {
-    inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})" stroke-width="${v.width || 1}"${dash(v.dash)}/>`;
+    inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})"${v.opacity ? ` stroke-opacity="${v.opacity}"` : ""} stroke-width="${v.width || 1}"${dash(v.dash)}/>`;
     if (!v.label) continue;
     const w = v.label.length * CHAR_W;
     let a = v.left ? sx(v.x) - 3 - w : sx(v.x) + 3;
@@ -828,11 +831,14 @@ function xyChart(o) {
   return `<div class="chart"><svg${o.faint ? ` class="faint"` : ""} viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
 }
 
-// steady::wheel_marks: a bold rule and name at each wheel's period, and a
-// fainter dashed one at half of it ("×2"), where a wheel that is off
-// centre shows twice a turn, unless another wheel turns there. The
-// shorter of two wheels of one name is labelled on its left.
+// steady::wheel_marks: a bold rule and name at each wheel's period, in the
+// wheels' own colour, and a fainter dashed one at half of it ("×2"), where
+// a wheel that is off centre shows twice a turn, unless another wheel turns
+// there. The shorter of two wheels of one name is labelled on its left.
+// With no wheel named, the reference periods in grey; with Wheel Periods
+// off, nothing.
 function wheelMarks(doc, span) {
+  if (!showWheels) return [];
   const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
   const inside = (x) => x > span[0] && x < span[1];
   const out = [];
@@ -840,12 +846,23 @@ function wheelMarks(doc, span) {
     if (!(w.period_s > 0)) return;
     const twin = wheels.some((o, j) => j !== k && o.name === w.name && o.period_s > w.period_s);
     const x = Math.log10(w.period_s);
-    if (inside(x)) out.push({ x, color: "--text2", width: 2, label: wheelTitle(w.name), ink: "--text", left: twin });
+    if (inside(x)) out.push({ x, color: "--wheel", width: 2, label: wheelTitle(w.name), ink: "--wheel", left: twin });
     const half = w.period_s / 2, x2 = Math.log10(half);
     const taken = wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03);
-    if (inside(x2) && !taken && !twin) out.push({ x: x2, color: "--text3", width: 1.25, dash: "wheel", label: `${wheelTitle(w.name)} ×2` });
+    if (inside(x2) && !taken && !twin) out.push({ x: x2, color: "--wheel", opacity: 0.6, width: 1.25, dash: "wheel", label: `${wheelTitle(w.name)} ×2`, ink: "--wheel" });
   });
+  for (const r of referenceLines(doc)) {
+    const x = Math.log10(r.period_s);
+    if (inside(x)) out.push({ x, color: "--text3", width: 1.25, label: r.label, ink: "--text2" });
+  }
   return out;
+}
+
+// periodicity::reference_lines: with no wheel named, 1 min and 1 h, marked
+// as periods alone and named after no wheel.
+function referenceLines(doc) {
+  const lines = (doc.input && doc.input.settings && doc.input.settings.reference_lines) || [];
+  return lines.filter((r) => r.period_s > 0);
 }
 
 function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
@@ -899,7 +916,7 @@ function steadyPlot(s, view, doc) {
       }
       return xyChart({
         title: "Periods", x: span, y, faint: true,
-        xTicks: (a, b) => logTicks(a, b, secs),
+        xTicks: periodTicks,
         yTicks: periodsLog ? (a, b) => logTicks(a, b, sig) : (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
         vlines: wheelMarks(doc, span), hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
         lines: [{ pts, color, width: 1.5 }], marks, notes,
@@ -957,12 +974,11 @@ function steadyPlot(s, view, doc) {
       if (!sp) return steadyNote("The spectrum needs a longer session.");
       // Rate's spectrum is of the beat timing, in ms: drawn, unless Timing
       // asks for that, as the swing it makes in the rate readings, peak to
-      // peak in s/d, over the periods those readings can show.
-      const asRate = sp.series === "rate" && sp.unit === "ms" && !fftTiming;
-      const reading = (doc.config && doc.config.rate_reading_s) || 10;
-      const pts = sp.period_s.map((t, i) => [t, sp.amplitude[i]])
-        .filter(([t]) => !asRate || t >= 2 * reading)
-        .map(([t, a]) => [t, asRate ? readingSwing(a, t, reading) : a])
+      // peak in s/d, over the periods those readings can show, as core
+      // works it out (reading_swing).
+      const swing = !fftTiming && sp.reading_swing && Array.isArray(sp.reading_swing.period_s) ? sp.reading_swing : null;
+      const asRate = !!swing;
+      const pts = (asRate ? swing.period_s.map((t, i) => [t, swing.swing_s_per_day[i]]) : sp.period_s.map((t, i) => [t, sp.amplitude[i]]))
         .filter(([t, a]) => t > 0 && a > 0 && Number.isFinite(a))
         .map(([t, a]) => [Math.log10(t), Math.log10(a)]);
       if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
@@ -976,7 +992,7 @@ function steadyPlot(s, view, doc) {
       const peak = pts.reduce((a, q) => (q[1] > a[1] ? q : a), pts[0]);
       return `<p class="note">${esc(spectrumSupportText(sp))}</p>` + xyChart({
         title: "FFT", x, y, faint: true,
-        xTicks: (p, q) => logTicks(p, q, secs),
+        xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, size),
         vlines: wheelMarks(doc, x), lines: [{ pts, color, width: 1.5 }],
         marks: [{ x: peak[0], y: peak[1], color }],
@@ -1009,7 +1025,7 @@ function steadyPlot(s, view, doc) {
       }
       return xyChart({
         title: "Allan Deviation", x, y,
-        xTicks: (p, q) => logTicks(p, q, secs),
+        xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, (d) => sig(d) + unit),
         lines: [{ pts: white, color: "--text2", width: 1, dash: "loose" }, { pts: dev, color, width: 1.5 }],
         dots: [{ pts: dev, color, r: 2 }], notes,
@@ -1084,8 +1100,9 @@ function steadinessCard(doc) {
     ${steadySwitch()}<p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
 }
 
-// The current view's switch, as in the app's toolbar: Log Scale for
-// Periods, Timing for the FFT.
+// The current view's switches, as in the app's toolbar: Log Scale for
+// Periods, Timing for the FFT, Log Scale for the maps, and Wheel Periods on
+// all four.
 function steadySwitch() {
   // Each with the app's hover hint.
   const sw = steadyView === "periods"
@@ -1095,8 +1112,14 @@ function steadySwitch() {
       : steadyView === "stft" || steadyView === "wavelet"
         ? ["mapslog", "Log Scale", mapsLog, "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines beside strong ones still show"]
         : null;
-  return sw ? `<div class="seg" role="group" aria-label="Scale"><button data-switch="${sw[0]}" aria-pressed="${sw[2]}" title="${esc(sw[3])}">${sw[1]}</button></div>` : "";
+  if (!sw) return "";
+  const wheels = ["wheels", "Wheel Periods", showWheels, WHEELS_HINT];
+  // Each a switch of its own, side by side.
+  return `<div class="seg" role="group" aria-label="Switches">${[sw, wheels].map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("")}</div>`;
 }
+
+// steady::WHEELS_HINT.
+const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in green and named beside its line, and half of it dashed, where a wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
 
 function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-steady]")) {
@@ -1106,6 +1129,7 @@ function wireSteadiness(root) {
     b.addEventListener("click", () => {
       if (b.dataset.switch === "log") periodsLog = !periodsLog;
       else if (b.dataset.switch === "mapslog") mapsLog = !mapsLog;
+      else if (b.dataset.switch === "wheels") showWheels = !showWheels;
       else fftTiming = !fftTiming;
       redraw();
     });
@@ -1172,7 +1196,7 @@ function mapChart(m, doc, log) {
   const left = t0 - dt / 2, width = dt * w;
   const x0 = Math.min(0, left), x1 = Math.max(doc.duration_s || 0, left + width);
   const W = chartWidth(), H = 170, T = 4, B = 20, R = 6, plotH = H - T - B;
-  const yt = logTicks(bottom, top, secs);
+  const yt = periodTicks(bottom, top, plotH);
   const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
   const plotW = W - L - R;
   const xt = linTicks(x0, x1, plotW, Math.min(80, plotW / 4), (t) => fmtTime(t), TIME_STEPS);
@@ -1190,14 +1214,20 @@ function mapChart(m, doc, log) {
     g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
   }
   g += `<g clip-path="url(#${area.id})">${grid}</g>`;
-  // tfmap::wheel_rows: each named wheel's turn across the map, dashed and
-  // named at the right, where it falls inside the map's periods.
+  // tfmap::wheel_rows: each named wheel's turn across the map, dashed in
+  // the wheels' colour and named at the right, where it falls inside the
+  // map's periods; with no wheel named, the reference periods in grey;
+  // with Wheel Periods off, nothing.
   let over = "";
-  for (const wh of (doc.input && doc.input.settings && doc.input.settings.named_wheels) || []) {
-    const y = Math.log10(wh.period_s);
-    if (!(wh.period_s > 0) || y <= bottom || y >= top) continue;
-    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--text)" stroke-opacity="0.7" stroke-width="1" stroke-dasharray="4 4"/>`;
-    over += `<text x="${L + plotW - 3}" y="${sy(y) - 3}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px">${esc(wheelTitle(wh.name))}</text>`;
+  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+  const rows = !showWheels ? []
+    : wheels.length ? wheels.map((wh) => [wheelTitle(wh.name), wh.period_s, "--wheel"])
+      : referenceLines(doc).map((r) => [r.label, r.period_s, "--text2"]);
+  for (const [name, period, colour] of rows) {
+    const y = Math.log10(period);
+    if (!(period > 0) || y <= bottom || y >= top) continue;
+    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(${colour})" stroke-width="1.25" stroke-dasharray="${DASH.wheel}"/>`;
+    over += `<text x="${L + plotW - 3}" y="${sy(y) - 3}" text-anchor="end" style="fill:var(${colour});paint-order:stroke;stroke:var(--card);stroke-width:3px">${esc(name)}</text>`;
   }
   const k = mapPaints.length;
   const box = { left: sx(left), top: sy(top), width: sx(left + width) - sx(left), height: sy(bottom) - sy(top) };
@@ -1510,7 +1540,7 @@ function recordView(doc, heard) {
   }
   const clipped = c.clipping && c.clipping.beats > 0 ? `${num(c.clipping.beat_fraction * 100, 1)}% of beats were clipped.` : "";
   if (c.watch_heard === false) {
-    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat({ jitter_us: Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null }, c.bph))}${clipped ? ` ${clipped}` : ""}</div>`;
+    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat(Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null, c.timing_scatter_fraction))}${clipped ? ` ${clipped}` : ""}</div>`;
     return html;
   }
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${clipped}</div>`;

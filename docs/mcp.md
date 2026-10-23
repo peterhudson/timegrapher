@@ -96,7 +96,7 @@ That route has not been tried with this server yet.
 | Tool | Runs | What for |
 |---|---|---|
 | `analyze_recording` | `analyze` | Rate, amplitude and beat error of one recording in one position, and whether a regular beat was found |
-| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values; writes `report.html` |
+| `run_session` | `session` | A multi-position test (DU, DD, CU, CD, CL, CR) with Witschi's characteristic values, and a Power Reserve take's run in `power_reserve`; writes `report.html` |
 | `check_steadiness` | `series` | How the rate, amplitude and beat error move over a long recording, with the statistics; with `maps`, the time-frequency maps too |
 | `long_run` | `long` | Rate and amplitude over hours and the periodic changes that point at a wheel of the train; writes `report.html` |
 | `tick_tock_profile` | `profile` | The Tick and Tock sounds with the marks the engine measured |
@@ -283,7 +283,7 @@ the timegrapher app draws them:
   Wavelet Map views draw each series' size at each period and time, as the
   app's panes do: viridis from the core's table, on the colour scale the
   document gives each map (Log Scale switches it to the log one), empty
-  where nothing was read, with the named wheels' turns dashed across them;
+  where nothing was read, with the named wheels' turns (or 1 min and 1 h) dashed across them;
   pointing at a map reads a cell under it. The model reads each map's
   outline in `time_frequency_maps` (its periods, times, cells read and
   scale) rather than its cells, and the coherences without their
@@ -296,6 +296,14 @@ app, a chart over time is scaled to all but the highest and lowest 2% of
 its readings, so one glitch doesn't flatten it, and says how many are off
 the scale. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
+A period axis is marked, as in the app, at times a watchmaker reads (5 s,
+1 min, 1 h, 24 h), as many as have room, from the same list in the core.
+The Periods and FFT views and the maps mark the named wheels' turns in
+the wheels' own green, from the core's palette, as the app does. With no
+calibre, no wheel is named, and they mark 1 min and 1 h instead, the
+document's `reference_lines`, in grey: periods alone, named after no
+wheel. A Wheel Periods switch beside each of those views' own switch
+turns the marks off and on, as in the app.
 Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
@@ -321,7 +329,11 @@ document, about what the numbers alone do not say:
   amplitude difference between any two positions, `d_amplitude`, is not
   mistaken for vertical minus horizontal, `dvh_amplitude`), and what limits
   the readings. A sentence names the positions it is about, unless it is
-  about every one.
+  about every one. A Power Reserve take's folder leads with its run: how
+  long the watch ran, in which position, how the run ended (the watch
+  stopping, stopped by hand, or the 80 h limit), how many times the beats
+  stopped for 30 s or more and came back, and how many hours `hours`
+  measures.
 - `record_position`: what was recorded, what the take's check measured,
   the lift angle and whether it was given, the calibre's or the default,
   how many of the expected beats were found and clipped (or that no

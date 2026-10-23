@@ -18,7 +18,7 @@ Clock        not calibrated: rates are read on the sound card's clock, whose err
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
 Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
 Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
-Periodic changes in rate:
+Periodic changes in rate (the rate itself, not 10 s readings):
       60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
       20.01 s ±0.22   swing 0.3 deg p-p      explains  23%  false alarm <1e-300  no wheel listed within ±0.2 s or 1%; nearest is the fourth wheel, -66.6% off
@@ -74,16 +74,21 @@ plus three that name the periodic components after wheels:
   It also sets the lift angle when `--lift` is not given (52° when the
   table has no lift angle for the calibre); it does not set the beat
   rate, which `--bph` gives or the recording shows.
-- `--escape-teeth N` sets the escape wheel's teeth. Without it or a
-  calibre that gives them, both common escape wheels are named, 15 teeth
-  (30 beats a turn) and 20 teeth (40 beats, the ETA 2824 family and
-  Rolex's): at 28,800 bph 3.75 s and 5 s, and the line the recording
-  shows picks one.
+- `--escape-teeth N` sets the escape wheel's teeth. With a calibre whose
+  table gives no escape wheel and no `--escape-teeth`, both common escape
+  wheels are named, 15 teeth (30 beats a turn) and 20 teeth (40 beats,
+  the ETA 2824 family and Rolex's): at 28,800 bph 3.75 s and 5 s, and the
+  line the recording shows picks one. With no calibre, no wheel is named
+  but the escape wheel `--escape-teeth` gives, if any: which wheel turns
+  once a minute or once an hour is the calibre's to say. The JSON then
+  gives 1 min and 1 h as `input.settings.reference_lines` (`label`,
+  `period_s`), periods to mark on a chart, not wheels.
 - `--wheel "third wheel=450"` (repeatable) names another wheel whose turn
   period you know.
 
 `series` takes the same three. Both list the wheels they used in the
-JSON's `input.settings.named_wheels`.
+JSON's `input.settings.named_wheels`, and the reference lines in
+`input.settings.reference_lines` (empty when a wheel is named).
 
 ## Calibrating the sound card
 
@@ -131,9 +136,9 @@ as a huge sound-card error; rate and beat error are fitted per stretch and
 combined weighted by beats (where the beat error's sign turns over across
 a break, as sizes, given as positive, and then the slices' beat errors
 and `series`' are sizes too); no 10 s window, slice or `series` 2 s window reaches into a
-break's gap from either side (a slice that would is left empty, rate,
-beat error and amplitude alike, rather than read from part of its
-span), and the gap runs from the last sound before the pause to where
+break's gap from either side (a slice that would, or that has a 2 s
+stretch with no beat in it, is left empty, rate, beat error and
+amplitude alike, rather than read from part of its span), and the gap runs from the last sound before the pause to where
 the clock log shows it took up again, so sound inside it belongs to
 neither stretch; and the period search and Steadiness run on true time,
 so a gap is a missing stretch. The JSON lists the breaks as `breaks`.
@@ -195,7 +200,11 @@ minus the slope of the average cycle, in s/d. A cycle shorter than 30 s
 (three 10 s rate readings) is reported as the timing swing instead, in ms
 peak to peak: an escape wheel's tooth pattern moves each beat by a fraction
 of a millisecond, which as a slope is hundreds of s/d that no rate reading
-would show. The JSON keeps `peak_to_peak` in s/d and adds
+would show. The swing in s/d is that of the rate itself, moment to
+moment through the cycle. A rate reading averages over its 10 s, so
+`series`' cycle (folded from the readings) and the FFT's swing in the
+readings (`spectra[].reading_swing`) show less of it: sin *x*/*x* of it,
+*x* = π·10/*P*, for a sine of period *P*. The JSON keeps `peak_to_peak` in s/d and adds
 `timing_peak_to_peak_ms`, plus `size` and `size_unit` for the figure to
 show.
 

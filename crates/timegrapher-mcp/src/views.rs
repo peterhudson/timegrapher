@@ -32,8 +32,11 @@ pub fn page() -> &'static str {
         );
         let viridis = serde_json::to_string(&timegrapher_core::palette::VIRIDIS)
             .expect("the viridis table as JSON");
+        let period_ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS)
+            .expect("the period marks as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
+            .replace("/*PERIOD_TICKS*/null", &period_ticks)
     })
 }
 
@@ -57,6 +60,7 @@ fn variables(p: &Palette) -> String {
         ("drop", p.drop.css()),
         ("peak", p.peak.css()),
         ("sound", p.sound.css()),
+        ("wheel", p.wheel.css()),
         // The grid is the text colour, faint, as in the app.
         ("grid", rgba(p.text, 0.12)),
     ]
@@ -159,9 +163,8 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 // As the app's Amplitude chart: the average of the two sides,
                 // and each side's own (the Tick is the even beats).
                 let (tick, tock) = (get(amp[0]), get(amp[1]));
-                let sides: Vec<f64> = [tick, tock].into_iter().flatten().collect();
-                if !sides.is_empty() {
-                    amps.push([t, sides.iter().sum::<f64>() / sides.len() as f64]);
+                if let Some(v) = timegrapher_core::amplitude::mean_of_sides(tick, tock) {
+                    amps.push([t, v]);
                 }
                 if let Some(v) = tick {
                     ticks.push([t, v]);
@@ -479,6 +482,14 @@ mod tests {
         for c in [LIGHT.trace_rate, DARK.trace_rate, LIGHT.tick, DARK.tock] {
             assert!(page.contains(&c.css()), "{}", c.css());
         }
+        // The wheels' own colour, in both themes.
+        for c in [LIGHT.wheel, DARK.wheel] {
+            assert!(
+                page.contains(&format!("--wheel: {};", c.css())),
+                "{}",
+                c.css()
+            );
+        }
     }
 
     #[test]
@@ -519,6 +530,14 @@ mod tests {
         assert!(!page.contains("/*VIRIDIS*/"));
         let table = serde_json::to_string(&timegrapher_core::palette::VIRIDIS).unwrap();
         assert!(page.contains(&format!("const VIRIDIS = {table};")));
+    }
+
+    #[test]
+    fn the_view_marks_periods_from_the_cores_list() {
+        let page = page();
+        assert!(!page.contains("/*PERIOD_TICKS*/"));
+        let ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS).unwrap();
+        assert!(page.contains(&format!("const PERIOD_TICKS = {ticks};")));
     }
 
     #[test]

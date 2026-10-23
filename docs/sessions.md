@@ -142,9 +142,11 @@ A recording on a corpus holdout take may also carry
 watchmaker confirmed; `session` reads past it, and `regress --holdout`
 checks it (see [regress.md](regress.md#holdout-takes)).
 
-`escape_teeth` (default 15) sets the escape wheel's turn period, and
+`escape_teeth` (default 15 when the calibre gives none) sets the escape
+wheel's turn period, and
 `wheels = { "escape wheel (20 teeth)" = 5.0, "third wheel" = 450.0 }`
-names more wheels in the cycle search (seconds per turn).
+names more wheels in the cycle search (seconds per turn). With no
+calibre, only the wheels these two give are named.
 
 The `calibre` line, when the calibre table knows the name (the same table
 the app's picker, `calibres` and `long --calibre` use; "3235", "2824-2" and
@@ -333,7 +335,9 @@ of the recording or for `measure_s`:
   say which stone is which; in the JSON, Tick is `amplitude_even_deg`
   and Tock `amplitude_odd_deg`);
 - jitter, and the median and the 5th to 95th percentile of rate in 10 s
-  windows: how steady the rate is. The headline rate is the fit over
+  windows: how steady the rate is. A 10 s window is used only when each
+  2 s of it holds a beat and it reaches into no cut; it needs no beat at
+  or after its end, so a stretch of exactly 10 s has one. The headline rate is the fit over
   every beat (over the stretches between cuts, as above), the average the
   hands keep; where the rate wanders with dips (the Yacht-Master crown
   left), the 10 s median sits a few s/d above it, as tg's median reading

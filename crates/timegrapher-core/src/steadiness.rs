@@ -26,7 +26,7 @@
 //! scores each period with a false-alarm chance and names the wheel) and
 //! the two-state finder, and one headline is drawn from all of them.
 
-use crate::beats::Beat;
+use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::distribution::{self, Distributions};
 use crate::dsp::median;
@@ -2067,7 +2067,8 @@ pub fn check(
     long_cfg: &LongConfig,
     cfg: &Config,
 ) -> Report {
-    let map = crate::longrun::true_time(clock, &long.breaks);
+    let holes = Cuts::new(clock, &long.breaks, &[]);
+    let map = |t: f64| holes.true_time(t);
     let r = cfg.rate_reading_s;
     let wins = rate_windows(log, clock, &long.breaks, r);
     let rate_grid = rate_grid(&wins, r);
@@ -2125,10 +2126,9 @@ pub fn check(
             distribution::distributions(&[], 0.0, 0.0, 0.0)
         }
     };
-    let gaps = crate::longrun::gaps(clock, &long.breaks);
-    let amp_samples: Vec<twostate::Sample> = aw
-        .iter()
-        .filter(|w| !crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)))
+    let amp_samples: Vec<twostate::Sample> = holes
+        .amplitude_windows(aw)
+        .into_iter()
         .filter_map(|w| {
             Some(twostate::Sample {
                 start_s: map(w.start_s),
@@ -2184,6 +2184,7 @@ pub fn check(
     .into_iter()
     .filter_map(|(g, name, unit, scale)| {
         crate::spectrum::amplitude_spectrum(g, name, unit, scale, cfg.max_points)
+            .map(|s| s.with_reading_swing(cfg.rate_reading_s))
     })
     .collect();
 
@@ -2284,8 +2285,8 @@ fn windows_grid(
     breaks: &[crate::breaks::Break],
     f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>,
 ) -> Grid {
-    let map = crate::longrun::true_time(clock, breaks);
-    let gaps = crate::longrun::gaps(clock, breaks);
+    let holes = Cuts::new(clock, breaks, &[]);
+    let map = |t: f64| holes.true_time(t);
     let aw = &log.amplitude_windows;
     // One window's length on true time, so the grid keeps step with the
     // windows when the clock fit stretches time (2.9 s over 16 h at
@@ -2301,10 +2302,7 @@ fn windows_grid(
     // On true time, so each gap is left empty.
     let n = ((map(aw.last().unwrap().start_s) - map(w0.start_s)) / astep).round() as usize + 1;
     let mut y = vec![f64::NAN; n];
-    for w in aw {
-        if crate::longrun::touches_gap(&gaps, map(w.start_s), map(w.end_s)) {
-            continue;
-        }
+    for w in holes.amplitude_windows(aw) {
         let i = ((map(w.start_s) - map(w0.start_s)) / astep).round() as usize;
         if i < n {
             y[i] = f(w).unwrap_or(f64::NAN);
@@ -2374,45 +2372,30 @@ pub(crate) fn reading_grids(
 /// None reaches into a break's gap, and none is taken from part of its
 /// span: each of its 2 s stretches (the amplitude windows' length) must
 /// hold beats, so a reading at the edge of a gap or a masked stretch is
-/// left out, not averaged over what is left.
+/// left out, not averaged over what is left. Laid by [`Cuts::windows`]
+/// from the first beat to the end of the take, as a take's readings are.
 pub(crate) fn rate_windows(
     log: &BeatLog,
     clock: Option<&ClockFit>,
     breaks: &[crate::breaks::Break],
     r: f64,
 ) -> Vec<timing::WindowFit> {
-    let map = crate::longrun::true_time(clock, breaks);
-    let gaps = crate::longrun::gaps(clock, breaks);
-    let beats: Vec<Beat> = log
-        .beats
-        .iter()
-        .map(|b| Beat {
-            time: map(b.time),
-            ..*b
-        })
-        .collect();
+    let holes = Cuts::new(clock, breaks, &[]);
+    let beats = holes.beats(&log.beats);
     let astep = log
         .amplitude_windows
         .first()
         .map_or(2.0, |w| w.end_s - w.start_s);
-    let mut wins = timing::windows(&beats, log.bph, r, r);
-    wins.retain(|w| {
-        !crate::longrun::touches_gap(&gaps, w.start_s, w.end_s)
-            && covered(&beats, w.start_s, w.end_s, astep)
-    });
-    wins
-}
-
-/// Whether every stretch of `part` seconds from `start` to `end` holds a
-/// beat (`beats` sorted by time).
-pub(crate) fn covered(beats: &[Beat], start: f64, end: f64, part: f64) -> bool {
-    let k = ((end - start) / part).round().max(1.0) as usize;
-    let len = (end - start) / k as f64;
-    (0..k).all(|j| {
-        let a = start + j as f64 * len;
-        let i = beats.partition_point(|b| b.time < a);
-        beats.get(i).is_some_and(|b| b.time < a + len)
-    })
+    let from = beats.first().map_or(0.0, |b| b.time);
+    holes.windows(
+        &beats,
+        log.bph,
+        from,
+        holes.true_time(log.duration_s),
+        r,
+        r,
+        astep,
+    )
 }
 
 /// Average the windows of `fine` into `n` readings of `step` seconds
@@ -2498,8 +2481,7 @@ fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorre
             .filter(|v| v.is_finite())
             .unwrap_or(0.0)
     };
-    let rr = (rho(&xd) * rho(&yd)).clamp(-0.99, 0.99);
-    let n_eff = (n * (1.0 - rr) / (1.0 + rr)).clamp(4.0, n);
+    let n_eff = crate::confidence::effective_readings(n, rho(&xd) * rho(&yd)).max(4.0);
     let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
     let p_value = chi2_tail(z * z, 1);
     let step = rate.step;
@@ -3560,16 +3542,16 @@ mod tests {
         let lost: Vec<usize> = (0..240).filter(|&b| r.y[b].is_nan()).collect();
         assert_eq!(lost, vec![13]);
         // Rate readings: beats in each 2 s of the 10 s, or none.
-        let beats: Vec<Beat> = (0..160)
+        let beats: Vec<crate::beats::Beat> = (0..160)
             .filter(|&i| !(80..96).contains(&i))
-            .map(|index| Beat {
+            .map(|index| crate::beats::Beat {
                 time: index as f64 * 0.125,
                 index,
                 quality: 1.0,
             })
             .collect();
-        assert!(covered(&beats, 0.0, 10.0, 2.0));
-        assert!(!covered(&beats, 10.0, 20.0, 2.0));
+        assert!(crate::clean::covered(&beats, 0.0, 10.0, 2.0));
+        assert!(!crate::clean::covered(&beats, 10.0, 20.0, 2.0));
         // Allan deviation: a block with a reading missing is left out.
         let mut y: Vec<f64> = (0..64).map(|i| (i % 2) as f64).collect();
         y[5] = f64::NAN;
@@ -3586,17 +3568,19 @@ mod tests {
             audio_s: 300.0,
             gap_s: 1.0,
         }];
-        let gaps = crate::longrun::gaps(None, &breaks);
+        let holes = Cuts::new(None, &breaks, &[]);
+        let gap = holes.holes()[0];
         assert!(
-            (gaps[0].0 - 300.0).abs() < 1e-5 && gaps[0].1 == 301.0,
-            "{gaps:?}"
+            (gap.start_s - 300.0).abs() < 1e-5 && gap.end_s == 301.0,
+            "{gap:?}"
         );
-        let cut = crate::longrun::cuts(None, &breaks)[0];
+        // The old cut, halfway through the gap.
+        let cut = holes.true_time(300.0) - 0.5 - 1e-6;
         assert!(!(290.3 < cut && cut < 300.3));
-        assert!(crate::longrun::touches_gap(&gaps, 290.3, 300.3));
-        assert!(crate::longrun::touches_gap(&gaps, 300.8, 310.8));
-        assert!(!crate::longrun::touches_gap(&gaps, 290.0, 300.0));
-        assert!(!crate::longrun::touches_gap(&gaps, 301.0, 311.0));
+        assert!(!holes.clear(290.3, 300.3));
+        assert!(!holes.clear(300.8, 310.8));
+        assert!(holes.clear(290.0, 300.0));
+        assert!(holes.clear(301.0, 311.0));
     }
 }
 

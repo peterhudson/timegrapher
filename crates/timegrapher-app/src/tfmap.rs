@@ -126,7 +126,7 @@ pub fn draw(
     m: &TimeFrequency,
     upto_s: f64,
     log: bool,
-    wheels: &[Wheel],
+    wheels: Option<&[Wheel]>,
     time_label: impl Fn(f64) -> String + 'static,
     period_label: impl Fn(f64) -> String + Clone + 'static,
 ) {
@@ -170,19 +170,12 @@ pub fn draw(
     let key_h = 22.0;
     let plot_h = (ui.available_height() - key_h).max(40.0);
     let x_hi = upto_s.max(left + width);
-    let lp = period_label.clone();
     let resp = base
         .height(plot_h)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
         .x_axis_formatter(move |g, _| time_label(g.value))
-        .y_grid_spacer(super_log_grid)
-        .y_axis_formatter(move |g, r| {
-            if g.step_size >= 1.0 || r.end() - r.start() < 3.0 {
-                lp(10f64.powf(g.value))
-            } else {
-                String::new()
-            }
-        })
+        .y_grid_spacer(crate::steady::period_grid(plot_h))
+        .y_axis_formatter(|g, _| crate::steady::period_label(g.value))
         .default_x_bounds(0.0f64.min(left), x_hi)
         .default_y_bounds(bottom, top)
         .show(ui, |p| {
@@ -212,57 +205,45 @@ pub fn draw(
     key_row(ui, m, scale, pal);
 }
 
-/// The log10 period axis' marks: each power of ten, and 2 and 5 between
-/// when the span is short.
-fn super_log_grid(input: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
-    let (lo, hi) = input.bounds;
-    let fine = hi - lo < 3.0;
-    let mut marks = Vec::new();
-    for k in (lo.floor() as i32 - 1)..=(hi.ceil() as i32) {
-        for (m, step) in [(1.0f64, 1.0), (2.0, 0.3), (5.0, 0.3)] {
-            if !fine && m != 1.0 {
-                continue;
-            }
-            let v = k as f64 + m.log10();
-            if v >= lo && v <= hi {
-                marks.push(egui_plot::GridMark {
-                    value: v,
-                    step_size: step,
-                });
-            }
-        }
-    }
-    marks
-}
-
-/// The wheels' turns across the map, dashed and named at the right, where
-/// they fall inside its periods.
+/// The wheels' turns across the map, dashed in the wheels' colour and
+/// named at the right, where they fall inside its periods; with no wheels,
+/// the reference periods in grey; with `None`, nothing.
 fn wheel_rows(
     p: &mut egui_plot::PlotUi<'_>,
-    wheels: &[Wheel],
+    wheels: Option<&[Wheel]>,
     (lo, hi): (f64, f64),
     right: f64,
     pal: &theme::Palette,
 ) {
-    for w in wheels {
-        let y = w.period_s.log10();
+    let Some(wheels) = wheels else {
+        return;
+    };
+    let rows: Vec<(String, f64, Color32)> = if wheels.is_empty() {
+        timegrapher_core::periodicity::reference_lines()
+            .into_iter()
+            .map(|r| (r.label.to_string(), r.period_s, pal.text_secondary))
+            .collect()
+    } else {
+        wheels
+            .iter()
+            .map(|w| (title_case(&w.name), w.period_s, pal.wheel))
+            .collect()
+    };
+    for (name, period_s, colour) in rows {
+        let y = period_s.log10();
         if y <= lo || y >= hi {
             continue;
         }
         p.hline(
-            egui_plot::HLine::new(w.name.clone(), y)
-                .color(pal.text.gamma_multiply(0.7))
+            egui_plot::HLine::new(name.clone(), y)
+                .color(colour)
                 .style(LineStyle::Dashed { length: 4.0 })
-                .width(1.0_f32),
+                .width(1.25_f32),
         );
         p.text(
-            Text::new(
-                "wheel",
-                PlotPoint::new(right, y),
-                format!("{} ", title_case(&w.name)),
-            )
-            .color(pal.text)
-            .anchor(egui::Align2::RIGHT_BOTTOM),
+            Text::new("wheel", PlotPoint::new(right, y), format!("{name} "))
+                .color(colour)
+                .anchor(egui::Align2::RIGHT_BOTTOM),
         );
     }
 }
