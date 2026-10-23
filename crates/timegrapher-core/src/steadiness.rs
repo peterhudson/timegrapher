@@ -2372,7 +2372,8 @@ pub(crate) fn reading_grids(
 /// None reaches into a break's gap, and none is taken from part of its
 /// span: each of its 2 s stretches (the amplitude windows' length) must
 /// hold beats, so a reading at the edge of a gap or a masked stretch is
-/// left out, not averaged over what is left.
+/// left out, not averaged over what is left. Laid by [`Cuts::windows`]
+/// from the first beat to the end of the take, as a take's readings are.
 pub(crate) fn rate_windows(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -2385,9 +2386,16 @@ pub(crate) fn rate_windows(
         .amplitude_windows
         .first()
         .map_or(2.0, |w| w.end_s - w.start_s);
-    let mut wins = timing::windows(&beats, log.bph, r, r);
-    wins.retain(|w| holes.whole(&beats, w.start_s, w.end_s, astep));
-    wins
+    let from = beats.first().map_or(0.0, |b| b.time);
+    holes.windows(
+        &beats,
+        log.bph,
+        from,
+        holes.true_time(log.duration_s),
+        r,
+        r,
+        astep,
+    )
 }
 
 /// Average the windows of `fine` into `n` readings of `step` seconds
