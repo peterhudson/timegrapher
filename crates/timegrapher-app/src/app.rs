@@ -145,6 +145,9 @@ struct OpenAsk {
     /// When it started, in this computer's time, as 2026-10-22 14:30.
     started: String,
     error: Option<String>,
+    /// Asked by Keep in a Watch…, of the recording already on show: to
+    /// keep it, not to open it.
+    keeping: bool,
 }
 
 /// What a recording's files say about it: its session file, if it has
@@ -1283,6 +1286,9 @@ pub struct TimegrapherApp {
     watch_sort: watches::Sort,
     watch_archived: bool,
     watch_form: Option<watches::Form>,
+    /// The form was opened from Keep in a Watch…: Done keeps what is on
+    /// show in the new watch.
+    keep_after_form: bool,
     /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
@@ -1794,6 +1800,7 @@ impl TimegrapherApp {
             watch_sort: watches::Sort::default(),
             watch_archived: false,
             watch_form: None,
+            keep_after_form: false,
             take_ask: None,
             take_keep: None,
             thumbs: Default::default(),
@@ -2298,8 +2305,21 @@ impl TimegrapherApp {
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.source_label.clear();
+        // The recording opened goes too: what follows is a new take.
+        if self.input == Input::File {
+            self.input = Input::Microphone;
+            self.opened_path.clear();
+            if let Some(s) = self.mic_setup.take() {
+                self.set_watch_setup(s);
+            }
+        }
         if listening && close_error.is_none() {
             self.start_microphone();
+        } else if !self.quick_listen {
+            // The next take is of the watch picked.
+            if let Some(w) = self.open_watch().map(|e| e.watch.clone()) {
+                self.apply_watch(&w);
+            }
         }
         if close_error.is_some() {
             self.message = close_error;
@@ -4594,19 +4614,65 @@ impl TimegrapherApp {
         }
     }
 
-    /// The take folder of the recording opened, when it is outside the
-    /// library and the library has a watch it can be added to.
+    /// The recording opened, a lone file or a take, when it is outside
+    /// the library and the library can take it.
     fn addable_take(&self) -> Option<PathBuf> {
-        let Ok(Some(l)) = &self.library else {
-            return None;
-        };
-        if l.read_only.is_some() || l.watches.is_empty() || self.opened_path.is_empty() {
+        if self.input != Input::File || self.opened_path.is_empty() {
             return None;
         }
-        let p = Path::new(&self.opened_path);
-        let dir = if p.is_dir() { p } else { p.parent()? };
-        let take = dir.join(MANIFEST).is_file() || dir.join("session.json").is_file();
-        (take && !dir.starts_with(&l.root)).then(|| dir.to_path_buf())
+        let p = PathBuf::from(&self.opened_path);
+        let root = match &self.library {
+            Ok(Some(l)) if l.read_only.is_none() => l.root.clone(),
+            // Made with the first watch.
+            Ok(None) => self.library_root()?,
+            _ => return None,
+        };
+        (!p.starts_with(root)).then_some(p)
+    }
+
+    /// Keep what is on show in the watch `id`: the unsaved Quick Listen
+    /// take is saved into it, or the recording opened is copied in
+    /// (asking for what neither it nor the watch says) and opened whole
+    /// from there.
+    fn keep_into(&mut self, id: &str) {
+        if let Some(from) = self.addable_take() {
+            // The pane shows the watch it goes into.
+            self.watch_open = Some(id.to_string());
+            self.unsorted_open = false;
+            // A take folder with its session file goes in whole, copied
+            // or moved.
+            let dir = if from.is_dir() {
+                from.clone()
+            } else {
+                from.parent().map(Path::to_path_buf).unwrap_or_default()
+            };
+            if dir.join(MANIFEST).is_file() || dir.join("session.json").is_file() {
+                self.take_ask = Some(watches::Ask::Add {
+                    from: dir,
+                    watch: Some(id.to_string()),
+                    keep_original: true,
+                });
+                return;
+            }
+            let Some(mut a) = self.open_ask_for(&from, false) else {
+                return self.error(format!(
+                    "\"{}\" can't be added to a watch.",
+                    file_name(&from)
+                ));
+            };
+            a.add = true;
+            a.keeping = true;
+            a.watch = Some(id.to_string());
+            a.new_watch = false;
+            let need = self.open_need(&a);
+            if need == OpenNeed::default() {
+                self.answer_open_ask(a, need);
+            } else {
+                self.open_ask = Some(a);
+            }
+        } else {
+            self.keep_in_watch(id);
+        }
     }
 
     /// Why `take` can't be renamed, moved or deleted now (or, with
@@ -4710,9 +4776,11 @@ impl TimegrapherApp {
                 keep_original,
             } => match lib.add_take(&from, &id, keep_original) {
                 Ok((to, left)) => {
-                    if !keep_original {
-                        self.take_moved(&from, &to);
-                    }
+                    // What is on show is now the watch's take, copied or
+                    // moved.
+                    self.take_moved(&from, &to);
+                    self.watch_open = Some(id);
+                    self.unsorted_open = false;
                     match left {
                         Some(why) => self.error(why),
                         None => self.info_msg(format!(
@@ -4886,11 +4954,16 @@ impl TimegrapherApp {
         }
         self.watch_open = Some(id.to_string());
         self.unsorted_open = false;
-        self.quick_listen = false;
         let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
             self.watch_open = None;
             return;
         };
+        // Readings on show keep the settings they were measured with; the
+        // watch's apply to its next take.
+        if self.live.is_some() {
+            return;
+        }
+        self.quick_listen = false;
         self.apply_watch(&w);
     }
 
@@ -5041,7 +5114,10 @@ impl TimegrapherApp {
         };
         match watches::form(ctx, f, &mut self.cal) {
             Some(watches::FormAction::Save) => self.save_watch_form(),
-            Some(watches::FormAction::Cancel) => self.watch_form = None,
+            Some(watches::FormAction::Cancel) => {
+                self.watch_form = None;
+                self.keep_after_form = false;
+            }
             None => {}
         }
     }
@@ -5137,9 +5213,14 @@ impl TimegrapherApp {
         match done {
             Ok(()) => {
                 self.watch_form = None;
-                if f.new {
+                if f.new && std::mem::take(&mut self.keep_after_form) {
+                    self.keep_into(&w.id);
+                } else if f.new {
                     self.pick_watch(&w.id);
-                } else if self.watch_open.as_ref() == Some(&w.id) && !self.running() {
+                } else if self.watch_open.as_ref() == Some(&w.id)
+                    && !self.running()
+                    && self.live.is_none()
+                {
                     // The take not yet started follows the watch's new details.
                     self.apply_watch(&w);
                 }
@@ -5222,21 +5303,8 @@ impl TimegrapherApp {
     /// watch.
     fn replay_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
-            if let Some(from) = self.addable_take() {
-                if ui
-                    .button("Add to a Watch…")
-                    .on_hover_text(
-                        "Copy or move the take opened, from outside your watches, into one of \
-                         your watches",
-                    )
-                    .clicked()
-                {
-                    self.take_ask = Some(watches::Ask::Add {
-                        from,
-                        watch: self.watch_open.clone(),
-                        keep_original: true,
-                    });
-                }
+            if self.addable_take().is_some() && !self.running() && self.batch.is_none() {
+                self.keep_in_watch_menu(ui);
             }
         });
         let path = PathBuf::from(self.file_path.trim());
@@ -5896,6 +5964,15 @@ impl TimegrapherApp {
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
+        if let Some(w) = self.open_watch().map(|e| e.watch.clone()) {
+            // The watch's details over what the microphone had before a
+            // recording was opened.
+            if let Some(s) = self.mic_setup.take() {
+                self.set_watch_setup(s);
+            }
+            self.quick_listen = false;
+            self.apply_watch(&w);
+        }
         self.input = Input::Microphone;
         match kind {
             NewTake::Listen => self.start_microphone(),
@@ -5947,8 +6024,8 @@ impl TimegrapherApp {
         }
     }
 
-    /// Keep in a Watch…: the Quick Listen take saved into a watch picked
-    /// from the menu.
+    /// Keep in a Watch…: the Quick Listen take, or the recording opened,
+    /// kept in a watch picked from the menu, or in a new one.
     fn keep_in_watch_menu(&mut self, ui: &mut egui::Ui) {
         let watches: Vec<(String, String)> = match &self.library {
             Ok(Some(l)) if l.read_only.is_none() => l
@@ -5974,7 +6051,7 @@ impl TimegrapherApp {
                 }
                 if ui
                     .button("New Watch…")
-                    .on_hover_text("Add a watch, then keep the take in it from this menu")
+                    .on_hover_text("Add a watch, and keep this in it when you press Done")
                     .clicked()
                 {
                     new = true;
@@ -5983,14 +6060,15 @@ impl TimegrapherApp {
             })
             .0
             .on_hover_text(
-                "Save this Quick Listen take into one of your watches, as a take of it. \
-                 Until then it isn't kept: New Take, Quick Listen or quitting asks first.",
+                "Keep this in one of your watches, as a take of it, listed with its takes. \
+                 A recording opened is copied in; the original stays where it is.",
             );
         if let Some(id) = picked {
-            self.keep_in_watch(&id);
+            self.keep_into(&id);
         }
         if new {
             self.open_new_watch_form();
+            self.keep_after_form = true;
         }
     }
 
@@ -7026,6 +7104,7 @@ impl TimegrapherApp {
                 .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_default(),
             error: None,
+            keeping: false,
         })
     }
 
@@ -7085,28 +7164,33 @@ impl TimegrapherApp {
         let modal = egui::Modal::new(egui::Id::new("open question")).show(ctx, |ui| {
             ui.set_width(440.0);
             let pal = theme::pal(ui);
-            ui.label(
-                RichText::new(format!("Open \"{}\"", file_name(&a.path)))
-                    .font(theme::semibold(15.0)),
-            );
-            theme::segmented(
-                ui,
-                &mut a.add,
-                &[
-                    (
-                        true,
-                        "Add to a Watch",
-                        "Copy the recording into one of your watches, where it is kept with \
+            let title = if a.keeping {
+                format!("Keep \"{}\" in a Watch", file_name(&a.path))
+            } else {
+                format!("Open \"{}\"", file_name(&a.path))
+            };
+            ui.label(RichText::new(title).font(theme::semibold(15.0)));
+            // Already on show: only keeping it is asked about.
+            if !a.keeping {
+                theme::segmented(
+                    ui,
+                    &mut a.add,
+                    &[
+                        (
+                            true,
+                            "Add to a Watch",
+                            "Copy the recording into one of your watches, where it is kept with \
                          the watch's takes. The original stays where it is.",
-                    ),
-                    (
-                        false,
-                        "Just Open It",
-                        "Open the recording where it is. It is not added to your watches: \
-                         to add it later, open it again.",
-                    ),
-                ],
-            );
+                        ),
+                        (
+                            false,
+                            "Just Open It",
+                            "Open the recording where it is. It is not added to your watches: \
+                         Keep in a Watch…, in the Take card, adds it later.",
+                        ),
+                    ],
+                );
+            }
             if a.add {
                 let shown = if a.new_watch {
                     "New Watch…"
@@ -7256,7 +7340,11 @@ impl TimegrapherApp {
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                let go = if a.add { "Add and Open" } else { "Open" };
+                let go = match (a.keeping, a.add) {
+                    (true, _) => "Keep",
+                    (false, true) => "Add and Open",
+                    (false, false) => "Open",
+                };
                 if ui
                     .add_enabled(ready, theme::primary(ui, go))
                     .on_hover_text("Go ahead")
@@ -10238,13 +10326,16 @@ impl TimegrapherApp {
                 );
                 let body = self.hand_tab(ui, top, Pane::Watch);
                 let inner = card(ui, body);
-                ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                    // Its toolbar too: New Watch… and Quick Listen are there.
-                    if self.pane_tools(ui, Pane::Watch) {
-                        ui.add_space(4.0);
-                    }
-                    self.watch_pane(ui)
-                });
+                ui.scope_builder(
+                    egui::UiBuilder::new().id_salt("hand Watch").max_rect(inner),
+                    |ui| {
+                        // Its toolbar too: New Watch… and Quick Listen are there.
+                        if self.pane_tools(ui, Pane::Watch) {
+                            ui.add_space(4.0);
+                        }
+                        self.watch_pane(ui)
+                    },
+                );
             }
             if mic {
                 let bottom = egui::Rect::from_min_max(
@@ -10253,12 +10344,17 @@ impl TimegrapherApp {
                 );
                 let body = self.hand_tab(ui, bottom, Pane::Microphone);
                 let inner = card(ui, body);
-                ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                    if self.pane_tools(ui, Pane::Microphone) {
-                        ui.add_space(4.0);
-                    }
-                    self.microphone_pane(ui)
-                });
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .id_salt("hand Microphone")
+                        .max_rect(inner),
+                    |ui| {
+                        if self.pane_tools(ui, Pane::Microphone) {
+                            ui.add_space(4.0);
+                        }
+                        self.microphone_pane(ui)
+                    },
+                );
             }
         }
         if reserve {
@@ -10268,12 +10364,17 @@ impl TimegrapherApp {
                 egui::Rect::from_min_max(egui::pos2(right.left(), right.bottom() - h), right.max);
             let body = self.hand_tab(ui, bottom, Pane::PowerReserve);
             let inner = card(ui, body);
-            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                if self.pane_tools(ui, Pane::PowerReserve) {
-                    ui.add_space(4.0);
-                }
-                self.reserve_pane(ui);
-            });
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .id_salt("hand PowerReserve")
+                    .max_rect(inner),
+                |ui| {
+                    if self.pane_tools(ui, Pane::PowerReserve) {
+                        ui.add_space(4.0);
+                    }
+                    self.reserve_pane(ui);
+                },
+            );
             right = egui::Rect::from_min_max(
                 right.min,
                 egui::pos2(right.right(), (bottom.top() - theme::GAP).max(right.top())),
@@ -10292,12 +10393,17 @@ impl TimegrapherApp {
                 egui::Rect::from_min_max(egui::pos2(right.left(), right.bottom() - h), right.max);
             let body = self.hand_tab(ui, bottom, Pane::PositionsTest);
             let inner = card(ui, body);
-            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                if self.pane_tools(ui, Pane::PositionsTest) {
-                    ui.add_space(4.0);
-                }
-                self.positions_pane(ui);
-            });
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .id_salt("hand PositionsTest")
+                    .max_rect(inner),
+                |ui| {
+                    if self.pane_tools(ui, Pane::PositionsTest) {
+                        ui.add_space(4.0);
+                    }
+                    self.positions_pane(ui);
+                },
+            );
             right = egui::Rect::from_min_max(
                 right.min,
                 egui::pos2(right.right(), (bottom.top() - theme::GAP).max(right.top())),
@@ -14216,6 +14322,10 @@ mod tests {
         ] {
             assert!(form.contains(t), "{t}: {form}");
         }
+        // Nothing on show: the new watch's details are the next take's.
+        // (Readings on show keep theirs: see
+        // a_recording_on_show_is_kept_in_a_new_watch_with_its_charts.)
+        app.new_session();
         app.save_watch_form();
         assert!(app.watch_form.is_none());
         assert!(library::Library::is_library(&root));
@@ -14536,6 +14646,96 @@ mod tests {
         assert!(started_in(&take).is_some());
         // What is in the watches already opens straight away.
         assert!(app.open_ask_for(&take, false).is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_recording_on_show_is_kept_in_a_new_watch_with_its_charts() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let lone = base.join("outside").join("meteorite_DU.wav");
+        std::fs::create_dir_all(lone.parent().unwrap()).unwrap();
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(&lone, spec).unwrap();
+        for _ in 0..8000 {
+            w.write_sample(0i16).unwrap();
+        }
+        w.finalize().unwrap();
+        // A recording opened from outside the watches, its readings on show.
+        let mut app = synthetic(5.0, 0.0);
+        app.use_library(Some(root.clone()));
+        app.input = Input::File;
+        app.opened_path = lone.display().to_string();
+        let shown = (app.trend.len(), app.bph, app.lift_deg, app.watch.clone());
+        assert!(shown.0 > 0);
+        assert_eq!(app.addable_take(), Some(lone.clone()));
+
+        // Keep in a Watch… > New Watch…, filled in, then Done.
+        app.open_new_watch_form();
+        app.keep_after_form = true;
+        let f = app.watch_form.as_mut().unwrap();
+        f.watch.name = "Meteorite".into();
+        f.watch.bph = Some(21600);
+        f.watch.lift = Some(50.0);
+        app.save_watch_form();
+        assert!(app.watch_form.is_none() && !app.keep_after_form);
+        // The readings on show keep the settings they were measured with.
+        assert_eq!(
+            (app.trend.len(), app.bph, app.lift_deg, app.watch.clone()),
+            shown
+        );
+        let id = app.open_watch().unwrap().watch.id.clone();
+        // Then it goes into the new watch, asking only what neither says.
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut text = String::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| app.open_ask_dialog(ctx));
+            text = format!("{:?}", out.shapes);
+        }
+        assert!(
+            text.contains("Keep \\\"meteorite_DU.wav\\\" in a Watch"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Started") && !text.contains("Just Open It"),
+            "{text}"
+        );
+        let mut a = app.open_ask.take().expect("asked what is missing");
+        assert!(a.add && !a.new_watch && a.watch.as_deref() == Some(id.as_str()));
+        a.started = "2026-10-23 10:50".into();
+        let need = app.open_need(&a);
+        app.answer_open_ask(a, need);
+        let Ok(Some(lib)) = &app.library else {
+            panic!()
+        };
+        let e = lib.find("Meteorite").unwrap();
+        assert_eq!(e.takes.len(), 1);
+        let take = e.take_dir(&e.takes[0]);
+        assert!(take.join("meteorite_DU.wav").is_file() && lone.is_file());
+        assert!(Path::new(&app.opened_path).starts_with(&root));
+        assert_eq!(app.addable_take(), None);
+
+        // File > New Session lets go of the recording: a new take follows.
+        app.new_session();
+        assert!(app.input == Input::Microphone && app.opened_path.is_empty());
+        assert_eq!(
+            app.take_words(),
+            ("New Take".into(), "Meteorite · Not started".into())
+        );
+        // And the watch's settings apply to it.
+        app.new_take(NewTake::Listen, true);
+        assert_eq!(
+            (app.watch.as_str(), app.bph, app.lift_deg),
+            ("Meteorite", Some(21600), 50.0)
+        );
+        app.stop();
         let _ = std::fs::remove_dir_all(&base);
     }
 
