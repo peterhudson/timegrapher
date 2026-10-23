@@ -39,7 +39,7 @@ dial-up recording of a hand-wound Reverso-style watch at 21,600 bph (lift
 - Then he uses each feature for real: live measurement, changing the lift
   angle and the calibre, every chart and view, a guided test through all
   six positions with the Yacht-Master, opening the ETA recording and the
-  two-hour folder, replay, saving and exporting whatever can be saved or
+  two-hour folder, saving and exporting whatever can be saved or
   exported, the help, the settings, checking for updates, resizing and
   maximising the window, and light and dark if the app offers both.
 - He tries the edges a careful user hits: an empty stand, a wrong path, a
