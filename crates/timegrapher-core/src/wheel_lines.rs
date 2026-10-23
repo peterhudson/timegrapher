@@ -147,8 +147,11 @@ fn mean_between(g: &Grid, a: f64, b: f64) -> Option<f64> {
 }
 
 /// Least squares of `y = m + s t + a cos wt + b sin wt` over the finite
-/// values of `g.y[i0..i1]`: `(a, b, residual sd, readings)`.
-fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, usize)> {
+/// values of `g.y[i0..i1]`: `(a, b, residual sd, readings, lag-one
+/// correlation of the residuals)`, the last pooled over the runs of
+/// readings between missing ones ([`crate::confidence::pooled_lag_one`]),
+/// negative or unknown taken as 0.
+fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, usize, f64)> {
     let tm = g.time((i0 + i1) / 2);
     let mut ata = [[0.0; 4]; 4];
     let mut aty = [0.0; 4];
@@ -166,21 +169,32 @@ fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, us
             }
             aty[r] += x[r] * y;
         }
-        rows.push((x, y));
+        rows.push((i, x, y));
     }
     let n = rows.len();
     if n < 8 {
         return None;
     }
     let p = solve4(ata, aty)?;
-    let rss: f64 = rows
+    let res: Vec<(usize, f64)> = rows
         .iter()
-        .map(|(x, y)| {
+        .map(|(i, x, y)| {
             let f: f64 = x.iter().zip(&p).map(|(a, b)| a * b).sum();
-            (y - f).powi(2)
+            (*i, y - f)
         })
-        .sum();
-    Some((p[2], p[3], (rss / (n - 4) as f64).sqrt(), n))
+        .collect();
+    let rss: f64 = res.iter().map(|(_, r)| r * r).sum();
+    let mut runs: Vec<Vec<f64>> = Vec::new();
+    for (k, &(i, r)) in res.iter().enumerate() {
+        if k == 0 || i != res[k - 1].0 + 1 {
+            runs.push(Vec::new());
+        }
+        runs.last_mut().expect("a run").push(r);
+    }
+    let rho = crate::confidence::pooled_lag_one(runs.iter().map(Vec::as_slice))
+        .unwrap_or(0.0)
+        .clamp(0.0, 0.99);
+    Some((p[2], p[3], (rss / (n - 4) as f64).sqrt(), n, rho))
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -240,7 +254,7 @@ pub fn line(
         let Some(amplitude_deg) = mean_between(amp, t0, t1) else {
             continue;
         };
-        let Some((ca, sb, sd, n)) = fit_line(g, a, b, w) else {
+        let Some((ca, sb, sd, n, rho)) = fit_line(g, a, b, w) else {
             continue;
         };
         windows.push(LineWindow {
@@ -248,7 +262,11 @@ pub fn line(
             end_s: t1,
             amplitude_deg,
             size: ca.hypot(sb),
-            se: sd * (2.0 / n as f64).sqrt(),
+            // Residuals that follow one another hold fewer independent
+            // readings, by their strength at the line's own period.
+            se: sd
+                * (2.0 / crate::confidence::effective_readings_at(n as f64, rho, g.step / p))
+                    .sqrt(),
             // a cos wt + b sin wt = R sin(wt + phi).
             phase_deg: ca.atan2(sb).to_degrees(),
         });
@@ -500,6 +518,33 @@ mod tests {
     /// 10 h of 2 s amplitude readings, falling from 300° to 200°.
     fn amp() -> Grid {
         grid(2.0, 18000, |t| 300.0 - 100.0 * t / 36000.0)
+    }
+
+    #[test]
+    fn a_window_se_allows_for_noise_that_follows_itself() {
+        // A 60 s line of 2 ms under noise whose neighbours correlate at
+        // 0.8 (0.5 ms in size). One SE should be about the scatter of the
+        // sizes from window to window, not a third of it.
+        let a = amp();
+        let mut rng = Rng::new(3);
+        let mut e = 0.0;
+        let k = (1.0f64 - 0.8 * 0.8).sqrt();
+        let g = grid(1.0, 36000, |t| {
+            e = 0.8 * e + 0.5 * k * rng.normal();
+            2.0 * (std::f64::consts::TAU * t / 60.0).sin() + e
+        });
+        let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+        // Every other window, so none overlaps the next.
+        let w: Vec<&LineWindow> = l.windows.as_ref().unwrap().iter().step_by(2).collect();
+        assert!(w.len() >= 20, "{}", w.len());
+        let mean = w.iter().map(|x| x.size).sum::<f64>() / w.len() as f64;
+        let scatter =
+            (w.iter().map(|x| (x.size - mean).powi(2)).sum::<f64>() / (w.len() - 1) as f64).sqrt();
+        let se = w.iter().map(|x| x.se).sum::<f64>() / w.len() as f64;
+        assert!(
+            (0.6..1.7).contains(&(scatter / se)),
+            "scatter {scatter} against se {se}"
+        );
     }
 
     #[test]
