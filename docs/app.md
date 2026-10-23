@@ -249,10 +249,10 @@ Steadiness then covers the whole night.
 readings use: found from the beats while the Beat Rate menu on its card is Auto,
 or the one set there, and says which. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default, or 2, 4, 20, 30
-or 60 s; the setting is Average Over, on the Rate card). Early in a session, or after a pause or a gap of
+or 60 s; the setting is Average Over, on the Rate card). Early in a session, or after a break in listening or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so ("190 beats in 24 s of
-180 s"); they never fit across a pause or gap, since the watch may have
+180 s"); they never fit across a break or gap, since the watch may have
 been moved or have drifted meanwhile. The panes that average (the Paper Strip's
 Rate Line, guides and overlays, the Tick Tock Profile, the three charts and the three
 distributions) follow Readings' Average Over unless set otherwise: each has
@@ -296,13 +296,13 @@ the estimates too small. The
 is calculated and what has been checked. The amplitude's and beat error's ± are the
 standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
-pause or a move, up to five minutes), scaled to the averaging time; it
+break or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, at the right of the reading's caption, with a sentence on
 hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
-when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and pauses
-in the stretch. When no calibre or lift angle is set, "the default"
+when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
+in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
 beside Lift on the Amplitude card says the amplitude comes from the
 default 52°. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
@@ -312,7 +312,7 @@ reads it (core `session::measure_masked`, the time in other positions
 masked): the rate fitted over every beat, the amplitude and beat error
 the median of the 2 s windows, each with its ±, and the 5th to 95th
 percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
-error's sign differs either side of a cut (a pause, a jump, a move or
+error's sign differs either side of a cut (a break, a jump, a move or
 its settling) in that stretch, the line combines the sizes either side,
 as `session` does, and a line under it says "whole take given as a
 size: its sign differs either side of a cut".
@@ -475,8 +475,8 @@ and beat error from the unlock, each measured as `timegrapher session`
 measures a stretch (core `session::measure_masked`), and how much of it
 its whole 10 s readings cover (core `clean`). **Save as CSV…** and
 **Copy** give the watch, the run and the table. The take
-is kept in the picked watch's history (in Unsorted with none picked),
-named by its local start time and "Power Reserve", with
+is kept in the picked watch's history, named by its local start time and
+"Power Reserve", with
 `power-reserve.json` beside the standard files; with Analysis Only it is
 then kept as its analysis alone, as Keep Analysis Only does, and its sound
 deleted. The Watches pane lists it as "Power Reserve 46 h 12 min", adding
@@ -688,10 +688,10 @@ masked stretch, or right-clicking one with Mask on or off, brings it
 back; **Unmask All** brings them all back. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
 and the toolbar says how many there are and how long they add up to.
-They are cut like a pause, at both ends: no reading reaches across one,
+They are cut like a break in listening, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
 once a whole averaging time has been heard after it, a beat in each 2
-seconds of it (as at the start of a session and after a pause; each
+seconds of it (as at the start of a session and after a break; each
 point on a line is the reading over the averaging time that ends there,
 which is why the line is blank just after one), the steadiness tests
 and their views leave out any 10-second reading (rate, amplitude or beat
@@ -1171,7 +1171,14 @@ pressed while listening, listening carries on into the new session
 Everything heard is kept as it comes in, so **Save…** can be pressed at
 any time, running or stopped: with a watch picked it saves the take into
 that watch, after Quick Listen into Unsorted, and otherwise it asks for a
-folder and copies the session into a folder of its own inside it. **Save Again** (Ctrl+S) later brings
+folder and copies the session into a folder of its own inside it. A Positions
+Test or Power Reserve Test that ends with no watch picked asks where it
+goes, at Stop (for a Power Reserve Test, before its take is saved):
+**Keep in Unsorted**, the default, keeps it in Unsorted to file under a
+watch later; **Keep in a Watch…** keeps it in a watch picked from the
+menu, or in a new one (**New Watch…**); **Throw Away** deletes it, sound
+and readings. Quick Listen's sound is never asked about; a test's always
+is. **Save Again** (Ctrl+S) later brings
 that copy up to date without asking again, and **Save As…** (Ctrl+Shift+S)
 copies the session to a new folder of your choosing, which Save Again then
 keeps up to date. Sound that hasn't been saved is never thrown away

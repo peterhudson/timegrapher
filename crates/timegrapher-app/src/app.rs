@@ -206,6 +206,17 @@ enum Confirm {
     },
 }
 
+/// A test that ended with no watch picked, asked where it goes: Keep in
+/// Unsorted, Keep in a Watch… or Throw Away (Quick Listen's sound goes
+/// without a question; a test's never does).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TestKeep {
+    /// A Positions Test's take, not saved yet.
+    Positions,
+    /// A Power Reserve Test's take, its results read, not saved yet.
+    PowerReserve,
+}
+
 /// Where a session's sound is kept until it is saved or thrown away: a
 /// folder of the app's own that the system doesn't clear, so sound kept
 /// when the app quits without asking (or is stopped) is still there at the
@@ -1247,6 +1258,10 @@ pub struct TimegrapherApp {
     /// The form was opened from Keep in a Watch…: Done keeps what is on
     /// show in the new watch.
     keep_after_form: bool,
+    /// A test ended with no watch picked: where it goes, asked.
+    test_keep: Option<TestKeep>,
+    /// This take ran a Positions Test.
+    positions_take: bool,
     /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
@@ -1791,6 +1806,8 @@ impl TimegrapherApp {
             watch_archived: false,
             watch_form: None,
             keep_after_form: false,
+            test_keep: None,
+            positions_take: false,
             take_ask: None,
             take_keep: None,
             thumbs: Default::default(),
@@ -2184,6 +2201,15 @@ impl TimegrapherApp {
             return self.end_reserve();
         }
         self.pause();
+        // A Positions Test with no watch picked: asked where it goes.
+        if self.positions_take
+            && self.open_watch().is_none()
+            && self.session.saved_to().is_none()
+            && self.session.allows(Action::Save)
+        {
+            self.test_keep = Some(TestKeep::Positions);
+            return;
+        }
         // Never a folder dialog at a Stop: only where Save… needs none.
         // A Quick Listen take kept already takes the sound since too.
         let into_watch = if self.quick_listen {
@@ -2286,6 +2312,8 @@ impl TimegrapherApp {
         self.analysis_kept_to = None;
         self.guided = None;
         self.reserve = None;
+        self.positions_take = false;
+        self.test_keep = None;
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.source_label.clear();
@@ -2833,7 +2861,7 @@ impl TimegrapherApp {
                 "averaging_s": self.average_s,
                 "at_s": self.end_s(),
                 // Stretches masked out on the strip, in the session's
-                // seconds, so a replay of the excerpt can leave them out too.
+                // seconds, so an analysis of the excerpt can leave them out too.
                 "masked": self.masked,
             }),
         };
@@ -3216,7 +3244,7 @@ impl TimegrapherApp {
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
     fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
-        // Refused before anything on show is stopped, as Replay is.
+        // Refused before anything on show is stopped.
         if let Some(why) = no_analysis_to_read(path).or_else(|| {
             take_folder(path)
                 .ok()
@@ -3225,8 +3253,8 @@ impl TimegrapherApp {
             return self.open_failed(why);
         }
         self.stop();
-        // What was masked during a replay carries over; anything else
-        // opened starts with what its session file masks.
+        // Masks carried with the settings stay; anything else opened
+        // starts with what its session file masks.
         let carried_masks = carried.is_some().then(|| std::mem::take(&mut self.masked));
         self.masked.clear();
         if carried_masks.is_none() {
@@ -3443,7 +3471,7 @@ impl TimegrapherApp {
         });
     }
 
-    /// Stop listening or replaying, and any analysis under way. A
+    /// Stop listening, and any analysis under way. A
     /// microphone session pauses, so it can carry on or be saved.
     fn stop(&mut self) {
         if self.capture.as_ref().is_some_and(|c| !c.is_file) {
@@ -5191,7 +5219,10 @@ impl TimegrapherApp {
             Ok(()) => {
                 self.watch_form = None;
                 if f.new && std::mem::take(&mut self.keep_after_form) {
-                    self.keep_into(&w.id);
+                    match self.test_keep.take() {
+                        Some(kind) => self.keep_test(kind, Some(&w.id)),
+                        None => self.keep_into(&w.id),
+                    }
                 } else if f.new {
                     self.pick_watch(&w.id);
                 } else if self.watch_open.as_ref() == Some(&w.id)
@@ -5815,8 +5846,9 @@ impl TimegrapherApp {
             session::State::Idle => "Not started",
             session::State::Listening => "Listening",
             session::State::Paused { .. } => "Stopped",
-            session::State::Replaying => "Replaying",
-            session::State::ReplayStopped => "Replay stopped",
+            // Only tests play a recording through as if live.
+            session::State::Replaying => "Listening",
+            session::State::ReplayStopped => "Stopped",
             session::State::Analysing => "Opening",
             session::State::Analysed => "Opened",
         };
@@ -7176,6 +7208,122 @@ impl TimegrapherApp {
         }
     }
 
+    /// A test that ended with no watch picked: Keep in Unsorted, Keep in a
+    /// Watch… or Throw Away.
+    fn test_keep_dialog(&mut self, ctx: &egui::Context) {
+        let Some(kind) = self.test_keep else {
+            return;
+        };
+        if self.watch_form.is_some() || self.confirm.is_some() {
+            return;
+        }
+        let watches: Vec<(String, String)> = match &self.library {
+            Ok(Some(l)) if l.read_only.is_none() => l
+                .watches
+                .iter()
+                .filter(|e| !e.watch.archived)
+                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let name = match kind {
+            TestKeep::Positions => "Positions Test",
+            TestKeep::PowerReserve => "Power Reserve Test",
+        };
+        let mut answer: Option<Option<Option<String>>> = None;
+        let mut new = false;
+        egui::Modal::new(egui::Id::new("keep the test")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            let pal = theme::pal(ui);
+            ui.label(RichText::new(format!("Keep This {name}?")).font(theme::semibold(15.0)));
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(format!(
+                    "No watch was picked, so this {name} isn't kept anywhere yet. Unsorted \
+                     holds it until you file it under a watch or delete it."
+                ))
+                .color(pal.text_secondary),
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(theme::primary(ui, "Keep in Unsorted"))
+                    .on_hover_text(
+                        "Keep the take in Unsorted, in the Watches pane, to file under a \
+                         watch later",
+                    )
+                    .clicked()
+                {
+                    answer = Some(Some(None));
+                }
+                ui.menu_button("Keep in a Watch…", |ui| {
+                    for (id, name) in &watches {
+                        if ui.button(name).clicked() {
+                            answer = Some(Some(Some(id.clone())));
+                        }
+                    }
+                    if !watches.is_empty() {
+                        ui.separator();
+                    }
+                    if ui
+                        .button("New Watch…")
+                        .on_hover_text("Add a watch, and keep the take in it when you add it")
+                        .clicked()
+                    {
+                        new = true;
+                    }
+                })
+                .response
+                .on_hover_text("Keep the take in one of your watches");
+                if ui
+                    .add(theme::secondary(ui, "Throw Away"))
+                    .on_hover_text("Delete the take: its sound and its readings")
+                    .clicked()
+                {
+                    answer = Some(None);
+                }
+            });
+        });
+        if new {
+            self.open_new_watch_form();
+            self.keep_after_form = true;
+            return;
+        }
+        match answer {
+            Some(Some(watch)) => {
+                self.test_keep = None;
+                self.keep_test(kind, watch.as_deref());
+            }
+            Some(None) => {
+                self.test_keep = None;
+                self.new_session();
+            }
+            None => {}
+        }
+    }
+
+    /// Keep the test's take in the watch `watch`, or in Unsorted with none.
+    fn keep_test(&mut self, kind: TestKeep, watch: Option<&str>) {
+        self.test_keep = None;
+        match (kind, watch) {
+            (TestKeep::Positions, Some(id)) => self.keep_in_watch(id),
+            (TestKeep::Positions, None) => {
+                self.watch_open = None;
+                self.unsorted_open = true;
+                self.save_again();
+            }
+            (TestKeep::PowerReserve, watch) => {
+                self.watch_open = watch.map(str::to_string);
+                self.unsorted_open = watch.is_none();
+                // The take is named for the watch it goes into.
+                if let Some(e) = self.open_watch() {
+                    self.watch = e.watch.name.clone();
+                }
+                self.save_reserve();
+            }
+        }
+    }
+
     fn open_ask_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut a) = self.open_ask.take() else {
             return;
@@ -8521,7 +8669,7 @@ impl TimegrapherApp {
                         .on_hover_text(if short {
                             "The beats the readings are fitted to. There are fewer seconds of \
                              beats than Average Over asks for, early in a session or after a \
-                             pause, so the readings use what there is."
+                             break in the sound, so the readings use what there is."
                         } else {
                             "The beats the readings are fitted to. Set the time with Average \
                              Over on the Rate card."
@@ -9309,6 +9457,7 @@ impl TimegrapherApp {
             None => guided::Test::new(),
         };
         self.guided = Some(test.timed(self.guided_settle_s, self.guided_measure_s));
+        self.positions_take = true;
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.reveal_pane(Pane::PositionsTest);
@@ -9854,15 +10003,26 @@ impl TimegrapherApp {
                 r.last_beat_s,
             );
         }
-        let takes = match self.reserve_takes_dir() {
-            Ok(d) => d,
-            Err(e) => return self.error(format!("The test's take couldn't be kept: {e}")),
-        };
         // The results go into the take with its sound, through
         // `results_files`.
         if let Some(t) = self.reserve.as_mut() {
             t.results = results;
         }
+        // With no watch picked, asked where it goes before it is saved.
+        if self.open_watch().is_none() {
+            self.test_keep = Some(TestKeep::PowerReserve);
+            return;
+        }
+        self.save_reserve();
+    }
+
+    /// Save the ended Power Reserve Test's take, with its results, into
+    /// the picked watch's takes or Unsorted.
+    fn save_reserve(&mut self) {
+        let takes = match self.reserve_takes_dir() {
+            Ok(d) => d,
+            Err(e) => return self.error(format!("The test's take couldn't be kept: {e}")),
+        };
         let Some(r) = self.session.recorder.as_mut() else {
             return;
         };
@@ -10265,7 +10425,7 @@ impl TimegrapherApp {
         ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
 
         // Looking back through a finished or analysed recording, however
-        // short: a replay stopped early can still be looked back over.
+        // short.
         let total = self.live.as_ref().map_or(0.0, |l| l.duration_s());
         if !self.running() && total > 1.0 {
             let mut end = self.end_s();
@@ -12500,6 +12660,7 @@ impl eframe::App for TimegrapherApp {
         self.confirm_dialog(ctx);
         self.kept_delete_dialog(ctx);
         self.watch_form_dialog(ctx);
+        self.test_keep_dialog(ctx);
         self.open_ask_dialog(ctx);
         self.setup_sheet_dialog(ctx);
         self.take_ask_dialog(ctx);
@@ -12739,8 +12900,12 @@ fn reading_limits(
                 ),
             )),
             (Caveat::Breaks { count }, _) => Some((
-                format!("{count} pause{}", if *count == 1 { "" } else { "s" }),
-                format!("The take was paused {count} times in this stretch."),
+                format!("{count} break{}", if *count == 1 { "" } else { "s" }),
+                format!(
+                    "Listening broke off {count} {} in this stretch, such as when the \
+                     computer slept.",
+                    if *count == 1 { "time" } else { "times" }
+                ),
             )),
             // A sliver that would show as 0.0 s is left unsaid.
             (Caveat::Masked { seconds }, _) if *seconds < 0.05 => None,
@@ -17129,6 +17294,115 @@ mod tests {
         app.start_guided(None);
         assert!(matches!(app.confirm, Some(Confirm::Microphone)));
         assert!(!app.quick_listen);
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Positions Test or Power Reserve Test that ends with no watch
+    /// picked asks where it goes: Keep in Unsorted, Keep in a Watch… or
+    /// Throw Away. Quick Listen's sound still goes without a question.
+    #[test]
+    fn a_test_with_no_watch_asks_where_it_goes() {
+        let base = std::env::temp_dir().join(format!("tg-app-test-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        // A take as Stop leaves it, with no input opened.
+        let take = |app: &mut TimegrapherApp, n: usize| {
+            app.new_session();
+            app.session.listen();
+            let info = app.info("test", 48000, 16);
+            let mut r = Recorder::start(&base.join(format!("unsaved-{n}")), info).unwrap();
+            r.write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 48000 * 5],
+                at: std::time::SystemTime::now(),
+            })
+            .unwrap();
+            app.session.recorder = Some(r);
+        };
+        let takes_in = |dir: PathBuf| std::fs::read_dir(dir).map_or(0, |d| d.count());
+        let unsorted = root.join(library::UNSORTED).join(library::TAKES);
+        let in_pepsi = root.join("Pepsi").join(library::TAKES);
+
+        // Quick Listen: no question.
+        take(&mut app, 0);
+        app.quick_listen = true;
+        app.stop_listening();
+        assert_eq!(app.test_keep, None);
+
+        // A Positions Test: asked, with the three answers on show.
+        take(&mut app, 1);
+        app.quick_listen = false;
+        app.positions_take = true;
+        app.stop_listening();
+        assert_eq!(app.test_keep, Some(TestKeep::Positions));
+        let ctx = themed();
+        assert!(app.confirm.is_none() && app.watch_form.is_none());
+        let mut drawn = String::new();
+        for _ in 0..3 {
+            let out = ctx.run(screen(), |ctx| app.test_keep_dialog(ctx));
+            drawn = painted_text(&out);
+        }
+        for t in [
+            "Keep This Positions Test?",
+            "Keep in Unsorted",
+            "Keep in a Watch…",
+            "Throw Away",
+        ] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+        // Keep in Unsorted.
+        app.keep_test(TestKeep::Positions, None);
+        app.wait_for_save();
+        assert_eq!(app.test_keep, None);
+        assert_eq!(takes_in(unsorted.clone()), 1);
+
+        // Keep in a Watch: Pepsi.
+        take(&mut app, 2);
+        app.positions_take = true;
+        app.watch_open = None;
+        app.stop_listening();
+        assert_eq!(app.test_keep, Some(TestKeep::Positions));
+        app.keep_test(TestKeep::Positions, Some(&pepsi));
+        app.wait_for_save();
+        assert_eq!(takes_in(in_pepsi.clone()), 1);
+
+        // Throw Away: nothing kept, nothing left to ask about.
+        take(&mut app, 3);
+        app.positions_take = true;
+        app.watch_open = None;
+        app.stop_listening();
+        assert_eq!(app.test_keep, Some(TestKeep::Positions));
+        app.new_session();
+        assert_eq!(app.test_keep, None);
+        assert!(!app.needs_save_confirmation());
+        assert_eq!(takes_in(unsorted.clone()), 1);
+        assert_eq!(takes_in(in_pepsi.clone()), 1);
+
+        // A Power Reserve Test with no watch: asked before it is saved,
+        // then kept in Unsorted.
+        take(&mut app, 4);
+        app.watch_open = None;
+        let started = app
+            .session
+            .recorder
+            .as_ref()
+            .unwrap()
+            .started_utc()
+            .to_string();
+        app.reserve = Some(reserve::Test::new(Position::DialUp, true, started, 0.0));
+        app.stop_listening();
+        assert_eq!(app.test_keep, Some(TestKeep::PowerReserve));
+        assert_eq!(takes_in(unsorted.clone()), 1, "not saved before the answer");
+        app.keep_test(TestKeep::PowerReserve, None);
+        app.wait_for_save();
+        assert_eq!(takes_in(unsorted.clone()), 2);
+
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
