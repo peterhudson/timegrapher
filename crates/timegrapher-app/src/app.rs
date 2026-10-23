@@ -113,15 +113,25 @@ use timegrapher_core::recorder::{Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
+/// The kinds of take New Take starts for the watch picked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NewTake {
+    Listen,
+    Positions,
+    PowerReserve,
+}
+
 /// What a question before throwing away unsaved sound is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Confirm {
     NewSession,
+    /// A new take of the watch picked, of the kind asked for.
+    NewTake(NewTake),
     Quit,
     /// Start listening to the microphone, over a recording whose masks
     /// changed.
     Microphone,
-    /// Quick Listen: a new session on the microphone, kept in Unsorted.
+    /// Quick Listen: a new session on the microphone, with no watch.
     QuickListen,
     /// Open a recording (analysed whole, or replayed when `replay`).
     Open {
@@ -584,6 +594,13 @@ const SAVE_MASKS_HINT: &str = "Save the masked stretches to the recording's sess
      they come back when it is opened again; nothing else in the file changes. A recording \
      with no session file gets one, which makes its folder a take: refused where the folder \
      holds other recordings, or a session file that doesn't list the recording.";
+const QUICK_LISTEN_HINT: &str = "Listen to a watch on the microphone without picking or adding \
+     it first. The take isn't kept until Keep in a Watch…, in the Take card, saves it into one of \
+     your watches, or Save… keeps it in Unsorted; until then New Take, Quick Listen and quitting \
+     ask first.";
+const NEW_TAKE_HINT: &str = "Start a take of the watch picked: Listen, the Positions Test or the \
+     Power Reserve Test. Each is a new session on the microphone set in the Microphone pane, \
+     saved into the watch when it stops; unsaved sound is asked about first.";
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
      position. Listening carries on into the new session, unless closing the kept sound \
      fails; a replay stops. Unsaved sound is asked about first.";
@@ -1210,8 +1227,8 @@ pub struct TimegrapherApp {
     watch_open: Option<String>,
     /// The pane shows Unsorted's takes instead of the list.
     unsorted_open: bool,
-    /// This session began with Quick Listen: Stop saves it into Unsorted,
-    /// as Save… does.
+    /// This session began with Quick Listen: kept only by Keep in a
+    /// Watch…, or by Save… into Unsorted.
     quick_listen: bool,
     watch_search: String,
     watch_sort: watches::Sort,
@@ -2112,8 +2129,9 @@ impl TimegrapherApp {
         }
     }
 
-    /// Stop: pause, and after Quick Listen save the take into Unsorted
-    /// (or the sound since into the take saved before).
+    /// Stop: pause, and with a watch picked save the take into it (or the
+    /// sound since into the take saved before). A Quick Listen take isn't
+    /// kept until Keep in a Watch… or Save….
     fn stop_listening(&mut self) {
         // Stop during a Power Reserve Test ends the test, which keeps its take.
         if self.reserve_running() {
@@ -2124,8 +2142,14 @@ impl TimegrapherApp {
         }
         self.pause();
         // Never a folder dialog at a Stop: only where Save… needs none.
+        // A Quick Listen take kept already takes the sound since too.
+        let into_watch = if self.quick_listen {
+            self.session.saved_to().is_some()
+        } else {
+            self.open_watch().is_some()
+        };
         let quiet = self.session.saved_to().is_some() || self.watch_takes_dir().is_some();
-        if self.quick_listen && quiet && self.session.allows(Action::Save) {
+        if into_watch && quiet && self.session.allows(Action::Save) {
             self.save_again();
         }
     }
@@ -4057,6 +4081,7 @@ impl TimegrapherApp {
             ui.label(
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
+                    Confirm::NewTake(_) => "Start a new take without saving?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
                     Confirm::Microphone | Confirm::QuickListen => {
@@ -4091,6 +4116,7 @@ impl TimegrapherApp {
                     (
                         None,
                         Confirm::NewSession
+                        | Confirm::NewTake(_)
                         | Confirm::Open { .. }
                         | Confirm::Microphone
                         | Confirm::QuickListen,
@@ -4171,6 +4197,7 @@ impl TimegrapherApp {
     fn confirmed(&mut self, what: Confirm, ctx: &egui::Context) {
         match what {
             Confirm::NewSession => self.new_session(),
+            Confirm::NewTake(kind) => self.new_take(kind, true),
             Confirm::Open { path, replay } => self.open_recording(&path, replay, false),
             Confirm::Microphone => self.listen_after_ask(),
             Confirm::QuickListen => self.quick_listen(true),
@@ -4921,11 +4948,7 @@ impl TimegrapherApp {
         let listening = self.running();
         if ui
             .add_enabled(writable && !listening, egui::Button::new("Quick Listen"))
-            .on_hover_text(
-                "Listen to a watch on the microphone without picking or adding it first. The \
-                 take is kept in Unsorted, saved when you Stop, until you file it under a \
-                 watch or delete it.",
-            )
+            .on_hover_text(QUICK_LISTEN_HINT)
             .on_disabled_hover_text(if listening {
                 "Stop listening first"
             } else {
@@ -4943,15 +4966,20 @@ impl TimegrapherApp {
             )
             .clicked()
         {
-            let mut w = library::Watch::new("");
-            w.calibre = Some(String::new());
-            w.notes = Some(String::new());
-            self.watch_form = Some(watches::Form {
-                watch: w,
-                new: true,
-                error: None,
-            });
+            self.open_new_watch_form();
         }
+    }
+
+    /// The form for a new watch: only its name is needed.
+    fn open_new_watch_form(&mut self) {
+        let mut w = library::Watch::new("");
+        w.calibre = Some(String::new());
+        w.notes = Some(String::new());
+        self.watch_form = Some(watches::Form {
+            watch: w,
+            new: true,
+            error: None,
+        });
     }
 
     /// The form for a watch's details, while it is open.
@@ -4986,8 +5014,8 @@ impl TimegrapherApp {
     }
 
     /// Quick Listen: show Unsorted and listen to the microphone in a new
-    /// session, without a watch picked, its name cleared. Stop saves the
-    /// take into Unsorted. Unsaved sound is asked about first, unless
+    /// session, without a watch picked, its name cleared. Stop keeps
+    /// nothing until Keep in a Watch… or Save…. Unsaved sound is asked about first, unless
     /// `asked`.
     fn quick_listen(&mut self, asked: bool) {
         if self.quick_listen_ready(asked) {
@@ -5790,7 +5818,140 @@ impl TimegrapherApp {
         (name, format!("{watch} · {state}"))
     }
 
-    /// Start, Stop or Resume the microphone, New Session, and saving.
+    /// A new take of the watch picked: a new session on the microphone,
+    /// asking first when there is unsaved sound, then listening, or the
+    /// Positions Test or the Power Reserve Test.
+    fn new_take(&mut self, kind: NewTake, asked: bool) {
+        if self.running() || self.saving_busy() {
+            return;
+        }
+        if !asked && self.needs_save_confirmation() {
+            self.confirm = Some(Confirm::NewTake(kind));
+            return;
+        }
+        if self.live.is_some() || self.session.recorder.is_some() {
+            self.new_session();
+        }
+        self.input = Input::Microphone;
+        match kind {
+            NewTake::Listen => self.start_microphone(),
+            NewTake::Positions => self.start_guided(None),
+            NewTake::PowerReserve => self.start_reserve(),
+        }
+    }
+
+    /// New Take's menu: the three kinds of take, each kept in the watch.
+    fn new_take_menu(&mut self, ui: &mut egui::Ui, primary: bool) {
+        let mut picked = None;
+        let button = if primary {
+            theme::primary(ui, "New Take")
+        } else {
+            theme::secondary(ui, "New Take")
+        };
+        egui::containers::menu::MenuButton::from_button(button)
+            .ui(ui, |ui| {
+                for (kind, name, hint) in [
+                    (
+                        NewTake::Listen,
+                        "Listen",
+                        "Listen to the watch in the position set below, for as long as you \
+                         like; Stop saves the take into the watch",
+                    ),
+                    (
+                        NewTake::Positions,
+                        "Positions Test",
+                        "The six positions one after another, settled and measured in turn, \
+                         saved into the watch",
+                    ),
+                    (
+                        NewTake::PowerReserve,
+                        "Power Reserve Test",
+                        "Wind the watch fully and listen in one position until it stops, \
+                         saved into the watch",
+                    ),
+                ] {
+                    if ui.button(name).on_hover_text(hint).clicked() {
+                        picked = Some(kind);
+                        ui.close();
+                    }
+                }
+            })
+            .0
+            .on_hover_text(NEW_TAKE_HINT);
+        if let Some(kind) = picked {
+            self.new_take(kind, false);
+        }
+    }
+
+    /// Keep in a Watch…: the Quick Listen take saved into a watch picked
+    /// from the menu.
+    fn keep_in_watch_menu(&mut self, ui: &mut egui::Ui) {
+        let watches: Vec<(String, String)> = match &self.library {
+            Ok(Some(l)) if l.read_only.is_none() => l
+                .watches
+                .iter()
+                .filter(|e| !e.watch.archived)
+                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let mut picked = None;
+        let mut new = false;
+        egui::containers::menu::MenuButton::from_button(theme::primary(ui, "Keep in a Watch…"))
+            .ui(ui, |ui| {
+                for (id, name) in &watches {
+                    if ui.button(name).clicked() {
+                        picked = Some(id.clone());
+                        ui.close();
+                    }
+                }
+                if !watches.is_empty() {
+                    ui.separator();
+                }
+                if ui
+                    .button("New Watch…")
+                    .on_hover_text("Add a watch, then keep the take in it from this menu")
+                    .clicked()
+                {
+                    new = true;
+                    ui.close();
+                }
+            })
+            .0
+            .on_hover_text(
+                "Save this Quick Listen take into one of your watches, as a take of it. \
+                 Until then it isn't kept: New Take, Quick Listen or quitting asks first.",
+            );
+        if let Some(id) = picked {
+            self.keep_in_watch(&id);
+        }
+        if new {
+            self.open_new_watch_form();
+        }
+    }
+
+    /// Save the unsaved Quick Listen take into the watch `id`, as a take of
+    /// it: the watch is picked, and the take named after it.
+    fn keep_in_watch(&mut self, id: &str) {
+        if self.running() {
+            return;
+        }
+        let Some(name) = (match &self.library {
+            Ok(Some(l)) => l.watches.iter().find(|e| e.watch.id == id),
+            _ => None,
+        })
+        .map(|e| e.watch.name.clone()) else {
+            return;
+        };
+        self.watch_open = Some(id.to_string());
+        self.unsorted_open = false;
+        self.quick_listen = false;
+        self.watch = name;
+        self.note_settings();
+        self.save_again();
+    }
+
+    /// Start, Stop or Resume the microphone, New Take, and saving.
     fn listen_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if self.running() {
@@ -5798,15 +5959,15 @@ impl TimegrapherApp {
                     .add(theme::secondary(ui, "Stop"))
                     .on_hover_text(
                         "Stop listening and let go of the microphone. Everything so far stays: \
-                         look back through it with the time slider, save it, or Resume to \
-                         carry on in the same session.",
+                         look back through it with the time slider, or Resume to carry on in \
+                         the same session. With a watch picked the take is saved into it.",
                     )
                     .clicked()
                 {
                     self.stop_listening();
                 }
-            } else if self.can_resume() {
-                if ui
+            } else if self.can_resume()
+                && ui
                     .add(theme::primary(ui, "Resume"))
                     .on_hover_text(
                         "Carry on listening in the same session. The readings start afresh \
@@ -5814,33 +5975,32 @@ impl TimegrapherApp {
                          keep what came before.",
                     )
                     .clicked()
-                {
-                    self.resume_microphone();
-                }
-            } else if ui
-                .add_enabled(
-                    self.session.recording_fault().is_none(),
-                    theme::primary(ui, "Start"),
-                )
-                .on_hover_text("Start listening to the microphone")
-                .clicked()
             {
-                self.start_microphone();
+                self.resume_microphone();
             }
-            let mic_data = self.session.mic() && self.live.is_some();
-            if mic_data
-                && ui
-                    .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(NEW_SESSION_HINT)
+            if !self.running() && self.session.recording_fault().is_none() {
+                if self.open_watch().is_some() {
+                    self.new_take_menu(ui, !self.can_resume());
+                } else if ui
+                    .add(if self.can_resume() {
+                        theme::secondary(ui, "Quick Listen")
+                    } else {
+                        theme::primary(ui, "Quick Listen")
+                    })
+                    .on_hover_text(QUICK_LISTEN_HINT)
                     .clicked()
-            {
-                if self.needs_save_confirmation() {
-                    self.confirm = Some(Confirm::NewSession);
-                } else {
-                    self.new_session();
+                {
+                    self.quick_listen(false);
                 }
             }
         });
+        if self.quick_listen
+            && !self.running()
+            && self.session.saved_to().is_none()
+            && self.session.allows(Action::Save)
+        {
+            self.keep_in_watch_menu(ui);
+        }
         if self.session.allows(Action::Save) {
             let saved = self.session.saved_to().is_some();
             let saving = self.saving.is_some();
@@ -6493,6 +6653,20 @@ impl TimegrapherApp {
         {
             ui.close();
             self.open_from_menu(true);
+        }
+        if ui
+            .button("Replay Recording…")
+            .on_hover_text(
+                "Choose a WAV or FLAC recording and play it through as if the watch were on \
+                 the microphone, at the Replay Speed set in the Take card",
+            )
+            .clicked()
+        {
+            ui.close();
+            if let Some(p) = self.open_file_dialog() {
+                self.input = Input::File;
+                self.open_recording(&p, true, true);
+            }
         }
         ui.separator();
         let saved = self.session.saved_to().is_some();
@@ -8324,67 +8498,32 @@ impl TimegrapherApp {
         self.input == Input::File && self.session.mic() && !self.running()
     }
 
+    /// Before anything is open: where to start, since the Watches pane
+    /// and the File menu hold the ways in.
     fn ways_in(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.label(RichText::new("Timegrapher").font(theme::semibold(20.0)));
+        let line = |ui: &mut egui::Ui, text: &str| {
+            ui.add(egui::Label::new(RichText::new(text).color(pal.text_secondary)).wrap());
+        };
         if self.mic_session_set_aside() {
-            ui.add(
-                egui::Label::new(
-                    RichText::new(
-                        "Your microphone session is kept, with its sound. Choose Microphone \
-                         at the top to see it again, or open a recording.",
-                    )
-                    .small()
-                    .color(pal.text_secondary),
-                )
-                .wrap(),
+            line(
+                ui,
+                "Your microphone session is kept, with its sound: Listen, in the Take card, \
+                 carries it on.",
             );
         }
-        let row = |ui: &mut egui::Ui, button: egui::Button<'static>, hint: &str, text: &str| {
-            ui.horizontal(|ui| {
-                let b = ui
-                    .add_sized(Vec2::new(178.0, 30.0), button)
-                    .on_hover_text(hint);
-                ui.add(
-                    egui::Label::new(RichText::new(text).small().color(pal.text_secondary)).wrap(),
-                );
-                b.clicked()
-            })
-            .inner
-        };
-        if row(
+        line(
             ui,
-            theme::primary(ui, "Listen to a Watch"),
-            "Start listening to the microphone chosen in the Microphone pane",
-            "Put the watch on the microphone, dial up. Choose the microphone and set its \
-             level in the Microphone pane.",
-        ) {
-            self.input = Input::Microphone;
-            self.start_microphone();
-        }
-        if row(
+            "Pick a watch in the Watches pane and choose New Take to listen to it, run the \
+             Positions Test or the Power Reserve Test; each take is saved into the watch. \
+             Quick Listen listens without picking a watch, and New Watch… adds one.",
+        );
+        line(
             ui,
-            theme::secondary(ui, "Open a Recording…"),
-            "Choose a WAV or FLAC file and analyse it all at once",
-            "One WAV or FLAC file, analysed all at once.",
-        ) {
-            self.input = Input::File;
-            if let Some(p) = self.open_file_dialog() {
-                self.open_recording(&p, false, true);
-            }
-        }
-        if row(
-            ui,
-            theme::secondary(ui, "Open a Folder…"),
-            "Choose a folder saved by this app, or a folder of WAV or FLAC segments of \
-             one long recording",
-            FOLDER_RULE,
-        ) {
-            self.input = Input::File;
-            if let Some(p) = self.open_folder_dialog() {
-                self.open_recording(&p, false, true);
-            }
-        }
+            "Recordings and folders open from the File menu, to analyse all at once or to \
+             replay as if live.",
+        );
     }
 
     /// How far the analysis of a recording has got, and a way to stop it.
@@ -13520,9 +13659,9 @@ mod tests {
     }
 
     /// Quick Listen asks before unsaved sound goes, then shows Unsorted
-    /// and listens with no watch picked; Stop saves the take into Unsorted,
-    /// which the list shows at its top, and File Under a Watch moves it
-    /// into a watch. Picking a watch ends it.
+    /// and listens with no watch picked; Stop keeps nothing, Save… saves
+    /// the take into Unsorted, which the list shows at its top, and File
+    /// Under a Watch moves it into a watch. Picking a watch ends it.
     #[test]
     fn a_power_reserve_test_holds_its_position_and_keeps_its_take_with_its_run() {
         let base = std::env::temp_dir().join(format!("tg-app-reserve-{}", std::process::id()));
@@ -13650,11 +13789,17 @@ mod tests {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
 
-        // Stop saves the take into Unsorted; Save Again adds to it.
+        // Stop keeps nothing; Save… saves the take into Unsorted, and a
+        // Stop after that adds the sound since to it.
         record(&mut app, &base.join("unsaved-2"));
         app.stop_listening();
         app.wait_for_save();
         let unsorted = root.join(library::UNSORTED).join(library::TAKES);
+        let none = std::fs::read_dir(&unsorted).map_or(0, |d| d.count());
+        assert_eq!(none, 0, "a Quick Listen take isn't kept at Stop");
+        assert!(app.needs_save_confirmation());
+        app.save_again();
+        app.wait_for_save();
         let saved: Vec<PathBuf> = std::fs::read_dir(&unsorted)
             .unwrap()
             .map(|e| e.unwrap().path())
@@ -13706,6 +13851,66 @@ mod tests {
         );
         app.watch_open = None;
         assert_eq!(app.watch_takes_dir(), None, "no watch: Save… asks where");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take of the watch picked is saved into it at Stop; New Take asks
+    /// before unsaved sound goes; Keep in a Watch… saves a Quick Listen
+    /// take into the watch picked from its menu.
+    #[test]
+    fn a_watchs_take_is_kept_at_stop_and_quick_listen_is_kept_in_a_watch() {
+        let base = std::env::temp_dir().join(format!("tg-app-new-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let takes = root.join("Pepsi").join(library::TAKES);
+        let count = || std::fs::read_dir(&takes).map_or(0, |d| d.count());
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        // 20 s of sound as a run would keep it (no device is opened).
+        let record = |app: &mut TimegrapherApp, scratch: &Path| {
+            app.session.listen();
+            let info = app.info("", 48000, 16);
+            let mut r = Recorder::start(scratch, info).unwrap();
+            r.write(&timegrapher_core::capture::Block {
+                samples: vec![0.0; 48000 * 20],
+                at: std::time::SystemTime::now(),
+            })
+            .unwrap();
+            app.session.recorder = Some(r);
+        };
+        app.pick_watch(&pepsi);
+        record(&mut app, &base.join("unsaved-1"));
+        app.stop_listening();
+        app.wait_for_save();
+        assert_eq!(count(), 1, "kept in the watch at Stop");
+        assert!(!app.needs_save_confirmation());
+
+        // Quick Listen: nothing kept at Stop, and New Take asks first.
+        app.confirm = None;
+        assert!(app.quick_listen_ready(true));
+        record(&mut app, &base.join("unsaved-2"));
+        app.stop_listening();
+        app.wait_for_save();
+        assert_eq!(count(), 1);
+        assert!(app.needs_save_confirmation());
+        app.watch_open = Some(pepsi.clone());
+        app.new_take(NewTake::Listen, false);
+        assert_eq!(app.confirm, Some(Confirm::NewTake(NewTake::Listen)));
+        assert!(app.session.recorder.is_some(), "nothing thrown away yet");
+        app.confirm = None;
+        app.watch_open = None;
+        // Keep in a Watch… saves it into Pepsi, as a take of Pepsi.
+        app.keep_in_watch(&pepsi);
+        app.wait_for_save();
+        assert_eq!(count(), 2);
+        assert!(!app.quick_listen && app.watch_open.as_deref() == Some(pepsi.as_str()));
+        assert_eq!(app.watch, "Pepsi");
+        assert!(!app.needs_save_confirmation());
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

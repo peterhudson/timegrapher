@@ -52,9 +52,13 @@ notes and fields), **Sort** by Name, Last Take or Size, **Archived**
 microphone without picking or adding a watch first, for a watch handed
 over the counter: it asks first when there is unsaved sound or an
 unsaved change, as New Session does, then clears the take's name, shows
-**Unsorted** and starts a new session. **Stop**, like **Save…**, saves
-the take into Unsorted, named as a watch's takes are, and after a
-Resume, Stop or Save Again adds the sound since to the same take.
+**Unsorted** and starts a new session. **Stop** keeps nothing: the take
+waits, unsaved, until **Keep in a Watch…** in the Take card saves it into
+the watch picked from its menu (or **New Watch…** there adds one first),
+or **Save…** saves it into Unsorted, named as a watch's takes are; once
+kept, a Resume and Stop or Save Again adds the sound since to the same
+take. Until it is kept, New Take, Quick Listen, opening a recording and
+quitting ask first, as for any unsaved sound.
 Unsorted is listed above the watches while it holds a take, and its
 takes have the same menu as a watch's, with **File Under a Watch** (into
 the watch picked from it) in place of Move to Another Watch, so a take
@@ -100,17 +104,23 @@ cache folder (never in the Watches folder), so the next start shows them at
 once.
 Picking a watch, refused while listening, sets the take's name, calibre,
 lift angle and beat rate from it; changing them in the **Take** card
-changes that take, not the watch. With a watch picked, **Save…** saves
-the take into it with no question, in a folder named by when the take
+changes that take, not the watch. With a watch picked, **Stop** saves
+the take into it, as **Save…** does, with no question, in a folder named by when the take
 started (in this computer's time) and its position when it used only one;
 Save Again then saves into the same take, and Save As… still asks.
 Watches another copy of the app has open are read only: Quick Listen, New
 Watch…, Edit…, Add Photos… and a photo's Delete… are off, and Save… asks where. Then the **Take** card, for the take running or on
 show: its name, its watch and what it is doing (Listening, Stopped,
-Replaying, Opened). Listening: **Start** (or **Stop** and **Resume**),
-**New Session** (listening or not: listening carries on into the new
-session, unless closing the kept sound fails), **Save…** (then **Save
-Again** and **Save As…**). A recording on show: **Add to a Watch…** (once
+Replaying, Opened). With a watch picked, **New Take** offers
+**Listen**, the **Positions Test** and the **Power Reserve Test**: each is
+a new session on the microphone, asked about first when there is
+unsaved sound, and saved into the watch when it stops. With no watch
+picked, **Quick Listen** stands in its place. Listening: **Stop**, then
+**Resume** to carry on in the same session; **Save…** (then **Save
+Again** and **Save As…**); and **Keep in a Watch…** for an unsaved Quick
+Listen take. **New Session**, in the File menu, clears what is shown,
+listening or not (listening carries on into the new session, unless
+closing the kept sound fails). A recording on show: **Add to a Watch…** (once
 a take folder from outside the Watches folder is open: into the watch
 picked above or another, copied or moved; a copy is made beside its new
 place and moved in whole, so one cut short is not a take), **Replay** (or
@@ -173,9 +183,10 @@ status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
-open, the main area offers the three ways in, beside the Watches and
-Microphone panes: **Listen to a Watch**,
-**Open a Recording…** and **Open a Folder…**. While a recording is being
+open, the main area, beside the Watches and Microphone panes, says where
+to start: a watch picked and New Take, Quick Listen or New Watch…, and
+the File menu's **Open Recording…**, **Open Folder…** and **Replay
+Recording…** (a WAV or FLAC file played through as if live). While a recording is being
 analysed it shows how far the analysis has got, in hours of sound and time
 left, with **Cancel**; a problem shows in a red banner floating over the
 top of the main area, so nothing below it moves, until it is dismissed or
@@ -187,8 +198,7 @@ shift as they change.
 
 **A folder of segments.** A long take saved as segments (the recorder's
 hourly files, or an overnight run split into 10-minute FLACs) opens as one
-recording: **Open a Folder…** on the opening screen, **Open Folder…** in
-the File menu, or the folder's path given to the app
+recording: **Open Folder…** in the File menu, or the folder's path given to the app
 when it is started from a terminal (`timegrapher-app FOLDER`; see
 [Without a window](#without-a-window) for its name in each download).
 A saved take opens from its own folder or from the folder it was saved
@@ -882,7 +892,7 @@ light or dark setting; Light and Dark override it.
 supports, which briefly opens it and can disturb another program recording
 from the same microphone (a long take running beside the app, say). So the
 app lists them only when the microphone menu opens, **Rescan** is pressed
-or **Start** is clicked; until then the menu names the microphone kept from
+or listening starts (New Take or Quick Listen); until then the menu names the microphone kept from
 last time, or System Default. Replaying or analysing a recording never
 touches an input.
 
@@ -927,7 +937,7 @@ beside what it sets.
 folder, `Timegrapher Data` in the home folder unless another is chosen:
 `library.toml` at the top, then a folder for each watch holding its
 details (`watch.toml`), its `photos/` and its `takes/`, and `Unsorted/`,
-whose `takes/` holds the takes Quick Listen made until each is filed;
+whose `takes/` holds the Quick Listen takes kept with Save… until each is filed;
 each take a standard take folder named by when it started (`2026-10-20
 14.32 Dial Up`, with the position in words when the take used only one).
 `timegrapher watches list` and `show` read it from the command line,
@@ -1084,12 +1094,14 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
 
 ## Sessions
 
-Opening the app never touches the microphone; only **Start** opens it.
-When another program records from the same microphone (a long take with
-the recorder, say), don't press Start during its take, and press Stop
-before one begins.
+Opening the app never touches the microphone; only starting to listen
+(New Take or Quick Listen, in the Take card) opens it. When another
+program records from the same microphone (a long take with the recorder,
+say), don't start listening during its take, and press Stop before one
+begins.
 
-**Start** begins a session from the microphone. **Stop** stops
+**New Take** (with a watch picked) or **Quick Listen** begins a session
+from the microphone. **Stop** stops
 listening and lets go of the microphone, so another program can use it
 (Microphone Off shows beside the level meter), and keeps everything: the
 readings, strip, charts and the sound so far.
