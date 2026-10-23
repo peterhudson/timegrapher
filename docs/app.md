@@ -98,10 +98,10 @@ takes have the same menu as a watch's, with **File Under a Watch** (into
 the watch picked from it) in place of Move to Another Watch, so a take
 waits there until it is filed or deleted. No watch can be called
 Unsorted. **New Watch…** opens a form:
-only the **Name** is needed, and Calibre (which fills the Lift Angle and
-Beat Rate), Lift Angle, Beat Rate and Notes can each be
-removed with its ×, then given back, with any of the suggested fields or
-one of your own, from **Add Field**; **Archived** hides the watch from the
+only the **Name** is needed. Name, Calibre (which fills the Lift Angle
+and Beat Rate), Lift Angle, Beat Rate and Notes are always in the form,
+set or not; **Add Field** adds a suggested field or one of your own, and
+only those can be removed, with their ×; **Archived** hides the watch from the
 list without deleting it. The first watch makes the Watches folder.
 Clicking a watch shows its details; **Listen**, **Positions Test** and
 **Power Reserve Test**, each a new take on the microphone, asked about
@@ -1207,9 +1207,9 @@ when. It holds:
 
 | File | Contents |
 | --- | --- |
-| `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a pause starts a new file |
-| `clock.csv` | System time against frames captured, every 10 s, and on both sides of each pause; frames run on across a pause, with no line made up for the gap |
-| `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has been paused) `breaks`: one entry per resume with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
+| `audio-001.wav`, ... | The audio as captured, mono, 16-bit for a 16-bit microphone, in files of at most an hour; listening again after a break (the computer sleeping) starts a new file |
+| `clock.csv` | System time against frames captured, every 10 s, and on both sides of each break; frames run on across a break, with no line made up for the gap |
+| `session.json` | Watch, position, lift angle, beat rate, device, start and end, position changes, the readings at the end, and (only once the take has a break, such as the computer sleeping while it listened) `breaks`: one entry per break with `frame` (frames in the take before it), `audio_s`, `segment` (its first file), `utc` (host time of its first frame), `gap_s` (host time missing, from the clock log either side) and `device` (the input after it) |
 | `session.toml` | The session file `timegrapher session` reads: watch, calibre (with the wheels of a custom one), lift angle, beat rate, and one `[[recording]]` per stretch in one position with its `start_s` and `end_s` (for a take saved during a Positions Test, the test's own measured stretches, after each settling and for its measuring time, so `timegrapher session` reads the seconds its table did, with `wind_h` in the 24 hour half) |
 | `positions-test.json` | Only for a finished Positions Test run just after winding: its results, to load for the test 24 hours later (the format is under Full wind against 24 hours) |
 

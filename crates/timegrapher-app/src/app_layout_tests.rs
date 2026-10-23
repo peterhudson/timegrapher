@@ -238,6 +238,45 @@ fn every_pane_is_whole_during_a_take() {
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }
 
+/// Every pane whole with a recording opened, analysed whole: the Time
+/// slider shows under the cards, and the readings carry their whole-take
+/// lines.
+#[test]
+fn every_pane_is_whole_with_a_recording_opened() {
+    let ctx = {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
+    };
+    let dir = std::env::temp_dir().join(format!("tg-app-layout-open-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("a.wav");
+    let audio = generate(
+        &SynthConfig {
+            duration_s: 30.0,
+            ..Default::default()
+        },
+        |_| 280.0,
+        |_| 0.0,
+    );
+    timegrapher_core::audio::write_wav(&path, &audio).unwrap();
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.start_batch(&path);
+    let t = std::time::Instant::now();
+    while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+        app.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(app.live.is_some(), "{:?}", app.message);
+    let mut wrong = Vec::new();
+    for size in SIZES {
+        wrong.extend(check(&mut app, &ctx, size, "a recording opened"));
+    }
+    drop(app);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
 /// The Set Up the Microphone sheet, where the microphone menu now lives
 /// in the window, holds macOS's long names: nothing it draws runs out of
 /// it, at each size, with and without Show Every Input.

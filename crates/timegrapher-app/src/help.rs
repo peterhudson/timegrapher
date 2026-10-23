@@ -234,8 +234,8 @@ pub const STEADINESS: &[&str] = &[
      hides these marks.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
-     in the background, again every minute while it grows; for a recording, they \
-     cover what has been replayed, or all of it once it is opened. Rates are on the \
+     in the background, again every minute while it grows; for a recording opened, \
+     they cover all of it. Rates are on the \
      sound card's clock.",
 ];
 

@@ -540,8 +540,8 @@ impl Pane {
     fn hint(self) -> &'static str {
         match self {
             Pane::Watch => {
-                "Your watches and their takes, and the take running or on show: listening, \
-                 replaying, saving, its position and its averaging time"
+                "Your watches and their takes: pick a watch to start Listen, a Positions \
+                 Test or a Power Reserve Test, or open one of its takes"
             }
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
             Pane::Sound => "The typical tick and tock sound, with the edges the readings come from",
@@ -702,7 +702,7 @@ const NEW_TAKES: [(NewTake, &str, &str); 3] = [
 ];
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or \
      position. Listening carries on into the new session, unless closing the kept sound \
-     fails; a replay stops. Unsaved sound is asked about first.";
+     fails. Unsaved sound is asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
      settings, to analyse again later. With a watch picked in the Watches pane, the take is \
      saved into that watch, named for when it started; after Quick Listen, into Unsorted. \
@@ -772,7 +772,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         LinearDir::Horizontal
     };
     let mut middle = Linear::new(dir, vec![strip, sound, chart_row, hist_row]);
-    middle.shares.set_share(strip, 2.0);
+    middle.shares.set_share(strip, 1.6);
     let middle = tiles.insert_container(middle);
     // The Watches pane at the left when it is shown.
     let root = tiles.insert_container(Linear::new_binary(
@@ -2260,7 +2260,7 @@ impl TimegrapherApp {
     }
 
     /// Clear everything for the next watch or position. Listening to the
-    /// microphone carries on in the new session; a replay stops.
+    /// microphone carries on in the new session.
     fn new_session(&mut self) {
         if self.analysis_save_busy() || self.saving_busy() {
             return;
@@ -2903,8 +2903,8 @@ impl TimegrapherApp {
     fn take_manifest(&self) -> Manifest {
         let mut m = self.manifest_header();
         // The stretches masked out, in the saved sound's own time. Every
-        // entry lists them all, so each comes back when the take is opened
-        // or replayed, even one in a settling gap; `timegrapher session`
+        // entry lists them all, so each comes back when the take is
+        // opened, even one in a settling gap; `timegrapher session`
         // counts only the part inside an entry's stretch.
         let masked: Vec<[f64; 2]> = self
             .masked
@@ -4667,7 +4667,7 @@ impl TimegrapherApp {
 
     /// Why `take` can't be renamed, moved or deleted now (or, with
     /// `keep`, kept as its analysis), if it can't: Save Again saves into
-    /// it, it is being replayed, or its analysis is being kept.
+    /// it, it is being read as the input, or its analysis is being kept.
     fn take_busy(&self, take: &Path, keep: bool) -> Option<String> {
         let inside = |p: &Path| p.starts_with(take);
         if self.session.saved_to().is_some_and(inside) {
@@ -4676,7 +4676,7 @@ impl TimegrapherApp {
             );
         }
         if self.running() && inside(Path::new(&self.opened_path)) {
-            return Some("This take is being replayed: Stop it first.".into());
+            return Some("This take is in use: Stop first.".into());
         }
         if self.take_keep.as_ref().is_some_and(|(t, _)| t == take) {
             return Some("This take's analysis is being kept: wait, or Cancel.".into());
@@ -9673,13 +9673,13 @@ impl TimegrapherApp {
             ui.separator();
             ui.selectable_value(&mut self.reserve_keep_sound, true, "Keep Sound")
                 .on_hover_text(
-                    "Keep the run's sound in the take, to measure again or replay later; \
+                    "Keep the run's sound in the take, to measure again later; \
                      about a third of a GB an hour",
                 );
             ui.selectable_value(&mut self.reserve_keep_sound, false, "Analysis Only")
                 .on_hover_text(
                     "Keep the take as its analysis only, tens of MB: every pane still reads \
-                     it, but it can't be measured again or replayed. The sound is still \
+                     it, but it can't be measured again. The sound is still \
                      written while the test runs and is deleted once the analysis is written.",
                 );
         });
@@ -11930,7 +11930,7 @@ const MOVE_GAP_S: f64 = 3.0;
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
-     (from Resume, when it was moved while stopped) it settles: the hand leaves the stand and the \
+     it settles: the hand leaves the stand and the \
      balance steadies. Those beats are drawn faintly on the Paper Strip and left out of the \
      readings, the charts' points, the Distributions and the Steadiness tests. The sound is \
      still kept, and a saved take's positions start after it.";
@@ -17016,6 +17016,10 @@ mod tests {
         assert!(!asks(&named), "{named}");
         assert!(named.contains(&c.calibre), "the calibre named: {named}");
         app.pick_watch(&pepsi);
+        assert!(
+            app.calibre.is_empty(),
+            "not the calibre of the watch before"
+        );
         let bare = drawn(&mut app);
         assert!(asks(&bare), "{bare}");
         assert!(
@@ -17156,6 +17160,11 @@ mod tests {
         assert!(
             strip > cards && strip > profile,
             "the strip {strip} against the cards {cards} and the profile {profile}"
+        );
+        // The profile keeps about a third of the room below the cards.
+        assert!(
+            profile > (strip + profile) * 0.38,
+            "the profile {profile} against the strip {strip}"
         );
         // Each toolbar keeps to one row; its rarer settings are behind "…".
         let row = |a: &str, b: &str| (top_of[a] - top_of[b]).abs() < 4.0;

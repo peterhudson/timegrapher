@@ -1,9 +1,8 @@
-//! The Calibre menu in the Take card, the panel beneath it and Manage
-//! Calibres. The menu offers the calibres picked lately, the short list
-//! and the watchmaker's own. Manage Calibres lists every calibre by maker
-//! with a search over names, other names and makers, a tickbox for the
-//! short list on each, and the one selected in full. The panel shows what is known about the calibre picked: its
-//! beat rate and lift angle, each wheel's turn with where the figure comes
+//! The Calibre menu on the Beat Rate card, and Manage Calibres. The menu
+//! offers the calibres picked lately, the short list and the watchmaker's
+//! own. Manage Calibres lists every calibre by maker with a search over
+//! names, other names and makers, a tickbox for the short list on each,
+//! and the one selected in full: its beat rate and lift angle, each wheel's turn with where the figure comes
 //! from, and the table's sources. Wheels nobody has given are left blank
 //! for the watchmaker to fill in; those figures, and calibres the table
 //! doesn't list, are kept in core's user calibre file in the settings

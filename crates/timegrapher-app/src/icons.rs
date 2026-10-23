@@ -152,9 +152,8 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Listen => r#"<path fill="currentColor" d="M7.5 4.8L19 12 7.5 19.2z"/>"#,
         // A square: Stop.
         Icon::Stop => r#"<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>"#,
-        // A tray with an arrow into it: Save.
+        // A floppy disk, its body, label and shutter: Save.
         Icon::Save => {
-            // A floppy disk: its body, label and shutter.
             r#"<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>"#
         }
         // The positions, the watch drawn as it lies or stands, its crown
