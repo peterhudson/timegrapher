@@ -154,7 +154,8 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Stop => r#"<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>"#,
         // A tray with an arrow into it: Save.
         Icon::Save => {
-            r#"<path d="M12 3.5v10.5M7.8 10l4.2 4.2 4.2-4.2"/><path d="M4 14.5v4.5h16v-4.5"/>"#
+            // A floppy disk: its body, label and shutter.
+            r#"<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>"#
         }
         // The positions, the watch drawn as it lies or stands, its crown
         // the small knob. Dial up: its face, hands and all.

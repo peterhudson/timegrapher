@@ -20,8 +20,9 @@ Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
 **Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the
 readings and for each pane, and Reset Panes. **Watches**: Show Watches
-or Hide Watches, **New Watch…**, then each watch not archived; picking one
-shows the Watches pane with that watch. **Help**: Check for
+or Hide Watches, **New Watch…**, **Quick Listen (No Watch)**, which lets
+go of a picked watch and starts Quick Listen (below), then each watch not
+archived; picking one shows the Watches pane with that watch. **Help**: Check for
 Updates…, Report a Problem… and, on Linux, **Add to Applications Menu**,
 which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
@@ -43,21 +44,23 @@ take their reading's colour, and the Steadiness views share one green.
 of figures one width and the Position card narrower. What the
 take on show needs sits at the foot of its card. **Position** names the
 position and has six icons, DU, DD, CU, CD, CL and CR, each with its code
-under it, the one in use picked; keys 1 to 6 pick them too, except while
+and its key under it ("DU 1" to "CR 6"), the one in use picked; keys 1 to 6 pick them too, except while
 typing in a field. **Rate** has a **Listen** icon, which starts Quick
-Listen (below) and becomes a **Stop** icon while listening; beside it a
-**Save** icon, whose menu offers **Keep in a Watch** (your watches not
+Listen (below), or with a watch picked that watch's Listen take, and
+becomes a **Stop** icon while listening; beside it a **Save** icon (a
+floppy disk), whose menu offers **Keep in a Watch** (your watches not
 archived, then **New Watch…**; shown for a Quick Listen take, and for a
 recording opened from outside the Watches folder) and **Save in a
 Folder…**, which asks where, or **Save Again** once it has been saved.
 The Save icon is hidden for a watch's own take, which saves itself at
-Stop. Then **Average Over**, the time the readings are fitted over.
+Stop. Then **Average Over**, shown as "Average 10 s", the time the
+readings are fitted over.
 **Amplitude** has **Lift**, the lift angle, typed or picked from the
 common ones, with "the default" beside it while nothing has set it; a
 watch's calibre that the table knows sets it instead, and it shows as a
 figure. **Beat Error** has no controls. **Beat Rate** has the **Beat
 Rate** menu (Auto or a standard rate) and, with no watch picked, the
-**Calibre** menu (its search covers the whole table, with **Manage
+labelled **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
 the table knows, one line names the calibre, the beat rate and the lift
 angle it sets instead (Edit… on the watch changes them).
@@ -184,7 +187,12 @@ they do not replace them. Earlier and later pieces remain available to inspect.
 
 Every other pane's own settings sit in a toolbar across the top of the
 pane, with the pane's **?** at its right; a toolbar too narrow for its
-settings carries them onto a second line. The charts carry theirs in the
+settings carries them onto a second line. The Paper Strip and the Tick
+Tock Profile keep to one line: their everyday settings are in the row,
+and the rest (the strip's direction, the lines drawn over it,
+Auto-Centre and Unmask All; the profile's Time From and Sounds 1, 2 and
+3; and each pane's Average Over and Export…) are in a **…** menu at the
+row's end. The charts carry theirs in the
 tab bar: **Match Strip**, on, shows the same stretch of time as the paper
 strip, and off, the whole session. A choice between two options, such as
 Stacked and Beside, switches to the other option wherever it is clicked,
@@ -1135,12 +1143,15 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
 
 ## Sessions
 
-At the first launch the app shows **Set Up the Microphone**: the
-microphone menu, the input level and peak meter, **Start Listening** and
-**Not Now**. Start Listening starts Quick Listen on that microphone; Not
-Now closes the sheet, which shows again at the next launch. Once the
-microphone is set up (by Start Listening, or by any listening that opened
-it), every launch starts Quick Listen at once, unless **Listen When the
+At the first launch the app shows **Set Up the Microphone**, and listens
+while it is open: the microphone menu, the input level and the peak meter,
+with a shaded band from -10 to -6 dBFS to set the peak in (at 0 dBFS the
+sound clips and the meter turns red), then **Done** and **Not Now**.
+Choosing another microphone listens to that one instead; if a microphone
+won't start, the sheet says why. Done keeps Quick Listen running; Not Now
+stops it and closes the sheet, which shows again at the next launch. Once
+the microphone is set up (by Done, or by any listening that opened it
+with the sheet closed), every launch starts Quick Listen at once, unless **Listen When the
 App Opens** (Settings, under General) is off or a recording was given on
 the command line. With it off, the microphone is opened only when
 listening starts. When another program records from the same microphone

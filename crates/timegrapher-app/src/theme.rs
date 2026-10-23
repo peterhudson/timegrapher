@@ -853,6 +853,23 @@ pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl
     });
 }
 
+/// A toolbar's "…" button: the pane's rarer settings in a menu, laid out
+/// as a settings list rather than a toolbar row, so the toolbar keeps to
+/// one line and the pane keeps its height.
+pub fn more_menu(ui: &mut Ui, hint: &str, contents: impl FnOnce(&mut Ui)) {
+    let id = egui::Id::new("pane toolbar");
+    let was = in_toolbar(ui);
+    ui.menu_button(RichText::new("…").size(14.0), |ui| {
+        ui.ctx().data_mut(|d| d.insert_temp(id, false));
+        ui.set_min_width(280.0);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        contents(ui);
+        ui.ctx().data_mut(|d| d.insert_temp(id, was));
+    })
+    .response
+    .on_hover_text(hint);
+}
+
 /// A button that stays pressed while `on`: a switch in a toolbar. Its
 /// response is marked changed when clicked.
 pub fn toggle(ui: &mut Ui, label: &str, on: &mut bool) -> Response {

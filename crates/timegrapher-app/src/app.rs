@@ -772,7 +772,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         LinearDir::Horizontal
     };
     let mut middle = Linear::new(dir, vec![strip, sound, chart_row, hist_row]);
-    middle.shares.set_share(strip, 1.1);
+    middle.shares.set_share(strip, 2.0);
     let middle = tiles.insert_container(middle);
     // The Watches pane at the left when it is shown.
     let root = tiles.insert_container(Linear::new_binary(
@@ -1292,6 +1292,8 @@ pub struct TimegrapherApp {
     setup_sheet: bool,
     /// Quick Listen starts on the first frame (Listen When the App Opens).
     listen_pending: bool,
+    /// Set Up the Microphone has tried listening once.
+    setup_tried: bool,
     /// Why the computer isn't being kept awake although asked, set by the
     /// listening thread.
     pub(crate) awake_fault: Option<String>,
@@ -1765,6 +1767,7 @@ impl TimegrapherApp {
             mic_set_up: false,
             setup_sheet: false,
             listen_pending: false,
+            setup_tried: false,
             awake_fault: None,
             pump_fault: None,
             check_pending: false,
@@ -5314,13 +5317,9 @@ impl TimegrapherApp {
             }),
             Pane::Strip => theme::pane_toolbar(ui, title, help::STRIP, |ui| {
                 self.strip_settings(ui);
-                self.pane_average_setting(ui, Pane::Strip);
-                self.export_button(ui, pane);
             }),
             Pane::Sound => theme::pane_toolbar(ui, title, help::PROFILE, |ui| {
                 self.profile_settings(ui);
-                self.pane_average_setting(ui, Pane::Sound);
-                self.export_button(ui, pane);
             }),
             Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
                 scope::settings(ui, &mut self.scope_view);
@@ -5873,11 +5872,12 @@ impl TimegrapherApp {
                             {
                                 picked = Some(p);
                             }
-                            ui.label(RichText::new(p.code()).small().color(if on {
-                                pal.text
-                            } else {
-                                pal.text_secondary
-                            }));
+                            // Its code and its key.
+                            ui.label(
+                                RichText::new(format!("{} {n}", p.code()))
+                                    .small()
+                                    .color(if on { pal.text } else { pal.text_secondary }),
+                            );
                         },
                     );
                 }
@@ -5900,26 +5900,43 @@ impl TimegrapherApp {
                 {
                     self.stop_listening();
                 }
-            } else if ui
-                .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
-                    theme::icon_button(ui, Icon::Listen, 26.0, pal.accent, true, false)
-                })
-                .inner
-                .on_hover_text(QUICK_LISTEN_HINT)
-                .clicked()
-            {
-                // Asks only about what isn't Quick Listen's: changed masks
-                // on a recording opened, a watch's unsaved details.
-                self.quick_listen(false);
+            } else {
+                // With a watch picked, a take of it; else Quick Listen.
+                let watch = self.open_watch().map(|e| e.watch.name.clone());
+                let hint = match &watch {
+                    Some(name) => format!(
+                        "Listen to {name}: a new take, saved into it at Stop. For a Quick \
+                         Listen with no watch, choose Quick Listen (No Watch) in the Watches \
+                         menu."
+                    ),
+                    None => QUICK_LISTEN_HINT.to_string(),
+                };
+                if ui
+                    .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
+                        theme::icon_button(ui, Icon::Listen, 26.0, pal.accent, true, false)
+                    })
+                    .inner
+                    .on_hover_text(hint)
+                    .clicked()
+                {
+                    if watch.is_some() {
+                        self.new_take(NewTake::Listen, false);
+                    } else {
+                        // Asks only about what isn't Quick Listen's: changed
+                        // masks on a recording opened, a watch's unsaved
+                        // details.
+                        self.quick_listen(false);
+                    }
+                }
             }
             // A watch's take saves itself at Stop.
-            if !(self.session.mic() && !self.quick_listen) {
+            if !self.session.mic() || self.quick_listen {
                 self.save_menu(ui);
             }
             let mut avg = self.average_s;
             egui::ComboBox::from_id_salt("card average")
                 .width(ui.available_width().min(96.0))
-                .selected_text(fields::duration(avg))
+                .selected_text(format!("Average {}", fields::duration(avg)))
                 .show_ui(ui, |ui| {
                     for a in AVERAGES {
                         ui.selectable_value(&mut avg, a, fields::duration(a));
@@ -6075,7 +6092,17 @@ impl TimegrapherApp {
         }
         if self.open_watch().is_none() {
             let current = self.calibre.clone();
-            if let Some(p) = self.cal.picker(ui, &current) {
+            let picked = ui
+                .horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Calibre")
+                            .small()
+                            .color(theme::pal(ui).text_secondary),
+                    );
+                    self.cal.picker(ui, &current)
+                })
+                .inner;
+            if let Some(p) = picked {
                 self.set_calibre(p);
             }
         }
@@ -6440,34 +6467,6 @@ impl TimegrapherApp {
                 }
             },
         );
-        let mut h = self.strip.horizontal;
-        theme::row(
-            ui,
-            "Direction",
-            Some("Which way time runs along the strip"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut h,
-                    &[
-                        (
-                            false,
-                            "Down",
-                            "Newest beats at the top, the strip beside the charts",
-                        ),
-                        (
-                            true,
-                            "Across",
-                            "Newest beats at the right, the strip above the charts",
-                        ),
-                    ],
-                );
-            },
-        );
-        if h != self.strip.horizontal {
-            self.strip.horizontal = h;
-            self.relayout(h);
-        }
         theme::switch_row(
             ui,
             "Rate Line",
@@ -6483,43 +6482,6 @@ impl TimegrapherApp {
              easy to see whether the dots run parallel to it. They show with or without \
              the Rate Line.",
         );
-        let overlays = &mut self.overlays;
-        let lines = [
-            (
-                "Amplitude",
-                "The amplitude readings as a purple line against the same time, on their own \
-                 scale",
-            ),
-            (
-                "Rate",
-                "The rate readings as a red line against the same time, on their own scale",
-            ),
-            (
-                "Beat Error",
-                "The beat error readings, from the unlock, as a yellow line against the same \
-                 time, on their own scale",
-            ),
-        ];
-        // The name stays on one line with the first switch; the others
-        // wrap to the next line when the pane is narrow.
-        theme::row(
-            ui,
-            "Draw Over the Strip",
-            Some(
-                "Readings drawn as lines over the beats against the same time, each on its \
-                 own scale",
-            ),
-            |ui| theme::switch_row(ui, lines[0].0, &mut overlays[0], lines[0].1),
-        );
-        for (i, (name, hint)) in lines.into_iter().enumerate().skip(1) {
-            theme::switch_row(ui, name, &mut overlays[i], hint);
-        }
-        theme::switch_row(
-            ui,
-            "Auto-Centre",
-            &mut self.follow,
-            "Keep the newest beats on the centre line and slide the rest",
-        );
         ui.horizontal(|ui| {
             if ui
                 .button("Centre")
@@ -6534,32 +6496,106 @@ impl TimegrapherApp {
             .inner
             .on_hover_text(MASK_HINT)
             .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
-            if ui
-                .add_enabled(!self.masked.is_empty(), egui::Button::new("Unmask All"))
-                .on_hover_text("Bring every masked stretch back into the readings")
-                .on_disabled_hover_text("Nothing is masked")
-                .clicked()
-            {
-                self.set_masked(Vec::new());
-            }
         });
-        if !self.masked.is_empty() {
-            let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
-            ui.label(
-                RichText::new(format!(
-                    "{} {} masked, {} in all",
-                    self.masked.len(),
-                    if self.masked.len() == 1 {
-                        "stretch"
-                    } else {
-                        "stretches"
+        theme::more_menu(
+            ui,
+            "More strip settings: direction, lines drawn over the strip, \
+             Auto-Centre, masks, Average Over and Export",
+            |ui| {
+                let mut h = self.strip.horizontal;
+                theme::row(
+                    ui,
+                    "Direction",
+                    Some("Which way time runs along the strip"),
+                    |ui| {
+                        theme::segmented(
+                            ui,
+                            &mut h,
+                            &[
+                                (
+                                    false,
+                                    "Down",
+                                    "Newest beats at the top, the strip beside the charts",
+                                ),
+                                (
+                                    true,
+                                    "Across",
+                                    "Newest beats at the right, the strip above the charts",
+                                ),
+                            ],
+                        );
                     },
-                    strip::fmt_time(total)
-                ))
-                .small()
-                .color(theme::pal(ui).text_secondary),
+                );
+                if h != self.strip.horizontal {
+                    self.strip.horizontal = h;
+                    self.relayout(h);
+                }
+                let overlays = &mut self.overlays;
+                let lines = [
+                (
+                    "Amplitude",
+                    "The amplitude readings as a purple line against the same time, on their own \
+                     scale",
+                ),
+                (
+                    "Rate",
+                    "The rate readings as a red line against the same time, on their own scale",
+                ),
+                (
+                    "Beat Error",
+                    "The beat error readings, from the unlock, as a yellow line against the same \
+                     time, on their own scale",
+                ),
+            ];
+                // The name stays on one line with the first switch; the others
+                // wrap to the next line when the pane is narrow.
+                theme::row(
+                ui,
+                "Draw Over the Strip",
+                Some(
+                    "Readings drawn as lines over the beats against the same time, each on its \
+                     own scale",
+                ),
+                |ui| theme::switch_row(ui, lines[0].0, &mut overlays[0], lines[0].1),
             );
-        }
+                for (i, (name, hint)) in lines.into_iter().enumerate().skip(1) {
+                    theme::switch_row(ui, name, &mut overlays[i], hint);
+                }
+                theme::switch_row(
+                    ui,
+                    "Auto-Centre",
+                    &mut self.follow,
+                    "Keep the newest beats on the centre line and slide the rest",
+                );
+                if ui
+                    .add_enabled(!self.masked.is_empty(), egui::Button::new("Unmask All"))
+                    .on_hover_text("Bring every masked stretch back into the readings")
+                    .on_disabled_hover_text("Nothing is masked")
+                    .clicked()
+                {
+                    self.set_masked(Vec::new());
+                }
+                if !self.masked.is_empty() {
+                    let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {} masked, {} in all",
+                            self.masked.len(),
+                            if self.masked.len() == 1 {
+                                "stretch"
+                            } else {
+                                "stretches"
+                            },
+                            strip::fmt_time(total)
+                        ))
+                        .small()
+                        .color(theme::pal(ui).text_secondary),
+                    );
+                }
+                self.pane_average_setting(ui, Pane::Strip);
+                self.export_button(ui, Pane::Strip);
+            },
+        );
     }
 
     fn profile_settings(&mut self, ui: &mut egui::Ui) {
@@ -6578,30 +6614,6 @@ impl TimegrapherApp {
                             true,
                             "Beside",
                             "Tick on the left, tock on the right, as tg shows them",
-                        ),
-                    ],
-                );
-            },
-        );
-        theme::row(
-            ui,
-            "Time From",
-            Some("Where each side's time is measured from"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut o.shared_clock,
-                    &[
-                        (
-                            true,
-                            "Shared",
-                            "Tick and tock on one clock: the drops stand the beat error \
-                             from the drop apart, and the unlocks the beat error from the unlock",
-                        ),
-                        (
-                            false,
-                            "Own Drop",
-                            "Each side from its own drop, so both drops sit at 0 ms",
                         ),
                     ],
                 );
@@ -6633,12 +6645,44 @@ impl TimegrapherApp {
             "The solid unlock, drop and peak lines: the edges amplitude and the \
              beat error are read from",
         );
-        theme::switch_row(
+        theme::more_menu(
             ui,
-            "Sounds 1, 2 and 3",
-            &mut o.sounds,
-            "The dashed brown lines where the three sounds of each beat rise: unlock, \
-             impulse and drop",
+            "More profile settings: Time From, Sounds 1, 2 and 3, Average Over and Export",
+            |ui| {
+                theme::row(
+                    ui,
+                    "Time From",
+                    Some("Where each side's time is measured from"),
+                    |ui| {
+                        theme::segmented(
+                            ui,
+                            &mut self.sound_opts.shared_clock,
+                            &[
+                                (
+                                    true,
+                                    "Shared",
+                                    "Tick and tock on one clock: the drops stand the beat error \
+                                     from the drop apart, and the unlocks the beat error from the unlock",
+                                ),
+                                (
+                                    false,
+                                    "Own Drop",
+                                    "Each side from its own drop, so both drops sit at 0 ms",
+                                ),
+                            ],
+                        );
+                    },
+                );
+                theme::switch_row(
+                    ui,
+                    "Sounds 1, 2 and 3",
+                    &mut self.sound_opts.sounds,
+                    "The dashed brown lines where the three sounds of each beat rise: unlock, \
+                     impulse and drop",
+                );
+                self.pane_average_setting(ui, Pane::Sound);
+                self.export_button(ui, Pane::Sound);
+            },
         );
     }
 
@@ -6685,8 +6729,18 @@ impl TimegrapherApp {
                 .collect(),
             _ => Vec::new(),
         };
-        if !watches.is_empty() {
-            ui.separator();
+        ui.separator();
+        if ui
+            .add_enabled(
+                !self.running(),
+                egui::Button::new("Quick Listen (No Watch)"),
+            )
+            .on_hover_text(QUICK_LISTEN_HINT)
+            .on_disabled_hover_text("Stop listening first")
+            .clicked()
+        {
+            ui.close();
+            self.quick_listen(false);
         }
         for (id, name) in watches {
             let picked = self.watch_open.as_deref() == Some(id.as_str());
@@ -7051,13 +7105,22 @@ impl TimegrapherApp {
     }
 
     /// The window Open asks in, while it is open.
-    /// Set Up the Microphone, at the first launch: which microphone and how
-    /// loud, then listening. Not Now asks again at the next launch.
+    /// Set Up the Microphone, at the first launch: which microphone, and
+    /// its level set against the watch on the stand, listening all the
+    /// while so the meter moves. Done keeps listening; Not Now stops and
+    /// asks again at the next launch.
     fn setup_sheet_dialog(&mut self, ctx: &egui::Context) {
         if !self.setup_sheet || self.open_ask.is_some() || self.confirm.is_some() {
             return;
         }
-        let (mut start, mut later) = (false, false);
+        // Listen as soon as the sheet shows, once: a failure says why in
+        // the banner, and choosing another microphone tries again.
+        if !self.setup_tried && !self.running() {
+            self.setup_tried = true;
+            self.quick_listen(true);
+        }
+        let before = self.device.clone();
+        let (mut done, mut later) = (false, false);
         egui::Modal::new(egui::Id::new("set up the microphone")).show(ctx, |ui| {
             ui.set_width(440.0);
             let pal = theme::pal(ui);
@@ -7065,33 +7128,55 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             ui.label(
                 RichText::new(
-                    "Choose the microphone the watch sits on and set its level. From then \
-                     on the app listens as soon as it opens (Settings > General), and \
-                     Settings > Microphone changes these.",
+                    "Choose the microphone the watch sits on, put a ticking watch on it, and \
+                     set the Input Level while the Peak meter moves. The shaded band is \
+                     between -10 and -6 dBFS; at 0 dBFS the sound clips and the meter turns \
+                     red. From then on the app listens as soon as it opens (Settings > \
+                     General), and Settings > Microphone changes these.",
                 )
                 .color(pal.text_secondary),
             );
             ui.add_space(8.0);
             self.microphone_card(ui);
+            // Why the microphone didn't start, here rather than in the
+            // banner the sheet covers.
+            if let Some((m, true)) = &self.message {
+                ui.add_space(4.0);
+                ui.label(RichText::new(m).color(pal.bad));
+            }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                start = ui
-                    .add(theme::primary(ui, "Start Listening"))
-                    .on_hover_text("Listen to this microphone now, with no watch picked")
+                done = ui
+                    .add(theme::primary(ui, "Done"))
+                    .on_hover_text("Keep listening to this microphone, with no watch picked")
                     .clicked();
                 later = ui
                     .add(theme::secondary(ui, "Not Now"))
-                    .on_hover_text("Close this; it asks again the next time the app opens")
+                    .on_hover_text(
+                        "Stop listening and close this; it asks again the next time the app \
+                         opens",
+                    )
                     .clicked();
             });
         });
+        if self.device != before && self.running() && self.session.mic() {
+            // Another microphone chosen: listen to that one instead.
+            self.stop_listening();
+            self.quick_listen(true);
+        }
         if later {
             self.setup_sheet = false;
+            self.message = None;
+            if self.running() && self.session.mic() {
+                self.stop_listening();
+            }
         }
-        if start {
+        if done {
             self.setup_sheet = false;
             self.mic_set_up = true;
-            self.quick_listen(false);
+            if !self.running() {
+                self.quick_listen(true);
+            }
         }
     }
 
@@ -7558,6 +7643,16 @@ impl TimegrapherApp {
         let r = height / 2.0;
         let p = ui.painter();
         p.rect_filled(rect, r, pal.control);
+        // The band between the reference marks, shaded.
+        let at = |db: f64| rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
+        p.rect_filled(
+            egui::Rect::from_x_y_ranges(
+                at(REFERENCE_DBFS[0])..=at(REFERENCE_DBFS[1]),
+                rect.y_range(),
+            ),
+            0.0,
+            pal.accent.gamma_multiply(0.25),
+        );
         if self.running() {
             let peak = self.level.peak_dbfs.max(-60.0);
             let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
@@ -8866,8 +8961,12 @@ impl TimegrapherApp {
         }
         // Always on screen: where the take is going, and whether the strip
         // is live or a take opened.
-        ui.label(RichText::new(self.status_words()).small().strong())
-            .on_hover_text("The take on show, its watch, and whether it is listening");
+        ui.label(
+            RichText::new(self.status_words())
+                .font(theme::semibold(13.5))
+                .color(theme::pal(ui).text),
+        )
+        .on_hover_text("The take on show, its watch, and whether it is listening");
         if let Some(b) = &self.batch {
             let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
             let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
@@ -10062,6 +10161,10 @@ impl TimegrapherApp {
 
     /// A problem, where it can't be missed, with a way to put it away.
     fn error_banner(&mut self, ui: &mut egui::Ui) {
+        if self.setup_sheet {
+            // The sheet says it.
+            return;
+        }
         let fault = self.session.recording_fault().map(|f| f.description());
         let m = match (&fault, &self.message) {
             (Some(fault), Some((message, true))) => {
@@ -12317,9 +12420,8 @@ impl eframe::App for TimegrapherApp {
             self.quick_listen(false);
         }
         // A microphone that opened is one set up.
-        if self.running() && self.session.mic() {
+        if self.running() && self.session.mic() && !self.setup_sheet {
             self.mic_set_up = true;
-            self.setup_sheet = false;
         }
         if std::mem::take(&mut self.check_pending) {
             self.updates.start(ctx, false);
@@ -12977,10 +13079,12 @@ mod tests {
             "no lines"
         );
         // Its controls aren't in the picture, and the window's frame goes on
-        // as before.
+        // as before: the profile below keeps its toolbar (Export… is in
+        // its "…" menu, so its Layout setting stands for it).
+        assert!(!doc.contains("Width"), "toolbar drawn into the picture");
         assert!(!doc.contains("Export…"), "toolbar drawn into the picture");
         assert!(
-            painted_text(&out).contains("Export…"),
+            painted_text(&out).contains("Stacked"),
             "other panes lost their toolbars"
         );
         assert!(matches!(&app.message, Some((m, false)) if m.starts_with("Saved ")));
@@ -16774,15 +16878,16 @@ mod tests {
             let texts = window_texts(&mut app, &ctx, w);
             for want in [
                 "Position",
-                "DU",
-                "DD",
-                "CU",
-                "CD",
-                "CL",
-                "CR",
+                "DU 1",
+                "DD 2",
+                "CU 3",
+                "CD 4",
+                "CL 5",
+                "CR 6",
                 "Lift",
-                "10 s",
+                "Average 10 s",
                 "Beat Rate: Auto",
+                "Calibre",
                 "Not Set",
                 "Watches",
             ] {
@@ -16982,7 +17087,7 @@ mod tests {
                 }
             }
             let pane = top_of["Paper Strip"];
-            for control in ["CR", "Lift", "Beat Rate: Auto"] {
+            for control in ["CR 6", "Lift", "Beat Rate: Auto"] {
                 assert!(
                     bottom_of[control] < pane,
                     "{control} ends at {} under the panes at {pane}",
@@ -16995,6 +17100,40 @@ mod tests {
         check(&mut app);
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_paper_strip_is_the_largest_area_at_1000_by_700() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        let mut top_of = std::collections::HashMap::new();
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(1000.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| app.panels(ctx));
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    let r = c.shape.visual_bounding_rect();
+                    top_of.insert(t.galley.text().to_string(), r.top());
+                }
+            }
+        }
+        let cards = top_of["Paper Strip"] - top_of["Position"];
+        let strip = top_of["Tick Tock Profile"] - top_of["Paper Strip"];
+        let profile = top_of[&app.status_words()] - top_of["Tick Tock Profile"];
+        assert!(
+            strip > cards && strip > profile,
+            "the strip {strip} against the cards {cards} and the profile {profile}"
+        );
+        // Each toolbar keeps to one row; its rarer settings are behind "…".
+        let row = |a: &str, b: &str| (top_of[a] - top_of[b]).abs() < 4.0;
+        assert!(row("Width", "Mask"), "{top_of:?}");
+        assert!(row("Layout", "Edges"), "{top_of:?}");
     }
 
     #[test]
