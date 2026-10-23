@@ -192,7 +192,11 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
     // one (a 10 s reading over the end of a mask would have only the beats
     // after it).
     timegrapher_core::session::mask_log(&mut log, masked);
-    log.jumps.extend(masked.iter().flat_map(|m| [m.0, m.1]));
+    log.jumps.extend(
+        timegrapher_core::clean::mask_breaks(masked)
+            .iter()
+            .map(|b| b.audio_s),
+    );
     log.jumps.sort_by(f64::total_cmp);
     log.jumps.dedup();
     Some(log)
