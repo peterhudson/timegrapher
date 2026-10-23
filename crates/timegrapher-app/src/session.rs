@@ -21,8 +21,9 @@
 //! | Analysing      |       |        |      |      | yes  |
 //! | Analysed       |       |        |      |      |      |
 //!
-//! Listen, Replay, Open and New Session are allowed in every state: each
-//! stops what is under way first. Save needs the sound kept as well. A recording
+//! Listen, Open and New Session are allowed in every state: each stops
+//! what is under way first. Replaying and ReplayStopped are reached only
+//! from tests, which play a recording through as if live. Save needs the sound kept as well. A recording
 //! fault overrides Resume, Move and Save until the recorder is released; its
 //! files are retained for manual recovery rather than treated as a valid take.
 
