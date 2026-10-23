@@ -1,4 +1,4 @@
-//! The Calibre menu under Watch, the panel beneath it and Manage
+//! The Calibre menu in the Take card, the panel beneath it and Manage
 //! Calibres. The menu offers the calibres picked lately, the short list
 //! and the watchmaker's own. Manage Calibres lists every calibre by maker
 //! with a search over names, other names and makers, a tickbox for the
@@ -98,7 +98,7 @@ const MANAGE_HELP: &[&str] = &[
      wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
      wheel's period you know into a blank and it is kept for this calibre, marked yours; Share \
      with the Project opens a GitHub issue with what you added, to send from your browser. Use \
-     for This Watch sets it under Watch.",
+     for This Watch sets it in the Take card.",
     "New Custom Calibre adds one the list doesn't have, named as typed in the search box; its \
      name, maker, beat rate and lift angle are edited here.",
 ];
@@ -960,7 +960,9 @@ impl Calibres {
                 let here = name == current;
                 if ui
                     .add_enabled(!here, theme::primary(ui, "Use for This Watch"))
-                    .on_hover_text("Set this calibre under Watch, with its lift angle and wheels")
+                    .on_hover_text(
+                        "Set this calibre in the Take card, with its lift angle and wheels",
+                    )
                     .on_disabled_hover_text("This watch's calibre already")
                     .clicked()
                 {

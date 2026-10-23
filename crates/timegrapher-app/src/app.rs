@@ -48,8 +48,6 @@ const SPAN_STRIP_HINT: &str = "Only the paper strip's length, ending where the s
      newest readings, moving along with the strip";
 /// What the reading cards asked for.
 struct Readouts {
-    /// A new Average Over.
-    average: Option<f64>,
     /// Keep the input's clock as timed.
     keep_clock: bool,
 }
@@ -361,12 +359,14 @@ pub enum Pane {
     Isochronism,
     PositionsTest,
     PowerReserve,
+    Microphone,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 22] = [
+    const ALL: [Pane; 23] = [
         Pane::Watch,
+        Pane::Microphone,
         Pane::PositionsTest,
         Pane::PowerReserve,
         Pane::Strip,
@@ -444,6 +444,7 @@ impl Pane {
             Pane::Isochronism => "Isochronism",
             Pane::PositionsTest => "Positions Test",
             Pane::PowerReserve => "Power Reserve",
+            Pane::Microphone => "Microphone",
         }
     }
 
@@ -451,9 +452,10 @@ impl Pane {
     fn hint(self) -> &'static str {
         match self {
             Pane::Watch => {
-                "The microphone or recording, listening and saving, and the watch: its \
-                 beat rate, lift angle and position"
+                "Your watches and their takes, and the take running or on show: listening, \
+                 replaying, saving, its position and its averaging time"
             }
+            Pane::Microphone => "The microphone to listen to, its input level and its peak",
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
             Pane::Sound => "The typical tick and tock sound, with the edges the readings come from",
             Pane::Rate => "The rate over the whole session",
@@ -548,6 +550,7 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::Isochronism => (Icon::Isochronism, pal.drop),
         Pane::PositionsTest => (Icon::Positions, pal.teal),
         Pane::PowerReserve => (Icon::Reserve, pal.teal),
+        Pane::Microphone => (Icon::Microphone, pal.sound),
         Pane::Rate => (Icon::RateChart, pal.trace_rate),
         Pane::Amplitude => (Icon::AmplitudeChart, pal.trace_amplitude),
         Pane::BeatError => (Icon::BeatErrorChart, pal.trace_beat_error),
@@ -618,6 +621,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         tiles.insert_tab_tile(vec![pane])
     };
     let watch = tabbed(Pane::Watch);
+    let microphone = tabbed(Pane::Microphone);
     let strip = tabbed(Pane::Strip);
     let sound = tabbed(Pane::Sound);
     let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
@@ -664,9 +668,15 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
             0.45,
         ))
     };
+    // The Microphone pane under the Watches pane, in the same column.
+    let left = tiles.insert_container(Linear::new_binary(
+        LinearDir::Vertical,
+        [watch, microphone],
+        MICROPHONE_SHARE,
+    ));
     let root = tiles.insert_container(Linear::new_binary(
         LinearDir::Horizontal,
-        [watch, root],
+        [left, root],
         WATCH_SHARE,
     ));
     let mut tree = Tree::new("panes", root, tiles);
@@ -681,6 +691,74 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 
 /// How much of the window's width the Watches pane starts with, at the left.
 const WATCH_SHARE: f32 = 0.22;
+
+/// How much of the left column the Watches pane starts with, above the
+/// Microphone pane.
+const MICROPHONE_SHARE: f32 = 0.78;
+
+/// A layout saved before the Microphone pane, with it added under the
+/// Watches pane in its column, as it starts; beside the rest of the
+/// layout when the Watches pane isn't in a row or column of its own.
+fn add_microphone(tree: &mut Tree<Pane>) {
+    if tree.tiles.find_pane(&Pane::Microphone).is_some() {
+        return;
+    }
+    let watch_tabs = tree
+        .tiles
+        .find_pane(&Pane::Watch)
+        .and_then(|w| tree.tiles.parent_of(w));
+    let pane = tree.tiles.insert_pane(Pane::Microphone);
+    let tabs = tree.tiles.insert_tab_tile(vec![pane]);
+    let Some(watch_tabs) = watch_tabs else {
+        if let Some(old_root) = tree.root() {
+            let root = tree.tiles.insert_container(Linear::new_binary(
+                LinearDir::Horizontal,
+                [tabs, old_root],
+                WATCH_SHARE,
+            ));
+            tree.root = Some(root);
+        }
+        return;
+    };
+    // Before the column, which holds it too.
+    let parent = tree.tiles.parent_of(watch_tabs);
+    let column = tree.tiles.insert_container(Linear::new_binary(
+        LinearDir::Vertical,
+        [watch_tabs, tabs],
+        MICROPHONE_SHARE,
+    ));
+    match parent.and_then(|p| tree.tiles.get_mut(p)) {
+        Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) => {
+            let share = l.shares[watch_tabs];
+            l.shares.set_share(column, share);
+            for child in &mut l.children {
+                if *child == watch_tabs {
+                    *child = column;
+                }
+            }
+        }
+        Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) => {
+            for child in &mut t.children {
+                if *child == watch_tabs {
+                    *child = column;
+                }
+            }
+            if t.active == Some(watch_tabs) {
+                t.active = Some(column);
+            }
+        }
+        // A grid, or the Watches pane at the root: the column takes the
+        // root's place.
+        _ if parent.is_none() => tree.root = Some(column),
+        _ => {
+            if let Some(egui_tiles::Tile::Container(c)) = parent.and_then(|p| tree.tiles.get_mut(p))
+            {
+                c.remove_child(watch_tabs);
+                c.add_child(column);
+            }
+        }
+    }
+}
 
 /// A layout saved before the Watches pane, with it added in its own column
 /// at the left, as it starts.
@@ -1190,7 +1268,7 @@ pub struct TimegrapherApp {
     session: Session,
     average_s: f64,
     watch: String,
-    /// The calibre picked under Watch: a name in the table or one of the
+    /// The calibre picked in the Take card: a name in the table or one of the
     /// user's own, or empty when not set.
     calibre: String,
     /// The user's calibres, the short list and the recent picks.
@@ -1573,6 +1651,7 @@ impl TimegrapherApp {
                 set_pane_visible(&mut p.tiles, Pane::PowerReserve, false);
             }
             add_watch(&mut p);
+            add_microphone(&mut p);
             p
         }) {
             Some(p) if layout_is_whole(&p) => p,
@@ -2983,7 +3062,7 @@ impl TimegrapherApp {
         ui.add(theme::secondary(ui, "Analyse All"))
             .on_hover_text(
                 "Analyse the whole recording at once, as when it was opened, keeping the \
-                 settings chosen under Watch",
+                 settings chosen in the Take card",
             )
             .clicked()
     }
@@ -3020,12 +3099,12 @@ impl TimegrapherApp {
         self.open_note = Some(match from_name {
             Some(p) => format!(
                 "Position {} from the file name. The file has no watch settings, so the \
-                 calibre is Not Set and the lift angle {DEFAULT_LIFT_DEG}°: set them under Watch.",
+                 calibre is Not Set and the lift angle {DEFAULT_LIFT_DEG}°: set them in the Take card.",
                 p.label()
             ),
             None => format!(
                 "The file has no watch settings, so the calibre is Not Set, the lift angle \
-                 {DEFAULT_LIFT_DEG}° and the position Dial Up: set them under Watch."
+                 {DEFAULT_LIFT_DEG}° and the position Dial Up: set them in the Take card."
             ),
         });
     }
@@ -4124,21 +4203,19 @@ impl TimegrapherApp {
                     self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
                 }
                 ui.separator();
-                match self.input {
-                    Input::Microphone => {
-                        self.section(ui, "Microphone", help::MICROPHONE, Self::microphone_card)
-                    }
-                    Input::File => {
-                        self.section(ui, "Recording", help::RECORDING, Self::recording_card)
-                    }
-                };
-                ui.separator();
-                ui.separator();
-                if picked {
-                    self.section(ui, "This Take", help::WATCH, Self::watch_settings);
-                } else {
-                    self.section(ui, "Watch", help::WATCH, Self::watch_settings);
-                }
+                self.section(ui, "Take", help::TAKE, Self::take_card);
+            });
+    }
+
+    /// The Microphone pane: which microphone, its level and its peak.
+    fn microphone_pane(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .id_salt("microphone pane")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_max_width(ui.available_width() - 8.0);
+                ui.spacing_mut().item_spacing.y = 6.0;
+                self.microphone_card(ui);
             });
     }
 
@@ -4741,8 +4818,15 @@ impl TimegrapherApp {
     /// A watch's details as this take's settings.
     fn apply_watch(&mut self, w: &library::Watch) {
         self.watch = w.name.clone();
-        if let Some(c) = w.calibre.clone().filter(|c| !c.is_empty()) {
-            self.set_calibre(c);
+        match w.calibre.clone().filter(|c| !c.is_empty()) {
+            Some(c) => self.set_calibre(c),
+            // Not the calibre of the watch picked before.
+            None if !self.calibre.is_empty() => {
+                self.calibre.clear();
+                self.steady = None;
+                self.steady_job = None;
+            }
+            None => {}
         }
         if let Some(l) = w.lift {
             self.set_lift(l);
@@ -4988,29 +5072,8 @@ impl TimegrapherApp {
         }
     }
 
-    /// Microphone or Recording, the choice at the top of the Watches pane.
-    fn source_choice(&mut self, ui: &mut egui::Ui) {
-        theme::segmented(
-            ui,
-            &mut self.input,
-            &[
-                (
-                    Input::Microphone,
-                    "Microphone",
-                    "Listen to a watch on the microphone",
-                ),
-                (
-                    Input::File,
-                    "Recording",
-                    "Analyse or replay a WAV or FLAC recording",
-                ),
-            ],
-        );
-    }
-
     /// The microphone menu, the level, listening and saving.
     fn microphone_card(&mut self, ui: &mut egui::Ui) {
-        self.source_choice(ui);
         let choices = self.input_choices();
         let listed = self.devices_listed;
         let sel = choices
@@ -5059,107 +5122,14 @@ impl TimegrapherApp {
             self.ensure_devices();
             ui.ctx().request_repaint();
         }
-        ui.horizontal_wrapped(|ui| {
-            if self.running() {
-                if ui
-                    .add(theme::secondary(ui, "Stop"))
-                    .on_hover_text(
-                        "Stop listening and let go of the microphone. Everything so far stays: \
-                         look back through it with the time slider, save it, or Resume to \
-                         carry on in the same session.",
-                    )
-                    .clicked()
-                {
-                    self.stop_listening();
-                }
-            } else if self.can_resume() {
-                if ui
-                    .add(theme::primary(ui, "Resume"))
-                    .on_hover_text(
-                        "Carry on listening in the same session. The readings start afresh \
-                         after the stop, since the watch may have moved; the strip and charts \
-                         keep what came before.",
-                    )
-                    .clicked()
-                {
-                    self.resume_microphone();
-                }
-            } else if ui
-                .add_enabled(
-                    self.session.recording_fault().is_none(),
-                    theme::primary(ui, "Start"),
-                )
-                .on_hover_text("Start listening to the microphone")
-                .clicked()
-            {
-                self.start_microphone();
-            }
-            let mic_data = self.session.mic() && self.live.is_some();
-            if mic_data
-                && ui
-                    .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
-                    .on_hover_text(NEW_SESSION_HINT)
-                    .clicked()
-            {
-                if self.needs_save_confirmation() {
-                    self.confirm = Some(Confirm::NewSession);
-                } else {
-                    self.new_session();
-                }
-            }
-        });
-        if self.session.allows(Action::Save) {
-            let saved = self.session.saved_to().is_some();
-            let saving = self.saving.is_some();
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(
-                        !saving,
-                        egui::Button::new(if saved { "Save Again" } else { "Save…" })
-                            .min_size(Vec2::new(0.0, 26.0)),
-                    )
-                    .on_hover_text(SAVE_HINT)
-                    .on_disabled_hover_text(SAVING_HINT)
-                    .clicked()
-                {
-                    self.save_again();
-                }
-                if saved
-                    && ui
-                        .add_enabled(
-                            !saving,
-                            egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)),
-                        )
-                        .on_hover_text(SAVE_AS_HINT)
-                        .on_disabled_hover_text(SAVING_HINT)
-                        .clicked()
-                {
-                    self.save_recording();
-                }
-            });
-        }
         ui.add_space(2.0);
         self.microphone_settings(ui);
     }
 
-    /// Opening a recording or a folder, replaying it and its speed.
-    fn recording_card(&mut self, ui: &mut egui::Ui) {
-        self.source_choice(ui);
+    /// A recording on show: replaying it, its speed, and adding it to a
+    /// watch.
+    fn replay_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("Open…")
-                .on_hover_text("Choose a WAV or FLAC recording and analyse it all")
-                .clicked()
-            {
-                self.open_from_menu(false);
-            }
-            if ui
-                .button("Open Folder…")
-                .on_hover_text(FOLDER_RULE)
-                .clicked()
-            {
-                self.open_from_menu(true);
-            }
             if let Some(from) = self.addable_take() {
                 if ui
                     .button("Add to a Watch…")
@@ -5177,20 +5147,7 @@ impl TimegrapherApp {
                 }
             }
         });
-        let r = ui
-            .add(
-                egui::TextEdit::singleline(&mut self.file_path)
-                    .hint_text("or type a file's or folder's path and press Enter")
-                    .desired_width(f32::INFINITY),
-            )
-            .on_hover_text("A WAV or FLAC file, or a folder; Enter analyses it");
         let path = PathBuf::from(self.file_path.trim());
-        if r.lost_focus()
-            && ui.input(|i| i.key_pressed(egui::Key::Enter))
-            && !self.file_path.trim().is_empty()
-        {
-            self.open_recording(&path, false, true);
-        }
         let replayed = matches!(
             self.session.state(),
             session::State::Replaying | session::State::ReplayStopped
@@ -5225,13 +5182,26 @@ impl TimegrapherApp {
                         "Play the recording through as if live, from the start, at the \
                          speed set beside it. A folder plays its files one after the other.",
                     )
-                    .on_disabled_hover_text("Open a recording or a folder first")
+                    .on_disabled_hover_text(
+                        "Open a recording or a folder first, from the File menu",
+                    )
                     .clicked()
                 {
                     self.open_recording(&path, true, true);
                 }
                 if replayed && !self.opened_path.is_empty() && self.analyse_all_button(ui) {
                     self.analyse_replayed();
+                }
+                if ui
+                    .add(theme::secondary(ui, "Listen"))
+                    .on_hover_text(
+                        "Start a new take on the microphone chosen in the Microphone pane, \
+                         in place of this recording",
+                    )
+                    .clicked()
+                {
+                    self.input = Input::Microphone;
+                    self.start_microphone();
                 }
             }
         });
@@ -5321,6 +5291,7 @@ impl TimegrapherApp {
                 self.positions_settings(ui);
                 self.export_button(ui, pane);
             }),
+            Pane::Microphone => theme::pane_toolbar(ui, title, help::MICROPHONE, |_| {}),
             Pane::PowerReserve => theme::pane_toolbar(ui, title, help::POWER_RESERVE, |ui| {
                 self.reserve_settings(ui);
             }),
@@ -5771,15 +5742,229 @@ impl TimegrapherApp {
         );
     }
 
-    fn watch_settings(&mut self, ui: &mut egui::Ui) {
-        theme::row(ui, "Name", Some("Noted in a saved recording"), |ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.watch)
-                    .hint_text("Make, model or calibre")
-                    .desired_width(f32::INFINITY),
-            );
+    /// The Take card: the take running or on show, what it is, listening
+    /// to it or replaying it, saving it, and its settings.
+    fn take_card(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let (name, about) = self.take_words();
+        ui.label(RichText::new(name).strong());
+        ui.label(RichText::new(about).small().color(pal.text_secondary));
+        match self.input {
+            Input::Microphone => self.listen_controls(ui),
+            Input::File => self.replay_controls(ui),
+        }
+        self.take_settings(ui);
+    }
+
+    /// The take's name, and its watch and state, for the Take card.
+    fn take_words(&self) -> (String, String) {
+        let file_name = |p: &Path| {
+            p.file_name()
+                .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into())
+        };
+        let name = if let Some(to) = self.session.saved_to() {
+            file_name(to)
+        } else if self.input == Input::File && !self.opened_path.is_empty() {
+            file_name(Path::new(&self.opened_path))
+        } else if self.quick_listen {
+            "Quick Listen".to_string()
+        } else {
+            "New Take".to_string()
+        };
+        let watch = if !self.watch.is_empty() {
+            self.watch.clone()
+        } else if self.quick_listen {
+            "No watch".to_string()
+        } else {
+            "No watch picked".to_string()
+        };
+        let state = match self.session.state() {
+            session::State::Idle => "Not started",
+            session::State::Listening => "Listening",
+            session::State::Paused { .. } => "Stopped",
+            session::State::Replaying => "Replaying",
+            session::State::ReplayStopped => "Replay stopped",
+            session::State::Analysing => "Opening",
+            session::State::Analysed => "Opened",
+        };
+        (name, format!("{watch} · {state}"))
+    }
+
+    /// Start, Stop or Resume the microphone, New Session, and saving.
+    fn listen_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            if self.running() {
+                if ui
+                    .add(theme::secondary(ui, "Stop"))
+                    .on_hover_text(
+                        "Stop listening and let go of the microphone. Everything so far stays: \
+                         look back through it with the time slider, save it, or Resume to \
+                         carry on in the same session.",
+                    )
+                    .clicked()
+                {
+                    self.stop_listening();
+                }
+            } else if self.can_resume() {
+                if ui
+                    .add(theme::primary(ui, "Resume"))
+                    .on_hover_text(
+                        "Carry on listening in the same session. The readings start afresh \
+                         after the stop, since the watch may have moved; the strip and charts \
+                         keep what came before.",
+                    )
+                    .clicked()
+                {
+                    self.resume_microphone();
+                }
+            } else if ui
+                .add_enabled(
+                    self.session.recording_fault().is_none(),
+                    theme::primary(ui, "Start"),
+                )
+                .on_hover_text("Start listening to the microphone")
+                .clicked()
+            {
+                self.start_microphone();
+            }
+            let mic_data = self.session.mic() && self.live.is_some();
+            if mic_data
+                && ui
+                    .add(egui::Button::new("New Session").min_size(Vec2::new(0.0, 26.0)))
+                    .on_hover_text(NEW_SESSION_HINT)
+                    .clicked()
+            {
+                if self.needs_save_confirmation() {
+                    self.confirm = Some(Confirm::NewSession);
+                } else {
+                    self.new_session();
+                }
+            }
         });
-        self.calibre_settings(ui);
+        if self.session.allows(Action::Save) {
+            let saved = self.session.saved_to().is_some();
+            let saving = self.saving.is_some();
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(
+                        !saving,
+                        egui::Button::new(if saved { "Save Again" } else { "Save…" })
+                            .min_size(Vec2::new(0.0, 26.0)),
+                    )
+                    .on_hover_text(SAVE_HINT)
+                    .on_disabled_hover_text(SAVING_HINT)
+                    .clicked()
+                {
+                    self.save_again();
+                }
+                if saved
+                    && ui
+                        .add_enabled(
+                            !saving,
+                            egui::Button::new("Save As…").min_size(Vec2::new(0.0, 26.0)),
+                        )
+                        .on_hover_text(SAVE_AS_HINT)
+                        .on_disabled_hover_text(SAVING_HINT)
+                        .clicked()
+                {
+                    self.save_recording();
+                }
+            });
+        }
+    }
+
+    /// The take's settings: its position, Keep Awake, its averaging time,
+    /// and its beat rate and lift angle or the calibre that sets them.
+    fn take_settings(&mut self, ui: &mut egui::Ui) {
+        let mut pos = self.position;
+        theme::row(
+            ui,
+            "Position",
+            Some(
+                "Noted in a saved recording. Changing it while listening marks a new \
+                 stretch on the strip and the charts, and the readings, profile, \
+                 distributions and Steadiness then use only this position's beats.",
+            ),
+            |ui| {
+                egui::ComboBox::from_id_salt("position")
+                    .width(ui.available_width())
+                    .selected_text(pos.label())
+                    .show_ui(ui, |ui| {
+                        for p in Position::ALL {
+                            ui.selectable_value(&mut pos, p, p.label());
+                        }
+                    });
+            },
+        );
+        if pos != self.position {
+            self.change_position(pos);
+        }
+        self.keep_awake_setting(ui);
+        let mut avg = self.average_s;
+        let changed = theme::row(ui, "Average Over", Some(AVERAGE_REACH), |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let a = fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
+            let b = fields::presets(ui, "average-presets", &mut avg, &AVERAGES, fields::duration);
+            a || b
+        });
+        if changed {
+            self.set_average(avg);
+        }
+        if self.take_shows_rate_and_lift() {
+            if self.open_watch().is_none() {
+                self.calibre_settings(ui);
+            }
+            self.rate_and_lift_settings(ui);
+        } else {
+            self.calibre_line(ui);
+        }
+    }
+
+    /// Whether the Take card offers Beat Rate and Lift Angle: when the
+    /// take's watch has no calibre the table knows, or no watch is picked.
+    fn take_shows_rate_and_lift(&self) -> bool {
+        self.open_watch().is_none() || self.cal.find(&self.calibre).is_none()
+    }
+
+    /// One line for a watch's calibre and what it sets: the beat rate and
+    /// the lift angle.
+    fn calibre_line(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let heard = self.live.as_ref().and_then(|l| l.bph());
+        let bph = match (self.bph, heard) {
+            (Some(b), _) => format!("{b} bph"),
+            (None, Some(b)) => format!("{b} bph, found"),
+            (None, None) => "beat rate found when heard".to_string(),
+        };
+        ui.label(
+            RichText::new(format!(
+                "{} · {bph} · lift {}°",
+                self.calibre,
+                fields::plain(self.lift_deg)
+            ))
+            .color(pal.text_secondary),
+        )
+        .on_hover_text(
+            "The watch's calibre sets the beat rate and lift angle. Edit… on the watch \
+             changes them.",
+        );
+        if let Some((b, cb)) = heard
+            .zip(self.cal.bph(&self.calibre))
+            .filter(|&(b, cb)| b != cb)
+        {
+            ui.label(
+                RichText::new(format!(
+                    "The {} beats at {cb} bph, but this watch beats at {b}.",
+                    self.calibre
+                ))
+                .small()
+                .color(pal.text_secondary),
+            );
+        }
+    }
+
+    /// Beat Rate and Lift Angle, for a take with no calibre to set them.
+    fn rate_and_lift_settings(&mut self, ui: &mut egui::Ui) {
         let mut bph = self.bph;
         theme::row(
             ui,
@@ -5831,30 +6016,6 @@ impl TimegrapherApp {
         );
         if changed {
             self.set_lift(lift);
-        }
-
-        let mut pos = self.position;
-        theme::row(
-            ui,
-            "Position",
-            Some(
-                "Noted in a saved recording. Changing it while listening marks a new \
-                 stretch on the strip and the charts, and the readings, profile, \
-                 distributions and Steadiness then use only this position's beats.",
-            ),
-            |ui| {
-                egui::ComboBox::from_id_salt("position")
-                    .width(ui.available_width())
-                    .selected_text(pos.label())
-                    .show_ui(ui, |ui| {
-                        for p in Position::ALL {
-                            ui.selectable_value(&mut pos, p, p.label());
-                        }
-                    });
-            },
-        );
-        if pos != self.position {
-            self.change_position(pos);
         }
     }
 
@@ -6003,6 +6164,11 @@ impl TimegrapherApp {
             &mut self.all_inputs,
             "List every device the system offers in the microphone menu, with its id",
         );
+    }
+
+    /// Keep Awake, and what is wrong with keeping the computer awake or
+    /// taking sound in the background.
+    fn keep_awake_setting(&mut self, ui: &mut egui::Ui) {
         theme::switch_row(
             ui,
             "Keep Awake",
@@ -6685,7 +6851,7 @@ impl TimegrapherApp {
         self.gain_read_at = Instant::now();
     }
 
-    /// The input level control and meter, under Microphone in the Watches pane.
+    /// The input level control and meter, in the Microphone pane.
     fn gain_controls(&mut self, ui: &mut egui::Ui) {
         if self.gain_read_at.elapsed().as_secs_f64() > if self.running() { 2.0 } else { 10.0 } {
             self.read_gain();
@@ -7424,9 +7590,9 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = theme::GAP;
         let gap = theme::GAP;
         let total = ui.available_width();
-        let wide = ((total - 4.0 * gap) / 5.0).max(100.0);
+        let wide = ((total - 3.0 * gap) / 4.0).max(100.0);
         let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [wide; 5]
+        let mut cols: Vec<egui::Ui> = [wide; 4]
             .iter()
             .scan(origin.x, |x, &w| {
                 let rect =
@@ -7442,42 +7608,9 @@ impl TimegrapherApp {
                 )
             })
             .collect();
-        let picked = std::cell::Cell::new(None);
         let keep_clock = std::cell::Cell::new(false);
         let measured = self.clock_offer();
         let kept = self.clock.clone();
-        card(
-            &mut cols[0],
-            "Readings",
-            help::READINGS,
-            Vec::new(),
-            &|ui| {
-                let small = |t: &str| RichText::new(t).small().color(pal.text_secondary);
-                ui.add_space(4.0);
-                ui.label(small("Average Over")).on_hover_text(AVERAGE_REACH);
-                let mut avg = self.average_s;
-                let changed = ui
-                    .horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let a =
-                            fields::entry(ui, "average", &mut avg, 1.0..=3600.0, &DURATION, 56.0);
-                        let b = fields::presets(
-                            ui,
-                            "average-presets",
-                            &mut avg,
-                            &AVERAGES,
-                            fields::duration,
-                        );
-                        a || b
-                    })
-                    .inner;
-                if changed {
-                    picked.set(Some(avg));
-                }
-                ui.label(small("for every pane without its own"))
-                    .on_hover_text(PANE_AVERAGE_HINT);
-            },
-        );
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
             // The input's clock is named in the Rate "?" rather than on the
@@ -7486,7 +7619,7 @@ impl TimegrapherApp {
                 .into_iter()
                 .filter(|f| f.0 != CLOCK_UNKNOWN)
                 .collect();
-            card(&mut cols[1], "Rate", help::RATE, rate_facts, &|ui| {
+            card(&mut cols[0], "Rate", help::RATE, rate_facts, &|ui| {
                 let unit = match pm {
                     Some(e) if e < 0.05 => "seconds per day".to_string(),
                     Some(e) => format!("± {e:.1} seconds per day"),
@@ -7539,7 +7672,7 @@ impl TimegrapherApp {
                              pause, so the readings use what there is."
                     } else {
                         "The beats the readings are fitted to. Set the time with Average \
-                             Over under Readings."
+                             Over in the Take card."
                     });
                     if let Some(j) = r.jitter_us {
                         ui.label(small("·".into()));
@@ -7644,7 +7777,7 @@ impl TimegrapherApp {
             let amp = r.and_then(|r| r.amplitude_deg);
             let lift = fields::plain(self.lift_deg);
             card(
-                &mut cols[2],
+                &mut cols[1],
                 "Amplitude",
                 help::AMPLITUDE,
                 reading_limits("Amplitude", caveats, lift_now, beats),
@@ -7700,7 +7833,7 @@ impl TimegrapherApp {
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
             card(
-                &mut cols[3],
+                &mut cols[2],
                 "Beat Error",
                 help::BEAT_ERROR,
                 reading_limits("Beat Error", caveats, lift_now, beats),
@@ -7761,7 +7894,7 @@ impl TimegrapherApp {
             let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
             let set_bph = self.bph;
             card(
-                &mut cols[4],
+                &mut cols[3],
                 "Beat Rate",
                 help::BEAT_RATE,
                 Vec::new(),
@@ -7770,15 +7903,15 @@ impl TimegrapherApp {
                     let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
                     match (set_bph, heard_bph) {
                         (Some(_), _) => {
-                            ui.label(small("set under Watch".into())).on_hover_text(
-                                "Beat Rate is set under Watch, so the readings use it rather than \
+                            ui.label(small("set in the Take card".into())).on_hover_text(
+                                "Beat Rate is set in the Take card, so the readings use it rather than \
                              finding it from the beats. Auto finds it again.",
                             );
                         }
                         (None, Some(_)) => {
                             ui.label(small("found from the beats".into()))
                                 .on_hover_text(
-                                "Beat Rate under Watch is Auto: the app found it from the first \
+                                "Beat Rate in the Take card is Auto: the app found it from the first \
                              seconds of beats, as the nearest standard rate.",
                             );
                         }
@@ -7806,7 +7939,6 @@ impl TimegrapherApp {
             ui.ctx().request_repaint();
         }
         Readouts {
-            average: picked.get(),
             keep_clock: keep_clock.get(),
         }
     }
@@ -7916,14 +8048,14 @@ impl TimegrapherApp {
                     .small()
                     .color(pal.text_secondary),
                 )
-                .on_hover_text("The position, set in the Watches pane");
+                .on_hover_text("The position, set in the Take card");
                 if let Some(b) = self.reading().and_then(|r| r.bph) {
                     ui.label(
                         RichText::new(format!("{b} beats per hour"))
                             .small()
                             .color(pal.text_secondary),
                     )
-                    .on_hover_text("Found from the beats, or set in the Watches pane");
+                    .on_hover_text("Found from the beats, or set in the Take card");
                 }
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     self.status_left(ui);
@@ -8223,9 +8355,9 @@ impl TimegrapherApp {
         if row(
             ui,
             theme::primary(ui, "Listen to a Watch"),
-            "Start listening to the microphone chosen at the top",
+            "Start listening to the microphone chosen in the Microphone pane",
             "Put the watch on the microphone, dial up. Choose the microphone and set its \
-             level in the Watches pane.",
+             level in the Microphone pane.",
         ) {
             self.input = Input::Microphone;
             self.start_microphone();
@@ -9289,9 +9421,6 @@ impl TimegrapherApp {
         if self.show_readings {
             self.clipping_banner(ui);
             let out = self.readouts(ui);
-            if let Some(avg) = out.average {
-                self.set_average(avg);
-            }
             if out.keep_clock {
                 self.keep_clock();
             }
@@ -9355,9 +9484,10 @@ impl TimegrapherApp {
     /// can start from them, and `rest` beside them.
     fn beside_watch(&mut self, ui: &mut egui::Ui, rest: fn(&mut Self, &mut egui::Ui)) {
         let watch = pane_visible(&self.panes.tiles, Pane::Watch);
+        let mic = pane_visible(&self.panes.tiles, Pane::Microphone);
         let test = pane_visible(&self.panes.tiles, Pane::PositionsTest);
         let reserve = pane_visible(&self.panes.tiles, Pane::PowerReserve);
-        if !watch && !test && !reserve {
+        if !watch && !mic && !test && !reserve {
             rest(self, ui);
             return;
         }
@@ -9369,17 +9499,48 @@ impl TimegrapherApp {
             r.shrink2(Vec2::new(8.0, 6.0))
         };
         let mut right = full;
-        if watch {
+        if watch || mic {
             let w = (full.width() * WATCH_SHARE).clamp(260.0, 360.0);
             let left = egui::Rect::from_min_size(full.min, Vec2::new(w, full.height()));
             right = egui::Rect::from_min_max(
                 egui::pos2(left.right() + theme::GAP, full.top()),
                 full.max,
             );
-            let inner = card(ui, left);
-            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-                self.watch_pane(ui)
-            });
+            // The Microphone pane under the Watches pane, as they sit once
+            // there is something to show.
+            let mic_h = if !mic {
+                0.0
+            } else if watch {
+                (left.height() * (1.0 - MICROPHONE_SHARE)).max(150.0)
+            } else {
+                left.height()
+            };
+            if watch {
+                let top = egui::Rect::from_min_max(
+                    left.min,
+                    egui::pos2(
+                        left.right(),
+                        left.bottom() - mic_h - if mic { theme::GAP } else { 0.0 },
+                    ),
+                );
+                let inner = card(ui, top);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                    self.watch_pane(ui)
+                });
+            }
+            if mic {
+                let bottom = egui::Rect::from_min_max(
+                    egui::pos2(left.left(), left.bottom() - mic_h),
+                    left.max,
+                );
+                let inner = card(ui, bottom);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                    if self.pane_tools(ui, Pane::Microphone) {
+                        ui.add_space(4.0);
+                    }
+                    self.microphone_pane(ui)
+                });
+            }
         }
         if reserve {
             // Room for its toolbar, its words and the free space.
@@ -10797,6 +10958,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             }
             match pane {
                 Pane::Watch => self.app.watch_pane(ui),
+                Pane::Microphone => self.app.microphone_pane(ui),
                 Pane::Strip => self.app.strip_pane(ui),
                 Pane::Sound => self.app.sound_pane(ui),
                 p if p.steady_view().is_some() => self
@@ -11568,9 +11730,9 @@ const MATCH_STRIP_HINT: &str = "Show the same stretch of time as the paper strip
      line up with it and move with it. Off, the charts show the whole session.";
 
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
-     As Readings follows Average Over in the Readings card. A time of its own sets \
+     As Readings follows Average Over in the Take card. A time of its own sets \
      everything in this pane that Average Over sets, and is named on the pane's tab, until \
-     Average Over in the Readings card is changed: then every pane follows that again.";
+     Average Over in the Take card is changed: then every pane follows that again.";
 
 /// Everything Average Over sets, and what it leaves alone.
 /// The speeds Replay offers, times the recording's own.
@@ -13234,7 +13396,7 @@ mod tests {
             "No takes yet",
             "‹ All Watches",
             "Edit…",
-            "This Take",
+            "Pepsi · Not started",
         ] {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
@@ -15539,6 +15701,9 @@ mod tests {
         let mut tree = app.panes.clone();
         let watch = tree.tiles.find_pane(&Pane::Watch).unwrap();
         let tabs = tree.tiles.parent_of(watch).unwrap();
+        let column = tree.tiles.parent_of(tabs).unwrap();
+        let mic = tree.tiles.find_pane(&Pane::Microphone).unwrap();
+        let mic_tabs = tree.tiles.parent_of(mic).unwrap();
         let root = tree.root().unwrap();
         let rest = tree
             .tiles
@@ -15546,12 +15711,12 @@ mod tests {
             .unwrap()
             .children()
             .copied()
-            .find(|&c| c != tabs)
+            .find(|&c| c != column)
             .unwrap();
         // What an older app saved: everything but the Watch column.
-        tree.tiles.remove(watch);
-        tree.tiles.remove(tabs);
-        tree.tiles.remove(root);
+        for t in [watch, tabs, mic, mic_tabs, column, root] {
+            tree.tiles.remove(t);
+        }
         tree.root = Some(rest);
         assert!(!layout_is_whole(&tree));
         let mut before = app.settings();
@@ -15569,7 +15734,116 @@ mod tests {
             "the old layout sits to the right, as it was"
         );
         let watch = again.panes.tiles.find_pane(&Pane::Watch).unwrap();
-        assert_eq!(again.panes.tiles.parent_of(watch), Some(l.children[0]));
+        let tabs = again.panes.tiles.parent_of(watch).unwrap();
+        assert_eq!(again.panes.tiles.parent_of(tabs), Some(l.children[0]));
+    }
+
+    /// The Microphone pane starts under the Watches pane, in its column,
+    /// and a layout saved before it gains it there.
+    #[test]
+    fn the_microphone_pane_sits_under_the_watches_pane() {
+        let under_watches = |tree: &Tree<Pane>| {
+            let find = |p: Pane| {
+                let pane = tree.tiles.find_pane(&p).unwrap();
+                tree.tiles.parent_of(pane).unwrap()
+            };
+            let (watch, mic) = (find(Pane::Watch), find(Pane::Microphone));
+            let column = tree.tiles.parent_of(mic).unwrap();
+            let Some(egui_tiles::Container::Linear(l)) = tree.tiles.get_container(column) else {
+                panic!("the column is a linear container");
+            };
+            assert_eq!(l.dir, LinearDir::Vertical);
+            assert_eq!(l.children, [watch, mic], "the microphone under the watches");
+            column
+        };
+        let app = synthetic(40.0, 0.0);
+        let column = under_watches(&app.panes);
+        let root = app.panes.root().unwrap();
+        let Some(egui_tiles::Container::Linear(l)) = app.panes.tiles.get_container(root) else {
+            panic!("the root is a row");
+        };
+        assert_eq!(l.children[0], column, "the column at the left");
+        // What the app saved before: the Watches pane alone at the left.
+        let mut tree = app.panes.clone();
+        let mic = tree.tiles.find_pane(&Pane::Microphone).unwrap();
+        let mic_tabs = tree.tiles.parent_of(mic).unwrap();
+        let watch_tabs = tree
+            .tiles
+            .parent_of(tree.tiles.find_pane(&Pane::Watch).unwrap())
+            .unwrap();
+        if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+            tree.tiles.get_mut(root)
+        {
+            let share = l.shares[column];
+            l.shares.set_share(watch_tabs, share);
+            l.children[0] = watch_tabs;
+        }
+        for t in [mic, mic_tabs, column] {
+            tree.tiles.remove(t);
+        }
+        assert!(!layout_is_whole(&tree));
+        let mut before = app.settings();
+        before.panes = Some(tree);
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None, false);
+        again.apply_settings(before);
+        assert!(layout_is_whole(&again.panes));
+        let column = under_watches(&again.panes);
+        let root = again.panes.root().unwrap();
+        assert!(again
+            .panes
+            .tiles
+            .get_container(root)
+            .unwrap()
+            .has_child(column));
+    }
+
+    /// The Take card offers Beat Rate and Lift Angle with no watch picked,
+    /// or for a watch with no calibre; a watch with a calibre the table
+    /// knows names it on one line instead.
+    #[test]
+    fn the_take_card_asks_for_beat_rate_and_lift_angle_only_without_a_calibre() {
+        let base = std::env::temp_dir().join(format!("tg-app-take-card-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let mut known = library::Watch::new("Diver");
+        known.calibre = Some(c.calibre.clone());
+        lib.add(&known).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let diver = lib.find("Diver").unwrap().watch.id.clone();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let drawn = |app: &mut TimegrapherApp| {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.take_card(ui));
+            });
+            format!("{:?}", out.shapes)
+        };
+        let asks = |d: &str| d.contains("Beat Rate") && d.contains("Lift Angle");
+        let none = drawn(&mut app);
+        assert!(asks(&none) && none.contains("Calibre"), "{none}");
+        app.pick_watch(&diver);
+        let named = drawn(&mut app);
+        assert!(!asks(&named), "{named}");
+        assert!(named.contains(&c.calibre), "the calibre named: {named}");
+        app.pick_watch(&pepsi);
+        assert!(
+            app.calibre.is_empty(),
+            "not the calibre of the watch before"
+        );
+        let bare = drawn(&mut app);
+        assert!(asks(&bare), "{bare}");
+        assert!(
+            !bare.contains("\"Calibre\""),
+            "no calibre menu for a watch: {bare}"
+        );
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

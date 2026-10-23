@@ -60,6 +60,7 @@ fn variables(p: &Palette) -> String {
         ("drop", p.drop.css()),
         ("peak", p.peak.css()),
         ("sound", p.sound.css()),
+        ("wheel", p.wheel.css()),
         // The grid is the text colour, faint, as in the app.
         ("grid", rgba(p.text, 0.12)),
     ]
@@ -480,6 +481,14 @@ mod tests {
         assert!(!page.contains("/*PALETTE*/"));
         for c in [LIGHT.trace_rate, DARK.trace_rate, LIGHT.tick, DARK.tock] {
             assert!(page.contains(&c.css()), "{}", c.css());
+        }
+        // The wheels' own colour, in both themes.
+        for c in [LIGHT.wheel, DARK.wheel] {
+            assert!(
+                page.contains(&format!("--wheel: {};", c.css())),
+                "{}",
+                c.css()
+            );
         }
     }
 

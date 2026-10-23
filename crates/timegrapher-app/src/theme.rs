@@ -892,6 +892,7 @@ pub enum Icon {
     Stft,
     Wavelet,
     Reserve,
+    Microphone,
     Isochronism,
     Positions,
     RateChart,
