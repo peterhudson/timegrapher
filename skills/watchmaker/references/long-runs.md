@@ -50,7 +50,7 @@ Clock        not calibrated: rates are read on the sound card's clock, whose err
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
 Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
 Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
-Periodic changes in rate:
+Periodic changes in rate (the rate itself, not 10 s readings):
       60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
       20.01 s ±0.22   swing 0.3 deg p-p      explains  23%  false alarm <1e-300  no wheel listed within ±0.2 s or 1%; nearest is the fourth wheel, -66.6% off
@@ -60,8 +60,9 @@ Report       syn_long/report.html
 
 (That one is synthetic: a watch made to lose 30 s/d and 15° for 8 s of
 every minute, `timegrapher synth syn.wav --duration 1800 --rate 8 --snr
-24 --fault-period 60`. The 20.01 s amplitude line is a third of that
-60 s cycle and matches no wheel. The 60 s amplitude swing reads low,
+24 --fault-period 60`, read with `timegrapher long syn.wav --wheel
+"fourth wheel=60"`, since with no calibre no wheel is named. The 20.01 s
+amplitude line is a third of that 60 s cycle and matches no wheel. The 60 s amplitude swing reads low,
 11.4° against the 15° put in, because the amplitude's average cycle is
 kept to two harmonics, which round off a short dip; the repository's
 `docs/long-runs.md` explains why.)
@@ -117,10 +118,14 @@ and goes.
 
 ### Which wheels are listed
 
-By default: the escape wheel (2 × teeth beats; set `--escape-teeth` if it
-isn't 15), the fourth wheel (60 s) and the centre wheel (3600 s). The third
-wheel and the barrel vary by calibre: add them with `--wheel` when you know
-them. Barrel periods (hours) are weakened by the trend removal in runs of
+The calibre's wheels, with `--calibre` (a calibre whose table entry
+gives no escape wheel gets both common ones, 15 and 20 teeth). With no
+calibre, no wheel is named but the escape wheel `--escape-teeth` gives
+(2 × teeth beats), if any: which wheel turns once a minute or once an
+hour is the calibre's to say, so the JSON lists 1 min and 1 h only as
+`input.settings.reference_lines`, periods to mark, not wheels. Add a
+wheel whose period you know with `--wheel`, such as the third wheel or
+the barrel, which vary by calibre. Barrel periods (hours) are weakened by the trend removal in runs of
 a day or less; they need a run of days.
 
 ## Calibrating the sound card
