@@ -10239,6 +10239,10 @@ impl TimegrapherApp {
                 let body = self.hand_tab(ui, top, Pane::Watch);
                 let inner = card(ui, body);
                 ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                    // Its toolbar too: New Watch… and Quick Listen are there.
+                    if self.pane_tools(ui, Pane::Watch) {
+                        ui.add_space(4.0);
+                    }
                     self.watch_pane(ui)
                 });
             }
@@ -16803,6 +16807,8 @@ mod tests {
                 "{title} has no tab: {texts:?}"
             );
         }
+        // The Watches pane's toolbar, with New Watch… from the first launch.
+        assert!(texts.iter().any(|t| t == "New Watch…"), "{texts:?}");
         assert!(texts.iter().filter(|t| *t == "×").count() >= 2, "{texts:?}");
         assert!(texts.iter().all(|t| !t.contains("coreaudio:")), "{texts:?}");
     }
