@@ -5161,8 +5161,13 @@ impl TimegrapherApp {
             .find(|c| Some(&c.id) == self.device.as_ref())
             .map_or_else(
                 || match (&self.device, listed) {
-                    // Not listed yet: name the one kept from last time.
-                    (Some(d), false) => d.strip_prefix("alsa:").unwrap_or(d).into(),
+                    // Not listed yet: name the one kept from last time, when
+                    // its id is a name (ALSA's are; Core Audio's and
+                    // WASAPI's are not).
+                    (Some(d), false) => match d.strip_prefix("alsa:") {
+                        Some(name) => name.into(),
+                        None => "The Microphone Used Last".to_string(),
+                    },
                     (None, false) => "System Default".to_string(),
                     _ => "Choose a Microphone".to_string(),
                 },
@@ -5170,9 +5175,16 @@ impl TimegrapherApp {
             );
         let mut opened = false;
         ui.horizontal(|ui| {
+            // Kept to the pane's width, the name cut short to fit: a
+            // combo box in a row is otherwise as wide as its words, and a
+            // long name (as macOS gives) widens the whole pane past its
+            // card.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            let rescan = ui.spacing().interact_size.x + 30.0;
+            let full = sel.clone();
             egui::ComboBox::from_id_salt("device")
-                .selected_text(short(&sel, 36))
-                .width((ui.available_width() - 70.0).max(120.0))
+                .selected_text(sel)
+                .width((ui.available_width() - rescan - ui.spacing().item_spacing.x).max(60.0))
                 .show_ui(ui, |ui| {
                     opened = true;
                     if !listed {
@@ -5186,10 +5198,10 @@ impl TimegrapherApp {
                     }
                 })
                 .response
-                .on_hover_text(
-                    "The microphone to listen to. Show Every Input, below, lists every device \
-                     the system offers.",
-                );
+                .on_hover_text(format!(
+                    "{full}\n\nThe microphone to listen to. Show Every Input, below, lists \
+                     every device the system offers."
+                ));
             if ui
                 .button("Rescan")
                 .on_hover_text("Look for microphones again, after plugging one in")
@@ -10133,6 +10145,56 @@ impl TimegrapherApp {
     /// it sits once there is, unless it is hidden, the Positions Test and
     /// Power Reserve panes above the rest when they are shown, so a test
     /// can start from them, and `rest` beside them.
+    /// A pane drawn outside the panes' tree, before there is anything to
+    /// show, gets the tab the tree would give it: its title and the × that
+    /// hides it, on top of `r`. Returns the rest of `r`, for its card.
+    fn hand_tab(&mut self, ui: &mut egui::Ui, r: egui::Rect, pane: Pane) -> egui::Rect {
+        let pal = theme::pal(ui);
+        let galley =
+            ui.painter()
+                .layout_no_wrap(self.pane_heading(pane), theme::semibold(12.5), pal.text);
+        let close = 18.0;
+        let tab = egui::Rect::from_min_size(
+            r.min,
+            Vec2::new((galley.size().x + 16.0 + close).min(r.width()), HAND_TAB_H),
+        );
+        let corner = theme::CARD_RADIUS;
+        ui.painter().rect_filled(
+            tab,
+            egui::CornerRadius {
+                nw: corner,
+                ne: corner,
+                sw: 0,
+                se: 0,
+            },
+            pal.card,
+        );
+        let at = egui::pos2(tab.left() + 8.0, tab.center().y - galley.size().y / 2.0);
+        ui.painter()
+            .with_clip_rect(tab)
+            .galley(at, galley, pal.text);
+        let x = egui::Rect::from_center_size(
+            egui::pos2(tab.right() - close / 2.0 - 2.0, tab.center().y),
+            Vec2::splat(close - 4.0),
+        );
+        let hide = ui
+            .put(
+                x,
+                egui::Button::new(RichText::new("×").color(pal.text_secondary)).frame(false),
+            )
+            .on_hover_text(
+                "Hide this pane. Its icon at the top, or the View menu, brings it back.",
+            );
+        if hide.clicked() {
+            set_pane_visible(&mut self.panes.tiles, pane, false);
+            self.info_msg(format!(
+                "Hid {}. Its icon at the top, or the View menu, brings it back.",
+                pane.title()
+            ));
+        }
+        egui::Rect::from_min_max(egui::pos2(r.left(), tab.bottom()), r.max)
+    }
+
     fn beside_watch(&mut self, ui: &mut egui::Ui, rest: fn(&mut Self, &mut egui::Ui)) {
         let watch = pane_visible(&self.panes.tiles, Pane::Watch);
         let mic = pane_visible(&self.panes.tiles, Pane::Microphone);
@@ -10174,8 +10236,13 @@ impl TimegrapherApp {
                         left.bottom() - mic_h - if mic { theme::GAP } else { 0.0 },
                     ),
                 );
-                let inner = card(ui, top);
+                let body = self.hand_tab(ui, top, Pane::Watch);
+                let inner = card(ui, body);
                 ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+                    // Its toolbar too: New Watch… and Quick Listen are there.
+                    if self.pane_tools(ui, Pane::Watch) {
+                        ui.add_space(4.0);
+                    }
                     self.watch_pane(ui)
                 });
             }
@@ -10184,7 +10251,8 @@ impl TimegrapherApp {
                     egui::pos2(left.left(), left.bottom() - mic_h),
                     left.max,
                 );
-                let inner = card(ui, bottom);
+                let body = self.hand_tab(ui, bottom, Pane::Microphone);
+                let inner = card(ui, body);
                 ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                     if self.pane_tools(ui, Pane::Microphone) {
                         ui.add_space(4.0);
@@ -10198,7 +10266,8 @@ impl TimegrapherApp {
             let h = 190.0f32.min(right.height());
             let bottom =
                 egui::Rect::from_min_max(egui::pos2(right.left(), right.bottom() - h), right.max);
-            let inner = card(ui, bottom);
+            let body = self.hand_tab(ui, bottom, Pane::PowerReserve);
+            let inner = card(ui, body);
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                 if self.pane_tools(ui, Pane::PowerReserve) {
                     ui.add_space(4.0);
@@ -10221,7 +10290,8 @@ impl TimegrapherApp {
             // Below the welcome or the watch prompt, which come first.
             let bottom =
                 egui::Rect::from_min_max(egui::pos2(right.left(), right.bottom() - h), right.max);
-            let inner = card(ui, bottom);
+            let body = self.hand_tab(ui, bottom, Pane::PositionsTest);
+            let inner = card(ui, body);
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                 if self.pane_tools(ui, Pane::PositionsTest) {
                     ui.add_space(4.0);
@@ -12268,13 +12338,9 @@ fn capture_label(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-fn short(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        s.to_string()
-    } else {
-        format!("{}…", s.chars().take(n - 1).collect::<String>())
-    }
-}
+/// The height of the tab [`TimegrapherApp::hand_tab`] draws, as the
+/// panes' tree draws its tabs.
+const HAND_TAB_H: f32 = 24.0;
 
 impl TimegrapherApp {
     /// The menus and pane icons across the top, the status line along the
@@ -16688,6 +16754,65 @@ mod tests {
 
     /// The Microphone pane starts under the Watches pane, in its column,
     /// and a layout saved before it gains it there.
+    /// Before there is anything to show, the left column is drawn by hand,
+    /// not by the panes' tree: each pane still gets its titled tab with a
+    /// ×, and nothing in it is drawn past its card, even for a microphone
+    /// with a long name (as macOS names them).
+    #[test]
+    fn the_panes_drawn_before_data_have_tabs_and_stay_in_their_cards() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.devices_listed = false;
+        app.device = Some("coreaudio:A3210A76-4B8D-4039-8B7E-2F00C0FFEE12".into());
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let input = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(1200.0, 800.0),
+            )),
+            ..Default::default()
+        };
+        let column = std::cell::Cell::new(0.0f32);
+        let mut out = None;
+        for _ in 0..3 {
+            out = Some(ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let full = ui.available_rect_before_wrap();
+                    column.set(full.left() + (full.width() * WATCH_SHARE).clamp(260.0, 360.0));
+                    app.beside_watch(ui, |_, _| {});
+                });
+            }));
+        }
+        let out = out.unwrap();
+        let mut texts = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                texts.push(t.galley.text().to_string());
+            }
+            // Not the panel's own background, which fills the window.
+            let seen = c.shape.visual_bounding_rect().intersect(c.clip_rect);
+            // What starts in the left column stays in it; the panes at the
+            // right (the Positions Test's) are drawn there by design.
+            if seen.is_positive() && seen.width() < 1000.0 && seen.left() < column.get() {
+                assert!(
+                    seen.right() <= column.get() + 0.5,
+                    "drawn past the left column's cards: {seen:?} (column ends at {})",
+                    column.get()
+                );
+            }
+        }
+        for title in ["Watches", "Microphone"] {
+            assert!(
+                texts.iter().any(|t| t == title),
+                "{title} has no tab: {texts:?}"
+            );
+        }
+        // The Watches pane's toolbar, with New Watch… from the first launch.
+        assert!(texts.iter().any(|t| t == "New Watch…"), "{texts:?}");
+        assert!(texts.iter().filter(|t| *t == "×").count() >= 2, "{texts:?}");
+        assert!(texts.iter().all(|t| !t.contains("coreaudio:")), "{texts:?}");
+    }
+
     #[test]
     fn the_microphone_pane_sits_under_the_watches_pane() {
         let under_watches = |tree: &Tree<Pane>| {
