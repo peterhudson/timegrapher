@@ -1,8 +1,32 @@
 //! The longer explanations behind the "?" buttons, one per part of the
 //! window, so they read alike and live in one place.
 
-pub const WATCH: &[&str] = &[
-    "The watch on the microphone. Its name and position are saved with a recording.",
+pub const TAKE: &[&str] = &[
+    "The take running or on show: its name, its watch and what it is doing. Start \
+     listens to the microphone set in the Microphone pane; Stop lets go of it, and \
+     Resume carries on in the same session. A recording opened from the File menu \
+     shows here too, with Replay, which plays it through as if the watch were on the \
+     microphone at the Replay Speed set below it (a folder plays its files one after \
+     the other), and Analyse All, which goes back to the whole recording analysed at \
+     once.",
+    "Each reading is fitted to the beats of the last Average Over seconds. A longer \
+     time gives steadier figures that follow changes more slowly. Early in a session, \
+     or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
+     of beats than asked for: the readings use what there is, and say how much under \
+     the rate. They never reach back across a pause, since the watch may have been \
+     moved or handled.",
+    "Average Over reaches further than the readings. It also sets every point on the \
+     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
+     Paper Strip, \
+     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
+     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
+     Each of those panes can take a time of its own instead, in its toolbar's Average \
+     Over, and then names it on its tab, until Average Over here is changed: that puts \
+     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
+     the Positions Test the time set in its pane, whatever it is set to.",
+    "Beat Rate and Lift Angle show when the take's watch has no calibre, or no watch \
+     is picked. A watch with a calibre names it, with the beat rate and lift angle it \
+     sets, on one line; Edit… on the watch changes them.",
     "Beat rate is how many beats the watch makes an hour (28,800 for most modern \
      automatics, 21,600 and 18,000 for older ones). Auto finds it from the first few \
      seconds of beats; set it by hand if Auto picks the wrong one.",
@@ -36,43 +60,6 @@ pub const MICROPHONE: &[&str] = &[
      card's own capture level.",
     "The Peak meter shows the loudest sample in the last half second, in dBFS \
      (decibels below the most the input can carry). It turns red when the sound clips.",
-];
-
-pub const RECORDING: &[&str] = &[
-    "Open… analyses a WAV or FLAC recording all at once, which is how to look back \
-     through a take; Open Folder… does the same for a take saved as segments.",
-    "Replay plays the recording through as if the watch were on the microphone, at the \
-     Replay Speed set below it; a folder plays its files one after the other. Analyse All goes back to the whole recording analysed \
-     at once.",
-];
-
-pub const READINGS: &[&str] = &[
-    "Rate is how many seconds a day the watch gains (+) or loses (−), from how often it \
-     beats compared with how often it should.",
-    "Amplitude is how far the balance swings each way from rest, in degrees. The big \
-     figure is the average; beside it are the amplitude measured from the ticks and \
-     from the tocks.",
-    "Beat error is how unevenly the tick and the tock are spaced, in milliseconds: \
-     zero when the balance rests exactly midway. The big figure is timed from the \
-     unlock, as tg measures it; the smaller one is timed \
-     from the beat as a whole, nearer the drop.",
-    "Each reading is fitted to the beats of the last Average Over seconds (under Readings). A longer \
-     time gives steadier figures that follow changes more slowly. Early in a session, \
-     or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
-     of beats than asked for: the readings use what there is, and say how much under \
-     the rate. They never reach back across a pause, since the watch may have been \
-     moved or handled.",
-    "Average Over reaches further than the readings. It also sets every point on the \
-     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
-     Paper Strip, \
-     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
-     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
-     Each of those panes can take a time of its own instead, in its toolbar's Average \
-     Over, and then names it on its tab, until Average Over here is changed: that puts \
-     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
-     the Positions Test the time set in its pane, whatever it is set to.",
-    "The tick is simply the first beat heard: the sound can't tell which pallet stone \
-     made which beat.",
 ];
 
 pub const RATE: &[&str] = &[
@@ -115,8 +102,8 @@ pub const CLIPPING_BANNER: &[&str] = &[
      read wrong. The rate comes from when the beats arrive, which clipping doesn't \
      change.",
     "It shows whenever a beat in the readings has a clipped sample in its sound, \
-     counted the same way `timegrapher analyze` counts them. Input Level is under \
-     Microphone in the Watches pane.",
+     counted the same way `timegrapher analyze` counts them. Input Level is in the \
+     Microphone pane.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -124,7 +111,7 @@ pub const AMPLITUDE: &[&str] = &[
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
      solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
-     only as right as the lift angle under Watch.",
+     only as right as the lift angle in the Take card.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
      with the lift angle in proportion (1° of lift moves it about 5° at 260° with a \
@@ -150,8 +137,8 @@ pub const BEAT_ERROR: &[&str] = &[
 pub const BEAT_RATE: &[&str] = &[
     "How many beats the watch makes an hour, ticks and tocks counted alike: 28,800 \
      for a balance swinging 4 times a second each way, 21,600 for 3, 18,000 for 2.5.",
-    "With Beat Rate under Watch on Auto, it is the standard rate nearest to the beats \
-     of the first few seconds. Set it under Watch when the watch beats at an unusual \
+    "With Beat Rate in the Take card on Auto, it is the standard rate nearest to the beats \
+     of the first few seconds. Set it in the Take card when the watch beats at an unusual \
      rate, or to read a watch that runs far off.",
 ];
 
