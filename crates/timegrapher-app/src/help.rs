@@ -2,9 +2,12 @@
 //! window, so they read alike and live in one place.
 
 pub const TAKE: &[&str] = &[
-    "The take running or on show: its name, its watch and what it is doing. Start \
-     listens to the microphone set in the Microphone pane; Stop lets go of it, and \
-     Resume carries on in the same session. A recording opened from the File menu \
+    "The take running or on show: its name, its watch and what it is doing. With a \
+     watch picked, New Take starts Listen, the Positions Test or the Power Reserve Test \
+     on the microphone set in the Microphone pane, and the take is saved into the watch \
+     when it stops; with none, Quick Listen listens, and its take is kept only when \
+     Keep in a Watch… or Save… keeps it. Stop lets go of the microphone, and Resume \
+     carries on in the same session. A recording opened from the File menu \
      shows here too, with Replay, which plays it through as if the watch were on the \
      microphone at the Replay Speed set below it (a folder plays its files one after \
      the other), and Analyse All, which goes back to the whole recording analysed at \
@@ -50,7 +53,7 @@ pub const TAKE: &[&str] = &[
 
 pub const MICROPHONE: &[&str] = &[
     "The app looks for microphones only when the microphone menu opens, Rescan is \
-     pressed or Start is clicked, never at launch: asking an input what it supports \
+     pressed or listening starts, never at launch: asking an input what it supports \
      briefly opens it, which could disturb another program recording from it. \
      Replaying a recording never touches the microphone.",
     "Input Level is the microphone's gain. The meter has plain marks at -10 and -6 dBFS \
