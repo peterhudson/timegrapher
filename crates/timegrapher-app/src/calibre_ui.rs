@@ -49,6 +49,8 @@ pub struct Calibres {
     pub manager_open: bool,
     selected: Option<String>,
     search: String,
+    /// What is typed in the Calibre menu's own search box.
+    menu_search: String,
     filter: Filter,
     /// Name and period typed for a wheel the slots don't list.
     extra: (String, String),
@@ -153,6 +155,7 @@ impl Calibres {
             manager_open: false,
             selected: None,
             search: String::new(),
+            menu_search: String::new(),
             filter: Filter::All,
             extra: (String::new(), String::new()),
             problem: None,
@@ -365,6 +368,7 @@ impl Calibres {
         let picked: std::cell::RefCell<Option<String>> = Default::default();
         let mut manage = false;
         let catalog = Catalog::new(&self.user);
+        let mut typed = std::mem::take(&mut self.menu_search);
         {
             egui::ComboBox::from_id_salt("calibre")
                 .width(ui.available_width())
@@ -381,6 +385,60 @@ impl Calibres {
                             *picked.borrow_mut() = Some(e.name().to_string());
                         }
                     };
+                    // Every calibre the app knows, by any of its names or its
+                    // maker, without opening Manage Calibres.
+                    let search = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut typed)
+                                .hint_text("Search every calibre")
+                                .desired_width(f32::INFINITY),
+                        )
+                        .on_hover_text(
+                            "Type part of a calibre's name, another name for it or its maker, \
+                             to list every calibre that matches",
+                        );
+                    // Ready to type as soon as the menu opens.
+                    if typed.is_empty() && !search.has_focus() {
+                        search.request_focus();
+                    }
+                    let q = typed.trim();
+                    if !q.is_empty() {
+                        let found = catalog.search(q);
+                        if found.is_empty() {
+                            ui.label(
+                                RichText::new("No calibre matches. Manage Calibres… can add it.")
+                                    .small()
+                                    .color(pal.text_tertiary),
+                            );
+                        }
+                        const MOST: usize = 200;
+                        for e in found.iter().take(MOST) {
+                            let text = match e {
+                                Entry::Table(c) => format!("{} · {}", c.calibre, c.maker),
+                                Entry::Custom(_) => label(*e),
+                            };
+                            line(ui, *e, text);
+                        }
+                        if found.len() > MOST {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{} more: type more of the name to narrow it down.",
+                                    found.len() - MOST
+                                ))
+                                .small()
+                                .color(pal.text_tertiary),
+                            );
+                        }
+                        ui.separator();
+                        if ui
+                            .selectable_label(false, "Manage Calibres…")
+                            .on_hover_text(MANAGE_HINT)
+                            .clicked()
+                        {
+                            manage = true;
+                        }
+                        return;
+                    }
                     if ui
                         .selectable_label(current.is_empty(), "Not Set")
                         .on_hover_text(
@@ -438,10 +496,17 @@ impl Calibres {
                     }
                 });
         }
+        let picked = picked.into_inner();
+        // A pick starts the next search afresh.
+        self.menu_search = if picked.is_some() {
+            String::new()
+        } else {
+            typed
+        };
         if manage {
             self.open_manager(current);
         }
-        picked.into_inner()
+        picked
     }
 
     /// Manage Calibres… under the menu, lined up with it.
@@ -1739,5 +1804,72 @@ mod tests {
         assert!(cal.rows().is_empty(), "a listed calibre isn't one of yours");
         cal.filter = Filter::All;
         assert!(!cal.rows().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod menu_search_tests {
+    use super::*;
+
+    /// Shapes' words, drawn by one frame.
+    fn texts(out: &egui::FullOutput) -> Vec<String> {
+        let mut t = Vec::new();
+        for s in &out.shapes {
+            if let egui::Shape::Text(x) = &s.shape {
+                t.push(x.galley.text().to_string());
+            }
+        }
+        t
+    }
+
+    #[test]
+    fn the_calibre_menu_searches_every_calibre() {
+        let mut c = Calibres::in_memory();
+        // One the short list doesn't hold, so only a search finds it.
+        let rare = calibres::all().iter().find(|x| !x.common).unwrap();
+        assert!(!c.in_short(rare));
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 800.0));
+        let frame = |c: &mut Calibres, events: Vec<egui::Event>| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_width(300.0);
+                        c.picker(ui, "");
+                    });
+                },
+            )
+        };
+        frame(&mut c, vec![]);
+        // The menu's button, at the top of the panel.
+        let at = egui::pos2(60.0, 18.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(&mut c, vec![egui::Event::PointerMoved(at), press(true)]);
+        frame(&mut c, vec![press(false)]);
+        let open = frame(&mut c, vec![]);
+        assert!(
+            texts(&open).iter().any(|t| t == "Search every calibre"),
+            "{:?}",
+            texts(&open)
+        );
+        frame(&mut c, vec![egui::Event::Text(rare.calibre.clone())]);
+        let found = frame(&mut c, vec![]);
+        let want = format!("{} · {}", rare.calibre, rare.maker);
+        assert!(
+            texts(&found).contains(&want),
+            "{want} not in {:?}",
+            texts(&found)
+        );
     }
 }
