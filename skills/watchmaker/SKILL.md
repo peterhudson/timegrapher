@@ -252,9 +252,10 @@ gives the four verdicts: **fine**, **keep an eye on it**, **service soon**,
 - **Rate differs a lot between vertical positions**, and the difference
   changes with amplitude: poise or hairspring centring. An adjustment job.
 - **A regular wave in the trace**: something that turns. Period tells you
-  which wheel (escape wheel a few seconds, fourth wheel a minute, centre
-  wheel an hour). Confirm with a long run; see
-  [long-runs.md](references/long-runs.md).
+  which wheel (in most calibres the escape wheel a few seconds, the fourth
+  wheel a minute, the centre wheel an hour; the program names a wheel only
+  when it knows the calibre, so pass `--calibre`). Confirm with a long
+  run; see [long-runs.md](references/long-runs.md).
 - **Amplitude falls a lot from full wind to 24 hours**, or ends below
   Sellita's 200° minimum at 24 h for the SW200 (see the table in
   when-to-see-a-watchmaker.md): mainspring, barrel or train friction. Mention it; it usually

@@ -170,7 +170,7 @@ matches no watch exits 1. Through the MCP server: `list_watches` and
 ```
 timegrapher record FOLDER --position P [--seconds 120] [--device NAME]
                    [--watch TEXT] [--calibre NAME] [--bph N] [--lift DEG]
-                   [--wind-h H] [--file AUDIO] [--json]
+                   [--wind-h H] [--file AUDIO] [--power-reserve] [--json]
 timegrapher record --watch NAME [--library DIR] --position P [...]
 ```
 
@@ -192,6 +192,17 @@ position into the same test. Recording into the library is refused
 and so is a FOLDER that is one of a library watch's takes. With a
 FOLDER, `--watch` is the owner's own words for the watch. The MCP
 server's `record_position` always takes a folder.
+
+`--power-reserve`, in place of `--seconds`, makes the run a Power
+Reserve Test: it records in the one position until the watch stops (the
+last beat heard before 10 minutes with none) or 80 hours pass, and
+writes the run, hour by hour, to the session folder's
+`power-reserve.json` (`ending`: `stopped`, `by_hand` or `limit`;
+`run_s` in true seconds; the silences of 30 s or more; `hours[]`, each
+measured as `session` measures a stretch). Without a FOLDER the folder
+is named by the date and time and "Power Reserve". The `--json` document
+adds `power_reserve` with the same contents, and `session FOLDER --json`
+gives it too whenever the folder holds `power-reserve.json`.
 
 JSON body (`record/2`): `take`, `library_watch` (null when FOLDER was
 given), `session_file`, `position`, `wind_h`,
@@ -217,7 +228,7 @@ timegrapher analyze FILE [--bph N] [--lift DEG] [--notch HZ,HZ,...]
 | `--lift` | 52 | Lift angle, degrees; amplitude scales with it |
 | `--notch` | none | Steady tones to remove, Hz (mains hum, whines) |
 | `--highpass` | 1500 | High-pass corner, Hz |
-| `--escape-teeth` | 15 | For naming the escape wheel's period |
+| `--escape-teeth` | the calibre's, or 15 | Escape wheel teeth. With no calibre, the escape wheel is named only when this is given |
 | `--beats` | | CSV, one row per beat: `index,time_s,quality,residual_us` |
 | `--windows` | | CSV of rate (10 s windows) and amplitude (2 s windows): `kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg,unlock_even_ms,unlock_odd_ms,drop_even_ms,drop_odd_ms` (the last four: where the unlock and the drop fall on each side) |
 
@@ -342,8 +353,10 @@ else the error stored for the input the recording names, else the
 recording's USB lines; with none of these the rates are on the sound
 card's clock, uncorrected. `--wheel` names another wheel by its period
 (repeatable); `--calibre` names periodic changes after that movement's
-wheels. The lift angle is `--lift`, else the calibre's when `--calibre`
-is given, else 52°. Output folder (default `<recording>_long/` beside it):
+wheels. With no calibre, no wheel is named but `--escape-teeth`'s and
+`--wheel`'s, and `input.settings.reference_lines` gives 1 min and 1 h
+(`label`, `period_s`) as periods to mark, not wheels. The lift angle is
+`--lift`, else the calibre's when `--calibre` is given, else 52°. Output folder (default `<recording>_long/` beside it):
 `report.html`, `summary.json` (the same as `--json`), `beats.csv`
 (`index,time_s,true_time_s,quality`), `amplitude.csv`
 (`start_s,end_s,true_start_s,even_deg,odd_deg,beat_error_ms,beat_error_unlock_ms`),
@@ -385,7 +398,8 @@ Is the take steady? Reads rate, amplitude and beat error in time order
 `unlock_hopping`, and the tests behind it, plus `rate_amplitude` (the
 rate against the amplitude, always given) and `findings[]` (`code`,
 `series`, `title`, `evidence`) (`series/2`).
-`--calibre` names periodic changes after that movement's wheels; a
+`--calibre` names periodic changes after that movement's wheels (with
+no calibre, only `--escape-teeth`'s and `--wheel`'s, as for `long`); a
 name not in the table is an error that points to `timegrapher calibres
 --search`, as it is for `analyze` and `record`. The lift angle is
 `--lift`, else the calibre's when `--calibre` is given, else 52°.

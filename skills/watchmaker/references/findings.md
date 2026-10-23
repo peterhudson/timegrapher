@@ -131,6 +131,16 @@ timegrapher, a reference reading or a buyer's machine, lead with
 `overall.rate_s_per_day`, since that is how they read it, and give the
 corrected rate beside it.
 
+To keep another reader's figures beside a `session` reading, give that
+recording a `reference` in `session.toml` and name the clock its rate
+was read on. A take paired with a bench timegrapher listening beside
+the microphone, such as a Witschi on its own time base, takes
+`clock = "own"`; its rate is set beside the clock-corrected reading, so
+give the take its clock log (or a stored or given correction). tg or
+another program reading the same file takes `clock = "sound_card"`. The
+HTML report gives the rate Difference only where the two clocks match
+(docs/sessions.md).
+
 ## `doctor`
 
 `doctor` reports levels and lists what it detected, each with a `code`
