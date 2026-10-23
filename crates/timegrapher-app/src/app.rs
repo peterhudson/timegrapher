@@ -6532,33 +6532,28 @@ impl TimegrapherApp {
                 }
                 let overlays = &mut self.overlays;
                 let lines = [
-                (
-                    "Amplitude",
-                    "The amplitude readings as a purple line against the same time, on their own \
-                     scale",
-                ),
-                (
-                    "Rate",
-                    "The rate readings as a red line against the same time, on their own scale",
-                ),
-                (
-                    "Beat Error",
-                    "The beat error readings, from the unlock, as a yellow line against the same \
-                     time, on their own scale",
-                ),
-            ];
-                // The name stays on one line with the first switch; the others
-                // wrap to the next line when the pane is narrow.
-                theme::row(
-                ui,
-                "Draw Over the Strip",
-                Some(
-                    "Readings drawn as lines over the beats against the same time, each on its \
-                     own scale",
-                ),
-                |ui| theme::switch_row(ui, lines[0].0, &mut overlays[0], lines[0].1),
-            );
-                for (i, (name, hint)) in lines.into_iter().enumerate().skip(1) {
+                    (
+                        "Amplitude",
+                        "The amplitude readings as a purple line against the same \
+                         time, on their own scale",
+                    ),
+                    (
+                        "Rate",
+                        "The rate readings as a red line against the same time, on \
+                         their own scale",
+                    ),
+                    (
+                        "Beat Error",
+                        "The beat error readings, from the unlock, as a yellow line \
+                         against the same time, on their own scale",
+                    ),
+                ];
+                ui.label(RichText::new("Draw Over the Strip").strong())
+                    .on_hover_text(
+                        "Readings drawn as lines over the beats against the same \
+                         time, each on its own scale",
+                    );
+                for (i, (name, hint)) in lines.into_iter().enumerate() {
                     theme::switch_row(ui, name, &mut overlays[i], hint);
                 }
                 theme::switch_row(
@@ -6661,8 +6656,9 @@ impl TimegrapherApp {
                                 (
                                     true,
                                     "Shared",
-                                    "Tick and tock on one clock: the drops stand the beat error \
-                                     from the drop apart, and the unlocks the beat error from the unlock",
+                                    "Tick and tock on one clock: the drops stand the beat \
+                                     error from the drop apart, and the unlocks the beat \
+                                     error from the unlock",
                                 ),
                                 (
                                     false,
