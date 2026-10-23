@@ -9283,6 +9283,9 @@ impl TimegrapherApp {
     /// watch dial up: just after winding, or as the 24 hour half after the
     /// full-wind test `half`.
     fn start_guided(&mut self, half: Option<guided::FullWind>) {
+        // A test is never Quick Listen: its sound is saved or asked about,
+        // not let go, even when it follows Quick Listen or runs on from it.
+        self.quick_listen = false;
         if !self.running() {
             if self.can_resume() {
                 self.resume_microphone();
@@ -9751,6 +9754,9 @@ impl TimegrapherApp {
             self.new_session();
         }
         self.input = Input::Microphone;
+        // Never Quick Listen, whose sound goes without a question: a test
+        // keeps its take.
+        self.quick_listen = false;
         self.start_microphone();
         if !self.running() || self.session.recorder.is_none() {
             return;
@@ -17099,6 +17105,26 @@ mod tests {
         check(&mut app);
         app.pick_watch(&pepsi);
         check(&mut app);
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The app opens on Quick Listen, whose sound goes without a question;
+    /// a Positions Test started after it, with no watch picked, is not
+    /// Quick Listen, so its take is never let go unasked. (A Power Reserve
+    /// Test clears the same flag before it opens the microphone.)
+    #[test]
+    fn a_test_after_quick_listen_is_not_quick_listen() {
+        let base = std::env::temp_dir().join(format!("tg-app-test-ql-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = opened_recording(&base, "a.wav", 12.0);
+        // Changed masks make the test ask before it opens an input, so no
+        // input is opened here.
+        app.mask(2.0, 5.0);
+        app.quick_listen = true;
+        app.start_guided(None);
+        assert!(matches!(app.confirm, Some(Confirm::Microphone)));
+        assert!(!app.quick_listen);
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
