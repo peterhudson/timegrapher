@@ -24,8 +24,8 @@ const context = vm.createContext({
   plotArea: () => ({ id: "c", svg: "" }), CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
-vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" +
-  ["esc", "steadyNote", "steadyPlot", "periodTicks", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
+vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" +
+  ["esc", "steadyNote", "steadyPlot", "periodTicks", "wheelMarks", "referencePeriods", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints;", context);
 
 // Values made in the renderer's context, as plain ones.
@@ -95,4 +95,24 @@ test("period axes are marked as core's period_ticks marks them", () => {
   assert.equal(labels(6 * 64), "10 s, 1 min, 10 min, 1 h, 6 h");
   // Each mark sits at its period, in log10 seconds.
   assert.deepEqual(plain(context.periodTicks(Math.log10(50), Math.log10(70), 640)), [[Math.log10(60), "1 min"]]);
+});
+
+test("with no wheel named, 1 min and 1 h are plain lines with no name", () => {
+  const plainDoc = { input: { settings: { named_wheels: [], reference_lines: [
+    { label: "1 min", period_s: 60 }, { label: "1 h", period_s: 3600 }] } } };
+  const marks = plain(context.wheelMarks(plainDoc, [0, 5]));
+  assert.deepEqual(marks, [
+    { x: Math.log10(60), color: "--text3", width: 1, dash: "dotted" },
+    { x: Math.log10(3600), color: "--text3", width: 1, dash: "dotted" },
+  ]);
+  // Only those inside the axis.
+  assert.equal(context.wheelMarks(plainDoc, [0, 3]).length, 1);
+  // A named wheel is drawn as before, and series gives no reference lines then.
+  const named = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [] } } };
+  assert.ok(context.wheelMarks(named, [0, 5]).every((m) => m.dash !== "dotted"));
+  // On a map, a dotted rule across it at each one inside its periods (1 to 100 s here).
+  context.mapPaints.length = 0;
+  const drawn = context.steadyPlot({ series: "amplitude" }, "stft", { duration_s: 1800, time_frequency: [map], ...plainDoc });
+  assert.equal(drawn.split('stroke-dasharray="1.2 2.4"').length - 1, 1, drawn);
+  assert.ok(!drawn.includes("Fourth Wheel"));
 });

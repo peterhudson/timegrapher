@@ -857,7 +857,18 @@ function wheelMarks(doc, span) {
     const taken = wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03);
     if (inside(x2) && !taken && !twin) out.push({ x: x2, color: "--text3", width: 1.25, dash: "wheel", label: `${wheelTitle(w.name)} ×2` });
   });
+  for (const p of referencePeriods(doc)) {
+    const x = Math.log10(p);
+    if (inside(x)) out.push({ x, color: "--text3", width: 1, dash: "dotted" });
+  }
   return out;
+}
+
+// periodicity::reference_lines: with no wheel named, 1 min and 1 h are
+// marked as periods alone, plain lines with no name.
+function referencePeriods(doc) {
+  const lines = (doc.input && doc.input.settings && doc.input.settings.reference_lines) || [];
+  return lines.map((r) => r.period_s).filter((p) => p > 0);
 }
 
 function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
@@ -1210,6 +1221,11 @@ function mapChart(m, doc, log) {
     if (!(wh.period_s > 0) || y <= bottom || y >= top) continue;
     over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--text)" stroke-opacity="0.7" stroke-width="1" stroke-dasharray="4 4"/>`;
     over += `<text x="${L + plotW - 3}" y="${sy(y) - 3}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px">${esc(wheelTitle(wh.name))}</text>`;
+  }
+  for (const p of referencePeriods(doc)) {
+    const y = Math.log10(p);
+    if (y <= bottom || y >= top) continue;
+    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--text)" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="${DASH.dotted}"/>`;
   }
   const k = mapPaints.length;
   const box = { left: sx(left), top: sy(top), width: sx(left + width) - sx(left), height: sy(bottom) - sy(top) };
