@@ -1043,7 +1043,7 @@ fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
     let mut out = Vec::new();
     let mut t = step;
     while t <= end + 1e-9 {
-        out.push(TrendPoint::of(t, &live.reading_at(t, seconds), seconds));
+        out.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
         t += step;
     }
     out
@@ -1074,13 +1074,12 @@ struct TrendPoint {
 }
 
 impl TrendPoint {
-    /// The reading at `t` over `seconds`; a reading over less than nine
-    /// tenths of its averaging time (just after the start or a break) has
-    /// no values, since it isn't the average the chart is of.
-    fn of(t: f64, r: &LiveReading, seconds: f64) -> Self {
-        // The beats' span falls up to a beat short of the time they cover.
-        let covered = r.span_s + r.bph.map_or(0.0, |b| 3600.0 / b as f64);
-        if covered < 0.9 * seconds {
+    /// The reading at `t`; a reading whose averaging time
+    /// is not a whole bin (just after the start, a break or a masked
+    /// stretch, or over a dropout; see `LiveReading::whole`) has no
+    /// values, since it isn't the average the chart is of.
+    fn of(t: f64, r: &LiveReading) -> Self {
+        if !r.whole {
             return TrendPoint {
                 t,
                 rate: None,
@@ -3537,11 +3536,10 @@ impl TimegrapherApp {
                             if !self.session.replay_reading_allowed(r.time_s) {
                                 continue;
                             }
-                            self.trend
-                                .push(TrendPoint::of(r.time_s, &r, self.average_s));
+                            self.trend.push(TrendPoint::of(r.time_s, &r));
                             for (&k, t) in self.other_trends.iter_mut() {
                                 let o = live.reading(k as f64 / 1000.0);
-                                t.push(TrendPoint::of(o.time_s, &o, k as f64 / 1000.0));
+                                t.push(TrendPoint::of(o.time_s, &o));
                             }
                             let p = live.tick_profiles();
                             let due = self
@@ -9628,7 +9626,7 @@ impl TimegrapherApp {
         let mut t = key.0 as f64 * step;
         while t <= (key.1 as f64 * step).min(live.duration_s()) + 1e-9 {
             if t > 0.0 && self.session.replay_reading_allowed(t) {
-                pts.push(TrendPoint::of(t, &live.reading_at(t, seconds), seconds));
+                pts.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
             }
             t += step;
         }
@@ -11989,7 +11987,7 @@ mod tests {
         for b in audio.samples.chunks(960) {
             if live.push(b) {
                 let r = live.reading(app.average_s);
-                app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
+                app.trend.push(TrendPoint::of(r.time_s, &r));
             }
         }
         app.poll();
@@ -12147,7 +12145,7 @@ mod tests {
         for b in noise.chunks(960) {
             if live.push(b) {
                 let r = live.reading(app.average_s);
-                app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
+                app.trend.push(TrendPoint::of(r.time_s, &r));
             }
         }
         let after = app.reading().unwrap();
@@ -14311,7 +14309,7 @@ mod tests {
             for b in audio.samples.chunks(960) {
                 if live.push(b) {
                     let r = live.reading(app.average_s);
-                    app.trend.push(TrendPoint::of(r.time_s, &r, app.average_s));
+                    app.trend.push(TrendPoint::of(r.time_s, &r));
                 }
             }
         };
@@ -14596,11 +14594,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// After a masked stretch the charts stay empty until nine tenths of an
-    /// averaging time of beats has been heard again: no reading over the
-    /// few beats just past the mask, and no line drawn across it.
+    /// After a masked stretch the charts stay empty until a whole
+    /// averaging time has been heard again: no reading over the few beats
+    /// just past the mask, and no line drawn across it.
     #[test]
-    fn readings_resume_nine_tenths_of_an_average_after_a_mask() {
+    fn readings_resume_a_whole_average_after_a_mask() {
         let mut app = synthetic(60.0, 0.0);
         app.mask(20.0, 30.0);
         let after: Vec<_> = app
@@ -14611,7 +14609,7 @@ mod tests {
             .collect();
         assert!(!after.is_empty());
         assert!(
-            after.iter().all(|&t| t >= 30.0 + 0.9 * app.average_s),
+            after.iter().all(|&t| t >= 30.0 + app.average_s - 1e-9),
             "{after:?}"
         );
         let points: Vec<[f64; 2]> = app

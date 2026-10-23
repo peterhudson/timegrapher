@@ -692,14 +692,14 @@ fn read_one_inner(
                 audio_s: b.audio_s - settle,
                 gap_s: b.gap_s,
             })
-            // A masked stretch is a missing one, with no time lost.
+            // A masked stretch is cut at both ends, with no time lost.
             .chain(
-                masked
-                    .iter()
-                    .filter(|&&(a, _)| a > settle && a < end)
-                    .map(|&(a, _)| breaks::Break {
-                        audio_s: a - settle,
-                        gap_s: 0.0,
+                timegrapher_core::clean::mask_breaks(&masked)
+                    .into_iter()
+                    .filter(|b| b.audio_s > settle && b.audio_s < end)
+                    .map(|b| breaks::Break {
+                        audio_s: b.audio_s - settle,
+                        ..b
                     }),
             )
             .collect();
