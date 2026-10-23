@@ -1202,23 +1202,16 @@ fn row(
             // Rate's spectrum is of the beat timing, in ms: drawn unless
             // asked as the swing it makes in the rate readings, peak to
             // peak in s/d, over the periods those readings can show.
-            let as_rate = sp.series == "rate" && sp.unit == "ms" && !opts.fft_timing;
-            let reading_s = Config::default().rate_reading_s;
-            let pts: Vec<[f64; 2]> = sp
-                .period_s
+            let swing = sp.reading_swing.as_ref().filter(|_| !opts.fft_timing);
+            let as_rate = swing.is_some();
+            let (periods, sizes) = match swing {
+                Some(s) => (&s.period_s, &s.swing_s_per_day),
+                None => (&sp.period_s, &sp.amplitude),
+            };
+            let pts: Vec<[f64; 2]> = periods
                 .iter()
-                .zip(&sp.amplitude)
-                .filter(|(&p, _)| !as_rate || p >= 2.0 * reading_s)
-                .map(|(&p, &a)| {
-                    (
-                        p,
-                        if as_rate {
-                            reading_swing(a, p, reading_s)
-                        } else {
-                            a
-                        },
-                    )
-                })
+                .zip(sizes)
+                .map(|(&p, &a)| (p, a))
                 .filter(|(p, a)| *p > 0.0 && *a > 0.0 && a.is_finite())
                 .map(|(p, a)| [p.log10(), a.log10()])
                 .collect();
@@ -1292,17 +1285,6 @@ fn row(
                 });
         }
     }
-}
-
-/// The peak-to-peak swing, s/d, that a beat-timing sine `amp_ms` in size
-/// with period `period_s` makes in rate readings each averaged over
-/// `reading_s`: the timing's slope, `2π·amp/period` ms per second, is
-/// 86.4 s/d for each ms per second, and averaging over a reading keeps
-/// `sin(x)/x` of it, `x = π·reading/period`.
-fn reading_swing(amp_ms: f64, period_s: f64, reading_s: f64) -> f64 {
-    let x = std::f64::consts::PI * reading_s / period_s;
-    let kept = if x == 0.0 { 1.0 } else { (x.sin() / x).abs() };
-    2.0 * amp_ms * std::f64::consts::TAU / period_s * 86.4 * kept
 }
 
 /// How the views draw what they can draw two ways.
@@ -2027,17 +2009,6 @@ mod tests {
         }
         let both_slow = compute(&agree, None);
         assert!(finite(&both_slow).iter().any(|&v| v < 0.0));
-    }
-
-    #[test]
-    fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {
-        // 0.157 ms of timing at 46 s is 3.7 s/d peak to peak in the rate
-        // itself; a 10 s reading keeps sin(x)/x of it, x = π·10/46.
-        let x = std::f64::consts::PI * 10.0 / 46.0;
-        let swing = reading_swing(0.157, 46.0, 10.0);
-        assert!((swing - 3.70 * x.sin() / x).abs() < 0.02, "{swing}");
-        // A wave as long as a reading averages away.
-        assert!(reading_swing(1.0, 10.0, 10.0) < 1e-9);
     }
 
     /// A watch whose rate swings once a minute (a fourth wheel fault) is
