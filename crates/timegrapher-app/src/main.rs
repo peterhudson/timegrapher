@@ -53,7 +53,6 @@ const USAGE: &str = "\
 Usage:
   timegrapher-app [FILE]            open the window with FILE analysed all at once
                                     (a recording, or a folder of segments as one)
-  timegrapher-app --replay FILE     open the window replaying FILE as if live
   timegrapher-app --devices         list sound input devices as JSON
   timegrapher-app --headless FILE [--bph N] [--lift DEG] [--average S] [--every S]
                                     print live readings for FILE as JSON lines";
@@ -62,7 +61,6 @@ struct Args {
     file: Option<PathBuf>,
     headless: bool,
     devices: bool,
-    replay: bool,
     bph: Option<u32>,
     lift: f64,
     average_s: f64,
@@ -74,7 +72,6 @@ fn parse_args() -> Result<Args, String> {
         file: None,
         headless: false,
         devices: false,
-        replay: false,
         bph: None,
         lift: 52.0,
         average_s: 10.0,
@@ -94,9 +91,8 @@ fn parse_args() -> Result<Args, String> {
         match arg.as_str() {
             "--headless" => a.headless = true,
             "--devices" => a.devices = true,
-            // Analysing all at once is the default; the old flag still works.
-            "--analyse" | "--analyze" => a.replay = false,
-            "--replay" => a.replay = true,
+            // Analysing all at once is all the app does; the old flag still works.
+            "--analyse" | "--analyze" => {}
             "--bph" => a.bph = Some(num(value("--bph")?, "--bph")? as u32),
             "--lift" => a.lift = num(value("--lift")?, "--lift")?,
             "--average" => a.average_s = num(value("--average")?, "--average")?,
@@ -178,11 +174,10 @@ fn main() -> ExitCode {
     // The settings folder `timegrapher report` collects logs from.
     applog::init(timegrapher_core::clockstore::config_dir());
     let file = args.file.clone();
-    let analyse = !args.replay;
     // OpenGL first; where the graphics can't do OpenGL 2.0 (a virtual
     // machine or remote desktop without 3D, an old driver), wgpu, which on
     // Windows can draw with Direct3D 12's software renderer.
-    let gl = match open_window(eframe::Renderer::Glow, file.clone(), analyse) {
+    let gl = match open_window(eframe::Renderer::Glow, file.clone()) {
         Closed::Quit => return ExitCode::SUCCESS,
         Closed::Broke(e) => return window_broke(&e),
         Closed::NeverDrew(e) => e,
@@ -190,7 +185,7 @@ fn main() -> ExitCode {
     applog::warn(&format!(
         "OpenGL didn't open the window ({gl}); trying wgpu"
     ));
-    match open_window(eframe::Renderer::Wgpu, file, analyse) {
+    match open_window(eframe::Renderer::Wgpu, file) {
         Closed::Quit => ExitCode::SUCCESS,
         Closed::Broke(e) => window_broke(&e),
         Closed::NeverDrew(wgpu) => {
@@ -223,7 +218,7 @@ enum Closed {
 }
 
 /// Run the window with `renderer` until it closes.
-fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>, analyse: bool) -> Closed {
+fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>) -> Closed {
     let options = eframe::NativeOptions {
         renderer,
         viewport: eframe::egui::ViewportBuilder::default()
@@ -247,7 +242,7 @@ fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>, analyse: bool)
                 cc.egui_ctx.set_theme(s.theme);
             }
             Ok(Box::new(pump::Shell::new(app::TimegrapherApp::new(
-                file, analyse, saved,
+                file, saved,
             ))))
         }),
     );

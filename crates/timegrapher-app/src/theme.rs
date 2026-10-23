@@ -853,6 +853,23 @@ pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl
     });
 }
 
+/// A toolbar's "…" button: the pane's rarer settings in a menu, laid out
+/// as a settings list rather than a toolbar row, so the toolbar keeps to
+/// one line and the pane keeps its height.
+pub fn more_menu(ui: &mut Ui, hint: &str, contents: impl FnOnce(&mut Ui)) {
+    let id = egui::Id::new("pane toolbar");
+    let was = in_toolbar(ui);
+    ui.menu_button(RichText::new("…").size(14.0), |ui| {
+        ui.ctx().data_mut(|d| d.insert_temp(id, false));
+        ui.set_min_width(280.0);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        contents(ui);
+        ui.ctx().data_mut(|d| d.insert_temp(id, was));
+    })
+    .response
+    .on_hover_text(hint);
+}
+
 /// A button that stays pressed while `on`: a switch in a toolbar. Its
 /// response is marked changed when clicked.
 pub fn toggle(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
@@ -902,6 +919,15 @@ pub enum Icon {
     AmplitudeDistribution,
     BeatErrorDistribution,
     Settings,
+    Listen,
+    Stop,
+    Save,
+    DialUp,
+    DialDown,
+    CrownUp,
+    CrownDown,
+    CrownLeft,
+    CrownRight,
 }
 
 /// A square button with an icon. While `on` it is a chip tinted in `color`
@@ -931,5 +957,48 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Respons
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), on, "")
     });
+    resp
+}
+
+/// A square button with an icon, `size` across, for a control on a card:
+/// filled in `color` when `strong`, else a plain button. Picked, it is
+/// tinted as a toggle that is on.
+pub fn icon_button(
+    ui: &mut Ui,
+    icon: Icon,
+    size: f32,
+    color: Color32,
+    strong: bool,
+    picked: bool,
+) -> Response {
+    let p = pal(ui);
+    let sense = if ui.is_enabled() {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), sense);
+    let radius = CornerRadius::same(CONTROL_RADIUS);
+    let enabled = ui.is_enabled();
+    let (fill, ink) = if strong && enabled {
+        (color, Color32::WHITE)
+    } else if picked {
+        (color.gamma_multiply(0.18), color)
+    } else if resp.hovered() && enabled {
+        (p.control_hover, p.text)
+    } else {
+        (p.control, if enabled { p.text } else { p.text_tertiary })
+    };
+    ui.painter().rect_filled(rect, radius, fill);
+    if picked {
+        ui.painter().rect_stroke(
+            rect.shrink(0.5),
+            radius,
+            Stroke::new(1.0_f32, color.gamma_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    crate::icons::draw(ui.painter(), rect.shrink(size * 0.2), icon, ink);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, picked, ""));
     resp
 }

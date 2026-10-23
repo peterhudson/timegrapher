@@ -70,8 +70,7 @@ fn check(
     let at = format!("{what} at {}×{}", size.0, size.1);
     let card = theme::palette(ctx.style().visuals.dark_mode).card;
 
-    // The panes' cards, as `beside_watch` and `PaneBehavior::pane_ui`
-    // paint them, and the cards inside them left out.
+    // The panes' cards, as `PaneBehavior::pane_ui` paints them, and the cards inside them left out.
     let mut cards: Vec<egui::Rect> = Vec::new();
     for c in &out.shapes {
         if let egui::Shape::Rect(r) = &c.shape {
@@ -135,8 +134,7 @@ fn check(
         }
     }
     // Each pane on show names itself, in its tab or its own title: the
-    // panes laid out, the front tab of each tab bar, or before there is
-    // anything to show, the panes `beside_watch` draws.
+    // panes laid out, the front tab of each tab bar.
     let text: Vec<String> = out
         .shapes
         .iter()
@@ -145,21 +143,12 @@ fn check(
             _ => None,
         })
         .collect();
-    let beside = app.live.is_none() || app.mic_session_set_aside() || app.no_watch_yet();
     for &p in Pane::ALL.iter() {
         let laid_out = || {
             let tiles = &app.panes.tiles;
             tiles.find_pane(&p).and_then(|t| tiles.rect(t)).is_some()
         };
-        let drawn = pane_visible(&app.panes.tiles, p)
-            && if beside {
-                matches!(
-                    p,
-                    Pane::Watch | Pane::Microphone | Pane::PositionsTest | Pane::PowerReserve
-                )
-            } else {
-                laid_out()
-            };
+        let drawn = pane_visible(&app.panes.tiles, p) && laid_out();
         if drawn && !text.iter().any(|t| t.starts_with(p.title())) {
             wrong.push(format!(
                 "{at}: the {} pane shows without its title",
@@ -182,12 +171,12 @@ fn every_pane_is_whole_on_the_start_screen() {
     let mut wrong = Vec::new();
     for size in SIZES {
         // Not listed yet: the menu names the id kept from last time.
-        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.devices_listed = false;
         app.device = Some(mac_devices()[0].id.clone());
         wrong.extend(check(&mut app, &ctx, size, "start, microphones not listed"));
 
-        let mut app = TimegrapherApp::with_devices(mac_devices(), None, false);
+        let mut app = TimegrapherApp::with_devices(mac_devices(), None);
         wrong.extend(check(&mut app, &ctx, size, "start, microphones listed"));
         app.all_inputs = true;
         wrong.extend(check(&mut app, &ctx, size, "start, Show Every Input"));
@@ -204,7 +193,7 @@ fn every_pane_is_whole_during_a_take() {
         theme::install(&ctx);
         ctx
     };
-    let mut quiet = TimegrapherApp::with_devices(mac_devices(), None, false);
+    let mut quiet = TimegrapherApp::with_devices(mac_devices(), None);
     quiet.reset_session(48000, "syn".into());
     // Fifteen seconds of room noise, with no watch on the microphone.
     let live = quiet.live.as_mut().unwrap();
@@ -221,7 +210,7 @@ fn every_pane_is_whole_during_a_take() {
     quiet.poll();
     assert!(quiet.no_watch_yet());
 
-    let mut ticking = TimegrapherApp::with_devices(mac_devices(), None, false);
+    let mut ticking = TimegrapherApp::with_devices(mac_devices(), None);
     ticking.reset_session(48000, "syn".into());
     let audio = generate(
         &SynthConfig {
@@ -245,6 +234,122 @@ fn every_pane_is_whole_during_a_take() {
     for size in SIZES {
         wrong.extend(check(&mut quiet, &ctx, size, "a take with no beat yet"));
         wrong.extend(check(&mut ticking, &ctx, size, "a take with readings"));
+    }
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
+/// Every pane whole with a recording opened, analysed whole: the Time
+/// slider shows under the cards, and the readings carry their whole-take
+/// lines.
+#[test]
+fn every_pane_is_whole_with_a_recording_opened() {
+    let ctx = {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
+    };
+    let dir = std::env::temp_dir().join(format!("tg-app-layout-open-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("a.wav");
+    let audio = generate(
+        &SynthConfig {
+            duration_s: 30.0,
+            ..Default::default()
+        },
+        |_| 280.0,
+        |_| 0.0,
+    );
+    timegrapher_core::audio::write_wav(&path, &audio).unwrap();
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.start_batch(&path);
+    let t = std::time::Instant::now();
+    while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+        app.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(app.live.is_some(), "{:?}", app.message);
+    let mut wrong = Vec::new();
+    for size in SIZES {
+        wrong.extend(check(&mut app, &ctx, size, "a recording opened"));
+    }
+    drop(app);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
+/// The Set Up the Microphone sheet, where the microphone menu now lives
+/// in the window, holds macOS's long names: nothing it draws runs out of
+/// it, at each size, with and without Show Every Input.
+#[test]
+fn the_set_up_the_microphone_sheet_holds_long_microphone_names() {
+    let ctx = {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
+    };
+    let mut wrong = Vec::new();
+    for size in SIZES {
+        for all in [false, true] {
+            let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+            app.all_inputs = all;
+            app.setup_sheet = true;
+            // Already tried: a test never opens an input.
+            app.setup_tried = true;
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(size.0, size.1));
+            let mut out = None;
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                };
+                out = Some(ctx.run(input, |ctx| {
+                    app.panels(ctx);
+                    app.setup_sheet_dialog(ctx);
+                }));
+            }
+            assert!(!app.running(), "the sheet opened an input");
+            let out = out.unwrap();
+            let at = format!("Show Every Input {all} at {}×{}", size.0, size.1);
+            // What the sheet draws comes after its backdrop, which covers
+            // the window; its title starts its 440-point column.
+            let Some(backdrop) = out.shapes.iter().rposition(
+                |c| matches!(&c.shape, egui::Shape::Rect(r) if r.rect.contains_rect(screen)),
+            ) else {
+                wrong.push(format!("{at}: no sheet"));
+                continue;
+            };
+            let Some(left) = out.shapes[backdrop + 1..]
+                .iter()
+                .find_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Set Up the Microphone" => {
+                        Some(c.shape.visual_bounding_rect().left())
+                    }
+                    _ => None,
+                })
+            else {
+                wrong.push(format!("{at}: no sheet"));
+                continue;
+            };
+            let sheet = egui::Rect::from_x_y_ranges(left..=left + 440.0, screen.y_range());
+            let mut texts = Vec::new();
+            for c in &out.shapes[backdrop + 1..] {
+                let seen = c.shape.visual_bounding_rect().intersect(c.clip_rect);
+                if let egui::Shape::Text(t) = &c.shape {
+                    texts.push(t.galley.text().to_string());
+                    if seen.is_positive() && !holds(sheet, seen) {
+                        wrong.push(format!(
+                            "{at}: \"{}\" at {seen:?} runs out of the sheet at {sheet:?}",
+                            t.galley.text()
+                        ));
+                    }
+                }
+            }
+            if !texts.iter().any(|t| t.contains("iPhone 15 Pro Max")) {
+                wrong.push(format!(
+                    "{at}: the microphone's name isn't shown: {texts:?}"
+                ));
+            }
+        }
     }
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }

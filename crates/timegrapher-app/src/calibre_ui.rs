@@ -1,9 +1,8 @@
-//! The Calibre menu in the Take card, the panel beneath it and Manage
-//! Calibres. The menu offers the calibres picked lately, the short list
-//! and the watchmaker's own. Manage Calibres lists every calibre by maker
-//! with a search over names, other names and makers, a tickbox for the
-//! short list on each, and the one selected in full. The panel shows what is known about the calibre picked: its
-//! beat rate and lift angle, each wheel's turn with where the figure comes
+//! The Calibre menu on the Beat Rate card, and Manage Calibres. The menu
+//! offers the calibres picked lately, the short list and the watchmaker's
+//! own. Manage Calibres lists every calibre by maker with a search over
+//! names, other names and makers, a tickbox for the short list on each,
+//! and the one selected in full: its beat rate and lift angle, each wheel's turn with where the figure comes
 //! from, and the table's sources. Wheels nobody has given are left blank
 //! for the watchmaker to fill in; those figures, and calibres the table
 //! doesn't list, are kept in core's user calibre file in the settings
@@ -100,7 +99,7 @@ const MANAGE_HELP: &[&str] = &[
      wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
      wheel's period you know into a blank and it is kept for this calibre, marked yours; Share \
      with the Project opens a GitHub issue with what you added, to send from your browser. Use \
-     for This Watch sets it in the Take card.",
+     for This Watch sets it on the Beat Rate card.",
     "New Custom Calibre adds one the list doesn't have, named as typed in the search box; its \
      name, maker, beat rate and lift angle are edited here.",
 ];
@@ -509,64 +508,10 @@ impl Calibres {
         picked
     }
 
-    /// Manage Calibres… under the menu, lined up with it.
-    pub fn manage_button(&mut self, ui: &mut egui::Ui, current: &str) {
-        ui.horizontal(|ui| {
-            // Where the row's control starts: past the name and the gap.
-            ui.add_space(theme::LABEL_W + ui.spacing().item_spacing.x);
-            if ui
-                .button("Manage Calibres…")
-                .on_hover_text(MANAGE_HINT)
-                .clicked()
-            {
-                self.open_manager(current);
-            }
-        });
-    }
-
     /// Open Manage Calibres on `current`, or on nothing.
     pub fn open_manager(&mut self, current: &str) {
         self.manager_open = true;
         self.selected = self.find(current).map(|e| e.name().to_string());
-    }
-
-    /// What is known about the calibre `current`, under the menu: a
-    /// summary line and, folded away until opened, each wheel's turn with
-    /// where it comes from, blanks to fill in, the table's sources and the
-    /// way to share what was added. A custom calibre is edited here.
-    pub fn panel(&mut self, ui: &mut egui::Ui, current: &str, version: &str) -> Change {
-        let pal = theme::pal(ui);
-        let mut change = Change::default();
-        let Some(e) = self.find(current) else {
-            return change;
-        };
-        let name = e.name().to_string();
-        let custom = e.is_custom();
-        ui.label(RichText::new(summary(e)).small().color(pal.text_secondary));
-        let blanks = Catalog::new(&self.user)
-            .slots(e)
-            .iter()
-            .filter(|s| s.period_s.is_none())
-            .count();
-        let header = if blanks > 0 {
-            format!("Wheels and Sources ({blanks} not known)")
-        } else {
-            "Wheels and Sources".to_string()
-        };
-        egui::CollapsingHeader::new(header)
-            .id_salt("calibre panel")
-            .show(ui, |ui| {
-                change.wheels = self.wheels_and_sources(ui, &name, version, "pane");
-            });
-        if custom {
-            let wheels = change.wheels;
-            change = self.custom_editor(ui, &name, "pane");
-            change.wheels |= wheels;
-        }
-        if let Some(p) = &self.problem {
-            ui.label(RichText::new(p).small().color(pal.bad));
-        }
-        change
     }
 
     /// Each wheel's turn with where it comes from, blanks to fill in,
@@ -1026,7 +971,7 @@ impl Calibres {
                 if ui
                     .add_enabled(!here, theme::primary(ui, "Use for This Watch"))
                     .on_hover_text(
-                        "Set this calibre in the Take card, with its lift angle and wheels",
+                        "Set this calibre on the Beat Rate card, with its lift angle and wheels",
                     )
                     .on_disabled_hover_text("This watch's calibre already")
                     .clicked()

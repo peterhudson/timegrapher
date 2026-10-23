@@ -23,20 +23,20 @@ pub const HELP: &[&str] = &[
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
     "Each take shows what it measured when it was saved, its length and the space it uses. \
-     Clicking one picks it and shows its Open and Replay buttons; double-clicking opens it \
+     Clicking one picks it and shows its Open button; double-clicking opens it \
      as Open does, and the take already on show is not read again. Right-clicking it \
      offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
      Another Watch and Delete…. Open Recording… and Open Folder… in the File menu ask \
      whether to add a recording from outside your watches to one of them, asking for \
      anything its files don't say, or just to open it.",
-    "Quick Listen listens on the microphone without picking or adding a watch first, for a \
-     watch handed over the counter. Its take is saved into Unsorted when you Stop (and \
-     Save Again adds to it after a Resume), and waits there, listed at the top of the \
-     watches, until you file it under a watch (right-click it, then File Under a Watch) \
-     or delete it.",
-    "The Take card below works with a watch picked or without one; without one, Save… asks \
-     where.",
+    "Pick a watch, then Listen, Positions Test or Power Reserve Test: each is a new take \
+     on the microphone, saved into the watch when it stops.",
+    "Quick Listen (the Listen button on the Rate card, with no watch picked) keeps nothing \
+     until you Save it: into a watch, or into a folder. Its sound goes without a question \
+     when you quit or start another take. A take saved into Unsorted is listed at the top \
+     of the watches until you file it under a watch (right-click it, then File Under a \
+     Watch) or delete it.",
 ];
 
 /// How the list is sorted.
@@ -420,7 +420,6 @@ pub enum TakeAction {
     /// Picked in the list, not opened.
     Pick(PathBuf),
     Open(PathBuf),
-    Replay(PathBuf),
     Show(PathBuf),
     Rename(PathBuf),
     KeepAnalysis(PathBuf),
@@ -497,9 +496,9 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
     if e.takes.is_empty() {
         ui.label(
             RichText::new(if cx.unsorted {
-                "No takes here: each take Quick Listen makes waits here until it is filed."
+                "No takes here: a Quick Listen take saved with File > Save… waits here until it is filed."
             } else {
-                "No takes yet: Start, then Save…, keeps one here."
+                "No takes yet: Listen, Positions Test or Power Reserve Test, above, each keeps one here."
             })
             .color(pal.text_secondary),
         );
@@ -508,7 +507,6 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
     let mut act = None;
     for t in &e.takes {
         let dir = e.take_dir(t);
-        let replays = t.audio && !t.incomplete;
         let on_show = cx.on_show == Some(dir.as_path());
         let picked = cx.picked == Some(dir.as_path());
         let r = row(
@@ -547,14 +545,6 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
                 {
                     act = Some(TakeAction::Open(dir.clone()));
                 }
-                if ui
-                    .add_enabled(replays, egui::Button::new("Replay"))
-                    .on_hover_text("Play the take through as if live")
-                    .on_disabled_hover_text("This take has no sound to replay")
-                    .clicked()
-                {
-                    act = Some(TakeAction::Replay(dir.clone()));
-                }
             });
         }
         if let Some((_, done)) = cx.keeping.filter(|(k, _)| *k == dir) {
@@ -591,14 +581,6 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
                 .clicked()
             {
                 act = Some(TakeAction::Open(dir.clone()));
-            }
-            if ui
-                .add_enabled(replays, egui::Button::new("Replay"))
-                .on_hover_text("Play the take through as if live")
-                .on_disabled_hover_text("This take has no sound to replay")
-                .clicked()
-            {
-                act = Some(TakeAction::Replay(dir.clone()));
             }
             if ui
                 .button(crate::settings_window::show_in_words())
@@ -770,8 +752,8 @@ pub fn ask_dialog(
                 ui.label(
                     RichText::new(
                         "Without its sound the take can't be measured again (by a later \
-                         version of the app, or with other settings), and Scope and Replay \
-                         don't work on it. The readings, charts, Steadiness and the Positions \
+                         version of the app, or with other settings), and Scope \
+                         doesn't work on it. The readings, charts, Steadiness and the Positions \
                          Test still do. This can't be undone.",
                     )
                     .color(pal.text_secondary),
@@ -881,60 +863,6 @@ fn kind_words(k: FieldKind) -> &'static str {
     }
 }
 
-/// The standard fields that can be removed and added back.
-#[derive(Clone, Copy)]
-enum Standard {
-    Calibre,
-    LiftAngle,
-    BeatRate,
-    Notes,
-}
-
-impl Standard {
-    const ALL: [Standard; 4] = [
-        Standard::Calibre,
-        Standard::LiftAngle,
-        Standard::BeatRate,
-        Standard::Notes,
-    ];
-
-    fn words(self) -> &'static str {
-        match self {
-            Standard::Calibre => "Calibre",
-            Standard::LiftAngle => "Lift Angle",
-            Standard::BeatRate => "Beat Rate",
-            Standard::Notes => "Notes",
-        }
-    }
-
-    fn shown(self, w: &Watch) -> bool {
-        match self {
-            Standard::Calibre => w.calibre.is_some(),
-            Standard::LiftAngle => w.lift.is_some(),
-            Standard::BeatRate => w.bph.is_some(),
-            Standard::Notes => w.notes.is_some(),
-        }
-    }
-
-    fn add(self, w: &mut Watch) {
-        match self {
-            Standard::Calibre => w.calibre = Some(String::new()),
-            Standard::LiftAngle => w.lift = Some(52.0),
-            Standard::BeatRate => w.bph = Some(28800),
-            Standard::Notes => w.notes = Some(String::new()),
-        }
-    }
-
-    fn remove(self, w: &mut Watch) {
-        match self {
-            Standard::Calibre => w.calibre = None,
-            Standard::LiftAngle => w.lift = None,
-            Standard::BeatRate => w.bph = None,
-            Standard::Notes => w.notes = None,
-        }
-    }
-}
-
 /// A small "×" that removes a field.
 fn remove_button(ui: &mut egui::Ui, what: &str) -> bool {
     ui.small_button("×")
@@ -1003,69 +931,76 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
             );
         },
     );
-    if let Some(current) = w.calibre.clone() {
-        let mut gone = false;
-        let picked = theme::row(
-            ui,
-            "Calibre",
-            Some("The movement: it fills the lift angle and beat rate below"),
-            |ui| {
-                ui.horizontal(|ui| {
-                    gone = remove_button(ui, "the calibre");
-                    cal.picker(ui, &current)
-                })
-                .inner
-            },
-        );
-        if let Some(p) = picked {
-            if let Some(l) = cal.lift(&p) {
-                w.lift = Some(l);
-            }
-            if let Some(b) = cal.bph(&p) {
-                w.bph = Some(b);
-            }
-            w.calibre = Some(p);
+    // Name, Calibre, Lift Angle, Beat Rate and Notes are always kept:
+    // a watch in a collection has them, set or not. Only the fields the
+    // user adds can be removed.
+    let current = w.calibre.clone().unwrap_or_default();
+    let picked = theme::row(
+        ui,
+        "Calibre",
+        Some("The movement: it fills the lift angle and beat rate below"),
+        |ui| cal.picker(ui, &current),
+    );
+    if let Some(p) = picked {
+        if let Some(l) = cal.lift(&p) {
+            w.lift = Some(l);
         }
-        if gone {
-            Standard::Calibre.remove(w);
+        if let Some(b) = cal.bph(&p) {
+            w.bph = Some(b);
         }
+        w.calibre = (!p.is_empty()).then_some(p);
     }
-    if let Some(mut lift) = w.lift {
-        let mut gone = false;
-        theme::row(
-            ui,
-            "Lift Angle",
-            Some("Degrees; each new take of this watch starts with it"),
-            |ui| {
-                gone = remove_button(ui, "the lift angle");
+    theme::row(
+        ui,
+        "Lift Angle",
+        Some(
+            "Degrees; each new take of this watch starts with it. Not set, the calibre's is \
+             used, else 52°.",
+        ),
+        |ui| match w.lift {
+            Some(mut lift) => {
                 ui.add(
                     egui::DragValue::new(&mut lift)
                         .range(10.0..=90.0)
                         .suffix("°"),
                 );
-            },
-        );
-        w.lift = (!gone).then_some(lift);
-    }
-    if let Some(mut bph) = w.bph {
-        let mut gone = false;
-        theme::row(
-            ui,
-            "Beat Rate",
-            Some("Beats per hour; each new take of this watch starts with it"),
-            |ui| {
-                gone = remove_button(ui, "the beat rate");
-                egui::ComboBox::from_id_salt("form bph")
-                    .selected_text(format!("{bph} bph"))
-                    .show_ui(ui, |ui| {
-                        for b in timegrapher_core::beats::STANDARD_BPH {
-                            ui.selectable_value(&mut bph, b, format!("{b} bph"));
-                        }
-                    });
-            },
-        );
-        w.bph = (!gone).then_some(bph);
-    }
+                let clear = ui
+                    .small_button("Clear")
+                    .on_hover_text("Leave the lift angle not set")
+                    .clicked();
+                w.lift = (!clear).then_some(lift);
+            }
+            None => {
+                if ui
+                    .button("Not Set")
+                    .on_hover_text("Set this watch's lift angle")
+                    .clicked()
+                {
+                    w.lift = Some(
+                        w.calibre
+                            .as_deref()
+                            .and_then(|c| cal.lift(c))
+                            .unwrap_or(52.0),
+                    );
+                }
+            }
+        },
+    );
+    theme::row(
+        ui,
+        "Beat Rate",
+        Some("Beats per hour; each new take of this watch starts with it. Not set, it is found."),
+        |ui| {
+            egui::ComboBox::from_id_salt("form bph")
+                .selected_text(w.bph.map_or("Not Set".to_string(), |b| format!("{b} bph")))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut w.bph, None, "Not Set");
+                    for b in timegrapher_core::beats::STANDARD_BPH {
+                        ui.selectable_value(&mut w.bph, Some(b), format!("{b} bph"));
+                    }
+                });
+        },
+    );
     let mut remove = None;
     let mut up = None;
     for (i, f) in w.fields.iter_mut().enumerate() {
@@ -1123,29 +1058,17 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     if let Some(i) = up {
         w.fields.swap(i - 1, i);
     }
-    if let Some(mut notes) = w.notes.clone() {
-        let mut gone = false;
-        ui.horizontal(|ui| {
-            gone = remove_button(ui, "the notes");
-            ui.label("Notes");
-        });
-        ui.add(
-            egui::TextEdit::multiline(&mut notes)
-                .desired_rows(3)
-                .desired_width(f32::INFINITY),
-        )
-        .on_hover_text("Anything about the watch, kept as typed");
-        w.notes = (!gone).then_some(notes);
-    }
+    let mut notes = w.notes.clone().unwrap_or_default();
+    ui.label("Notes");
+    ui.add(
+        egui::TextEdit::multiline(&mut notes)
+            .desired_rows(3)
+            .desired_width(f32::INFINITY),
+    )
+    .on_hover_text("Anything about the watch, kept as typed");
+    w.notes = (!notes.is_empty()).then_some(notes);
     ui.horizontal(|ui| {
         ui.menu_button("Add Field", |ui| {
-            let gone: Vec<Standard> = Standard::ALL.into_iter().filter(|s| !s.shown(w)).collect();
-            for s in gone {
-                if ui.button(s.words()).clicked() {
-                    s.add(w);
-                    ui.close();
-                }
-            }
             for label in timegrapher_core::library::SUGGESTED_FIELDS {
                 if w.fields.iter().any(|f| f.label == label) {
                     continue;
@@ -1185,15 +1108,55 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         }
     });
     ui.label(
-        RichText::new("Only the name is needed; every other field can be removed.")
-            .small()
-            .color(pal.text_secondary),
+        RichText::new(
+            "Only the name is needed. Name, Calibre, Lift Angle, Beat Rate and Notes are always \
+             kept; the fields you add can be removed.",
+        )
+        .small()
+        .color(pal.text_secondary),
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A watch's Calibre, Lift Angle, Beat Rate and Notes are always in its
+    /// form, set or not; only a field the user added has a × to remove it.
+    #[test]
+    fn a_watchs_standard_fields_are_fixed_and_added_ones_removable() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let mut cal = Calibres::in_memory();
+        let draw = |w: &mut Watch, cal: &mut Calibres| {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| fields(ui, w, cal));
+            });
+            let mut texts = Vec::new();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    texts.push(t.galley.text().to_string());
+                }
+            }
+            texts
+        };
+        let mut w = Watch::new("Pepsi");
+        let bare = draw(&mut w, &mut cal);
+        for row in ["Calibre", "Lift Angle", "Beat Rate", "Notes"] {
+            assert!(bare.iter().any(|t| t == row), "{row}: {bare:?}");
+        }
+        assert!(
+            !bare.iter().any(|t| t == "×"),
+            "nothing to remove: {bare:?}"
+        );
+        w.fields.push(Field {
+            label: "Serial".into(),
+            kind: FieldKind::Text,
+            value: String::new(),
+        });
+        let added = draw(&mut w, &mut cal);
+        assert_eq!(added.iter().filter(|t| *t == "×").count(), 1, "{added:?}");
+    }
 
     #[test]
     fn a_take_line_says_what_it_measured_with_beat_error_as_a_size() {

@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 25] = [
+const ALL: [Icon; 34] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -34,6 +34,15 @@ const ALL: [Icon; 25] = [
     Icon::Reserve,
     Icon::Microphone,
     Icon::Settings,
+    Icon::Listen,
+    Icon::Stop,
+    Icon::Save,
+    Icon::DialUp,
+    Icon::DialDown,
+    Icon::CrownUp,
+    Icon::CrownDown,
+    Icon::CrownLeft,
+    Icon::CrownRight,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -138,6 +147,31 @@ fn drawing(icon: Icon) -> &'static str {
         // A gear: The works behind the dial, set once and left to run.
         Icon::Settings => {
             r#"<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.4"/><path stroke-width="2.6" d="M18.5 12h2.6M16.6 16.6l1.8 1.8M12 18.5v2.6M7.4 16.6l-1.8 1.8M5.5 12H2.9M7.4 7.4L5.6 5.6M12 5.5V2.9M16.6 7.4l1.8-1.8"/>"#
+        }
+        // A play mark: Listen.
+        Icon::Listen => r#"<path fill="currentColor" d="M7.5 4.8L19 12 7.5 19.2z"/>"#,
+        // A square: Stop.
+        Icon::Stop => r#"<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>"#,
+        // A floppy disk, its body, label and shutter: Save.
+        Icon::Save => {
+            r#"<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>"#
+        }
+        // The positions, the watch drawn as it lies or stands, its crown
+        // the small knob. Dial up: its face, hands and all.
+        Icon::DialUp => r#"<circle cx="12" cy="12" r="7.5"/><path d="M12 12V8.2M12 12l2.6 1.5"/>"#,
+        // Dial down: the case back, its rings.
+        Icon::DialDown => r#"<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="4.2"/>"#,
+        Icon::CrownUp => {
+            r#"<circle cx="12" cy="13.2" r="7"/><path d="M12 13.2V9.4M12 13.2l2.6 1.5"/><path stroke-width="2.6" d="M12 6.2V3.4"/>"#
+        }
+        Icon::CrownDown => {
+            r#"<circle cx="12" cy="10.8" r="7"/><path d="M12 10.8V7.0M12 10.8l2.6 1.5"/><path stroke-width="2.6" d="M12 17.8v2.8"/>"#
+        }
+        Icon::CrownLeft => {
+            r#"<circle cx="13.2" cy="12" r="7"/><path d="M13.2 12V8.2M13.2 12l2.6 1.5"/><path stroke-width="2.6" d="M6.2 12H3.4"/>"#
+        }
+        Icon::CrownRight => {
+            r#"<circle cx="10.8" cy="12" r="7"/><path d="M10.8 12V8.2M10.8 12l2.6 1.5"/><path stroke-width="2.6" d="M17.8 12h2.8"/>"#
         }
     }
 }

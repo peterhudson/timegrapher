@@ -1,61 +1,11 @@
 //! The longer explanations behind the "?" buttons, one per part of the
 //! window, so they read alike and live in one place.
 
-pub const TAKE: &[&str] = &[
-    "The take running or on show: its name, its watch and what it is doing. With a \
-     watch picked, New Take starts Listen, the Positions Test or the Power Reserve Test \
-     on the microphone set in the Microphone pane, and the take is saved into the watch \
-     when it stops; with none, Quick Listen listens, and its take is kept only when \
-     Keep in a Watch… or Save… keeps it. Stop lets go of the microphone, and Resume \
-     carries on in the same session. A recording opened from the File menu \
-     shows here too, with Replay, which plays it through as if the watch were on the \
-     microphone at the Replay Speed set below it (a folder plays its files one after \
-     the other), and Analyse All, which goes back to the whole recording analysed at \
-     once.",
-    "Each reading is fitted to the beats of the last Average Over seconds. A longer \
-     time gives steadier figures that follow changes more slowly. Early in a session, \
-     or after a pause or a gap of more than 2 s with no beats, there are fewer seconds \
-     of beats than asked for: the readings use what there is, and say how much under \
-     the rate. They never reach back across a pause, since the watch may have been \
-     moved or handled.",
-    "Average Over reaches further than the readings. It also sets every point on the \
-     Rate, Amplitude and Beat Error charts, the Rate Line and the lines drawn over the \
-     Paper Strip, \
-     the Distributions when Values is Readings, and the Tick Tock Profile (the typical \
-     beat over the same time, up to 60 s), whose Unlock and Drop marks the Scope shows. \
-     Each of those panes can take a time of its own instead, in its toolbar's Average \
-     Over, and then names it on its tab, until Average Over here is changed: that puts \
-     every pane back on it. Steadiness and Isochronism always use 10 s rate and 2 s amplitude readings, and \
-     the Positions Test the time set in its pane, whatever it is set to.",
-    "Beat Rate and Lift Angle show when the take's watch has no calibre, or no watch \
-     is picked. A watch with a calibre names it, with the beat rate and lift angle it \
-     sets, on one line; Edit… on the watch changes them.",
-    "Beat rate is how many beats the watch makes an hour (28,800 for most modern \
-     automatics, 21,600 and 18,000 for older ones). Auto finds it from the first few \
-     seconds of beats; set it by hand if Auto picks the wrong one.",
-    "Lift angle is how far the balance turns while it is pushing the fork, a figure \
-     fixed by the calibre's design. The app works out the amplitude from the time \
-     between the unlock and the drop and this angle, so a wrong lift angle makes every \
-     amplitude wrong by the same proportion. Look it up for the calibre; 52° is the \
-     usual guess when it isn't known.",
-    "Position is how the watch lies: dial up or down, or upright with the crown up, \
-     down, left or right. Rate and amplitude change between positions, so each is a \
-     separate measurement. Changing it while listening keeps the strip and marks each \
-     position's stretch on it and on the charts, with a ticker above the Paper Strip \
-     naming the position all along its stretch; the readings, the Tick Tock Profile, \
-     the distributions and Steadiness then take only the beats in the new position, \
-     every stretch of it in the session together.",
-    "For the first 10 seconds in a new position (from Resume, when it was changed \
-     while stopped) the watch settles: the ticker says Settling, its beats are drawn \
-     faintly, and nothing of it is read. The sound is still kept, and a saved take's \
-     positions start after it.",
-];
-
 pub const MICROPHONE: &[&str] = &[
     "The app looks for microphones only when the microphone menu opens, Rescan is \
-     pressed or listening starts, never at launch: asking an input what it supports \
-     briefly opens it, which could disturb another program recording from it. \
-     Replaying a recording never touches the microphone.",
+     pressed or listening starts, and at launch only when Listen When the App Opens is \
+     on (Settings > General): asking an input what it supports briefly opens it, which \
+     could disturb another program recording from it.",
     "Input Level is the microphone's gain. The meter has plain marks at -10 and -6 dBFS \
      for reference. At 0 dBFS the sound clips and the meter turns red.",
     "For the system default input this is the sound server's input volume, which it \
@@ -105,8 +55,8 @@ pub const CLIPPING_BANNER: &[&str] = &[
      read wrong. The rate comes from when the beats arrive, which clipping doesn't \
      change.",
     "It shows whenever a beat in the readings has a clipped sample in its sound, \
-     counted the same way `timegrapher analyze` counts them. Input Level is in the \
-     Microphone pane.",
+     counted the same way `timegrapher analyze` counts them. Input Level is in \
+     Settings > Microphone.",
 ];
 
 pub const AMPLITUDE: &[&str] = &[
@@ -114,7 +64,7 @@ pub const AMPLITUDE: &[&str] = &[
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
      solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
-     only as right as the lift angle in the Take card.",
+     only as right as the lift angle, the Lift on this card.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
      with the lift angle in proportion (1° of lift moves it about 5° at 260° with a \
@@ -137,11 +87,20 @@ pub const BEAT_ERROR: &[&str] = &[
      beats, a short stretch) is named beside the title.",
 ];
 
+pub const POSITION: &[&str] = &[
+    "The position the watch is in on the stand: Dial Up, Dial Down, or standing on its \
+     edge with the crown up, down, left or right. Click one, or press its key, 1 to 6.",
+    "Changing it while listening marks a new stretch on the strip and the charts, and the \
+     readings, profile, distributions and Steadiness then use only this position's beats. \
+     The settling after a move is left out of the readings. A saved take notes each \
+     position.",
+];
+
 pub const BEAT_RATE: &[&str] = &[
     "How many beats the watch makes an hour, ticks and tocks counted alike: 28,800 \
      for a balance swinging 4 times a second each way, 21,600 for 3, 18,000 for 2.5.",
-    "With Beat Rate in the Take card on Auto, it is the standard rate nearest to the beats \
-     of the first few seconds. Set it in the Take card when the watch beats at an unusual \
+    "With the Beat Rate menu on this card on Auto, it is the standard rate nearest to the beats \
+     of the first few seconds. Set it there when the watch beats at an unusual \
      rate, or to read a watch that runs far off.",
 ];
 
@@ -275,8 +234,8 @@ pub const STEADINESS: &[&str] = &[
      hides these marks.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
-     in the background, again every minute while it grows; for a recording, they \
-     cover what has been replayed, or all of it once it is opened. Rates are on the \
+     in the background, again every minute while it grows; for a recording opened, \
+     they cover all of it. Rates are on the \
      sound card's clock.",
 ];
 
