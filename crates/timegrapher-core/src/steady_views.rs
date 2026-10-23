@@ -397,32 +397,32 @@ mod tests {
             .collect();
         let baseline = grids_with_breaks(&log, 10.0, &breaks)[0].clone();
         let holes = crate::clean::Cuts::new(None, &breaks, &[]);
-        let expected: Vec<_> = timing::windows(&log.beats, log.bph, 10.0, 10.0)
-            .into_iter()
-            .filter(|w| holes.clear(w.start_s, w.end_s))
-            .collect();
-        // 0 to 10 s and 20 to 30 s: the reading across the jump at 15 s is
-        // left out, and the one ending at the jump at 30 s is whole, as the
+        let expected = holes.windows(&log.beats, log.bph, 0.0, log.duration_s, 10.0, 10.0, 2.0);
+        // 0 to 10 s, 20 to 30 s and 30 to 40 s: the reading across the
+        // jump at 15 s is left out, the one ending at the jump at 30 s is
+        // whole, and so is the one ending at the end of the take, as the
         // tests' grids have them.
-        assert_eq!(expected.len(), 2);
-        assert_eq!(baseline.y.len(), 3, "time grid is not compacted");
+        assert_eq!(expected.len(), 3);
+        assert_eq!(baseline.y.len(), 4, "time grid is not compacted");
         assert_eq!(baseline.t0, expected[0].start_s);
         assert_eq!(baseline.y[0], expected[0].fit.rate_s_per_day);
         assert!(baseline.y[1].is_nan());
         assert_eq!(baseline.y[2], expected[1].fit.rate_s_per_day);
+        assert_eq!(baseline.y[3], expected[2].fit.rate_s_per_day);
         log.jumps.clear();
         let uncut = grids(&log, 10.0);
-        assert_eq!(uncut[0].y.len(), 3);
+        assert_eq!(uncut[0].y.len(), 4);
         assert_eq!(uncut[0].t0, legacy.t0);
         assert_eq!(uncut[0].y, legacy.y, "legacy grids still ignores log jumps");
         assert_eq!(uncut[0].y[0], baseline.y[0], "unaffected reading unchanged");
         log.jumps = vec![15.0];
         let middle = grids_with_breaks(&log, 10.0, &breaks[..1]);
         assert_eq!(middle[0].t0, uncut[0].t0);
-        assert_eq!(middle[0].y.len(), 3, "time grid is not compacted");
+        assert_eq!(middle[0].y.len(), 4, "time grid is not compacted");
         assert_eq!(middle[0].y[0], uncut[0].y[0]);
         assert!(middle[0].y[1].is_nan());
         assert_eq!(middle[0].y[2], uncut[0].y[2]);
+        assert_eq!(middle[0].y[3], uncut[0].y[3]);
     }
 
     #[test]
