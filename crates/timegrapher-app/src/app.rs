@@ -17829,3 +17829,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(base);
     }
 }
+
+#[cfg(test)]
+#[path = "app_layout_tests.rs"]
+mod layout_tests;
