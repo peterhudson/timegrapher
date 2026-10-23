@@ -5255,42 +5255,50 @@ impl TimegrapherApp {
                 |c| c.label.clone(),
             );
         let mut opened = false;
-        ui.horizontal(|ui| {
-            // Kept to the pane's width, the name cut short to fit: a
-            // combo box in a row is otherwise as wide as its words, and a
-            // long name (as macOS gives) widens the whole pane past its
-            // card.
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            let rescan = ui.spacing().interact_size.x + 30.0;
-            let full = sel.clone();
-            egui::ComboBox::from_id_salt("device")
-                .selected_text(sel)
-                .width((ui.available_width() - rescan - ui.spacing().item_spacing.x).max(60.0))
-                .show_ui(ui, |ui| {
-                    opened = true;
-                    if !listed {
-                        ui.weak("Looking for microphones…");
-                    }
-                    for c in &choices {
-                        let r = ui.selectable_value(&mut self.device, Some(c.id.clone()), &c.label);
-                        if !c.detail.is_empty() {
-                            r.on_hover_text(&c.detail);
+        let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+        ui.allocate_ui_with_layout(
+            row,
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                // Kept to the pane's width, the name cut short to fit: a
+                // combo box in a row is otherwise as wide as its words, and a
+                // long name (as macOS gives) widens the whole pane past its
+                // card. Rescan is laid first, from the right, so the box takes
+                // what is left of the row, less its own frame and arrow.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                if ui
+                    .button("Rescan")
+                    .on_hover_text("Look for microphones again, after plugging one in")
+                    .clicked()
+                {
+                    self.rescan();
+                }
+                let sp = ui.spacing();
+                let frame = sp.icon_width + sp.icon_spacing + 2.0 * sp.button_padding.x;
+                let full = sel.clone();
+                egui::ComboBox::from_id_salt("device")
+                    .selected_text(sel)
+                    .width((ui.available_width() - frame).max(60.0))
+                    .show_ui(ui, |ui| {
+                        opened = true;
+                        if !listed {
+                            ui.weak("Looking for microphones…");
                         }
-                    }
-                })
-                .response
-                .on_hover_text(format!(
-                    "{full}\n\nThe microphone to listen to. Show Every Input, below, lists \
+                        for c in &choices {
+                            let r =
+                                ui.selectable_value(&mut self.device, Some(c.id.clone()), &c.label);
+                            if !c.detail.is_empty() {
+                                r.on_hover_text(&c.detail);
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(format!(
+                        "{full}\n\nThe microphone to listen to. Show Every Input, below, lists \
                      every device the system offers."
-                ));
-            if ui
-                .button("Rescan")
-                .on_hover_text("Look for microphones again, after plugging one in")
-                .clicked()
-            {
-                self.rescan();
-            }
-        });
+                    ));
+            },
+        );
         if opened && !listed {
             self.ensure_devices();
             ui.ctx().request_repaint();
@@ -5961,6 +5969,17 @@ impl TimegrapherApp {
             self.confirm = Some(Confirm::NewTake(kind));
             return;
         }
+        self.take_setup();
+        match kind {
+            NewTake::Listen => self.start_microphone(),
+            NewTake::Positions => self.start_guided(None),
+            NewTake::PowerReserve => self.start_reserve(),
+        }
+    }
+
+    /// What a new take starts from: an empty session and the open watch's
+    /// details. Opens no input, so tests can check it.
+    fn take_setup(&mut self) {
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
@@ -5974,11 +5993,6 @@ impl TimegrapherApp {
             self.apply_watch(&w);
         }
         self.input = Input::Microphone;
-        match kind {
-            NewTake::Listen => self.start_microphone(),
-            NewTake::Positions => self.start_guided(None),
-            NewTake::PowerReserve => self.start_reserve(),
-        }
     }
 
     /// New Take's menu: the three kinds of take, each kept in the watch.
@@ -14729,13 +14743,13 @@ mod tests {
             app.take_words(),
             ("New Take".into(), "Meteorite · Not started".into())
         );
-        // And the watch's settings apply to it.
-        app.new_take(NewTake::Listen, true);
+        // And the watch's settings apply to it (set up as New Take does,
+        // without opening a real input).
+        app.take_setup();
         assert_eq!(
             (app.watch.as_str(), app.bph, app.lift_deg),
             ("Meteorite", Some(21600), 50.0)
         );
-        app.stop();
         let _ = std::fs::remove_dir_all(&base);
     }
 
