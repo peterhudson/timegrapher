@@ -18,7 +18,7 @@ use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
 use timegrapher_core::period_ticks::{period_tick_label, period_ticks};
-use timegrapher_core::periodicity::{default_wheels, Wheel};
+use timegrapher_core::periodicity::{default_wheels, reference_lines, Wheel};
 use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind};
 use timegrapher_core::steady_views::{self, FoldFrom};
 use timegrapher_core::stream::BeatLog;
@@ -842,7 +842,7 @@ fn row(
             // The names stay clear of the tallest peak's label.
             let label_y = if log_y { top } else { top * 0.97 };
             plot.show(ui, |p| {
-                wheel_marks(p, &s.wheels, (x_lo, x_hi), label_y, pal);
+                wheel_marks(p, marked(s, opts), (x_lo, x_hi), label_y, pal);
                 p.hline(
                     HLine::new("threshold", threshold)
                         .color(pal.text_secondary)
@@ -1180,7 +1180,7 @@ fn row(
                 m,
                 s.upto_s,
                 opts.maps_log,
-                &s.wheels,
+                marked(s, opts),
                 strip::fmt_time,
                 secs,
             );
@@ -1261,7 +1261,7 @@ fn row(
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top)
                 .show(ui, |p| {
-                    wheel_marks(p, &s.wheels, (x_lo, x_hi), top, pal);
+                    wheel_marks(p, marked(s, opts), (x_lo, x_hi), top, pal);
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
                     if let Some(peak) = peak {
                         p.points(
@@ -1297,20 +1297,56 @@ pub struct Opts {
     pub fft_timing: bool,
     /// STFT and wavelet maps: the sizes' colours on a log scale.
     pub maps_log: bool,
+    /// The calibre's wheels marked on the period axis, or the reference
+    /// periods when no wheel is known.
+    pub wheels: bool,
 }
 
-/// The wheels' turns on a log10 period axis spanning `span`: a bold line
-/// and name at each wheel's period, and a fainter dashed one at half of
-/// it ("×2"), where a wheel that is off centre shows twice a turn. Names
-/// sit at height `label_y`.
+/// What Wheel Periods does, for its hint.
+pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in \
+     green and named beside its line, and half of it dashed, where a wheel that is off centre \
+     shows twice a turn. With no calibre picked, or none of its wheels known, one minute and \
+     one hour are marked in grey instead: periods alone, named after no wheel.";
+
+/// The wheels to mark: `None` when the marks are off.
+fn marked(s: &Steadiness, opts: Opts) -> Option<&[Wheel]> {
+    opts.wheels.then_some(&s.wheels[..])
+}
+
+/// The wheels' turns on a log10 period axis spanning `span`, in the
+/// wheels' own colour: a bold line and name at each wheel's period, and a
+/// fainter dashed one at half of it ("×2"), where a wheel that is off
+/// centre shows twice a turn. Names sit at height `label_y`. With no
+/// wheels, the reference periods in grey; with `None`, nothing.
 fn wheel_marks(
     p: &mut egui_plot::PlotUi<'_>,
-    wheels: &[Wheel],
+    wheels: Option<&[Wheel]>,
     (x_lo, x_hi): (f64, f64),
     label_y: f64,
     pal: &theme::Palette,
 ) {
     let inside = |x: f64| x > x_lo && x < x_hi;
+    let Some(wheels) = wheels else {
+        return;
+    };
+    if wheels.is_empty() {
+        for r in reference_lines() {
+            let x = r.period_s.log10();
+            if inside(x) {
+                p.vline(
+                    VLine::new(r.label, x)
+                        .color(pal.text_tertiary)
+                        .width(1.25_f32),
+                );
+                p.text(
+                    Text::new("reference", PlotPoint::new(x, label_y), r.label)
+                        .color(pal.text_secondary)
+                        .anchor(egui::Align2::LEFT_TOP),
+                );
+            }
+        }
+        return;
+    }
     for (k, w) in wheels.iter().enumerate() {
         // Two candidates of one name (the escape wheel at 15 and at 20
         // teeth): the shorter one is labelled on its left, so the two
@@ -1323,12 +1359,12 @@ fn wheel_marks(
         if inside(x) {
             p.vline(
                 VLine::new(w.name.clone(), x)
-                    .color(pal.text_secondary)
+                    .color(pal.wheel)
                     .width(2.0_f32),
             );
             p.text(
                 Text::new("wheel", PlotPoint::new(x, label_y), wheel_title(&w.name))
-                    .color(pal.text)
+                    .color(pal.wheel)
                     .anchor(if shorter_twin {
                         egui::Align2::RIGHT_TOP
                     } else {
@@ -1345,7 +1381,7 @@ fn wheel_marks(
         if inside(x2) && !taken && !shorter_twin {
             p.vline(
                 VLine::new(format!("{} ×2", w.name), x2)
-                    .color(pal.text_tertiary)
+                    .color(pal.wheel.gamma_multiply(0.6))
                     .style(LineStyle::Dashed { length: 4.0 })
                     .width(1.25_f32),
             );
@@ -1355,7 +1391,7 @@ fn wheel_marks(
                     PlotPoint::new(x2, label_y),
                     format!("{} ×2", wheel_title(&w.name)),
                 )
-                .color(pal.text_secondary)
+                .color(pal.wheel.gamma_multiply(0.8))
                 .anchor(egui::Align2::LEFT_TOP),
             );
         }
@@ -1705,6 +1741,98 @@ mod tests {
                 assert_eq!(text.contains("values are not corrected for gaps"), missing);
             }
         }
+    }
+
+    /// Wheel Periods marks the calibre's wheels in their own colour, named
+    /// beside their lines, or one minute and one hour when no wheel is
+    /// known; off, it marks neither.
+    #[test]
+    fn wheel_periods_marks_the_wheels_in_their_colour_or_the_reference_periods() {
+        let mut state = compute(
+            &context_log(),
+            Some(vec![Wheel {
+                name: "fourth wheel".into(),
+                period_s: 60.0,
+            }]),
+        );
+        state.report.series[0] = steadiness::check_series(
+            SeriesKind::Rate,
+            Grid {
+                t0: 0.0,
+                step: 10.0,
+                y: (0..40).map(|i| (i as f64).sin()).collect(),
+            },
+            None,
+            None,
+            None,
+            &[],
+            &Config::default(),
+        );
+        let grid = Grid {
+            t0: 0.0,
+            step: 1.0,
+            y: (0..256)
+                .map(|i| (std::f64::consts::TAU * i as f64 / 64.0).sin())
+                .collect(),
+        };
+        state.report.spectra =
+            vec![
+                timegrapher_core::spectrum::amplitude_spectrum(&grid, "rate", "ms", 1.0, 600)
+                    .unwrap(),
+            ];
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let wheel = theme::palette(ctx.style().visuals.dark_mode).wheel;
+        let drawn = |state: &Steadiness, wheels: bool| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    draw(
+                        ui,
+                        Some(state),
+                        "",
+                        View::Fft,
+                        &[true, false, false],
+                        Opts {
+                            wheels,
+                            ..Default::default()
+                        },
+                    );
+                });
+            });
+            let texts: Vec<(String, Color32)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((t.galley.text().to_string(), t.fallback_color)),
+                    _ => None,
+                })
+                .collect();
+            (texts, format!("{:?}", out.shapes))
+        };
+        let named = |texts: &[(String, Color32)], name: &str| {
+            texts.iter().filter(|(t, _)| t == name).count()
+        };
+        let (on, shapes) = drawn(&state, true);
+        assert_eq!(named(&on, "Fourth Wheel"), 1, "{on:?}");
+        assert!(
+            shapes.contains(&format!("{wheel:?}")),
+            "the wheel's line and name in its colour"
+        );
+        let (off, shapes) = drawn(&state, false);
+        assert_eq!(named(&off, "Fourth Wheel"), 0, "{off:?}");
+        assert!(!shapes.contains(&format!("{wheel:?}")));
+        // No wheel known: one minute marked, beside the axis's own "1 min".
+        state.wheels.clear();
+        let (on, _) = drawn(&state, true);
+        let (off, _) = drawn(&state, false);
+        assert_eq!(named(&on, "1 min"), named(&off, "1 min") + 1, "{on:?}");
     }
 
     // Known beat records only: these controls do not run the detector.

@@ -279,7 +279,10 @@ pub const STEADINESS: &[&str] = &[
      Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
      period instead. In both, each wheel's period is a bold line, and half of \
      it, twice a turn as an off-centre wheel shows, is a fainter dashed line marked \
-     ×2.",
+     ×2, in the wheels' own green; the STFT and Wavelet Maps dash the wheels' turns \
+     across the map. With no calibre picked, or none of its wheels known, one minute \
+     and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
+     hides these marks.",
     "The tests need about 5 minutes of beats, and say more the longer the session: a \
      cycle has to come round several times to count. They run over the whole session \
      in the background, again every minute while it grows; for a recording, they \

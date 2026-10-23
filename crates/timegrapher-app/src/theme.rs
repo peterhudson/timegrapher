@@ -44,6 +44,8 @@ pub struct Palette {
     pub peak: Color32,
     /// The three sounds on the tick tock profile.
     pub sound: Color32,
+    /// A calibre's wheels, where their turns are marked on a period axis.
+    pub wheel: Color32,
     /// Amplitude, rate and beat error wherever they are drawn: over the
     /// strip, on their charts, in their distributions and in Steadiness.
     /// Each colour means one thing across the app, so the profile's marks
@@ -84,6 +86,7 @@ const fn from_core(p: &core_palette::Palette, pink: Color32, teal: Color32) -> P
         drop: c(p.drop),
         peak: c(p.peak),
         sound: c(p.sound),
+        wheel: c(p.wheel),
         trace_amplitude: c(p.trace_amplitude),
         trace_rate: c(p.trace_rate),
         trace_beat_error: c(p.trace_beat_error),

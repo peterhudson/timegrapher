@@ -761,8 +761,8 @@ The views:
 constant level the change finder found and, for two states, the two
 levels dashed; scaled to the readings with lone wild ones left out),
 **Periods** (the period search's score at each period on a logarithmic
-axis, with the 1% false-alarm line dashed, the escape, fourth and centre
-wheels' periods marked, and the strongest component labelled; **Log
+axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
+marked, and the strongest component labelled; **Log
 Scale** in its toolbar draws the scores on a log scale, so a small peak
 beside a tall one still shows), **Cycle**
 (the readings folded at the cycle the tests found: every cycle as dots,
@@ -801,7 +801,13 @@ dashed across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
 over a cell shows its time, period and size). In Periods and FFT each wheel's
 period is a bold line and half of it, twice a turn as an off-centre wheel
-shows, a fainter dashed line marked ×2; the grid behind is pale. The tests need 5 minutes
+shows, a fainter dashed line marked ×2; the grid behind is pale. The
+wheels' lines and names are drawn in a green of their own, so they never
+read as the grid or a reading. With no calibre picked, or none of its
+wheels known, one minute and one hour are marked in grey instead, periods
+alone named after no wheel. **Wheel Periods**, in the toolbars of
+Periods, FFT, STFT Map and Wavelet Map, shows or hides these marks; it
+starts on. The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover what has been replayed,
 or the whole file once it is opened. Rows stack and fill the pane when it is

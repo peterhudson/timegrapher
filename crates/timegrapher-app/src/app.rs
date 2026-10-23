@@ -1284,6 +1284,8 @@ pub struct TimegrapherApp {
     fft_timing: bool,
     /// The STFT and Wavelet Map panes' colours on a log scale.
     maps_log: bool,
+    /// The calibre's wheels marked on the period axes.
+    show_wheels: bool,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope when looking back: the
     /// stretch asked for (seconds) and what was read of it.
@@ -1435,6 +1437,7 @@ impl TimegrapherApp {
             periods_log: self.periods_log,
             fft_timing: self.fft_timing,
             maps_log: self.maps_log,
+            show_wheels: self.show_wheels,
             positions_settle_s: self.guided_settle_s,
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
@@ -1476,6 +1479,7 @@ impl TimegrapherApp {
             periods_log,
             fft_timing,
             maps_log,
+            show_wheels,
             positions_settle_s,
             positions_measure_s,
             scope,
@@ -1531,6 +1535,7 @@ impl TimegrapherApp {
         self.periods_log = periods_log;
         self.fft_timing = fft_timing;
         self.maps_log = maps_log;
+        self.show_wheels = show_wheels;
         self.guided_settle_s =
             positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
         self.guided_measure_s =
@@ -1677,6 +1682,7 @@ impl TimegrapherApp {
             periods_log: false,
             fft_timing: false,
             maps_log: false,
+            show_wheels: true,
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -5535,6 +5541,14 @@ impl TimegrapherApp {
                  beside strong ones still show",
             );
         }
+        if matches!(
+            view,
+            steady::View::Periods | steady::View::Fft | steady::View::Stft | steady::View::Wavelet
+        ) {
+            ui.separator();
+            theme::toggle(ui, "Wheel Periods", &mut self.show_wheels)
+                .on_hover_text(steady::WHEELS_HINT);
+        }
     }
 
     fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
@@ -5683,6 +5697,7 @@ impl TimegrapherApp {
                 periods_log: self.periods_log,
                 fft_timing: self.fft_timing,
                 maps_log: self.maps_log,
+                wheels: self.show_wheels,
             },
         );
     }
