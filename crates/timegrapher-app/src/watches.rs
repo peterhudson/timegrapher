@@ -27,15 +27,16 @@ pub const HELP: &[&str] = &[
      as Open does, and the take already on show is not read again. Right-clicking it \
      offers Rename…, Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
-     Another Watch and Delete…. A take opened from outside your watches can be copied or \
-     moved into a watch with Add to a Watch…, beside Open….",
+     Another Watch and Delete…. Open Recording… and Open Folder… in the File menu ask \
+     whether to add a recording from outside your watches to one of them, asking for \
+     anything its files don't say, or just to open it.",
     "Quick Listen listens on the microphone without picking or adding a watch first, for a \
      watch handed over the counter. Its take is saved into Unsorted when you Stop (and \
      Save Again adds to it after a Resume), and waits there, listed at the top of the \
      watches, until you file it under a watch (right-click it, then File Under a Watch) \
      or delete it.",
-    "The Microphone and Recording controls below work with a watch picked or without one; \
-     without one, Save… asks where.",
+    "The Take card below works with a watch picked or without one; without one, Save… asks \
+     where.",
 ];
 
 /// How the list is sorted.
