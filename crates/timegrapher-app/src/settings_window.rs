@@ -15,15 +15,21 @@ use timegrapher_core::library::Library;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     General,
+    Microphone,
     Calibres,
 }
 
-pub const TABS: [(Tab, &str, &str); 2] = [
+pub const TABS: [(Tab, &str, &str); 3] = [
     (
         Tab::General,
         "General",
-        "How the app looks, whether it asks about updates, the folder your watches are kept \
-         in, and each input's kept clock error",
+        "How the app looks, whether it asks about updates, listening when the app opens, \
+         Keep Awake, the folder your watches are kept in, and each input's kept clock error",
+    ),
+    (
+        Tab::Microphone,
+        "Microphone",
+        "The microphone to listen to, its input level and its peak",
     ),
     (
         Tab::Calibres,

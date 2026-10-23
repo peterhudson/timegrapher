@@ -52,6 +52,10 @@ pub struct Settings {
     pub positions_measure_s: f64,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
+    /// The version of the layout in `panes`: an older one is replaced by
+    /// the default.
+    #[serde(default)]
+    pub layout: u32,
     /// Calibres the watchmaker entered by hand, as earlier versions kept
     /// them: read once and moved to the user calibre file, never written.
     pub custom_calibres: Vec<CustomCalibre>,
@@ -68,6 +72,11 @@ pub struct Settings {
     pub check_updates: bool,
     /// Keep the computer from sleeping on its own while listening.
     pub keep_awake: bool,
+    /// Listen to the microphone as soon as the app opens.
+    pub listen_at_open: bool,
+    /// The microphone has been set up (Set Up the Microphone, or a listen
+    /// that opened it): until then the app asks at launch.
+    pub mic_set_up: bool,
     /// The readings' cards across the top shown.
     pub show_readings: bool,
     /// The library's folder when one was chosen in Settings; `None` is
@@ -122,6 +131,7 @@ impl Default for Settings {
             positions_measure_s: crate::guided::MEASURE_S,
             scope: scope::View::default(),
             panes: None,
+            layout: crate::app::LAYOUT,
             custom_calibres: Vec::new(),
             recent_calibres: Vec::new(),
             short_added: Vec::new(),
@@ -129,6 +139,8 @@ impl Default for Settings {
             pane_average: Vec::new(),
             check_updates: true,
             keep_awake: true,
+            listen_at_open: true,
+            mic_set_up: false,
             show_readings: true,
             library: None,
         }

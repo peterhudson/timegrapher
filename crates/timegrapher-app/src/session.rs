@@ -111,7 +111,9 @@ pub enum State {
     /// A microphone session let go for now, since then: it can carry on
     /// or be saved.
     Paused { since: Instant },
-    /// A recording played through at its own pace.
+    /// A recording played through at its own pace. The app offers no
+    /// replay; tests use one to feed the live path from a file.
+    #[cfg_attr(not(test), allow(dead_code))]
     Replaying,
     /// A replay at its end, or stopped.
     ReplayStopped,
@@ -240,7 +242,8 @@ impl Session {
         self.state = State::Listening;
     }
 
-    /// A recording is playing through.
+    /// A recording is playing through (tests only; see `State::Replaying`).
+    #[cfg(test)]
     pub fn replay(&mut self) {
         self.state = State::Replaying;
     }
@@ -470,6 +473,7 @@ impl Session {
 
     /// Saved moves and settling ends bound readings in audio time, including
     /// boundaries the replay has not reached yet. Never create a live move.
+    #[cfg(test)]
     pub fn replay_breaks(&self) -> Option<Vec<f64>> {
         if !self.has_replay_context() {
             return None;
