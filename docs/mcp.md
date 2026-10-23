@@ -283,7 +283,7 @@ the timegrapher app draws them:
   Wavelet Map views draw each series' size at each period and time, as the
   app's panes do: viridis from the core's table, on the colour scale the
   document gives each map (Log Scale switches it to the log one), empty
-  where nothing was read, with the named wheels' turns dashed across them;
+  where nothing was read, with the named wheels' turns (or 1 min and 1 h) dashed across them;
   pointing at a map reads a cell under it. The model reads each map's
   outline in `time_frequency_maps` (its periods, times, cells read and
   scale) rather than its cells, and the coherences without their
@@ -298,9 +298,12 @@ the scale. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
 A period axis is marked, as in the app, at times a watchmaker reads (5 s,
 1 min, 1 h, 24 h), as many as have room, from the same list in the core.
-With no calibre, no wheel is named: the Periods and FFT views and the
-maps then mark 1 min and 1 h, the document's `reference_lines`, as plain
-dotted lines with no name, periods alone and not wheels.
+The Periods and FFT views and the maps mark the named wheels' turns in
+the wheels' own green, from the core's palette, as the app does. With no
+calibre, no wheel is named, and they mark 1 min and 1 h instead, the
+document's `reference_lines`, in grey: periods alone, named after no
+wheel. A Wheel Periods switch beside each of those views' own switch
+turns the marks off and on, as in the app.
 Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
