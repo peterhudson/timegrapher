@@ -1,0 +1,9 @@
+watch = "Dandong 3235 clone (bench watch 3)"
+calibre = "3235"
+bph = 28800
+lift = 55
+notes = "80 s of take_part01-001.flac from 300 s, take dd3235_DU_30min in peterhudson/timegrapher-corpus (CC0)."
+
+[[recording]]
+file = "take_part01-001.flac"
+position = "DU"

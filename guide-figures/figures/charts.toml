@@ -1,0 +1,31 @@
+# Chapter 8, Over Time: rate, amplitude and beat error over two hours.
+output = "charts.png"
+
+layout = ["column", [0.34, "Rate"], [0.33, "Amplitude"], [0.33, "BeatError"]]
+
+[data]
+corpus = "pepsi3235_DU_7h"
+files = ["take_part01-006.flac", "take_part01-007.flac"]
+start = 0
+seconds = 7200
+folder = "Pepsi 3235 DU"
+
+[wait]
+at_least = 90
+at_most = 1200
+
+[window]
+size = [1800, 1000]
+
+[settings]
+show_readings = false
+# Each chart over a minute: ten-second readings crowd two hours.
+pane_average = [["Rate", 60.0], ["Amplitude", 60.0], ["BeatError", 60.0]]
+
+# The take has no session.toml; these are from its README.
+[data.session]
+watch = "Pepsi (Dandong 3235)"
+calibre = "Dandong 3235"
+bph = 28800
+lift = 55
+position = "DU"

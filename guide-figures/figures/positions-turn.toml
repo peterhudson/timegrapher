@@ -1,0 +1,41 @@
+# Chapter 12, Positions: Dial Up measured, and the prompt to turn the
+# watch to Dial Down.
+# The figure shortens settling and measuring to 5 s and 20 s; the app's own
+# are 20 s and 60 s. Each position plays a clip of the Yacht-Master 42's
+# take in that position.
+output = "positions-turn.png"
+
+layout = ["row", [0.36, ["column", [0.3, "Watch"], [0.7, "PositionsTest"]]], [0.64, ["column", [0.5, "Strip"], [0.5, "Rate"]]]]
+
+# Calibre Rolex 3235 from the recent picks, then the test.
+actions = [["sleep", 10], ["click", 249, 195], ["sleep", 1], ["click", 189, 288], ["sleep", 1], ["stand", "DU"], ["click", 433, 803], ["sleep", 28]]
+
+[data]
+corpus = "ym42_DU_2h"
+file = "take_part01-001.flac"
+start = 120
+seconds = 32
+folder = "Yacht-Master 42"
+mode = "microphone"
+
+[data.stand]
+DD = { corpus = "ym42_DD_30min", file = "take_part01-001.flac", start = 120, seconds = 32 }
+CD = { corpus = "ym42_CD_90min", file = "take_part01-001.flac", start = 120, seconds = 32 }
+CL = { corpus = "ym42_CL_90min", file = "take_part01-001.flac", start = 120, seconds = 32 }
+CU = { corpus = "ym42_CU_8h", file = "take_part01-001.flac", start = 120, seconds = 32 }
+CR = { corpus = "ym42_CR_long", file = "take_part01-001.flac", start = 120, seconds = 32 }
+
+[wait]
+exact = 1
+
+[window]
+size = [1800, 1000]
+
+[settings]
+keep_awake = false
+overlays = [false, false, false]
+positions_settle_s = 5.0
+positions_measure_s = 20.0
+recent_calibres = ["Rolex 3235"]
+# The Watch pane opens on its Watch group, for the calibre.
+folded = ["Microphone"]

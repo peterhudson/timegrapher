@@ -1,0 +1,28 @@
+# Chapter 6, The Paper Strip: Direction Down, like a printing timegrapher's
+# paper, with the Rate Line, the guides and the amplitude drawn over it.
+output = "paper-strip.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 45
+
+# The take names the calibre "3235", which the catalogue reads as Rolex's.
+[data.session]
+calibre = "Dandong 3235"
+
+[window]
+size = [1300, 1000]
+
+[settings]
+overlays = [false, false, false]
+rate_line = true
+rate_guides = true
+
+[settings.strip]
+half_width_ms = 5.0
+span_s = 30.0
+horizontal = false
