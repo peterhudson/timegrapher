@@ -64,26 +64,56 @@ impl Confidence {
 /// correlation of two series, `rho` is the product of their lag-one
 /// correlations. ρ is held to ±0.99 and the result to 1 ..= n.
 pub fn effective_readings(n: f64, rho: f64) -> f64 {
+    effective_readings_at(n, rho, 0.0)
+}
+
+/// [`effective_readings`] for the size of a sine `cycles` cycles per
+/// reading fitted to the readings: AR(1) noise holds
+/// (1 − ρ²)/(1 − 2ρ cos 2π·cycles + ρ²) of its variance at that
+/// frequency against white noise's, so the readings are worth n over
+/// that. At 0 cycles it is n(1 − ρ)/(1 + ρ); for a fast line the noise
+/// that follows itself is weaker than white, and the count is held to n.
+pub fn effective_readings_at(n: f64, rho: f64, cycles: f64) -> f64 {
     let r = if rho.is_finite() {
         rho.clamp(-0.99, 0.99)
     } else {
         0.0
     };
-    (n * (1.0 - r) / (1.0 + r)).clamp(1.0_f64.min(n), n)
+    let c = (std::f64::consts::TAU * cycles).cos();
+    (n * (1.0 - 2.0 * r * c + r * r) / (1.0 - r * r)).clamp(1.0_f64.min(n), n)
 }
 
 /// Lag-one correlation of values in time order, less their least-squares
 /// line, so a steady drift is not counted as memory. `None` with fewer
 /// than three values or no scatter about the line.
 pub fn lag_one(values: &[f64]) -> Option<f64> {
-    if values.len() < 3 {
-        return None;
+    pooled_lag_one([values])
+}
+
+/// [`lag_one`] over several stretches of one series in time order (the
+/// runs between gaps), read as one: each stretch less its own
+/// least-squares line, the products of neighbours within each stretch
+/// and the squares summed over all of them, each sum over its count of
+/// terms, as [`crate::steadiness::acf`] takes a lag. Stretches of fewer
+/// than three values are passed over.
+pub fn pooled_lag_one<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Option<f64> {
+    let (mut s0, mut n0, mut s1, mut n1) = (0.0, 0usize, 0.0, 0usize);
+    for values in stretches {
+        if values.len() < 3 {
+            continue;
+        }
+        let mut x = values.to_vec();
+        crate::dsp::detrend_line(&mut x);
+        let m = x.iter().sum::<f64>() / x.len() as f64;
+        x.iter_mut().for_each(|v| *v -= m);
+        s0 += x.iter().map(|v| v * v).sum::<f64>();
+        n0 += x.len();
+        s1 += x.windows(2).map(|w| w[0] * w[1]).sum::<f64>();
+        n1 += x.len() - 1;
     }
-    let mut x = values.to_vec();
-    crate::dsp::detrend_line(&mut x);
-    crate::steadiness::acf(&x, 1)
-        .get(1)
-        .copied()
+    let c0 = s0 / n0 as f64;
+    (n1 > 0 && c0 > 0.0)
+        .then(|| (s1 / n1 as f64) / c0)
         .filter(|r| r.is_finite())
 }
 
@@ -207,6 +237,55 @@ mod tests {
         assert_eq!(effective_readings(100.0, 0.99), 1.0);
         assert_eq!(effective_readings(1.0, 0.99), 1.0);
         assert_eq!(effective_readings(100.0, f64::NAN), 100.0);
+    }
+
+    #[test]
+    fn effective_readings_follow_the_noise_at_the_line() {
+        // At zero cycles, the AR(1) count; a line as slow as the readings
+        // allow is near it, and a fast one under noise that follows
+        // itself is held to n (the noise is weaker there than white).
+        for rho in [0.0, 0.5, 0.9] {
+            let flat = effective_readings(500.0, rho);
+            assert!((effective_readings_at(500.0, rho, 0.0) - flat).abs() < 1e-9);
+            assert!((effective_readings_at(500.0, rho, 0.001) - flat).abs() < 0.05 * flat + 1e-9);
+            assert_eq!(effective_readings_at(500.0, rho, 0.25), 500.0);
+        }
+        // Noise that alternates is strongest at the fastest line.
+        assert!(effective_readings_at(500.0, -0.5, 0.5) < 500.0);
+    }
+
+    #[test]
+    fn pooled_lag_one_reads_each_stretch_alone() {
+        let wave =
+            |k: usize| -> Vec<f64> { (0..200).map(|i| ((i + k) as f64 * 0.3).sin()).collect() };
+        let (a, b) = (wave(0), wave(7));
+        // One stretch: the same as acf at lag one of the values less their line.
+        let mut x = a.clone();
+        crate::dsp::detrend_line(&mut x);
+        let acf = crate::steadiness::acf(&x, 1)[1];
+        assert!((pooled_lag_one([a.as_slice()]).unwrap() - acf).abs() < 1e-12);
+        // A step in level and slope between two stretches is not memory:
+        // the second raised by 50 and tilted reads as the two alone do.
+        let raised: Vec<f64> = b
+            .iter()
+            .enumerate()
+            .map(|(i, v)| v + 50.0 + 0.1 * i as f64)
+            .collect();
+        let joined: Vec<f64> = a.iter().chain(&raised).copied().collect();
+        let pooled = pooled_lag_one([a.as_slice(), raised.as_slice()]).unwrap();
+        let alone = pooled_lag_one([a.as_slice(), b.as_slice()]).unwrap();
+        assert!((pooled - alone).abs() < 1e-12, "{pooled} vs {alone}");
+        assert!((pooled - 0.3f64.cos()).abs() < 0.05, "{pooled}");
+        assert!(
+            lag_one(&joined).unwrap() > 0.95,
+            "read as one series the step is memory"
+        );
+        // Too short to read is passed over.
+        assert_eq!(pooled_lag_one([[1.0, 2.0].as_slice()]), None);
+        assert_eq!(
+            pooled_lag_one([[1.0, 2.0].as_slice(), a.as_slice()]),
+            lag_one(&a)
+        );
     }
 
     #[test]

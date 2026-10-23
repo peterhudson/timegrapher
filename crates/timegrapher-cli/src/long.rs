@@ -719,7 +719,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             wheel_note(c)
         );
     };
-    println!("Periodic changes in rate:");
+    println!("Periodic changes in rate (the rate itself, not 10 s readings):");
     if r.rate_components.is_empty() {
         println!("  none above the 1% false-alarm level");
     }

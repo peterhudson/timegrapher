@@ -618,11 +618,11 @@ pub fn coherence(
     let col_w = span / ncols as f64;
     let mut sums = vec![vec![(0.0, Complex::new(0.0, 0.0), 0usize); ROWS]; ncols];
     let mut planner = RealFftPlanner::<f64>::new();
-    // Lag-one correlations, over every stretch, for the red noise.
-    let (mut lag, mut var) = ([0.0; 2], [0.0; 2]);
+    // Each stretch, for the red noise's lag-one correlations.
+    let mut stretches: [Vec<Vec<f64>>; 2] = [Vec::new(), Vec::new()];
     let mut longest_down = 0;
     for &(a, b) in &runs {
-        let (mut xs, mut ys) = (down(x, a, b), down(y, a, b));
+        let (xs, ys) = (down(x, a, b), down(y, a, b));
         let m = xs.len();
         if m < 64 {
             continue;
@@ -631,12 +631,8 @@ pub fn coherence(
         let Some(rows) = coherence_stretch(&mut planner, &xs, &ys, &period_s, step) else {
             continue;
         };
-        detrend_line(&mut xs);
-        detrend_line(&mut ys);
-        for (j, v) in [&xs, &ys].into_iter().enumerate() {
-            lag[j] += v.windows(2).map(|w| w[0] * w[1]).sum::<f64>();
-            var[j] += v.iter().map(|q| q * q).sum::<f64>();
-        }
+        stretches[0].push(xs);
+        stretches[1].push(ys);
         let t0 = x.time(a) + (k as f64 - 1.0) / 2.0 * x.step;
         for (r, row) in rows.iter().enumerate() {
             for (i, &(c, z)) in row.iter().enumerate() {
@@ -655,12 +651,9 @@ pub fn coherence(
     if longest_down == 0 {
         return None;
     }
-    let ar = [0, 1].map(|j| {
-        if var[j] > 0.0 {
-            (lag[j] / var[j]).clamp(0.0, 0.99)
-        } else {
-            0.0
-        }
+    let ar = stretches.map(|s| {
+        crate::confidence::pooled_lag_one(s.iter().map(Vec::as_slice))
+            .map_or(0.0, |r| r.clamp(0.0, 0.99))
     });
     // Long enough for the longest period to be read on NOISE_INSIDE
     // readings, and no longer than the take's longest stretch.

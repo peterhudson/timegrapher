@@ -18,7 +18,7 @@ Clock        not calibrated: rates are read on the sound card's clock, whose err
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
 Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
 Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
-Periodic changes in rate:
+Periodic changes in rate (the rate itself, not 10 s readings):
       60.00 s ±2.00   swing 36.8 s/d p-p     explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:
       20.01 s ±0.22   swing 0.3 deg p-p      explains  23%  false alarm <1e-300  no wheel listed within ±0.2 s or 1%; nearest is the fourth wheel, -66.6% off
@@ -200,7 +200,11 @@ minus the slope of the average cycle, in s/d. A cycle shorter than 30 s
 (three 10 s rate readings) is reported as the timing swing instead, in ms
 peak to peak: an escape wheel's tooth pattern moves each beat by a fraction
 of a millisecond, which as a slope is hundreds of s/d that no rate reading
-would show. The JSON keeps `peak_to_peak` in s/d and adds
+would show. The swing in s/d is that of the rate itself, moment to
+moment through the cycle. A rate reading averages over its 10 s, so
+`series`' cycle (folded from the readings) and the FFT's swing in the
+readings (`spectra[].reading_swing`) show less of it: sin *x*/*x* of it,
+*x* = π·10/*P*, for a sine of period *P*. The JSON keeps `peak_to_peak` in s/d and adds
 `timing_peak_to_peak_ms`, plus `size` and `size_unit` for the figure to
 show.
 

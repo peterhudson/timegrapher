@@ -638,7 +638,10 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
         body.push_str(&component(
             &c.component,
             "Rate",
-            format!("Rate swings {:.1} s/d peak to peak", c.rate_swing_s_per_day),
+            format!(
+                "The rate itself swings {:.1} s/d peak to peak (10 s rate readings show less)",
+                c.rate_swing_s_per_day
+            ),
             &c.rate_shape,
             None,
             "s/d",
