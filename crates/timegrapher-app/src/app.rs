@@ -8639,7 +8639,12 @@ impl TimegrapherApp {
                 &mut cols[2],
                 "Amplitude",
                 help::AMPLITUDE,
-                reading_limits("Amplitude", caveats, lift_now, beats),
+                // A default lift angle is said by "the default" beside Lift,
+                // at the card's foot, rather than again in its heading.
+                reading_limits("Amplitude", caveats, lift_now, beats)
+                    .into_iter()
+                    .filter(|f| !f.0.starts_with("lift angle "))
+                    .collect(),
                 Some((Slot::Lift, CONTROL_SLOT_H)),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a

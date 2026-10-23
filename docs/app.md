@@ -301,10 +301,10 @@ needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, at the right of the reading's caption, with a sentence on
 hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
-when over 1% clip (amplitude and beat error), "lift angle 52°, the
-default (calibre not set)" when no calibre or lift angle is set
-(amplitude), a beat rate set that differs from the one heard, and pauses
-in the stretch. On the beat error, a reading of an opened file whose Tick
+when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and pauses
+in the stretch. When no calibre or lift angle is set, "the default"
+beside Lift on the Amplitude card says the amplitude comes from the
+default 52°. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
 Tock named by the beat count across 1 break"). Once stopped, a line under each card gives the whole take in the
 position the watch is in, settling left out, as `timegrapher session`
