@@ -109,7 +109,7 @@ const CLOCK_UNKNOWN: &str = "input clock not measured";
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
-use timegrapher_core::recorder::{Recorder, SavedCopy, SessionInfo};
+use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
@@ -119,6 +119,55 @@ enum NewTake {
     Listen,
     Positions,
     PowerReserve,
+}
+
+/// Open Recording… or Open Folder…, asked before anything is read: add
+/// the recording to a watch, with what its files don't say filled in, or
+/// just open it where it is.
+#[derive(Debug, Clone)]
+struct OpenAsk {
+    path: PathBuf,
+    replay: bool,
+    /// Add to a watch, else just open it.
+    add: bool,
+    /// The watch it goes into, by id.
+    watch: Option<String>,
+    /// Into a new watch of the name `new_name` instead.
+    new_watch: bool,
+    new_name: String,
+    /// What the recording's own files say.
+    has: OpenHas,
+    bph: Option<u32>,
+    lift: f64,
+    /// The lift angle was typed or picked, not left at the default.
+    lift_set: bool,
+    position: Option<Position>,
+    /// When it started, in this computer's time, as 2026-10-22 14:30.
+    started: String,
+    error: Option<String>,
+}
+
+/// What a recording's files say about it: its session file, if it has
+/// one, and its session.json.
+#[derive(Debug, Clone, Default)]
+struct OpenHas {
+    manifest: bool,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+    /// Every reading's position, from its session file or its file name.
+    position: bool,
+    started: bool,
+}
+
+/// What a recording added to a watch needs filled in: what neither its
+/// files nor the watch (with its calibre) say.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct OpenNeed {
+    bph: bool,
+    lift: bool,
+    position: bool,
+    started: bool,
 }
 
 /// What a question before throwing away unsaved sound is about.
@@ -1332,6 +1381,8 @@ pub struct TimegrapherApp {
     save_dir: String,
     /// Asking before something throws away unsaved sound.
     confirm: Option<Confirm>,
+    /// Open Recording… or Open Folder… asking where the recording goes.
+    open_ask: Option<OpenAsk>,
     /// The recording last opened, which the path box goes back to when
     /// another can't be opened.
     opened_path: String,
@@ -1753,6 +1804,7 @@ impl TimegrapherApp {
             opened_masks: None,
             masking: false,
             confirm: None,
+            open_ask: None,
             opened_path: String::new(),
             take_picked: None,
             mic_setup: None,
@@ -6640,7 +6692,10 @@ impl TimegrapherApp {
                 egui::Button::new("Open Recording…")
                     .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::O))),
             )
-            .on_hover_text("Choose a WAV or FLAC recording and analyse it all")
+            .on_hover_text(
+                "Choose a WAV or FLAC recording and analyse it all. From outside your \
+                 watches, it asks first whether to add it to one of them.",
+            )
             .clicked()
         {
             ui.close();
@@ -6883,8 +6938,465 @@ impl TimegrapherApp {
         };
         if let Some(p) = picked {
             self.input = Input::File;
-            self.open_recording(&p, false, true);
+            match self.open_ask_for(&p, false) {
+                Some(a) => self.open_ask = Some(a),
+                None => self.open_recording(&p, false, true),
+            }
         }
+    }
+
+    /// The question Open asks for `path`, when there are watches to add it
+    /// to and it isn't in them already. None means open it straight away
+    /// (a recording that can't be read says why when opened).
+    fn open_ask_for(&self, path: &Path, replay: bool) -> Option<OpenAsk> {
+        let Ok(Some(l)) = &self.library else {
+            return None;
+        };
+        let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        if l.read_only.is_some() || canon(path).starts_with(canon(&l.root)) {
+            return None;
+        }
+        let inner = take_folder(path).ok()?;
+        // A folder's session file speaks for all of it, each recording
+        // listed or not; a lone file's only through an entry listing it.
+        let manifest = if inner.is_dir() && inner.join(MANIFEST).is_file() {
+            let text = std::fs::read_to_string(inner.join(MANIFEST)).ok()?;
+            let m: Manifest = toml::from_str(&text).ok()?;
+            let entries = m.recordings.clone();
+            Some((m, entries))
+        } else {
+            read_manifest(&inner).ok()?
+        };
+        let files = recordings_in(&inner).unwrap_or_default();
+        let named =
+            position_in_name(&inner).or_else(|| files.first().and_then(|f| position_in_name(f)));
+        let dir = if inner.is_dir() {
+            inner.clone()
+        } else {
+            inner.parent()?.to_path_buf()
+        };
+        // A lone file's folder speaks for it only through a session file
+        // listing it.
+        let started = (manifest.is_some() || inner.is_dir()) && started_in(&dir).is_some();
+        let has = match &manifest {
+            Some((m, entries)) => OpenHas {
+                manifest: true,
+                bph: m.bph,
+                lift: m.lift,
+                calibre: m.calibre.clone().filter(|c| !c.is_empty()),
+                position: named.is_some() || entries.iter().all(|e| e.position.is_some()),
+                started,
+            },
+            None => OpenHas {
+                position: named.is_some(),
+                started,
+                ..Default::default()
+            },
+        };
+        let watch = self.watch_open.clone().filter(|id| {
+            l.watches
+                .iter()
+                .any(|e| &e.watch.id == id && !e.watch.archived)
+        });
+        Some(OpenAsk {
+            path: path.to_path_buf(),
+            replay,
+            add: watch.is_some(),
+            new_watch: !l.watches.iter().any(|e| !e.watch.archived),
+            watch,
+            new_name: String::new(),
+            has,
+            bph: None,
+            lift: DEFAULT_LIFT_DEG,
+            lift_set: false,
+            position: named,
+            started: started_guess(&files)
+                .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default(),
+            error: None,
+        })
+    }
+
+    /// What adding `a` to its watch asks to be filled in: what neither the
+    /// recording's files nor the watch and its calibre say.
+    fn open_need(&self, a: &OpenAsk) -> OpenNeed {
+        let w = match (&self.library, &a.watch) {
+            (Ok(Some(l)), Some(id)) if !a.new_watch => l
+                .watches
+                .iter()
+                .find(|e| &e.watch.id == id)
+                .map(|e| &e.watch),
+            _ => None,
+        };
+        let calibre = a
+            .has
+            .calibre
+            .clone()
+            .or_else(|| w.and_then(|w| w.calibre.clone()))
+            .filter(|c| !c.is_empty());
+        let of_calibre = |f: &dyn Fn(&str) -> bool| calibre.as_deref().is_some_and(f);
+        OpenNeed {
+            bph: a.has.bph.is_none()
+                && w.and_then(|w| w.bph).is_none()
+                && !of_calibre(&|c| self.cal.bph(c).is_some()),
+            lift: a.has.lift.is_none()
+                && w.and_then(|w| w.lift).is_none()
+                && !of_calibre(&|c| self.cal.lift(c).is_some()),
+            position: !a.has.position,
+            started: !a.has.started,
+        }
+    }
+
+    /// The window Open asks in, while it is open.
+    fn open_ask_dialog(&mut self, ctx: &egui::Context) {
+        let Some(mut a) = self.open_ask.take() else {
+            return;
+        };
+        let watches: Vec<(String, String)> = match &self.library {
+            Ok(Some(l)) => l
+                .watches
+                .iter()
+                .filter(|e| !e.watch.archived)
+                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let need = self.open_need(&a);
+        let started = parse_local_minute(&a.started);
+        let ready = !a.add
+            || ((a.watch.is_some() && !a.new_watch)
+                || (a.new_watch && !a.new_name.trim().is_empty()))
+                && (!need.bph || a.bph.is_some())
+                && (!need.position || a.position.is_some())
+                && (!need.started || started.is_some());
+        let mut answer = None;
+        let modal = egui::Modal::new(egui::Id::new("open question")).show(ctx, |ui| {
+            ui.set_width(440.0);
+            let pal = theme::pal(ui);
+            ui.label(
+                RichText::new(format!("Open \"{}\"", file_name(&a.path)))
+                    .font(theme::semibold(15.0)),
+            );
+            theme::segmented(
+                ui,
+                &mut a.add,
+                &[
+                    (
+                        true,
+                        "Add to a Watch",
+                        "Copy the recording into one of your watches, where it is kept with \
+                         the watch's takes. The original stays where it is.",
+                    ),
+                    (
+                        false,
+                        "Just Open It",
+                        "Open the recording where it is. It is not added to your watches: \
+                         to add it later, open it again.",
+                    ),
+                ],
+            );
+            if a.add {
+                let shown = if a.new_watch {
+                    "New Watch…"
+                } else {
+                    a.watch
+                        .as_ref()
+                        .and_then(|id| watches.iter().find(|(w, _)| w == id))
+                        .map_or("Choose a Watch", |(_, n)| n.as_str())
+                };
+                theme::row(
+                    ui,
+                    "Watch",
+                    Some("The watch the recording is added to"),
+                    |ui| {
+                        egui::ComboBox::from_id_salt("open into watch")
+                            .width(ui.available_width())
+                            .selected_text(shown)
+                            .show_ui(ui, |ui| {
+                                for (id, name) in &watches {
+                                    let on = !a.new_watch && a.watch.as_ref() == Some(id);
+                                    if ui.selectable_label(on, name).clicked() {
+                                        a.watch = Some(id.clone());
+                                        a.new_watch = false;
+                                    }
+                                }
+                                if ui.selectable_label(a.new_watch, "New Watch…").clicked() {
+                                    a.new_watch = true;
+                                }
+                            });
+                    },
+                );
+                if a.new_watch {
+                    theme::row(
+                        ui,
+                        "Name",
+                        Some(
+                            "The new watch's name. Its other details can be added later \
+                             with Edit… in the Watches pane.",
+                        ),
+                        |ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut a.new_name)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        },
+                    );
+                }
+                if need == OpenNeed::default() {
+                    ui.label(
+                        RichText::new("Its files and the watch say everything a take needs.")
+                            .color(pal.text_secondary),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new(
+                            "Neither its files nor the watch say these, so they are saved \
+                             with it:",
+                        )
+                        .color(pal.text_secondary),
+                    );
+                }
+                if need.bph {
+                    theme::row(ui, "Beat Rate", Some("Beats per hour"), |ui| {
+                        egui::ComboBox::from_id_salt("open bph")
+                            .width(ui.available_width())
+                            .selected_text(match a.bph {
+                                Some(b) => format!("{b} bph"),
+                                None => "Choose a Beat Rate".into(),
+                            })
+                            .show_ui(ui, |ui| {
+                                for b in STANDARD_BPH {
+                                    ui.selectable_value(&mut a.bph, Some(b), format!("{b} bph"));
+                                }
+                            });
+                    });
+                }
+                if need.lift {
+                    let changed = theme::row(
+                        ui,
+                        "Lift Angle",
+                        Some(
+                            "The calibre's lift angle in degrees: type it and press Enter, or \
+                             pick a common one from the menu. Amplitude depends on it.",
+                        ),
+                        |ui| {
+                            let x =
+                                fields::entry(ui, "open lift", &mut a.lift, 10.0..=90.0, &MS, 44.0);
+                            ui.label("°");
+                            let y = fields::presets(
+                                ui,
+                                "open lift presets",
+                                &mut a.lift,
+                                &LIFTS,
+                                |v| format!("{}°", fields::plain(v)),
+                            );
+                            x || y
+                        },
+                    );
+                    a.lift_set |= changed;
+                }
+                if need.position {
+                    theme::row(
+                        ui,
+                        "Position",
+                        Some("The position the watch was in"),
+                        |ui| {
+                            egui::ComboBox::from_id_salt("open position")
+                                .width(ui.available_width())
+                                .selected_text(
+                                    a.position.map_or("Choose a Position", |p| p.label()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for p in Position::ALL {
+                                        ui.selectable_value(&mut a.position, Some(p), p.label());
+                                    }
+                                });
+                        },
+                    );
+                }
+                if need.started {
+                    theme::row(
+                        ui,
+                        "Started",
+                        Some(
+                            "When the recording started, in this computer's time, as \
+                             2026-10-22 14:30. Filled in from when its file was last written, \
+                             less its length: correct it if the file was copied since.",
+                        ),
+                        |ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut a.started)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        },
+                    );
+                    if started.is_none() {
+                        ui.label(
+                            RichText::new("Write it as 2026-10-22 14:30.")
+                                .small()
+                                .color(pal.text_secondary),
+                        );
+                    }
+                }
+            }
+            if let Some(e) = &a.error {
+                ui.label(RichText::new(e).color(pal.bad));
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let go = if a.add { "Add and Open" } else { "Open" };
+                if ui
+                    .add_enabled(ready, theme::primary(ui, go))
+                    .on_hover_text("Go ahead")
+                    .on_disabled_hover_text("Fill in what is asked for first")
+                    .clicked()
+                {
+                    answer = Some(true);
+                }
+                if ui
+                    .add(theme::secondary(ui, "Cancel"))
+                    .on_hover_text("Close without opening anything")
+                    .clicked()
+                {
+                    answer = Some(false);
+                }
+            });
+        });
+        if modal.should_close() && answer.is_none() {
+            answer = Some(false);
+        }
+        match answer {
+            Some(true) => self.answer_open_ask(a, need),
+            Some(false) => {}
+            None => self.open_ask = Some(a),
+        }
+    }
+
+    /// Open `a`'s recording where it is, or add it to its watch first and
+    /// open the take it makes there. A failed add leaves the question open,
+    /// saying why.
+    fn answer_open_ask(&mut self, mut a: OpenAsk, need: OpenNeed) {
+        if !a.add {
+            return self.open_recording(&a.path, a.replay, true);
+        }
+        match self.add_opened(&a, need) {
+            Ok((take, id, fill_error)) => {
+                self.watch_open = Some(id);
+                self.unsorted_open = false;
+                match fill_error {
+                    Some(e) => self.error(e),
+                    None => self.info_msg(format!(
+                        "Added \"{}\" to the watch's takes.",
+                        file_name(&take)
+                    )),
+                }
+                self.open_recording(&take, a.replay, true);
+            }
+            Err(e) => {
+                a.error = Some(e);
+                self.open_ask = Some(a);
+            }
+        }
+    }
+
+    /// Copy `a`'s recording into its watch (a new one made first, when
+    /// asked for), with what `need` says is missing written into its
+    /// session files. Returns the take, the watch's id, and why what was
+    /// missing couldn't be written, when the take is in but that failed.
+    fn add_opened(
+        &mut self,
+        a: &OpenAsk,
+        need: OpenNeed,
+    ) -> Result<(PathBuf, String, Option<String>), String> {
+        let inner = take_folder(&a.path)?;
+        let files = recordings_in(&inner)?;
+        let started = if need.started {
+            Some(recorder::utc(
+                parse_local_minute(&a.started)
+                    .ok_or("Write when it started as 2026-10-22 14:30.")?,
+            ))
+        } else {
+            None
+        };
+        let fill = Fill {
+            bph: if need.bph { a.bph } else { None },
+            lift: need.lift.then_some((a.lift, a.lift_set)),
+            position: if need.position { a.position } else { None },
+            started_utc: started,
+            duration_s: files.iter().filter_map(|f| audio_length(f)).sum(),
+        };
+        let Ok(Some(lib)) = &mut self.library else {
+            return Err("There is no Watches folder.".into());
+        };
+        let id = if a.new_watch {
+            let w = library::Watch::new(&a.new_name);
+            lib.add(&w)?;
+            w.id
+        } else {
+            a.watch.clone().ok_or("Choose a watch first.")?
+        };
+        let watch = lib
+            .watches
+            .iter()
+            .find(|e| e.watch.id == id)
+            .map(|e| e.watch.clone())
+            .ok_or("That watch is no longer in your watches")?;
+        if a.has.manifest {
+            let dir = if inner.is_dir() {
+                inner.clone()
+            } else {
+                inner
+                    .parent()
+                    .ok_or("The recording has no folder")?
+                    .to_path_buf()
+            };
+            let (take, _) = lib.add_take(&dir, &id, true)?;
+            let filled = fill_take(&take, &watch, &fill).err().map(|e| {
+                format!("The take is in the watch, but what it was missing couldn't be saved with it: {e}")
+            });
+            lib.scan();
+            return Ok((take, id, filled));
+        }
+        let named =
+            position_in_name(&inner).or_else(|| files.first().and_then(|f| position_in_name(f)));
+        let position = fill.position.or(named);
+        let lift = fill.lift.or(watch.lift.map(|l| (l, true)));
+        let m = Manifest {
+            watch: Some(watch.name.clone()),
+            calibre: watch.calibre.clone().filter(|c| !c.is_empty()),
+            bph: fill.bph.or(watch.bph),
+            lift: lift.map(|l| l.0),
+            lift_known: lift.map(|l| l.1),
+            recordings: vec![RecordingEntry {
+                file: ".".into(),
+                position: position.map(|p| p.code().into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let toml = toml::to_string_pretty(&m).map_err(|e| e.to_string())?;
+        let dir_json = inner.is_dir().then(|| inner.join("session.json"));
+        let json = with_start(dir_json.as_deref(), &fill)?;
+        let started = fill
+            .started_utc
+            .clone()
+            .or_else(|| started_in(&inner))
+            .unwrap_or_default();
+        let minute = watches::local_minute(&started).unwrap_or_else(|| started.replace(':', "."));
+        let name = library::take_name(
+            &minute,
+            &position
+                .and_then(|p| timegrapher_core::session::Position::parse(p.code()))
+                .into_iter()
+                .collect::<Vec<_>>(),
+        );
+        let take = lib.add_recording(
+            &inner,
+            &id,
+            &name,
+            &[(MANIFEST, toml), ("session.json", json)],
+        )?;
+        Ok((take, id, None))
     }
 
     /// A button for each pane, its icon pressed while the pane shows.
@@ -11379,6 +11891,121 @@ fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>,
     Ok(Some((m, entries)))
 }
 
+/// What a recording added to a watch is given, of what its files and the
+/// watch didn't say.
+struct Fill {
+    bph: Option<u32>,
+    /// The lift angle, and whether it was given rather than left at the
+    /// default.
+    lift: Option<(f64, bool)>,
+    position: Option<Position>,
+    started_utc: Option<String>,
+    duration_s: f64,
+}
+
+/// When the take in `dir` started, from its session.json.
+fn started_in(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("session.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("started_utc")?.as_str().map(str::to_string)
+}
+
+/// The session.json for a take given `fill`: the one at `existing`, if
+/// there is one, with its start and length added where it has none.
+fn with_start(existing: Option<&Path>, fill: &Fill) -> Result<String, String> {
+    let mut v = match existing.filter(|p| p.is_file()) {
+        Some(p) => {
+            let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+            serde_json::from_str(&text).map_err(|e| format!("Can't read {}: {e}", p.display()))?
+        }
+        None => serde_json::json!({}),
+    };
+    let o = v
+        .as_object_mut()
+        .ok_or("session.json doesn't hold an object")?;
+    if let Some(s) = &fill.started_utc {
+        o.entry("started_utc").or_insert_with(|| s.clone().into());
+    }
+    if fill.duration_s > 0.0 {
+        o.entry("duration_s")
+            .or_insert_with(|| fill.duration_s.into());
+    }
+    serde_json::to_string_pretty(&v).map_err(|e| e.to_string())
+}
+
+/// Write `fill` into the session files of the take at `take`, added to
+/// `watch` from outside: only what they leave out, keeping the rest of
+/// session.toml as it was, comments too.
+fn fill_take(take: &Path, watch: &library::Watch, fill: &Fill) -> Result<(), String> {
+    let file = take.join(MANIFEST);
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
+    if !doc.contains_key("watch") {
+        doc["watch"] = toml_edit::value(watch.name.as_str());
+    }
+    if let Some(c) = watch.calibre.as_deref().filter(|c| !c.is_empty()) {
+        if !doc.contains_key("calibre") {
+            doc["calibre"] = toml_edit::value(c);
+        }
+    }
+    if let Some(b) = fill.bph {
+        doc["bph"] = toml_edit::value(i64::from(b));
+    }
+    if let Some((l, known)) = fill.lift {
+        doc["lift"] = toml_edit::value(l);
+        doc["lift_known"] = toml_edit::value(known);
+    }
+    if let Some(p) = fill.position {
+        let set = |t: &mut dyn toml_edit::TableLike| {
+            if !t.contains_key("position") {
+                t.insert("position", toml_edit::value(p.code()));
+            }
+        };
+        match doc.get_mut("recording") {
+            Some(toml_edit::Item::ArrayOfTables(tables)) => tables.iter_mut().for_each(|t| set(t)),
+            Some(toml_edit::Item::Value(toml_edit::Value::Array(entries))) => entries
+                .iter_mut()
+                .filter_map(|v| v.as_inline_table_mut())
+                .for_each(|t| set(t)),
+            _ => {}
+        }
+    }
+    write_replacing(&file, &doc.to_string())?;
+    if fill.started_utc.is_some() {
+        let json = take.join("session.json");
+        write_replacing(&json, &with_start(Some(&json), fill)?)?;
+    }
+    Ok(())
+}
+
+/// `text` as a minute in this computer's time, written 2026-10-22 14:30.
+fn parse_local_minute(text: &str) -> Option<std::time::SystemTime> {
+    use chrono::TimeZone;
+    let t = chrono::NaiveDateTime::parse_from_str(text.trim(), "%Y-%m-%d %H:%M").ok()?;
+    chrono::Local
+        .from_local_datetime(&t)
+        .earliest()
+        .map(std::time::SystemTime::from)
+}
+
+/// A recording's length in seconds, when its header says.
+fn audio_length(f: &Path) -> Option<f64> {
+    timegrapher_core::audio::info(f)
+        .ok()
+        .and_then(|i| i.frames.map(|n| n as f64 / i.sample_rate.max(1) as f64))
+}
+
+/// When the first of `files` started, by when it was last written less
+/// its length: a guess, offered to be corrected.
+fn started_guess(files: &[PathBuf]) -> Option<chrono::DateTime<chrono::Local>> {
+    let f = files.first()?;
+    let written = std::fs::metadata(f).ok()?.modified().ok()?;
+    let length = Duration::from_secs_f64(audio_length(f).unwrap_or(0.0).max(0.0));
+    Some(written.checked_sub(length).unwrap_or(written).into())
+}
+
 /// Whether a session file in `dir` whose entry names `file` lists `path`:
 /// the same file or folder, or the whole folder when `path` is the only
 /// recording in it, as a take saved for a lone file lists it.
@@ -11771,6 +12398,7 @@ impl eframe::App for TimegrapherApp {
         self.confirm_dialog(ctx);
         self.kept_delete_dialog(ctx);
         self.watch_form_dialog(ctx);
+        self.open_ask_dialog(ctx);
         self.take_ask_dialog(ctx);
         self.poll_take_keep();
         if let Some(m) = self.report.ui(ctx) {
@@ -13727,6 +14355,121 @@ mod tests {
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
         assert!(watches::take_line(&take).starts_with("Power Reserve 0 h 00 min (still running"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn open_adds_a_recording_to_a_watch_asking_only_for_what_is_missing() {
+        let base = std::env::temp_dir().join(format!("tg-app-open-into-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let wav = |p: &Path| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: 8000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            let mut w = hound::WavWriter::create(p, spec).unwrap();
+            for _ in 0..8000 {
+                w.write_sample(0i16).unwrap();
+            }
+            w.finalize().unwrap();
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None, false);
+        app.use_library(Some(root.clone()));
+        app.pick_watch(&pepsi);
+
+        // A lone file: its position is in its name, the rest is asked for.
+        let lone = base.join("outside").join("pepsi_DU.wav");
+        wav(&lone);
+        let mut a = app.open_ask_for(&lone, false).unwrap();
+        assert!(a.add && a.watch.as_deref() == Some(pepsi.as_str()));
+        let need = app.open_need(&a);
+        assert_eq!(
+            need,
+            OpenNeed {
+                bph: true,
+                lift: true,
+                position: false,
+                started: true
+            }
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        app.open_ask = Some(a.clone());
+        let mut text = String::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| app.open_ask_dialog(ctx));
+            text = format!("{:?}", out.shapes);
+        }
+        for asked in ["Beat Rate", "Lift Angle", "Started", "Add and Open"] {
+            assert!(text.contains(asked), "{asked}");
+        }
+        assert!(!text.contains("Choose a Position"));
+        app.open_ask = None;
+        a.bph = Some(21600);
+        a.started = "2026-10-22 14:30".into();
+        app.answer_open_ask(a, need);
+        assert!(app.open_ask.is_none());
+        let Ok(Some(lib)) = &app.library else {
+            panic!()
+        };
+        let takes = &lib.find("Pepsi").unwrap().takes;
+        assert_eq!(takes.len(), 1);
+        assert!(takes[0].name.starts_with("2026-10-22 14.30"));
+        let take = lib.find("Pepsi").unwrap().take_dir(&takes[0]);
+        let m: Manifest =
+            toml::from_str(&std::fs::read_to_string(take.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!((m.bph, m.lift_known), (Some(21600), Some(false)));
+        assert_eq!(m.watch.as_deref(), Some("Pepsi"));
+        assert_eq!(m.recordings[0].position.as_deref(), Some("DU"));
+        assert!(takes[0].started_utc.is_some() && take.join("pepsi_DU.wav").is_file());
+        assert!(lone.is_file());
+
+        // A take folder: only what its session file leaves out is written,
+        // and the rest of the file is kept as it was.
+        let folder = base.join("outside take");
+        wav(&folder.join("take_part01-001.wav"));
+        std::fs::write(
+            folder.join(MANIFEST),
+            "# by hand\nlift = 50.0\n\n[[recording]]\nfile = \"take_part01-001.wav\"\n",
+        )
+        .unwrap();
+        let mut a = app.open_ask_for(&folder, false).unwrap();
+        let need = app.open_need(&a);
+        assert_eq!(
+            need,
+            OpenNeed {
+                bph: true,
+                lift: false,
+                position: true,
+                started: true
+            }
+        );
+        a.bph = Some(28800);
+        a.position = Some(Position::CrownLeft);
+        a.started = "2026-10-22 15:00".into();
+        app.answer_open_ask(a, need);
+        let Ok(Some(lib)) = &app.library else {
+            panic!()
+        };
+        let entry = lib.find("Pepsi").unwrap();
+        assert_eq!(entry.takes.len(), 2);
+        let take = entry.dir.join("takes").join("outside take");
+        let text = std::fs::read_to_string(take.join(MANIFEST)).unwrap();
+        assert!(text.starts_with("# by hand"));
+        let m: Manifest = toml::from_str(&text).unwrap();
+        assert_eq!((m.bph, m.lift), (Some(28800), Some(50.0)));
+        assert_eq!(m.recordings[0].position.as_deref(), Some("CL"));
+        assert!(started_in(&take).is_some());
+        // What is in the watches already opens straight away.
+        assert!(app.open_ask_for(&take, false).is_none());
         let _ = std::fs::remove_dir_all(&base);
     }
 

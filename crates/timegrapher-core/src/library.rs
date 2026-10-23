@@ -851,6 +851,55 @@ impl Library {
         self.scan();
         Ok((to, left))
     }
+
+    /// Add a recording from outside the library that has no session file
+    /// (a lone WAV or FLAC file, or a folder of them) to a watch (by its
+    /// id), as a new take named `name`: the file, or everything in the
+    /// folder, is copied in with `written` (file name and text: the session
+    /// files that make it a take) beside it. It is put together beside its
+    /// new place and moved in whole, so a copy cut short is not a take.
+    pub fn add_recording(
+        &mut self,
+        from: &Path,
+        watch_id: &str,
+        name: &str,
+        written: &[(&str, String)],
+    ) -> Result<PathBuf, String> {
+        self.writable()?;
+        if resolved(from).starts_with(resolved(&self.root)) {
+            return Err(format!("{} is already in your watches", from.display()));
+        }
+        let to_watch = self
+            .watches
+            .iter()
+            .find(|w| w.watch.id == watch_id)
+            .ok_or("That watch is no longer in your watches")?;
+        let takes = to_watch.dir.join(TAKES);
+        fs::create_dir_all(&takes).map_err(|e| format!("{}: {e}", takes.display()))?;
+        let to = unused_dir(&takes, name);
+        let staged = takes.join(format!(".adding-{}", file_name(&to)));
+        let _ = fs::remove_dir_all(&staged);
+        let put = (|| {
+            if from.is_dir() {
+                copy_tree(from, &staged, &[])?;
+            } else {
+                fs::create_dir_all(&staged).map_err(|e| format!("{}: {e}", staged.display()))?;
+                let dst = staged.join(from.file_name().ok_or("The recording has no name")?);
+                fs::copy(from, &dst).map_err(|e| format!("{}: {e}", from.display()))?;
+            }
+            for (file, text) in written {
+                let dst = staged.join(file);
+                fs::write(&dst, text).map_err(|e| format!("{}: {e}", dst.display()))?;
+            }
+            fs::rename(&staged, &to).map_err(|e| format!("{}: {e}", to.display()))
+        })();
+        if let Err(e) = put {
+            let _ = fs::remove_dir_all(&staged);
+            return Err(e);
+        }
+        self.scan();
+        Ok(to)
+    }
 }
 
 /// The entry standing for `root/Unsorted`, with no takes yet.
@@ -1219,6 +1268,50 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_recording_without_a_session_file_is_added_as_a_new_take() {
+        let root = scratch("add-recording");
+        let mut lib = Library::create(&root).unwrap();
+        lib.add(&Watch::new("Pepsi")).unwrap();
+        let id = lib.find("Pepsi").unwrap().watch.id.clone();
+        let outside = scratch("add-recording-outside");
+        fs::create_dir_all(&outside).unwrap();
+        let file = outside.join("pepsi_DU.flac");
+        fs::write(&file, vec![0u8; 100]).unwrap();
+        let written = [
+            (
+                "session.toml",
+                "bph = 28800\n\n[[recording]]\nfile = \".\"\n".to_string(),
+            ),
+            (
+                "session.json",
+                "{\"started_utc\": \"2026-10-22T17:00:00Z\"}".to_string(),
+            ),
+        ];
+        let to = lib
+            .add_recording(&file, &id, "2026-10-22 10.00 Dial Up", &written)
+            .unwrap();
+        assert_eq!(to.file_name().unwrap(), "2026-10-22 10.00 Dial Up");
+        assert!(to.join("pepsi_DU.flac").is_file() && file.is_file());
+        let takes = &lib.find("Pepsi").unwrap().takes;
+        assert_eq!(takes.len(), 1);
+        assert_eq!(
+            takes[0].started_utc.as_deref(),
+            Some("2026-10-22T17:00:00Z")
+        );
+        assert!(!takes[0].incomplete);
+        // A folder is copied whole, under a name of its own.
+        let again = lib.add_recording(&outside, &id, "2026-10-22 10.00 Dial Up", &written);
+        assert!(again.unwrap().join("pepsi_DU.flac").is_file());
+        assert_eq!(lib.find("Pepsi").unwrap().takes.len(), 2);
+        assert!(lib
+            .add_recording(&to, &id, "x", &written)
+            .unwrap_err()
+            .contains("already in"));
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("tg-library-{name}-{}", std::process::id()));

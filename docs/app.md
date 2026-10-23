@@ -136,7 +136,21 @@ the watch changes them); otherwise the card offers **Beat Rate** and
 the microphone: its menu and **Rescan**, **Input Level**, the peak meter
 and **Show Every Input**.
 
-Opening a recording, by **Open…** or **Open Folder…** in the File menu,
+**Open Recording…** or **Open Folder…** in the File menu first asks where
+the recording goes (when there are watches and it isn't in them already):
+**Add to a Watch** copies it into the watch picked in the question, or a
+**New Watch…** named there, as a take of its own, and opens it there; **Just
+Open It** opens it where it is, not in your watches (to add it later, open
+it again). Adding asks only for what neither its files nor the watch say:
+**Beat Rate** and **Lift Angle** (none when the watch, or its calibre, sets
+them), **Position** (none when its session file or its file name gives it)
+and **Started**, the minute it started in this computer's time (none when
+its session.json says; offered from when its file was last written, less its
+length). They are written into its session files, keeping the rest of a
+session.toml as it was, comments too; a recording with no session file gets
+one, as a take recorded here would have, named by when it started.
+
+Opening a recording, by **Open Recording…** or **Open Folder…** in the File menu,
 or the command line, analyses it all at
 once, which is how a watchmaker looks back through a take; **Replay**
 plays a file through as if live (a folder's files one after the other, in
