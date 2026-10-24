@@ -1130,8 +1130,8 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       them and **Select All**. It lists the values the other filters let
       through; the funnels combine, so a row shows only when every column's
       value is ticked. A funnel in use is tinted in the accent colour.
-      **Clear Filters**, beside the search box, shows every value in every
-      column again.
+      **Clear Filters**, beside the search box, shows every calibre again:
+      it clears the search, Short List Only and every column's funnel.
     - **Above the table.** The search box: every word must match a
       calibre's number, one of its other names, or its maker under any of
       the maker's names ("dd 3235", "sw200", "seagull st19"). **Short List

@@ -130,11 +130,12 @@ const MANAGE_HINT: &str = "Every calibre in a table to search, sort and filter, 
      tickbox for your short list, and the one you select in full: its wheels, sources and notes, \
      what you added, and your custom calibres to edit";
 
-const MANAGE_HELP: &[&str] = &[
+pub const MANAGE_HELP: &[&str] = &[
     "Every calibre the app knows, in a table, with the ones you added under the maker Custom, \
      always at the top. Click a column's heading to sort on it, and again to reverse. The \
      funnel on each heading picks which of that column's values show; the funnels combine, a \
-     tinted funnel is one in use, and Clear Filters shows everything again.",
+     tinted funnel is one in use, and Clear Filters shows everything again, clearing the \
+     search and Short List Only too.",
     "Search by a calibre's number, one of its other names, or its maker under any of the \
      maker's names. Short List Only shows just your short list.",
     "The tickbox in Short List puts a calibre on your short list, which the Calibre menu \
@@ -727,8 +728,8 @@ impl Calibres {
         if let Some(problem) = &self.problem {
             ui.label(RichText::new(problem).color(pal.bad));
         }
+        // Its "?" is beside the Calibres heading above.
         ui.horizontal(|ui| {
-            theme::help(ui, "Calibres", MANAGE_HELP);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .button("New Custom Calibre…")
@@ -772,14 +773,21 @@ impl Calibres {
                 "Every word must match: a calibre's number, one of its other names, or its \
                  maker under any of the maker's names (\"dd 3235\", \"sw200\", \"seagull st19\")",
             );
-            let filtered = self.funnels.iter().any(Option::is_some);
+            let filtered = self.funnels.iter().any(Option::is_some)
+                || !self.search.is_empty()
+                || self.short_only;
             if ui
                 .add_enabled(filtered, egui::Button::new("Clear Filters"))
-                .on_hover_text("Show every value in every column again")
-                .on_disabled_hover_text("No column is filtered")
+                .on_hover_text(
+                    "Show every calibre again: clears the search, Short List Only and every \
+                     column's funnel",
+                )
+                .on_disabled_hover_text("Nothing is filtered")
                 .clicked()
             {
                 self.funnels = Default::default();
+                self.search.clear();
+                self.short_only = false;
             }
             ui.add_space(8.0);
             let hint = "Show only the calibres on your short list, which the Calibre menu offers";
@@ -1232,22 +1240,37 @@ impl Calibres {
                 }
                 _ => {
                     let mut text = self.cell(e, col);
-                    if col == Col::Calibre && e.name() == current {
-                        text += "  (this watch)";
+                    if col == Col::Calibre {
+                        text = short_name(e).to_string();
+                        if e.name() == current {
+                            text += "  (this watch)";
+                        }
                     }
                     let ink = match col {
                         Col::Calibre => pal.text,
                         Col::Maker if e.is_custom() => pal.accent,
                         _ => pal.text_secondary,
                     };
-                    // Too long for its column: cut with "…", the whole
+                    // Too long for its column: cut with "…", a calibre in
+                    // the middle to keep its number at the end, the whole
                     // of it in the row's hover.
-                    let mut job = egui::text::LayoutJob::single_section(
-                        text,
-                        egui::TextFormat::simple(egui::FontId::proportional(12.5), ink),
-                    );
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(widths[i] - 8.0);
-                    let galley = ui.painter().layout_job(job);
+                    let font = egui::FontId::proportional(12.5);
+                    let room = widths[i] - 8.0;
+                    let mut galley = ui.painter().layout_no_wrap(text.clone(), font.clone(), ink);
+                    let chars: Vec<char> = text.chars().collect();
+                    let mut keep = chars.len();
+                    while galley.size().x > room && keep > 2 {
+                        keep -= 1;
+                        // A maker reads best from its start.
+                        let tail = if col == Col::Calibre { keep / 2 } else { 0 };
+                        let head = keep - tail;
+                        let cut: String = chars[..head]
+                            .iter()
+                            .chain(std::iter::once(&'…'))
+                            .chain(&chars[chars.len() - tail..])
+                            .collect();
+                        galley = ui.painter().layout_no_wrap(cut, font.clone(), ink);
+                    }
                     let at = egui::pos2(cell.left() + 4.0, cell.center().y - galley.size().y / 2.0);
                     ui.painter()
                         .with_clip_rect(cell.shrink2(Vec2::new(2.0, 0.0)))
@@ -1510,6 +1533,20 @@ fn label(e: Entry<'_>) -> String {
 }
 
 /// What the list says about a calibre, for its line in the menu.
+/// A calibre's name for the table's Calibre column: without its maker in
+/// front when the Maker column already says it ("970" for A. Schild 970).
+fn short_name<'a>(e: Entry<'a>) -> &'a str {
+    match e {
+        Entry::Table(c) => c
+            .calibre
+            .strip_prefix(c.maker.as_str())
+            .and_then(|rest| rest.strip_prefix(' '))
+            .filter(|rest| !rest.trim().is_empty())
+            .unwrap_or(&c.calibre),
+        Entry::Custom(_) => e.name(),
+    }
+}
+
 fn hint(e: Entry<'_>) -> String {
     // The name first: the table may cut it short.
     let mut t = format!("{}\n{}", e.name(), summary(e));
@@ -2123,6 +2160,24 @@ mod tests {
         assert!(cal.rows().is_empty());
         cal.funnels = Default::default();
         assert_eq!(cal.rows().len(), calibres::all().len());
+    }
+
+    /// The Calibre column leaves out the maker the Maker column already
+    /// shows, so rows of one maker differ in what is left: their numbers.
+    #[test]
+    fn the_calibre_column_drops_the_makers_name() {
+        let cal = Calibres::in_memory();
+        let rows = cal.rows();
+        let schild = rows
+            .iter()
+            .find(|e| e.name() == "A. Schild 970")
+            .expect("A. Schild 970 listed");
+        assert_eq!(short_name(*schild), "970");
+        for e in &rows {
+            let short = short_name(*e);
+            assert!(!short.trim().is_empty(), "{}", e.name());
+            assert!(e.name().ends_with(short), "{} -> {short}", e.name());
+        }
     }
 
     /// The custom calibres stay at the top whatever column the table is

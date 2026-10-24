@@ -8988,7 +8988,10 @@ impl TimegrapherApp {
                 Tab::WatchesFolder => {
                     theme::help(ui, "Watches Folder", settings_window::LIBRARY_HELP);
                 }
-                Tab::General | Tab::Calibres => {}
+                Tab::Calibres => {
+                    theme::help(ui, "Calibres", calibre_ui::MANAGE_HELP);
+                }
+                Tab::General => {}
             }
         });
         ui.add_space(6.0);
@@ -9550,7 +9553,8 @@ impl TimegrapherApp {
                         "The rate corrected for this input's own clock, which runs {:.1} ppm \
                          {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
                          figure stays on the card's clock, the one tg and an analysis of \
-                         the recording read, so the two compare directly.",
+                         the recording read, so the two compare directly. The clock kept is \
+                         under Settings > Microphone > Quartz Correction.",
                         c.ppm.abs(),
                         c.rate_error_s_per_day(),
                         c.measured_utc,
