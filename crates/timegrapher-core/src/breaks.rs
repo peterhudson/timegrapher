@@ -253,8 +253,9 @@ pub fn renumber(
     by_count(breaks.iter().map(|b| b.audio_s), sided)
 }
 
-/// Of the breaks at `at` (audio seconds), those with no side-sound verdict
-/// within [`JUMP_MATCH_S`] in `sided`: their sides are kept by the count.
+/// Of the breaks at `at` (audio seconds), those where the sides were not
+/// told apart by their sound (no time in `sided` within [`JUMP_MATCH_S`]):
+/// their sides are kept by the count.
 pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
     at.into_iter()
         .filter(|&t| !sided.iter().any(|&j| (j - t).abs() <= JUMP_MATCH_S))

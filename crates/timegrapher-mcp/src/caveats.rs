@@ -15,7 +15,7 @@ pub const META_KEY: &str = "timegrapher/limits";
 pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
     let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
     Some(match c["code"].as_str()? {
-        "no_watch" => no_regular_beat(&Value::Null, None),
+        "no_watch" => no_regular_beat(&json!({ "caveats": [c] }), None),
         "set_rate_disagrees" => match c["heard"].as_u64() {
             Some(h) => format!(
                 "The beat rate set for this watch differs from the one heard ({h} beats \
@@ -86,7 +86,17 @@ pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
 /// timing scatter of the beats, in ms and as a share of the beat period,
 /// when the measurement gives it (`jitter_us`, with the beat rate).
 pub fn no_regular_beat(m: &Value, bph: Option<f64>) -> String {
+    let no_sound = m["caveats"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|c| c["code"] == "no_watch" && c["reason"] == "no_beat_sound");
     let said = match bph.filter(|b| *b > 0.0) {
+        _ if no_sound => timegrapher_core::measure::no_watch_text(
+            timegrapher_core::measure::NoWatchReason::NoBeatSound,
+            None,
+            None,
+        ),
         Some(b) => {
             timegrapher_core::session::no_regular_beat(m["jitter_us"].as_f64(), b.round() as u32)
         }
@@ -126,6 +136,7 @@ pub fn limits(doc: &Value) -> Vec<Value> {
     let bph = doc["bph"].as_f64();
     // No regular beat is said with the measurement's own timing scatter.
     let say = |c: &Value, m: &Value| match c["code"].as_str() {
+        Some("no_watch") if c["reason"] == "no_beat_sound" => fact(c, lift),
         Some("no_watch") => Some(no_regular_beat(m, m["bph"].as_f64().or(bph))),
         _ => fact(c, lift),
     };

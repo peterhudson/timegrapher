@@ -529,6 +529,20 @@ pub fn measure_masked(
         .count();
     let listened_s = to_s - from_s - masked_s;
     let jitter_us = median_of(windows.iter().map(|w| w.fit.jitter_us));
+    // Under 10 s the beats' averaged sound (outside the masks) says
+    // whether a watch is heard.
+    let beat_sound = log.beat_sound(
+        &in_range
+            .iter()
+            .filter(|b| !masked.iter().any(|m| b.time >= m.0 && b.time < m.1))
+            .copied()
+            .collect::<Vec<_>>(),
+        &crate::amplitude::AmplitudeConfig {
+            lift_deg: log.lift_deg,
+            ..Default::default()
+        },
+    );
+    let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, listened_s, beat_sound);
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
@@ -551,7 +565,7 @@ pub fn measure_masked(
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
         jitter_us,
-        watch_heard: crate::measure::watch_heard(jitter_us, log.bph, listened_s),
+        watch_heard: no_watch.is_none(),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
@@ -580,6 +594,7 @@ pub fn measure_masked(
         &amp,
         &crate::measure::Context {
             watch_heard: m.watch_heard,
+            no_watch_reason: no_watch.unwrap_or_default(),
             bph_heard: None,
             lift_known: true,
             clock_known: m.calibrated,
@@ -1075,6 +1090,17 @@ pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
     }
 }
 
+/// [`no_regular_beat`] for a measurement, or, when its beats' sound shows
+/// no unlock or drop on either side, that fact.
+pub fn no_regular_beat_in(m: &Measurement, bph: u32) -> String {
+    match crate::measure::no_watch_reason_in(&m.caveats) {
+        Some(r @ crate::measure::NoWatchReason::NoBeatSound) => {
+            crate::measure::no_watch_text(r, None, None)
+        }
+        _ => no_regular_beat(m.jitter_us, bph),
+    }
+}
+
 fn findings(readings: &[Reading]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut push = |code: &'static str, recording: usize, title: String, evidence: String| {
@@ -1104,7 +1130,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
             push(
                 "no_regular_beat",
                 ri,
-                no_regular_beat(m.jitter_us, r.bph),
+                no_regular_beat_in(m, r.bph),
                 format!("in {}; rate, amplitude and beat error are not shown", at(r)),
             );
             continue;

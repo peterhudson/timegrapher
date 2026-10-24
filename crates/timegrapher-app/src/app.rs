@@ -13874,6 +13874,10 @@ fn plain_error(m: &str) -> String {
 /// "No regular beat found", with the timing scatter that decided it when
 /// there is one: the beats' median jitter in ms and as a share of a beat.
 fn no_regular_beat(r: &LiveReading) -> String {
+    use timegrapher_core::measure::{self, NoWatchReason};
+    if let Some(why @ NoWatchReason::NoBeatSound) = measure::no_watch_reason_in(&r.caveats) {
+        return measure::no_watch_text(why, None, None);
+    }
     match (r.jitter_us, r.bph) {
         (Some(j), Some(bph)) => format!(
             "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
@@ -14214,6 +14218,7 @@ mod tests {
                 jumps: vec![80.0],
                 sided: Vec::new(),
                 by_count: Vec::new(),
+                snippets: Vec::new(),
             };
             let mut app = TimegrapherApp::with_devices(Vec::new(), None);
             app.live = Some(LiveAnalyzer::from_log(log, LiveConfig::default()));
@@ -17701,6 +17706,7 @@ mod tests {
                 jumps: vec![60.03],
                 sided: Vec::new(),
                 by_count: Vec::new(),
+                snippets: Vec::new(),
             };
             let original: Vec<_> = log
                 .beats
@@ -17882,6 +17888,7 @@ mod tests {
             jumps: vec![],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         app.live = Some(LiveAnalyzer::from_log(log, app.live_config()));
         app.session.replay();
@@ -18482,6 +18489,7 @@ mod tests {
             jumps: vec![],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         }
     }
 
