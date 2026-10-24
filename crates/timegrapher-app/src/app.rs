@@ -9380,7 +9380,7 @@ impl TimegrapherApp {
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
         // On the cards the fact in short, whole; the sentence with the
         // timing scatter, as the command line gives it, in the hover.
-        let unheard_line = "No regular beat found".to_string();
+        let unheard_line = "No regular beat".to_string();
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
@@ -9595,8 +9595,11 @@ impl TimegrapherApp {
                     let status: Option<(String, String)> = if r.is_none() {
                         if let Some(left) = self.settling_left() {
                             Some((
-                                format!("settling in the new position, {:.0} s", left.ceil()),
-                                SETTLE_HINT.to_string(),
+                                format!("settling, {:.0} s", left.ceil()),
+                                format!(
+                                    "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
+                                    left.ceil()
+                                ),
                             ))
                         } else if heard {
                             Some(("waiting for beats".into(), String::new()))
@@ -9606,10 +9609,13 @@ impl TimegrapherApp {
                     } else {
                         self.stopped_in_settle().map(|at| {
                             (
-                                format!("before the move at {}", strip::fmt_time(at)),
-                                "Stopped while the watch settled in its new position, so these \
-                             are the last readings of the position before it."
-                                    .to_string(),
+                                "before the move".to_string(),
+                                format!(
+                                    "Stopped while the watch settled in its new position, so \
+                                     these are the last readings of the position before it, \
+                                     before the move at {}.",
+                                    strip::fmt_time(at)
+                                ),
                             )
                         })
                     };
@@ -13002,6 +13008,12 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         false
     }
 
+    /// No pane squeezed to a sliver on a short window: the Paper Strip,
+    /// the main view, keeps room to read under the cards.
+    fn min_size(&self) -> f32 {
+        PANE_MIN_H
+    }
+
     fn simplification_options(&self) -> SimplificationOptions {
         SimplificationOptions {
             all_panes_must_have_tabs: true,
@@ -13132,13 +13144,16 @@ fn whole_lines(ui: &mut egui::Ui, short: &str, long: &str, longest: &str, inner:
     }
 }
 
+/// The least a pane is squeezed to, points.
+const PANE_MIN_H: f32 = 120.0;
+
 /// The longest limits a reading card usually names, as on noise taken for
 /// beats: the card keeps room for them at every width.
-const LONGEST_LIMITS: &str = "9 s of beats · 25 of 66 expected beats found";
+const LONGEST_LIMITS: &str = "9 s of beats · 25 of 66 beats";
 
 /// The longest line a reading card gives under its figure that must show
 /// whole: the card keeps room for it at every width.
-const LONGEST_STATUS: &str = "settling in the new position, 20 s";
+const LONGEST_STATUS: &str = "waiting for beats";
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
@@ -13903,9 +13918,9 @@ fn reading_limits(
             (Caveat::BeatsMissing { fraction }, _) => {
                 let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
                 let short = if beats > 0 {
-                    format!("{beats} of {expected} expected beats found")
+                    format!("{beats} of {expected} beats")
                 } else {
-                    format!("{:.0}% of expected beats found", fraction * 100.0)
+                    format!("{:.0}% of beats found", fraction * 100.0)
                 };
                 Some((
                     short,
@@ -13916,7 +13931,7 @@ fn reading_limits(
                 ))
             }
             (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
-                format!("{:.0}% of beats clipped", fraction * 100.0),
+                format!("{:.0}% clipped", fraction * 100.0),
                 format!(
                     "{:.0}% of the beats have a clipped sample, which moves the timing of \
                      the sounds inside a beat.",
@@ -13941,10 +13956,7 @@ fn reading_limits(
                 format!("The beat rate set differs from the {heard} bph heard."),
             )),
             (Caveat::SidesByCount { count }, "Beat Error") => Some((
-                format!(
-                    "Tick and Tock named by the beat count across {count} break{}",
-                    if *count == 1 { "" } else { "s" }
-                ),
+                "sides named by count".to_string(),
                 format!(
                     "Tick and Tock are named by the beat count across {count} break{} in \
                      this stretch, not told apart by their sound.",
@@ -13970,7 +13982,7 @@ fn reading_limits(
                     format!("{seconds:.0}")
                 };
                 Some((
-                    format!("{s} s masked out"),
+                    format!("{s} s masked"),
                     format!(
                         "{s} s of this stretch were masked out on the Paper Strip and left out \
                          of the readings."
@@ -14018,7 +14030,7 @@ mod tests {
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
         assert_eq!(short, ["4 s of beats", "input clock not measured"]);
         let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
-        assert_eq!(missing[0].0, "90 of 100 expected beats found");
+        assert_eq!(missing[0].0, "90 of 100 beats");
         for (_, long) in amp.iter().chain(&rate) {
             for word in [
                 "Confidence",
@@ -14038,10 +14050,7 @@ mod tests {
         let caveats = [Caveat::SidesByCount { count: 2 }];
         let be = reading_limits("Beat Error", &caveats, 52.0, 30);
         assert_eq!(be.len(), 1);
-        assert_eq!(
-            be[0].0,
-            "Tick and Tock named by the beat count across 2 breaks"
-        );
+        assert_eq!(be[0].0, "sides named by count");
         assert!(be[0].1.contains("not told apart by their sound"));
         // It doesn't touch the rate or the amplitude.
         assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
@@ -18741,7 +18750,7 @@ mod tests {
     #[test]
     fn a_cards_limits_show_whole_in_room_kept_for_them() {
         let ctx = themed();
-        let noise = "9 s of beats · 25 of 66 expected beats found";
+        let noise = "9 s of beats · 25 of 66 beats";
         for w in [92.0, 190.0] {
             let mut heights = Vec::new();
             for short in ["", "12 s of beats", noise] {

@@ -341,15 +341,16 @@ break or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, whole, under the reading's caption, with a sentence on
 hover: "12 s of beats" when the beats span under 10 s, "540 of 600
-expected beats found" when under 95% were found, "3% of beats clipped"
-when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
+beats" when under 95% of the beats expected were found, "3% clipped"
+when over 1% of beats clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
 in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
 beside Lift on the Amplitude card says the amplitude comes from the
 default 52° (shortened to "default" on a narrow card, or "*" with the
 same hover where even that won't fit). The cards give their units short:
 s/d and ms. On the beat error, a reading of an opened file whose Tick
-and Tock were named by the beat count across a break says so ("Tick and
-Tock named by the beat count across 1 break"). Once stopped, each figure's hover also gives the whole take in the
+and Tock were named by the beat count across a break says so ("sides
+named by count", with the number of breaks in the hover). A masked
+stretch in the averaging time reads "6.8 s masked". Once stopped, each figure's hover also gives the whole take in the
 position the watch is in, settling left out, as `timegrapher session`
 reads it (core `session::measure_masked`, the time in other positions
 masked): the rate fitted over every beat, the amplitude and beat error
@@ -1299,15 +1300,18 @@ from before the move and says so.
 place whether it shows anything or not: the caption, what limits the
 reading, the figure and its unit (under it on a card too narrow for the
 widest figure), and the lines under the figure. What limits the reading
-and the line under the figure always show whole, wrapped: each has room
-for its longest usual wording at the card's width, so a narrow window
-gives taller cards. With no regular beat, the cards say "No regular beat
-found" and give the full sentence, with the timing scatter, in its
-hover. A figure too wide for its card is drawn smaller. The
-Rate card's last line (True Clock, or the input clock timed to keep) is
-cut short where it doesn't fit, its whole in the hover; True Clock is in
-the Rate figure's hover too. So the cards, and every pane under them,
-change height only with the window's width, never with the readings.
+and the line under the figure always show whole, wrapped, in short
+words ("9 s of beats · 25 of 66 beats"; "settling, 20 s"; "before the
+move"; "waiting for beats"), with the full sentence in the hover; each
+has room for its longest usual wording at the card's width. With no
+regular beat, the cards say "No regular beat", with the full sentence
+and the timing scatter in the hover. A figure too wide for its card is
+drawn smaller. The Rate card's last line (True Clock, or the input clock
+timed to keep) is cut short where it doesn't fit, its whole in the
+hover; True Clock is in the Rate figure's hover too. So the cards, and
+every pane under them, change height only with the window's width, never
+with the readings. No pane is squeezed below 120 points, so the Paper
+Strip keeps room to read on a short window.
 
 Each saved recording is a folder named after the start time, then the
 watch's name and the calibre when they are set by the first save
