@@ -15849,7 +15849,7 @@ mod tests {
     /// and deleted from the Watches pane, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
-    fn a_watchs_takes_are_kept_renamed_moved_deleted_and_added() {
+    fn a_watchs_takes_are_kept_moved_deleted_and_added() {
         let base = std::env::temp_dir().join(format!("tg-app-take-ops-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let root = base.join("Timegrapher Data");
