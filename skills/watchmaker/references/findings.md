@@ -46,6 +46,14 @@ every stored take), while on an empty stand the tracker still found a
 the beat (8.1 and 8.6 ms in the silence take at 21,600 bph). On those
 recordings 2% leaves a factor of three either side.
 
+Under 10 s of sound the scatter is not assessed. There `watch_heard` is
+false only when neither the Tick's nor the Tock's averaged sound shows an
+unlock or a drop, and the `no_watch` caveat's `reason` is
+`no_beat_sound` (over 10 s or more it is `scatter`). The program's
+evidence: on the project's recordings every watch cut to 3, 5 or 9 s (135
+cuts) showed both on each side, and six recordings of hiss alone showed
+neither, though at 9 s hiss had read as a watch with readings.
+
 `session` states it for the position as a note, `no_regular_beat`:
 "No regular beat found (timing scatter X ms, Y% of a beat)", with no
 readings beside it.
@@ -103,7 +111,7 @@ and say the ones that apply in plain words.
 
 | Code | Means | Do | Tell them |
 | --- | --- | --- | --- |
-| `no_watch` | No regular beat found; the readings are withheld. | As [above](#was-a-regular-beat-found). | "I couldn't hear the watch." |
+| `no_watch` | No regular beat found; the readings are withheld. `reason` says how: `scatter` or `no_beat_sound`. | As [above](#was-a-regular-beat-found). | "I couldn't hear the watch." |
 | `set_rate_disagrees` | The beat rate given (`--bph` or the calibre's) is not the one the recording runs at; `heard` is the one it does. | Quote no reading. Check the calibre; run `analyze` again without `--bph`. | "The watch isn't beating at the rate I was told; let me check which movement it is." |
 | `short_span` | Under 10 s of beats (`span_s`). | Quote no reading. Record longer. | "That was too short to judge; let's record it longer." |
 | `clipped` | A share of beats clipped (`fraction`). | Over 1%: hold neither amplitude nor beat error to a tolerance; lower the level and record again. | "The microphone was too loud, so the amplitude may be off; the rate is fine." |

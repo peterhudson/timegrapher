@@ -17,7 +17,7 @@ use timegrapher_core::audio::{load, write_wav, Audio};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
-use timegrapher_core::measure::Caveat;
+use timegrapher_core::measure::{Caveat, NoWatchReason};
 use timegrapher_core::periodicity::standard_wheels;
 use timegrapher_core::session::{self, Measurement};
 use timegrapher_core::stream::{analyze_file, BeatLog, StreamConfig};
@@ -411,7 +411,13 @@ fn an_empty_stand_gives_no_readings() {
     assert!(!s.watch_heard && s.overall.is_none() && s.amplitude_deg.is_none());
     let m = whole(&log);
     assert!(!m.watch_heard && m.rate_s_per_day.is_none() && m.amplitude_deg.is_none());
-    assert!(s.caveats.contains(&Caveat::NoWatch) && m.caveats.contains(&Caveat::NoWatch));
+    assert!(
+        s.caveats.contains(&Caveat::NoWatch {
+            reason: NoWatchReason::Scatter
+        }) && m.caveats.contains(&Caveat::NoWatch {
+            reason: NoWatchReason::Scatter
+        })
+    );
     assert!(s.confidence.is_none() && m.confidence.is_none());
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(r.rate_s_per_day.is_none() && r.amplitude_deg.is_none());
@@ -430,6 +436,102 @@ fn an_empty_stand_replayed_gives_no_readings() {
         r.rate_s_per_day,
         r.beat_error_ms
     );
+}
+
+/// The first `seconds` of a recording.
+fn cut(mut a: Audio, seconds: f64) -> Audio {
+    a.samples
+        .truncate((seconds * a.sample_rate as f64) as usize);
+    a
+}
+
+/// Under 10 s the scatter is not assessed; the beats' averaged sound is,
+/// and hiss alone shows no unlock or drop on either side, where it had
+/// read as a watch with readings. Every pipeline says so with the same
+/// reason.
+#[test]
+fn hiss_under_ten_seconds_gives_no_readings() {
+    let no_sound = Caveat::NoWatch {
+        reason: NoWatchReason::NoBeatSound,
+    };
+    for seconds in [3.0, 5.0, 9.0] {
+        let a = cut(empty_stand(), seconds);
+        let path = on_disk(&a, &format!("t5c{seconds}"));
+        let log = stream(&path, 47.0);
+        std::fs::remove_file(&path).ok();
+        let s = analyze(&a, &AnalysisConfig::default()).summary;
+        assert!(
+            !s.watch_heard && s.overall.is_none() && s.caveats.contains(&no_sound),
+            "{seconds} s analyze: {:?}",
+            s.caveats
+        );
+        let m = whole(&log);
+        assert!(
+            !m.watch_heard && m.rate_s_per_day.is_none() && m.caveats.contains(&no_sound),
+            "{seconds} s session: {:?}",
+            m.caveats
+        );
+        // Live listening, with the beat rate set as a watch's calibre
+        // sets it, keeps too few of these beats to read.
+        let mut l = LiveAnalyzer::new(
+            a.sample_rate,
+            LiveConfig {
+                analysis: AnalysisConfig {
+                    bph: Some(21_600),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+        for c in a.samples.chunks(4800) {
+            l.push(c);
+        }
+        let r = l.reading(a.duration());
+        assert!(
+            r.rate_s_per_day.is_none(),
+            "{seconds} s live: {:?}",
+            r.caveats
+        );
+        // A file opened in the app: the log replayed.
+        let r = LiveAnalyzer::from_log(log.clone(), LiveConfig::default()).reading(log.duration_s);
+        assert!(
+            !r.watch_heard && r.rate_s_per_day.is_none() && r.caveats.contains(&no_sound),
+            "{seconds} s replayed: {:?}",
+            r.caveats
+        );
+    }
+}
+
+/// A watch under 10 s keeps its readings: its beats' sound shows an
+/// unlock and a drop.
+#[test]
+fn a_watch_under_ten_seconds_keeps_its_readings() {
+    for seconds in [3.0, 5.0, 9.0] {
+        let a = cut(watch(17), seconds);
+        let path = on_disk(&a, &format!("t5d{seconds}"));
+        let log = stream(&path, 47.0);
+        std::fs::remove_file(&path).ok();
+        let s = analyze(&a, &AnalysisConfig::default()).summary;
+        assert!(
+            s.watch_heard && s.overall.is_some(),
+            "{seconds} s analyze: {:?}",
+            s.caveats
+        );
+        let m = whole(&log);
+        assert!(
+            m.watch_heard && m.rate_s_per_day.is_some(),
+            "{seconds} s session: {:?}",
+            m.caveats
+        );
+        let r = pushed(&a, 4800).reading(a.duration());
+        assert!(r.watch_heard, "{seconds} s live: {:?}", r.caveats);
+        let r = LiveAnalyzer::from_log(log.clone(), LiveConfig::default()).reading(log.duration_s);
+        assert!(
+            r.watch_heard && r.rate_s_per_day.is_some(),
+            "{seconds} s replayed: {:?}",
+            r.caveats
+        );
+    }
 }
 
 /// The synthetic watch with its peaks driven `over` times past full scale.

@@ -1602,6 +1602,7 @@ mod tests {
             jumps: vec![50.0],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let mut t = Test::new();
         t.tick(0.0);

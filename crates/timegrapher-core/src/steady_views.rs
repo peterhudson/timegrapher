@@ -448,6 +448,7 @@ mod tests {
             jumps: vec![15.0, 30.0],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let legacy = grids(&log, 10.0)[0].clone();
         let breaks: Vec<_> = log
@@ -568,6 +569,7 @@ mod tests {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),
@@ -652,6 +654,7 @@ mod tests {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),
@@ -748,6 +751,7 @@ mod tests {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let lc = LongConfig {
             wheels: default_wheels(log.bph),

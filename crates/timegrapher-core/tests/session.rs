@@ -462,6 +462,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_mask() {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     let m = session::measure_masked(&log, None, &[], &[mask], 80.0, 232.0);
     // The 10 s windows that remain lie wholly on one side of the mask.
@@ -516,6 +517,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_break() {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     let m = session::measure_masked(&log, None, &[brk], &[], 80.0, 129.0);
     let (p05, p95) = (
@@ -600,6 +602,7 @@ fn no_rate_window_takes_in_the_ragged_edge_after_a_pause_in_a_clock_log() {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let m = session::measure_masked(&log, Some(&clock), &breaks, &[], 80.0, 129.0);
         let (p05, p95) = (
@@ -651,6 +654,7 @@ fn a_break_with_no_gap_keeps_its_single_cut() {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     let inside: Vec<_> = beats
         .iter()
@@ -706,6 +710,7 @@ fn a_pause_at_either_end_of_a_reading_is_no_missing_beat() {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     // No clock, a steady correction, and a clock log that holds the pause
     // with its break moved to the listed one, as `session` reads it.
@@ -759,6 +764,7 @@ fn a_reversed_stretch_reads_as_empty_rather_than_panicking() {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     for (from, to) in [(0.0, -20.0), (-20.0, -19.0), (30.0, 10.0)] {
         let m = session::measure_masked(&log, None, &[], &[], from, to);
@@ -833,6 +839,7 @@ fn a_clock_step_no_listed_pause_explains_is_cut() {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let m = session::measure_masked(&log, Some(&clock), &listed, &[], 80.0, 150.0);
         let rate = m.rate_s_per_day.expect("rate");
@@ -866,6 +873,7 @@ fn a_stretch_of_exactly_ten_seconds_is_heard() {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let m = session::measure(&log, None, 0.0, duration);
         assert!(m.watch_heard, "{duration} s: {:?}", m.caveats);

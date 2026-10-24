@@ -332,10 +332,7 @@ fn readings_table(sn: &Session) -> String {
                 r#"<tr><th>{}</th><td>{}</td><td colspan="10">{}</td><td class="num">{}</td><td class="file">{}{clock}</td></tr>"#,
                 r.position.display_label(),
                 wind(r.wind_h),
-                esc(&timegrapher_core::session::no_regular_beat(
-                    m.jitter_us,
-                    r.bph
-                )),
+                esc(&timegrapher_core::session::no_regular_beat_in(m, r.bph)),
                 duration(m.measured_s()),
                 esc(&r.label),
             );
@@ -748,6 +745,7 @@ mod tests {
             jumps: vec![],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let clock = ppm.and_then(|ppm| session::fixed_clock(ppm, log.duration_s));
         let mut measurement = session::measure(&log, clock.as_ref(), 0.0, log.duration_s);

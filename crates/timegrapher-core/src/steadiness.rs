@@ -3619,6 +3619,7 @@ mod window_grid_tests {
             jumps: vec![],
             sided: vec![],
             by_count: vec![],
+            snippets: Vec::new(),
         }
     }
 

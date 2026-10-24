@@ -15,7 +15,7 @@ use crate::beats::{self, Beat};
 use crate::breaks::Break;
 use crate::clean::Cuts;
 use crate::dsp::{envelope, median, median_f32};
-use crate::measure::{self, Caveat};
+use crate::measure::{self, Caveat, NoWatchReason};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
 
@@ -231,6 +231,15 @@ impl LiveAnalyzer {
         a.settled_to = log.duration_s;
         a.bph = Some(log.bph);
         a.logged_bph = Some(log.bph);
+        // The clean beats' sound the log kept, each with its side, for the
+        // check on a stretch under 10 s.
+        let mut kept = log.snippets.into_iter().peekable();
+        for b in &log.beats {
+            while kept.next_if(|s| s.0 < b.time - 1e-9).is_some() {}
+            if let Some(s) = kept.next_if(|s| (s.0 - b.time).abs() < 1e-9) {
+                a.snippets.push_back((s.0, b.index.rem_euclid(2) == 0, s.1));
+            }
+        }
         a.beats = log.beats;
         a.amp = log.amplitude_windows;
         a.clipped = log.clipped_beats;
@@ -809,8 +818,25 @@ impl LiveAnalyzer {
         let jitter_us = fit.map(|f| f.jitter_us);
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
-        let watch_heard = !measure::regularity_assessed(listened_s)
-            || bph.is_some_and(|b| crate::beats::watch_heard(jitter_us, b));
+        // Under 10 s the beats' averaged sound, from the beats kept for
+        // the profiles, says whether a watch is heard.
+        let beat_sound = match bph {
+            Some(b) if !measure::regularity_assessed(listened_s) => measure::beat_sound_found(
+                self.snippets
+                    .iter()
+                    .filter(|s| s.0 >= from && s.0 <= end_s)
+                    .map(|s| (s.1, s.2.as_slice())),
+                self.fs,
+                2.0 * 3600.0 / b as f64,
+                &self.cfg.analysis.amplitude,
+            ),
+            _ => None,
+        };
+        let no_watch = match bph {
+            Some(b) => measure::no_watch_reason(jitter_us, b, listened_s, beat_sound),
+            None => measure::regularity_assessed(listened_s).then_some(NoWatchReason::Scatter),
+        };
+        let watch_heard = no_watch.is_none();
         let heard = |v: Option<f64>| v.filter(|_| watch_heard);
         // Figures that name a side wait until the sides are told apart.
         let sided = self.sides_known_at(end_s);
@@ -836,6 +862,7 @@ impl LiveAnalyzer {
             &wins,
             &measure::Context {
                 watch_heard,
+                no_watch_reason: no_watch.unwrap_or_default(),
                 bph_heard: None,
                 lift_known: self.cfg.analysis.lift_known,
                 clock_known: self.clock_known,
@@ -1142,6 +1169,7 @@ mod tests {
             jumps: vec![60.03],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         }
     }
 
@@ -1463,7 +1491,13 @@ mod tests {
             r.amplitude_deg.is_none() && r.beat_error_unlock_ms.is_none(),
             "{r:?}"
         );
-        assert!(r.rate_error_s_per_day.is_none() && r.caveats.first() == Some(&Caveat::NoWatch));
+        assert!(
+            r.rate_error_s_per_day.is_none()
+                && r.caveats.first()
+                    == Some(&Caveat::NoWatch {
+                        reason: NoWatchReason::Scatter
+                    })
+        );
     }
 
     /// The readings carry what `analyze` gives a recording: a short
@@ -1627,6 +1661,7 @@ mod tests {
             jumps: Vec::new(),
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         };
         let b = LiveAnalyzer::from_log(log, LiveConfig::default());
         let end = b.duration_s();
