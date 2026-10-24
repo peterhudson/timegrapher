@@ -158,8 +158,8 @@ pub const STRIP: &[&str] = &[
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",
     "Mask leaves stretches out of the readings, such as a bump of the stand: with it \
-     on, drag along the strip over the beats to mask them, drag a masked stretch's edge \
-     to move it, drag with the right button to look back, and click a masked stretch to \
+     on, drag along the strip over the beats to mask them (the pointer is a cross), \
+     drag a masked stretch's edge to move it (a two-way arrow at the edge), drag with the right button to look back, and click a masked stretch to \
      bring it back; a right click brings one \
      back with Mask on or off. Nothing is read inside a masked stretch and no reading \
      reaches across one; the charts, the steadiness tests and a Positions Test leave it \
@@ -267,8 +267,7 @@ pub const STEADINESS: &[&str] = &[
 pub const SCOPE: &[&str] = &[
     "The sound of the latest beats as it came in, high-passed so hum and rumble don't \
      hide it: what an oscilloscope on the microphone would show. While listening it \
-     shows the last few seconds; for a recording, the moment on the time slider or the \
-     strip.",
+     shows the last few seconds; stopped, or for a recording, the last beats.",
     "Span: 20 ms shows one sound in detail, from before the unlock to after the drop, \
      with the Tick above the Tock and the unlock and drop marks from the Tick Tock \
      Profile. 5 and 10 ms show the drop closer still, and 50 ms the sound and what rings \

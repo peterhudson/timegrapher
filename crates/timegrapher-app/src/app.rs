@@ -41,7 +41,7 @@ use timegrapher_core::steadiness::SeriesKind;
 /// The A and B sides' sounds.
 type Profiles = [Option<TickProfile>; 2];
 
-/// How often the sound is kept for looking back, seconds.
+/// How often the sound is kept, for the profile once stopped, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
 /// What the reading cards asked for.
 struct Readouts {
@@ -810,7 +810,7 @@ const QUICK_LISTEN_HINT: &str = "Listen: the watch on the microphone, with no wa
      first. Each Listen is a new take. It isn't kept unless Save keeps it, in one of your \
      watches or in a folder: listening again or quitting lets it go without asking.";
 const STOP_HINT: &str = "Stop listening and let go of the microphone. Everything so far stays \
-     on show, to look back through with the time slider. A take of a watch is saved into it.";
+     on show, and the strip can be dragged back through it. A take of a watch is saved into it.";
 const POSITION_HINT: &str = "The position the watch is in. Changing it while listening marks a \
      new stretch on the strip and the charts, and the readings, profile, distributions and \
      Steadiness then use only this position's beats. It is noted in a saved take.";
@@ -1631,11 +1631,6 @@ pub struct TimegrapherApp {
     /// The watch set up for the microphone, kept while a recording with
     /// its own (or no) settings is open, and put back on listening again.
     mic_setup: Option<WatchSetup>,
-    /// The newest beat looked at for a break in the sound, session s.
-    last_beat_seen: f64,
-    /// A break in the sound while listening, from and to (session s), that
-    /// may have been the watch being moved: the banner asks.
-    move_prompt: Option<(f64, f64)>,
     /// Said with the result once the recording opening is analysed.
     open_note: Option<String>,
     /// The window may close: the user has said what to do with the sound.
@@ -1679,7 +1674,7 @@ pub struct TimegrapherApp {
     /// The calibre's wheels marked on the period axes.
     show_wheels: bool,
     scope_view: scope::View,
-    /// Sound read from the recording for the Scope when looking back: the
+    /// Sound read from the recording for the Scope once stopped: the
     /// stretch asked for (seconds) and what was read of it.
     scope_audio: Option<ScopeCut>,
     /// Each beat's trace once drawn, so a beat stays on the Scope (fading
@@ -1713,8 +1708,9 @@ pub struct TimegrapherApp {
     /// its values, which spread wider or narrower with it.
     chart_average_drawn: std::collections::HashMap<&'static str, f64>,
     /// `None` follows the newest beat; otherwise the time at the newest
-    /// edge of the strip.
-    view_end: Option<f64>,
+    /// edge of the strip. Only the strip (and the chart marker for it)
+    /// follows this: the readings and the other panes show the newest.
+    strip_end: Option<f64>,
     panes: Tree<Pane>,
 
     capture: Option<Capture>,
@@ -2090,8 +2086,6 @@ impl TimegrapherApp {
             opened_path: String::new(),
             take_picked: None,
             mic_setup: None,
-            last_beat_seen: 0.0,
-            move_prompt: None,
             open_note: None,
             may_close: false,
             save_dir: home.join("Timegrapher recordings").display().to_string(),
@@ -2128,7 +2122,7 @@ impl TimegrapherApp {
             cursor_next: None,
             folded: Default::default(),
             theme: egui::ThemePreference::System,
-            view_end: None,
+            strip_end: None,
             panes: default_layout(true),
             show_readings: true,
             charts_to_live: false,
@@ -2302,7 +2296,7 @@ impl TimegrapherApp {
         self.source_label = label;
         self.anchor = None;
         self.clear_trends();
-        self.view_end = None;
+        self.strip_end = None;
         self.level = Level::default();
         self.clipped_at = None;
         self.message = None;
@@ -2317,8 +2311,6 @@ impl TimegrapherApp {
         self.sound_job = None;
         self.steady = None;
         self.steady_job = None;
-        self.last_beat_seen = 0.0;
-        self.move_prompt = None;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -2521,11 +2513,8 @@ impl TimegrapherApp {
                 self.opened_at = Instant::now();
                 self.audio_at = None;
                 self.block_at = None;
-                self.view_end = None;
+                self.strip_end = None;
                 self.message = None;
-                // A pause is no break in the sound to ask about.
-                self.last_beat_seen = 0.0;
-                self.move_prompt = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
                 self.capture = Some(c);
             }
@@ -3137,7 +3126,7 @@ impl TimegrapherApp {
                 "bph_set": self.bph,
                 "lift_deg": self.lift_deg,
                 "averaging_s": self.average_s,
-                "at_s": self.end_s(),
+                "at_s": self.latest_s(),
                 // Stretches masked out on the strip, in the session's
                 // seconds, so an analysis of the excerpt can leave them out too.
                 "masked": self.masked,
@@ -3175,10 +3164,10 @@ impl TimegrapherApp {
             let i = timegrapher_core::audio::info(f).ok()?;
             total += i.frames? as f64 / i.sample_rate as f64;
         }
-        // The five minutes up to the time on show, when the time slider
+        // The five minutes up to the strip's newest edge, when the strip
         // has been moved back; else the start.
-        let end = match self.view_end {
-            Some(_) if self.live.is_some() => self.end_s(),
+        let end = match self.strip_end {
+            Some(_) if self.live.is_some() => self.strip_end_s(),
             _ => report::SPAN_S,
         }
         .clamp(report::SPAN_S.min(total), total);
@@ -3849,8 +3838,6 @@ impl TimegrapherApp {
                                 if let Some(t) = self.clock_track.as_mut() {
                                     t.restart(live.sample_rate());
                                 }
-                                self.last_beat_seen = 0.0;
-                                self.move_prompt = None;
                                 let m = format!(
                                     "The sound's timestamps jumped by {}, as they do when the \
                                      computer sleeps. The jump is left out of the take as a \
@@ -3956,7 +3943,6 @@ impl TimegrapherApp {
                 }
             }
         }
-        self.watch_for_moves();
         // A microphone that opened but sends nothing.
         if let Some(cap) = &self.capture {
             let quiet = self.audio_at.unwrap_or(self.opened_at).elapsed();
@@ -4102,14 +4088,14 @@ impl TimegrapherApp {
         self.rebuild_trend();
         self.source_label = label;
         self.anchor = None;
-        self.view_end = None;
+        self.strip_end = None;
         self.fit_take();
         let done = if self.no_sound {
             "Opened the analysis kept without its sound: the readings, charts and tests are as \
-             they were measured, and the Scope needs the sound. Drag the strip or the \
-             time slider to look back."
+             they were measured, and the Scope needs the sound. Drag the strip to look \
+             back."
         } else {
-            "Analysed the whole recording. Drag the strip or the time slider to look back."
+            "Analysed the whole recording. Drag the strip to look back."
         };
         let m = match self.open_note.take() {
             Some(n) => format!("{done} {n}"),
@@ -4224,7 +4210,7 @@ impl TimegrapherApp {
     /// reads a recording (core `session::measure_masked`), the time
     /// between them masked, and the seconds they cover.
     fn whole_take(&self) -> Option<WholeTake> {
-        if self.running() || self.view_end.is_some() {
+        if self.running() {
             return None;
         }
         let live = self.live.as_ref()?;
@@ -4287,7 +4273,7 @@ impl TimegrapherApp {
     /// Show the whole session so far along the strip, ending at its latest
     /// beat.
     fn fit_strip(&mut self) {
-        self.view_end = None;
+        self.strip_end = None;
         self.strip.set_span(self.latest_s());
     }
 
@@ -4355,16 +4341,17 @@ impl TimegrapherApp {
         self.strip.set_half_width(width);
     }
 
-    fn end_s(&self) -> f64 {
+    /// The time at the strip's newest edge.
+    fn strip_end_s(&self) -> f64 {
         let latest = self.latest_s();
-        self.view_end.unwrap_or(latest).min(latest)
+        self.strip_end.unwrap_or(latest).min(latest)
     }
 
     fn reading(&self) -> Option<LiveReading> {
         self.reading_over(self.average_s)
     }
 
-    /// The reading at the moment shown, averaged over `average` seconds.
+    /// The newest reading, averaged over `average` seconds.
     fn reading_over(&self, average: f64) -> Option<LiveReading> {
         let live = self.live.as_ref()?;
         // Stopped inside a settle: the last readings of the position before
@@ -4376,12 +4363,10 @@ impl TimegrapherApp {
         if self.settling_left().is_some() {
             return None;
         }
-        let reading = if self.view_end.is_some() {
-            live.reading_at(self.end_s(), average)
-        } else if !self.running() {
+        let reading = if !self.running() {
             // Stopped: the last window with a watch heard, so the silence
             // after it is taken off the stand doesn't change the readings.
-            live.reading_at(self.end_s().min(self.last_heard_s()), average)
+            live.reading_at(self.latest_s().min(self.last_heard_s()), average)
         } else {
             live.reading(average)
         };
@@ -4390,9 +4375,24 @@ impl TimegrapherApp {
             .then_some(reading)
     }
 
+    /// The reading at `t` in the session, as the newest is read: none
+    /// while the watch settles. The tests read the session at a moment
+    /// with it.
+    #[cfg(test)]
+    fn reading_at_time(&self, t: f64) -> Option<LiveReading> {
+        let live = self.live.as_ref()?;
+        if self.session.settling_left(t).is_some() {
+            return None;
+        }
+        let reading = live.reading_at(t, self.average_s);
+        self.session
+            .replay_reading_allowed(reading.time_s)
+            .then_some(reading)
+    }
+
     /// Put the beats just before the strip's newest edge on the centre line.
     fn centre(&mut self) {
-        let end = self.end_s();
+        let end = self.strip_end_s();
         if let Some(l) = &self.live {
             if let Some(bph) = l.bph() {
                 let hi = l.beats().partition_point(|b| b.time <= end);
@@ -6356,7 +6356,7 @@ impl TimegrapherApp {
         if self.position_editable() || self.running() {
             return self.position;
         }
-        let at = self.end_s();
+        let at = self.latest_s();
         self.session
             .stretches()
             .into_iter()
@@ -6953,28 +6953,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// While listening, a break of more than [`MOVE_GAP_S`] in the beats
-    /// with no position change in it may be the watch being moved: ask.
-    fn watch_for_moves(&mut self) {
-        if !(self.session.mic() && self.running()) {
-            self.last_beat_seen = 0.0;
-            return;
-        }
-        let Some(live) = &self.live else { return };
-        let beats = live.beats();
-        let Some(last) = beats.last().map(|b| b.time) else {
-            return;
-        };
-        let seen = self.last_beat_seen;
-        if last <= seen {
-            return;
-        }
-        self.last_beat_seen = last;
-        if let Some(gap) = sound_break(beats, seen, &self.session.stretches()) {
-            self.move_prompt = Some(gap);
-        }
-    }
-
     /// The position picked: a new stretch, noted in the recording.
     fn change_position(&mut self, pos: Position) {
         if self.refuse_faulted_recording() {
@@ -6986,7 +6964,6 @@ impl TimegrapherApp {
             );
             return;
         }
-        self.move_prompt = None;
         self.set_position(pos);
         if let Some(r) = self.session.recorder.as_mut() {
             // note appends in memory before writing scratch metadata, so the
@@ -7015,9 +6992,9 @@ impl TimegrapherApp {
         }
     }
 
-    /// Seconds of settling still to come at the time on show.
+    /// Seconds of settling still to come now.
     fn settling_left(&self) -> Option<f64> {
-        self.session.settling_left(self.end_s())
+        self.session.settling_left(self.latest_s())
     }
 
     /// The stretches the strip draws faintly, each with what the ticker
@@ -7038,13 +7015,13 @@ impl TimegrapherApp {
         out
     }
 
-    /// When stopped (and not looking back) inside the settle after a
-    /// move: when that move was, the end of the position before it.
+    /// When stopped inside the settle after a move: when that move was,
+    /// the end of the position before it.
     fn stopped_in_settle(&self) -> Option<f64> {
-        if self.running() || self.view_end.is_some() {
+        if self.running() {
             return None;
         }
-        let t = self.end_s();
+        let t = self.latest_s();
         self.session
             .settles()
             .into_iter()
@@ -9290,44 +9267,125 @@ impl TimegrapherApp {
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
-        // The big figure, with what stands behind it in its hover.
-        let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str, hover: &str| {
-            let mut job = egui::text::LayoutJob::default();
+        ui.spacing_mut().item_spacing.x = theme::GAP;
+        let gap = theme::GAP;
+        let total = ui.available_width();
+        // The Position and Listen cards narrower than the four of figures.
+        let narrow = (total * 0.11).clamp(124.0, 160.0);
+        let listen = (total * 0.13).clamp(144.0, 180.0);
+        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        // The width inside a card of figures, less its margins: the room
+        // kept for whole lines is reckoned at it, the same on every card.
+        let inner = wide - 2.0 * 14.0;
+        // Every line of a card is a row of fixed height, whatever is on it
+        // or not, so the cards (and every pane under them) never change
+        // height with the readings: only with the window's width. What
+        // doesn't fit a row is cut short with its whole in the hover.
+        let small_h = ui.text_style_height(&egui::TextStyle::Small) + 2.0;
+        let body_h = ui.text_style_height(&egui::TextStyle::Body);
+        let display_h = ui.fonts_mut(|f| f.row_height(&theme::display(FIGURE_PT)));
+        let row = |ui: &mut egui::Ui, h: f32, add: &mut dyn FnMut(&mut egui::Ui)| {
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), h), egui::Sense::hover());
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            child.set_clip_rect(rect.intersect(ui.clip_rect()));
+            child.spacing_mut().item_spacing.x = 6.0;
+            add(&mut child);
+        };
+        // A small line of its own, cut short where it doesn't fit.
+        let note = |ui: &mut egui::Ui, text: &str, hover: &str| {
+            row(ui, small_h, &mut |ui| {
+                let l = ui.add(
+                    egui::Label::new(RichText::new(text).small().color(pal.text_secondary))
+                        .truncate(),
+                );
+                if !hover.is_empty() {
+                    l.on_hover_text(hover);
+                }
+            });
+        };
+        // The big figure, with what stands behind it in its hover. The
+        // unit beside it, or under it on a card too narrow for `widest`,
+        // the widest figure and unit the card shows: the width decides,
+        // never the figure.
+        let figure = |ui: &mut egui::Ui,
+                      value: Option<String>,
+                      unit: &str,
+                      hover: &str,
+                      widest: (&str, &str)| {
             let (v, c) = match value {
                 // A true minus sign, as wide as the plus.
                 Some(v) => (v.replace('-', "−"), pal.text),
                 None => ("—".to_string(), pal.text_tertiary),
             };
-            job.append(
-                &v,
-                0.0,
-                egui::TextFormat::simple(theme::display(FIGURE_PT), c),
-            );
-            // The figure whole on its line, never broken at its point; the
-            // unit beside it, or under it on a narrow card.
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-                let big = ui.add(egui::Label::new(job).extend().sense(egui::Sense::hover()));
+            // In short, the same with or without a figure, so the card
+            // keeps one look while it waits and once it reads.
+            let unit = unit
+                .replace("seconds per day", "s/d")
+                .replace("milliseconds", "ms");
+            let wide = |text: &str, font: egui::FontId| {
+                ui.fonts_mut(|f| f.layout_no_wrap(text.into(), font, c).size().x)
+            };
+            // An Amplitude with no ± yet still keeps the unit's row.
+            let beside = widest.1.is_empty()
+                || wide(widest.0, theme::display(FIGURE_PT))
+                    + 6.0
+                    + wide(widest.1, egui::TextStyle::Body.resolve(ui.style()))
+                    <= ui.available_width();
+            // A figure wider than its card (noise read as beats can give
+            // thousands of s/d) is made smaller to show whole.
+            let unit_w = if beside && !unit.is_empty() {
+                6.0 + wide(&unit, egui::TextStyle::Body.resolve(ui.style()))
+            } else {
+                0.0
+            };
+            let room = ui.available_width() - unit_w;
+            let fig_w = wide(&v, theme::display(FIGURE_PT));
+            let size = if fig_w > room {
+                (FIGURE_PT * room / fig_w).floor().max(12.0)
+            } else {
+                FIGURE_PT
+            };
+            let big = |ui: &mut egui::Ui| {
+                let l = ui.add(
+                    egui::Label::new(RichText::new(&v).font(theme::display(size)).color(c))
+                        .extend()
+                        .sense(egui::Sense::hover()),
+                );
                 if !hover.is_empty() {
-                    big.on_hover_text(hover);
+                    l.on_hover_text(hover);
                 }
-                if !unit.is_empty() {
-                    // In short, the same with or without a figure, so the card
-                    // keeps one look while it waits and once it reads.
-                    let unit = unit
-                        .replace("seconds per day", "s/d")
-                        .replace("milliseconds", "ms");
-                    ui.add(
-                        egui::Label::new(RichText::new(unit).color(pal.text_secondary))
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                    );
-                }
-            });
+            };
+            let small = |ui: &mut egui::Ui| {
+                ui.add(egui::Label::new(RichText::new(&unit).color(pal.text_secondary)).extend());
+            };
+            if beside {
+                row(ui, display_h, &mut |ui| {
+                    big(ui);
+                    if !unit.is_empty() {
+                        small(ui);
+                    }
+                });
+            } else {
+                row(ui, display_h, &mut |ui| big(ui));
+                row(ui, body_h, &mut |ui| small(ui));
+            }
         };
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a note saying so.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let unheard_line = r.as_ref().map(no_regular_beat).unwrap_or_default();
+        // On the cards the fact in short, whole; the sentence with the
+        // timing scatter, as the command line gives it, in the hover.
+        let unheard_line = "No regular beat".to_string();
+        let unheard_hover = format!(
+            "{}.\n\n{}",
+            r.as_ref().map(no_regular_beat).unwrap_or_default(),
+            help::NO_REGULAR_BEAT
+        );
         let r = r.as_ref().filter(|_| heard);
         let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
         // Each reading's ±, as an analysis of the recording gives them
@@ -9349,20 +9407,18 @@ impl TimegrapherApp {
                 strip::fmt_time(span)
             )
         };
+        // The line under the figure that says no watch is heard, or
+        // nothing.
         let unheard = |ui: &mut egui::Ui| {
-            ui.label(
-                RichText::new(&unheard_line)
-                    .small()
-                    .color(pal.text_secondary),
-            )
-            .on_hover_text(help::NO_REGULAR_BEAT);
+            if heard {
+                whole_lines(ui, "", "", LONGEST_STATUS, inner);
+            } else {
+                whole_lines(ui, &unheard_line, &unheard_hover, LONGEST_STATUS, inner);
+            }
         };
-        // The cards share one height, the tallest's on the last frame, so a
-        // card with an extra line doesn't leave the row ragged. While
-        // listening the row only grows: readings coming and going (beats
-        // lost, a reading's extra line) would otherwise move every pane
-        // below it up and down. It fits its cards again once stopped or
-        // when the window's width changes.
+        // The cards share one height, the tallest's on the last frame. With
+        // every line of fixed height, that changes only with the window's
+        // width.
         let height_id = ui.id().with("readout height");
         let (height, height_w) = ui
             .ctx()
@@ -9373,7 +9429,7 @@ impl TimegrapherApp {
         let card = |ui: &mut egui::Ui,
                     title: &str,
                     help: &[&str],
-                    facts: Vec<(String, String)>,
+                    facts: Option<Vec<(String, String)>>,
                     slot: Option<(Slot, f32)>,
                     body: &dyn Fn(&mut egui::Ui)| {
             let margin = egui::Margin::symmetric(14, 10);
@@ -9389,47 +9445,28 @@ impl TimegrapherApp {
                     let top = ui.min_rect().top();
                     let short = facts
                         .iter()
+                        .flatten()
                         .map(|f| f.0.as_str())
                         .collect::<Vec<_>>()
                         .join(" · ");
                     let long = facts
                         .iter()
+                        .flatten()
                         .map(|f| f.1.as_str())
                         .collect::<Vec<_>>()
                         .join("\n\n");
-                    let note = || RichText::new(&short).small().color(pal.text_secondary);
-                    // Beside the title where it fits whole, else wrapped on
-                    // lines of its own under it: a reading's limits are never
-                    // cut short.
-                    let mut under = false;
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
-                        if !facts.is_empty() {
-                            let small = egui::TextStyle::Small.resolve(ui.style());
-                            let wide = ui.fonts_mut(|f| {
-                                f.layout_no_wrap(short.clone(), small, pal.text_secondary)
-                                    .size()
-                                    .x
-                            });
-                            if wide + 8.0 <= ui.available_width() {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        ui.add(
-                                            egui::Label::new(note())
-                                                .wrap_mode(egui::TextWrapMode::Extend),
-                                        )
-                                        .on_hover_text(&long);
-                                    },
-                                );
-                            } else {
-                                under = true;
-                            }
-                        }
                     });
-                    if under {
-                        ui.add(egui::Label::new(note()).wrap()).on_hover_text(&long);
+                    // A reading card's limits under its title, whole, never
+                    // cut short: they may be what says the figure isn't a
+                    // watch's. Their room is there (empty) or not, as many
+                    // lines as the longest usual limits take at this width,
+                    // so the card's height follows the width alone; only
+                    // limits longer still take more.
+                    if facts.is_some() {
+                        whole_lines(ui, &short, &long, LONGEST_LIMITS, inner);
                     }
                     body(ui);
                     // Room for the controls, which go in once every card
@@ -9453,13 +9490,6 @@ impl TimegrapherApp {
                 ));
             }
         };
-        ui.spacing_mut().item_spacing.x = theme::GAP;
-        let gap = theme::GAP;
-        let total = ui.available_width();
-        // The Position and Listen cards narrower than the four of figures.
-        let narrow = (total * 0.11).clamp(124.0, 160.0);
-        let listen = (total * 0.13).clamp(144.0, 180.0);
-        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
         let origin = ui.cursor().min;
         let mut cols: Vec<egui::Ui> = [narrow, listen, wide, wide, wide, wide]
             .iter()
@@ -9492,7 +9522,7 @@ impl TimegrapherApp {
                 &mut cols[0],
                 "Position",
                 help::POSITION,
-                Vec::new(),
+                None,
                 Some((Slot::Position, POSITION_SLOT_H)),
                 &|_| {},
             );
@@ -9500,120 +9530,145 @@ impl TimegrapherApp {
                 &mut cols[1],
                 "Listen",
                 help::LISTEN,
-                Vec::new(),
+                None,
                 Some((Slot::Listen, LISTEN_SLOT_H)),
                 &|_| {},
             );
-            card(&mut cols[2], "Rate", help::RATE, rate_facts, None, &|ui| {
-                let unit = match pm {
-                    Some(e) if e < 0.05 => "seconds per day".to_string(),
-                    Some(e) => format!("± {e:.1} seconds per day"),
-                    None => "seconds per day".to_string(),
-                };
-                // The beats behind the figure, in its hover.
-                let behind = r.map_or_else(String::new, |r| {
-                    let short = r.span_s + 1.0 < self.average_s;
-                    let mut t = if short {
-                        format!(
-                            "{} beats in {} of {}: there are fewer seconds of beats than \
+            card(
+                &mut cols[2],
+                "Rate",
+                help::RATE,
+                Some(rate_facts),
+                None,
+                &|ui| {
+                    let unit = match pm {
+                        Some(e) if e < 0.05 => "seconds per day".to_string(),
+                        Some(e) => format!("± {e:.1} seconds per day"),
+                        None => "seconds per day".to_string(),
+                    };
+                    // The beats behind the figure, in its hover.
+                    let behind = r.map_or_else(String::new, |r| {
+                        let short = r.span_s + 1.0 < self.average_s;
+                        let mut t = if short {
+                            format!(
+                                "{} beats in {} of {}: there are fewer seconds of beats than \
                                  Average Over asks for, early in a session or after a break in \
                                  the sound, so the readings use what there is.",
-                            r.beats_used,
-                            fields::duration(r.span_s.round()),
-                            fields::duration(self.average_s)
-                        )
-                    } else {
-                        format!(
-                            "{} beats in {}: the beats the readings are fitted to, over \
+                                r.beats_used,
+                                fields::duration(r.span_s.round()),
+                                fields::duration(self.average_s)
+                            )
+                        } else {
+                            format!(
+                                "{} beats in {}: the beats the readings are fitted to, over \
                                  Average Over.",
-                            r.beats_used,
-                            fields::duration(self.average_s)
-                        )
-                    };
-                    if let Some(j) = r.jitter_us {
-                        t += &format!(
-                            "\n\nJitter {j:.0} µs: how far single beats land from the \
+                                r.beats_used,
+                                fields::duration(self.average_s)
+                            )
+                        };
+                        if let Some(j) = r.jitter_us {
+                            t += &format!(
+                                "\n\nJitter {j:.0} µs: how far single beats land from the \
                                  rate's straight line, the spread of the dots across the strip."
-                        );
-                    }
-                    t
-                });
-                let mut behind = behind;
-                if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?))) {
-                    let se = w.m.confidence.and_then(|c| c.rate.se);
-                    let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
-                    let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
-                        format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
-                    });
-                    behind +=
-                        &whole_text(format!("{v:+.1}{pm} s/d").replace('-', "−"), spread, w.span);
-                }
-                figure(
-                    ui,
-                    rate.map(|v| format!("{v:+.1}")),
-                    &unit,
-                    behind.trim_start(),
-                );
-                let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                if r.is_none() {
-                    if let Some(left) = self.settling_left() {
-                        ui.label(small(format!(
-                            "settling in the new position, {:.0} s",
-                            left.ceil()
-                        )))
-                        .on_hover_text(SETTLE_HINT);
-                    } else if heard {
-                        ui.label(small("waiting for beats".into()));
-                    } else {
-                        unheard(ui);
-                    }
-                } else if let Some(at) = self.stopped_in_settle() {
-                    ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
-                        .on_hover_text(
-                            "Stopped while the watch settled in its new position, so these \
-                                 are the last readings of the position before it.",
-                        );
-                }
-                if let (Some(rate), Some(c)) = (rate, &self.clock) {
-                    let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
-                    let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
-                    ui.label(
-                        RichText::new(format!(
-                            "True Clock {v} seconds per day, with the clock kept {}",
-                            day_of(&c.measured_utc)
-                        ))
-                        .small()
-                        .color(pal.text_secondary),
-                    )
-                    .on_hover_text(format!(
-                        "The rate corrected for this input's own clock, which runs {:.1} ppm \
-                         {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
-                         figure stays on the card's clock, the one tg and an analysis of \
-                         the recording read, so the two compare directly. The clock kept is \
-                         under Settings > Microphone > Quartz Correction.",
-                        c.ppm.abs(),
-                        c.rate_error_s_per_day(),
-                        c.measured_utc,
-                        match c.source.as_str() {
-                            "log" => "a recording's clock log",
-                            "measure" => "listening against the system clock",
-                            _ => "a value typed in",
+                            );
                         }
-                    ));
-                }
-                if let Some(f) = measured {
+                        t
+                    });
+                    let mut behind = behind;
+                    if let Some((w, v)) =
+                        whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?)))
+                    {
+                        let se = w.m.confidence.and_then(|c| c.rate.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                        let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
+                            format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
+                        });
+                        behind += &whole_text(
+                            format!("{v:+.1}{pm} s/d").replace('-', "−"),
+                            spread,
+                            w.span,
+                        );
+                    }
+                    // Under the figure, two lines: what the reading waits on
+                    // (or why it is the position before), and the rate on the
+                    // input's own clock or the clock timed to keep.
+                    let status: Option<(String, String)> = if r.is_none() {
+                        if let Some(left) = self.settling_left() {
+                            Some((
+                                format!("settling, {:.0} s", left.ceil()),
+                                format!(
+                                    "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
+                                    left.ceil()
+                                ),
+                            ))
+                        } else if heard {
+                            Some(("waiting for beats".into(), String::new()))
+                        } else {
+                            Some((unheard_line.clone(), unheard_hover.clone()))
+                        }
+                    } else {
+                        self.stopped_in_settle().map(|at| {
+                            (
+                                "before the move".to_string(),
+                                format!(
+                                    "Stopped while the watch settled in its new position, so \
+                                     these are the last readings of the position before it, \
+                                     before the move at {}.",
+                                    strip::fmt_time(at)
+                                ),
+                            )
+                        })
+                    };
+                    let true_clock = rate.zip(self.clock.as_ref()).map(|(rate, c)| {
+                        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+                        let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
+                        (
+                            format!(
+                                "True Clock {v} seconds per day, with the clock kept {}",
+                                day_of(&c.measured_utc)
+                            ),
+                            format!(
+                                "The rate corrected for this input's own clock, which runs \
+                             {:.1} ppm {slow} ({:+.1} s/d on every rate), measured {} from \
+                             {}. The big figure stays on the card's clock, the one tg and an \
+                             analysis of the recording read, so the two compare directly. \
+                             The clock kept is under Settings > Microphone > Quartz \
+                             Correction.",
+                                c.ppm.abs(),
+                                c.rate_error_s_per_day(),
+                                c.measured_utc,
+                                match c.source.as_str() {
+                                    "log" => "a recording's clock log",
+                                    "measure" => "listening against the system clock",
+                                    _ => "a value typed in",
+                                }
+                            ),
+                        )
+                    });
+                    // True Clock in the figure's hover too, for when the two
+                    // lines under it are taken.
+                    if let Some((t, _)) = &true_clock {
+                        behind += &format!("\n\n{t}.");
+                    }
+                    figure(
+                        ui,
+                        rate.map(|v| format!("{v:+.1}")),
+                        &unit,
+                        behind.trim_start(),
+                        ("−88.8", "± 8.8 s/d"),
+                    );
                     // Timed long enough while listening: offered, never kept
                     // unasked.
-                    ui.horizontal_wrapped(|ui| {
+                    let offer = measured.map(|f| {
                         let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
                         let mut text = format!("input clock timed: {:.1} ppm {slow}", f.ppm.abs());
                         let mut hint = format!(
                             "Timed against the computer's clock over {} of listening, this \
-                             input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
-                             day on every rate. Keep it to show the corrected rate as True \
-                             Clock from now on; the command line and the MCP server use it \
-                             too. It is only right if the computer's clock is kept by \
-                             internet time.",
+                         input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
+                         day on every rate. Keep it to show the corrected rate as True \
+                         Clock from now on; the command line and the MCP server use it \
+                         too. It is only right if the computer's clock is kept by \
+                         internet time.",
                             strip::fmt_time(f.span_s),
                             f.ppm.abs(),
                             f.ppm_sd,
@@ -9628,10 +9683,10 @@ impl TimegrapherApp {
                             );
                             hint += &format!(
                                 "\n\nThe clock kept for \"{}\" runs {:.1} ppm {}, kept {}. \
-                                 This timing is {:.1} ppm from it, {:.1} seconds per day on \
-                                 True Clock. An input reached by a shared name, such as the \
-                                 system default, may be a different sound card from the one \
-                                 timed then. Keep replaces the kept clock with this one.",
+                             This timing is {:.1} ppm from it, {:.1} seconds per day on \
+                             True Clock. An input reached by a shared name, such as the \
+                             system default, may be a different sound card from the one \
+                             timed then. Keep replaces the kept clock with this one.",
                                 c.device,
                                 c.ppm.abs(),
                                 if c.ppm >= 0.0 { "slow" } else { "fast" },
@@ -9640,18 +9695,57 @@ impl TimegrapherApp {
                                 timegrapher_core::clock::rate_error_s_per_day(off.abs())
                             );
                         }
-                        ui.label(RichText::new(text).small().color(pal.text_secondary))
-                            .on_hover_text(hint);
-                        if ui
-                            .small_button("Keep")
-                            .on_hover_text("Keep this input's clock error and correct its rates")
-                            .clicked()
-                        {
-                            keep_clock.set(true);
-                        }
+                        (text, hint)
                     });
-                }
-            });
+                    let (first, second) = match (status, true_clock) {
+                        (Some(s), clock) => (Some(s), clock),
+                        (None, clock) => (clock, None),
+                    };
+                    // What the figure waits on, or that no watch is heard,
+                    // whole; True Clock (in the figure's hover too) where
+                    // the line is free.
+                    match first {
+                        Some((t, h)) => whole_lines(ui, &t, &h, LONGEST_STATUS, inner),
+                        None => whole_lines(ui, "", "", LONGEST_STATUS, inner),
+                    }
+                    match (offer, second) {
+                        (Some((text, hint)), _) => row(ui, small_h, &mut |ui| {
+                            // The button first, so a long line is cut short
+                            // rather than pushing it off the card.
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .small_button("Keep")
+                                        .on_hover_text(
+                                            "Keep this input's clock error and correct its rates",
+                                        )
+                                        .clicked()
+                                    {
+                                        keep_clock.set(true);
+                                    }
+                                    ui.with_layout(
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&text)
+                                                        .small()
+                                                        .color(pal.text_secondary),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(&hint);
+                                        },
+                                    );
+                                },
+                            );
+                        }),
+                        (None, Some((t, h))) => note(ui, &t, &h),
+                        (None, None) => note(ui, "", ""),
+                    }
+                },
+            );
             let amp = r.and_then(|r| r.amplitude_deg);
             card(
                 &mut cols[3],
@@ -9659,10 +9753,12 @@ impl TimegrapherApp {
                 help::AMPLITUDE,
                 // A default lift angle is said by "the default" beside Lift,
                 // at the card's foot, rather than again in its heading.
-                reading_limits("Amplitude", caveats, lift_now, beats)
-                    .into_iter()
-                    .filter(|f| !f.0.starts_with("lift angle "))
-                    .collect(),
+                Some(
+                    reading_limits("Amplitude", caveats, lift_now, beats)
+                        .into_iter()
+                        .filter(|f| !f.0.starts_with("lift angle "))
+                        .collect(),
+                ),
                 Some((Slot::Lift, CONTROL_SLOT_H)),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a
@@ -9696,10 +9792,9 @@ impl TimegrapherApp {
                         amp.map(|v| format!("{v:.0}°")),
                         &unit,
                         behind.trim_start(),
+                        ("888°", "± 8°"),
                     );
-                    if !heard {
-                        unheard(ui);
-                    }
+                    unheard(ui);
                 },
             );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
@@ -9708,7 +9803,7 @@ impl TimegrapherApp {
                 &mut cols[4],
                 "Beat Error",
                 help::BEAT_ERROR,
-                reading_limits("Beat Error", caveats, lift_now, beats),
+                Some(reading_limits("Beat Error", caveats, lift_now, beats)),
                 None,
                 &|ui| {
                     let unit = match be_pm.filter(|_| unlock.is_some()) {
@@ -9744,10 +9839,9 @@ impl TimegrapherApp {
                         unlock.or(drop).map(|v| format!("{:.2}", v.abs())),
                         &unit,
                         &from,
+                        ("8.88", "± 0.88 ms"),
                     );
-                    if !heard {
-                        unheard(ui);
-                    }
+                    unheard(ui);
                 },
             );
             let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
@@ -9758,7 +9852,7 @@ impl TimegrapherApp {
                 &mut cols[5],
                 "Beat Rate",
                 help::BEAT_RATE,
-                Vec::new(),
+                None,
                 Some((
                     Slot::BeatRate,
                     if !menu {
@@ -9785,7 +9879,13 @@ impl TimegrapherApp {
                         }
                         (None, None) => "",
                     };
-                    figure(ui, set_bph.or(heard_bph).map(|b| b.to_string()), "bph", how);
+                    figure(
+                        ui,
+                        set_bph.or(heard_bph).map(|b| b.to_string()),
+                        "bph",
+                        how,
+                        ("28800", "bph"),
+                    );
                 },
             );
         }
@@ -9794,12 +9894,7 @@ impl TimegrapherApp {
             .map(|c| c.min_rect().bottom())
             .fold(origin.y, f32::max);
         ui.allocate_space(Vec2::new(total, bottom - origin.y));
-        let keep = self.running() && height_w == total;
-        let fit = if keep {
-            tallest.get().max(height)
-        } else {
-            tallest.get()
-        };
+        let fit = tallest.get();
         if (fit, total) != (height, height_w) {
             ui.ctx()
                 .data_mut(|d| d.insert_temp(height_id, (fit, total)));
@@ -10128,11 +10223,16 @@ impl TimegrapherApp {
     /// being analysed, how far it has got.
     fn empty_state(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
+        // Space above the card, but never so much that the card (as tall as
+        // on the last frame) runs out of the pane.
+        let h_id = ui.id().with("empty state height");
+        let last_h: f32 = ui.data(|d| d.get_temp(h_id)).unwrap_or(0.0);
+        let room = (ui.available_height() - last_h).max(0.0);
+        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0).min(room));
         ui.vertical_centered(|ui| {
             let w = 520.0_f32.min(ui.available_width());
             ui.allocate_ui(Vec2::new(w, 0.0), |ui| {
-                theme::card().fill(pal.card).show(ui, |ui| {
+                let shown = theme::card().fill(pal.card).show(ui, |ui| {
                     ui.set_width(w - 28.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 10.0;
@@ -10143,6 +10243,11 @@ impl TimegrapherApp {
                         }
                     });
                 });
+                let h = shown.response.rect.height();
+                if h != last_h {
+                    ui.data_mut(|d| d.insert_temp(h_id, h));
+                    ui.ctx().request_repaint();
+                }
             });
         });
     }
@@ -10322,58 +10427,6 @@ impl TimegrapherApp {
         self.guided_unused.clear();
         self.guided_measured.clear();
         self.reveal_pane(Pane::PositionsTest);
-    }
-
-    /// After a break in the sound while listening: was the watch moved?
-    /// The position buttons mark it; it goes by itself a minute later.
-    fn move_banner(&mut self, ui: &mut egui::Ui) {
-        let Some((from, to)) = self.move_prompt else {
-            return;
-        };
-        let now = self.live.as_ref().map_or(to, |l| l.duration_s());
-        if self.guided.is_some() || now - to > 60.0 || !self.running() {
-            self.move_prompt = None;
-            return;
-        }
-        let pal = theme::pal(ui);
-        let mut pick = None;
-        let mut dismiss = false;
-        banner(ui, pal.accent, |ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                dismiss = ui
-                    .add(egui::Button::new("Not Moved").frame_when_inactive(false))
-                    .on_hover_text("Keep the position as it is")
-                    .clicked();
-                for p in Position::ALL.into_iter().rev() {
-                    if ui
-                        .add_enabled(p != self.position, egui::Button::new(p.code()))
-                        .on_hover_text(format!("The watch is now {}", p.label()))
-                        .clicked()
-                    {
-                        pick = Some(p);
-                    }
-                }
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(format!(
-                                "The sound stopped for {:.0} s and came back. If the watch \
-                                 was moved, mark its new position:",
-                                to - from
-                            ))
-                            .color(pal.text),
-                        )
-                        .wrap(),
-                    );
-                });
-            });
-        });
-        if let Some(p) = pick {
-            self.change_position(p);
-        } else if dismiss {
-            self.move_prompt = None;
-        }
-        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
     }
 
     /// Move the Positions Test on with the sound, whether its pane shows
@@ -11305,7 +11358,6 @@ impl TimegrapherApp {
         }
         let shown = self.live.is_some() && !self.mic_session_set_aside();
         if shown {
-            self.move_banner(ui);
             self.clipping_banner(ui);
         }
         // The readings, and on them what a take needs, unless hidden.
@@ -11316,31 +11368,6 @@ impl TimegrapherApp {
             }
             self.card_controls(ui, &out);
             ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
-        }
-
-        // Looking back through a finished or analysed recording, however
-        // short.
-        let total = self.live.as_ref().map_or(0.0, |l| l.duration_s());
-        if !self.running() && total > 1.0 {
-            let mut end = self.end_s();
-            let pal = theme::pal(ui);
-            ui.horizontal(|ui| {
-                ui.add_space(4.0);
-                ui.label(theme::caption("Time").color(pal.text_secondary))
-                    .on_hover_text("The moment the readings, strip and profile show");
-                ui.spacing_mut().slider_width = (ui.available_width() - 90.0).max(100.0);
-                if ui
-                    .add(
-                        egui::Slider::new(&mut end, 0.0..=total)
-                            .custom_formatter(|v, _| strip::fmt_time(v)),
-                    )
-                    .on_hover_text("Drag to look back through the recording")
-                    .changed()
-                {
-                    self.view_end = Some(end);
-                }
-            });
-            ui.add_space(4.0);
         }
 
         // A drag can leave a container holding only hidden panes.
@@ -11437,8 +11464,8 @@ impl TimegrapherApp {
         if self.follow {
             self.centre();
         }
-        let end = self.end_s();
-        let looking_back = self.view_end.is_some() && end < self.latest_s() - 0.5;
+        let end = self.strip_end_s();
+        let looking_back = self.strip_end.is_some() && end < self.latest_s() - 0.5;
         let note = if guessing {
             Some(
                 "No regular beat found yet. The faint dots are sounds that might be beats."
@@ -11577,16 +11604,16 @@ impl TimegrapherApp {
     }
 
     fn sound_pane(&mut self, ui: &mut egui::Ui) {
-        let end = self.end_s();
-        let latest = self.view_end.is_none() && self.running();
+        let end = self.latest_s();
+        let latest = self.running();
         let mut note = None;
         let shown: Profiles = if latest {
             self.live
                 .as_ref()
                 .map_or([None, None], |l| l.tick_profiles().clone())
         } else {
-            // Looking back: what the session kept nearest before the
-            // moment, else work it out from the file.
+            // Stopped: what the session kept nearest before the end,
+            // else work it out from the file.
             let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
             match i.checked_sub(1).map(|i| &self.sound_history[i]) {
                 Some((t, p)) if end - t <= SOUND_EVERY_S + 0.5 => {
@@ -11621,7 +11648,7 @@ impl TimegrapherApp {
     /// the latest while listening, else what the session kept, else worked
     /// out from the recording (none until that is done).
     fn profiles_at(&mut self, end: f64) -> Profiles {
-        let latest = self.view_end.is_none() && self.running();
+        let latest = self.running();
         let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
         let kept = i
             .checked_sub(1)
@@ -11652,7 +11679,7 @@ impl TimegrapherApp {
     fn scope_pane(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let view = self.scope_view;
-        let profiles = self.profiles_at(self.end_s());
+        let profiles = self.profiles_at(self.latest_s());
         let Some(live) = &self.live else {
             ui.label(
                 RichText::new("Listen to a watch or open a recording to see its sound here.")
@@ -11667,7 +11694,7 @@ impl TimegrapherApp {
             );
             return;
         }
-        let end = self.end_s();
+        let end = self.latest_s();
         // One Beat follows the watch's beat rate, 28,800 bph until known.
         let beat_s = 3600.0 / f64::from(live.bph().unwrap_or(28_800).max(1));
         let split = view.zoom.split();
@@ -11720,7 +11747,7 @@ impl TimegrapherApp {
         let lo = (times.clone().fold(f64::INFINITY, f64::min) - before - 0.015).max(0.0);
         let hi = times.fold(f64::NEG_INFINITY, f64::max) + after + 0.005;
         let mut note = None;
-        let listening = self.view_end.is_none() && self.running();
+        let listening = self.running();
         let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi || (listening && !known.is_empty()) {
             // Nothing more to read, or while listening a beat whose sound
             // went before it was drawn: the others carry on without it.
@@ -11818,7 +11845,7 @@ impl TimegrapherApp {
     }
 
     /// Read the sound from `lo` to `hi` seconds (and two seconds either
-    /// side, for small moves of the time slider) from the recording open.
+    /// side) from the recording open.
     /// False when there is no recording to read it from.
     fn start_scope_job(&mut self, lo: f64, hi: f64) -> bool {
         if self.scope_job.is_some() {
@@ -11930,7 +11957,7 @@ impl TimegrapherApp {
             if let Some(t) = input.zoom_at {
                 let latest = self.latest_s();
                 let to = t + (end - t) * self.strip.span_s / was;
-                self.view_end = if to >= latest {
+                self.strip_end = if to >= latest {
                     None
                 } else {
                     Some(to.max(self.strip.span_s.min(latest)))
@@ -11944,7 +11971,7 @@ impl TimegrapherApp {
         if input.time_shift_s != 0.0 {
             let latest = self.latest_s();
             let to = end + input.time_shift_s;
-            self.view_end = if to >= latest {
+            self.strip_end = if to >= latest {
                 None
             } else {
                 Some(to.max(self.strip.span_s.min(latest)))
@@ -11958,7 +11985,7 @@ impl TimegrapherApp {
             }
         }
         if input.reset {
-            self.view_end = None;
+            self.strip_end = None;
             self.centre();
         }
     }
@@ -12389,7 +12416,7 @@ impl TimegrapherApp {
         if let Some((lo, hi)) = y_range {
             plot = plot.default_y_bounds(lo, hi);
         }
-        let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
+        let marker = self.strip_end.is_some().then(|| self.strip_end_s());
         let lookup = series.clone();
         let colour = series.first().map_or(pal.text_secondary, |l| l.key);
         let to_live = self.charts_to_live_now;
@@ -12552,7 +12579,7 @@ impl TimegrapherApp {
         }
         if let Some(at) = click {
             if at.x > 0.0 {
-                self.view_end = Some(at.x);
+                self.strip_end = Some(at.x);
             }
         }
     }
@@ -12594,23 +12621,6 @@ fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
                 .total_cmp(&(points[b][0] - x).abs())
         })?;
     ((points[near][0] - x).abs() <= 3.0 * spacing(points)).then_some(points[near][1])
-}
-
-/// The break before the beats newer than `seen`, from and to, when it is
-/// longer than [`MOVE_GAP_S`] and no position change falls in it.
-fn sound_break(
-    beats: &[timegrapher_core::beats::Beat],
-    seen: f64,
-    moves: &[(f64, Position)],
-) -> Option<(f64, f64)> {
-    if seen <= 0.0 {
-        return None;
-    }
-    let back = beats.get(beats.partition_point(|b| b.time <= seen))?.time;
-    let moved = moves
-        .iter()
-        .any(|&(at, _)| at >= seen - 1.0 && at <= back + 1.0);
-    (back - seen > MOVE_GAP_S && !moved).then_some((seen, back))
 }
 
 /// The Watch settings a take is read with.
@@ -12998,6 +13008,12 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         false
     }
 
+    /// No pane squeezed to a sliver on a short window: the Paper Strip,
+    /// the main view, keeps room to read under the cards.
+    fn min_size(&self) -> f32 {
+        PANE_MIN_H
+    }
+
     fn simplification_options(&self) -> SimplificationOptions {
         SimplificationOptions {
             all_panes_must_have_tabs: true,
@@ -13093,9 +13109,51 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     }
 }
 
-/// A break in the beats while listening longer than this, seconds, may be
-/// the watch being moved, and the app asks.
-const MOVE_GAP_S: f64 = 3.0;
+/// Small text on a reading card, wrapped whole and never cut short, for
+/// lines that may be what says the figure isn't a watch's: the limits
+/// under the title, and the line under the figure. Its room is there
+/// (empty) or not, as many lines as `longest` takes at `inner`, the width
+/// inside every card of figures alike, so the cards' lines stay level and
+/// their height follows the window's width alone; only text longer still
+/// takes more.
+fn whole_lines(ui: &mut egui::Ui, short: &str, long: &str, longest: &str, inner: f32) {
+    let pal = theme::pal(ui);
+    let w = ui.available_width();
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let lines = |ui: &egui::Ui, text: &str, w: f32| {
+        ui.fonts_mut(|f| {
+            f.layout(text.to_string(), font.clone(), pal.text_secondary, w)
+                .rows
+                .len()
+        })
+    };
+    let n = lines(ui, longest, inner).max(lines(ui, short, w)).max(1);
+    let h = n as f32 * ui.text_style_height(&egui::TextStyle::Small) + 2.0;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    if !short.is_empty() {
+        let l = child
+            .add(egui::Label::new(RichText::new(short).small().color(pal.text_secondary)).wrap());
+        if !long.is_empty() {
+            l.on_hover_text(long);
+        }
+    }
+}
+
+/// The least a pane is squeezed to, points.
+const PANE_MIN_H: f32 = 120.0;
+
+/// The longest limits a reading card usually names, as on noise taken for
+/// beats: the card keeps room for them at every width.
+const LONGEST_LIMITS: &str = "9 s of beats · 25 of 66 beats";
+
+/// The longest line a reading card gives under its figure that must show
+/// whole: the card keeps room for it at every width.
+const LONGEST_STATUS: &str = "waiting for beats";
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
@@ -13860,9 +13918,9 @@ fn reading_limits(
             (Caveat::BeatsMissing { fraction }, _) => {
                 let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
                 let short = if beats > 0 {
-                    format!("{beats} of {expected} expected beats found")
+                    format!("{beats} of {expected} beats")
                 } else {
-                    format!("{:.0}% of expected beats found", fraction * 100.0)
+                    format!("{:.0}% of beats found", fraction * 100.0)
                 };
                 Some((
                     short,
@@ -13873,7 +13931,7 @@ fn reading_limits(
                 ))
             }
             (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
-                format!("{:.0}% of beats clipped", fraction * 100.0),
+                format!("{:.0}% clipped", fraction * 100.0),
                 format!(
                     "{:.0}% of the beats have a clipped sample, which moves the timing of \
                      the sounds inside a beat.",
@@ -13898,10 +13956,7 @@ fn reading_limits(
                 format!("The beat rate set differs from the {heard} bph heard."),
             )),
             (Caveat::SidesByCount { count }, "Beat Error") => Some((
-                format!(
-                    "Tick and Tock named by the beat count across {count} break{}",
-                    if *count == 1 { "" } else { "s" }
-                ),
+                "sides named by count".to_string(),
                 format!(
                     "Tick and Tock are named by the beat count across {count} break{} in \
                      this stretch, not told apart by their sound.",
@@ -13927,7 +13982,7 @@ fn reading_limits(
                     format!("{seconds:.0}")
                 };
                 Some((
-                    format!("{s} s masked out"),
+                    format!("{s} s masked"),
                     format!(
                         "{s} s of this stretch were masked out on the Paper Strip and left out \
                          of the readings."
@@ -13975,7 +14030,7 @@ mod tests {
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
         assert_eq!(short, ["4 s of beats", "input clock not measured"]);
         let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
-        assert_eq!(missing[0].0, "90 of 100 expected beats found");
+        assert_eq!(missing[0].0, "90 of 100 beats");
         for (_, long) in amp.iter().chain(&rate) {
             for word in [
                 "Confidence",
@@ -13995,10 +14050,7 @@ mod tests {
         let caveats = [Caveat::SidesByCount { count: 2 }];
         let be = reading_limits("Beat Error", &caveats, 52.0, 30);
         assert_eq!(be.len(), 1);
-        assert_eq!(
-            be[0].0,
-            "Tick and Tock named by the beat count across 2 breaks"
-        );
+        assert_eq!(be[0].0, "sides named by count");
         assert!(be[0].1.contains("not told apart by their sound"));
         // It doesn't touch the rate or the amplitude.
         assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
@@ -14559,10 +14611,8 @@ mod tests {
         assert_eq!(app.session.settles(), [(30.0, 30.0 + SETTLE_S)]);
         assert!(!app.in_position(35.0) && app.in_position(45.0));
         assert_eq!(app.current_spans(), [(30.0 + SETTLE_S, f64::INFINITY)]);
-        app.view_end = Some(35.0);
-        assert!(app.settling_left().is_some() && app.reading().is_none());
-        app.view_end = Some(50.0);
-        assert!(app.settling_left().is_none() && app.reading().is_some());
+        assert!(app.session.settling_left(35.0).is_some() && app.reading_at_time(35.0).is_none());
+        assert!(app.session.settling_left(50.0).is_none() && app.reading_at_time(50.0).is_some());
         // Moved again 4 s in: the first settling ends there.
         app.session.start_settle(34.0);
         assert_eq!(
@@ -16326,26 +16376,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// A break of more than a few seconds in the beats asks whether the
-    /// watch moved, unless a move was marked in it.
-    #[test]
-    fn a_break_in_the_beats_asks_about_a_move() {
-        let beat = |t: f64| timegrapher_core::beats::Beat {
-            index: 0,
-            time: t,
-            quality: 1.0,
-        };
-        let beats: Vec<_> = [10.0, 10.125, 10.25, 16.0, 16.125]
-            .into_iter()
-            .map(beat)
-            .collect();
-        assert_eq!(sound_break(&beats, 10.25, &[]), Some((10.25, 16.0)));
-        assert_eq!(sound_break(&beats, 10.125, &[]), None);
-        assert_eq!(sound_break(&beats, 0.0, &[]), None);
-        let marked = [(0.0, Position::DialUp), (12.0, Position::DialDown)];
-        assert_eq!(sound_break(&beats, 10.25, &marked), None);
-    }
-
     /// A position as a word of its own in a file's name, and only one.
     #[test]
     fn positions_are_read_from_file_names() {
@@ -16800,9 +16830,9 @@ mod tests {
     #[test]
     fn fit_shows_the_whole_session() {
         let mut app = synthetic(40.0, 0.0);
-        app.view_end = Some(10.0);
+        app.strip_end = Some(10.0);
         app.fit_strip();
-        assert_eq!(app.view_end, None);
+        assert_eq!(app.strip_end, None);
         assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
         assert!(app.latest_s() > 35.0);
     }
@@ -17708,13 +17738,18 @@ mod tests {
                     .collect::<Vec<_>>(),
                 original
             );
-            app.view_end = Some(75.0);
-            let reading = app.reading().unwrap();
+            let reading = app.reading_at_time(75.0).unwrap();
             assert!(reading.watch_heard);
             assert!(reading.span_s <= 75.0 - 60.03 + 1e-9, "{reading:?}");
             assert!(reading.rate_s_per_day.unwrap().abs() < 0.001, "{reading:?}");
-            app.view_end = Some(20.0);
-            assert!(app.reading().unwrap().rate_s_per_day.unwrap().abs() < 0.001);
+            assert!(
+                app.reading_at_time(20.0)
+                    .unwrap()
+                    .rate_s_per_day
+                    .unwrap()
+                    .abs()
+                    < 0.001
+            );
         }
     }
 
@@ -17868,18 +17903,15 @@ mod tests {
             .values()
             .flatten()
             .all(|p| p.t <= 30.0 || p.t > 40.0));
-        app.view_end = Some(35.0);
-        assert!(app.reading().is_none());
-        app.view_end = Some(41.0);
-        let after = app.reading().unwrap();
+        assert!(app.reading_at_time(35.0).is_none());
+        let after = app.reading_at_time(41.0).unwrap();
         assert!(
             after.span_s <= 1.0,
             "no fit crosses the settling end: {}",
             after.span_s
         );
         // Endpoint convention is inherited unchanged: settling_at is (from,to].
-        app.view_end = Some(40.0);
-        assert!(app.reading().is_none());
+        assert!(app.reading_at_time(40.0).is_none());
     }
 
     #[test]
@@ -18709,6 +18741,112 @@ mod tests {
                 "{} pt wide in a {w} pt card",
                 used.width()
             );
+        }
+    }
+
+    /// A card's limits show whole, wrapped, never cut short, in room that
+    /// is the same whether they are there or not: at the narrowest card
+    /// and a wide one.
+    #[test]
+    fn a_cards_limits_show_whole_in_room_kept_for_them() {
+        let ctx = themed();
+        let noise = "9 s of beats · 25 of 66 beats";
+        for w in [92.0, 190.0] {
+            let mut heights = Vec::new();
+            for short in ["", "12 s of beats", noise] {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(w, 400.0));
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect)
+                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                        );
+                        let top = child.cursor().top();
+                        whole_lines(&mut child, short, "", LONGEST_LIMITS, w);
+                        heights.push(child.cursor().top() - top);
+                    });
+                });
+                let drawn: String = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(!drawn.contains('…'), "{drawn}");
+                assert_eq!(drawn.replace('\n', " ").trim(), short, "at {w} pt");
+            }
+            assert!(
+                heights.iter().all(|&h| h == heights[0]),
+                "{heights:?} at {w} pt"
+            );
+        }
+    }
+
+    /// The reading cards are one height at a width, whatever they show:
+    /// waiting, reading, settling, or with their limits named.
+    #[test]
+    fn the_cards_keep_their_height_whatever_they_show() {
+        let ctx = themed();
+        let height = |app: &TimegrapherApp, w: f32| {
+            let mut h = 0.0;
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 820.0),
+                    )),
+                    ..Default::default()
+                };
+                let _ = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let top = ui.cursor().top();
+                        let _ = app.readouts(ui);
+                        h = ui.cursor().top() - top;
+                    });
+                });
+            }
+            h
+        };
+        // A take opened: the Beat Rate card shows its figure, not its menu.
+        let waiting = synthetic(1.0, 0.0);
+        assert!(waiting.reading().is_none_or(|r| r.rate_s_per_day.is_none()));
+        let reading = synthetic(60.0, 0.0);
+        assert!(reading.reading().is_some());
+        let mut settling = synthetic(60.0, 0.0);
+        settling
+            .session
+            .load(&[(0.0, Position::DialUp), (55.0, Position::DialDown)], &[]);
+        settling.position = Position::DialDown;
+        settling.session.start_settle(55.0);
+        let mut masked = synthetic(60.0, 0.0);
+        masked.mask(5.0, 30.0);
+        // Hiss with the beat rate set: a reading of whatever peaks there
+        // are, with its limits named.
+        let mut noise = TimegrapherApp::with_devices(Vec::new(), None);
+        noise.bph = Some(28_800);
+        noise.reset_session(48000, "noise".into());
+        let mut seed = 12_345_u32;
+        let hiss: Vec<f32> = (0..48_000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let live = noise.live.as_mut().unwrap();
+        for b in hiss.chunks(960) {
+            live.push(b);
+        }
+        noise.poll();
+        assert!(noise.reading().is_some_and(|r| !r.watch_heard));
+        for w in [800.0, 1280.0, 1900.0] {
+            let h = height(&waiting, w);
+            assert!(h > 0.0);
+            for app in [&reading, &settling, &masked, &noise] {
+                assert_eq!(height(app, w), h, "at {w} pt wide");
+            }
         }
     }
 
@@ -19560,15 +19698,15 @@ mod tests {
             time_shift_s: -5.0,
             ..Default::default()
         };
-        app.apply_strip_input(back, app.end_s());
-        assert!((app.end_s() - (latest - 5.0)).abs() < 1e-6);
+        app.apply_strip_input(back, app.strip_end_s());
+        assert!((app.strip_end_s() - (latest - 5.0)).abs() < 1e-6);
         let forward = StripInput {
             time_shift_s: 20.0,
             ..Default::default()
         };
-        app.apply_strip_input(forward, app.end_s());
+        app.apply_strip_input(forward, app.strip_end_s());
         assert_eq!(
-            app.view_end, None,
+            app.strip_end, None,
             "past the newest beat follows live again"
         );
 
@@ -19578,7 +19716,7 @@ mod tests {
             ..Default::default()
         };
         let before = app.anchor.unwrap().time;
-        app.apply_strip_input(slide, app.end_s());
+        app.apply_strip_input(slide, app.strip_end_s());
         assert!((app.anchor.unwrap().time - before - 0.001).abs() < 1e-12);
         assert!(!app.follow, "sliding by hand ends auto-centring");
 
@@ -19587,12 +19725,12 @@ mod tests {
             width_factor: 0.5,
             ..Default::default()
         };
-        app.apply_strip_input(zoom, app.end_s());
+        app.apply_strip_input(zoom, app.strip_end_s());
         assert_eq!(app.strip.span_s, 60.0);
         assert_eq!(app.strip.half_width_ms, 5.0);
 
         // Zoomed about a time, that time stays where it was on the strip.
-        let end = app.end_s();
+        let end = app.strip_end_s();
         let at = end - 15.0;
         let zoom = StripInput {
             span_factor: 0.5,
@@ -19601,7 +19739,7 @@ mod tests {
         };
         app.apply_strip_input(zoom, end);
         assert_eq!(app.strip.span_s, 30.0);
-        let now = app.view_end.expect("looking back");
+        let now = app.strip_end.expect("looking back");
         assert!(((now - at) / 30.0 - 15.0 / 60.0).abs() < 1e-9, "{now}");
     }
 
