@@ -1260,6 +1260,9 @@ pub struct TimegrapherApp {
     keep_after_form: bool,
     /// A test ended with no watch picked: where it goes, asked.
     test_keep: Option<TestKeep>,
+    /// Where the Positions Test and Power Reserve panes were last drawn,
+    /// for the question to sit clear of the results it asks about.
+    results_rects: [Option<egui::Rect>; 2],
     /// This take ran a Positions Test.
     positions_take: bool,
     /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
@@ -1807,6 +1810,7 @@ impl TimegrapherApp {
             watch_form: None,
             keep_after_form: false,
             test_keep: None,
+            results_rects: [None; 2],
             positions_take: false,
             take_ask: None,
             take_keep: None,
@@ -7232,58 +7236,81 @@ impl TimegrapherApp {
         };
         let mut answer: Option<Option<Option<String>>> = None;
         let mut new = false;
-        egui::Modal::new(egui::Id::new("keep the test")).show(ctx, |ui| {
-            ui.set_width(420.0);
-            let pal = theme::pal(ui);
-            ui.label(RichText::new(format!("Keep This {name}?")).font(theme::semibold(15.0)));
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new(format!(
-                    "No watch was picked, so this {name} isn't kept anywhere yet. Unsorted \
+        // At the top or foot of the window, whichever is clear of the
+        // test's pane, over a light backdrop, so its results stay in view
+        // while it asks.
+        let id = egui::Id::new("keep the test");
+        let pane = self.results_rects[match kind {
+            TestKeep::Positions => 0,
+            TestKeep::PowerReserve => 1,
+        }];
+        let screen = ctx.content_rect();
+        let anchor = match pane {
+            Some(r) if r.center().y < screen.center().y => {
+                (egui::Align2::CENTER_BOTTOM, [0.0, -48.0])
+            }
+            _ => (egui::Align2::CENTER_TOP, [0.0, 48.0]),
+        };
+        let area = egui::Modal::default_area(id).anchor(anchor.0, anchor.1);
+        egui::Modal::new(id)
+            .area(area)
+            .backdrop_color(egui::Color32::from_black_alpha(40))
+            .show(ctx, |ui| {
+                ui.set_width(420.0);
+                let pal = theme::pal(ui);
+                ui.label(RichText::new(format!("Keep This {name}?")).font(theme::semibold(15.0)));
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(format!(
+                        "No watch was picked, so this {name} isn't kept anywhere yet. Unsorted \
                      holds it until you file it under a watch or delete it."
-                ))
-                .color(pal.text_secondary),
-            );
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui
-                    .add(theme::primary(ui, "Keep in Unsorted"))
-                    .on_hover_text(
-                        "Keep the take in Unsorted, in the Watches pane, to file under a \
-                         watch later",
-                    )
-                    .clicked()
-                {
-                    answer = Some(Some(None));
-                }
-                ui.menu_button("Keep in a Watch…", |ui| {
-                    for (id, name) in &watches {
-                        if ui.button(name).clicked() {
-                            answer = Some(Some(Some(id.clone())));
-                        }
-                    }
-                    if !watches.is_empty() {
-                        ui.separator();
-                    }
+                    ))
+                    .color(pal.text_secondary),
+                );
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
                     if ui
-                        .button("New Watch…")
-                        .on_hover_text("Add a watch, and keep the take in it when you add it")
+                        .add(theme::primary(ui, "Keep in Unsorted"))
+                        .on_hover_text(
+                            "Keep the take in Unsorted, in the Watches pane, to file under a \
+                         watch later",
+                        )
                         .clicked()
                     {
-                        new = true;
+                        answer = Some(Some(None));
                     }
-                })
-                .response
-                .on_hover_text("Keep the take in one of your watches");
-                if ui
-                    .add(theme::secondary(ui, "Throw Away"))
-                    .on_hover_text("Delete the take: its sound and its readings")
-                    .clicked()
-                {
-                    answer = Some(None);
-                }
+                    let keep = ui
+                        .add(theme::secondary(ui, "Keep in a Watch…"))
+                        .on_hover_text(
+                            "Keep the take in one of your watches. It keeps the settings it ran \
+                         with; the watch's own apply to its next take.",
+                        );
+                    egui::Popup::menu(&keep).show(|ui| {
+                        for (id, name) in &watches {
+                            if ui.button(name).clicked() {
+                                answer = Some(Some(Some(id.clone())));
+                            }
+                        }
+                        if !watches.is_empty() {
+                            ui.separator();
+                        }
+                        if ui
+                            .button("New Watch…")
+                            .on_hover_text("Add a watch, and keep the take in it when you add it")
+                            .clicked()
+                        {
+                            new = true;
+                        }
+                    });
+                    if ui
+                        .add(theme::secondary(ui, "Throw Away"))
+                        .on_hover_text("Delete the take: its sound and its readings")
+                        .clicked()
+                    {
+                        answer = Some(None);
+                    }
+                });
             });
-        });
         if new {
             self.open_new_watch_form();
             self.keep_after_form = true;
@@ -9708,6 +9735,7 @@ impl TimegrapherApp {
     /// The Positions Test pane: the banner and the tables, and what its
     /// buttons ask for.
     fn positions_pane(&mut self, ui: &mut egui::Ui) {
+        self.results_rects[0] = Some(ui.max_rect());
         let now = self.live.as_ref().map(|l| l.duration_s());
         let phase = match (self.guided.as_mut(), now) {
             (Some(t), Some(now)) => Some(t.tick(now)),
@@ -11862,7 +11890,10 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                     .steady_pane(ui, p.steady_view().unwrap_or_default()),
                 Pane::Isochronism => self.app.isochronism_pane(ui),
                 Pane::PositionsTest => self.app.positions_pane(ui),
-                Pane::PowerReserve => self.app.reserve_pane(ui),
+                Pane::PowerReserve => {
+                    self.app.results_rects[1] = Some(ui.max_rect());
+                    self.app.reserve_pane(ui)
+                }
                 Pane::Scope => self.app.scope_pane(ui),
                 p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
                 p => self.app.chart(ui, *p),
@@ -17344,9 +17375,28 @@ mod tests {
         let ctx = themed();
         assert!(app.confirm.is_none() && app.watch_form.is_none());
         let mut drawn = String::new();
-        for _ in 0..3 {
-            let out = ctx.run(screen(), |ctx| app.test_keep_dialog(ctx));
-            drawn = painted_text(&out);
+        // Clear of the test's pane, top or foot, leaving its table in view.
+        let full = screen().screen_rect.unwrap();
+        let (upper, lower) = full.split_top_bottom_at_fraction(0.5);
+        for (pane, clear) in [(lower, upper), (upper, lower)] {
+            app.results_rects[0] = Some(pane.shrink(8.0));
+            let mut title = None;
+            for _ in 0..3 {
+                let out = ctx.run(screen(), |ctx| app.test_keep_dialog(ctx));
+                drawn = painted_text(&out);
+                for c in &out.shapes {
+                    if let egui::Shape::Text(t) = &c.shape {
+                        if t.galley.text() == "Keep This Positions Test?" {
+                            title = Some(c.shape.visual_bounding_rect());
+                        }
+                    }
+                }
+            }
+            let title = title.expect("the sheet's title");
+            assert!(
+                clear.contains_rect(title),
+                "the sheet's title at {title:?}, the pane at {pane:?}"
+            );
         }
         for t in [
             "Keep This Positions Test?",
