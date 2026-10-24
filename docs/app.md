@@ -28,9 +28,15 @@ which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
-menus, a **Watches** button, in words, that shows or hides the Watches
-pane, then one icon for each other pane that shows or hides it (resting the pointer
+menus, one icon for each pane that shows or hides it (resting the pointer
 on an icon names its pane), and a gear at the end that opens Settings.
+The icons come in groups: the core panes first (Watches, the Paper
+Strip, the Tick Tock Profile and the Scope), then **Charts**,
+**Distributions**, **Analysis** (the Steadiness views and Isochronism)
+and **Tests** (the Positions Test and the Power Reserve Test), each
+under its name. Where the window is too narrow for every icon, the
+largest groups fold into a menu under their name, with the number of
+their panes showing, until the rest fit.
 Each icon is a small picture with a pun on
 its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
 Tock Profile, a die showing six for the Positions Test, a hare for the
@@ -39,35 +45,50 @@ key for Allan, and so on. A pane showing has its icon in colour on a
 tinted chip; a hidden one is faint grey. The charts and distributions
 take their reading's colour, and the Steadiness views share one green.
 
-**The readings**, across the top, are five cards: **Position**, then
-**Rate**, **Amplitude**, **Beat Error** and **Beat Rate**, the four cards
-of figures one width and the Position card narrower. What the
-take on show needs sits at the foot of its card. **Position** names the
-position and has six icons, DU, DD, CU, CD, CL and CR, each with its code
-and its key under it ("DU 1" to "CR 6"), the one in use picked; keys 1 to 6 pick them too, except while
-typing in a field. **Rate** has a **Listen** icon, which starts Quick
-Listen (below), or with a watch picked that watch's Listen take, and
-becomes a **Stop** icon while listening; beside it a **Save** icon (a
-floppy disk), whose menu offers **Keep in a Watch** (your watches not
-archived, then **New Watch…**; shown for a Quick Listen take, and for a
-recording opened from outside the Watches folder) and **Save in a
-Folder…**, which asks where, or **Save Again** once it has been saved.
-The Save icon is hidden for a watch's own take, which saves itself at
-Stop. Then **Average Over**, shown as "Average 10 s", the time the
-readings are fitted over.
+**The readings**, across the top, are six cards: **Position** and
+**Listen**, narrower, then **Rate**, **Amplitude**, **Beat Error** and
+**Beat Rate**, one width. Each card of figures carries its big figure and
+one line at most; what stands behind the figure is in its hover: the
+beats the rate is fitted to and their jitter, the Tick and Tock
+amplitudes, the beat error from the drop, how the beat rate was found,
+and, for a stopped take, the whole take's reading (see below).
+**Position** shows the position as a picture, with its name and code
+beside it. While you listen, or before anything is on show, arrows
+around the picture tip the watch, seen from above with 12 away from you:
+up tips it back (the side away from you goes down), down tips it
+forward, left and right roll it to that side, and the corner arrow turns
+it over. From Dial Up, up gives Crown Left (12 down), down Crown Right,
+left Crown Up, right Crown Down, and the corner Dial Down. A tip and its
+opposite undo each other. Keys 1 to 6 pick DU, DD, CU, CD, CL and CR too,
+except while typing in a field. With a take on show, and during a
+Positions Test or a Power Reserve Test, the card only shows the
+position, the take's at the moment on show or the one the test set, with
+no arrows: a take's positions can't be changed afterwards. **Listen**
+has a **Listen** icon, which starts Quick Listen (below), or with a
+watch picked that watch's Listen take, and becomes a **Stop** icon while
+listening; beside it a **Save** icon (a floppy disk), whose menu offers
+**Keep in a Watch** (your watches not archived, then **New Watch…**;
+shown for a Quick Listen take, and for a recording opened from outside
+the Watches folder) and **Save in a Folder…**, which asks where, or
+**Save Again** once it has been saved. The Save icon is hidden for a
+watch's own take, which saves itself at Stop. Under them **Average
+Over**, shown as "Average 10 s", the time the readings are fitted over.
 **Amplitude** has **Lift**, the lift angle, typed or picked from the
-common ones, with "the default" beside it while nothing has set it; a
-watch's calibre that the table knows sets it instead, and it shows as a
-figure. **Beat Error** has no controls. **Beat Rate** has the **Beat
-Rate** menu (Auto or a standard rate) and, with no watch picked, the
-labelled **Calibre** menu (its search covers the whole table, with **Manage
+common ones, with "the default" beside it while nothing has set it
+(shortened where the card is narrow); a watch's calibre that the table
+knows sets it instead, and it shows as a figure. **Beat Error** has no
+controls. On **Beat Rate** the big figure is itself the beat rate's menu
+(Auto, found from the beats, or a standard rate), with "Auto" beside it
+where the card has room, and, with no watch picked, the labelled
+**Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, one line names the calibre, the beat rate and the lift
-angle it sets instead (Edit… on the watch changes them).
+the table knows, the figure shows and one line names the calibre, the
+beat rate and the lift angle it sets instead (Edit… on the watch changes
+them).
 
-**Quick Listen**, from the Listen icon on the Rate card, listens on the
+**Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
-over the counter: it clears the take's name, shows **Unsorted** in the
+over the counter: it clears the take's name, shows **Unsorted Takes** in the
 Watches pane and starts a new session. It asks first only about what
 isn't Quick Listen's: changed masks on a recording opened, or a watch's
 unsaved details. One icon starts and stops it; there
@@ -82,19 +103,22 @@ is kept, its sound goes without a question when you quit, start another
 take or open a recording, and is not kept for the next start to offer
 back. Starting a take of a watch ends Quick Listen.
 
-**The Watches pane** is hidden to begin with: the **Watches** button at
+**The Watches pane** is hidden to begin with: the **Watches** icon at
 the top, the Watches menu or the View menu shows it, at the left. It is a
 pane like the others: drag it by its tab, or hide it. At its top, under
-**Watches**, one
-row per watch (see The Watches folder, below): its first photo
-(by name; a tile with its initial while it has none, or one that can't be
-read), its name, its calibre, how many takes it has and the date of the last, and the space
-they use, with the Watches folder's total size and location and **Show in
-Finder** at the foot. Its toolbar has a search (in the name, calibre,
-notes and fields), **Sort** by Name, Last Take or Size, **Archived**
-(once a watch is archived, to list those too) and **New Watch…**.
-Unsorted is listed above the watches while it holds a take, and its
-takes have the same menu as a watch's, with **File Under a Watch** (into
+**Watches**, **Unsorted Takes**, always first, then one row per watch
+(see The Watches folder, below): its first photo (by name; a tile with
+its initial while it has none, or one that can't be read), its name, its
+calibre, how many takes it has and the date of the last, and the space
+they use. The row picked is marked. Its toolbar has a search (in the
+name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
+**Archived** (once a watch is archived, to list those too) and **New
+Watch…**. The Watches folder's location, and Show in Finder for it, are
+in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
+watch, no calibre, the default lift angle and the beat rate found from
+the beats (with a take on show, its readings keep the settings they were
+measured with, and these apply from the next Listen), and shows the
+takes Quick Listen kept. Those takes have the same menu as a watch's, with **File Under a Watch** (into
 the watch picked from it) in place of Move to Another Watch, so a take
 waits there until it is filed or deleted. No watch can be called
 Unsorted. **New Watch…** opens a form:
@@ -103,7 +127,9 @@ and Beat Rate), Lift Angle, Beat Rate and Notes are always in the form,
 set or not; **Add Field** adds a suggested field or one of your own, and
 only those can be removed, with their ×; **Archived** hides the watch from the
 list without deleting it. The first watch makes the Watches folder.
-Clicking a watch shows its details; **Listen**, **Positions Test** and
+Clicking a watch shows its details, and **‹ All Watches** goes back to
+the list with that watch still picked and its row marked: Listen and the
+tests still take it until another row is picked. **Listen**, **Positions Test** and
 **Power Reserve Test**, each a new take on the microphone, asked about
 first when there is unsaved sound other than a Quick Listen take's, and
 saved into the watch when it stops (while one runs, **Stop** stands in
@@ -211,7 +237,7 @@ status line. Every card, pane and reading has a **?** beside its name: resting
 the pointer on it shows the plain answer in a line or two, and clicking it
 opens the whole explanation in place (click it again, or anywhere else, to
 close it). Every setting gives a short hint when the pointer rests on it. Before anything is
-open, the Paper Strip says where to start: **Listen**, on the Rate card,
+open, the Paper Strip says where to start: **Listen**, on the Listen card,
 listens without picking a watch, and Save keeps what it heard; for a
 watch's history, **Watches** at the top lists your watches, to pick one
 and then Listen, Positions Test or Power Reserve Test, each take saved
@@ -249,10 +275,10 @@ Steadiness then covers the whole night.
 readings use: found from the beats while the Beat Rate menu on its card is Auto,
 or the one set there, and says which. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default, or 2, 4, 20, 30
-or 60 s; the setting is Average Over, on the Rate card). Early in a session, or after a break in listening or a gap of
+or 60 s; the setting is Average Over, on the Listen card). Early in a session, or after a break in listening or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
-for: the readings use what there is and say so ("190 beats in 24 s of
-180 s"); they never fit across a break or gap, since the watch may have
+for: the readings use what there is and say so in the rate's hover
+("190 beats in 24 s of 180 s"); they never fit across a break or gap, since the watch may have
 been moved or have drifted meanwhile. The panes that average (the Paper Strip's
 Rate Line, guides and overlays, the Tick Tock Profile, the three charts and the three
 distributions) follow Readings' Average Over unless set otherwise: each has
@@ -266,18 +292,17 @@ median of its 2 s windows, estimated from successive window differences
 and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
-Under it are the amplitude from the ticks (blue dot) and from the tocks
-(orange dot). The sound can't tell which beat is
+Its hover gives the amplitude from the ticks and from the tocks. The sound can't tell which beat is
 which pallet, so the first beat heard is called the tick;
 which side is the entry pallet can't be told from the sound, so the sign
 of the beat error follows which beat came first, as on tg. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
-in the regression tests); beside it, smaller, is the beat error timed from the beat as a whole,
+in the regression tests); its hover gives the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
 Beside the rate, when it is at least 0.05 s/d, is its ± figure: the
 estimated standard error from short-window rates, scaled to the averaging
 time. It is not the covariance error of the fitted beat-time slope.
-Under the rate: how many beats the readings used and
+The rate's hover gives how many beats the readings used and
 the jitter: how far single beats land from the steady line the rate and
 beat error are fitted to (a robust standard deviation, in microseconds),
 which is the spread of the dots across the strip; smaller means less
@@ -306,16 +331,16 @@ in listening in the stretch (such as the computer sleeping). When no calibre or 
 beside Lift on the Amplitude card says the amplitude comes from the
 default 52°. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
-Tock named by the beat count across 1 break"). Once stopped, a line under each card gives the whole take in the
+Tock named by the beat count across 1 break"). Once stopped, each figure's hover also gives the whole take in the
 position the watch is in, settling left out, as `timegrapher session`
 reads it (core `session::measure_masked`, the time in other positions
 masked): the rate fitted over every beat, the amplitude and beat error
 the median of the 2 s windows, each with its ±, and the 5th to 95th
 percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
 error's sign differs either side of a cut (a break, a jump, a move or
-its settling) in that stretch, the line combines the sizes either side,
-as `session` does, and a line under it says "whole take given as a
-size: its sign differs either side of a cut".
+its settling) in that stretch, it combines the sizes either side, as
+`session` does, and says the "whole take is given as a size: its sign
+differs either side of a cut".
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
@@ -459,7 +484,7 @@ the take will be kept against the most an 80 h run writes (the sample
 rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
 16-bit). Start Test starts a new session in the picked position; while it
 runs the computer is kept awake whatever Keep Awake is set to, the
-position can't change, and the **Stop** icon on the Rate card, or **Stop Test**
+position can't change, and the **Stop** icon on the Listen card, or **Stop Test**
 in the pane, ends the test. The run ends at the last beat heard before 10 minutes with none
 (a beat heard is one matching the beat's sound with a quality over 0.4,
 in a run of at least eight such beats each within one and a half beats of
@@ -710,7 +735,7 @@ leaves them out too, and all of them come back masked when the saved
 take is opened. Masks on a recording opened from disk are
 kept when it is saved: a mask change marks it unsaved, and **Save** in
 the File menu (Ctrl+S, Cmd+S on a Mac) writes them, and New Session, opening
-another recording, a take of a watch, the Listen icon on the Rate card,
+another recording, a take of a watch, the Listen icon on the Listen card,
 the Positions Test pane's Start Test, or quitting asks first when they've
 changed; they stay on show until
 listening starts. On a take it changes only `masked` on the session file's
@@ -788,7 +813,7 @@ share them.
 unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)). Each view is a pane of
 its own, so two can sit side by side; their icons sit together under
-**Steadiness** in the icon bar (and in a Steadiness menu under View), and
+**Analysis** in the icon bar (and in an Analysis menu under View), and
 they start as hidden tabs beside the Tick Tock Profile. Each series shows the sentence `series` writes, saying what
 was detected (a cycle, two levels, a step, a trend, correlation between
 readings, or none of these), with no verdict word or colour, and under it
@@ -1158,7 +1183,7 @@ listening starts. When another program records from the same microphone
 (a long take with the recorder, say), don't start listening during its
 take, and press Stop before one begins.
 
-**Listen** on the Rate card (Quick Listen), or **Listen**, **Positions
+**Listen** on the Listen card (Quick Listen), or **Listen**, **Positions
 Test** or **Power Reserve Test** for a watch picked in the Watches pane,
 begins a session from the microphone. **Stop** stops
 listening and lets go of the microphone, so another program can use it,
