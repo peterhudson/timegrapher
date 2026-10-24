@@ -1301,9 +1301,8 @@ pub fn tool_field<R>(
 
 /// One of a few choices in a toolbar: a row of icons, the picked one
 /// tinted; under "…" or in a settings list, the choices in words. True
-/// when the choice changed. Two choices are one switch, not two icons:
-/// the second choice's icon, tinted while it is picked, and a click
-/// flips between them.
+/// when the choice changed. Two choices are one button, not two icons:
+/// the icon of the choice in use, and a click changes to the other.
 pub fn tool_choice<T: PartialEq + Copy>(
     ui: &mut Ui,
     label: &str,
@@ -1311,26 +1310,23 @@ pub fn tool_choice<T: PartialEq + Copy>(
     value: &mut T,
     choices: &[(T, Icon, &str, &str)],
 ) -> bool {
-    if let [(off, _, off_name, off_why), (on, icon, on_name, on_why)] = *choices {
-        note_icon(
-            ui,
-            icon,
-            &format!("{label}: {on_name} when lit, {off_name} when not"),
-        );
+    if let [(off, off_icon, off_name, off_why), (on, on_icon, on_name, on_why)] = *choices {
+        note_icon(ui, off_icon, &format!("{label}: {off_name}"));
+        note_icon(ui, on_icon, &format!("{label}: {on_name}"));
         return bar_item(ui, label, |ui| {
             if in_toolbar(ui) {
-                let p = pal(ui);
-                let lit = *value == on;
-                let (name, why) = if lit {
-                    (on_name, on_why)
+                // Two modes, not on and off: the icon is the mode in use,
+                // and a click changes to the other.
+                let now_on = *value == on;
+                let (icon, name, why, other) = if now_on {
+                    (on_icon, on_name, on_why, off_name)
                 } else {
-                    (off_name, off_why)
+                    (off_icon, off_name, off_why, on_name)
                 };
-                let other = if lit { off_name } else { on_name };
-                let r = icon_toggle(ui, icon, lit, p.accent)
+                let r = icon_tool(ui, icon)
                     .on_hover_text(format!("{label}: {}. Click for {other}.", hover(name, why)));
                 if r.clicked() {
-                    *value = if lit { off } else { on };
+                    *value = if now_on { off } else { on };
                 }
                 r.clicked()
             } else {

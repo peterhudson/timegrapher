@@ -199,24 +199,25 @@ fn drawing(icon: Icon) -> &'static str {
         // tilted so its top shows, the crystal's dome and 12 o'clock's
         // mark for dial up, the case back's ring and the dome below for
         // dial down; standing, face-on, its 12 o'clock mark and crown
-        // where they are. The crown is the thick knob; no lugs.
+        // where they are. The crown is the solid block, bigger than the
+        // 12's thin mark; no lugs.
         Icon::DialUp => {
-            r#"<ellipse cx="12" cy="9.5" rx="8" ry="3.4"/><path d="M4 9.5v1.6a8 3.4 0 0 0 16 0V9.5"/><path d="M6.6 8.6a6 2.2 0 0 1 10.8 0" stroke-width="1.1"/><path stroke-width="2.2" d="M12 6.9v1.1"/><path stroke-width="2.6" d="M20.4 10.3h1.8"/><path d="M8.5 15.2L9.5 17.4H14.5L15.5 15.2"/><path d="M12 17.4V21M7.5 21.5H16.5"/>"#
+            r#"<ellipse cx="12" cy="9.5" rx="8" ry="3.4"/><path d="M4 9.5v1.6a8 3.4 0 0 0 16 0V9.5"/><path d="M6.6 8.6a6 2.2 0 0 1 10.8 0" stroke-width="1.1"/><path d="M12 6.9v1.1"/><rect x="20.4" y="8.6" width="2.4" height="3.2" rx=".7" fill="currentColor" stroke="none"/><path d="M8.5 15.2L9.5 17.4H14.5L15.5 15.2"/><path d="M12 17.4V21M7.5 21.5H16.5"/>"#
         }
         Icon::DialDown => {
-            r#"<ellipse cx="12" cy="8.5" rx="8" ry="3.4"/><path d="M4 8.5v1.6a8 3.4 0 0 0 16 0V8.5"/><ellipse cx="12" cy="8.5" rx="4.6" ry="1.8" stroke-width="1.1"/><path d="M7 12.6Q12 16.4 17 12.6" stroke-width="1.1"/><path stroke-width="2.6" d="M3.6 9.3H1.8"/><path d="M8.5 16.2L9.5 18H14.5L15.5 16.2"/><path d="M12 18V21M7.5 21.5H16.5"/>"#
+            r#"<ellipse cx="12" cy="8.5" rx="8" ry="3.4"/><path d="M4 8.5v1.6a8 3.4 0 0 0 16 0V8.5"/><ellipse cx="12" cy="8.5" rx="4.6" ry="1.8" stroke-width="1.1"/><path d="M7 12.6Q12 16.4 17 12.6" stroke-width="1.1"/><rect x="1.2" y="7.6" width="2.4" height="3.2" rx=".7" fill="currentColor" stroke="none"/><path d="M8.5 16.2L9.5 18H14.5L15.5 16.2"/><path d="M12 18V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownUp => {
-            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M7.7 8.8L9.5 8.8"/><path stroke-width="2.6" d="M12 2.9L12 1.3"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
+            r#"<circle cx="12" cy="8.4" r="5.2"/><path d="M8 8.4L9.6 8.4"/><rect x="10.2" y="0.7" width="3.6" height="2" rx=".7" fill="currentColor" stroke="none"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownDown => {
-            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M16.3 8.8L14.5 8.8"/><path stroke-width="2.6" d="M12 14.7L12 16.3"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
+            r#"<circle cx="12" cy="8.4" r="5.2"/><path d="M16 8.4L14.4 8.4"/><rect x="10.2" y="14.1" width="3.6" height="2" rx=".7" fill="currentColor" stroke="none"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownLeft => {
-            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M12 13.1L12 11.3"/><path stroke-width="2.6" d="M6.1 8.8L4.5 8.8"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
+            r#"<circle cx="12" cy="8.4" r="5.2"/><path d="M12 12.4L12 10.8"/><rect x="4.3" y="6.6" width="2" height="3.6" rx=".7" fill="currentColor" stroke="none"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownRight => {
-            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M12 4.5L12 6.3"/><path stroke-width="2.6" d="M17.9 8.8L19.5 8.8"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
+            r#"<circle cx="12" cy="8.4" r="5.2"/><path d="M12 4.4L12 6"/><rect x="17.7" y="6.6" width="2" height="3.6" rx=".7" fill="currentColor" stroke="none"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         // An arrow rising out of an open-topped box: Export, as Share is
         // drawn on a Mac.

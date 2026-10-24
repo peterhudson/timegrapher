@@ -58,7 +58,8 @@ and, for a stopped take, the whole take's reading (see below).
 the watch head on a timegrapher's stand: lying, it is tilted so its top
 shows (the crystal's dome and the 12 o'clock mark for dial up, the case
 back's ring with the dome below for dial down); standing, it faces you
-with its 12 o'clock mark and its crown (the thick knob) where they are.
+with its 12 o'clock mark and its crown (the solid block, bigger than
+the 12's thin mark) where they are.
 Its name and code sit beside it (the code alone where the name won't fit on
 one line). While you listen, or before anything is on show, small faint
 arrows at the picture's edges tip the watch, seen from above with 12 away from you:
@@ -226,11 +227,10 @@ Every other pane's own settings sit in a toolbar across the top of the
 pane, one row, with the pane's **?** at its right. The toolbar is a row
 of icons, each naming itself and saying what it does on hover, in the
 words this guide uses: a switch is an icon that stays pressed, tinted,
-while it is on; a choice between two settings is one such switch,
-showing the second setting's icon, tinted while that one is picked
-(Layout's Beside, two bars side by side: tinted for Beside, plain for
-Stacked), and a choice of more is a row of icons with the picked one
-tinted.
+while it is on; a choice between two settings is one icon showing the
+setting in use, and a click changes to the other (Direction shows a
+down arrow while the strip runs down and an across arrow while it runs
+across); a choice of more is a row of icons with the picked one tinted.
 A setting that holds a value (Width, Length, Average Over, Settle) keeps
 its field, with a small icon in place of its name that has the same
 hover. **Start Test**, **Start a New Test** and **Copy** keep their words

@@ -4728,6 +4728,17 @@ impl TimegrapherApp {
         let picked = match &self.library {
             Ok(Some(l)) => {
                 let shown = watches::shown(l, &self.watch_search, self.watch_sort);
+                // Unsorted Takes first, any word about the list under it.
+                let tiled = shown.iter().any(|e| !e.photos.is_empty());
+                let marked = self.watch_open.as_deref();
+                if watches::unsorted_row(
+                    ui,
+                    &l.unsorted,
+                    tiled,
+                    marked.is_none() && self.unsorted_open,
+                ) {
+                    show_unsorted = true;
+                }
                 if l.watches.is_empty() {
                     ui.label(
                         RichText::new(
@@ -4740,16 +4751,6 @@ impl TimegrapherApp {
                     ui.label(
                         RichText::new("No watch matches the search.").color(pal.text_secondary),
                     );
-                }
-                let tiled = shown.iter().any(|e| !e.photos.is_empty());
-                let marked = self.watch_open.as_deref();
-                if watches::unsorted_row(
-                    ui,
-                    &l.unsorted,
-                    tiled,
-                    marked.is_none() && self.unsorted_open,
-                ) {
-                    show_unsorted = true;
                 }
                 let picked = watches::list(ui, &shown, marked, &mut self.thumbs);
                 if let Some(why) = &l.read_only {

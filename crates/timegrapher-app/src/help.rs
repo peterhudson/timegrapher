@@ -127,8 +127,8 @@ pub const BEAT_RATE: &[&str] = &[
 /// The last paragraph of every pane toolbar's "?": how its icons work.
 pub const TOOLBAR: &str = "The toolbar's icons name themselves on hover, with what they do, \
      and the key below draws each one beside its name. A \
-     switch stays pressed and tinted while it is on; of a row of icons, the tinted one is \
-     picked. When the pane is too narrow for them all, the last ones fold into the … menu at \
+     switch stays pressed and tinted while it is on; a choice of two shows the one in use, and \
+     a click changes it; of a row of icons, the tinted one is picked. When the pane is too narrow for them all, the last ones fold into the … menu at \
      the row's end, in words, and come back out when the pane is wide enough.";
 
 pub const STRIP: &[&str] = &[
