@@ -89,11 +89,27 @@ pub const BEAT_ERROR: &[&str] = &[
 
 pub const POSITION: &[&str] = &[
     "The position the watch is in on the stand: Dial Up, Dial Down, or standing on its \
-     edge with the crown up, down, left or right. Click one, or press its key, 1 to 6.",
+     edge with the crown up, down, left or right. While you listen, the arrows around it \
+     tip the watch as seen from above: up tips it back, so the side away from you goes \
+     down; down tips it forward; left and right roll it to that side; the corner arrow \
+     turns it over. From Dial Up, up gives Crown Left (12 down), left Crown Up. Keys 1 \
+     to 6 pick a position too: DU, DD, CU, CD, CL and CR, in that order.",
+    "Looking at a take, or during a Positions Test or a Power Reserve Test, the card only \
+     shows the position: the one at the strip's latest beat on show, or the one the test \
+     set. A take's positions can't be changed afterwards.",
     "Changing it while listening marks a new stretch on the strip and the charts, and the \
      readings, profile, distributions and Steadiness then use only this position's beats. \
      The settling after a move is left out of the readings. A saved take notes each \
      position.",
+];
+
+pub const LISTEN: &[&str] = &[
+    "Listen starts the microphone: with a watch picked in Watches, a new take of it, saved \
+     into it at Stop; with none, or Unsorted Takes picked, Quick Listen, kept only if you \
+     Save it. Stop lets go of the microphone and keeps everything on show.",
+    "Save keeps what is on show in one of your watches or in a folder. Average sets how \
+     many seconds of beats each reading is worked out over: longer is steadier, shorter \
+     follows changes sooner.",
 ];
 
 pub const BEAT_RATE: &[&str] = &[

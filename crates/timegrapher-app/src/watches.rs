@@ -32,7 +32,7 @@ pub const HELP: &[&str] = &[
      anything its files don't say, or just to open it.",
     "Pick a watch, then Listen, Positions Test or Power Reserve Test: each is a new take \
      on the microphone, saved into the watch when it stops.",
-    "Quick Listen (the Listen button on the Rate card, with no watch picked) keeps nothing \
+    "Quick Listen (the Listen button on the Listen card, with no watch picked) keeps nothing \
      until you Save it: into a watch, or into a folder. Its sound goes without a question \
      when you quit or start another take. A take saved into Unsorted is listed at the top \
      of the watches until you file it under a watch (right-click it, then File Under a \
@@ -207,9 +207,24 @@ fn row(
     resp.on_hover_text(hint)
 }
 
+/// A watch's size in the list, once it is a megabyte or more: an empty
+/// folder's "0 bytes" says nothing.
+fn list_size(bytes: u64) -> String {
+    if bytes >= 1_000_000 {
+        fmt_bytes(bytes)
+    } else {
+        String::new()
+    }
+}
+
 /// The list: one row per watch, led by its first photo when any watch
 /// listed has one. The id of the watch clicked, if any.
-pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> Option<String> {
+pub fn list(
+    ui: &mut egui::Ui,
+    watches: &[&WatchEntry],
+    marked: Option<&str>,
+    thumbs: &mut Thumbs,
+) -> Option<String> {
     let mut picked = None;
     let photos = watches.iter().any(|e| !e.photos.is_empty());
     for e in watches {
@@ -239,10 +254,10 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
         }
         if row(
             ui,
-            false,
+            marked == Some(w.id.as_str()),
             lead,
             &w.name,
-            &fmt_bytes(e.bytes()),
+            &list_size(e.bytes()),
             &below.join(" · "),
             "Show this watch's details and takes",
         )
@@ -256,34 +271,39 @@ pub fn list(ui: &mut egui::Ui, watches: &[&WatchEntry], thumbs: &mut Thumbs) -> 
 
 /// Unsorted's row, at the top of the list (led by a tile when the
 /// watches' rows have photos): whether it was clicked.
-pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool) -> bool {
+pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool, marked: bool) -> bool {
     row(
         ui,
-        false,
+        marked,
         if tiled {
-            Lead::Photo(None, &e.watch.name)
+            Lead::Photo(None, UNSORTED_TAKES)
         } else {
             Lead::None
         },
-        &e.watch.name,
-        &fmt_bytes(e.bytes()),
+        UNSORTED_TAKES,
+        &list_size(e.bytes()),
         &format!(
-            "{}, made with Quick Listen",
+            "Quick Listen, no watch · {}",
             count(e.takes.len(), "take", "takes")
         ),
-        "Show the takes not yet filed under a watch",
+        "Quick Listen again: no watch, no calibre, the default lift angle and the beat \
+         rate found from the beats. Shows the takes not yet filed under a watch.",
     )
     .clicked()
 }
 
+/// The list's row for Quick Listen and the takes it kept.
+pub const UNSORTED_TAKES: &str = "Unsorted Takes";
+
 /// What stands for a watch's details above Unsorted's takes.
 pub fn unsorted_details(ui: &mut egui::Ui) {
     let pal = theme::pal(ui);
-    ui.label(RichText::new(timegrapher_core::library::UNSORTED).font(theme::semibold(16.0)));
+    ui.label(RichText::new(UNSORTED_TAKES).font(theme::semibold(16.0)));
     ui.label(
         RichText::new(
-            "Takes made with Quick Listen, kept here until you file each under a watch or \
-             delete it.",
+            "Quick Listen: no watch, no calibre, the default lift angle and the beat rate \
+             found from the beats. Its takes are kept here until you file each under a \
+             watch or delete it.",
         )
         .color(pal.text_secondary),
     );

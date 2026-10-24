@@ -345,6 +345,142 @@ enum CaptureFailure {
     Input(String),
 }
 
+/// A tip of the watch on the stand, as the Position card's arrows give
+/// it: seen from above with 12 away from you, which side goes down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tip {
+    /// Tipped back: the side away from you goes down.
+    Back,
+    /// Tipped forward: the side nearest you goes down.
+    Forward,
+    /// Rolled left: the left side goes down.
+    Left,
+    /// Rolled right: the right side goes down.
+    Right,
+    /// Turned over.
+    Over,
+}
+
+impl Tip {
+    fn words(self) -> &'static str {
+        match self {
+            Tip::Back => "Tip back",
+            Tip::Forward => "Tip forward",
+            Tip::Left => "Roll left",
+            Tip::Right => "Roll right",
+            Tip::Over => "Turn over",
+        }
+    }
+}
+
+/// A side of the watch: its dial, its caseback, or the edge at 3, 9, 12
+/// or 6 o'clock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Dial,
+    Back,
+    Three,
+    Nine,
+    Twelve,
+    Six,
+}
+
+/// How the watch lies on the stand, seen from above: which side faces
+/// right, left, away from you, towards you, up and down. The Position
+/// card's arrows turn it, so a tip and its opposite always undo each
+/// other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Orient {
+    right: Side,
+    left: Side,
+    away: Side,
+    near: Side,
+    up: Side,
+    down: Side,
+}
+
+impl Orient {
+    /// Dial up with 12 away from you.
+    const DIAL_UP: Orient = Orient {
+        right: Side::Three,
+        left: Side::Nine,
+        away: Side::Twelve,
+        near: Side::Six,
+        up: Side::Dial,
+        down: Side::Back,
+    };
+
+    /// `p` as one tip from Dial Up reaches it (Dial Down by turning over).
+    fn of(p: Position) -> Orient {
+        let d = Orient::DIAL_UP;
+        match p {
+            Position::DialUp => d,
+            Position::DialDown => d.tip(Tip::Over),
+            Position::CrownUp => d.tip(Tip::Left),
+            Position::CrownDown => d.tip(Tip::Right),
+            Position::CrownLeft => d.tip(Tip::Back),
+            Position::CrownRight => d.tip(Tip::Forward),
+        }
+    }
+
+    /// Turned by `tip`.
+    fn tip(self, tip: Tip) -> Orient {
+        let o = self;
+        match tip {
+            // The side away from you goes down; what faced you comes up.
+            Tip::Back => Orient {
+                up: o.near,
+                away: o.up,
+                down: o.away,
+                near: o.down,
+                ..o
+            },
+            Tip::Forward => Orient {
+                up: o.away,
+                near: o.up,
+                down: o.near,
+                away: o.down,
+                ..o
+            },
+            // The left side goes down; what faced right comes up.
+            Tip::Left => Orient {
+                up: o.right,
+                left: o.up,
+                down: o.left,
+                right: o.down,
+                ..o
+            },
+            Tip::Right => Orient {
+                up: o.left,
+                right: o.up,
+                down: o.right,
+                left: o.down,
+                ..o
+            },
+            // Over, about the line from you to 12.
+            Tip::Over => Orient {
+                up: o.down,
+                down: o.up,
+                right: o.left,
+                left: o.right,
+                ..o
+            },
+        }
+    }
+
+    /// The position: named by the side facing up.
+    fn position(self) -> Position {
+        match self.up {
+            Side::Dial => Position::DialUp,
+            Side::Back => Position::DialDown,
+            Side::Three => Position::CrownUp,
+            Side::Nine => Position::CrownDown,
+            Side::Twelve => Position::CrownRight,
+            Side::Six => Position::CrownLeft,
+        }
+    }
+}
+
 /// The six standard test positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
@@ -502,6 +638,22 @@ impl Pane {
         Pane::SteadyWavelet,
     ];
     const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
+    /// The core panes, first in the icon bar.
+    const CORE: [Pane; 4] = [Pane::Watch, Pane::Strip, Pane::Sound, Pane::Scope];
+    /// The analysis views: the Steadiness views and Isochronism.
+    const ANALYSIS: [Pane; 10] = [
+        Pane::SteadyReadings,
+        Pane::SteadyPeriods,
+        Pane::SteadyCycle,
+        Pane::SteadyAutocorrelation,
+        Pane::SteadyAllan,
+        Pane::SteadyCusum,
+        Pane::SteadyFft,
+        Pane::SteadyStft,
+        Pane::SteadyWavelet,
+        Pane::Isochronism,
+    ];
+    const TESTS: [Pane; 2] = [Pane::PositionsTest, Pane::PowerReserve];
     /// The panes that average the beats, each over Readings' Average Over
     /// or a time of its own.
     const AVERAGING: [Pane; 8] = [
@@ -808,8 +960,11 @@ const WATCH_SHARE: f32 = 0.34;
 /// row of controls, the Beat Rate card's two, the Position card's two rows
 /// of position buttons.
 const CONTROL_SLOT_H: f32 = 28.0;
-const BEAT_RATE_SLOT_H: f32 = 60.0;
-const POSITION_SLOT_H: f32 = 76.0;
+/// The size of a card's big figure.
+const FIGURE_PT: f32 = 30.0;
+const BEAT_RATE_SLOT_H: f32 = 72.0;
+const POSITION_SLOT_H: f32 = 60.0;
+const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
 /// default once, as the panes moved.
@@ -1248,6 +1403,17 @@ pub struct TimegrapherApp {
     watch_open: Option<String>,
     /// The pane shows Unsorted's takes instead of the list.
     unsorted_open: bool,
+    /// The list shown over the watch picked, or Unsorted, by ‹ All
+    /// Watches: kept with what was picked then, so picking anything else
+    /// shows that instead. Its row is marked in the list.
+    list_for: Option<(Option<String>, bool)>,
+    /// Unsorted Takes was picked with readings on show: the Quick Listen
+    /// settings wait for the next Listen, so the readings keep theirs.
+    quick_defaults: bool,
+    /// How the Position card's arrows last left the watch, so a tip and
+    /// its opposite undo each other; set afresh from the position when it
+    /// was changed another way.
+    orient: Orient,
     /// This session began with Quick Listen: kept only by Keep in a
     /// Watch…, or by Save… into Unsorted.
     quick_listen: bool,
@@ -1803,6 +1969,9 @@ impl TimegrapherApp {
             library_moving: None,
             watch_open: None,
             unsorted_open: false,
+            list_for: None,
+            quick_defaults: false,
+            orient: Orient::DIAL_UP,
             quick_listen: false,
             watch_search: String::new(),
             watch_sort: watches::Sort::default(),
@@ -4300,7 +4469,9 @@ impl TimegrapherApp {
                 ui.set_max_width(ui.available_width() - 8.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
                 let picked = self.open_watch().is_some();
-                if picked {
+                if self.list_shown() {
+                    self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
+                } else if picked {
                     self.watch_details(ui);
                     self.watch_actions(ui);
                     self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
@@ -4382,7 +4553,6 @@ impl TimegrapherApp {
     /// The library's watches, or what stands in for them.
     fn watch_list_card(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        let mut show = false;
         let mut show_unsorted = false;
         let picked = match &self.library {
             Ok(Some(l)) => {
@@ -4402,24 +4572,16 @@ impl TimegrapherApp {
                     );
                 }
                 let tiled = shown.iter().any(|e| !e.photos.is_empty());
-                let unsorted =
-                    !l.unsorted.takes.is_empty() && watches::unsorted_row(ui, &l.unsorted, tiled);
-                let picked = watches::list(ui, &shown, &mut self.thumbs);
-                if unsorted {
+                let marked = self.watch_open.as_deref();
+                if watches::unsorted_row(
+                    ui,
+                    &l.unsorted,
+                    tiled,
+                    marked.is_none() && self.unsorted_open,
+                ) {
                     show_unsorted = true;
                 }
-                ui.add_space(4.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new(format!("{} in {}", fmt_bytes(l.bytes()), l.root.display()))
-                            .small()
-                            .color(pal.text_secondary),
-                    );
-                    show = ui
-                        .small_button(settings_window::show_in_words())
-                        .on_hover_text("Open the Watches folder")
-                        .clicked();
-                });
+                let picked = watches::list(ui, &shown, marked, &mut self.thumbs);
                 if let Some(why) = &l.read_only {
                     ui.label(
                         RichText::new(format!("{why}."))
@@ -4444,11 +4606,8 @@ impl TimegrapherApp {
                 None
             }
         };
-        if show {
-            self.library_action(settings_window::LibraryAction::Show);
-        }
         if show_unsorted {
-            self.unsorted_open = true;
+            self.pick_unsorted();
         }
         if let Some(id) = picked {
             self.pick_watch(&id);
@@ -4976,6 +5135,7 @@ impl TimegrapherApp {
         }
         self.watch_open = Some(id.to_string());
         self.unsorted_open = false;
+        self.quick_defaults = false;
         let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
             self.watch_open = None;
             return;
@@ -4987,6 +5147,57 @@ impl TimegrapherApp {
         }
         self.quick_listen = false;
         self.apply_watch(&w);
+    }
+
+    /// Whether the pane shows the list over what is picked.
+    fn list_shown(&self) -> bool {
+        self.list_for
+            .as_ref()
+            .is_some_and(|(w, u)| *w == self.watch_open && *u == self.unsorted_open)
+    }
+
+    /// Unsorted Takes: Quick Listen again, with no watch, its takes on
+    /// show and the settings back to the defaults: no calibre, the
+    /// default lift angle and the beat rate found from the beats.
+    fn pick_unsorted(&mut self) {
+        if self.running() {
+            self.info_msg("Stop listening before picking Unsorted Takes.".into());
+            return;
+        }
+        self.watch_open = None;
+        self.unsorted_open = true;
+        self.quick_listen = false;
+        // Readings on show keep the settings they were measured with.
+        if self.live.is_some() {
+            self.quick_defaults = true;
+        } else {
+            self.quick_listen_defaults();
+        }
+    }
+
+    /// Quick Listen's settings: no watch, no calibre, the default lift
+    /// angle and the beat rate found from the beats.
+    fn quick_listen_defaults(&mut self) {
+        self.quick_defaults = false;
+        self.watch.clear();
+        if !self.calibre.is_empty() {
+            self.calibre.clear();
+            self.steady = None;
+            self.steady_job = None;
+        }
+        if self.lift_deg != DEFAULT_LIFT_DEG {
+            self.set_lift(DEFAULT_LIFT_DEG);
+        }
+        self.lift_context = (DEFAULT_LIFT_DEG, false);
+        if self.bph.is_some() {
+            self.bph = None;
+            if let Some(l) = self.live.as_mut() {
+                l.set_bph(None);
+            }
+            self.anchor = None;
+            self.clear_trends();
+        }
+        self.note_settings();
     }
 
     /// A watch's details as this take's settings.
@@ -5020,28 +5231,28 @@ impl TimegrapherApp {
     /// The Watches pane's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
-        if self.unsorted_open && self.watch_open.is_none() {
+        if self.list_shown() {
+            // The list's own tools, below.
+        } else if self.unsorted_open && self.watch_open.is_none() {
             if ui
                 .button("‹ All Watches")
-                .on_hover_text("Back to the list of watches")
+                .on_hover_text("Back to the list of watches, Unsorted Takes marked")
                 .clicked()
             {
-                self.unsorted_open = false;
-                // A Quick Listen still going keeps saving into Unsorted.
-                if !self.running() {
-                    self.quick_listen = false;
-                }
+                self.list_for = Some((None, true));
             }
             return;
-        }
-        if let Some(e) = self.open_watch() {
+        } else if let Some(e) = self.open_watch() {
             let w = e.watch.clone();
             if ui
                 .button("‹ All Watches")
-                .on_hover_text("Back to the list of watches")
+                .on_hover_text(
+                    "Back to the list of watches, this one marked: Listen and the tests \
+                     still take it until another row is picked",
+                )
                 .clicked()
             {
-                self.watch_open = None;
+                self.list_for = Some((self.watch_open.clone(), false));
             }
             let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
             if ui
@@ -5190,8 +5401,13 @@ impl TimegrapherApp {
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
+        if self.quick_defaults {
+            self.quick_listen_defaults();
+        }
         self.watch_open = None;
         self.unsorted_open = true;
+        // The Watches pane shows the list, Unsorted Takes marked.
+        self.list_for = Some((None, true));
         self.quick_listen = true;
         self.input = Input::Microphone;
         self.watch.clear();
@@ -5881,52 +6097,157 @@ impl TimegrapherApp {
         }
     }
 
-    /// The six positions, one picked: two rows of three, each its picture
-    /// and code, with its key.
+    /// Whether the Position card sets the position: while listening, or
+    /// before anything is on show, and never during a test, which sets it
+    /// itself. A take's positions are its history.
+    fn position_editable(&self) -> bool {
+        let testing = (self.running() && self.guided.is_some()) || self.reserve_running();
+        let listening = self.running() && self.session.mic();
+        !testing && (listening || self.live.is_none())
+    }
+
+    /// The position the Position card shows: the one set while it can be
+    /// set, else the take's at the moment the readings show.
+    fn shown_position(&self) -> Position {
+        if self.position_editable() || self.running() {
+            return self.position;
+        }
+        let at = self.end_s();
+        self.session
+            .stretches()
+            .into_iter()
+            .take_while(|&(t, _)| t <= at + 1e-6)
+            .last()
+            .map_or(self.position, |(_, p)| p)
+    }
+
+    /// The position as a picture, with arrows around it that tip the watch
+    /// to the four next to it and turn it over, while it can be set; the
+    /// picture alone while it can't.
     fn position_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        let here = self.shown_position();
+        let editable = self.position_editable();
         let mut picked = None;
-        ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
-        let cell = ((ui.available_width() - 8.0) / 3.0).max(30.0);
-        for row in Position::ALL.chunks(3) {
-            ui.horizontal(|ui| {
-                for &p in row {
-                    let n = Position::ALL.iter().position(|&q| q == p).unwrap_or(0) + 1;
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(cell, 36.0),
-                        egui::Layout::top_down(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.y = 0.0;
-                            let on = p == self.position;
-                            if theme::icon_button(ui, p.icon(), 24.0, pal.accent, false, on)
-                                .on_hover_text(format!(
-                                    "{}: press {n}. {}",
-                                    p.label(),
-                                    POSITION_HINT
-                                ))
-                                .clicked()
-                            {
-                                picked = Some(p);
-                            }
-                            // Its code and its key.
-                            ui.label(
-                                RichText::new(format!("{} {n}", p.code()))
-                                    .small()
-                                    .color(if on { pal.text } else { pal.text_secondary }),
-                            );
-                        },
-                    );
+        let cell = POSITION_SLOT_H / 3.0;
+        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(cell * 3.0));
+        // Its name beside the picture, the code under it.
+        let name = egui::Rect::from_min_max(
+            egui::pos2(grid.right() + 6.0, grid.top()),
+            egui::pos2(ui.max_rect().right(), grid.bottom()),
+        );
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(name)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+            |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                // The name on one line where it fits, else the code alone.
+                let font = theme::semibold(13.0);
+                let wide = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(here.name().to_string(), font.clone(), pal.text)
+                        .size()
+                        .x
+                });
+                let one_line =
+                    |t: RichText| egui::Label::new(t).wrap_mode(egui::TextWrapMode::Extend);
+                // Centred against the picture, by hand: top-down layouts
+                // don't centre their items.
+                let fits = wide <= ui.available_width();
+                ui.add_space(((grid.height() - if fits { 32.0 } else { 20.0 }) / 2.0).max(0.0));
+                if fits {
+                    ui.add(one_line(RichText::new(here.name()).font(font)));
+                    ui.add(one_line(
+                        RichText::new(here.code()).small().color(pal.text_secondary),
+                    ));
+                } else {
+                    ui.add(one_line(
+                        RichText::new(here.code()).font(theme::semibold(15.0)),
+                    ));
                 }
-            });
+            },
+        );
+        let at = |col: f32, row: f32| {
+            egui::Rect::from_min_size(
+                grid.min + Vec2::new(col * cell, row * cell),
+                Vec2::splat(cell),
+            )
+        };
+        ui.allocate_rect(grid, egui::Sense::hover());
+        // Shown only, the picture fills the space the arrows would take.
+        let (spot, size) = if editable {
+            (at(1.0, 1.0), cell)
+        } else {
+            (grid.shrink(cell * 0.4), cell * 2.2)
+        };
+        ui.put(spot, |ui: &mut egui::Ui| {
+            theme::icon_button(ui, here.icon(), size, pal.accent, false, editable)
+        })
+        .on_hover_text(if editable {
+            format!("{}. {POSITION_HINT}", here.label())
+        } else {
+            format!(
+                "{}: shown, not set here. A take's positions are kept as they were; \
+                     during a test the test sets them.",
+                here.label()
+            )
+        });
+        if editable {
+            for (tip, col, row, glyph) in [
+                (Tip::Back, 1.0, 0.0, "↑"),
+                (Tip::Forward, 1.0, 2.0, "↓"),
+                (Tip::Left, 0.0, 1.0, "←"),
+                (Tip::Right, 2.0, 1.0, "→"),
+                (Tip::Over, 2.0, 0.0, "↗"),
+            ] {
+                let from = if self.orient.position() == here {
+                    self.orient
+                } else {
+                    Orient::of(here)
+                };
+                let turned = from.tip(tip);
+                let to = turned.position();
+                let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
+                // A whole cell to click, drawn to fit it exactly, the glyph
+                // large enough to see.
+                let r = at(col, row).shrink(1.0);
+                let resp = ui.allocate_rect(r, egui::Sense::click());
+                let fill = if resp.hovered() {
+                    ui.visuals().widgets.hovered.weak_bg_fill
+                } else {
+                    ui.visuals().widgets.inactive.weak_bg_fill
+                };
+                ui.painter().rect_filled(r, 4.0, fill);
+                ui.painter().text(
+                    r.center(),
+                    egui::Align2::CENTER_CENTER,
+                    glyph,
+                    egui::FontId::proportional(15.0),
+                    pal.text,
+                );
+                if resp
+                    .on_hover_text(format!("{}: {} (key {n})", tip.words(), to.label()))
+                    .clicked()
+                {
+                    picked = Some(turned);
+                }
+            }
         }
-        if let Some(p) = picked.filter(|&p| p != self.position) {
-            self.change_position(p);
+        if let Some(o) = picked {
+            if o.position() != self.position {
+                self.change_position(o.position());
+            }
+            if self.position == o.position() {
+                self.orient = o;
+            }
         }
     }
 
-    /// Listen or Stop, Save, and Average Over, on the Rate card.
+    /// Listen or Stop and Save, with Average Over under them, on the
+    /// Listen card.
     fn listen_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        ui.spacing_mut().item_spacing.y = 6.0;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             if self.running() && self.session.mic() {
@@ -5942,8 +6263,8 @@ impl TimegrapherApp {
                 let hint = match &watch {
                     Some(name) => format!(
                         "Listen to {name}: a new take, saved into it at Stop. For a Quick \
-                         Listen with no watch, choose Quick Listen (No Watch) in the Watches \
-                         menu."
+                         Listen with no watch, pick Unsorted Takes in the Watches pane, or \
+                         Quick Listen (No Watch) in the Watches menu."
                     ),
                     None => QUICK_LISTEN_HINT.to_string(),
                 };
@@ -5969,9 +6290,11 @@ impl TimegrapherApp {
             if !self.session.mic() || self.quick_listen {
                 self.save_menu(ui);
             }
+        });
+        ui.horizontal(|ui| {
             let mut avg = self.average_s;
             egui::ComboBox::from_id_salt("card average")
-                .width(ui.available_width().min(96.0))
+                .width(ui.available_width())
                 .selected_text(format!("Average {}", fields::duration(avg)))
                 .show_ui(ui, |ui| {
                     for a in AVERAGES {
@@ -6078,7 +6401,7 @@ impl TimegrapherApp {
                 return;
             }
             let mut lift = self.lift_deg;
-            let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 40.0);
+            let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 32.0);
             ui.label("°");
             let b = fields::presets(ui, "lift-presets", &mut lift, &LIFTS, |v| {
                 format!("{}°", fields::plain(v))
@@ -6087,12 +6410,29 @@ impl TimegrapherApp {
                 self.set_lift(lift);
             }
             if !self.lift_known() {
-                ui.label(
-                    RichText::new("the default")
-                        .small()
-                        .color(pal.text_secondary),
-                )
-                .on_hover_text(LIFT_HINT);
+                // As much of it as the card has room for.
+                let small = egui::TextStyle::Small.resolve(ui.style());
+                let tiny = egui::FontId::proportional(9.0);
+                let fits = |ui: &egui::Ui, t: &str, font: &egui::FontId| {
+                    ui.fonts_mut(|f| f.layout_no_wrap(t.into(), font.clone(), Color32::WHITE))
+                        .size()
+                        .x
+                        <= ui.available_width()
+                };
+                let word = [
+                    ("the default", small.clone()),
+                    ("default", small.clone()),
+                    ("default", tiny),
+                ]
+                .into_iter()
+                .find(|(t, font)| fits(ui, t, font));
+                if let Some((t, font)) = word {
+                    ui.label(RichText::new(t).font(font).color(pal.text_secondary))
+                        .on_hover_text(LIFT_HINT);
+                } else {
+                    ui.label(RichText::new("*").color(pal.text_secondary))
+                        .on_hover_text(LIFT_HINT);
+                }
             }
         });
     }
@@ -6103,21 +6443,73 @@ impl TimegrapherApp {
             return self.calibre_line(ui);
         }
         ui.spacing_mut().item_spacing.y = 4.0;
+        let pal = theme::pal(ui);
         let mut bph = self.bph;
+        let heard = self.live.as_ref().and_then(|l| l.bph());
+        // The figure is the menu: the beat rate set, or the one found, as
+        // large as the card has room for, with Auto named where it fits;
+        // its hover says which always.
+        let (figure, colour) = match bph.or(heard) {
+            Some(b) => (b.to_string(), pal.text),
+            None => ("—".to_string(), pal.text_tertiary),
+        };
+        let make = |size: f32, auto: bool| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(
+                &figure,
+                0.0,
+                egui::TextFormat::simple(theme::display(size), colour),
+            );
+            job.append(
+                if auto { "bph · Auto" } else { "bph" },
+                6.0,
+                egui::TextFormat::simple(egui::FontId::proportional(13.0), pal.text_secondary),
+            );
+            job
+        };
+        // The menu's arrow and padding beside the text.
+        let room = ui.available_width() - 2.0 * ui.spacing().button_padding.x - 24.0;
+        let wide = |ui: &egui::Ui, job: &egui::text::LayoutJob| {
+            ui.fonts_mut(|f| f.layout_job(job.clone())).size().x
+        };
+        let tries = [
+            (FIGURE_PT - 4.0, bph.is_none()),
+            (FIGURE_PT - 4.0, false),
+            (FIGURE_PT - 8.0, false),
+            (FIGURE_PT - 12.0, false),
+        ];
+        let job = tries
+            .iter()
+            .map(|&(size, auto)| make(size, auto))
+            .find(|j| wide(ui, j) <= room)
+            .unwrap_or_else(|| make(FIGURE_PT - 12.0, false));
+        let how = match (bph, heard) {
+            (Some(_), _) => {
+                "Beats per hour, set here, so the readings use it rather than finding it from \
+                 the beats. Auto finds it again."
+            }
+            (None, Some(_)) => {
+                "Beats per hour, found from the first seconds of beats as the nearest \
+                 standard rate. Pick a rate to set it, for a watch that beats at an unusual \
+                 rate or runs far off."
+            }
+            (None, None) => {
+                "Beats per hour: Auto finds it from the first few seconds of beats. Pick a \
+                 rate to set it."
+            }
+        };
         egui::ComboBox::from_id_salt("bph")
             .width(ui.available_width())
-            .selected_text(match bph {
-                None => "Beat Rate: Auto".to_string(),
-                Some(b) => format!("{b} bph"),
-            })
+            .height(320.0)
+            .selected_text(job)
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut bph, None, "Auto");
+                ui.selectable_value(&mut bph, None, "Auto: found from the beats");
                 for b in STANDARD_BPH {
                     ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
                 }
             })
             .response
-            .on_hover_text("Beats per hour. Auto finds it from the first few seconds of beats.");
+            .on_hover_text(how);
         if bph != self.bph {
             self.bph = bph;
             if let Some(l) = self.live.as_mut() {
@@ -6237,18 +6629,14 @@ impl TimegrapherApp {
             (None, Some(b)) => format!("{b} bph, found"),
             (None, None) => "beat rate found when heard".to_string(),
         };
-        ui.label(
-            RichText::new(format!(
-                "{} · {bph} · lift {}°",
+        // The beat rate and lift show on their own cards: the name is enough.
+        ui.label(RichText::new(&self.calibre).color(pal.text_secondary))
+            .on_hover_text(format!(
+                "{}: {bph}, lift {}°. The watch's calibre sets the beat rate and lift \
+                 angle. Edit… on the watch changes them.",
                 self.calibre,
                 fields::plain(self.lift_deg)
-            ))
-            .color(pal.text_secondary),
-        )
-        .on_hover_text(
-            "The watch's calibre sets the beat rate and lift angle. Edit… on the watch \
-             changes them.",
-        );
+            ));
         if let Some((b, cb)) = heard
             .zip(self.cal.bph(&self.calibre))
             .filter(|&(b, cb)| b != cb)
@@ -6518,21 +6906,21 @@ impl TimegrapherApp {
              easy to see whether the dots run parallel to it. They show with or without \
              the Rate Line.",
         );
-        ui.horizontal(|ui| {
-            if ui
-                .button("Centre")
-                .on_hover_text("Put the latest beats on the centre line")
-                .clicked()
-            {
-                self.centre();
-            }
-            ui.add_enabled_ui(self.live.is_some(), |ui| {
-                theme::toggle(ui, "Mask", &mut self.masking)
-            })
-            .inner
-            .on_hover_text(MASK_HINT)
-            .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
-        });
+        // Each its own item, so a narrow toolbar wraps between them rather
+        // than running under the "?".
+        if ui
+            .button("Centre")
+            .on_hover_text("Put the latest beats on the centre line")
+            .clicked()
+        {
+            self.centre();
+        }
+        ui.add_enabled_ui(self.live.is_some(), |ui| {
+            theme::toggle(ui, "Mask", &mut self.masking)
+        })
+        .inner
+        .on_hover_text(MASK_HINT)
+        .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
         theme::more_menu(
             ui,
             "More strip settings: direction, lines drawn over the strip, \
@@ -6941,12 +7329,12 @@ impl TimegrapherApp {
             }
         };
         for pane in Pane::ALL {
-            if !Pane::STEADY.contains(&pane) {
+            if !Pane::ANALYSIS.contains(&pane) {
                 pane_box(ui, pane);
             }
         }
-        ui.menu_button("Steadiness", |ui| {
-            for pane in Pane::STEADY {
+        ui.menu_button("Analysis", |ui| {
+            for pane in Pane::ANALYSIS {
                 pane_box(ui, pane);
             }
         });
@@ -7398,7 +7786,7 @@ impl TimegrapherApp {
                             false,
                             "Just Open It",
                             "Open the recording where it is. It is not added to your watches: \
-                         Save, on the Rate card, keeps it in a watch later.",
+                         Save, on the Listen card, keeps it in a watch later.",
                         ),
                     ],
                 );
@@ -7715,29 +8103,20 @@ impl TimegrapherApp {
     fn pane_icons(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
-        // The front door to the watches, in words.
-        let on = pane_visible(&self.panes.tiles, Pane::Watch);
-        if ui
-            .add(egui::Button::selectable(on, "Watches"))
-            .on_hover_text(format!("Watches: {}", Pane::Watch.hint()))
+        // The readings' cards, which are no pane, then the core panes,
+        // Watches first, the charts, the distributions, the analysis views
+        // and the tests, each group under its name.
+        if theme::icon_toggle(ui, Icon::Readings, self.show_readings, pal.accent)
+            .on_hover_text(
+                "Readings: the Position, Listen, Rate, Amplitude, Beat Error and Beat Rate \
+                 cards across the top",
+            )
             .clicked()
         {
-            set_pane_visible(&mut self.panes.tiles, Pane::Watch, !on);
+            self.show_readings = !self.show_readings;
         }
-        ui.add_space(4.0);
-        // The panes that stand alone, then the charts, the distributions and
-        // the Steadiness views, each group under its name.
-        let alone: Vec<Pane> = Pane::ALL
-            .into_iter()
-            .filter(|p| {
-                *p != Pane::Watch
-                    && !Pane::CHARTS.contains(p)
-                    && !Pane::HISTOGRAMS.contains(p)
-                    && !Pane::STEADY.contains(p)
-            })
-            .collect();
-        let groups: [(&str, &str, &[Pane]); 4] = [
-            ("", "", &alone),
+        let groups: [(&str, &str, &[Pane]); 5] = [
+            ("", "", &Pane::CORE),
             (
                 "Charts",
                 "Each reading over the session, as a line",
@@ -7749,17 +8128,101 @@ impl TimegrapherApp {
                 &Pane::HISTOGRAMS,
             ),
             (
-                "Steadiness",
+                "Analysis",
                 "How the rate, amplitude and beat error each change over the session, from \
-                 the same tests as `timegrapher series`: each view a pane of its own, so two \
-                 can sit side by side",
-                &Pane::STEADY,
+                 the same tests as `timegrapher series`, and how the rate moves with the \
+                 amplitude: each view a pane of its own, so two can sit side by side",
+                &Pane::ANALYSIS,
+            ),
+            (
+                "Tests",
+                "The Positions Test and the Power Reserve Test, each with its results",
+                &Pane::TESTS,
             ),
         ];
-        for (name, hint, panes) in groups {
+        // Where the bar is too narrow for every icon, the largest groups
+        // fold into a menu under their name, until the rest fit.
+        let small = egui::TextStyle::Small.resolve(ui.style());
+        let words = |ui: &egui::Ui, t: &str| {
+            ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), small.clone(), Color32::WHITE))
+                .size()
+                .x
+        };
+        let icon_w = 28.0;
+        let open_w = |ui: &egui::Ui, name: &str, n: usize| {
+            let label = if name.is_empty() {
+                0.0
+            } else {
+                14.0 + words(ui, name) + 4.0
+            };
+            label + n as f32 * icon_w
+        };
+        let folded_w = |ui: &egui::Ui, name: &str| 14.0 + words(ui, name) + 28.0;
+        let mut folded = [false; 5];
+        let width = |folded: &[bool; 5], ui: &egui::Ui| {
+            groups
+                .iter()
+                .zip(folded)
+                .map(|((name, _, panes), &f)| {
+                    if f {
+                        folded_w(ui, name)
+                    } else {
+                        open_w(ui, name, panes.len())
+                    }
+                })
+                .sum::<f32>()
+                + 14.0
+                + 2.0 * icon_w
+        };
+        let room = ui.available_width();
+        let mut order: Vec<usize> = (1..groups.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(groups[i].2.len()));
+        for i in order {
+            if width(&folded, ui) <= room {
+                break;
+            }
+            folded[i] = true;
+        }
+        for (g, (name, hint, panes)) in groups.into_iter().enumerate() {
             if !name.is_empty() {
                 ui.add_space(6.0);
                 ui.separator();
+            }
+            if folded[g] {
+                let on = panes
+                    .iter()
+                    .filter(|&&p| pane_visible(&self.panes.tiles, p))
+                    .count();
+                let label = if on > 0 {
+                    format!("{name} ({on}) ⏷")
+                } else {
+                    format!("{name} ⏷")
+                };
+                let button = ui
+                    .add(egui::Button::new(RichText::new(label).small()).frame_when_inactive(false))
+                    .on_hover_text(format!(
+                        "{hint}. Folded into a menu while the window is narrow: {}.",
+                        panes
+                            .iter()
+                            .map(|p| p.title())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                egui::Popup::menu(&button).show(|ui| {
+                    for &pane in panes {
+                        let mut shown = pane_visible(&self.panes.tiles, pane);
+                        if ui
+                            .checkbox(&mut shown, pane.title())
+                            .on_hover_text(pane.hint())
+                            .changed()
+                        {
+                            set_pane_visible(&mut self.panes.tiles, pane, shown);
+                        }
+                    }
+                });
+                continue;
+            }
+            if !name.is_empty() {
                 ui.label(RichText::new(name).small().color(pal.text_tertiary))
                     .on_hover_text(hint);
             }
@@ -8350,7 +8813,7 @@ impl TimegrapherApp {
             "Listen When the App Opens",
             &mut self.listen_at_open,
             "Start listening to the microphone as soon as the app opens, for the watch on the \
-             stand. Off, Listen on the Rate card starts it.",
+             stand. Off, Listen on the Listen card starts it.",
         );
         self.keep_awake_setting(ui);
     }
@@ -8456,24 +8919,36 @@ impl TimegrapherApp {
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
-        let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str| {
+        // The big figure, with what stands behind it in its hover.
+        let figure = |ui: &mut egui::Ui, value: Option<String>, unit: &str, hover: &str| {
             let mut job = egui::text::LayoutJob::default();
             let (v, c) = match value {
                 // A true minus sign, as wide as the plus.
                 Some(v) => (v.replace('-', "−"), pal.text),
                 None => ("—".to_string(), pal.text_tertiary),
             };
-            job.append(&v, 0.0, egui::TextFormat::simple(theme::display(36.0), c));
+            job.append(
+                &v,
+                0.0,
+                egui::TextFormat::simple(theme::display(FIGURE_PT), c),
+            );
             // The figure whole on its line, never broken at its point; the
             // unit beside it, or under it on a narrow card.
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                ui.add(egui::Label::new(job).extend());
+                let big = ui.add(egui::Label::new(job).extend().sense(egui::Sense::hover()));
+                if !hover.is_empty() {
+                    big.on_hover_text(hover);
+                }
                 if !unit.is_empty() {
-                    ui.label(
-                        RichText::new(unit)
-                            .font(egui::FontId::proportional(15.0))
-                            .color(pal.text_secondary),
+                    // In short, the same with or without a figure, so the card
+                    // keeps one look while it waits and once it reads.
+                    let unit = unit
+                        .replace("seconds per day", "s/d")
+                        .replace("milliseconds", "ms");
+                    ui.add(
+                        egui::Label::new(RichText::new(unit).color(pal.text_secondary))
+                            .wrap_mode(egui::TextWrapMode::Extend),
                     );
                 }
             });
@@ -8493,23 +8968,15 @@ impl TimegrapherApp {
         // Over the whole take, once it is stopped: `session`'s reading of
         // it beside the last window's figure.
         let whole = self.whole_take();
-        let whole_line = |ui: &mut egui::Ui, figure: String, spread: Option<String>, span: f64| {
+        // The whole take's reading, for the figure's hover.
+        let whole_text = |figure: String, spread: Option<String>, span: f64| {
             let spread = spread.map_or_else(String::new, |s| format!(", {s}"));
-            ui.label(
-                RichText::new(format!(
-                    "whole take {figure}{spread} over {}",
-                    strip::fmt_time(span)
-                ))
-                .small()
-                .color(pal.text_secondary),
+            format!(
+                "\n\nWhole take {figure}{spread} over {}. The big figure is the last stretch \
+                 of Average Over; this is the take in this position, settling left out, read \
+                 as timegrapher session reads a recording.",
+                strip::fmt_time(span)
             )
-            .on_hover_text(
-                "The big figure is the last stretch of Average Over. This is the take in \
-                 this position, settling left out, read as timegrapher session reads a \
-                 recording: the rate fitted over every beat, the amplitude and beat error \
-                 the median of the 2 s windows, with the ± of each, and the 5th to 95th \
-                 percentile of the 10 s rates and the 2 s amplitudes.",
-            );
         };
         let unheard = |ui: &mut egui::Ui| {
             ui.label(
@@ -8598,11 +9065,12 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = theme::GAP;
         let gap = theme::GAP;
         let total = ui.available_width();
-        // The Position card narrower than the four of figures.
-        let narrow = (total * 0.12).clamp(132.0, 170.0);
-        let wide = ((total - narrow - 4.0 * gap) / 4.0).max(100.0);
+        // The Position and Listen cards narrower than the four of figures.
+        let narrow = (total * 0.11).clamp(124.0, 160.0);
+        let listen = (total * 0.13).clamp(144.0, 180.0);
+        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
         let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [narrow, wide, wide, wide, wide]
+        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, wide, wide, wide]
             .iter()
             .scan(origin.x, |x, &w| {
                 let rect =
@@ -8629,185 +9097,172 @@ impl TimegrapherApp {
                 .into_iter()
                 .filter(|f| f.0 != CLOCK_UNKNOWN)
                 .collect();
-            let here = self.position;
             card(
                 &mut cols[0],
                 "Position",
                 help::POSITION,
                 Vec::new(),
                 Some((Slot::Position, POSITION_SLOT_H)),
-                &|ui| {
-                    ui.label(RichText::new(here.label()).font(theme::semibold(15.0)));
-                },
+                &|_| {},
             );
             card(
                 &mut cols[1],
-                "Rate",
-                help::RATE,
-                rate_facts,
-                Some((Slot::Listen, CONTROL_SLOT_H)),
-                &|ui| {
-                    let unit = match pm {
-                        Some(e) if e < 0.05 => "seconds per day".to_string(),
-                        Some(e) => format!("± {e:.1} seconds per day"),
-                        None => "seconds per day".to_string(),
-                    };
-                    figure(ui, rate.map(|v| format!("{v:+.1}")), &unit);
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                        let Some(r) = r else {
-                            if let Some(left) = self.settling_left() {
-                                ui.label(small(format!(
-                                    "settling in the new position, {:.0} s",
-                                    left.ceil()
-                                )))
-                                .on_hover_text(SETTLE_HINT);
-                            } else if heard {
-                                ui.label(small("waiting for beats".into()));
-                            } else {
-                                unheard(ui);
-                            }
-                            return;
-                        };
-                        if let Some(at) = self.stopped_in_settle() {
-                            ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
-                                .on_hover_text(
-                                    "Stopped while the watch settled in its new position, so \
-                                     these are the last readings of the position before it.",
-                                );
-                            ui.label(small("·".into()));
-                        }
-                        let short = r.span_s + 1.0 < self.average_s;
-                        ui.label(small(if short {
-                            format!(
-                                "{} beats in {} of {}",
-                                r.beats_used,
-                                fields::duration(r.span_s.round()),
-                                fields::duration(self.average_s)
-                            )
-                        } else {
-                            format!(
-                                "{} beats in {}",
-                                r.beats_used,
-                                fields::duration(self.average_s)
-                            )
-                        }))
-                        .on_hover_text(if short {
-                            "The beats the readings are fitted to. There are fewer seconds of \
-                             beats than Average Over asks for, early in a session or after a \
-                             break in the sound, so the readings use what there is."
-                        } else {
-                            "The beats the readings are fitted to. Set the time with Average \
-                             Over on the Rate card."
-                        });
-                        if let Some(j) = r.jitter_us {
-                            ui.label(small("·".into()));
-                            ui.label(small(format!("jitter {j:.0} µs"))).on_hover_text(
-                                "How far single beats land from the rate's straight line: the \
-                                 spread of the dots across the strip. The ? beside Rate says more.",
-                            );
-                        }
-                    });
-                    if let (Some(rate), Some(c)) = (rate, &self.clock) {
-                        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
-                        let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
-                        ui.label(
-                            RichText::new(format!(
-                                "True Clock {v} seconds per day, with the clock kept {}",
-                                day_of(&c.measured_utc)
-                            ))
-                            .small()
-                            .color(pal.text_secondary),
+                "Listen",
+                help::LISTEN,
+                Vec::new(),
+                Some((Slot::Listen, LISTEN_SLOT_H)),
+                &|_| {},
+            );
+            card(&mut cols[2], "Rate", help::RATE, rate_facts, None, &|ui| {
+                let unit = match pm {
+                    Some(e) if e < 0.05 => "seconds per day".to_string(),
+                    Some(e) => format!("± {e:.1} seconds per day"),
+                    None => "seconds per day".to_string(),
+                };
+                // The beats behind the figure, in its hover.
+                let behind = r.map_or_else(String::new, |r| {
+                    let short = r.span_s + 1.0 < self.average_s;
+                    let mut t = if short {
+                        format!(
+                            "{} beats in {} of {}: there are fewer seconds of beats than \
+                                 Average Over asks for, early in a session or after a break in \
+                                 the sound, so the readings use what there is.",
+                            r.beats_used,
+                            fields::duration(r.span_s.round()),
+                            fields::duration(self.average_s)
                         )
-                        .on_hover_text(format!(
-                            "The rate corrected for this input's own clock, which runs {:.1} ppm \
+                    } else {
+                        format!(
+                            "{} beats in {}: the beats the readings are fitted to, over \
+                                 Average Over.",
+                            r.beats_used,
+                            fields::duration(self.average_s)
+                        )
+                    };
+                    if let Some(j) = r.jitter_us {
+                        t += &format!(
+                            "\n\nJitter {j:.0} µs: how far single beats land from the \
+                                 rate's straight line, the spread of the dots across the strip."
+                        );
+                    }
+                    t
+                });
+                let mut behind = behind;
+                if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?))) {
+                    let se = w.m.confidence.and_then(|c| c.rate.se);
+                    let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                    let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
+                        format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
+                    });
+                    behind +=
+                        &whole_text(format!("{v:+.1}{pm} s/d").replace('-', "−"), spread, w.span);
+                }
+                figure(
+                    ui,
+                    rate.map(|v| format!("{v:+.1}")),
+                    &unit,
+                    behind.trim_start(),
+                );
+                let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
+                if r.is_none() {
+                    if let Some(left) = self.settling_left() {
+                        ui.label(small(format!(
+                            "settling in the new position, {:.0} s",
+                            left.ceil()
+                        )))
+                        .on_hover_text(SETTLE_HINT);
+                    } else if heard {
+                        ui.label(small("waiting for beats".into()));
+                    } else {
+                        unheard(ui);
+                    }
+                } else if let Some(at) = self.stopped_in_settle() {
+                    ui.label(small(format!("before the move at {}", strip::fmt_time(at))))
+                        .on_hover_text(
+                            "Stopped while the watch settled in its new position, so these \
+                                 are the last readings of the position before it.",
+                        );
+                }
+                if let (Some(rate), Some(c)) = (rate, &self.clock) {
+                    let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+                    let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
+                    ui.label(
+                        RichText::new(format!(
+                            "True Clock {v} seconds per day, with the clock kept {}",
+                            day_of(&c.measured_utc)
+                        ))
+                        .small()
+                        .color(pal.text_secondary),
+                    )
+                    .on_hover_text(format!(
+                        "The rate corrected for this input's own clock, which runs {:.1} ppm \
                          {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
                          figure stays on the card's clock, the one tg and an analysis of \
                          the recording read, so the two compare directly.",
-                            c.ppm.abs(),
-                            c.rate_error_s_per_day(),
-                            c.measured_utc,
-                            match c.source.as_str() {
-                                "log" => "a recording's clock log",
-                                "measure" => "listening against the system clock",
-                                _ => "a value typed in",
-                            }
-                        ));
-                    }
-                    if let Some(f) = measured {
-                        // Timed long enough while listening: offered, never kept
-                        // unasked.
-                        ui.horizontal_wrapped(|ui| {
-                            let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
-                            let mut text =
-                                format!("input clock timed: {:.1} ppm {slow}", f.ppm.abs());
-                            let mut hint = format!(
-                                "Timed against the computer's clock over {} of listening, this \
+                        c.ppm.abs(),
+                        c.rate_error_s_per_day(),
+                        c.measured_utc,
+                        match c.source.as_str() {
+                            "log" => "a recording's clock log",
+                            "measure" => "listening against the system clock",
+                            _ => "a value typed in",
+                        }
+                    ));
+                }
+                if let Some(f) = measured {
+                    // Timed long enough while listening: offered, never kept
+                    // unasked.
+                    ui.horizontal_wrapped(|ui| {
+                        let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
+                        let mut text = format!("input clock timed: {:.1} ppm {slow}", f.ppm.abs());
+                        let mut hint = format!(
+                            "Timed against the computer's clock over {} of listening, this \
                              input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
                              day on every rate. Keep it to show the corrected rate as True \
                              Clock from now on; the command line and the MCP server use it \
                              too. It is only right if the computer's clock is kept by \
                              internet time.",
-                                strip::fmt_time(f.span_s),
-                                f.ppm.abs(),
-                                f.ppm_sd,
-                                f.rate_error_s_per_day
+                            strip::fmt_time(f.span_s),
+                            f.ppm.abs(),
+                            f.ppm_sd,
+                            f.rate_error_s_per_day
+                        );
+                        if let Some(c) = &kept {
+                            let off = f.ppm - c.ppm;
+                            text += &format!(
+                                ", {:.1} ppm from the clock kept {}",
+                                off.abs(),
+                                day_of(&c.measured_utc)
                             );
-                            if let Some(c) = &kept {
-                                let off = f.ppm - c.ppm;
-                                text += &format!(
-                                    ", {:.1} ppm from the clock kept {}",
-                                    off.abs(),
-                                    day_of(&c.measured_utc)
-                                );
-                                hint += &format!(
-                                    "\n\nThe clock kept for \"{}\" runs {:.1} ppm {}, kept {}. \
+                            hint += &format!(
+                                "\n\nThe clock kept for \"{}\" runs {:.1} ppm {}, kept {}. \
                                  This timing is {:.1} ppm from it, {:.1} seconds per day on \
                                  True Clock. An input reached by a shared name, such as the \
                                  system default, may be a different sound card from the one \
                                  timed then. Keep replaces the kept clock with this one.",
-                                    c.device,
-                                    c.ppm.abs(),
-                                    if c.ppm >= 0.0 { "slow" } else { "fast" },
-                                    day_of(&c.measured_utc),
-                                    off.abs(),
-                                    timegrapher_core::clock::rate_error_s_per_day(off.abs())
-                                );
-                            }
-                            ui.label(RichText::new(text).small().color(pal.text_secondary))
-                                .on_hover_text(hint);
-                            if ui
-                                .small_button("Keep")
-                                .on_hover_text(
-                                    "Keep this input's clock error and correct its rates",
-                                )
-                                .clicked()
-                            {
-                                keep_clock.set(true);
-                            }
-                        });
-                    }
-                    if let Some(w) = &whole {
-                        if let Some(v) = w.m.rate_s_per_day {
-                            let se = w.m.confidence.and_then(|c| c.rate.se);
-                            let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
-                            let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
-                                format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
-                            });
-                            whole_line(
-                                ui,
-                                format!("{v:+.1}{pm} s/d").replace('-', "−"),
-                                spread,
-                                w.span,
+                                c.device,
+                                c.ppm.abs(),
+                                if c.ppm >= 0.0 { "slow" } else { "fast" },
+                                day_of(&c.measured_utc),
+                                off.abs(),
+                                timegrapher_core::clock::rate_error_s_per_day(off.abs())
                             );
                         }
-                    }
-                },
-            );
+                        ui.label(RichText::new(text).small().color(pal.text_secondary))
+                            .on_hover_text(hint);
+                        if ui
+                            .small_button("Keep")
+                            .on_hover_text("Keep this input's clock error and correct its rates")
+                            .clicked()
+                        {
+                            keep_clock.set(true);
+                        }
+                    });
+                }
+            });
             let amp = r.and_then(|r| r.amplitude_deg);
             card(
-                &mut cols[2],
+                &mut cols[3],
                 "Amplitude",
                 help::AMPLITUDE,
                 // A default lift angle is said by "the default" beside Lift,
@@ -8825,30 +9280,15 @@ impl TimegrapherApp {
                         Some(e) => format!("± {e:.0}°"),
                         None => String::new(),
                     };
-                    figure(ui, amp.map(|v| format!("{v:.0}°")), &unit);
-                    if !heard {
-                        unheard(ui);
-                        return;
+                    let mut behind = String::new();
+                    if let Some(&LiveReading {
+                        amplitude_even_deg: Some(a),
+                        amplitude_odd_deg: Some(b),
+                        ..
+                    }) = r
+                    {
+                        behind = format!("Tick {a:.0}°, Tock {b:.0}°: each side's own amplitude.");
                     }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        if let Some(&LiveReading {
-                            amplitude_even_deg: Some(a),
-                            amplitude_odd_deg: Some(b),
-                            ..
-                        }) = r
-                        {
-                            for (name, v, c) in [("Tick", a, pal.tick), ("Tock", b, pal.tock)] {
-                                theme::dot(ui, c);
-                                ui.label(
-                                    RichText::new(format!("{name} {v:.0}°"))
-                                        .small()
-                                        .color(pal.text_secondary),
-                                );
-                                ui.add_space(6.0);
-                            }
-                        }
-                    });
                     if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?)))
                     {
                         let se = w.m.confidence.and_then(|c| c.amplitude.se);
@@ -8857,14 +9297,23 @@ impl TimegrapherApp {
                             w.m.amplitude_p05
                                 .zip(w.m.amplitude_p95)
                                 .map(|(a, b)| format!("2 s windows {a:.0}° to {b:.0}°"));
-                        whole_line(ui, format!("{v:.0}{pm}°"), spread, w.span);
+                        behind += &whole_text(format!("{v:.0}{pm}°"), spread, w.span);
+                    }
+                    figure(
+                        ui,
+                        amp.map(|v| format!("{v:.0}°")),
+                        &unit,
+                        behind.trim_start(),
+                    );
+                    if !heard {
+                        unheard(ui);
                     }
                 },
             );
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
             card(
-                &mut cols[3],
+                &mut cols[4],
                 "Beat Error",
                 help::BEAT_ERROR,
                 reading_limits("Beat Error", caveats, lift_now, beats),
@@ -8874,84 +9323,74 @@ impl TimegrapherApp {
                         Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
                         _ => "milliseconds".to_string(),
                     };
+                    // Which edge it is timed from, in the figure's hover.
+                    let from = match (unlock, drop) {
+                        (Some(_), Some(d)) => format!(
+                            "From the unlock, the usual reading, as tg shows it: quote this one. \
+                             From the drop, a second opinion: {:.2} ms.",
+                            d.abs()
+                        ),
+                        (None, Some(_)) => "From the drop: the unlock couldn't be timed.".into(),
+                        _ => "From the unlock, the usual reading, as tg shows it.".into(),
+                    };
+                    let mut from = from;
+                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?)))
+                    {
+                        let se = w.m.confidence.and_then(|c| c.beat_error.se);
+                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                        from += &whole_text(format!("{v:.2}{pm} ms"), None, w.span);
+                        if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
+                            from += &format!(
+                                " The {WHOLE_AS_SIZES}, so the sizes either side are combined \
+                                 rather than the signed values, as timegrapher session does."
+                            );
+                        }
+                    }
                     // The size only: which beat is the tick can flip between runs.
                     figure(
                         ui,
                         unlock.or(drop).map(|v| format!("{:.2}", v.abs())),
                         &unit,
+                        &from,
                     );
                     if !heard {
                         unheard(ui);
-                        return;
-                    }
-                    ui.label(
-                        RichText::new(match (unlock, drop) {
-                            (Some(_), Some(d)) => {
-                                format!(
-                                    "from the unlock, the usual reading · from the drop {:.2} ms",
-                                    d.abs()
-                                )
-                            }
-                            (None, Some(_)) => "from the drop".into(),
-                            _ => "from the unlock, the usual reading".into(),
-                        })
-                        .small()
-                        .color(pal.text_secondary),
-                    )
-                    .on_hover_text(
-                        "The big figure is timed from the unlock, as tg shows it: quote \
-                         that one. The drop figure is a second opinion.",
-                    );
-                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?)))
-                    {
-                        let se = w.m.confidence.and_then(|c| c.beat_error.se);
-                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
-                        whole_line(ui, format!("{v:.2}{pm} ms"), None, w.span);
-                        if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
-                            ui.label(
-                                RichText::new(WHOLE_AS_SIZES)
-                                    .small()
-                                    .color(pal.text_secondary),
-                            )
-                            .on_hover_text(
-                                "The beat error's sign differs either side of a cut in the \
-                                 take, so the whole take's figure combines the sizes either \
-                                 side rather than the signed values, as timegrapher session \
-                                 does.",
-                            );
-                        }
                     }
                 },
             );
             let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
             let set_bph = self.bph;
+            // Set on the card, the figure is the card's menu, in its slot.
+            let menu = self.take_shows_rate_and_lift();
             card(
-                &mut cols[4],
+                &mut cols[5],
                 "Beat Rate",
                 help::BEAT_RATE,
                 Vec::new(),
-                Some((Slot::BeatRate, BEAT_RATE_SLOT_H)),
+                Some((
+                    Slot::BeatRate,
+                    if menu {
+                        BEAT_RATE_SLOT_H
+                    } else {
+                        CONTROL_SLOT_H
+                    },
+                )),
                 &|ui| {
-                    figure(ui, set_bph.or(heard_bph).map(|b| b.to_string()), "bph");
-                    let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-                    match (set_bph, heard_bph) {
+                    if menu {
+                        return;
+                    }
+                    let how = match (set_bph, heard_bph) {
                         (Some(_), _) => {
-                            ui.label(small("set on the Beat Rate card".into())).on_hover_text(
-                                "Beat Rate is set on the Beat Rate card, so the readings use it rather than \
-                             finding it from the beats. Auto finds it again.",
-                            );
+                            "Set on this card, so the readings use it rather than finding it \
+                             from the beats. Auto finds it again."
                         }
                         (None, Some(_)) => {
-                            ui.label(small("found from the beats".into()))
-                                .on_hover_text(
-                                "Beat Rate on the Beat Rate card is Auto: the app found it from the first \
-                             seconds of beats, as the nearest standard rate.",
-                            );
+                            "Found from the beats: Beat Rate is Auto, so the app found it from \
+                             the first seconds of beats, as the nearest standard rate."
                         }
-                        (None, None) => {
-                            ui.label(small("not found yet".into()));
-                        }
-                    }
+                        (None, None) => "",
+                    };
+                    figure(ui, set_bph.or(heard_bph).map(|b| b.to_string()), "bph", how);
                 },
             );
         }
@@ -9378,12 +9817,12 @@ impl TimegrapherApp {
             line(
                 ui,
                 "Your microphone session is set aside while this shows: Listen, on the \
-                 Rate card, starts a new one.",
+                 Listen card, starts a new one.",
             );
         }
         line(
             ui,
-            "Listen, on the Rate card, listens to the watch on the microphone without \
+            "Listen, on the Listen card, listens to the watch on the microphone without \
              picking a watch; Save keeps what it heard. For a watch's history, Watches (at \
              the top) lists your watches: pick one, then Listen, Positions Test or Power \
              Reserve Test, and each take is saved into it. New Watch… adds one.",
@@ -10444,13 +10883,15 @@ impl TimegrapherApp {
             self.move_banner(ui);
             self.clipping_banner(ui);
         }
-        // Always there: the readings, and on them what a take needs.
-        let out = self.readouts(ui);
-        if out.keep_clock {
-            self.keep_clock();
+        // The readings, and on them what a take needs, unless hidden.
+        if self.show_readings {
+            let out = self.readouts(ui);
+            if out.keep_clock {
+                self.keep_clock();
+            }
+            self.card_controls(ui, &out);
+            ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
         }
-        self.card_controls(ui, &out);
-        ui.add_space(theme::GAP - ui.spacing().item_spacing.y);
 
         // Looking back through a finished or analysed recording, however
         // short.
@@ -12590,7 +13031,10 @@ impl TimegrapherApp {
                 egui::Key::Num6,
             ];
             let pressed = ctx.input(|i| keys.iter().position(|&k| i.key_pressed(k)));
-            if let Some(p) = pressed.map(|n| Position::ALL[n]) {
+            if let Some(p) = pressed
+                .map(|n| Position::ALL[n])
+                .filter(|_| self.position_editable())
+            {
                 if p != self.position {
                     self.change_position(p);
                 }
@@ -12792,9 +13236,9 @@ const MATCH_STRIP_HINT: &str = "Show the same stretch of time as the paper strip
      line up with it and move with it. Off, the charts show the whole session.";
 
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
-     As Readings follows Average Over on the Rate card. A time of its own sets \
+     As Readings follows Average Over on the Listen card. A time of its own sets \
      everything in this pane that Average Over sets, and is named on the pane's tab, until \
-     Average Over on the Rate card is changed: then every pane follows that again.";
+     Average Over on the Listen card is changed: then every pane follows that again.";
 
 /// Everything Average Over sets, and what it leaves alone.
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
@@ -12860,7 +13304,7 @@ struct WholeTake {
     span: f64,
 }
 
-const WHOLE_AS_SIZES: &str = "whole take given as a size: its sign differs either side of a cut";
+const WHOLE_AS_SIZES: &str = "whole take is given as a size: its sign differs either side of a cut";
 
 fn reading_limits(
     title: &str,
@@ -14914,8 +15358,15 @@ mod tests {
         assert!(app.quick_listen && app.unsorted_open && app.watch_open.is_none());
         assert_eq!(app.watch, "");
         assert!(!app.running());
+        // The list, Unsorted Takes marked; its row shows its takes.
+        assert!(app.list_shown());
         let drawn = pane(&ctx, &mut app);
-        for t in ["Unsorted", "No takes here", "‹ All Watches"] {
+        for t in ["Unsorted Takes", "Quick Listen, no watch", "Pepsi"] {
+            assert!(drawn.contains(t), "{t}: {drawn}");
+        }
+        app.list_for = None;
+        let drawn = pane(&ctx, &mut app);
+        for t in ["Unsorted Takes", "No takes here", "‹ All Watches"] {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
 
@@ -14949,12 +15400,7 @@ mod tests {
         // The list shows Unsorted at its top, with Quick Listen.
         app.unsorted_open = false;
         let drawn = pane(&ctx, &mut app);
-        for t in [
-            "Unsorted",
-            "1 take, made with Quick Listen",
-            "Quick Listen",
-            "Pepsi",
-        ] {
+        for t in ["Unsorted Takes", "Quick Listen, no watch · 1 take", "Pepsi"] {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
         app.unsorted_open = true;
@@ -17069,33 +17515,212 @@ mod tests {
         assert!(!pane_visible(&old.panes.tiles, Pane::Watch), "afresh");
     }
 
-    /// The readings' cards carry what a take needs: the six positions,
-    /// Listen and Save with Average Over, the lift angle and the beat
-    /// rate with the calibre. Nothing says Take, Pause or Resume, and no
-    /// Replay is offered.
+    /// The Position card's arrows tip the watch as it would tip on the
+    /// stand: from Dial Up, back to 12 down (Crown Left, 6H), forward to
+    /// 6 down (Crown Right, 12H), left to Crown Up, right to Crown Down,
+    /// and over to Dial Down. From every position the four tips reach the
+    /// four positions beside it and Over the opposite one.
+    #[test]
+    fn the_position_arrows_tip_the_watch() {
+        use Position::*;
+        let du = |t| Orient::DIAL_UP.tip(t).position();
+        assert_eq!(du(Tip::Back), CrownLeft);
+        assert_eq!(du(Tip::Forward), CrownRight);
+        assert_eq!(du(Tip::Left), CrownUp);
+        assert_eq!(du(Tip::Right), CrownDown);
+        assert_eq!(du(Tip::Over), DialDown);
+        let opposite = |p: Position| match p {
+            DialUp => DialDown,
+            DialDown => DialUp,
+            CrownUp => CrownDown,
+            CrownDown => CrownUp,
+            CrownLeft => CrownRight,
+            CrownRight => CrownLeft,
+        };
+        // From every way the watch can lie, reached by any two tips.
+        let tips = [Tip::Back, Tip::Forward, Tip::Left, Tip::Right, Tip::Over];
+        for a in tips {
+            for b in tips {
+                let o = Orient::DIAL_UP.tip(a).tip(b);
+                let p = o.position();
+                assert_eq!(o.tip(Tip::Over).position(), opposite(p), "{a:?} {b:?}");
+                let mut reached: Vec<Position> =
+                    tips[..4].iter().map(|&t| o.tip(t).position()).collect();
+                assert!(!reached.contains(&p) && !reached.contains(&opposite(p)));
+                reached.sort_by_key(|q| q.code());
+                reached.dedup();
+                assert_eq!(reached.len(), 4, "{a:?} {b:?}: {reached:?}");
+                // A tip and its opposite undo each other.
+                assert_eq!(o.tip(Tip::Back).tip(Tip::Forward), o);
+                assert_eq!(o.tip(Tip::Left).tip(Tip::Right), o);
+                assert_eq!(o.tip(Tip::Over).tip(Tip::Over), o);
+            }
+        }
+        for p in Position::ALL {
+            assert_eq!(Orient::of(p).position(), p);
+        }
+    }
+
+    /// The Position card sets the position only while it can: before
+    /// anything is on show, it has the arrows; with a take on show it
+    /// shows the position alone, as history.
+    #[test]
+    fn the_position_card_only_shows_a_takes_position() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert!(app.position_editable());
+        let texts = window_texts(&mut app, &ctx, 1000.0);
+        assert!(texts.iter().any(|t| t == "↑"), "{texts:?}");
+        let mut app = synthetic(20.0, 0.0);
+        assert!(!app.position_editable());
+        let texts = window_texts(&mut app, &ctx, 1000.0);
+        assert!(texts.iter().any(|t| t == "DU"), "{texts:?}");
+        for arrow in ["↑", "↓", "←", "→", "↗"] {
+            assert!(!texts.iter().any(|t| t == arrow), "{arrow}: {texts:?}");
+        }
+    }
+
+    /// Every pane has one place in the icon bar's groups: the core panes
+    /// with Watches first, the charts, the distributions, Analysis (the
+    /// Steadiness views and Isochronism) and Tests. At 1000 points the
+    /// largest groups fold into menus, and the Tests and Settings still
+    /// show.
+    #[test]
+    fn every_pane_has_one_place_in_the_icon_bar() {
+        let mut all: Vec<Pane> = [
+            &Pane::CORE[..],
+            &Pane::CHARTS,
+            &Pane::HISTOGRAMS,
+            &Pane::ANALYSIS,
+            &Pane::TESTS,
+        ]
+        .concat();
+        assert_eq!(Pane::CORE[0], Pane::Watch);
+        assert!(Pane::ANALYSIS.contains(&Pane::Isochronism));
+        assert_eq!(all.len(), Pane::ALL.len());
+        all.sort();
+        all.dedup();
+        assert_eq!(all.len(), Pane::ALL.len());
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let narrow = window_texts(&mut app, &ctx, 1000.0);
+        assert!(
+            narrow
+                .iter()
+                .any(|t| t.starts_with("Analysis") && t.contains('⏷')),
+            "{narrow:?}"
+        );
+        assert!(narrow.iter().any(|t| t == "Tests"), "{narrow:?}");
+        let wide = window_texts(&mut app, &ctx, 2000.0);
+        assert!(wide.iter().any(|t| t == "Analysis"), "{wide:?}");
+    }
+
+    /// Readings, in the View menu and as the first icon in the bar, hides
+    /// and shows the cards.
+    #[test]
+    fn readings_hides_the_cards() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let shown = window_texts(&mut app, &ctx, 1440.0);
+        assert!(shown.iter().any(|t| t == "Listen"), "{shown:?}");
+        app.show_readings = false;
+        let hidden = window_texts(&mut app, &ctx, 1440.0);
+        for card in ["Position", "Listen", "Beat Rate"] {
+            assert!(!hidden.iter().any(|t| t == card), "{card}: {hidden:?}");
+        }
+    }
+
+    /// Unsorted Takes puts the app back in Quick Listen: no watch, no
+    /// calibre, the default lift angle and the beat rate found from the
+    /// beats; with readings on show they keep their settings until the
+    /// next Listen. ‹ All Watches shows the list with the watch picked
+    /// still picked and its row marked.
+    #[test]
+    fn unsorted_takes_goes_back_to_quick_listen() {
+        let base =
+            std::env::temp_dir().join(format!("tg-app-test-unsorted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let mut w = library::Watch::new("Pepsi");
+        w.lift = Some(55.0);
+        w.bph = Some(21600);
+        lib.add(&w).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.pick_watch(&pepsi);
+        app.set_calibre("ETA 2824-2".into());
+        app.set_lift(55.0);
+        assert_eq!(app.bph, Some(21600));
+
+        // ‹ All Watches: the list, Pepsi still picked.
+        app.list_for = Some((app.watch_open.clone(), false));
+        assert!(app.list_shown());
+        assert_eq!(app.watch_open.as_deref(), Some(pepsi.as_str()));
+
+        app.pick_unsorted();
+        assert!(!app.list_shown(), "Unsorted Takes on show");
+        assert!(app.watch_open.is_none() && app.unsorted_open);
+        assert!(app.calibre.is_empty() && app.watch.is_empty());
+        assert_eq!(app.lift_deg, DEFAULT_LIFT_DEG);
+        assert!(!app.lift_known());
+        assert_eq!(app.bph, None);
+
+        // With readings on show, the settings wait for the next Listen.
+        drop(app);
+        let mut shown = synthetic(15.0, 0.0);
+        shown.use_library(Some(root.clone()));
+        shown.set_lift(55.0);
+        shown.pick_unsorted();
+        assert_eq!(shown.lift_deg, 55.0, "the readings keep their lift");
+        assert!(shown.quick_defaults);
+        assert!(shown.quick_listen_ready(true));
+        assert_eq!(shown.lift_deg, DEFAULT_LIFT_DEG);
+        assert!(!shown.quick_defaults);
+        drop(shown);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The readings' cards carry what a take needs: the position with the
+    /// arrows that tip the watch, Listen and Save with Average Over on a
+    /// card of their own, the lift angle and the beat rate's menu with the
+    /// calibre. Nothing says Take, Pause or Resume, and no Replay is
+    /// offered.
     #[test]
     fn the_readings_cards_carry_the_take_controls() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let ctx = themed();
         for w in [1000.0, 1440.0] {
             let texts = window_texts(&mut app, &ctx, w);
+            // The name where it fits on one line, else the code alone.
+            if w > 1000.0 {
+                assert!(texts.iter().any(|t| t == "Dial Up"), "at {w}: {texts:?}");
+            }
             for want in [
                 "Position",
-                "DU 1",
-                "DD 2",
-                "CU 3",
-                "CD 4",
-                "CL 5",
-                "CR 6",
+                "DU",
+                "↑",
+                "↓",
+                "←",
+                "→",
+                "↗",
+                "Listen",
                 "Lift",
                 "Average 10 s",
-                "Beat Rate: Auto",
                 "Calibre",
                 "Not Set",
                 "Watches",
             ] {
                 assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
             }
+            assert!(
+                texts
+                    .iter()
+                    .any(|t| t.starts_with('—') && t.contains("bph")),
+                "the beat rate's menu at {w}: {texts:?}"
+            );
             for gone in [
                 "Take",
                 "New Take",
@@ -17204,7 +17829,7 @@ mod tests {
         };
         // The lift angle's field has its ° beside it; a calibre's angle is
         // one label.
-        let asks = |d: &str| d.contains("Beat Rate: Auto") && d.contains("text: \"°\"");
+        let asks = |d: &str| d.contains("bph · Auto") && d.contains("text: \"°\"");
         let none = drawn(&mut app);
         assert!(asks(&none) && none.contains("Not Set"), "{none}");
         app.pick_watch(&diver);
@@ -17294,7 +17919,12 @@ mod tests {
                 }
             }
             let pane = top_of["Paper Strip"];
-            for control in ["CR 6", "Lift", "Beat Rate: Auto"] {
+            let bph = bottom_of
+                .keys()
+                .find(|k| k.starts_with('—') && k.contains("bph"))
+                .expect("the beat rate's menu")
+                .clone();
+            for control in ["↓", "Lift", bph.as_str()] {
                 assert!(
                     bottom_of[control] < pane,
                     "{control} ends at {} under the panes at {pane}",
