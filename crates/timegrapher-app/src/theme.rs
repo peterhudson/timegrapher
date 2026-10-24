@@ -124,7 +124,21 @@ pub const CARD_RADIUS: u8 = 10;
 pub const CONTROL_RADIUS: u8 = 6;
 /// Space between cards, and inside them.
 pub const GAP: f32 = 12.0;
-pub const CARD_PADDING: i8 = 14;
+pub const CARD_PADDING: i8 = 16;
+
+/// The readings cards' three rows, 8 apart: the title, the figure and the
+/// controls. Every control on them is `CONTROL_H` tall.
+pub const TITLE_ROW_H: f32 = 18.0;
+pub const FIGURE_ROW_H: f32 = 40.0;
+pub const CONTROL_H: f32 = 28.0;
+pub const ROW_GAP: f32 = 8.0;
+/// A readings card's height at every width, whatever it shows: its three
+/// rows and its padding.
+pub const READINGS_CARD_H: f32 =
+    TITLE_ROW_H + FIGURE_ROW_H + CONTROL_H + 2.0 * ROW_GAP + 2.0 * CARD_PADDING as f32;
+/// The size of a readings card's big figure, and on a compact card.
+pub const FIGURE_PT: f32 = 32.0;
+pub const FIGURE_COMPACT_PT: f32 = 26.0;
 
 const SEMIBOLD: &str = "semibold";
 const DISPLAY: &str = "display";
@@ -371,6 +385,50 @@ pub fn help_with_key(
                 .max_height(ui.ctx().content_rect().height() - 24.0)
                 .show(ui, |ui| body(ui, true));
         });
+    resp
+}
+
+/// A reading's limit in short, in a small rounded chip no wider than
+/// `max_w`: its whole sentences show while the pointer is on it, and stay
+/// open once it's clicked, as the "?" does.
+pub fn chip(ui: &mut Ui, text: &str, title: &str, sentences: &[String], max_w: f32) -> Response {
+    let p = pal(ui);
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        text.to_string(),
+        FontId::proportional(12.0),
+        p.text_secondary,
+    );
+    job.wrap = egui::text::TextWrapping::truncate_at_width((max_w - 14.0).max(8.0));
+    let galley = ui.painter().layout_job(job);
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(galley.size().x + 14.0, 18.0), Sense::click());
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
+    let fill = if open {
+        p.control_active
+    } else if resp.hovered() {
+        p.control_hover
+    } else {
+        p.control
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(9), fill);
+    ui.painter().galley(
+        rect.center() - galley.size() / 2.0,
+        galley,
+        p.text_secondary,
+    );
+    let body = |ui: &mut Ui| {
+        ui.set_max_width(320.0);
+        ui.spacing_mut().item_spacing.y = 8.0;
+        ui.label(RichText::new(title).font(semibold(14.0)));
+        for s in sentences {
+            ui.add(egui::Label::new(RichText::new(s).size(12.5)).wrap());
+        }
+    };
+    let resp = if open { resp } else { resp.on_hover_ui(body) };
+    egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .width(320.0)
+        .show(body);
     resp
 }
 
@@ -1540,11 +1598,12 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Respons
 
 /// A square button with an icon, `size` across, for a control on a card:
 /// filled in `color` when `strong`, else a plain button. Picked, it is
-/// tinted as a toggle that is on.
+/// tinted as a toggle that is on. Its corners are `radius`.
 pub fn icon_button(
     ui: &mut Ui,
     icon: Icon,
     size: f32,
+    radius: u8,
     color: Color32,
     strong: bool,
     picked: bool,
@@ -1556,7 +1615,7 @@ pub fn icon_button(
         Sense::hover()
     };
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), sense);
-    let radius = CornerRadius::same(CONTROL_RADIUS);
+    let radius = CornerRadius::same(radius);
     let enabled = ui.is_enabled();
     let (fill, ink) = if strong && enabled {
         (color, Color32::WHITE)
