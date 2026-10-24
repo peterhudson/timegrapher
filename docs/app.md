@@ -1144,14 +1144,16 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     take opened, or a take saved: the latest first, none twice, never
     expiring, and kept across restarts.
   - **Manage Calibres.** The Calibres category of Settings, which
-    Manage Calibres… opens. One row of controls runs across the top, then
-    every calibre in a table on the left and, level with it on the right,
+    Manage Calibres… opens. **New Custom Calibre…** sits at the right of
+    the Calibres heading and adds a calibre the list doesn't have, shown
+    and selected whatever the filters hide. Under the heading, every
+    calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
     from the Calibre menu while a beat rate is known (set on the Beat Rate
     card, found from the beats, or the watch's in its form), the table
     starts with the Beat Rate funnel at that rate and says so above it
     ("Showing 28800 bph, the rate found from the beats"), with **Show
-    All** beside it; Clear Filters clears it too. Opened from the gear,
+    All** beside it; the Beat Rate funnel's Clear Filter clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
     - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
       and the short list, a narrow column headed by a star with a star on
@@ -1167,19 +1169,18 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
-      a search over them. The list keeps its height while you search. The
+      a search over them. The list keeps its height while you search. In
+      Maker and Calibre the search also finds a calibre by one of its
+      other names, or its maker under any of the maker's names ("dd 3235",
+      "sw200", "seagull st19"). With a search typed, Select All reads
+      **(Select All Search Results)** and picks just the values the search
+      lists, as a spreadsheet's does. The star column's funnel with only
+      Starred ticked shows just the short list. The
       ticks apply on **OK**; **Cancel** leaves the filter as it was, and OK
       needs at least one value ticked. It lists the values the other
       filters let through; the funnels combine, so a row shows only when
       every column's value is ticked. A funnel in use is tinted in the
       accent colour.
-    - **The controls row.** On the left the search box (every word must
-      match a calibre's number, one of its other names, or its maker under
-      any of the maker's names: "dd 3235", "sw200", "seagull st19"),
-      **Short List Only**, which shows just the short list, and **Clear
-      Filters**, which shows every calibre again: it clears the search,
-      Short List Only and every column's funnel. On the right **New Custom
-      Calibre…**, which adds one named as typed in the search box.
     - **The details.** The calibre selected, in a card level with the
       table: its name and what the list gives, then for a custom calibre
       its name, maker, beat rate and lift angle, then **Wheels**, each

@@ -9197,6 +9197,11 @@ impl TimegrapherApp {
                 }
                 Tab::Calibres => {
                     theme::help(ui, "Calibres", calibre_ui::MANAGE_HELP);
+                    // Adding a calibre is the pane's one action: beside
+                    // its heading, at the right.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.cal.new_custom_button(ui);
+                    });
                 }
                 Tab::General => {}
             }
