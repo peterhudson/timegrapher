@@ -63,6 +63,12 @@ pub struct Calibres {
     extra: (String, String),
     /// Why the user's calibres couldn't be read or written, if so.
     pub problem: Option<String>,
+    /// The beat rate the Calibre menu knew when it asked for Manage
+    /// Calibres, and where the rate came from, for the table to start at.
+    manager_rate: Option<(u32, &'static str)>,
+    /// The Beat Rate funnel the table started at, and where the rate came
+    /// from, said above the table while that funnel is as it was set.
+    rate_preset: Option<(String, &'static str)>,
     /// The table's rows by name, kept with what they were sorted from so a
     /// frame that changes nothing doesn't sort every calibre again.
     table_rows: std::cell::RefCell<Option<(TableKey, RowNames)>>,
@@ -224,6 +230,8 @@ impl Calibres {
             short_only: false,
             extra: (String::new(), String::new()),
             problem: None,
+            manager_rate: None,
+            rate_preset: None,
             table_rows: Default::default(),
         }
     }
@@ -424,9 +432,15 @@ impl Calibres {
 
     /// The Calibre menu, short: Not Set, the recent picks, the short list
     /// and the user's own calibres, with Manage Calibres… pinned at its
-    /// foot, below the scrolling list, for the rest. What was picked ("" for
-    /// Not Set), if anything.
-    pub fn picker(&mut self, ui: &mut egui::Ui, current: &str) -> Option<String> {
+    /// foot, below the scrolling list, for the rest. `rate` is the beat rate
+    /// known, with where it came from: Manage Calibres… then opens on the
+    /// calibres at that rate. What was picked ("" for Not Set), if anything.
+    pub fn picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        current: &str,
+        rate: Option<(u32, &'static str)>,
+    ) -> Option<String> {
         let pal = theme::pal(ui);
         let shown = match self.find(current) {
             Some(e) => e.name().to_string(),
@@ -582,6 +596,7 @@ impl Calibres {
         };
         if manage {
             self.open_manager(current);
+            self.manager_rate = rate;
         }
         picked
     }
@@ -589,7 +604,36 @@ impl Calibres {
     /// Open Manage Calibres on `current`, or on nothing.
     pub fn open_manager(&mut self, current: &str) {
         self.manager_open = true;
+        self.manager_rate = None;
         self.selected = self.find(current).map(|e| e.name().to_string());
+    }
+
+    /// Settings opening: the table loses the Beat Rate funnel an earlier
+    /// Manage Calibres… set, if still as it was set, so the gear opens it
+    /// unfiltered.
+    pub fn drop_rate_preset(&mut self) {
+        if let Some((rate, _)) = self.rate_preset.take() {
+            if self.rate_funnel_is(&rate) {
+                self.funnels[Col::BeatRate as usize] = None;
+            }
+        }
+    }
+
+    /// Manage Calibres… from the Calibre menu with a beat rate known: the
+    /// table starts at the calibres at that rate.
+    pub fn apply_rate_preset(&mut self) {
+        if let Some((bph, from)) = self.manager_rate.take() {
+            let rate = bph.to_string();
+            self.funnels[Col::BeatRate as usize] = Some([rate.clone()].into());
+            self.rate_preset = Some((rate, from));
+        }
+    }
+
+    /// Whether the Beat Rate funnel shows only `rate`.
+    fn rate_funnel_is(&self, rate: &str) -> bool {
+        self.funnels[Col::BeatRate as usize]
+            .as_ref()
+            .is_some_and(|keep| keep.len() == 1 && keep.contains(rate))
     }
 
     /// Each wheel's turn with where it comes from, blanks to fill in,
@@ -828,6 +872,26 @@ impl Calibres {
             l.on_hover_text(hint);
             theme::switch(ui, &mut self.short_only).on_hover_text(hint);
         });
+        // The rate the table started at, while its funnel is as it was set.
+        if let Some((rate, from)) = self.rate_preset.clone() {
+            if self.rate_funnel_is(&rate) {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("Showing {rate} bph, {from}"))
+                            .color(pal.text_secondary),
+                    );
+                    if ui
+                        .link("Show All")
+                        .on_hover_text("Show the calibres at every beat rate")
+                        .clicked()
+                    {
+                        self.funnels[Col::BeatRate as usize] = None;
+                        self.rate_preset = None;
+                    }
+                });
+            }
+        }
         ui.add_space(6.0);
         // By name, so the table can change what it holds as it draws.
         let rows = self.row_names();
@@ -2216,6 +2280,34 @@ mod tests {
         assert_eq!(cal.rows().len(), calibres::all().len());
     }
 
+    /// Manage Calibres… from the Calibre menu with a rate known starts at
+    /// the calibres at that rate; Settings opened afresh starts unfiltered,
+    /// and a funnel the user changed is left alone.
+    #[test]
+    fn manage_calibres_starts_at_the_rate_known() {
+        let mut cal = Calibres::in_memory();
+        cal.open_manager("");
+        cal.manager_rate = Some((28800, "the rate found from the beats"));
+        cal.apply_rate_preset();
+        let rows = cal.rows();
+        assert!(!rows.is_empty());
+        assert!(rows.iter().all(|e| e.bph() == Some(28800)));
+        assert!(cal.rows().len() < calibres::all().len());
+        // The gear: Settings opens the table unfiltered.
+        cal.drop_rate_preset();
+        assert_eq!(cal.rows().len(), calibres::all().len());
+        // No rate known: nothing is set.
+        cal.open_manager("");
+        cal.apply_rate_preset();
+        assert_eq!(cal.rows().len(), calibres::all().len());
+        // A funnel changed after the preset stays as the user left it.
+        cal.manager_rate = Some((28800, "the rate found from the beats"));
+        cal.apply_rate_preset();
+        cal.set_funnel(Col::BeatRate, "21600", true);
+        cal.drop_rate_preset();
+        assert!(cal.funnels[Col::BeatRate as usize].is_some());
+    }
+
     /// The table's kept rows follow every change they depend on.
     #[test]
     fn the_kept_rows_follow_the_sort_the_filters_and_the_calibres() {
@@ -2344,7 +2436,7 @@ mod menu_search_tests {
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         ui.set_width(300.0);
-                        c.picker(ui, "");
+                        c.picker(ui, "", None);
                     });
                 },
             )
@@ -2395,7 +2487,7 @@ mod menu_search_tests {
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         ui.set_width(300.0);
-                        c.picker(ui, "");
+                        c.picker(ui, "", None);
                     });
                 },
             )

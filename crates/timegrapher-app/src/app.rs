@@ -774,7 +774,7 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::SteadyFft => (Icon::Fft, pal.unlock),
         Pane::SteadyStft => (Icon::Stft, pal.unlock),
         Pane::SteadyWavelet => (Icon::Wavelet, pal.unlock),
-        Pane::Isochronism => (Icon::Isochronism, pal.drop),
+        Pane::Isochronism => (Icon::Isochronism, pal.unlock),
         Pane::PositionsTest => (Icon::Positions, pal.teal),
         Pane::PowerReserve => (Icon::Reserve, pal.teal),
         Pane::Charts => (Icon::Charts, pal.unlock),
@@ -934,6 +934,10 @@ const CONTROL_SLOT_H: f32 = 28.0;
 /// The size of a card's big figure.
 const FIGURE_PT: f32 = 30.0;
 const BEAT_RATE_SLOT_H: f32 = 72.0;
+/// The Beat Rate card's controls narrower than this put the Calibre menu
+/// under its name, and the card leaves this much more room for them.
+const BEAT_RATE_NARROW_W: f32 = 110.0;
+const BEAT_RATE_NARROW_EXTRA_H: f32 = 20.0;
 const POSITION_SLOT_H: f32 = 72.0;
 const LISTEN_SLOT_H: f32 = 60.0;
 
@@ -6710,6 +6714,12 @@ impl TimegrapherApp {
             return self.calibre_line(ui);
         }
         ui.spacing_mut().item_spacing.y = 4.0;
+        // Taken before anything is drawn: a control wider than the card
+        // would widen what is left.
+        let narrow = ui.available_width() < BEAT_RATE_NARROW_W;
+        if narrow {
+            ui.spacing_mut().button_padding.x = 4.0;
+        }
         let pal = theme::pal(ui);
         let mut bph = self.bph;
         let heard = self.live.as_ref().and_then(|l| l.bph());
@@ -6720,18 +6730,22 @@ impl TimegrapherApp {
             Some(b) => (b.to_string(), pal.text),
             None => ("—".to_string(), pal.text_tertiary),
         };
-        let make = |size: f32, auto: bool| {
+        // `unit` false leaves "bph" to the card's name and the hover, where
+        // the card is too narrow for it.
+        let make = |size: f32, auto: bool, unit: bool| {
             let mut job = egui::text::LayoutJob::default();
             job.append(
                 &figure,
                 0.0,
                 egui::TextFormat::simple(theme::display(size), colour),
             );
-            job.append(
-                if auto { "bph · Auto" } else { "bph" },
-                6.0,
-                egui::TextFormat::simple(egui::FontId::proportional(13.0), pal.text_secondary),
-            );
+            if unit {
+                job.append(
+                    if auto { "bph · Auto" } else { "bph" },
+                    6.0,
+                    egui::TextFormat::simple(egui::FontId::proportional(13.0), pal.text_secondary),
+                );
+            }
             job
         };
         // The menu's arrow and padding beside the text.
@@ -6740,16 +6754,18 @@ impl TimegrapherApp {
             ui.fonts_mut(|f| f.layout_job(job.clone())).size().x
         };
         let tries = [
-            (FIGURE_PT - 4.0, bph.is_none()),
-            (FIGURE_PT - 4.0, false),
-            (FIGURE_PT - 8.0, false),
-            (FIGURE_PT - 12.0, false),
+            (FIGURE_PT - 4.0, bph.is_none(), true),
+            (FIGURE_PT - 4.0, false, true),
+            (FIGURE_PT - 8.0, false, true),
+            (FIGURE_PT - 12.0, false, true),
+            (FIGURE_PT - 8.0, false, false),
+            (FIGURE_PT - 12.0, false, false),
         ];
         let job = tries
             .iter()
-            .map(|&(size, auto)| make(size, auto))
+            .map(|&(size, auto, unit)| make(size, auto, unit))
             .find(|j| wide(ui, j) <= room)
-            .unwrap_or_else(|| make(FIGURE_PT - 12.0, false));
+            .unwrap_or_else(|| make(FIGURE_PT - 16.0, false, false));
         let how = match (bph, heard) {
             (Some(_), _) => {
                 "Beats per hour, set here, so the readings use it rather than finding it from \
@@ -6782,16 +6798,33 @@ impl TimegrapherApp {
         }
         if self.open_watch().is_none() {
             let current = self.calibre.clone();
-            let picked = ui
-                .horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Calibre")
-                            .small()
-                            .color(theme::pal(ui).text_secondary),
-                    );
-                    self.cal.picker(ui, &current)
+            // The rate Manage Calibres… starts its table at.
+            let rate = match self.bph {
+                Some(b) => Some((b, "the rate set on the Beat Rate card")),
+                None => self
+                    .live
+                    .as_ref()
+                    .and_then(|l| l.bph())
+                    .map(|b| (b, "the rate found from the beats")),
+            };
+            let name = |ui: &mut egui::Ui| {
+                ui.label(
+                    RichText::new("Calibre")
+                        .small()
+                        .color(theme::pal(ui).text_secondary),
+                );
+            };
+            // A narrow card puts the menu under its name, so both fit.
+            let picked = if narrow {
+                name(ui);
+                self.cal.picker(ui, &current, rate)
+            } else {
+                ui.horizontal(|ui| {
+                    name(ui);
+                    self.cal.picker(ui, &current, rate)
                 })
-                .inner;
+                .inner
+            };
             if let Some(p) = picked {
                 self.set_calibre(p);
             }
@@ -7272,8 +7305,8 @@ impl TimegrapherApp {
         }
         let overlays = &mut self.overlays;
         for (icon, name) in [
-            (Icon::Amplitude, "Amplitude"),
             (Icon::Rate, "Rate"),
+            (Icon::Amplitude, "Amplitude"),
             (Icon::BeatError, "Beat Error"),
         ] {
             theme::note_icon(ui, icon, &format!("Draw Over the Strip: {name}"));
@@ -7281,15 +7314,11 @@ impl TimegrapherApp {
         theme::bar_item(ui, "Draw Over the Strip", |ui| {
             let over = "Readings drawn as lines over the beats against the same time, each \
                         on its own scale";
+            // Rate, Amplitude, Beat Error, as everywhere; `overlays` keeps
+            // its own order (amplitude, rate, beat error) for old settings.
             let lines = [
                 (
-                    Icon::Amplitude,
-                    pal.trace_amplitude,
-                    "Amplitude",
-                    "The amplitude readings as a purple line against the same time, on \
-                     their own scale",
-                ),
-                (
+                    1,
                     Icon::Rate,
                     pal.trace_rate,
                     "Rate",
@@ -7297,6 +7326,15 @@ impl TimegrapherApp {
                      scale",
                 ),
                 (
+                    0,
+                    Icon::Amplitude,
+                    pal.trace_amplitude,
+                    "Amplitude",
+                    "The amplitude readings as a purple line against the same time, on \
+                     their own scale",
+                ),
+                (
+                    2,
                     Icon::BeatError,
                     pal.trace_beat_error,
                     "Beat Error",
@@ -7306,7 +7344,7 @@ impl TimegrapherApp {
             ];
             if theme::in_toolbar(ui) {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                for (i, (icon, colour, name, hint)) in lines.into_iter().enumerate() {
+                for (i, icon, colour, name, hint) in lines {
                     if theme::icon_toggle(ui, icon, overlays[i], colour)
                         .on_hover_text(format!("Draw Over the Strip: {name}: {hint}"))
                         .clicked()
@@ -7317,7 +7355,7 @@ impl TimegrapherApp {
             } else {
                 ui.label(RichText::new("Draw Over the Strip").strong())
                     .on_hover_text(over);
-                for (i, (_, _, name, hint)) in lines.into_iter().enumerate() {
+                for (i, _, _, name, hint) in lines {
                     theme::switch_row(ui, name, &mut overlays[i], hint);
                 }
             }
@@ -8738,6 +8776,7 @@ impl TimegrapherApp {
 
     /// Open the Settings window at `tab`, reading the kept clocks afresh.
     fn open_settings(&mut self, tab: Tab) {
+        self.cal.drop_rate_preset();
         self.kept_clocks = clockstore::ClockStore::load();
         self.read_library();
         self.settings_tab = Some(tab);
@@ -8921,6 +8960,7 @@ impl TimegrapherApp {
     fn settings_window(&mut self, ctx: &egui::Context) {
         if std::mem::take(&mut self.cal.manager_open) {
             self.open_settings(Tab::Calibres);
+            self.cal.apply_rate_preset();
         }
         self.poll_library_move(ctx);
         let Some(mut tab) = self.settings_tab else {
@@ -9721,10 +9761,13 @@ impl TimegrapherApp {
                 Vec::new(),
                 Some((
                     Slot::BeatRate,
-                    if menu {
-                        BEAT_RATE_SLOT_H
-                    } else {
+                    if !menu {
                         CONTROL_SLOT_H
+                    } else if wide - 2.0 * 14.0 < BEAT_RATE_NARROW_W {
+                        // The card less its side margins.
+                        BEAT_RATE_SLOT_H + BEAT_RATE_NARROW_EXTRA_H
+                    } else {
+                        BEAT_RATE_SLOT_H
                     },
                 )),
                 &|ui| {
@@ -11437,17 +11480,7 @@ impl TimegrapherApp {
                 .collect()
         };
         let mut overlays = Vec::new();
-        if self.overlays[0] {
-            overlays.push(strip::Overlay {
-                name: "Amplitude",
-                unit: "°",
-                decimals: 0,
-                color: pal.trace_amplitude,
-                min_span: 10.0,
-                points: series(|p| p.amplitude),
-                gap_s,
-            });
-        }
+        // Rate, Amplitude, Beat Error, as the toolbar orders them.
         if self.overlays[1] {
             overlays.push(strip::Overlay {
                 name: "Rate",
@@ -11456,6 +11489,17 @@ impl TimegrapherApp {
                 color: pal.trace_rate,
                 min_span: 4.0,
                 points: series(|p| p.rate),
+                gap_s,
+            });
+        }
+        if self.overlays[0] {
+            overlays.push(strip::Overlay {
+                name: "Amplitude",
+                unit: "°",
+                decimals: 0,
+                color: pal.trace_amplitude,
+                min_span: 10.0,
+                points: series(|p| p.amplitude),
                 gap_s,
             });
         }
@@ -18634,6 +18678,38 @@ mod tests {
         eframe::App::on_exit(&mut app, None);
         assert!(kept_sounds(&base).is_empty());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// On a card as narrow as the smallest window gives it, the Beat Rate
+    /// card's menus stay inside it: the figure drops "bph" and the Calibre
+    /// menu goes under its name.
+    #[test]
+    fn the_beat_rate_controls_fit_a_narrow_card() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.bph = Some(28800);
+        let ctx = themed();
+        for w in [84.0, 160.0] {
+            let mut used = egui::Rect::NOTHING;
+            for _ in 0..2 {
+                let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(w, 200.0));
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect)
+                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                        );
+                        app.beat_rate_controls(&mut child);
+                        used = child.min_rect();
+                    });
+                });
+            }
+            assert!(
+                used.width() <= w + 0.5,
+                "{} pt wide in a {w} pt card",
+                used.width()
+            );
+        }
     }
 
     /// With no watch picked, or a watch with no calibre, the Beat Rate
