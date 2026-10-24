@@ -88,6 +88,10 @@ pub struct Settings {
     pub library: Option<std::path::PathBuf>,
     /// The Settings window's category last left on, which it opens at.
     pub settings_section: String,
+    /// The inputs whose own automatic gain is left on, by device id
+    /// ("default" for the system default). Every other input with the
+    /// switch has it turned off each time the app opens it.
+    pub agc_on: Vec<String>,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -150,6 +154,7 @@ impl Default for Settings {
             show_readings: true,
             library: None,
             settings_section: "general".into(),
+            agc_on: Vec::new(),
         }
     }
 }
