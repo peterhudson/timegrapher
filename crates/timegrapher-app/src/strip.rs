@@ -578,6 +578,10 @@ fn axis_ms(ms: f64) -> String {
     }
 }
 
+/// How near a masked stretch's edge, in points along the time, a drag
+/// must begin to move that edge rather than mask anew.
+const EDGE_REACH: f32 = 8.0;
+
 /// The masked stretch with an edge within a few points of `p` along the
 /// time axis: its start and end, and whether the edge is its start.
 fn edge_near(masked: &[(f64, f64)], p: Pos2, g: &Geom) -> Option<(f64, f64, bool)> {
@@ -586,7 +590,7 @@ fn edge_near(masked: &[(f64, f64)], p: Pos2, g: &Geom) -> Option<(f64, f64, bool
     masked
         .iter()
         .flat_map(|&(a, b)| [(a, b, true, gap(a)), (a, b, false, gap(b))])
-        .filter(|e| e.3 <= 5.0)
+        .filter(|e| e.3 <= EDGE_REACH)
         .min_by(|x, y| x.3.total_cmp(&y.3))
         .map(|(a, b, start, _)| (a, b, start))
 }
@@ -814,11 +818,10 @@ pub fn draw_strip(
                 egui::CursorIcon::ResizeVertical
             });
         } else if resp.hovered() {
-            ui.ctx().set_cursor_icon(if view.horizontal {
-                egui::CursorIcon::ResizeColumn
-            } else {
-                egui::CursorIcon::ResizeRow
-            });
+            // A cross for a new mask, unlike the edge's two-way arrow on
+            // every system: on a Mac the column and two-way arrows look
+            // the same.
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
     } else if resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -831,6 +834,21 @@ pub fn draw_strip(
     // on the ms axis, and a nice step of seconds across it, labelled on the
     // time axis.
     let step = nice_step(half / 4.0);
+    // On a strip too short for its labels to stand apart, only "Early"
+    // and "Late" are named.
+    let step_px = step / half
+        * f64::from(if view.horizontal {
+            r.height()
+        } else {
+            r.width()
+        })
+        / 2.0;
+    let labels = step_px as f32
+        > if view.horizontal {
+            2.0 * font.size + 4.0
+        } else {
+            60.0
+        };
     let mut k = (-half / step).ceil() as i64;
     while (k as f64) * step < half + 1e-9 {
         let ms = k as f64 * step;
@@ -852,7 +870,7 @@ pub fn draw_strip(
                 (a.x - r.left()).min(r.right() - a.x),
             )
         };
-        if room > if view.horizontal { 14.0 } else { 34.0 } {
+        if labels && room > if view.horizontal { 14.0 } else { 34.0 } {
             painter.text(at, align, axis_ms(ms), font.clone(), text);
         }
         k += 1;

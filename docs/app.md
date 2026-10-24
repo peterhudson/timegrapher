@@ -70,7 +70,7 @@ left Crown Up, right Crown Down, and the corner Dial Down. A tip and its
 opposite undo each other. Keys 1 to 6 pick DU, DD, CU, CD, CL and CR too,
 except while typing in a field. With a take on show, and during a
 Positions Test or a Power Reserve Test, the card only shows the
-position, the take's at the moment on show or the one the test set, with
+position, the take's latest or the one the test set, with
 no arrows: a take's positions can't be changed afterwards. **Listen**
 has a **Listen** icon, which starts Quick Listen (below), or with a
 watch picked that watch's Listen take, and becomes a **Stop** icon while
@@ -339,8 +339,8 @@ standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 break or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
-plain fact, at the right of the reading's caption, with a sentence on
-hover: "12 s of beats" when the beats span under 10 s, "540 of 600
+plain fact, on the line under the reading's caption, with a sentence on
+hover (and the whole list there, where the line is too short for it): "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
 in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
@@ -589,8 +589,7 @@ above the readings says **Clipping on 3% of beats** (or "under 1%").
 Clipping flattens the loudest part of each tick, which moves
 the drop and so the amplitude and the beat error; the rate is unaffected.
 The banner follows the readings: it shows while the beats being averaged
-clip and goes when they no longer do, and looking back through a
-recording shows it for the stretches that clipped. The peak meter, in
+clip and goes when they no longer do. The peak meter, in
 Settings under Microphone, turns red on any clipped sample at once; the banner counts the
 beats in the readings. Even a watch driven several times past full scale is
 still read, with the banner, rather than taken for silence: when most of
@@ -655,9 +654,9 @@ different amplitudes; the unlock figure is the one tg reports. Above each plot a
 from that side's own drop, the unlock-to-drop time and the amplitude they
 give. Linear (the
 default) shows the envelope as the engine measures it; dB shows the level
-below each side's loudest point, so the quiet unlock shows more clearly. Looking back, the pane shows the sound the session
-kept nearest before that moment (one every 2 s); for a recording analysed
-all at once it is worked out from the file when you stop on a moment.
+below each side's loudest point, so the quiet unlock shows more clearly. Stopped, the pane shows the sound the session
+kept nearest the end (one every 2 s); for a recording analysed
+all at once it is worked out from the file.
 When the tick's and tock's marks disagree, or a mark sits mid-ramp, the readings
 built on them are suspect.
 
@@ -678,9 +677,8 @@ row each from 20 ms before the beat to 180 ms after, so the next beat
 shows too. **400 ms** shows every beat in one grey row, three or four
 beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
 the older ones fainter, so a beat that differs from the rest stands out.
-While listening it shows the latest beats; looking back, or on a
-recording, it shows the beats up to the moment shown, read from the
-recording. Only the few seconds around the beats are read, however long
+While listening it shows the latest beats; stopped, or on a
+recording, it shows the last beats, read from the recording. Only the few seconds around the beats are read, however long
 the recording: a WAV seeks there and a FLAC is searched by its frame
 headers (`span.rs`). No crosshair, as on the other sound plots.
 
@@ -742,8 +740,9 @@ away from it as the rate wanders; sliding the trace by hand turns it off.
 **Mask** leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
-the mouse), dragging a masked stretch's edge moves it, dragging with the
-right button still looks back through the session, and clicking a
+the mouse), dragging a masked stretch's edge moves it (the pointer is a
+cross over the strip and a two-way arrow within 8 points of an edge),
+dragging with the right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
 back; **Unmask All** brings them all back. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
@@ -1212,10 +1211,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   Crown Down (CD, 9H), Crown Left (CL, 6H) and Crown Right (CR, 12H).
   The Positions Test's table names them the same way. A new position is a new
   measurement, so changing it while listening starts a new
-  stretch, noted in the saved recording. While listening, when the beats
-  stop for more than 3 seconds and come back with no change of position
-  marked, a banner asks whether the watch was moved, with a button for
-  each position and **Not Moved**; it goes by itself a minute later. The strip keeps its beats and
+  stretch, noted in the saved recording. The strip keeps its beats and
   marks each stretch, shading every other one, with a ticker above the
   plot (beside it, when the strip runs down) that names the position over
   and over along its stretch, so it shows even with both ends of the
@@ -1296,9 +1292,17 @@ with Open Folder…), **Delete…** (asking first) and **Later**. A folder
 another copy of the app is recording into is never offered. The
 microphone's own settings are kept aside while recordings are open and
 come back with the next take on the microphone.
-Once stopped, the time slider shows for a microphone session too; stopped
-during a move's settling time, the rate card gives the reading from before
-the move and says so.
+Stopped during a move's settling time, the rate card gives the reading
+from before the move and says so.
+
+**The cards keep their height.** Every line on a reading card has its
+place whether it shows anything or not: the caption, the line of what
+limits the reading, the figure and its unit (under it on a card too
+narrow for the widest figure), and the lines under the figure. A line
+too long for the card is cut short, its whole in the hover; True Clock
+is in the Rate figure's hover too. So the cards, and every pane under
+them, change height only with the window's width, never with the
+readings.
 
 Each saved recording is a folder named after the start time, then the
 watch's name and the calibre when they are set by the first save
@@ -1358,7 +1362,7 @@ in [sessions.md](sessions.md#a-take-kept-as-its-analysis-alone).
 Opened, such a take shows its readings, Paper Strip, charts, Steadiness
 tests and position stretches as the take with its sound would, from the
 beats it kept, and the Tick Tock Profile from the profile kept for the
-2 seconds before the moment shown. It can't be measured again with
+last 2 seconds. It can't be measured again with
 other settings, and the Scope needs the sound: it says there is no
 waveform. Masks
 can still be changed and saved into its `session.toml`.
