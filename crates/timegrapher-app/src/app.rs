@@ -7068,7 +7068,7 @@ impl TimegrapherApp {
             .zip(self.cal.bph(&self.calibre))
             .filter(|&(b, cb)| b != cb);
         let line = match other {
-            Some((_, cb)) => format!("{} · beats at {cb}", self.calibre),
+            Some((_, cb)) => format!("{} is {cb} bph", self.calibre),
             None => self.calibre.clone(),
         };
         let mut hover = format!(
@@ -8799,6 +8799,39 @@ impl TimegrapherApp {
     /// switch the app can reach: the sound card's mixer on Linux, the USB
     /// microphone itself on macOS.
     fn input_agc(&self, set: Option<bool>) -> Option<Result<bool, String>> {
+        if cfg!(windows) {
+            // The input by the name the system gives it, the system
+            // default's when none is picked; Windows sets the one input.
+            let name = self
+                .devices
+                .iter()
+                .find(|d| match &self.device {
+                    Some(id) => &d.id == id,
+                    None => d.is_default,
+                })
+                .map(|d| d.name.clone())?;
+            let first =
+                |r: Result<Vec<mixer::EndpointAgc>, String>| r.map(|v| v.into_iter().next());
+            let found = match first(mixer::endpoint_agc(Some(&name), None)) {
+                Ok(Some(f)) => f,
+                Ok(None) => return None,
+                Err(e) => return Some(Err(e)),
+            };
+            return Some(match set {
+                Some(want) if found.before != Some(want) => {
+                    match first(mixer::endpoint_agc(Some(&name), Some(want))) {
+                        Ok(Some(mixer::EndpointAgc { error: Some(e), .. })) | Err(e) => Err(e),
+                        Ok(Some(mixer::EndpointAgc { after: Some(v), .. })) => Ok(v),
+                        _ => Err("the input didn't say whether it changed".into()),
+                    }
+                }
+                _ => found.before.ok_or_else(|| {
+                    found
+                        .error
+                        .unwrap_or_else(|| "the input didn't answer".into())
+                }),
+            });
+        }
         if cfg!(target_os = "macos") {
             let label = capture::choices(&self.devices)
                 .into_iter()

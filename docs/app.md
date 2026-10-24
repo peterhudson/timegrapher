@@ -104,9 +104,8 @@ controls. On **Beat Rate** the big figure is itself the beat rate's menu
 where the card has room, and, with no watch picked, the labelled
 **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre (with
-"· beats at" and the calibre's rate when the watch is heard at another
-rate); its hover gives the beat rate and lift angle it sets (Edit… on the
+the table knows, the figure shows and one line names the calibre (as
+"Peacock SL1258 is 28800 bph" when the watch is heard at another rate); its hover gives the beat rate and lift angle it sets (Edit… on the
 watch changes them). Lines too long for the card end in "…", with the
 whole sentence on hover.
 
@@ -1129,8 +1128,11 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   proposals.
 - **Automatic Gain.** In Settings under Microphone, for an input whose
   own automatic gain the app can reach: the sound card's mixer switch on
-  Linux, and on a Mac a USB microphone's switch, set over USB
-  (`timegrapher_core::mixer::usb_agc`) since macOS shows no such setting.
+  Linux, on a Mac a USB microphone's switch, set over USB
+  (`timegrapher_core::mixer::usb_agc`) since macOS shows no such setting,
+  and on Windows the input's own switch through the system
+  (`timegrapher_core::mixer::endpoint_agc`, the AGC tickbox the Sound
+  Control Panel shows on some inputs).
   Off by default and kept for each input. Each time the app opens the
   input it sets the switch to match, since a stand turns it back on each
   time it is plugged in, and it reads it back: where the microphone
