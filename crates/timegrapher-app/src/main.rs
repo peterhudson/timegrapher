@@ -224,7 +224,7 @@ fn open_window(renderer: eframe::Renderer, file: Option<PathBuf>) -> Closed {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Timegrapher")
             .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([800.0, 560.0])
+            .with_min_inner_size([800.0, 600.0])
             .with_icon(icon())
             // The name a Wayland desktop finds the app's menu entry and
             // icon by (see `desktop`).

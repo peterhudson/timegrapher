@@ -508,6 +508,14 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
             if p == Pane::Watch && !keys.contains(&"New Watch…") {
                 wrong.push(format!("{at}: New Watch… is not in the row: {keys:?}"));
             }
+            // Search stays in the row too, at 1000 pt and narrower: Sort
+            // folds before it.
+            if p == Pane::Watch && !keys.contains(&"Search") {
+                wrong.push(format!("{at}: Search is not in the row: {keys:?}"));
+            }
+            if p == Pane::Watch && more && keys.contains(&"Sort") {
+                wrong.push(format!("{at}: something folded but Sort didn't: {keys:?}"));
+            }
             let mut seen_keys = keys.clone();
             seen_keys.sort_unstable();
             seen_keys.dedup();
