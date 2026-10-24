@@ -1842,6 +1842,7 @@ impl TimegrapherApp {
         self.show_wheels = show_wheels;
         self.guided_settle_s =
             positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
+        self.session.set_settle_s(self.guided_settle_s);
         self.guided_measure_s =
             positions_measure_s.clamp(*guided::MEASURE_RANGE.start(), *guided::MEASURE_RANGE.end());
         // Each pane's series, at least one shown; a pane not set yet takes
@@ -10488,16 +10489,23 @@ impl TimegrapherApp {
             ui,
             Icon::Hourglass,
             "Settle",
-            "Seconds the watch is left to settle after each turn before it is measured",
+            "Seconds the watch is left to settle after every change of position, in any take \
+             and in the guided test, before its beats are read. They show faint on the strip \
+             and are left out of every reading.",
             |ui| {
-                ui.add_enabled(
-                    !running,
-                    egui::DragValue::new(&mut self.guided_settle_s)
-                        .range(guided::SETTLE_RANGE)
-                        .speed(1.0)
-                        .max_decimals(0)
-                        .suffix(" s"),
-                );
+                let changed = ui
+                    .add_enabled(
+                        !running,
+                        egui::DragValue::new(&mut self.guided_settle_s)
+                            .range(guided::SETTLE_RANGE)
+                            .speed(1.0)
+                            .max_decimals(0)
+                            .suffix(" s"),
+                    )
+                    .changed();
+                if changed {
+                    self.session.set_settle_s(self.guided_settle_s);
+                }
             },
         );
         theme::tool_field(
@@ -13603,6 +13611,8 @@ impl TimegrapherApp {
 impl eframe::App for TimegrapherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         crate::frame_built();
+        // One settling for every change of position: the pane's Settle.
+        self.session.set_settle_s(self.guided_settle_s);
         if std::mem::take(&mut self.listen_pending) && !self.running() {
             self.quick_listen(false);
         }
@@ -13949,7 +13959,8 @@ fn reading_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use timegrapher_core::recorder::SETTLE_S;
+    /// The settling the tests of a move set the pane's Settle to.
+    const SETTLE_S: f64 = 10.0;
 
     #[test]
     fn errors_read_without_codes() {
@@ -14554,6 +14565,7 @@ mod tests {
     #[test]
     fn a_move_settles_before_it_is_read() {
         let mut app = synthetic(60.0, 0.0);
+        app.session.set_settle_s(SETTLE_S);
         app.session
             .load(&[(0.0, Position::DialUp), (30.0, Position::DialDown)], &[]);
         app.position = Position::DialDown;
@@ -16552,6 +16564,7 @@ mod tests {
         assert_eq!(paused_at, 60.0);
         assert_eq!(app.session.recorder.as_ref().unwrap().duration_s(), 60.0);
         app.session.pause(paused_at).unwrap().unwrap();
+        app.session.set_settle_s(SETTLE_S);
         app.change_position(Position::DialDown);
         assert!(
             app.session.settles().is_empty(),
@@ -17230,6 +17243,7 @@ mod tests {
         );
         let info = app.info("test", 48000, 16);
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        app.session.set_settle_s(SETTLE_S);
         let third = audio.samples.len() / 3;
         let moves = [
             (0, None),

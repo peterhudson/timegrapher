@@ -102,7 +102,8 @@ pub const POSITION: &[&str] = &[
      test set. A take's positions can't be changed afterwards.",
     "Changing it while listening marks a new stretch on the strip and the charts, and the \
      readings, profile, distributions and Steadiness then use only this position's beats. \
-     The settling after a move is left out of the readings. A saved take notes each \
+     The settling after a move, the Positions Test pane's Settle (20 s unless set), is \
+     left out of the readings. A saved take notes each \
      position.",
 ];
 

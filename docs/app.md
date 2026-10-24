@@ -1237,7 +1237,10 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   distributions and Steadiness take only the stretches in the position the
   watch is in now: dial up for 5 minutes, dial down for 10, then dial up
   again tests the two dial-up stretches together and leaves the dial-down
-  one out. The first 10 seconds in a new position are settling: the ticker says
+  one out. The first seconds in a new position are settling, as many as
+  the Positions Test pane's **Settle** (20 s unless set otherwise), the
+  one settling for every change of position, in a free take or the guided
+  test alike, from the next change on: the ticker says
   Settling, the beats are drawn faintly, and they are left out of the
   readings, the charts' points, the distributions and Steadiness, but kept
   in the audio. A saved take's `session.toml` starts each later position
