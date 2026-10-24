@@ -10,6 +10,10 @@
 //!
 //! The descriptor parsing and the request bytes are plain functions,
 //! tested on any system; only the transfer itself is macOS code.
+//!
+//! On Windows the system's USB audio driver offers the same switch to
+//! programs as an endpoint's automatic gain control (the "AGC" box in the
+//! Sound control panel), read and set by [`endpoint_agc`].
 
 use serde::Serialize;
 
@@ -212,6 +216,152 @@ pub fn usb_agc(set: Option<bool>) -> Result<Vec<UsbAgc>, String> {
              it is the mixer's \"Auto Gain Control\" switch (timegrapher doctor)"
                 .into(),
         )
+    }
+}
+
+/// One capture endpoint's automatic gain switch, as read and set
+/// (Windows).
+#[derive(Debug, Clone, Serialize)]
+pub struct EndpointAgc {
+    /// The input's name, as the system shows it.
+    pub name: String,
+    /// The switch before any change, when it could be read.
+    pub before: Option<bool>,
+    /// After the change, read back.
+    pub after: Option<bool>,
+    /// What failed, when something did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Read the automatic gain switch of every active input with one, or of
+/// those whose name contains `name`, and with `set` turn it on or off and
+/// read it back. An input with no such switch is left out. Windows only:
+/// elsewhere it is [`usb_agc`] (macOS) or the ALSA mixer (Linux).
+pub fn endpoint_agc(name: Option<&str>, set: Option<bool>) -> Result<Vec<EndpointAgc>, String> {
+    #[cfg(windows)]
+    {
+        win::endpoint_agc(name, set)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (name, set);
+        Err("an input's automatic gain control through the system is for Windows".into())
+    }
+}
+
+#[cfg(windows)]
+mod win {
+    //! Through the endpoint's device topology: from the endpoint's
+    //! connector back along the capture path, the first part that offers
+    //! IAudioAutoGainControl.
+
+    use super::EndpointAgc;
+    use windows::core::Interface;
+    use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
+    use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
+    use windows::Win32::Media::Audio::{
+        eCapture, IAudioAutoGainControl, IDeviceTopology, IMMDevice, IMMDeviceEnumerator, IPart,
+        MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+    };
+    use windows::Win32::System::Com::StructuredStorage::{
+        PropVariantClear, PropVariantToStringAlloc,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
+        COINIT_MULTITHREADED, STGM_READ,
+    };
+
+    pub fn endpoint_agc(name: Option<&str>, set: Option<bool>) -> Result<Vec<EndpointAgc>, String> {
+        unsafe {
+            // COM may already be set up on this thread (the app, cpal),
+            // in either model; only what this call set up is undone.
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let ours = hr.is_ok();
+            if hr.is_err() && hr != RPC_E_CHANGED_MODE {
+                return Err(format!("COM did not start ({hr})"));
+            }
+            let out = all(name, set);
+            if ours {
+                CoUninitialize();
+            }
+            out
+        }
+    }
+
+    unsafe fn all(name: Option<&str>, set: Option<bool>) -> Result<Vec<EndpointAgc>, String> {
+        let e = |x: windows::core::Error| x.to_string();
+        let devices: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(e)?;
+        let list = devices
+            .EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
+            .map_err(e)?;
+        let mut out = Vec::new();
+        for i in 0..list.GetCount().map_err(e)? {
+            let Ok(device) = list.Item(i) else { continue };
+            let label = friendly_name(&device).unwrap_or_else(|| "Unnamed input".into());
+            if name.is_some_and(|n| !label.to_lowercase().contains(&n.to_lowercase())) {
+                continue;
+            }
+            let Some(agc) = agc_of(&device) else { continue };
+            let mut r = EndpointAgc {
+                name: label,
+                before: agc.GetEnabled().ok().map(|b| b.as_bool()),
+                after: None,
+                error: None,
+            };
+            if let Some(on) = set {
+                match agc.SetEnabled(on, None) {
+                    Ok(()) => r.after = agc.GetEnabled().ok().map(|b| b.as_bool()),
+                    Err(x) => r.error = Some(x.to_string()),
+                }
+            }
+            out.push(r);
+        }
+        Ok(out)
+    }
+
+    unsafe fn friendly_name(device: &IMMDevice) -> Option<String> {
+        let store = device.OpenPropertyStore(STGM_READ).ok()?;
+        let mut v = store.GetValue(&PKEY_Device_FriendlyName).ok()?;
+        let s = PropVariantToStringAlloc(&v).ok();
+        let _ = PropVariantClear(&mut v);
+        let s = s?;
+        let text = s.to_string().ok();
+        CoTaskMemFree(Some(s.0 as *const _));
+        text
+    }
+
+    /// The automatic gain control on the endpoint's capture path, if any
+    /// part along it offers one.
+    unsafe fn agc_of(device: &IMMDevice) -> Option<IAudioAutoGainControl> {
+        let topology: IDeviceTopology = device.Activate(CLSCTX_ALL, None).ok()?;
+        let connector = topology.GetConnector(0).ok()?;
+        let start: IPart = connector.GetConnectedTo().ok()?.cast().ok()?;
+        // Upstream from the adapter's side of the endpoint, breadth first;
+        // a topology is small, and the count bounds a looped one.
+        let mut queue = vec![start];
+        let mut seen = 0;
+        while !queue.is_empty() && seen < 64 {
+            let part = queue.remove(0);
+            seen += 1;
+            let mut p = std::ptr::null_mut();
+            if part
+                .Activate(CLSCTX_ALL.0, &IAudioAutoGainControl::IID, Some(&mut p))
+                .is_ok()
+                && !p.is_null()
+            {
+                return Some(IAudioAutoGainControl::from_raw(p));
+            }
+            if let Ok(incoming) = part.EnumPartsIncoming() {
+                for k in 0..incoming.GetCount().unwrap_or(0) {
+                    if let Ok(q) = incoming.GetPart(k) {
+                        queue.push(q);
+                    }
+                }
+            }
+        }
+        None
     }
 }
 

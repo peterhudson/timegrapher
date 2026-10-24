@@ -319,16 +319,16 @@ enum Command {
         /// Print the list as JSON instead of text.
         #[arg(long)]
         json: bool,
-        /// Read each USB microphone's automatic gain switch over USB
-        /// (macOS), instead of listing the inputs.
+        /// Read each USB microphone's automatic gain switch (macOS: over
+        /// USB; Windows: the system's control), instead of listing the inputs.
         #[arg(long, conflicts_with_all = ["agc_off", "agc_on"])]
         agc: bool,
-        /// Turn each USB microphone's automatic gain off over USB (macOS),
+        /// Turn each USB microphone's automatic gain off (macOS, Windows),
         /// and read it back. The microphone turns it on again when it is
         /// plugged in.
         #[arg(long, conflicts_with = "agc_on")]
         agc_off: bool,
-        /// Turn it back on (macOS).
+        /// Turn it back on (macOS, Windows).
         #[arg(long)]
         agc_on: bool,
     },
@@ -1246,6 +1246,38 @@ fn run_devices(_json: bool) -> Result<(), String> {
 /// `devices --agc`, `--agc-off`, `--agc-on`: each USB microphone's
 /// automatic gain switch, read and set over USB.
 fn run_usb_agc(json: bool, set: Option<bool>) -> Result<(), String> {
+    // On Windows the system's own control, input by input.
+    #[cfg(windows)]
+    {
+        let found = timegrapher_core::mixer::endpoint_agc(None, set)?;
+        if json {
+            return output::print(
+                "usb_agc",
+                serde_json::json!({ "set": set }),
+                &serde_json::json!({ "microphones": found }),
+            );
+        }
+        if found.is_empty() {
+            println!("No input with an automatic gain switch found.");
+        }
+        let state = |v: Option<bool>| match v {
+            Some(true) => "on",
+            Some(false) => "off",
+            None => "not read",
+        };
+        for f in &found {
+            println!("{}", f.name);
+            println!("    automatic gain {}", state(f.before));
+            if set.is_some() {
+                println!("    after the change {}", state(f.after));
+            }
+            if let Some(e) = &f.error {
+                println!("    {e}");
+            }
+        }
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
     let found = timegrapher_core::mixer::usb_agc(set)?;
     if json {
         return output::print(

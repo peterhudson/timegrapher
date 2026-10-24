@@ -26,6 +26,19 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 cpal = { version = "0.17", optional = true }
 ureq = { version = "3", optional = true, features = ["platform-verifier"] }
 
+# A capture endpoint's automatic gain switch (`usbagc::endpoint_agc`):
+# the version cpal already uses.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }
+
 [features]
 # Sound input devices (links ALSA on Linux, CoreAudio, WASAPI).
 capture = ["dep:cpal"]

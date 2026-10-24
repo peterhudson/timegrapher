@@ -11,8 +11,9 @@
 
 use crate::diagnose::{IssueCode, SignalCheck};
 /// A USB microphone's automatic gain switch set over USB, where the
-/// system shows no setting for it (macOS).
-pub use crate::usbagc::{usb_agc, UsbAgc};
+/// system shows no setting for it (macOS), and an input's through the
+/// system (Windows).
+pub use crate::usbagc::{endpoint_agc, usb_agc, EndpointAgc, UsbAgc};
 use serde::Serialize;
 use std::process::Command;
 

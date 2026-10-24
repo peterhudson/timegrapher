@@ -91,7 +91,6 @@ pub fn beat_sound_found<'a>(
     }
 }
 
-/// The sentence for no regular beat found, as every surface states it:
 /// The reason on the `no_watch` caveat among `caveats`, if there is one.
 pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
     caveats.iter().find_map(|c| match c {
@@ -100,6 +99,7 @@ pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
     })
 }
 
+/// The sentence for no regular beat found, as every surface states it:
 /// with the timing scatter, as [`crate::beats::no_regular_beat_text`]
 /// gives it, or that the beats' sound shows no unlock and no drop.
 pub fn no_watch_text(
@@ -117,7 +117,7 @@ pub fn no_watch_text(
     }
 }
 
-/// What [`Caveat::NoWatch { reason: NoWatchReason::Scatter }`] was found on.
+/// What the `no_watch` caveat ([`Caveat::NoWatch`]) was found on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NoWatchReason {
