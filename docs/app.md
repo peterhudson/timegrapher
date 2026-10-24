@@ -241,9 +241,10 @@ while it is on; a choice between two settings is one icon showing the
 setting in use, and a click changes to the other (Direction shows a
 down arrow while the strip runs down and an across arrow while it runs
 across); a choice of more is a row of icons with the picked one tinted.
-A setting that holds a value (Width, Length, Average Over, Settle) keeps
-its field, with a small icon in place of its name that has the same
-hover. **Start Test**, **Start a New Test** and **Copy** keep their words
+Icons are for what can be clicked: a setting that holds a value (Width,
+Length, Average Over, Settle, Span, Beats) shows its name in words before
+its field, with the same hover; a search box keeps the magnifying glass
+beside it. **Start Test**, **Start a New Test** and **Copy** keep their words
 beside their icons. When the pane is too narrow for every icon, the last
 ones fold into a **…** menu at the row's end, in words, as a Mac toolbar
 does, and come back out when the pane is wide enough again; the pane's

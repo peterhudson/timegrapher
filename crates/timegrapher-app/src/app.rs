@@ -382,21 +382,6 @@ impl Position {
         }
     }
 
-    /// The name with its code, and for a crown position the Swiss
-    /// laboratory name beside it (the hour that points up), as the menus
-    /// and the strip's position ticker show it.
-    /// Its picture on the Position card.
-    fn icon(self) -> Icon {
-        match self {
-            Position::DialUp => Icon::DialUp,
-            Position::DialDown => Icon::DialDown,
-            Position::CrownUp => Icon::CrownUp,
-            Position::CrownDown => Icon::CrownDown,
-            Position::CrownLeft => Icon::CrownLeft,
-            Position::CrownRight => Icon::CrownRight,
-        }
-    }
-
     /// Witschi's name: the hour that points up for a crown position, CH
     /// and CB (cadran haut, cadran bas) lying flat.
     pub fn witschi(self) -> &'static str {
@@ -5508,10 +5493,8 @@ impl TimegrapherApp {
         theme::bar_gap(ui);
         // The search stays in the row too: Sort folds first.
         theme::keep_next(ui);
-        theme::tool_field(
+        theme::tool_search(
             ui,
-            Icon::Search,
-            "Search",
             "Show the watches whose name, calibre, notes or fields hold this",
             |ui| {
                 // Narrower in a narrow pane, leaving room for "…" after it.
@@ -5525,7 +5508,7 @@ impl TimegrapherApp {
             },
         );
         let mut sort = self.watch_sort;
-        theme::tool_field(ui, Icon::Sort, "Sort", "The order of the list", |ui| {
+        theme::tool_field(ui, "Sort", "The order of the list", |ui| {
             egui::ComboBox::from_id_salt("watch sort")
                 .selected_text(sort.words())
                 .show_ui(ui, |ui| {
@@ -5977,7 +5960,7 @@ impl TimegrapherApp {
 
     /// Average Over for one pane: Readings' time, or one of its own.
     fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        theme::tool_field(ui, Icon::Bucket, "Average Over", PANE_AVERAGE_HINT, |ui| {
+        theme::tool_field(ui, "Average Over", PANE_AVERAGE_HINT, |ui| {
             self.pane_average_choice(ui, pane);
         });
     }
@@ -5991,7 +5974,7 @@ impl TimegrapherApp {
         egui::ComboBox::from_id_salt(("pane average", pane))
             .selected_text(match own {
                 Some(s) => fields::duration(s),
-                None => format!("As Readings ({readings})"),
+                None => format!("{readings} as Readings"),
             })
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut choice, None, format!("As Readings ({readings})"));
@@ -7209,12 +7192,10 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         theme::tool_field(
             ui,
-            Icon::Calipers,
             "Width",
-            "Milliseconds either side of the centre line. Ctrl and the mouse wheel on the \
-             strip change it too.",
+            "Milliseconds either side of the centre line. Shift or Ctrl and the mouse wheel \
+             on the strip change it too.",
             |ui| {
-                ui.label("±");
                 let mut w = self.strip.half_width_ms;
                 let a = fields::entry(
                     ui,
@@ -7222,7 +7203,7 @@ impl TimegrapherApp {
                     &mut w,
                     StripView::MIN_HALF_WIDTH_MS..=StripView::MAX_HALF_WIDTH_MS,
                     &MS,
-                    44.0,
+                    40.0,
                 );
                 ui.label("ms");
                 let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
@@ -7239,7 +7220,6 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            Icon::Tape,
             "Length",
             "Time shown along the strip, such as 30 s, 5 min or 2 h. Fit shows the whole \
              session so far, up to its latest beat, or its last 24 hours when it is longer. \
@@ -7252,7 +7232,7 @@ impl TimegrapherApp {
                     &mut s,
                     StripView::MIN_SPAN_S..=StripView::MAX_SPAN_S,
                     &DURATION,
-                    66.0,
+                    48.0,
                 );
                 let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
                 // Fitted to the take on show: a length for the take only.
@@ -10662,7 +10642,6 @@ impl TimegrapherApp {
         }
         theme::tool_field(
             ui,
-            Icon::Hourglass,
             "Settle",
             "Seconds the watch is left to settle after every change of position, in any take \
              and in the guided test, before its beats are read. They show faint on the strip \
@@ -10685,7 +10664,6 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            Icon::Stopwatch,
             "Measure",
             "Seconds each position is measured for. Longer brings the rate's ± down; a minute \
              gives about half a second a day.",
@@ -10859,7 +10837,6 @@ impl TimegrapherApp {
         let running = self.reserve_running();
         theme::tool_field(
             ui,
-            self.reserve_position.icon(),
             "Position",
             "The one position the watch runs down in, from wind to stop",
             |ui| {

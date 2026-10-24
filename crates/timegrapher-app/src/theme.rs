@@ -1275,26 +1275,44 @@ pub fn tool_word_button(
     .unwrap_or(false)
 }
 
-/// A toolbar control that holds a value, such as a field or a menu: a
-/// small icon in place of its name, the control after it; with its name
-/// under "…" or in a settings list.
+/// A toolbar control that holds a value, such as a field or a menu: its
+/// name in words, the control after it; with its name under "…" or in a
+/// settings list. Icons are kept for what can be clicked, so a name that
+/// only labels a control stays a word.
 pub fn tool_field<R>(
     ui: &mut Ui,
-    icon: Icon,
     label: &str,
     hint: &str,
     control: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {
-    note_icon(ui, icon, label);
     bar_item(ui, label, |ui| {
         if in_toolbar(ui) {
             let p = pal(ui);
-            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
-            crate::icons::draw(ui.painter(), rect, icon, p.text_secondary);
-            resp.on_hover_text(hover(label, hint));
+            ui.add(
+                egui::Label::new(RichText::new(label).small().color(p.text_secondary))
+                    .selectable(false),
+            )
+            .on_hover_text(hover(label, hint));
             control(ui)
         } else {
             row(ui, label, Some(hint), control)
+        }
+    })
+}
+
+/// A search box in a toolbar: the magnifying glass every app puts beside
+/// one, then the box; with its name under "…" or in a settings list.
+pub fn tool_search<R>(ui: &mut Ui, hint: &str, control: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+    note_icon(ui, Icon::Search, "Search");
+    bar_item(ui, "Search", |ui| {
+        if in_toolbar(ui) {
+            let p = pal(ui);
+            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+            crate::icons::draw(ui.painter(), rect, Icon::Search, p.text_secondary);
+            resp.on_hover_text(hover("Search", hint));
+            control(ui)
+        } else {
+            row(ui, "Search", Some(hint), control)
         }
     })
 }
