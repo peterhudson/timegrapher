@@ -149,9 +149,6 @@ pub const STRIP: &[&str] = &[
      above the strip (or beside it when the strip lies across). Seeing amplitude beside \
      the dots shows at once whether a wobble in the rate comes with a change in \
      amplitude.",
-    "With Direction: Across and the charts set to the strip's length (Time Span: Strip), the \
-     strip and the charts below it share one time axis, and the pointer's time is \
-     marked on all of them at once.",
     "Mouse: the wheel changes the length about the time under the pointer, Ctrl and the \
      wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
@@ -252,7 +249,7 @@ pub const STEADINESS: &[&str] = &[
      Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
      period instead. In both, each wheel's period is a bold line, and half of \
      it, twice a turn as an off-centre wheel shows, is a fainter dashed line marked \
-     ×2, in the wheels' own green; the STFT and Wavelet Maps dash the wheels' turns \
+     ×2, in the wheels' own mint green; the STFT and Wavelet Maps dash the wheels' turns \
      across the map. With no calibre picked, or none of its wheels known, one minute \
      and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
      hides these marks.",
@@ -322,8 +319,8 @@ pub const ISOCHRONISM: &[&str] = &[
 ];
 
 pub const HISTOGRAMS: &[&str] = &[
-    "How the rate's, amplitude's and beat error's values spread over the session or the \
-     strip's length (Time Span), one plot above the other. The hare, the swing and the \
+    "How the rate's, amplitude's and beat error's values spread over the whole session \
+     (masked stretches left out), one plot above the other. The hare, the swing and the \
      seesaw in the toolbar show or hide each one; at least one stays on. An average gives \
      one number; these show whether the values come from one steady \
      state or from two, say a high and a low amplitude as a rubbing part comes and \

@@ -713,7 +713,11 @@ onto each other, up to ±60 s, so a long run-down take that drifts by many
 seconds can be shown without wrapping; the lengths run from 10 s of beats
 to a two-hour run, then **Fit**, which sets the length to the whole
 session so far, or its last 24 hours when it is longer, and shows it up
-to its latest beat.
+to its latest beat. Opening a take sets the length to **Fit** and the
+width to the narrowest of the listed widths that holds all its beats
+without wrapping (leaving out one stray dot in a thousand at each end),
+so the whole take shows at once. Listen then brings back the width and
+length the strip had before, unless they were changed by hand meanwhile.
 
 On the strip, the mouse wheel changes the length about the time under the
 pointer, which stays where it is, Ctrl and the wheel (or a
@@ -807,10 +811,9 @@ size, as on its card. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
 **Distributions.** How the values of rate, amplitude and beat error spread
-over the session or the strip's length (**Time Span**: **Session**,
-everything since the session started, or **Strip**, the same stretch of
-time as the paper strip, moving with it), one plot above the other in the
-one pane, hidden at first. The hare, the swing and the seesaw in its
+over the whole session, leaving out any masked stretch (mask a stretch
+to narrow what they cover), one plot above the other in the one pane,
+hidden at first. The hare, the swing and the seesaw in its
 toolbar show or hide each reading's plot; at least one stays on. An average gives one number; these
 show whether a watch keeps to one state or moves between two, such as a
 high and a low amplitude. Rate, amplitude and beat error count either
@@ -903,7 +906,7 @@ colours the sizes on a log scale over a range of 300 to 1; the pointer
 over a cell shows its time, period and size). In Periods and FFT each wheel's
 period is a bold line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dashed line marked ×2; the grid behind is pale. The
-wheels' lines and names are drawn in a green of their own, so they never
+wheels' lines and names are drawn in a mint green of their own, so they never
 read as the grid or a reading. With no calibre picked, or none of its
 wheels known, one minute and one hour are marked in grey instead, periods
 alone named after no wheel. **Wheel Periods**, in the toolbars of
@@ -1160,7 +1163,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     the watch on the stand and isn't kept. Not Set names cycles after the
     wheels most calibres at the beat rate share.
 - **Beat rate.** On the Beat Rate card: Auto (guessed from the first seconds) or any standard rate
-  from 12,000 to 72,000 bph. Changing it starts the readings again.
+  from 12,000 to 72,000 bph. Changing it starts the readings again; with
+  a take open, the take is read again at the new rate, keeping the
+  settings and masks as they are.
 - **Lift angle.** **Lift**, on the Amplitude card: 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.

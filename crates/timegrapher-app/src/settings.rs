@@ -26,11 +26,11 @@ pub struct Settings {
     pub overlays: [bool; 3],
     pub follow: bool,
     /// The readings the Charts and Distributions panes draw: rate,
-    /// amplitude, beat error. The charts' Match Strip, kept by older
-    /// versions, is read and left: the charts always show the whole take.
+    /// amplitude, beat error. The charts' Match Strip and the
+    /// distributions' Time Span, kept by older versions, are ignored on
+    /// load: both panes always cover the whole take.
     pub chart_series: [bool; 3],
     pub dist_series: [bool; 3],
-    pub hist_span_of_strip: bool,
     pub hist_cumulative: bool,
     pub hist_readings: bool,
     pub sound: profiles::Options,
@@ -120,7 +120,6 @@ impl Default for Settings {
             follow: false,
             chart_series: [true; 3],
             dist_series: [true; 3],
-            hist_span_of_strip: false,
             hist_cumulative: false,
             hist_readings: true,
             sound: profiles::Options::default(),
