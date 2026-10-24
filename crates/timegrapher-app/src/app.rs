@@ -5342,63 +5342,76 @@ impl TimegrapherApp {
     /// The Watches pane's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
+        let read_only = "This copy of the app can only read your watches";
         if self.list_shown() {
             // The list's own tools, below.
         } else if self.unsorted_open && self.watch_open.is_none() {
-            if ui
-                .button("‹ All Watches")
-                .on_hover_text("Back to the list of watches, Unsorted Takes marked")
-                .clicked()
-            {
+            if theme::tool_button(
+                ui,
+                Icon::Back,
+                "‹ All Watches",
+                "Back to the list of watches, Unsorted Takes marked",
+                None,
+            ) {
                 self.list_for = Some((None, true));
             }
             return;
         } else if let Some(e) = self.open_watch() {
             let w = e.watch.clone();
-            if ui
-                .button("‹ All Watches")
-                .on_hover_text(
-                    "Back to the list of watches, this one marked: Listen and the tests \
-                     still take it until another row is picked",
-                )
-                .clicked()
-            {
+            if theme::tool_button(
+                ui,
+                Icon::Back,
+                "‹ All Watches",
+                "Back to the list of watches, this one marked: Listen and the tests still take \
+                 it until another row is picked",
+                None,
+            ) {
                 self.list_for = Some((self.watch_open.clone(), false));
             }
             let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
-            if ui
-                .add_enabled(writable, egui::Button::new("Edit…"))
-                .on_hover_text("Change this watch's details")
-                .on_disabled_hover_text("This copy of the app can only read your watches")
-                .clicked()
-            {
+            let locked = (!writable).then_some(read_only);
+            theme::bar_gap(ui);
+            if theme::tool_button(
+                ui,
+                Icon::Screwdriver,
+                "Edit…",
+                "Change this watch's details",
+                locked,
+            ) {
                 self.watch_form = Some(watches::Form {
                     watch: w,
                     new: false,
                     error: None,
                 });
             }
-            if ui
-                .add_enabled(writable, egui::Button::new("Add Photos…"))
-                .on_hover_text(
-                    "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an \
-                     iPhone, or TIFF). The first by name leads its row in the list.",
-                )
-                .on_disabled_hover_text("This copy of the app can only read your watches")
-                .clicked()
-            {
+            if theme::tool_button(
+                ui,
+                Icon::NewPhoto,
+                "Add Photos…",
+                "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an iPhone, or \
+                 TIFF). The first by name leads its row in the list.",
+                locked,
+            ) {
                 self.add_photos();
             }
             return;
         }
-        ui.add(
-            egui::TextEdit::singleline(&mut self.watch_search)
-                .hint_text("Search")
-                .desired_width(120.0),
-        )
-        .on_hover_text("Show the watches whose name, calibre, notes or fields hold this");
+        theme::tool_field(
+            ui,
+            Icon::Loupe,
+            "Search",
+            "Show the watches whose name, calibre, notes or fields hold this",
+            |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.watch_search)
+                        .hint_text("Search")
+                        .desired_width(120.0),
+                )
+                .on_hover_text("Show the watches whose name, calibre, notes or fields hold this");
+            },
+        );
         let mut sort = self.watch_sort;
-        theme::row(ui, "Sort", Some("The order of the list"), |ui| {
+        theme::tool_field(ui, Icon::Sort, "Sort", "The order of the list", |ui| {
             egui::ComboBox::from_id_salt("watch sort")
                 .selected_text(sort.words())
                 .show_ui(ui, |ui| {
@@ -5409,19 +5422,28 @@ impl TimegrapherApp {
         });
         self.watch_sort = sort;
         if matches!(&self.library, Ok(Some(l)) if l.watches.iter().any(|e| e.watch.archived)) {
-            theme::toggle(ui, "Archived", &mut self.watch_archived)
-                .on_hover_text("Also list the watches marked Archived");
+            let accent = theme::pal(ui).accent;
+            theme::tool_switch(
+                ui,
+                Icon::WatchBox,
+                accent,
+                "Archived",
+                &mut self.watch_archived,
+                "Also list the watches marked Archived",
+            );
         }
         let writable = !matches!(&self.library, Ok(Some(l)) if l.read_only.is_some())
             && self.library_root().is_some();
-        if ui
-            .add_enabled(writable, egui::Button::new("New Watch…"))
-            .on_hover_text("Add a watch: only its name is needed")
-            .on_disabled_hover_text(
+        theme::bar_gap(ui);
+        if theme::tool_button(
+            ui,
+            Icon::NewWatch,
+            "New Watch…",
+            "Add a watch: only its name is needed",
+            (!writable).then_some(
                 "This copy of the app can only read your watches, or there is no folder for them",
-            )
-            .clicked()
-        {
+            ),
+        ) {
             self.open_new_watch_form();
         }
     }
@@ -5703,7 +5725,7 @@ impl TimegrapherApp {
             }),
             Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
-                ui.separator();
+                theme::bar_gap(ui);
                 self.span_setting(ui);
                 self.histogram_settings(ui);
                 self.pane_average_setting(ui, pane);
@@ -5711,7 +5733,7 @@ impl TimegrapherApp {
             }),
             Pane::Charts => theme::pane_toolbar(ui, title, help::CHARTS, |ui| {
                 steady::series_switches(ui, &mut self.chart_series);
-                ui.separator();
+                theme::bar_gap(ui);
                 self.pane_average_setting(ui, pane);
                 self.export_button(ui, pane);
             }),
@@ -5722,7 +5744,7 @@ impl TimegrapherApp {
 
     /// Export: save the pane as a PNG picture or an SVG drawing.
     fn export_button(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        if ui.button("Export…").on_hover_text(EXPORT_HINT).clicked() {
+        if theme::tool_button(ui, Icon::Export, "Export…", EXPORT_HINT, None) {
             let dir = self.export_dir.clone().or_else(|| {
                 Path::new(self.file_path.trim())
                     .parent()
@@ -5864,7 +5886,7 @@ impl TimegrapherApp {
 
     /// Average Over for one pane: Readings' time, or one of its own.
     fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        theme::row(ui, "Average Over", Some(PANE_AVERAGE_HINT), |ui| {
+        theme::tool_field(ui, Icon::Mean, "Average Over", PANE_AVERAGE_HINT, |ui| {
             self.pane_average_choice(ui, pane);
         });
     }
@@ -5899,22 +5921,38 @@ impl TimegrapherApp {
             return;
         };
         steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
+        let accent = theme::pal(ui).accent;
         if view == steady::View::Periods {
-            ui.separator();
-            theme::toggle(ui, "Log Scale", &mut self.periods_log).on_hover_text(
+            theme::bar_gap(ui);
+            theme::tool_switch(
+                ui,
+                Icon::Log,
+                accent,
+                "Log Scale",
+                &mut self.periods_log,
                 "Draw the scores on a log scale, so a small peak beside a tall one still shows",
             );
         }
         if view == steady::View::Fft {
-            ui.separator();
-            theme::toggle(ui, "Timing", &mut self.fft_timing).on_hover_text(
+            theme::bar_gap(ui);
+            theme::tool_switch(
+                ui,
+                Icon::Stopwatch,
+                accent,
+                "Timing",
+                &mut self.fft_timing,
                 "Draw rate as the beat timing's spectrum, in ms, at every period, rather than \
                  the swing it makes in 10 s rate readings, in s/d",
             );
         }
         if matches!(view, steady::View::Stft | steady::View::Wavelet) {
-            ui.separator();
-            theme::toggle(ui, "Log Scale", &mut self.maps_log).on_hover_text(
+            theme::bar_gap(ui);
+            theme::tool_switch(
+                ui,
+                Icon::Log,
+                accent,
+                "Log Scale",
+                &mut self.maps_log,
                 "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines \
                  beside strong ones still show",
             );
@@ -5923,9 +5961,14 @@ impl TimegrapherApp {
             view,
             steady::View::Periods | steady::View::Fft | steady::View::Stft | steady::View::Wavelet
         ) {
-            ui.separator();
-            theme::toggle(ui, "Wheel Periods", &mut self.show_wheels)
-                .on_hover_text(steady::WHEELS_HINT);
+            theme::tool_switch(
+                ui,
+                Icon::Gears,
+                accent,
+                "Wheel Periods",
+                &mut self.show_wheels,
+                steady::WHEELS_HINT,
+            );
         }
     }
 
@@ -6081,73 +6124,67 @@ impl TimegrapherApp {
     }
 
     fn histogram_settings(&mut self, ui: &mut egui::Ui) {
-        theme::row(
+        theme::tool_choice(
             ui,
             "Show",
-            Some("The values on probability paper, or their cumulative share"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut self.hist_cumulative,
-                    &[
-                        (
-                            false,
-                            "Probability",
-                            "Each value against its rank on a scale of standard deviations: \
+            "The values on probability paper, or their cumulative share",
+            &mut self.hist_cumulative,
+            &[
+                (
+                    false,
+                    Icon::ProbLine,
+                    "Probability",
+                    "Each value against its rank on a scale of standard deviations: \
                              one steady state falls on the dashed straight line, two states \
                              draw two lines joined by a bend",
-                        ),
-                        (
-                            true,
-                            "Cumulative",
-                            "The share of values at or below each value: one state rises in \
+                ),
+                (
+                    true,
+                    Icon::SCurve,
+                    "Cumulative",
+                    "The share of values at or below each value: one state rises in \
                              one steep stretch, two states rise twice with a flatter stretch \
                              between",
-                        ),
-                    ],
-                );
-            },
+                ),
+            ],
         );
-        theme::row(ui, "Values", Some("What the distributions count"), |ui| {
-            theme::segmented(
-                ui,
-                &mut self.hist_readings,
-                &[
-                    (
-                        true,
-                        "Readings",
-                        "The readings, each averaged over Average Over, as on the charts \
+        theme::tool_choice(
+            ui,
+            "Values",
+            "What the distributions count",
+            &mut self.hist_readings,
+            &[
+                (
+                    true,
+                    Icon::Mean,
+                    "Readings",
+                    "The readings, each averaged over Average Over, as on the charts \
                              and the strip, one per Average Over so that no two share beats: \
                              states lasting longer than that stand out clearly",
-                    ),
-                    (
-                        false,
-                        "2 s",
-                        "Each 2 seconds of beats, the finest the app measures: catches \
+                ),
+                (
+                    false,
+                    Icon::TwoSeconds,
+                    "2 s",
+                    "Each 2 seconds of beats, the finest the app measures: catches \
                              quicker changes, with more scatter",
-                    ),
-                ],
-            );
-        });
+                ),
+            ],
+        );
     }
 
     /// Whether the distributions cover the whole session or the strip's
     /// length.
     fn span_setting(&mut self, ui: &mut egui::Ui) {
-        theme::row(
+        theme::tool_choice(
             ui,
             "Time Span",
-            Some("How much of the session the distributions cover"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut self.hist_span_of_strip,
-                    &[
-                        (false, "Session", SPAN_SESSION_HINT),
-                        (true, "Strip", SPAN_STRIP_HINT),
-                    ],
-                );
-            },
+            "How much of the session the distributions cover",
+            &mut self.hist_span_of_strip,
+            &[
+                (false, Icon::Roll, "Session", SPAN_SESSION_HINT),
+                (true, Icon::Strip, "Strip", SPAN_STRIP_HINT),
+            ],
         );
     }
 
@@ -6979,13 +7016,13 @@ impl TimegrapherApp {
     }
 
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
-        theme::row(
+        let pal = theme::pal(ui);
+        theme::tool_field(
             ui,
+            Icon::Calipers,
             "Width",
-            Some(
-                "Milliseconds either side of the centre line. Ctrl and the mouse wheel \
-                 on the strip change it too.",
-            ),
+            "Milliseconds either side of the centre line. Ctrl and the mouse wheel on the \
+             strip change it too.",
             |ui| {
                 ui.label("±");
                 let mut w = self.strip.half_width_ms;
@@ -7010,15 +7047,13 @@ impl TimegrapherApp {
                 }
             },
         );
-        theme::row(
+        theme::tool_field(
             ui,
+            Icon::Tape,
             "Length",
-            Some(
-                "Time shown along the strip, such as 30 s, 5 min or 2 h. \
-                 Fit shows the whole session so far, up to its latest beat, or its last \
-                 24 hours when it is longer. \
-                 The mouse wheel on the strip changes it too.",
-            ),
+            "Time shown along the strip, such as 30 s, 5 min or 2 h. Fit shows the whole \
+             session so far, up to its latest beat, or its last 24 hours when it is longer. \
+             The mouse wheel on the strip changes it too.",
             |ui| {
                 let mut s = self.strip.span_s;
                 let a = fields::entry(
@@ -7037,219 +7072,240 @@ impl TimegrapherApp {
                 }
             },
         );
-        theme::switch_row(
+        theme::bar_gap(ui);
+        theme::tool_switch(
             ui,
+            Icon::RateLine,
+            pal.trace_rate,
             "Rate Line",
             &mut self.rate_line,
-            "Draw the Rate reading as a red line over the beats it was fitted to, to \
-             check that it follows the dots",
+            "Draw the Rate reading as a red line over the beats it was fitted to, to check \
+             that it follows the dots",
         );
-        theme::switch_row(
+        theme::tool_switch(
             ui,
+            Icon::Rails,
+            pal.accent,
             "Parallel Guides",
             &mut self.rate_guides,
-            "Faint lines at the Rate reading's slope across the whole strip, so it is \
-             easy to see whether the dots run parallel to it. They show with or without \
-             the Rate Line.",
+            "Faint lines at the Rate reading's slope across the whole strip, so it is easy \
+             to see whether the dots run parallel to it. They show with or without the Rate \
+             Line.",
         );
-        // Each its own item, so a narrow toolbar wraps between them rather
-        // than running under the "?".
-        if ui
-            .button("Centre")
-            .on_hover_text("Put the latest beats on the centre line")
-            .clicked()
-        {
+        theme::bar_gap(ui);
+        if theme::tool_button(
+            ui,
+            Icon::Truing,
+            "Centre",
+            "Put the latest beats on the centre line",
+            None,
+        ) {
             self.centre();
         }
-        ui.add_enabled_ui(self.live.is_some(), |ui| {
-            theme::toggle(ui, "Mask", &mut self.masking)
-        })
-        .inner
-        .on_hover_text(MASK_HINT)
-        .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
-        theme::more_menu(
+        theme::tool_switch(
             ui,
-            "More strip settings: direction, lines drawn over the strip, \
-             Auto-Centre, masks, Average Over and Export",
-            |ui| {
-                let mut h = self.strip.horizontal;
-                theme::row(
-                    ui,
-                    "Direction",
-                    Some("Which way time runs along the strip"),
-                    |ui| {
-                        theme::segmented(
-                            ui,
-                            &mut h,
-                            &[
-                                (
-                                    false,
-                                    "Down",
-                                    "Newest beats at the top, the strip beside the charts",
-                                ),
-                                (
-                                    true,
-                                    "Across",
-                                    "Newest beats at the right, the strip above the charts",
-                                ),
-                            ],
+            Icon::AutoCentre,
+            pal.accent,
+            "Auto-Centre",
+            &mut self.follow,
+            "Keep the newest beats on the centre line and slide the rest",
+        );
+        theme::bar_gap(ui);
+        let live = self.live.is_some();
+        theme::bar_item(ui, "Mask", |ui| {
+            ui.add_enabled_ui(live, |ui| {
+                if theme::in_toolbar(ui) {
+                    let r = theme::icon_toggle(ui, Icon::Masks, self.masking, pal.accent);
+                    if r.clicked() {
+                        self.masking = !self.masking;
+                    }
+                    r.on_hover_text(format!("Mask: {MASK_HINT}"))
+                        .on_disabled_hover_text(
+                            "Mask: Nothing to mask yet. Listen, or open a recording.",
                         );
-                    },
-                );
-                if h != self.strip.horizontal {
-                    self.strip.horizontal = h;
-                    self.relayout(h);
+                } else {
+                    theme::switch_row(ui, "Mask", &mut self.masking, MASK_HINT);
                 }
-                let overlays = &mut self.overlays;
-                let lines = [
-                    (
-                        "Amplitude",
-                        "The amplitude readings as a purple line against the same \
-                         time, on their own scale",
-                    ),
-                    (
-                        "Rate",
-                        "The rate readings as a red line against the same time, on \
-                         their own scale",
-                    ),
-                    (
-                        "Beat Error",
-                        "The beat error readings, from the unlock, as a yellow line \
-                         against the same time, on their own scale",
-                    ),
-                ];
+            });
+        });
+        let unmask_hint = if self.masked.is_empty() {
+            "Bring every masked stretch back into the readings".to_string()
+        } else {
+            let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
+            format!(
+                "Bring every masked stretch back into the readings. {} {} masked, {} in all.",
+                self.masked.len(),
+                if self.masked.len() == 1 {
+                    "stretch"
+                } else {
+                    "stretches"
+                },
+                strip::fmt_time(total)
+            )
+        };
+        let nothing = self.masked.is_empty().then_some("Nothing is masked");
+        if theme::tool_button(ui, Icon::Unmask, "Unmask All", &unmask_hint, nothing) {
+            self.set_masked(Vec::new());
+        }
+        theme::bar_gap(ui);
+        let mut h = self.strip.horizontal;
+        theme::tool_choice(
+            ui,
+            "Direction",
+            "Which way time runs along the strip",
+            &mut h,
+            &[
+                (
+                    false,
+                    Icon::ArrowDown,
+                    "Down",
+                    "Newest beats at the top, the strip beside the charts",
+                ),
+                (
+                    true,
+                    Icon::ArrowRight,
+                    "Across",
+                    "Newest beats at the right, the strip above the charts",
+                ),
+            ],
+        );
+        if h != self.strip.horizontal {
+            self.strip.horizontal = h;
+            self.relayout(h);
+        }
+        let overlays = &mut self.overlays;
+        theme::bar_item(ui, "Draw Over the Strip", |ui| {
+            let over = "Readings drawn as lines over the beats against the same time, each \
+                        on its own scale";
+            let lines = [
+                (
+                    Icon::Amplitude,
+                    pal.trace_amplitude,
+                    "Amplitude",
+                    "The amplitude readings as a purple line against the same time, on \
+                     their own scale",
+                ),
+                (
+                    Icon::Rate,
+                    pal.trace_rate,
+                    "Rate",
+                    "The rate readings as a red line against the same time, on their own \
+                     scale",
+                ),
+                (
+                    Icon::BeatError,
+                    pal.trace_beat_error,
+                    "Beat Error",
+                    "The beat error readings, from the unlock, as a yellow line against the \
+                     same time, on their own scale",
+                ),
+            ];
+            if theme::in_toolbar(ui) {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (i, (icon, colour, name, hint)) in lines.into_iter().enumerate() {
+                    if theme::icon_toggle(ui, icon, overlays[i], colour)
+                        .on_hover_text(format!("Draw Over the Strip: {name}: {hint}"))
+                        .clicked()
+                    {
+                        overlays[i] = !overlays[i];
+                    }
+                }
+            } else {
                 ui.label(RichText::new("Draw Over the Strip").strong())
-                    .on_hover_text(
-                        "Readings drawn as lines over the beats against the same \
-                         time, each on its own scale",
-                    );
-                for (i, (name, hint)) in lines.into_iter().enumerate() {
+                    .on_hover_text(over);
+                for (i, (_, _, name, hint)) in lines.into_iter().enumerate() {
                     theme::switch_row(ui, name, &mut overlays[i], hint);
                 }
-                theme::switch_row(
-                    ui,
-                    "Auto-Centre",
-                    &mut self.follow,
-                    "Keep the newest beats on the centre line and slide the rest",
-                );
-                if ui
-                    .add_enabled(!self.masked.is_empty(), egui::Button::new("Unmask All"))
-                    .on_hover_text("Bring every masked stretch back into the readings")
-                    .on_disabled_hover_text("Nothing is masked")
-                    .clicked()
-                {
-                    self.set_masked(Vec::new());
-                }
-                if !self.masked.is_empty() {
-                    let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
-                    ui.label(
-                        RichText::new(format!(
-                            "{} {} masked, {} in all",
-                            self.masked.len(),
-                            if self.masked.len() == 1 {
-                                "stretch"
-                            } else {
-                                "stretches"
-                            },
-                            strip::fmt_time(total)
-                        ))
-                        .small()
-                        .color(theme::pal(ui).text_secondary),
-                    );
-                }
-                self.pane_average_setting(ui, Pane::Strip);
-                self.export_button(ui, Pane::Strip);
-            },
-        );
+            }
+        });
+        theme::bar_gap(ui);
+        self.pane_average_setting(ui, Pane::Strip);
+        self.export_button(ui, Pane::Strip);
     }
 
     fn profile_settings(&mut self, ui: &mut egui::Ui) {
+        let accent = theme::pal(ui).accent;
         let o = &mut self.sound_opts;
-        theme::row(
+        theme::tool_choice(
             ui,
             "Layout",
-            Some("Tick above tock, or side by side as tg shows them"),
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut o.side_by_side,
-                    &[
-                        (false, "Stacked", "Tick above tock"),
-                        (
-                            true,
-                            "Beside",
-                            "Tick on the left, tock on the right, as tg shows them",
-                        ),
-                    ],
-                );
-            },
+            "Tick above tock, or side by side as tg shows them",
+            &mut o.side_by_side,
+            &[
+                (false, Icon::Stacked, "Stacked", "Tick above tock"),
+                (
+                    true,
+                    Icon::Beside,
+                    "Beside",
+                    "Tick on the left, tock on the right, as tg shows them",
+                ),
+            ],
         );
-        theme::row(ui, "Scale", Some("How the loudness is drawn"), |ui| {
-            theme::segmented(
-                ui,
-                &mut o.scale,
-                &[
-                    (
-                        profiles::Scale::Linear,
-                        "Linear",
-                        "The sound's loudness as the engine measures it",
-                    ),
-                    (
-                        profiles::Scale::Decibels,
-                        "dB",
-                        "Decibels below the loudest point, which makes the quiet unlock \
-                         easier to see",
-                    ),
-                ],
-            );
-        });
-        theme::switch_row(
+        theme::tool_choice(
             ui,
+            "Scale",
+            "How the loudness is drawn",
+            &mut o.scale,
+            &[
+                (
+                    profiles::Scale::Linear,
+                    Icon::Ruler,
+                    "Linear",
+                    "The sound's loudness as the engine measures it",
+                ),
+                (
+                    profiles::Scale::Decibels,
+                    Icon::Log,
+                    "dB",
+                    "Decibels below the loudest point, which makes the quiet unlock easier \
+                     to see",
+                ),
+            ],
+        );
+        theme::bar_gap(ui);
+        theme::tool_switch(
+            ui,
+            Icon::PalletFork,
+            accent,
             "Edges",
             &mut o.edges,
-            "The solid unlock, drop and peak lines: the edges amplitude and the \
-             beat error are read from",
+            "The solid unlock, drop and peak lines: the edges amplitude and the beat error \
+             are read from",
         );
-        theme::more_menu(
+        theme::tool_switch(
             ui,
-            "More profile settings: Time From, Sounds 1, 2 and 3, Average Over and Export",
-            |ui| {
-                theme::row(
-                    ui,
-                    "Time From",
-                    Some("Where each side's time is measured from"),
-                    |ui| {
-                        theme::segmented(
-                            ui,
-                            &mut self.sound_opts.shared_clock,
-                            &[
-                                (
-                                    true,
-                                    "Shared",
-                                    "Tick and tock on one clock: the drops stand the beat \
-                                     error from the drop apart, and the unlocks the beat \
-                                     error from the unlock",
-                                ),
-                                (
-                                    false,
-                                    "Own Drop",
-                                    "Each side from its own drop, so both drops sit at 0 ms",
-                                ),
-                            ],
-                        );
-                    },
-                );
-                theme::switch_row(
-                    ui,
-                    "Sounds 1, 2 and 3",
-                    &mut self.sound_opts.sounds,
-                    "The dashed brown lines where the three sounds of each beat rise: unlock, \
-                     impulse and drop",
-                );
-                self.pane_average_setting(ui, Pane::Sound);
-                self.export_button(ui, Pane::Sound);
-            },
+            Icon::Notes,
+            accent,
+            "Sounds 1, 2 and 3",
+            &mut o.sounds,
+            "The dashed brown lines where the three sounds of each beat rise: unlock, \
+             impulse and drop",
         );
+        theme::bar_gap(ui);
+        theme::tool_choice(
+            ui,
+            "Time From",
+            "Where each side's time is measured from",
+            &mut o.shared_clock,
+            &[
+                (
+                    true,
+                    Icon::OneClock,
+                    "Shared",
+                    "Tick and tock on one clock: the drops stand the beat error from the \
+                     drop apart, and the unlocks the beat error from the unlock",
+                ),
+                (
+                    false,
+                    Icon::TwoClocks,
+                    "Own Drop",
+                    "Each side from its own drop, so both drops sit at 0 ms",
+                ),
+            ],
+        );
+        theme::bar_gap(ui);
+        self.pane_average_setting(ui, Pane::Sound);
+        self.export_button(ui, Pane::Sound);
     }
 
     /// The menus across the very top, File, Edit, View and Help, and beside
@@ -10218,78 +10274,77 @@ impl TimegrapherApp {
         };
         // While it runs, the banner below carries the test's buttons.
         if !running {
-            if ui
-                .add(theme::primary(ui, label))
-                .on_hover_text(start_hint)
-                .clicked()
-            {
+            if theme::tool_word_button(ui, Icon::Listen, label, &start_hint, true, None) {
                 let earlier = self.guided_earlier.clone();
                 self.start_guided(earlier);
             }
-            if ui
-                .button("Load Full-Wind Results…")
-                .on_hover_text(format!(
-                    "For the test 24 hours after winding: load the results saved from the test \
-                     just after it ({} in a saved session's folder, or the file Save Results for \
-                     24 Hours… wrote). The next test is then set against them.",
-                    guided::RESULTS_FILE
-                ))
-                .clicked()
-            {
+            let load_hint = format!(
+                "For the test 24 hours after winding: load the results saved from the test just \
+                 after it ({} in a saved session's folder, or the file Save Results for 24 \
+                 Hours… wrote). The next test is then set against them.",
+                guided::RESULTS_FILE
+            );
+            if theme::tool_button(
+                ui,
+                Icon::BarrelIn,
+                "Load Full-Wind Results…",
+                &load_hint,
+                None,
+            ) {
                 if let Some(full) = self.load_full_wind() {
                     self.guided_earlier = Some(full);
                 }
             }
-            ui.separator();
+            theme::bar_gap(ui);
         }
-        ui.add_enabled_ui(!running, |ui| {
-            theme::row(
-                ui,
-                "Settle",
-                Some("Seconds the watch is left to settle after each turn before it is measured"),
-                |ui| {
-                    ui.add(
-                        egui::DragValue::new(&mut self.guided_settle_s)
-                            .range(guided::SETTLE_RANGE)
-                            .speed(1.0)
-                            .max_decimals(0)
-                            .suffix(" s"),
-                    );
-                },
-            );
-            theme::row(
-                ui,
-                "Measure",
-                Some(
-                    "Seconds each position is measured for. Longer brings the rate's ± down; a \
-                     minute gives about half a second a day.",
-                ),
-                |ui| {
-                    ui.add(
-                        egui::DragValue::new(&mut self.guided_measure_s)
-                            .range(guided::MEASURE_RANGE)
-                            .speed(1.0)
-                            .max_decimals(0)
-                            .suffix(" s"),
-                    );
-                },
-            );
-        });
+        theme::tool_field(
+            ui,
+            Icon::Hourglass,
+            "Settle",
+            "Seconds the watch is left to settle after each turn before it is measured",
+            |ui| {
+                ui.add_enabled(
+                    !running,
+                    egui::DragValue::new(&mut self.guided_settle_s)
+                        .range(guided::SETTLE_RANGE)
+                        .speed(1.0)
+                        .max_decimals(0)
+                        .suffix(" s"),
+                );
+            },
+        );
+        theme::tool_field(
+            ui,
+            Icon::Stopwatch,
+            "Measure",
+            "Seconds each position is measured for. Longer brings the rate's ± down; a minute \
+             gives about half a second a day.",
+            |ui| {
+                ui.add_enabled(
+                    !running,
+                    egui::DragValue::new(&mut self.guided_measure_s)
+                        .range(guided::MEASURE_RANGE)
+                        .speed(1.0)
+                        .max_decimals(0)
+                        .suffix(" s"),
+                );
+            },
+        );
         let has = self
             .guided
             .as_ref()
             .is_some_and(|t| !t.readings_so_far().is_empty());
-        ui.separator();
+        let nothing = (!has).then_some("Nothing measured yet");
+        theme::bar_gap(ui);
         let about = self.guided_about();
-        if ui
-            .add_enabled(has, egui::Button::new("Save as CSV…"))
-            .on_hover_text(
-                "Save the watch, its calibre, the table, the means and the differences as a \
-                 CSV file a spreadsheet opens",
-            )
-            .on_disabled_hover_text("Nothing measured yet")
-            .clicked()
-        {
+        if theme::tool_button(
+            ui,
+            Icon::SaveTable,
+            "Save as CSV…",
+            "Save the watch, its calibre, the table, the means and the differences as a CSV \
+             file a spreadsheet opens",
+            nothing,
+        ) {
             if let Some(t) = &self.guided {
                 let text = guided::export_text(t, &about, ',');
                 if let Some(m) = guided::save_csv(&text, &self.guided_dir()) {
@@ -10297,30 +10352,33 @@ impl TimegrapherApp {
                 }
             }
         }
-        if ui
-            .add_enabled(has, egui::Button::new("Copy"))
-            .on_hover_text(
-                "Copy the watch, its calibre and the table with tabs between the columns, to \
-                 paste into a spreadsheet or a message",
-            )
-            .on_disabled_hover_text("Nothing measured yet")
-            .clicked()
-        {
+        if theme::tool_word_button(
+            ui,
+            Icon::Copy,
+            "Copy",
+            "Copy the watch, its calibre and the table with tabs between the columns, to paste \
+             into a spreadsheet or a message",
+            false,
+            nothing,
+        ) {
             if let Some(t) = &self.guided {
                 ui.ctx().copy_text(guided::export_text(t, &about, '\t'));
                 self.info_msg("Copied the Positions Test table".to_string());
             }
         }
         if let Some(k) = self.guided.as_ref().and_then(|t| t.kept(&about)) {
-            if ui
-                .button("Save Results for 24 Hours…")
-                .on_hover_text(format!(
-                    "Save these results to load when you run the test again 24 hours after \
-                     winding. Saving the session keeps them too, as {} in its folder.",
-                    guided::RESULTS_FILE
-                ))
-                .clicked()
-            {
+            let hint = format!(
+                "Save these results to load when you run the test again 24 hours after winding. \
+                 Saving the session keeps them too, as {} in its folder.",
+                guided::RESULTS_FILE
+            );
+            if theme::tool_button(
+                ui,
+                Icon::Barrel24,
+                "Save Results for 24 Hours…",
+                &hint,
+                None,
+            ) {
                 if let Some(m) = guided::save_results(&k, &self.guided_dir()) {
                     self.info_msg(m);
                 }
@@ -10428,12 +10486,13 @@ impl TimegrapherApp {
     /// and Start Test.
     fn reserve_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.reserve_running();
-        ui.add_enabled_ui(!running, |ui| {
-            theme::row(
-                ui,
-                "Position",
-                Some("The one position the watch runs down in, from wind to stop"),
-                |ui| {
+        theme::tool_field(
+            ui,
+            self.reserve_position.icon(),
+            "Position",
+            "The one position the watch runs down in, from wind to stop",
+            |ui| {
+                ui.add_enabled_ui(!running, |ui| {
                     egui::ComboBox::from_id_salt("reserve position")
                         .selected_text(self.reserve_position.label())
                         .show_ui(ui, |ui| {
@@ -10441,46 +10500,60 @@ impl TimegrapherApp {
                                 ui.selectable_value(&mut self.reserve_position, p, p.label());
                             }
                         });
-                },
+                });
+            },
+        );
+        ui.add_enabled_ui(!running, |ui| {
+            theme::tool_choice(
+                ui,
+                "Keep",
+                "What the take keeps once the run ends",
+                &mut self.reserve_keep_sound,
+                &[
+                    (
+                        true,
+                        Icon::Wave,
+                        "Keep Sound",
+                        "Keep the run's sound in the take, to measure again later; about a \
+                         third of a GB an hour",
+                    ),
+                    (
+                        false,
+                        Icon::Sheet,
+                        "Analysis Only",
+                        "Keep the take as its analysis only, tens of MB: every pane still \
+                         reads it, but it can't be measured again. The sound is still written \
+                         while the test runs and is deleted once the analysis is written.",
+                    ),
+                ],
             );
-            ui.separator();
-            ui.selectable_value(&mut self.reserve_keep_sound, true, "Keep Sound")
-                .on_hover_text(
-                    "Keep the run's sound in the take, to measure again later; \
-                     about a third of a GB an hour",
-                );
-            ui.selectable_value(&mut self.reserve_keep_sound, false, "Analysis Only")
-                .on_hover_text(
-                    "Keep the take as its analysis only, tens of MB: every pane still reads \
-                     it, but it can't be measured again. The sound is still \
-                     written while the test runs and is deleted once the analysis is written.",
-                );
         });
         if !running {
-            ui.separator();
-            if ui
-                .add(theme::primary(ui, "Start Test"))
-                .on_hover_text(
-                    "Start listening in the position picked and run until the watch stops, \
-                     keeping the computer awake. Wind the watch fully first.",
-                )
-                .clicked()
-            {
+            theme::bar_gap(ui);
+            if theme::tool_word_button(
+                ui,
+                Icon::Listen,
+                "Start Test",
+                "Start listening in the position picked and run until the watch stops, keeping \
+                 the computer awake. Wind the watch fully first.",
+                true,
+                None,
+            ) {
                 self.start_reserve();
             }
         }
         let done = self.reserve.as_ref().and_then(|t| t.results.clone());
-        ui.separator();
+        let nothing = done.is_none().then_some("No run ended yet");
+        theme::bar_gap(ui);
         let watch = self.watch.trim().to_string();
-        if ui
-            .add_enabled(done.is_some(), egui::Button::new("Save as CSV…"))
-            .on_hover_text(
-                "Save the watch, the run and its hour-by-hour table as a CSV file a \
-                 spreadsheet opens",
-            )
-            .on_disabled_hover_text("No run ended yet")
-            .clicked()
-        {
+        if theme::tool_button(
+            ui,
+            Icon::SaveTable,
+            "Save as CSV…",
+            "Save the watch, the run and its hour-by-hour table as a CSV file a spreadsheet \
+             opens",
+            nothing,
+        ) {
             if let Some(r) = &done {
                 let dir = self.guided_dir();
                 if let Some(m) = reserve::save_csv(&reserve::results_text(r, &watch, ','), &dir) {
@@ -10488,15 +10561,15 @@ impl TimegrapherApp {
                 }
             }
         }
-        if ui
-            .add_enabled(done.is_some(), egui::Button::new("Copy"))
-            .on_hover_text(
-                "Copy the watch, the run and its hour-by-hour table with tabs between the \
-                 columns, to paste into a spreadsheet or a message",
-            )
-            .on_disabled_hover_text("No run ended yet")
-            .clicked()
-        {
+        if theme::tool_word_button(
+            ui,
+            Icon::Copy,
+            "Copy",
+            "Copy the watch, the run and its hour-by-hour table with tabs between the columns, \
+             to paste into a spreadsheet or a message",
+            false,
+            nothing,
+        ) {
             if let Some(r) = &done {
                 ui.ctx().copy_text(reserve::results_text(r, &watch, '\t'));
                 self.info_msg("Copied the Power Reserve Test".to_string());
@@ -14049,7 +14122,7 @@ mod tests {
         let dir = export_dir("svg");
         let path = dir.join("Strip.svg");
         app.start_export(Pane::Strip, path.clone());
-        let out = ctx.run(screen(), |ctx| {
+        let _ = ctx.run(screen(), |ctx| {
             app.export_tick(ctx);
             app.panels(ctx)
         });
@@ -14064,12 +14137,12 @@ mod tests {
             "no lines"
         );
         // Its controls aren't in the picture, and the window's frame goes on
-        // as before: the profile below keeps its toolbar (Export… is in
-        // its "…" menu, so its Layout setting stands for it).
+        // as before: the profile below keeps its toolbar (its Layout
+        // setting, first in the row, stands for it).
         assert!(!doc.contains("Width"), "toolbar drawn into the picture");
         assert!(!doc.contains("Export…"), "toolbar drawn into the picture");
         assert!(
-            painted_text(&out).contains("Stacked"),
+            theme::tools_drawn(&ctx).contains(&format!("{}/Layout", Pane::Sound.title())),
             "other panes lost their toolbars"
         );
         assert!(matches!(&app.message, Some((m, false)) if m.starts_with("Saved ")));
@@ -15219,7 +15292,7 @@ mod tests {
                     });
                     app.watch_form_dialog(ctx);
                 });
-                all = format!("{:?}", out.shapes);
+                all = format!("{:?} {:?}", out.shapes, theme::tools_drawn(ctx));
             }
             all
         };
@@ -15358,7 +15431,7 @@ mod tests {
                 });
                 app.take_ask_dialog(ctx);
             });
-            format!("{:?}", out.shapes)
+            format!("{:?} {:?}", out.shapes, theme::tools_drawn(ctx))
         };
         // The list asks for the first photo (by name: broken.jpg) only.
         pane(&ctx, &mut app);
@@ -15691,7 +15764,7 @@ mod tests {
                         app.watch_pane(ui);
                     });
                 });
-                all = format!("{:?}", out.shapes);
+                all = format!("{:?} {:?}", out.shapes, theme::tools_drawn(ctx));
             }
             all
         };
@@ -15977,13 +16050,12 @@ mod tests {
         app.take_action(Some(watches::TakeAction::Open(take.clone())));
         assert!(app.batch.is_none());
 
-        let renamed = take.clone();
         let name = file_name(&take);
 
         // Moved to Daytona, then deleted there.
-        app.move_take(&renamed, &daytona_id);
+        app.move_take(&take, &daytona_id);
         let d = root.join("Daytona").join(library::TAKES).join(&name);
-        assert!(d.is_dir() && !renamed.exists());
+        assert!(d.is_dir() && !take.exists());
         assert_eq!(Path::new(&app.opened_path), d);
         app.answer_take_ask(watches::Ask::Delete {
             take: d.clone(),
@@ -18592,10 +18664,19 @@ mod tests {
             profile > (strip + profile) * 0.38,
             "the profile {profile} against the strip {strip}"
         );
-        // Each toolbar keeps to one row; its rarer settings are behind "…".
-        let row = |a: &str, b: &str| (top_of[a] - top_of[b]).abs() < 4.0;
-        assert!(row("Width", "Mask"), "{top_of:?}");
-        assert!(row("Layout", "Edges"), "{top_of:?}");
+        // Each toolbar keeps to one row, from its first control to its last
+        // (or its "…" menu, when the pane is too narrow for them all).
+        let tools = theme::tools_drawn_at(&ctx);
+        let row = |p: Pane| {
+            let ys: Vec<f32> = tools
+                .iter()
+                .filter(|(k, _)| k.starts_with(&format!("{}/", p.title())))
+                .map(|(_, r)| r.center().y)
+                .collect();
+            ys.len() > 1 && ys.iter().all(|y| (y - ys[0]).abs() < 4.0)
+        };
+        assert!(row(Pane::Strip), "{tools:?}");
+        assert!(row(Pane::Sound), "{tools:?}");
     }
 
     #[test]

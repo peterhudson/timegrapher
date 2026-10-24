@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 33] = [
+const ALL: [Icon; 76] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -42,6 +42,49 @@ const ALL: [Icon; 33] = [
     Icon::CrownDown,
     Icon::CrownLeft,
     Icon::CrownRight,
+    Icon::Export,
+    Icon::Mean,
+    Icon::Log,
+    Icon::Copy,
+    Icon::SaveTable,
+    Icon::Calipers,
+    Icon::Tape,
+    Icon::RateLine,
+    Icon::Rails,
+    Icon::Truing,
+    Icon::AutoCentre,
+    Icon::Masks,
+    Icon::Unmask,
+    Icon::ArrowDown,
+    Icon::ArrowRight,
+    Icon::Stacked,
+    Icon::Beside,
+    Icon::Ruler,
+    Icon::PalletFork,
+    Icon::OneClock,
+    Icon::TwoClocks,
+    Icon::Notes,
+    Icon::Trace,
+    Icon::Drum,
+    Icon::Traces,
+    Icon::Stopwatch,
+    Icon::Gears,
+    Icon::Roll,
+    Icon::ProbLine,
+    Icon::SCurve,
+    Icon::TwoSeconds,
+    Icon::BarrelIn,
+    Icon::Barrel24,
+    Icon::Hourglass,
+    Icon::Wave,
+    Icon::Sheet,
+    Icon::Loupe,
+    Icon::Sort,
+    Icon::WatchBox,
+    Icon::NewWatch,
+    Icon::Back,
+    Icon::Screwdriver,
+    Icon::NewPhoto,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -172,6 +215,164 @@ fn drawing(icon: Icon) -> &'static str {
         }
         Icon::CrownRight => {
             r#"<circle cx="10.8" cy="12" r="6.4"/><path d="M10.8 12V8.6M10.8 12l2.4 1.4"/><path d="M7.6 6.5L7.2 3M7.6 17.5L7.2 21M14 6.5L14.4 3M14 17.5L14.4 21"/><path stroke-width="2.6" d="M17.2 12L19.6 12"/>"#
+        }
+        // A box with an arrow leaving it: Export, as on a Mac.
+        Icon::Export => {
+            r#"<path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M14.5 3.5h6v6M20.5 3.5L12 12"/>"#
+        }
+        // x-bar: The mean, for anyone who did statistics. Average Over.
+        Icon::Mean => r#"<path d="M6 4.5h12"/><path d="M7 9l10 11M17 9L7 20"/>"#,
+        // A log of wood: A log scale.
+        Icon::Log => {
+            r#"<path d="M8 4.5h8a4.5 7.5 0 0 1 0 15H8"/><ellipse cx="8" cy="12" rx="4.5" ry="7.5"/><ellipse cx="8" cy="12" rx="2.3" ry="4"/><circle cx="8" cy="12" r="0.9" fill="currentColor"/>"#
+        }
+        // Two sheets, one over the other: Copy.
+        Icon::Copy => {
+            r#"<rect x="8.5" y="8.5" width="12" height="12.5" rx="2"/><path d="M15.5 8.5V5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2v9.5a2 2 0 0 0 2 2h3"/>"#
+        }
+        // A table with an arrow down: A table saved for a spreadsheet.
+        Icon::SaveTable => {
+            r#"<rect x="2.5" y="3" width="12.5" height="12.5" rx="1.5"/><path d="M2.5 7.2h12.5M2.5 11.3h12.5M6.7 3v12.5M10.8 3v12.5" stroke-width="1.1"/><path d="M19 10.5V21M15.8 17.8L19 21l3.2-3.2"/>"#
+        }
+        // Vernier calipers: How wide the strip is.
+        Icon::Calipers => {
+            r#"<rect x="2.5" y="4" width="19" height="4" rx="1"/><path d="M5 8v11.5l3-3V8"/><path d="M14.5 8v8.5l3 3V8"/><path d="M11 5.4v1.2M13 5.4v1.2M15 5.4v1.2M17 5.4v1.2M19 5.4v1.2" stroke-width="0.9"/>"#
+        }
+        // A tape measure: How much time the strip covers.
+        Icon::Tape => {
+            r#"<circle cx="9" cy="10.5" r="6.5"/><circle cx="9" cy="10.5" r="2"/><path d="M9 17h13v3H9"/><path d="M13 17v1.4M16 17v1.4M19 17v1.4" stroke-width="1"/>"#
+        }
+        // Dots with a line through them: The rate line over the beats it was fitted to.
+        Icon::RateLine => {
+            r#"<g fill="currentColor" stroke="none"><circle cx="5" cy="16.5" r="1.4"/><circle cx="8.5" cy="14.5" r="1.4"/><circle cx="12.5" cy="12" r="1.4"/><circle cx="15.5" cy="8.5" r="1.4"/><circle cx="19.5" cy="7" r="1.4"/></g><path d="M3 19.5L21 4.5"/>"#
+        }
+        // Railway tracks: Parallel lines all the way.
+        Icon::Rails => {
+            r#"<path d="M8.5 3L4.5 21M15.5 3l4 18"/><path d="M7.6 6.5h8.8M6.7 10.5h10.6M5.8 14.5h12.4M4.9 18.5h14.2" stroke-width="1.3"/>"#
+        }
+        // Truing calipers: What a watchmaker centres a balance with.
+        Icon::Truing => {
+            r#"<path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16"/><path d="M4 12h5M20 12h-5"/><circle cx="12" cy="12" r="2"/>"#
+        }
+        // Truing calipers with a loop: Centring that keeps going.
+        Icon::AutoCentre => {
+            r#"<path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 10.5h4.5M20 10.5h-4.5"/><circle cx="12" cy="10.5" r="1.7"/><path d="M8.5 17a3.5 3 0 1 0 7 0"/><path d="M15.5 17l.4-2.5M15.5 17l-2.4-.8"/>"#
+        }
+        // Theatre masks: Masking, one smiling, one not.
+        Icon::Masks => {
+            r#"<path d="M2.5 3.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M5 7h1.5M8.2 7h1.5M5.4 11.2a2 2 0 0 0 3.7 0"/><path d="M12 8.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M14.5 12h1.5M17.5 12H19M14.9 17.6a2 2 0 0 1 3.7 0"/>"#
+        }
+        // Theatre masks crossed out: The masks taken off.
+        Icon::Unmask => {
+            r#"<path d="M2.5 3.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M12 8.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M3 21L21 3"/>"#
+        }
+        // An arrow down: Time running down the strip.
+        Icon::ArrowDown => r#"<path d="M12 4v15M6 13l6 6 6-6"/>"#,
+        // An arrow right: Time running across the strip.
+        Icon::ArrowRight => r#"<path d="M4 12h15M13 6l6 6-6 6"/>"#,
+        // Two bars, one above the other: Tick above tock.
+        Icon::Stacked => {
+            r#"<rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/>"#
+        }
+        // Two bars side by side: Tick beside tock.
+        Icon::Beside => {
+            r#"<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>"#
+        }
+        // A straight ruler: A linear scale.
+        Icon::Ruler => {
+            r#"<rect x="2.5" y="8" width="19" height="8" rx="1"/><path d="M6 8v3.2M9.5 8v2M13 8v3.2M16.5 8v2" stroke-width="1.2"/>"#
+        }
+        // A pallet fork: The unlock and the drop come from the pallets.
+        Icon::PalletFork => {
+            r#"<path d="M12 21.5V12"/><path d="M12 12L5.5 6M12 12l6.5-6"/><path d="M3.8 7.6l3.4-3.2M16.8 4.4l3.4 3.2" stroke-width="2.6"/><path d="M9.8 21.5h4.4"/><circle cx="12" cy="14.5" r="1.2" fill="currentColor"/>"#
+        }
+        // One clock: Tick and tock timed on the same clock.
+        Icon::OneClock => {
+            r#"<circle cx="12" cy="12" r="8"/><path d="M12 12V7.5M12 12l3 2"/><path d="M12 4v1.4M20 12h-1.4M12 20v-1.4M4 12h1.4" stroke-width="1.2"/>"#
+        }
+        // Two clocks: Each side timed from its own drop.
+        Icon::TwoClocks => {
+            r#"<circle cx="8" cy="9.5" r="5.5"/><path d="M8 9.5V6.5M8 9.5l2 1.2"/><circle cx="16.5" cy="15" r="5.5"/><path d="M16.5 15v-3M16.5 15l2 1.2"/>"#
+        }
+        // Three notes: The three sounds of a beat.
+        Icon::Notes => {
+            r#"<g fill="currentColor"><ellipse cx="4.5" cy="18.5" rx="2" ry="1.5"/><ellipse cx="11.5" cy="16.5" rx="2" ry="1.5"/><ellipse cx="18.5" cy="14.5" rx="2" ry="1.5"/></g><path d="M6.5 18.5V7M13.5 16.5V5M20.5 14.5V3"/><path d="M6.5 7l7-2 7-2"/>"#
+        }
+        // An oscilloscope's trace: How much time each trace covers.
+        Icon::Trace => {
+            r#"<rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M4.5 12h3l1.5-4 2 8 2-6 1.5 3 1-1h4" stroke-width="1.4"/>"#
+        }
+        // A drum and its sticks: One beat at the watch's own rate. The metronome is Isochronism's.
+        Icon::Drum => {
+            r#"<ellipse cx="12" cy="13" rx="8" ry="3"/><path d="M4 13v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/><path d="M7.5 15.8v3.4M12 16v4M16.5 15.8v3.4" stroke-width="1.2"/><path d="M5 3l6 8.5M19 3l-6 8.5"/><circle cx="5" cy="3" r="1" fill="currentColor"/><circle cx="19" cy="3" r="1" fill="currentColor"/>"#
+        }
+        // Traces stacked: How many beats are drawn over each other.
+        Icon::Traces => {
+            r#"<path d="M2.5 6h4.5l1.5-3 2 6 2-4 1 2h8M2.5 12.5h4.5l1.5-3 2 6 2-4 1 2h8M2.5 19h4.5l1.5-3 2 6 2-4 1 2h8" stroke-width="1.3"/>"#
+        }
+        // A stopwatch: Time measured.
+        Icon::Stopwatch => {
+            r#"<circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9M10 2.5h4M12 2.5V6M18 6.5l1.5-1.5"/>"#
+        }
+        // Two wheels in mesh: The calibre's wheel periods.
+        Icon::Gears => {
+            r#"<circle cx="8.5" cy="9.5" r="4.5"/><circle cx="8.5" cy="9.5" r="1.2"/><circle cx="16.5" cy="16.5" r="3.2"/><circle cx="16.5" cy="16.5" r="1"/><path d="M13 9.5h1.9M11.7 12.7l1.3 1.3M8.5 14v1.9M5.3 12.7L4 14M4 9.5H2.1M5.3 6.3L4 5M8.5 5V3.1M11.7 6.3L13 5M19.3 18l1.5.8M16.6 19.7v1.7M13.8 18.2l-1.5.8M16.4 13.3v-1.7M19.2 14.8l1.5-.8" stroke-width="1.5"/>"#
+        }
+        // A whole roll of paper: The whole session.
+        Icon::Roll => {
+            r#"<ellipse cx="7" cy="9" rx="3" ry="5"/><ellipse cx="7" cy="9" rx="1" ry="1.8"/><path d="M7 4h11a3 5 0 0 1 0 10"/><path d="M18 14v7H8.5"/>"#
+        }
+        // A straight line on graph paper: Probability paper.
+        Icon::ProbLine => {
+            r#"<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" stroke-width="0.8"/><path d="M5.5 18.5l13-13"/>"#
+        }
+        // An S: The cumulative share.
+        Icon::SCurve => {
+            r#"<path d="M3.5 20.5h17M3.5 20.5V3.5" stroke-width="1.2"/><path d="M5 18.5C9.5 18.5 9.5 6 13 6s4.5-.5 7.5-.5"/>"#
+        }
+        // A 2 s badge: Two-second pieces.
+        Icon::TwoSeconds => {
+            r#"<rect x="2.5" y="5.5" width="19" height="13" rx="3"/><path d="M6.5 10a2 2 0 0 1 4 0c0 1.5-4 2.8-4 5h4"/><path d="M17.2 10.4c-.5-.9-3.4-1-3.4.6 0 1.6 3.6 1.1 3.6 2.6 0 1.6-3 1.6-3.8.6"/>"#
+        }
+        // A mainspring barrel with an arrow in: The results from just after winding, loaded.
+        Icon::BarrelIn => {
+            r#"<circle cx="14" cy="12" r="7.5"/><path d="M14 12a1.5 1.5 0 1 1 1.5 1.5 3 3 0 1 1-3-3 4.5 4.5 0 1 1 4.5 4.5" stroke-width="1.2"/><path d="M1.5 12h6M4.5 9l3 3-3 3"/>"#
+        }
+        // A mainspring barrel marked 24: Kept for the test 24 hours later.
+        Icon::Barrel24 => {
+            r#"<circle cx="12" cy="12" r="9"/><path d="M6.8 10a2 2 0 0 1 4 0c0 1.5-4 2.8-4 5h4"/><path d="M16.2 8.5l-3.4 4.6h5M16.2 8.5V15"/>"#
+        }
+        // An hourglass: Time left to settle.
+        Icon::Hourglass => {
+            r#"<path d="M5.5 2.5h13M5.5 21.5h13"/><path d="M7.5 2.5c0 5 4 6.4 4 9.5s-4 4.5-4 9.5M16.5 2.5c0 5-4 6.4-4 9.5s4 4.5 4 9.5"/><path d="M8.4 21.4c1.8 0 2.2-3.6 3.6-3.6s1.8 3.6 3.6 3.6z" fill="currentColor"/>"#
+        }
+        // A sound wave: The sound kept.
+        Icon::Wave => r#"<path d="M2 12h2l1.5-5 2 10 2-14 2 18 2-14 2 10 1.5-5H22"/>"#,
+        // A sheet of figures: The analysis only.
+        Icon::Sheet => {
+            r#"<path d="M6 2.5h8.5l4 4v15H6z"/><path d="M14.5 2.5v4h4"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" stroke-width="1.3"/>"#
+        }
+        // A watchmaker's loupe: Looking closely.
+        Icon::Loupe => r#"<path d="M5 4h14l-3.5 13h-7z"/><path d="M8.5 17h7v3.5h-7z"/>"#,
+        // Arrows up and down: The order of the list.
+        Icon::Sort => r#"<path d="M8 4v16M4.5 7.5L8 4l3.5 3.5M16 20V4M12.5 16.5L16 20l3.5-3.5"/>"#,
+        // A watch box with its lid shut: Put away.
+        Icon::WatchBox => {
+            r#"<rect x="3" y="9" width="18" height="11" rx="1.5"/><path d="M2.5 9h19L20 5H4z"/><path d="M10 13h4"/>"#
+        }
+        // A wristwatch and a plus: Add a watch.
+        Icon::NewWatch => {
+            r#"<path d="M6.6 7.4l.6-3.9h4.6l.6 3.9M6.6 16.6l.6 3.9h4.6l.6-3.9"/><circle cx="9.5" cy="12" r="4.8"/><path d="M9.5 12V9.6"/><path d="M19.5 8v8M15.5 12h8"/>"#
+        }
+        // A back chevron: Back to the list.
+        Icon::Back => r#"<path d="M15 4l-8 8 8 8"/>"#,
+        // A watchmaker's screwdriver: Change the watch's details.
+        Icon::Screwdriver => {
+            r#"<path d="M15 2.5l6.5 6.5-3 3L12 5.5z"/><path d="M13.5 10.5L5 19"/><path d="M5 19l-2 2"/>"#
+        }
+        // A camera and a plus: Add photos.
+        Icon::NewPhoto => {
+            r#"<rect x="2.5" y="8" width="15" height="11" rx="2"/><path d="M6.5 8l1.5-2.5h4L13.5 8"/><circle cx="10" cy="13.5" r="3"/><path d="M20.5 2v6M17.5 5h6"/>"#
         }
     }
 }

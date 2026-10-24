@@ -120,6 +120,12 @@ pub const BEAT_RATE: &[&str] = &[
      rate, or to read a watch that runs far off.",
 ];
 
+/// The last paragraph of every pane toolbar's "?": how its icons work.
+pub const TOOLBAR: &str = "The toolbar's icons name themselves on hover, with what they do. A \
+     switch stays pressed and tinted while it is on; of a row of icons, the tinted one is \
+     picked. When the pane is too narrow for them all, the last ones fold into the … menu at \
+     the row's end, in words, and come back out when the pane is wide enough.";
+
 pub const STRIP: &[&str] = &[
     "One dot for every beat, tick and tock in their colours, as a printing timegrapher \
      draws it on paper. Along the strip is time; across it is how early or late each \
@@ -264,8 +270,8 @@ pub const SCOPE: &[&str] = &[
     "Span: 20 ms shows one sound in detail, from before the unlock to after the drop, \
      with the Tick above the Tock and the unlock and drop marks from the Tick Tock \
      Profile. 5 and 10 ms show the drop closer still, and 50 ms the sound and what rings \
-     on after it, with the same marks. One Beat runs from just before one beat to just \
-     before the next, at the watch's beat rate. 200 ms shows the whole beat and the \
+     on after it, with the same marks. One Beat (the drum) runs from just before one beat \
+     to just before the next, at the watch's beat rate. 200 ms shows the whole beat and the \
      quiet after it, the Tick above the Tock. 400 ms shows a Tick, the Tock after it and \
      the next Tick in one row.",
     "Beats: how many of the latest beats are drawn over each other, the older ones \
