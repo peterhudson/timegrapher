@@ -287,6 +287,17 @@ pub fn caption(text: &str) -> RichText {
 /// and stays open once it's clicked, until a click anywhere else. The one way the app explains itself at length;
 /// short hints stay as tooltips on the controls.
 pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
+    help_with_key(ui, title, paragraphs, &[])
+}
+
+/// [`help`], ending with a key to a toolbar: each icon drawn beside its
+/// name, so a picture that can't be guessed can be looked up.
+pub fn help_with_key(
+    ui: &mut Ui,
+    title: &str,
+    paragraphs: &[&str],
+    key: &[(Icon, String)],
+) -> Response {
     let p = pal(ui);
     let size = Vec2::splat(16.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
@@ -316,6 +327,21 @@ pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
         for para in &paragraphs[..shown.min(paragraphs.len())] {
             ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
         }
+        if pinned && !key.is_empty() {
+            ui.label(RichText::new("The Toolbar's Icons").font(semibold(12.5)));
+            let pal = pal(ui);
+            ui.scope(|ui| {
+                ui.spacing_mut().item_spacing.y = 3.0;
+                for (icon, name) in key {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        let (r, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
+                        crate::icons::draw(ui.painter(), r, *icon, pal.text_secondary);
+                        ui.label(RichText::new(name).size(12.5));
+                    });
+                }
+            });
+        }
         if !pinned {
             ui.label(
                 RichText::new(if paragraphs.len() > 1 {
@@ -338,7 +364,13 @@ pub fn help(ui: &mut Ui, title: &str, paragraphs: &[&str]) -> Response {
     egui::Popup::from_toggle_button_response(&resp)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .width(360.0)
-        .show(|ui| body(ui, true));
+        .show(|ui| {
+            // A long explanation and its key of icons can be taller than
+            // the window: it scrolls rather than running off the bottom.
+            egui::ScrollArea::vertical()
+                .max_height(ui.ctx().content_rect().height() - 24.0)
+                .show(ui, |ui| body(ui, true));
+        });
     resp
 }
 
@@ -412,24 +444,6 @@ pub fn section_header(
     changed
 }
 
-/// Lays out `add` as one piece in a pane toolbar's wrapping row, starting
-/// a new line first when the piece didn't fit on the last frame. egui only
-/// wraps single widgets, so a group (a name and its control, or a
-/// segmented control) would otherwise run off the pane's edge.
-fn keep_together<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let id = ui.id().with(("toolbar piece", key));
-    let last: Option<f32> = ui.ctx().data(|d| d.get_temp(id));
-    if last.is_some_and(|w| w > ui.available_size_before_wrap().x)
-        && ui.cursor().left() > ui.max_rect().left() + 1.0
-    {
-        ui.end_row();
-    }
-    let inner = ui.horizontal(add);
-    let w = inner.response.rect.width();
-    ui.ctx().data_mut(|d| d.insert_temp(id, w));
-    inner.inner
-}
-
 /// A row in a settings card: the name on the left (with its hint on hover)
 /// and the control after it, lined up with the rows above and below.
 pub fn row<R>(
@@ -442,18 +456,20 @@ pub fn row<R>(
         // In a pane's toolbar: the name in small grey type just before
         // its control, kept together. A setting that didn't fit last
         // frame starts a new line, so nothing runs off the pane's edge.
-        return keep_together(ui, label, |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            let l = ui.label(
-                RichText::new(label)
-                    .size(12.0)
-                    .color(pal(ui).text_secondary),
-            );
-            if let Some(h) = hint {
-                l.on_hover_text(h);
-            }
-            control(ui)
-        });
+        return ui
+            .horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let l = ui.label(
+                    RichText::new(label)
+                        .size(12.0)
+                        .color(pal(ui).text_secondary),
+                );
+                if let Some(h) = hint {
+                    l.on_hover_text(h);
+                }
+                control(ui)
+            })
+            .inner;
     }
     ui.horizontal(|ui| {
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(LABEL_W, 24.0), Sense::hover());
@@ -548,8 +564,7 @@ pub fn segmented<T: PartialEq + Copy>(
     choices: &[(T, &str, &str)],
 ) -> bool {
     if in_toolbar(ui) {
-        let key = choices.first().map_or("", |c| c.1);
-        return keep_together(ui, key, |ui| segmented_body(ui, value, choices));
+        return ui.horizontal(|ui| segmented_body(ui, value, choices)).inner;
     }
     segmented_body(ui, value, choices)
 }
@@ -822,52 +837,525 @@ mod tests {
     }
 }
 
-/// Whether controls are being drawn into a pane's toolbar, where they sit
-/// in a row rather than one above another.
+/// Whether controls are being drawn into a pane's toolbar row, where they
+/// sit side by side as icons rather than one above another with words.
 pub fn in_toolbar(ui: &Ui) -> bool {
-    ui.ctx()
-        .data(|d| d.get_temp::<bool>(egui::Id::new("pane toolbar")))
-        .unwrap_or(false)
+    bar(ui).is_some_and(|b| b.menu.is_none())
 }
 
-/// A pane's toolbar: its controls in a row that wraps when the pane is
-/// narrow, and its "?" at the right.
-pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnOnce(&mut Ui)) {
-    let id = egui::Id::new("pane toolbar");
+/// A pane toolbar being drawn: which pass it is and what it folds.
+#[derive(Clone, Default)]
+struct Bar {
+    /// The toolbar's name, which its widths are kept under.
+    title: String,
+    /// `Some` while drawing the "…" menu, holding nothing; `None` for the
+    /// row.
+    menu: Option<()>,
+    /// The controls that didn't fit the row this frame, by key.
+    folded: Vec<String>,
+    /// The keys met so far this pass, in order.
+    met: Vec<String>,
+    /// Inside a control: what it holds is drawn as it is, not folded.
+    depth: u32,
+    /// The keys that never fold, met so far this pass.
+    keep: Vec<String>,
+    /// The next control met never folds: see [`keep_next`].
+    keep_next: bool,
+    /// Each icon met in the row, with its name, for the "?"'s key.
+    icons: Vec<(Icon, String)>,
+}
+
+fn bar_id() -> egui::Id {
+    egui::Id::new("pane toolbar")
+}
+
+fn bar(ui: &Ui) -> Option<Bar> {
+    ui.ctx().data(|d| d.get_temp::<Bar>(bar_id()))
+}
+
+fn set_bar(ui: &Ui, b: Option<Bar>) {
+    ui.ctx().data_mut(|d| match b {
+        Some(b) => d.insert_temp(bar_id(), b),
+        None => d.remove::<Bar>(bar_id()),
+    });
+}
+
+/// The widths of a toolbar's controls, last measured, and their order.
+fn widths_id(title: &str) -> egui::Id {
+    egui::Id::new(("pane toolbar widths", title))
+}
+
+/// What the toolbars drew in the latest pass that drew one, as
+/// "Pane/Control", or "Pane/…" for a "…" menu, each with where: for the
+/// tests, which can't see hover text.
+#[cfg(test)]
+pub fn tools_drawn_at(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
+    ctx.data(|d| d.get_temp::<(u64, Vec<(String, egui::Rect)>)>(egui::Id::new("tools drawn")))
+        .map(|(_, v)| v)
+        .unwrap_or_default()
+}
+
+/// The names of what [`tools_drawn_at`] lists.
+#[cfg(test)]
+pub fn tools_drawn(ctx: &egui::Context) -> Vec<String> {
+    tools_drawn_at(ctx).into_iter().map(|(k, _)| k).collect()
+}
+
+fn note_drawn(ui: &Ui, title: &str, key: &str, rect: egui::Rect) {
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data_mut(|d| {
+        let e = d.get_temp_mut_or_default::<(u64, Vec<(String, egui::Rect)>)>(egui::Id::new(
+            "tools drawn",
+        ));
+        if e.0 != pass {
+            *e = (pass, Vec::new());
+        }
+        e.1.push((format!("{title}/{key}"), rect));
+    });
+}
+
+/// Space between a toolbar's controls.
+const BAR_GAP: f32 = 8.0;
+/// The "…" button's width, kept free when anything folds.
+const MORE_W: f32 = 30.0;
+
+/// The keys of `order` that fold so the rest, with "…", fit in `room`:
+/// the last ones first, as a Mac toolbar folds from its right, never
+/// those in `keep`. A gap left at the end folds with what follows it.
+fn fold(order: &[(String, f32)], keep: &[String], room: f32) -> Vec<String> {
+    let kept = |k: &str| keep.iter().any(|c| c == k);
+    // The row with the first `n` controls and every kept one after them.
+    let shown = |n: usize| -> Vec<&(String, f32)> {
+        order
+            .iter()
+            .enumerate()
+            .filter(|&(i, (k, _))| i < n || kept(k))
+            .map(|(_, c)| c)
+            .collect()
+    };
+    let width = |n: usize| {
+        let row = shown(n);
+        row.iter().map(|(_, w)| w).sum::<f32>() + BAR_GAP * row.len().saturating_sub(1) as f32
+    };
+    if width(order.len()) <= room {
+        return Vec::new();
+    }
+    let mut n = order.len();
+    while n > 0 && width(n) + BAR_GAP + MORE_W > room {
+        n -= 1;
+    }
+    while n > 0 && order[n - 1].0.starts_with('|') {
+        n -= 1;
+    }
+    order[n..]
+        .iter()
+        .filter(|(k, _)| !kept(k))
+        .map(|(k, _)| k.clone())
+        .collect()
+}
+
+/// The next control in a pane's toolbar never folds into "…": the
+/// pane's main action, such as New Watch… or Start Test.
+pub fn keep_next(ui: &Ui) {
+    if let Some(mut b) = bar(ui).filter(|b| b.depth == 0) {
+        b.keep_next = true;
+        set_bar(ui, Some(b));
+    }
+}
+
+fn keep_id(title: &str) -> egui::Id {
+    egui::Id::new(("pane toolbar keeps", title))
+}
+
+fn key_id(title: &str) -> egui::Id {
+    egui::Id::new(("pane toolbar key", title))
+}
+
+/// Note a toolbar icon and its name for the toolbar's key, once, while
+/// the row is drawn.
+pub fn note_icon(ui: &Ui, icon: Icon, name: &str) {
+    if let Some(mut b) = bar(ui).filter(|b| b.depth == 0 && b.menu.is_none()) {
+        if !b.icons.iter().any(|(_, n)| n == name) {
+            b.icons.push((icon, name.to_string()));
+            set_bar(ui, Some(b));
+        }
+    }
+}
+
+/// A pane's toolbar: its controls in one row, its "?" at the right. What
+/// doesn't fit folds into a "…" menu at the row's end, with words, and
+/// comes back out when the pane is wide enough again; a pane's plot never
+/// gives up room for its tools.
+pub fn pane_toolbar(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    mut controls: impl FnMut(&mut Ui),
+) {
     let full = ui.available_rect_before_wrap();
     let q = egui::Rect::from_min_size(
         egui::pos2(full.right() - 18.0, full.top() + 4.0),
         Vec2::splat(16.0),
     );
+    let mut text = help_text.to_vec();
+    text.push(crate::help::TOOLBAR);
+    // The key from the row as last drawn.
+    let key: Vec<(Icon, String)> = ui
+        .ctx()
+        .data(|d| d.get_temp(key_id(title)))
+        .unwrap_or_default();
     ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
-        help(ui, title, help_text)
+        help_with_key(ui, title, &text, &key)
     });
     let room = full.with_max_x(full.right() - 26.0);
+    // Last frame's controls and their widths decide what folds now.
+    let known: Vec<(String, f32)> = ui
+        .ctx()
+        .data(|d| d.get_temp(widths_id(title)))
+        .unwrap_or_default();
+    let keep: Vec<String> = ui
+        .ctx()
+        .data(|d| d.get_temp(keep_id(title)))
+        .unwrap_or_default();
+    let folded = fold(&known, &keep, room.width());
+    let mut kept = Vec::new();
+    let mut icons = Vec::new();
+    let outer = bar(ui);
+    let mut widths: Vec<(String, f32)> = Vec::new();
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(10.0, 4.0);
-            ui.ctx().data_mut(|d| d.insert_temp(id, true));
+        ui.set_clip_rect(room.intersect(ui.clip_rect()));
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(BAR_GAP, 4.0);
+            set_bar(
+                ui,
+                Some(Bar {
+                    title: title.to_string(),
+                    folded: folded.clone(),
+                    ..Default::default()
+                }),
+            );
             controls(ui);
-            ui.ctx().data_mut(|d| d.insert_temp(id, false));
+            let row = bar(ui).unwrap_or_default();
+            kept = row.keep.clone();
+            icons = row.icons.clone();
+            // Each control's width: as drawn now, or as last measured
+            // while it is folded.
+            let drawn: Vec<(String, f32)> = ui
+                .ctx()
+                .data(|d| d.get_temp(egui::Id::new(("pane toolbar drawn", title))))
+                .unwrap_or_default();
+            for k in &row.met {
+                let w = drawn
+                    .iter()
+                    .chain(known.iter())
+                    .find(|(d, _)| d == k)
+                    .map_or(26.0, |(_, w)| *w);
+                widths.push((k.clone(), w));
+            }
+            ui.ctx().data_mut(|d| {
+                d.remove::<Vec<(String, f32)>>(egui::Id::new(("pane toolbar drawn", title)))
+            });
+            if !folded.is_empty() {
+                let more = ui
+                    .menu_button(RichText::new("…").size(14.0), |ui| {
+                        ui.set_min_width(280.0);
+                        ui.spacing_mut().item_spacing.y = 6.0;
+                        set_bar(
+                            ui,
+                            Some(Bar {
+                                title: title.to_string(),
+                                menu: Some(()),
+                                folded: folded.clone(),
+                                ..Default::default()
+                            }),
+                        );
+                        controls(ui);
+                    })
+                    .response
+                    .on_hover_text("The settings the pane is too narrow to show here");
+                note_drawn(ui, title, "…", more.rect);
+            }
+            set_bar(ui, outer.clone());
         });
+    });
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(widths_id(title), widths);
+        d.insert_temp(keep_id(title), kept);
+        d.insert_temp(key_id(title), icons);
     });
 }
 
-/// A toolbar's "…" button: the pane's rarer settings in a menu, laid out
-/// as a settings list rather than a toolbar row, so the toolbar keeps to
-/// one line and the pane keeps its height.
-pub fn more_menu(ui: &mut Ui, hint: &str, contents: impl FnOnce(&mut Ui)) {
-    let id = egui::Id::new("pane toolbar");
-    let was = in_toolbar(ui);
-    ui.menu_button(RichText::new("…").size(14.0), |ui| {
-        ui.ctx().data_mut(|d| d.insert_temp(id, false));
-        ui.set_min_width(280.0);
-        ui.spacing_mut().item_spacing.y = 6.0;
-        contents(ui);
-        ui.ctx().data_mut(|d| d.insert_temp(id, was));
+/// One control of a pane's toolbar, named `key`: drawn in the row while
+/// it fits, else under "…", where `add` sees it isn't in the toolbar and
+/// draws its settings-list form, with words. Anywhere else (a settings
+/// window) it is drawn as it is. `None` when not drawn here.
+pub fn bar_item<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+    let Some(mut b) = bar(ui).filter(|b| b.depth == 0) else {
+        return Some(add(ui));
+    };
+    b.met.push(key.to_string());
+    if std::mem::take(&mut b.keep_next) && b.menu.is_none() {
+        b.keep.push(key.to_string());
+    }
+    let folded = b.folded.iter().any(|k| k == key);
+    let show = folded == b.menu.is_some();
+    b.depth = 1;
+    set_bar(ui, Some(b.clone()));
+    let out = if !show {
+        None
+    } else if b.menu.is_some() {
+        Some(add(ui))
+    } else {
+        let inner = ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            add(ui)
+        });
+        let w = inner.response.rect.width();
+        let id = egui::Id::new(("pane toolbar drawn", b.title.as_str()));
+        ui.ctx().data_mut(|d| {
+            d.get_temp_mut_or_default::<Vec<(String, f32)>>(id)
+                .push((key.to_string(), w));
+        });
+        note_drawn(ui, &b.title, key, inner.response.rect);
+        Some(inner.inner)
+    };
+    b.depth = 0;
+    set_bar(ui, Some(b));
+    out
+}
+
+/// A thin line between groups of a toolbar's controls; folded with what
+/// follows it.
+pub fn bar_gap(ui: &mut Ui) {
+    let n = bar(ui).map_or(0, |b| b.met.len());
+    bar_item(ui, &format!("|{n}"), |ui| {
+        if in_toolbar(ui) {
+            // As tall as an icon, not the whole pane.
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(6.0, 18.0), Sense::hover());
+            ui.painter().vline(
+                rect.center().x,
+                rect.y_range(),
+                Stroke::new(1.0_f32, pal(ui).separator),
+            );
+        } else {
+            ui.separator();
+        }
+    });
+}
+
+/// The words a toolbar icon shows on hover: its name, then what it does.
+fn hover(label: &str, hint: &str) -> String {
+    if hint.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}: {hint}")
+    }
+}
+
+/// A switch in a toolbar: its icon, tinted in `color` while on; with
+/// words under "…" or in a settings list. True when flipped.
+pub fn tool_switch(
+    ui: &mut Ui,
+    icon: Icon,
+    color: Color32,
+    label: &str,
+    on: &mut bool,
+    hint: &str,
+) -> bool {
+    note_icon(ui, icon, label);
+    bar_item(ui, label, |ui| {
+        if in_toolbar(ui) {
+            let r = icon_toggle(ui, icon, *on, color).on_hover_text(hover(label, hint));
+            if r.clicked() {
+                *on = !*on;
+            }
+            r.clicked()
+        } else {
+            switch_row(ui, label, on, hint)
+        }
     })
-    .response
-    .on_hover_text(hint);
+    .unwrap_or(false)
+}
+
+/// A button in a toolbar: its icon, or its words under "…". `disabled`
+/// says why it can't be used now, when it can't.
+pub fn tool_button(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    hint: &str,
+    disabled: Option<&str>,
+) -> bool {
+    note_icon(ui, icon, label);
+    bar_item(ui, label, |ui| {
+        let r = ui
+            .add_enabled_ui(disabled.is_none(), |ui| {
+                if in_toolbar(ui) {
+                    icon_tool(ui, icon)
+                } else {
+                    ui.button(label)
+                }
+            })
+            .inner;
+        r.on_hover_text(hover(label, hint))
+            .on_disabled_hover_text(hover(label, disabled.unwrap_or("")))
+            .clicked()
+    })
+    .unwrap_or(false)
+}
+
+/// A button that keeps its words beside its icon in a toolbar, such as
+/// Start Test: filled in the accent colour when `primary`.
+pub fn tool_word_button(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    hint: &str,
+    primary: bool,
+    disabled: Option<&str>,
+) -> bool {
+    note_icon(ui, icon, label);
+    bar_item(ui, label, |ui| {
+        let p = pal(ui);
+        let r = ui
+            .add_enabled_ui(disabled.is_none(), |ui| {
+                let enabled = ui.is_enabled();
+                let ink = if primary && enabled {
+                    p.on_accent
+                } else if enabled {
+                    p.text
+                } else {
+                    p.text_tertiary
+                };
+                let size = if in_toolbar(ui) { 12.5 } else { 13.0 };
+                let font = if primary {
+                    semibold(size)
+                } else {
+                    FontId::proportional(size)
+                };
+                let galley = ui.painter().layout_no_wrap(label.to_string(), font, ink);
+                let icon_w = 14.0;
+                let pad = Vec2::new(8.0, 3.0);
+                let size = Vec2::new(
+                    pad.x * 2.0 + icon_w + 5.0 + galley.size().x,
+                    (galley.size().y + pad.y * 2.0).max(24.0),
+                );
+                let sense = if enabled {
+                    Sense::click()
+                } else {
+                    Sense::hover()
+                };
+                let (rect, resp) = ui.allocate_exact_size(size, sense);
+                let fill = if primary && enabled {
+                    p.accent
+                } else if resp.hovered() && enabled {
+                    p.control_hover
+                } else {
+                    p.control
+                };
+                let radius = CornerRadius::same(CONTROL_RADIUS);
+                ui.painter().rect_filled(rect, radius, fill);
+                let ir = egui::Rect::from_center_size(
+                    egui::pos2(rect.left() + pad.x + icon_w / 2.0, rect.center().y),
+                    Vec2::splat(icon_w),
+                );
+                crate::icons::draw(ui.painter(), ir, icon, ink);
+                ui.painter().galley(
+                    egui::pos2(ir.right() + 5.0, rect.center().y - galley.size().y / 2.0),
+                    galley,
+                    ink,
+                );
+                resp
+            })
+            .inner;
+        r.on_hover_text(hint)
+            .on_disabled_hover_text(disabled.unwrap_or(""))
+            .clicked()
+    })
+    .unwrap_or(false)
+}
+
+/// A toolbar control that holds a value, such as a field or a menu: a
+/// small icon in place of its name, the control after it; with its name
+/// under "…" or in a settings list.
+pub fn tool_field<R>(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    hint: &str,
+    control: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    note_icon(ui, icon, label);
+    bar_item(ui, label, |ui| {
+        if in_toolbar(ui) {
+            let p = pal(ui);
+            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+            crate::icons::draw(ui.painter(), rect, icon, p.text_secondary);
+            resp.on_hover_text(hover(label, hint));
+            control(ui)
+        } else {
+            row(ui, label, Some(hint), control)
+        }
+    })
+}
+
+/// One of a few choices in a toolbar: a row of icons, the picked one
+/// tinted; under "…" or in a settings list, the choices in words. True
+/// when the choice changed.
+pub fn tool_choice<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    label: &str,
+    hint: &str,
+    value: &mut T,
+    choices: &[(T, Icon, &str, &str)],
+) -> bool {
+    for &(_, icon, name, _) in choices {
+        note_icon(ui, icon, &format!("{label}: {name}"));
+    }
+    bar_item(ui, label, |ui| {
+        if in_toolbar(ui) {
+            let p = pal(ui);
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let mut changed = false;
+            for &(v, icon, name, why) in choices {
+                let picked = *value == v;
+                let r = icon_toggle(ui, icon, picked, p.accent)
+                    .on_hover_text(format!("{label}: {}", hover(name, why)));
+                if r.clicked() && !picked {
+                    *value = v;
+                    changed = true;
+                }
+            }
+            changed
+        } else {
+            let words: Vec<(T, &str, &str)> =
+                choices.iter().map(|&(v, _, n, h)| (v, n, h)).collect();
+            row(ui, label, Some(hint), |ui| segmented(ui, value, &words))
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// A square button with only an icon, for a toolbar: plain until hovered.
+pub fn icon_tool(ui: &mut Ui, icon: Icon) -> Response {
+    let p = pal(ui);
+    let sense = if ui.is_enabled() {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(26.0), sense);
+    if resp.hovered() && ui.is_enabled() {
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(CONTROL_RADIUS), p.control_hover);
+    }
+    let ink = if ui.is_enabled() {
+        p.text_secondary
+    } else {
+        p.text_tertiary.gamma_multiply(0.6)
+    };
+    crate::icons::draw(ui.painter(), rect.shrink(4.0), icon, ink);
+    resp
 }
 
 /// A button that stays pressed while `on`: a switch in a toolbar. Its
@@ -929,6 +1417,49 @@ pub enum Icon {
     CrownDown,
     CrownLeft,
     CrownRight,
+    Export,
+    Mean,
+    Log,
+    Copy,
+    SaveTable,
+    Calipers,
+    Tape,
+    RateLine,
+    Rails,
+    Truing,
+    AutoCentre,
+    Masks,
+    Unmask,
+    ArrowDown,
+    ArrowRight,
+    Stacked,
+    Beside,
+    Ruler,
+    PalletFork,
+    OneClock,
+    TwoClocks,
+    Notes,
+    Trace,
+    Drum,
+    Traces,
+    Stopwatch,
+    Gears,
+    Roll,
+    ProbLine,
+    SCurve,
+    TwoSeconds,
+    BarrelIn,
+    Barrel24,
+    Hourglass,
+    Wave,
+    Sheet,
+    Loupe,
+    Sort,
+    WatchBox,
+    NewWatch,
+    Back,
+    Screwdriver,
+    NewPhoto,
 }
 
 /// A square button with an icon. While `on` it is a chip tinted in `color`

@@ -398,3 +398,129 @@ fn the_set_up_the_microphone_sheet_holds_long_microphone_names() {
     }
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }
+
+/// Each pane's toolbar keeps to one row inside its pane, as wide as the
+/// window at 1000 pt and as narrow as 420 pt: what doesn't fit folds into
+/// a "…" menu at the row's end, which shows only then, and every control
+/// is either in the row or in the menu, never both. The Watches pane's
+/// New Watch… never folds.
+#[test]
+fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
+    let ctx = {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
+    };
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let audio = generate(
+        &SynthConfig {
+            duration_s: 12.0,
+            rate_s_per_day: 20.0,
+            ..Default::default()
+        },
+        |_| 280.0,
+        |_| 0.0,
+    );
+    let live = app.live.as_mut().unwrap();
+    for b in audio.samples.chunks(960) {
+        if live.push(b) {
+            let r = live.reading(app.average_s);
+            app.trend.push(TrendPoint::of(r.time_s, &r));
+        }
+    }
+    app.poll();
+
+    let mut wrong = Vec::new();
+    let mut folded_at_narrow = Vec::new();
+    for &p in Pane::ALL.iter() {
+        // Wide, narrow, then wide again: what folded comes back out.
+        for w in [1000.0, 420.0, 1000.0] {
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, 700.0));
+            let mut out = None;
+            let mut drew = false;
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                };
+                out = Some(ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        drew = app.pane_tools(ui, p);
+                    });
+                }));
+            }
+            if !drew {
+                continue;
+            }
+            let out = out.unwrap();
+            let at = format!("{} at {w} pt", p.title());
+            let prefix = format!("{}/", p.title());
+            let tools: Vec<(String, egui::Rect)> = theme::tools_drawn_at(&ctx)
+                .into_iter()
+                .filter_map(|(k, r)| k.strip_prefix(&prefix).map(|k| (k.to_string(), r)))
+                .collect();
+            if tools.is_empty() {
+                wrong.push(format!("{at}: nothing drawn"));
+                continue;
+            }
+            // One row: everything painted lies in one band no taller than
+            // a control, inside the window's width.
+            let mut band = egui::Rect::NOTHING;
+            for c in &out.shapes {
+                // An empty text, as a field with nothing in it leaves, shows
+                // nothing whatever its bounds.
+                if matches!(&c.shape, egui::Shape::Text(t) if t.galley.text().is_empty()) {
+                    continue;
+                }
+                let seen = c.shape.visual_bounding_rect().intersect(c.clip_rect);
+                if !seen.is_positive() || seen.contains_rect(screen.shrink(20.0)) {
+                    continue;
+                }
+                if seen.left() < screen.left() - 0.5 || seen.right() > screen.right() + 0.5 {
+                    wrong.push(format!("{at}: a drawing at {seen:?} is outside the pane"));
+                }
+                band = band.union(seen);
+            }
+            if band.height() > 34.0 {
+                wrong.push(format!(
+                    "{at}: the toolbar is {} pt tall, more than one row: {tools:?}",
+                    band.height()
+                ));
+            }
+            for (k, r) in &tools {
+                if (r.center().y - tools[0].1.center().y).abs() > 3.0 {
+                    wrong.push(format!("{at}: {k} at {r:?} is off the row"));
+                }
+            }
+            let keys: Vec<&str> = tools.iter().map(|(k, _)| k.as_str()).collect();
+            let more = keys.contains(&"…");
+            if w >= 1000.0 && more {
+                wrong.push(format!(
+                    "{at}: a \"…\" menu where everything fits: {keys:?}"
+                ));
+            }
+            if w < 1000.0 && more {
+                folded_at_narrow.push(p);
+            }
+            // The Watches pane's main action keeps its words in the row
+            // however narrow, before the search: the empty list names it.
+            if p == Pane::Watch && !keys.contains(&"New Watch…") {
+                wrong.push(format!("{at}: New Watch… is not in the row: {keys:?}"));
+            }
+            let mut seen_keys = keys.clone();
+            seen_keys.sort_unstable();
+            seen_keys.dedup();
+            if seen_keys.len() != keys.len() {
+                wrong.push(format!("{at}: a control drawn twice: {keys:?}"));
+            }
+        }
+    }
+    // The panes with the most settings fold some at 420 pt.
+    for p in [Pane::Strip, Pane::Sound] {
+        if !folded_at_narrow.contains(&p) {
+            wrong.push(format!("{} at 420 pt: no \"…\" menu", p.title()));
+        }
+    }
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}

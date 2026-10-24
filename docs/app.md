@@ -115,10 +115,10 @@ pane like the others: drag it by its tab, or hide it. At its top, under
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
 calibre, how many takes it has and the date of the last, and the space
-they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (in the
+they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
-**Archived** (once a watch is archived, to list those too) and **New
-Watch…**. The Watches folder's location, and Show in Finder for it, are
+**Archived** (a watch box; once a watch is archived, to list those too)
+and **New Watch…** (a watch and a plus). The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
 watch, no calibre, the default lift angle and the beat rate found from
 the beats (with a take on show, its readings keep the settings they were
@@ -164,8 +164,8 @@ the whole folder in each recording entry, as the app's own takes do; a
 take that lists its sound file by file is refused with a message saying
 so. A take Save Again saves into, one being analysed, or one
 whose analysis is being kept is not renamed, moved or deleted until that
-is done. The toolbar then has **‹ All Watches**, **Edit…** and **Add
-Photos…**, which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
+is done. The toolbar then has **‹ All Watches** (a back chevron), **Edit…** (a
+screwdriver) and **Add Photos…** (a camera and a plus), which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
 an iPhone takes them, each kept as it is) into the watch's `photos/`,
 adding a number to a name already there. Thumbnails are read in the
 background, turned the way the camera says, and kept in this computer's
@@ -217,16 +217,21 @@ bound each reading. Saved position and settling boundaries add to those cuts;
 they do not replace them. Earlier and later pieces remain available to inspect.
 
 Every other pane's own settings sit in a toolbar across the top of the
-pane, with the pane's **?** at its right; a toolbar too narrow for its
-settings carries them onto a second line. The Paper Strip and the Tick
-Tock Profile keep to one line: their everyday settings are in the row,
-and the rest (the strip's direction, the lines drawn over it,
-Auto-Centre and Unmask All; the profile's Time From and Sounds 1, 2 and
-3; and each pane's Average Over and Export…) are in a **…** menu at the
-row's end. A choice between two options, such as
-Stacked and Beside, switches to the other option wherever it is clicked,
-so it can be flipped back and forth without moving the pointer. Every
-pane but the Watches and Power Reserve panes has **Export…** in its toolbar, which saves the pane as a picture: a PNG of it as it is on the
+pane, one row, with the pane's **?** at its right. The toolbar is a row
+of icons, each naming itself and saying what it does on hover, in the
+words this guide uses: a switch is an icon that stays pressed, tinted,
+while it is on; a choice is a row of icons with the picked one tinted
+(Stacked and Beside, two bars one above the other and side by side).
+A setting that holds a value (Width, Length, Average Over, Settle) keeps
+its field, with a small icon in place of its name that has the same
+hover. **Start Test**, **Start a New Test** and **Copy** keep their words
+beside their icons. When the pane is too narrow for every icon, the last
+ones fold into a **…** menu at the row's end, in words, as a Mac toolbar
+does, and come back out when the pane is wide enough again; the pane's
+plot never gives up room for its tools, and with everything in the row
+there is no **…**. Every
+pane but the Watches and Power Reserve panes has **Export…** (a box with
+an arrow leaving it) in its toolbar, which saves the pane as a picture: a PNG of it as it is on the
 screen, or, with a name ending `.svg`, an SVG drawing whose lines and
 text stay sharp at any size. A name with no ending is saved as a PNG.
 In the picture the pane's name (with its own averaging time, if it has
@@ -656,6 +661,7 @@ after, with the profile's Unlock and Drop marks. **5 ms** (3.5 ms before
 the drop to 1.5 ms after) and **10 ms** (8 ms before to 2 ms after) show
 the drop closer still, and **50 ms** (15 ms before to 35 ms after) the
 sound and what rings on after it, all with the same marks. **One Beat**
+(a drum and its sticks)
 runs from 15 ms before one beat to 15 ms before the next, at the
 watch's beat rate (125 ms at 28,800 bph, 200 ms at 18,000). **200 ms** shows one
 row each from 20 ms before the beat to 180 ms after, so the next beat

@@ -588,19 +588,31 @@ pub fn series_icon(k: SeriesKind) -> theme::Icon {
 /// stays on.
 pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
     let pal = theme::pal(ui);
-    for (i, k) in SERIES.into_iter().enumerate() {
-        if theme::icon_toggle(ui, series_icon(k), shown[i], series_colour(k, pal))
-            .on_hover_text(format!(
-                "{}: show the {} series. Turning the others off gives this one the whole \
-                 pane.",
-                title(k),
-                title(k).to_lowercase()
-            ))
-            .clicked()
-        {
-            flip_series(shown, i);
-        }
+    let hint = |k| {
+        format!(
+            "Show the {} series. Turning the others off gives this one the whole pane.",
+            title(k).to_lowercase()
+        )
+    };
+    for k in SERIES {
+        theme::note_icon(ui, series_icon(k), title(k));
     }
+    theme::bar_item(ui, "Series", |ui| {
+        for (i, k) in SERIES.into_iter().enumerate() {
+            let flip = if theme::in_toolbar(ui) {
+                theme::icon_toggle(ui, series_icon(k), shown[i], series_colour(k, pal))
+                    .on_hover_text(format!("{}: {}", title(k), hint(k)))
+                    .clicked()
+            } else {
+                // Under "…" or in a list: a switch for each, in words.
+                let mut on = shown[i];
+                theme::switch_row(ui, title(k), &mut on, &hint(k))
+            };
+            if flip {
+                flip_series(shown, i);
+            }
+        }
+    });
 }
 
 /// Turn series `i` on or off, unless it is the last one on.
