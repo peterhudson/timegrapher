@@ -63,7 +63,7 @@ pub struct Settings {
     /// Calibres the watchmaker entered by hand, as earlier versions kept
     /// them: read once and moved to the user calibre file, never written.
     pub custom_calibres: Vec<CustomCalibre>,
-    /// Calibres picked lately, the latest first.
+    /// The calibres the app was last set to, the latest first.
     pub recent_calibres: Vec<String>,
     /// Calibres put on the Calibre menu's short list, and the shipped
     /// short list's ones taken off it.
@@ -86,6 +86,8 @@ pub struct Settings {
     /// The library's folder when one was chosen in Settings; `None` is
     /// `~/Timegrapher Data`.
     pub library: Option<std::path::PathBuf>,
+    /// The Settings window's category last left on, which it opens at.
+    pub settings_section: String,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -147,6 +149,7 @@ impl Default for Settings {
             mic_set_up: false,
             show_readings: true,
             library: None,
+            settings_section: "general".into(),
         }
     }
 }

@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 76] = [
+const ALL: [Icon; 77] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -85,6 +85,7 @@ const ALL: [Icon; 76] = [
     Icon::Back,
     Icon::Screwdriver,
     Icon::NewPhoto,
+    Icon::Funnel,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -376,6 +377,8 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::NewPhoto => {
             r#"<rect x="2.5" y="8" width="15" height="11" rx="2"/><path d="M6.5 8l1.5-2.5h4L13.5 8"/><circle cx="10" cy="13.5" r="3"/><path d="M20.5 2v6M17.5 5h6"/>"#
         }
+        // A spreadsheet's funnel: Show only the values ticked in a column.
+        Icon::Funnel => r#"<path d="M3.5 4.5h17l-6.5 8v6.5l-4-2v-4.5z"/>"#,
     }
 }
 

@@ -1,8 +1,9 @@
 //! The Calibre menu on the Beat Rate card, and Manage Calibres. The menu
-//! offers the calibres picked lately, the short list and the watchmaker's
-//! own. Manage Calibres lists every calibre by maker with a search over
-//! names, other names and makers, a tickbox for the short list on each,
-//! and the one selected in full: its beat rate and lift angle, each wheel's turn with where the figure comes
+//! offers the calibres the app was set to lately, the short list and the
+//! watchmaker's own, marked Custom. Manage Calibres is a table of every
+//! calibre to sort, filter by any column and search over names, other
+//! names and makers, a tickbox for the short list on each, and the one
+//! selected in full: its beat rate and lift angle, each wheel's turn with where the figure comes
 //! from, and the table's sources. Wheels nobody has given are left blank
 //! for the watchmaker to fill in; those figures, and calibres the table
 //! doesn't list, are kept in core's user calibre file in the settings
@@ -22,7 +23,7 @@ use timegrapher_core::calibre_store::{
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::periodicity::Wheel;
 
-/// How many calibres picked lately the menu offers.
+/// How many calibres the app was set to lately the menu offers.
 pub const RECENT: usize = 6;
 
 /// The user's calibres and the menu's own state.
@@ -36,70 +37,113 @@ pub struct Calibres {
     blocked_load: Option<String>,
     /// Original legacy settings, retained until a catalogue save succeeds.
     pending_legacy: Vec<settings::CustomCalibre>,
-    /// Calibre names picked lately, the latest first.
+    /// The calibres the app was last set to (a menu pick, a watch opened,
+    /// a take opened or saved), the latest first, none twice.
     pub recent: Vec<String>,
     /// Calibres the watchmaker added to the short list, and the list's
     /// own ones they took off it.
     pub short_added: Vec<String>,
     pub short_removed: Vec<String>,
     /// Manage Calibres: asked for (the app opens Settings at Calibres),
-    /// the calibre selected in it, its search and which calibres its list
-    /// shows.
+    /// the calibre selected in it and its search.
     pub manager_open: bool,
     selected: Option<String>,
     search: String,
     /// What is typed in the Calibre menu's own search box.
     menu_search: String,
-    filter: Filter,
+    /// The column the table is sorted on, and whether reversed.
+    sort: (Col, bool),
+    /// Each column's funnel: the values it shows, or `None` for all.
+    funnels: [Option<std::collections::BTreeSet<String>>; 6],
+    /// What is typed in the funnel open.
+    funnel_search: String,
+    /// Short List Only.
+    short_only: bool,
     /// Name and period typed for a wheel the slots don't list.
     extra: (String, String),
     /// Why the user's calibres couldn't be read or written, if so.
     pub problem: Option<String>,
 }
 
-/// Which calibres Manage Calibres lists.
+/// A column of Manage Calibres' table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Filter {
-    All,
+enum Col {
+    Maker,
+    Calibre,
+    BeatRate,
+    LiftAngle,
     Short,
-    Yours,
+    Custom,
 }
 
-/// A line in Manage Calibres' list: a maker's heading (with Tick All and
-/// Untick All when true), or a calibre by name (with its maker in front
-/// when true, in search results).
-#[derive(Debug, Clone, PartialEq)]
-enum Row {
-    Maker(String, bool),
-    Calibre(String, bool),
+/// The table's columns, each with its heading and what it shows.
+const COLS: [(Col, &str, &str); 6] = [
+    (
+        Col::Maker,
+        "Maker",
+        "Who makes the calibre; the ones you added are under Custom",
+    ),
+    (Col::Calibre, "Calibre", "The calibre's name"),
+    (Col::BeatRate, "Beat Rate", "Beats per hour"),
+    (Col::LiftAngle, "Lift Angle", "The lift angle, in degrees"),
+    (
+        Col::Short,
+        "Short List",
+        "Ticked: on your short list, which the Calibre menu offers",
+    ),
+    (Col::Custom, "Custom", "Marked: a calibre you added"),
+];
+
+/// The widths of the table's columns in `w`: the facts' columns as wide
+/// as their headings, maker and name sharing the rest.
+fn col_widths(w: f32) -> [f32; 6] {
+    let facts = [80.0, 82.0, 82.0, 70.0];
+    let rest = (w - facts.iter().sum::<f32>()).max(160.0);
+    [
+        rest * 0.42,
+        rest * 0.58,
+        facts[0],
+        facts[1],
+        facts[2],
+        facts[3],
+    ]
 }
+
+/// The least width the selected calibre's details need beside the table.
+const DETAILS_W: f32 = 330.0;
+/// A line of the table.
+const ROW_H: f32 = 22.0;
+/// The maker the user's own calibres are shown under.
+const CUSTOM: &str = "Custom";
+/// What a column shows where the list gives nothing.
+const NOT_GIVEN: &str = "Not Given";
 
 /// What Manage Calibres did that the app acts on.
 #[derive(Debug, Default)]
 pub struct Managed {
-    /// A calibre to use for the watch.
-    pub picked: Option<String>,
     /// What changed for the calibre selected, named `name` before it.
     pub change: Change,
     pub name: String,
 }
 
-const MANAGE_HINT: &str = "Every calibre in a list to search, with its tickbox for your short \
-     list, and the one you select in full: its wheels, sources and notes, what you added, and \
-     your own calibres to edit";
+const MANAGE_HINT: &str = "Every calibre in a table to search, sort and filter, with its \
+     tickbox for your short list, and the one you select in full: its wheels, sources and notes, \
+     what you added, and your custom calibres to edit";
 
 const MANAGE_HELP: &[&str] = &[
-    "Every calibre the app knows, by maker, with the ones you added. Search by a calibre's \
-     number, one of its other names, or its maker under any of the maker's names. All, Short \
-     List and Yours choose which calibres the list shows.",
-    "The tickbox beside a calibre puts it on your short list, which the Calibre menu offers; \
-     Tick All and Untick All beside a maker do the same for all of that maker's calibres. The \
-     list starts as the common and modern calibres; Reset the Short List goes back to them.",
+    "Every calibre the app knows, in a table, with the ones you added under the maker Custom, \
+     always at the top. Click a column's heading to sort on it, and again to reverse. The \
+     funnel on each heading picks which of that column's values show; the funnels combine, a \
+     tinted funnel is one in use, and Clear Filters shows everything again.",
+    "Search by a calibre's number, one of its other names, or its maker under any of the \
+     maker's names. Short List Only shows just your short list.",
+    "The tickbox in Short List puts a calibre on your short list, which the Calibre menu \
+     offers. The list starts as the common and modern calibres; Reset the Short List goes back \
+     to them.",
     "The calibre selected shows in full: maker, beat rate, lift angle and escape wheel, each \
      wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
-     wheel's period you know into a blank and it is kept for this calibre, marked yours; Share \
-     with the Project opens a GitHub issue with what you added, to send from your browser. Use \
-     for This Watch sets it on the Beat Rate card.",
+     wheel's period you know into a blank and it is kept for this calibre, marked Custom; Share \
+     with the Project opens a GitHub issue with what you added, to send from your browser.",
     "New Custom Calibre adds one the list doesn't have, named as typed in the search box; its \
      name, maker, beat rate and lift angle are edited here.",
 ];
@@ -155,7 +199,10 @@ impl Calibres {
             selected: None,
             search: String::new(),
             menu_search: String::new(),
-            filter: Filter::All,
+            sort: (Col::Maker, false),
+            funnels: Default::default(),
+            funnel_search: String::new(),
+            short_only: false,
             extra: (String::new(), String::new()),
             problem: None,
         }
@@ -480,7 +527,7 @@ impl Calibres {
                         );
                     }
                     if !self.user.custom.is_empty() {
-                        heading(ui, "Your Calibres");
+                        heading(ui, "Custom");
                         for c in &self.user.custom {
                             line(ui, Entry::Custom(c), c.name.clone());
                         }
@@ -552,10 +599,10 @@ impl Calibres {
                     s.basis.clone().unwrap_or_else(|| "no basis given".into())
                 ),
                 Origin::User => match s.shipped_period_s {
-                    Some(p) => format!("Yours; the list says {} s", (PERIOD.show)(p)),
+                    Some(p) => format!("Custom; the list says {} s", (PERIOD.show)(p)),
                     None => match &s.basis {
-                        Some(b) => format!("Yours: {b}"),
-                        None => "Yours, typed in".into(),
+                        Some(b) => format!("Custom: {b}"),
+                        None => "Custom, typed in".into(),
                     },
                 },
                 Origin::Unknown => {
@@ -569,7 +616,7 @@ impl Calibres {
                 }
                 ui.label("s");
                 if s.origin == Origin::User {
-                    ui.label(RichText::new("yours").small().color(pal.text_tertiary));
+                    ui.label(RichText::new("Custom").small().color(pal.text_tertiary));
                     if ui
                         .small_button("Clear")
                         .on_hover_text(if s.shipped_period_s.is_some() {
@@ -590,7 +637,7 @@ impl Calibres {
                 egui::TextEdit::singleline(&mut self.extra.0)
                     .id_salt(("another wheel", place))
                     .hint_text("Another wheel")
-                    .desired_width(theme::LABEL_W - 16.0),
+                    .desired_width(theme::LABEL_W),
             );
             ui.add(
                 egui::TextEdit::singleline(&mut self.extra.1)
@@ -663,10 +710,10 @@ impl Calibres {
         true
     }
 
-    /// Manage Calibres, in Settings: every calibre in a list to search,
-    /// with each one's short-list tickbox, and the one selected in full
-    /// beside it. Returns a calibre to use for the watch, and what changed
-    /// for the one selected, with its name before the change.
+    /// Manage Calibres, in Settings: every calibre in a table to search,
+    /// sort and filter, with each one's short-list tickbox, and the one
+    /// selected in full beside it. Returns what changed for the one
+    /// selected, with its name before the change.
     pub fn contents(&mut self, ui: &mut egui::Ui, current: &str, version: &str) -> Managed {
         let mut out = Managed::default();
         self.manager_body(ui, current, version, &mut out);
@@ -692,9 +739,13 @@ impl Calibres {
                     .clicked()
                 {
                     let name = self.new_custom(&self.search.clone());
-                    self.selected = Some(name);
                     self.search.clear();
-                    self.filter = Filter::Yours;
+                    // The new one shows, whatever was filtered out.
+                    if !self.rows().iter().any(|e| e.name() == name) {
+                        self.funnels = Default::default();
+                        self.short_only = false;
+                    }
+                    self.selected = Some(name);
                 }
                 if ui
                     .add_enabled(
@@ -715,87 +766,95 @@ impl Calibres {
                 egui::TextEdit::singleline(&mut self.search)
                     .id_salt("manage search")
                     .hint_text("Search calibres, makers and other names")
-                    .desired_width(320.0),
+                    .desired_width(260.0),
             )
             .on_hover_text(
                 "Every word must match: a calibre's number, one of its other names, or its \
                  maker under any of the maker's names (\"dd 3235\", \"sw200\", \"seagull st19\")",
             );
-            let short = calibres::all().iter().filter(|c| self.in_short(c)).count();
-            let all = calibres::all().len() + self.user.custom.len();
-            theme::segmented(
-                ui,
-                &mut self.filter,
-                &[
-                    (
-                        Filter::All,
-                        &format!("All ({all})"),
-                        "Every calibre, by maker",
-                    ),
-                    (
-                        Filter::Short,
-                        &format!("Short List ({short})"),
-                        "The calibres the Calibre menu offers",
-                    ),
-                    (
-                        Filter::Yours,
-                        &format!("Yours ({})", self.user.custom.len()),
-                        "The calibres you added",
-                    ),
-                ],
-            );
+            let filtered = self.funnels.iter().any(Option::is_some);
+            if ui
+                .add_enabled(filtered, egui::Button::new("Clear Filters"))
+                .on_hover_text("Show every value in every column again")
+                .on_disabled_hover_text("No column is filtered")
+                .clicked()
+            {
+                self.funnels = Default::default();
+            }
+            ui.add_space(8.0);
+            let hint = "Show only the calibres on your short list, which the Calibre menu offers";
+            let l = ui.add(egui::Label::new("Short List Only").sense(egui::Sense::click()));
+            if l.clicked() {
+                self.short_only = !self.short_only;
+            }
+            l.on_hover_text(hint);
+            theme::switch(ui, &mut self.short_only).on_hover_text(hint);
         });
         ui.add_space(6.0);
-        let rows = self.rows();
-        let list_w = (ui.available_width() * 0.38).clamp(260.0, 420.0);
+        // By name, so the table can change what it holds as it draws.
+        let rows: Vec<(bool, String)> = self
+            .rows()
+            .iter()
+            .map(|e| (e.is_custom(), e.name().to_string()))
+            .collect();
+        // The details beside it keep room for a wheel's row, with Clear.
+        let room = ui.available_width();
+        let table_w = (room * 0.62).min(room - DETAILS_W).max(440.0);
         let mut toggles: Vec<(String, bool)> = Vec::new();
         let mut select: Option<String> = None;
         ui.horizontal_top(|ui| {
             let h = ui.available_height();
             let down = egui::Layout::top_down(egui::Align::Min);
-            ui.allocate_ui_with_layout(Vec2::new(list_w, h), down, |ui| {
-                ui.set_min_size(Vec2::new(list_w, h));
+            ui.allocate_ui_with_layout(Vec2::new(table_w, h), down, |ui| {
+                ui.set_min_size(Vec2::new(table_w, h));
                 theme::card().fill(pal.card).show(ui, |ui| {
                     ui.set_min_size(ui.available_size());
+                    let widths = col_widths(ui.available_width());
+                    self.table_head(ui, &widths);
+                    ui.separator();
                     if rows.is_empty() {
+                        let empty = self.short_only
+                            && self.search.trim().is_empty()
+                            && !self.funnels.iter().any(Option::is_some)
+                            && !calibres::all().iter().any(|c| self.in_short(c));
                         ui.label(
-                            RichText::new(match self.filter {
-                                Filter::Yours if self.search.trim().is_empty() => {
-                                    "None yet: New Custom Calibre… adds one."
-                                }
-                                Filter::Short if self.search.trim().is_empty() => {
-                                    "Empty: tick calibres under All to put them here."
-                                }
-                                _ => "No calibre matches.",
+                            RichText::new(if empty {
+                                "Empty: tick calibres with Short List Only off to put them here."
+                            } else {
+                                "No calibre matches."
                             })
                             .small()
                             .color(pal.text_tertiary),
                         );
                     }
-                    let row_h = 22.0;
+                    // Rows touch, as a table's do.
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     egui::ScrollArea::vertical()
                         .id_salt("manage list")
                         .auto_shrink([false, false])
-                        .show_rows(ui, row_h, rows.len(), |ui, range| {
-                            for row in &rows[range] {
-                                let w = ui.available_width();
-                                ui.allocate_ui_with_layout(Vec2::new(w, row_h), down, |ui| {
-                                    if let Some(n) = self.list_row(ui, row, current, &mut toggles) {
-                                        select = Some(n);
-                                    }
-                                });
+                        .show_rows(ui, ROW_H, rows.len(), |ui, range| {
+                            for (custom, name) in &rows[range] {
+                                let Some(e) = self.entry(*custom, name) else {
+                                    continue;
+                                };
+                                if self.table_row(ui, e, &widths, current, &mut toggles) {
+                                    select = Some(name.clone());
+                                }
                             }
                         });
                 });
             });
             ui.add_space(8.0);
-            let rest = Vec2::new(ui.available_width(), h);
-            ui.allocate_ui_with_layout(rest, down, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("manage details")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.details(ui, current, version, out));
-            });
+            // The details never widen the window: what doesn't fit is cut
+            // off at its edge.
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), h), egui::Sense::hover());
+            let mut d = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(down));
+            d.set_clip_rect(rect.intersect(ui.clip_rect()));
+            egui::ScrollArea::vertical()
+                .id_salt("manage details")
+                .auto_shrink([false, false])
+                .show(&mut d, |ui| self.details(ui, current, version, out));
         });
         for (name, on) in toggles {
             self.set_short(&name, on);
@@ -805,158 +864,402 @@ impl Calibres {
         }
     }
 
-    /// The list's lines under the filter and the search.
-    fn rows(&self) -> Vec<Row> {
-        let typed = self.search.trim();
-        let catalog = Catalog::new(&self.user);
-        let wanted = |e: &Entry<'_>| match (self.filter, e) {
-            (Filter::All, _) => true,
-            (Filter::Short, Entry::Table(c)) => self.in_short(c),
-            (Filter::Short, Entry::Custom(_)) => false,
-            (Filter::Yours, e) => e.is_custom(),
-        };
-        if !typed.is_empty() {
-            return catalog
-                .search(typed)
-                .into_iter()
-                .filter(wanted)
-                .map(|e| Row::Calibre(e.name().to_string(), true))
-                .collect();
-        }
-        let mut rows = Vec::new();
-        if self.filter != Filter::Short {
-            if !self.user.custom.is_empty() {
-                rows.push(Row::Maker("Your Calibres".into(), false));
-                rows.extend(
-                    self.user
-                        .custom
-                        .iter()
-                        .map(|c| Row::Calibre(c.name.clone(), false)),
-                );
-            }
-            if self.filter == Filter::Yours {
-                return rows;
-            }
-        }
-        for (maker, _, list) in by_maker() {
-            let shown: Vec<&&Calibre> = list
+    /// Every calibre: the user's own, then the list's.
+    fn every(&self) -> impl Iterator<Item = Entry<'_>> {
+        self.user
+            .custom
+            .iter()
+            .map(Entry::Custom)
+            .chain(calibres::all().iter().map(Entry::Table))
+    }
+
+    /// The custom calibre or the list's called exactly `name`.
+    fn entry(&self, custom: bool, name: &str) -> Option<Entry<'_>> {
+        if custom {
+            self.user
+                .custom
                 .iter()
-                .filter(|c| self.filter == Filter::All || self.in_short(c))
-                .collect();
-            if shown.is_empty() {
-                continue;
-            }
-            rows.push(Row::Maker(maker.to_string(), self.filter == Filter::All));
-            rows.extend(
-                shown
-                    .into_iter()
-                    .map(|c| Row::Calibre(c.calibre.clone(), false)),
-            );
+                .find(|c| c.name == name)
+                .map(Entry::Custom)
+        } else {
+            calibres::all()
+                .iter()
+                .find(|c| c.calibre == name)
+                .map(Entry::Table)
         }
+    }
+
+    /// What a calibre shows in a column, as its funnel lists it.
+    fn cell(&self, e: Entry<'_>, col: Col) -> String {
+        match col {
+            Col::Maker => match e {
+                Entry::Custom(_) => CUSTOM.into(),
+                Entry::Table(c) => c.maker.clone(),
+            },
+            Col::Calibre => e.name().into(),
+            Col::BeatRate => e.bph().map_or(NOT_GIVEN.into(), |b| b.to_string()),
+            Col::LiftAngle => e
+                .lift_angle_deg()
+                .map_or(NOT_GIVEN.into(), |l| format!("{}°", fields::plain(l))),
+            Col::Short => match e {
+                Entry::Table(c) if self.in_short(c) => "Ticked".into(),
+                _ => "Not Ticked".into(),
+            },
+            Col::Custom => match e {
+                Entry::Custom(_) => CUSTOM.into(),
+                Entry::Table(_) => "Listed".into(),
+            },
+        }
+    }
+
+    /// The calibres the search, Short List Only and every column's filter
+    /// but `skip`'s let through, in no order.
+    fn passing(&self, skip: Option<Col>) -> Vec<Entry<'_>> {
+        let typed = self.search.trim();
+        let found: Option<std::collections::HashSet<(bool, &str)>> =
+            (!typed.is_empty()).then(|| {
+                Catalog::new(&self.user)
+                    .search(typed)
+                    .into_iter()
+                    .map(|e| (e.is_custom(), e.name()))
+                    .collect()
+            });
+        self.every()
+            .filter(|e| {
+                found
+                    .as_ref()
+                    .is_none_or(|f| f.contains(&(e.is_custom(), e.name())))
+            })
+            .filter(|e| !self.short_only || matches!(e, Entry::Table(c) if self.in_short(c)))
+            .filter(|e| {
+                COLS.iter().all(|&(col, ..)| {
+                    Some(col) == skip
+                        || self.funnels[col as usize]
+                            .as_ref()
+                            .is_none_or(|keep| keep.contains(&self.cell(*e, col)))
+                })
+            })
+            .collect()
+    }
+
+    /// The table's rows: the calibres let through, the custom ones at the
+    /// top whatever the order, the rest by the column sorted on.
+    fn rows(&self) -> Vec<Entry<'_>> {
+        let mut rows = self.passing(None);
+        rows.sort_by(|a, b| {
+            b.is_custom()
+                .cmp(&a.is_custom())
+                .then_with(|| self.order(a, b))
+        });
         rows
     }
 
-    /// One line of the list; the calibre clicked, if any.
-    fn list_row(
-        &self,
-        ui: &mut egui::Ui,
-        row: &Row,
-        current: &str,
-        toggles: &mut Vec<(String, bool)>,
-    ) -> Option<String> {
-        let mut clicked = None;
-        let pal = theme::pal(ui);
-        match row {
-            Row::Maker(maker, ticks) => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(maker).strong().color(pal.text_secondary));
-                    if !*ticks {
-                        return;
-                    }
-                    let list = by_maker()
-                        .iter()
-                        .find(|m| m.0 == maker)
-                        .map_or(&[][..], |m| &m.2[..]);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .small_button("Untick All")
-                            .on_hover_text(format!(
-                                "Take every {maker} calibre off your short list"
-                            ))
-                            .clicked()
-                        {
-                            toggles.extend(list.iter().map(|c| (c.calibre.clone(), false)));
-                        }
-                        if ui
-                            .small_button("Tick All")
-                            .on_hover_text(format!("Put every {maker} calibre on your short list"))
-                            .clicked()
-                        {
-                            toggles.extend(list.iter().map(|c| (c.calibre.clone(), true)));
-                        }
-                    });
-                });
-            }
-            Row::Calibre(name, with_maker) => {
-                let e = self.find(name)?;
-                ui.horizontal(|ui| {
-                    match e {
-                        Entry::Table(c) => {
-                            let mut on = self.in_short(c);
-                            if ui
-                                .checkbox(&mut on, "")
-                                .on_hover_text(if on {
-                                    "On your short list: untick to keep it only in the full list"
-                                } else {
-                                    "Tick to put it on your short list, offered in the Calibre menu"
-                                })
-                                .changed()
-                            {
-                                toggles.push((c.calibre.clone(), on));
-                            }
-                        }
-                        // Lined up with the tickboxes.
-                        Entry::Custom(_) => ui.add_space(ui.spacing().icon_width + 4.0),
-                    }
-                    let mut text = e.name().to_string();
-                    if *with_maker {
-                        if let Some(m) = e.maker() {
-                            text = with_maker_name(m, &text);
-                        }
-                    }
-                    if e.name() == current {
-                        text += "  (this watch)";
-                    }
-                    let selected = self.selected.as_deref() == Some(e.name());
-                    let r = ui.selectable_label(selected, text).on_hover_text(hint(e));
-                    if r.clicked() {
-                        clicked = Some(e.name().to_string());
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let facts = [
-                            e.bph().map(|b| format!("{b}")),
-                            e.lift_angle_deg().map(|l| format!("{}°", fields::plain(l))),
-                        ]
-                        .into_iter()
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                        ui.label(RichText::new(facts).small().color(pal.text_tertiary));
-                    });
-                });
-            }
-        }
-        clicked
+    /// Two calibres in the order of the column sorted on, reversed when
+    /// asked, then by maker and name. A blank comes after every value,
+    /// either way round.
+    fn order(&self, a: &Entry<'_>, b: &Entry<'_>) -> std::cmp::Ordering {
+        let maker = |e: &Entry<'_>| self.cell(*e, Col::Maker).to_lowercase();
+        let short = |e: &Entry<'_>| !matches!(e, Entry::Table(c) if self.in_short(c));
+        let blank = |e: &Entry<'_>| match self.sort.0 {
+            Col::BeatRate => e.bph().is_none(),
+            Col::LiftAngle => e.lift_angle_deg().is_none(),
+            _ => false,
+        };
+        let by = match self.sort.0 {
+            Col::Maker => maker(a).cmp(&maker(b)),
+            Col::Calibre => natural(a.name(), b.name()),
+            Col::BeatRate => a.bph().cmp(&b.bph()),
+            Col::LiftAngle => a
+                .lift_angle_deg()
+                .partial_cmp(&b.lift_angle_deg())
+                .unwrap_or(std::cmp::Ordering::Equal),
+            Col::Short => short(a).cmp(&short(b)),
+            Col::Custom => b.is_custom().cmp(&a.is_custom()),
+        };
+        let by = if self.sort.1 { by.reverse() } else { by };
+        blank(a)
+            .cmp(&blank(b))
+            .then(by)
+            .then_with(|| maker(a).cmp(&maker(b)))
+            .then_with(|| natural(a.name(), b.name()))
     }
 
+    /// The values a column's funnel offers: what the calibres the other
+    /// filters let through show in it, in name order.
+    fn funnel_values(&self, col: Col) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .passing(Some(col))
+            .into_iter()
+            .map(|e| self.cell(e, col))
+            .collect();
+        v.sort_by(|a, b| natural(a, b));
+        v.dedup();
+        v
+    }
+
+    /// Show `value` in `col` or not, the other values offered staying as
+    /// they were.
+    fn set_funnel(&mut self, col: Col, value: &str, on: bool) {
+        let offered = self.funnel_values(col);
+        let keep =
+            self.funnels[col as usize].get_or_insert_with(|| offered.iter().cloned().collect());
+        if on {
+            keep.insert(value.to_string());
+        } else {
+            keep.remove(value);
+        }
+        if offered.iter().all(|v| keep.contains(v)) {
+            self.funnels[col as usize] = None;
+        }
+    }
+
+    /// The headings: a click sorts on one, a second click reverses it;
+    /// each has a funnel to pick the values it shows.
+    fn table_head(&mut self, ui: &mut egui::Ui, widths: &[f32; 6]) {
+        let pal = theme::pal(ui);
+        let (rect, _) =
+            ui.allocate_exact_size(Vec2::new(widths.iter().sum(), ROW_H), egui::Sense::hover());
+        let mut x = rect.left();
+        for (i, &(col, title, hint)) in COLS.iter().enumerate() {
+            let cell =
+                egui::Rect::from_min_size(egui::pos2(x, rect.top()), Vec2::new(widths[i], ROW_H));
+            x += widths[i];
+            let funnel = egui::Rect::from_center_size(
+                egui::pos2(cell.right() - 9.0, cell.center().y),
+                Vec2::splat(15.0),
+            );
+            let words =
+                egui::Rect::from_min_max(cell.min, egui::pos2(funnel.left() - 2.0, cell.bottom()));
+            let sorted = self.sort.0 == col;
+            let r = ui
+                .interact(
+                    words,
+                    ui.id().with(("calibre heading", i)),
+                    egui::Sense::click(),
+                )
+                .on_hover_text(format!(
+                    "{hint}. Click to sort on it; click again to reverse the order"
+                ));
+            if r.clicked() {
+                self.sort = (col, sorted && !self.sort.1);
+            }
+            let ink = if sorted || r.hovered() {
+                pal.text
+            } else {
+                pal.text_secondary
+            };
+            let galley = ui.painter().layout_no_wrap(
+                title.to_string(),
+                egui::FontId::proportional(11.5),
+                ink,
+            );
+            let at = egui::pos2(cell.left() + 4.0, cell.center().y - galley.size().y / 2.0);
+            let text_right = at.x + galley.size().x;
+            ui.painter().with_clip_rect(words).galley(at, galley, ink);
+            if sorted {
+                // A small triangle: up for the order as it reads, down reversed.
+                let c = egui::pos2((text_right + 6.0).min(words.right() - 3.0), cell.center().y);
+                let s = 3.0;
+                let pts = if self.sort.1 {
+                    vec![
+                        c + Vec2::new(-s, -s / 2.0),
+                        c + Vec2::new(s, -s / 2.0),
+                        c + Vec2::new(0.0, s),
+                    ]
+                } else {
+                    vec![
+                        c + Vec2::new(-s, s / 2.0),
+                        c + Vec2::new(s, s / 2.0),
+                        c + Vec2::new(0.0, -s),
+                    ]
+                };
+                ui.painter()
+                    .add(egui::Shape::convex_polygon(pts, ink, egui::Stroke::NONE));
+            }
+            let on = self.funnels[col as usize].is_some();
+            let fr = ui
+                .interact(
+                    funnel,
+                    ui.id().with(("calibre funnel", i)),
+                    egui::Sense::click(),
+                )
+                .on_hover_text(if on {
+                    format!("{title} is filtered: click to change which values show")
+                } else {
+                    format!("Pick which {title} values show")
+                });
+            if on {
+                ui.painter()
+                    .rect_filled(funnel, 3.0, pal.accent.gamma_multiply(0.18));
+            } else if fr.hovered() {
+                ui.painter().rect_filled(funnel, 3.0, pal.control_hover);
+            }
+            let ink = if on { pal.accent } else { pal.text_tertiary };
+            crate::icons::draw(ui.painter(), funnel.shrink(1.5), theme::Icon::Funnel, ink);
+            if fr.clicked() {
+                self.funnel_search.clear();
+            }
+            egui::Popup::menu(&fr)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .width(220.0)
+                .show(|ui| self.funnel_menu(ui, col, title));
+        }
+    }
+
+    /// A column's funnel: its values, each with a tickbox, a search over
+    /// them, and Select All.
+    fn funnel_menu(&mut self, ui: &mut egui::Ui, col: Col, title: &str) {
+        let pal = theme::pal(ui);
+        ui.add(
+            egui::TextEdit::singleline(&mut self.funnel_search)
+                .hint_text(format!("Search {title} values"))
+                .desired_width(f32::INFINITY),
+        )
+        .on_hover_text("List only the values holding this");
+        let offered = self.funnel_values(col);
+        let typed = self.funnel_search.trim().to_lowercase();
+        let listed: Vec<&String> = offered
+            .iter()
+            .filter(|v| typed.is_empty() || v.to_lowercase().contains(&typed))
+            .collect();
+        let shown = |s: &Self, v: &str| {
+            s.funnels[col as usize]
+                .as_ref()
+                .is_none_or(|k| k.contains(v))
+        };
+        let mut all = listed.iter().all(|v| shown(self, v));
+        if ui
+            .checkbox(&mut all, "Select All")
+            .on_hover_text("Tick or untick every value listed")
+            .changed()
+        {
+            if typed.is_empty() {
+                self.funnels[col as usize] = (!all).then(Default::default);
+            } else {
+                for v in &listed {
+                    self.set_funnel(col, v, all);
+                }
+            }
+        }
+        ui.separator();
+        if listed.is_empty() {
+            ui.label(
+                RichText::new("No value matches.")
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+        }
+        let mut flips: Vec<(String, bool)> = Vec::new();
+        egui::ScrollArea::vertical()
+            .id_salt(("funnel values", col as usize))
+            .max_height(260.0)
+            .show_rows(ui, 22.0, listed.len(), |ui, range| {
+                for v in &listed[range] {
+                    let mut on = shown(self, v);
+                    if ui
+                        .checkbox(&mut on, v.as_str())
+                        .on_hover_text(format!("Show the calibres whose {title} is {v}"))
+                        .changed()
+                    {
+                        flips.push(((*v).clone(), on));
+                    }
+                }
+            });
+        for (v, on) in flips {
+            self.set_funnel(col, &v, on);
+        }
+    }
+
+    /// One calibre's row; true when it was clicked.
+    fn table_row(
+        &self,
+        ui: &mut egui::Ui,
+        e: Entry<'_>,
+        widths: &[f32; 6],
+        current: &str,
+        toggles: &mut Vec<(String, bool)>,
+    ) -> bool {
+        let pal = theme::pal(ui);
+        let (rect, r) =
+            ui.allocate_exact_size(Vec2::new(widths.iter().sum(), ROW_H), egui::Sense::click());
+        let r = r.on_hover_text(hint(e));
+        let selected = self.selected.as_deref() == Some(e.name());
+        if selected {
+            ui.painter()
+                .rect_filled(rect, 4.0, pal.accent.gamma_multiply(0.22));
+        } else if r.hovered() {
+            ui.painter().rect_filled(rect, 4.0, pal.control_hover);
+        }
+        let mut x = rect.left();
+        for (i, &(col, ..)) in COLS.iter().enumerate() {
+            let cell =
+                egui::Rect::from_min_size(egui::pos2(x, rect.top()), Vec2::new(widths[i], ROW_H));
+            x += widths[i];
+            match col {
+                Col::Short => {
+                    if let Entry::Table(c) = e {
+                        let mut on = self.in_short(c);
+                        let at = egui::Rect::from_min_size(
+                            egui::pos2(cell.left() + 4.0, cell.top()),
+                            Vec2::new(ui.spacing().interact_size.y, ROW_H),
+                        );
+                        if ui
+                            .put(at, egui::Checkbox::without_text(&mut on))
+                            .on_hover_text(if on {
+                                "On your short list: untick to keep it only in the full list"
+                            } else {
+                                "Tick to put it on your short list, offered in the Calibre menu"
+                            })
+                            .changed()
+                        {
+                            toggles.push((c.calibre.clone(), on));
+                        }
+                    }
+                }
+                Col::Custom => {
+                    if e.is_custom() {
+                        // A tick: a calibre you added.
+                        let c = egui::pos2(cell.left() + 12.0, cell.center().y);
+                        ui.painter().line(
+                            vec![
+                                c + Vec2::new(-4.0, 0.0),
+                                c + Vec2::new(-1.0, 3.0),
+                                c + Vec2::new(4.5, -3.5),
+                            ],
+                            egui::Stroke::new(1.6_f32, pal.accent),
+                        );
+                    }
+                }
+                _ => {
+                    let mut text = self.cell(e, col);
+                    if col == Col::Calibre && e.name() == current {
+                        text += "  (this watch)";
+                    }
+                    let ink = match col {
+                        Col::Calibre => pal.text,
+                        Col::Maker if e.is_custom() => pal.accent,
+                        _ => pal.text_secondary,
+                    };
+                    let galley =
+                        ui.painter()
+                            .layout_no_wrap(text, egui::FontId::proportional(12.5), ink);
+                    let at = egui::pos2(cell.left() + 4.0, cell.center().y - galley.size().y / 2.0);
+                    ui.painter()
+                        .with_clip_rect(cell.shrink2(Vec2::new(2.0, 0.0)))
+                        .galley(at, galley, ink);
+                }
+            }
+        }
+        r.clicked()
+    }
     /// The calibre selected in Manage Calibres, in full.
     fn details(&mut self, ui: &mut egui::Ui, current: &str, version: &str, out: &mut Managed) {
         let pal = theme::pal(ui);
         let Some(name) = self.selected.clone().filter(|n| self.find(n).is_some()) else {
             ui.label(
                 RichText::new(
-                    "Select a calibre in the list to see its wheels, sources and notes, add \
-                     what you know, or use it for this watch.",
+                    "Select a calibre in the table to see its wheels, sources and notes, and \
+                     add what you know.",
                 )
                 .color(pal.text_secondary),
             );
@@ -964,22 +1267,14 @@ impl Calibres {
         };
         let Some(e) = self.find(&name) else { return };
         let custom = e.is_custom();
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(label(e)).strong().size(15.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let here = name == current;
-                if ui
-                    .add_enabled(!here, theme::primary(ui, "Use for This Watch"))
-                    .on_hover_text(
-                        "Set this calibre on the Beat Rate card, with its lift angle and wheels",
-                    )
-                    .on_disabled_hover_text("This watch's calibre already")
-                    .clicked()
-                {
-                    out.picked = Some(name.clone());
-                }
-            });
-        });
+        let mut title = match e {
+            Entry::Table(c) => with_maker_name(&c.maker, &c.calibre),
+            Entry::Custom(_) => label(e),
+        };
+        if name == current {
+            title += "  (this watch)";
+        }
+        ui.label(RichText::new(title).strong().size(15.0));
         ui.label(RichText::new(summary(e)).small().color(pal.text_secondary));
         if let Entry::Table(c) = e {
             if !c.family.is_empty() {
@@ -1017,7 +1312,7 @@ impl Calibres {
         let c = &mut self.user.custom[i];
         theme::row(
             ui,
-            "Calibre Name",
+            "Name",
             Some("What the calibre is called in the menu"),
             |ui| {
                 ui.add(
@@ -1043,7 +1338,7 @@ impl Calibres {
         c.maker = (!maker.trim().is_empty()).then(|| maker.trim().to_string());
         theme::row(
             ui,
-            "Calibre Beat Rate",
+            "Beat Rate",
             Some("Beats per hour, as the maker gives it"),
             |ui| {
                 let mut b = c.bph.map_or(0.0, f64::from);
@@ -1062,7 +1357,7 @@ impl Calibres {
         );
         theme::row(
             ui,
-            "Calibre Lift Angle",
+            "Lift Angle",
             Some("The lift angle the maker gives, used for the amplitude when picked"),
             |ui| {
                 let mut l = c.lift_angle_deg.unwrap_or(0.0);
@@ -1200,12 +1495,12 @@ fn heading(ui: &mut egui::Ui, text: &str) {
     ui.label(theme::caption(text).color(theme::pal(ui).text_secondary));
 }
 
-/// A calibre's line in the search results: its name, and "yours" for one
+/// A calibre's line in the search results: its name, and "Custom" for one
 /// the user added.
 fn label(e: Entry<'_>) -> String {
     match e {
         Entry::Table(c) => c.calibre.clone(),
-        Entry::Custom(c) => format!("{} (yours)", c.name),
+        Entry::Custom(c) => format!("{} · {CUSTOM}", c.name),
     }
 }
 
@@ -1299,7 +1594,7 @@ fn period_field(
             egui::TextEdit::singleline(&mut text)
                 .id(id)
                 .hint_text("not known")
-                .desired_width(70.0),
+                .desired_width(66.0),
         )
         .on_hover_text(tip);
     let mut out = None;
@@ -1721,34 +2016,155 @@ mod tests {
         assert!(summary(e).contains("bph") || summary(e).contains("beat rate not given"));
     }
 
-    /// Manage Calibres' list: All has every calibre under its maker, the
-    /// short list only the ticked ones, Yours only the user's, and a search
-    /// keeps to the filter.
+    /// Manage Calibres' table: every calibre, Short List Only the ticked
+    /// ones, the custom ones under the maker Custom, and a search keeps to
+    /// what else is filtered.
     #[test]
-    fn the_manager_lists_by_filter_and_search() {
+    fn the_manager_lists_by_search_and_short_list() {
         let mut cal = Calibres::in_memory();
-        let calibre = |r: &Row| match r {
-            Row::Calibre(n, _) => Some(n.clone()),
-            Row::Maker(..) => None,
+        let names = |c: &Calibres| -> Vec<String> {
+            c.rows().iter().map(|e| e.name().to_string()).collect()
         };
-        let all: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
-        assert_eq!(all.len(), calibres::all().len());
-        assert!(matches!(cal.rows()[0], Row::Maker(..)));
-        cal.filter = Filter::Short;
-        let short: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
+        assert_eq!(names(&cal).len(), calibres::all().len());
+        cal.short_only = true;
         let common = calibres::all().iter().filter(|c| cal.in_short(c)).count();
-        assert_eq!(short.len(), common);
-        assert!(short.len() < all.len());
+        assert_eq!(names(&cal).len(), common);
+        assert!(common < calibres::all().len());
+        cal.short_only = false;
         let mine = cal.new_custom("Bench Special");
-        cal.filter = Filter::Yours;
-        let yours: Vec<String> = cal.rows().iter().filter_map(calibre).collect();
-        assert_eq!(yours, vec![mine.clone()]);
+        assert_eq!(names(&cal).len(), calibres::all().len() + 1);
+        let e = cal.find(&mine).unwrap();
+        assert_eq!(cal.cell(e, Col::Maker), "Custom");
+        assert_eq!(cal.cell(e, Col::Custom), "Custom");
         cal.search = "bench".into();
-        assert_eq!(cal.rows(), vec![Row::Calibre(mine, true)]);
+        assert_eq!(names(&cal), vec![mine.clone()]);
+        cal.funnels[Col::Maker as usize] = Some(["Custom".to_string()].into());
         cal.search = "3235".into();
-        assert!(cal.rows().is_empty(), "a listed calibre isn't one of yours");
-        cal.filter = Filter::All;
+        assert!(cal.rows().is_empty(), "a listed calibre isn't under Custom");
+        cal.funnels = Default::default();
         assert!(!cal.rows().is_empty());
+    }
+
+    /// Each column's funnel keeps the values ticked; the funnels combine,
+    /// each offers the values the others let through, and ticking every
+    /// value again is no filter.
+    #[test]
+    fn the_funnels_combine_and_offer_what_the_others_let_through() {
+        let mut cal = Calibres::in_memory();
+        let makers = cal.funnel_values(Col::Maker);
+        assert!(makers.len() > 10 && makers.windows(2).all(|w| w[0] != w[1]));
+        let maker = calibres::all()
+            .iter()
+            .find(|c| c.bph.is_some() && c.maker == "ETA")
+            .map_or_else(|| calibres::all()[0].maker.clone(), |c| c.maker.clone());
+        // One maker: the rows are that maker's, the Beat Rate funnel offers
+        // only that maker's rates.
+        for m in &makers {
+            if *m != maker {
+                cal.set_funnel(Col::Maker, m, false);
+            }
+        }
+        assert_eq!(
+            cal.funnels[Col::Maker as usize],
+            Some([maker.clone()].into())
+        );
+        let theirs: Vec<&Calibre> = calibres::all()
+            .iter()
+            .filter(|c| c.maker == maker)
+            .collect();
+        assert_eq!(cal.rows().len(), theirs.len());
+        let rates = cal.funnel_values(Col::BeatRate);
+        for r in &rates {
+            assert!(
+                theirs
+                    .iter()
+                    .any(|c| cal.cell(Entry::Table(c), Col::BeatRate) == *r),
+                "{r} is not a rate of {maker}"
+            );
+        }
+        // The Maker funnel still offers every maker: its own filter doesn't
+        // narrow what it lists.
+        assert_eq!(cal.funnel_values(Col::Maker), makers);
+        // A second funnel narrows further: both must match.
+        let rate = rates[0].clone();
+        for r in &rates[1..] {
+            cal.set_funnel(Col::BeatRate, r, false);
+        }
+        let both = theirs
+            .iter()
+            .filter(|c| cal.cell(Entry::Table(c), Col::BeatRate) == rate)
+            .count();
+        assert_eq!(cal.rows().len(), both);
+        assert!(cal
+            .rows()
+            .iter()
+            .all(|e| cal.cell(*e, Col::Maker) == maker && cal.cell(*e, Col::BeatRate) == rate));
+        // Ticking every rate offered again is no filter on Beat Rate.
+        for r in &rates {
+            cal.set_funnel(Col::BeatRate, r, true);
+        }
+        assert!(cal.funnels[Col::BeatRate as usize].is_none());
+        assert_eq!(cal.rows().len(), theirs.len());
+        // Short List Only combines with the funnels too.
+        cal.short_only = true;
+        assert!(cal
+            .rows()
+            .iter()
+            .all(|e| matches!(e, Entry::Table(c) if cal.in_short(c) && c.maker == maker)));
+        // Unticking everything shows nothing; Clear Filters is every value.
+        cal.short_only = false;
+        cal.set_funnel(Col::Maker, &maker, false);
+        assert!(cal.rows().is_empty());
+        cal.funnels = Default::default();
+        assert_eq!(cal.rows().len(), calibres::all().len());
+    }
+
+    /// The custom calibres stay at the top whatever column the table is
+    /// sorted on, either way round; the rest follow the sort.
+    #[test]
+    fn custom_calibres_stay_at_the_top_whatever_the_sort() {
+        let mut cal = Calibres::in_memory();
+        let a = cal.new_custom("Zeta Bench");
+        let b = cal.new_custom("Alpha Bench");
+        for (col, ..) in COLS {
+            for reverse in [false, true] {
+                cal.sort = (col, reverse);
+                let rows = cal.rows();
+                let top: Vec<&str> = rows[..2].iter().map(|e| e.name()).collect();
+                assert!(
+                    top.contains(&a.as_str()) && top.contains(&b.as_str()),
+                    "{col:?} {reverse}: {top:?}"
+                );
+                assert!(rows[2..].iter().all(|e| !e.is_custom()));
+                // The listed ones in the column's order.
+                for w in rows[2..].windows(2) {
+                    assert_ne!(
+                        cal.order(&w[0], &w[1]),
+                        std::cmp::Ordering::Greater,
+                        "{col:?} {reverse}: {} before {}",
+                        w[0].name(),
+                        w[1].name()
+                    );
+                }
+            }
+        }
+        cal.sort = (Col::Calibre, false);
+        let names: Vec<&str> = cal.rows()[..2].iter().map(|e| e.name()).collect();
+        assert_eq!(names, [b.as_str(), a.as_str()]);
+        cal.sort = (Col::Calibre, true);
+        let names: Vec<&str> = cal.rows()[..2].iter().map(|e| e.name()).collect();
+        assert_eq!(names, [a.as_str(), b.as_str()]);
+        // A calibre with no beat rate comes after every rate, either way
+        // round.
+        for reverse in [false, true] {
+            cal.sort = (Col::BeatRate, reverse);
+            let rows = cal.rows();
+            let first_blank = rows[2..].iter().position(|e| e.bph().is_none());
+            if let Some(i) = first_blank {
+                assert!(rows[2 + i..].iter().all(|e| e.bph().is_none()));
+            }
+            assert!(rows[2].bph().is_some());
+        }
     }
 }
 
