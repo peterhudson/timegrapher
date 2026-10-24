@@ -344,142 +344,6 @@ enum CaptureFailure {
     Input(String),
 }
 
-/// A tip of the watch on the stand, as the Position card's arrows give
-/// it: seen from above with 12 away from you, which side goes down.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tip {
-    /// Tipped back: the side away from you goes down.
-    Back,
-    /// Tipped forward: the side nearest you goes down.
-    Forward,
-    /// Rolled left: the left side goes down.
-    Left,
-    /// Rolled right: the right side goes down.
-    Right,
-    /// Turned over.
-    Over,
-}
-
-impl Tip {
-    fn words(self) -> &'static str {
-        match self {
-            Tip::Back => "Tip back",
-            Tip::Forward => "Tip forward",
-            Tip::Left => "Roll left",
-            Tip::Right => "Roll right",
-            Tip::Over => "Turn over",
-        }
-    }
-}
-
-/// A side of the watch: its dial, its caseback, or the edge at 3, 9, 12
-/// or 6 o'clock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Side {
-    Dial,
-    Back,
-    Three,
-    Nine,
-    Twelve,
-    Six,
-}
-
-/// How the watch lies on the stand, seen from above: which side faces
-/// right, left, away from you, towards you, up and down. The Position
-/// card's arrows turn it, so a tip and its opposite always undo each
-/// other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Orient {
-    right: Side,
-    left: Side,
-    away: Side,
-    near: Side,
-    up: Side,
-    down: Side,
-}
-
-impl Orient {
-    /// Dial up with 12 away from you.
-    const DIAL_UP: Orient = Orient {
-        right: Side::Three,
-        left: Side::Nine,
-        away: Side::Twelve,
-        near: Side::Six,
-        up: Side::Dial,
-        down: Side::Back,
-    };
-
-    /// `p` as one tip from Dial Up reaches it (Dial Down by turning over).
-    fn of(p: Position) -> Orient {
-        let d = Orient::DIAL_UP;
-        match p {
-            Position::DialUp => d,
-            Position::DialDown => d.tip(Tip::Over),
-            Position::CrownUp => d.tip(Tip::Left),
-            Position::CrownDown => d.tip(Tip::Right),
-            Position::CrownLeft => d.tip(Tip::Back),
-            Position::CrownRight => d.tip(Tip::Forward),
-        }
-    }
-
-    /// Turned by `tip`.
-    fn tip(self, tip: Tip) -> Orient {
-        let o = self;
-        match tip {
-            // The side away from you goes down; what faced you comes up.
-            Tip::Back => Orient {
-                up: o.near,
-                away: o.up,
-                down: o.away,
-                near: o.down,
-                ..o
-            },
-            Tip::Forward => Orient {
-                up: o.away,
-                near: o.up,
-                down: o.near,
-                away: o.down,
-                ..o
-            },
-            // The left side goes down; what faced right comes up.
-            Tip::Left => Orient {
-                up: o.right,
-                left: o.up,
-                down: o.left,
-                right: o.down,
-                ..o
-            },
-            Tip::Right => Orient {
-                up: o.left,
-                right: o.up,
-                down: o.right,
-                left: o.down,
-                ..o
-            },
-            // Over, about the line from you to 12.
-            Tip::Over => Orient {
-                up: o.down,
-                down: o.up,
-                right: o.left,
-                left: o.right,
-                ..o
-            },
-        }
-    }
-
-    /// The position: named by the side facing up.
-    fn position(self) -> Position {
-        match self.up {
-            Side::Dial => Position::DialUp,
-            Side::Back => Position::DialDown,
-            Side::Three => Position::CrownUp,
-            Side::Nine => Position::CrownDown,
-            Side::Twelve => Position::CrownRight,
-            Side::Six => Position::CrownLeft,
-        }
-    }
-}
-
 /// The six standard test positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
@@ -530,6 +394,32 @@ impl Position {
             Position::CrownDown => Icon::CrownDown,
             Position::CrownLeft => Icon::CrownLeft,
             Position::CrownRight => Icon::CrownRight,
+        }
+    }
+
+    /// Witschi's name: the hour that points up for a crown position, CH
+    /// and CB (cadran haut, cadran bas) lying flat.
+    pub fn witschi(self) -> &'static str {
+        match self {
+            Position::DialUp => "CH",
+            Position::DialDown => "CB",
+            Position::CrownUp => "3H",
+            Position::CrownDown => "9H",
+            Position::CrownLeft => "6H",
+            Position::CrownRight => "12H",
+        }
+    }
+
+    /// How the watch lies, for its picture on the Current Position card.
+    fn lying(self) -> crate::icons::Lying {
+        use crate::icons::Lying;
+        match self {
+            Position::DialUp => Lying::DialUp,
+            Position::DialDown => Lying::DialDown,
+            Position::CrownUp => Lying::Hour(3),
+            Position::CrownDown => Lying::Hour(9),
+            Position::CrownLeft => Lying::Hour(6),
+            Position::CrownRight => Lying::Hour(12),
         }
     }
 
@@ -822,7 +712,7 @@ const NEW_TAKES: [(NewTake, &str, &str); 3] = [
     (
         NewTake::Listen,
         "Listen",
-        "Listen to the watch in the position on the Position card, for as long as you like; \
+        "Listen to the watch in the position on the Current Position card, for as long as you like; \
          Stop saves the take into the watch",
     ),
     (
@@ -938,7 +828,59 @@ const BEAT_RATE_SLOT_H: f32 = 72.0;
 /// under its name, and the card leaves this much more room for them.
 const BEAT_RATE_NARROW_W: f32 = 110.0;
 const BEAT_RATE_NARROW_EXTRA_H: f32 = 20.0;
-const POSITION_SLOT_H: f32 = 72.0;
+/// The Current Position card's picture and label, then its buttons: one
+/// row of six where each button has `POSITION_BUTTON_W`, else two rows of
+/// three.
+const POSITION_PIC_H: f32 = 72.0;
+const POSITION_SEG_H: f32 = 26.0;
+const POSITION_BUTTON_W: f32 = 30.0;
+/// The Current Position card's width: its share of the window, between
+/// these.
+const POSITION_MIN_W: f32 = 124.0;
+const POSITION_MAX_W: f32 = 240.0;
+/// The room the Amplitude card's lift row takes: Lift, its field, °, the
+/// presets menu and the default's mark. Narrower, Lift goes on a line of
+/// its own above the rest, and the card is this much taller.
+const LIFT_ROW_W: f32 = 130.0;
+const LIFT_NARROW_EXTRA_H: f32 = 20.0;
+/// The narrowest a card of figures can be and still show its caption and
+/// "?" whole.
+const FIGURE_MIN_W: f32 = 118.0;
+/// The Current Position card narrower than this is captioned Position.
+const POSITION_CAPTION_W: f32 = 160.0;
+/// Dark text on the teal of the current position's button.
+const POSITION_ON_INK: Color32 = Color32::from_rgb(0x0d, 0x26, 0x29);
+
+/// The rows of the Current Position card's buttons across `inner`, the
+/// card less its margins: six in one row where each has room, else three
+/// in each of two.
+fn position_rows(inner: f32) -> usize {
+    if (inner - 4.0) / 6.0 >= POSITION_BUTTON_W {
+        1
+    } else {
+        2
+    }
+}
+
+/// Where the Current Position card puts its label: the name and codes
+/// beside the picture, the codes alone beside it, or the codes under it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PositionLabel {
+    Beside,
+    Codes,
+    Under,
+}
+
+/// The height of the Current Position card's buttons, in `rows` rows.
+fn position_buttons_h(rows: usize) -> f32 {
+    rows as f32 * POSITION_SEG_H + (rows as f32 - 1.0) * 4.0
+}
+
+/// The Current Position card's slot across `inner`: the picture, then its
+/// buttons.
+fn position_slot_h(inner: f32) -> f32 {
+    POSITION_PIC_H + 6.0 + position_buttons_h(position_rows(inner))
+}
 const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
@@ -1493,10 +1435,6 @@ pub struct TimegrapherApp {
     /// Unsorted Takes was picked with readings on show: the Quick Listen
     /// settings wait for the next Listen, so the readings keep theirs.
     quick_defaults: bool,
-    /// How the Position card's arrows last left the watch, so a tip and
-    /// its opposite undo each other; set afresh from the position when it
-    /// was changed another way.
-    orient: Orient,
     /// This session began with Quick Listen: kept only by Keep in a
     /// Watch…, or by Save… into Unsorted.
     quick_listen: bool,
@@ -1952,6 +1890,7 @@ impl TimegrapherApp {
         self.show_wheels = show_wheels;
         self.guided_settle_s =
             positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
+        self.session.set_settle_s(self.guided_settle_s);
         self.guided_measure_s =
             positions_measure_s.clamp(*guided::MEASURE_RANGE.start(), *guided::MEASURE_RANGE.end());
         // Each pane's series, at least one shown; a pane not set yet takes
@@ -2063,7 +2002,6 @@ impl TimegrapherApp {
             unsorted_open: false,
             list_for: None,
             quick_defaults: false,
-            orient: Orient::DIAL_UP,
             quick_listen: false,
             watch_search: String::new(),
             watch_sort: watches::Sort::default(),
@@ -6365,120 +6303,226 @@ impl TimegrapherApp {
             .map_or(self.position, |(_, p)| p)
     }
 
-    /// The position as a picture filling its square, with small arrows at
-    /// its edges that tip the watch to the four next to it and turn it
-    /// over, while it can be set; the picture alone while it can't.
+    /// The Current Position card: the watch as it lies and its name in the
+    /// middle, and six buttons under them, DU to CR, the current one
+    /// filled: one row where the card has room, else two rows of three.
+    /// The buttons set the position in a free live take; on a take on show
+    /// or during a test they only show it.
     fn position_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
-        let mut picked = None;
-        // As large a square as the slot allows, leaving room for the code.
-        let code_w = ui.fonts_mut(|f| {
-            f.layout_no_wrap(here.code().to_string(), theme::semibold(15.0), pal.text)
-                .size()
-                .x
-        });
-        let side = (ui.max_rect().width() - code_w - 6.0).clamp(48.0, POSITION_SLOT_H);
-        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(side));
-        // Its name beside the picture, the code under it.
-        let name = egui::Rect::from_min_max(
-            egui::pos2(grid.right() + 6.0, grid.top()),
-            egui::pos2(ui.max_rect().right(), grid.bottom()),
+        let area = ui.max_rect();
+        let rows = position_rows(area.width());
+        let buttons_h = position_buttons_h(rows);
+        let top = egui::Rect::from_min_max(
+            area.min,
+            egui::pos2(area.right(), area.bottom() - buttons_h - 6.0),
         );
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(name)
-                .layout(egui::Layout::top_down(egui::Align::Min)),
-            |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                // The name on one line where it fits, else the code alone.
-                let font = theme::semibold(13.0);
-                let wide = ui.fonts_mut(|f| {
-                    f.layout_no_wrap(here.name().to_string(), font.clone(), pal.text)
-                        .size()
-                        .x
+        // The picture and the label together, centred; the label falls
+        // back to the codes alone, then to the codes under the picture, as
+        // the card narrows.
+        let name_font = theme::semibold(12.5);
+        let code_font = egui::FontId::proportional(10.5);
+        let codes_of = |p: Position| format!("{} · {}", p.code(), p.witschi());
+        let codes = codes_of(here);
+        // Sized for the widest of the six, so the picture keeps its size
+        // whichever position is set.
+        let (name_w, codes_w, code_h) = ui.fonts_mut(|f| {
+            let mut w = |t: String, font: &egui::FontId| {
+                f.layout_no_wrap(t, font.clone(), pal.text).size().x
+            };
+            let (n, c) = Position::ALL
+                .into_iter()
+                .fold((0.0f32, 0.0f32), |(n, c), p| {
+                    (
+                        n.max(w(p.name().to_string(), &name_font)),
+                        c.max(w(codes_of(p), &code_font)),
+                    )
                 });
-                let one_line =
-                    |t: RichText| egui::Label::new(t).wrap_mode(egui::TextWrapMode::Extend);
-                // Centred against the picture, by hand: top-down layouts
-                // don't centre their items.
-                let fits = wide <= ui.available_width();
-                ui.add_space(((grid.height() - if fits { 32.0 } else { 20.0 }) / 2.0).max(0.0));
-                if fits {
-                    ui.add(one_line(RichText::new(here.name()).font(font)));
-                    ui.add(one_line(
-                        RichText::new(here.code()).small().color(pal.text_secondary),
-                    ));
-                } else {
-                    ui.add(one_line(
-                        RichText::new(here.code()).font(theme::semibold(15.0)),
-                    ));
-                }
-            },
-        );
-        ui.allocate_rect(grid, egui::Sense::hover());
-        // The picture fills the square, the arrows small and faint at its
-        // edges, while it can be set or not.
-        let pic = grid.shrink(3.0);
-        let resp = ui.allocate_rect(pic, egui::Sense::hover());
-        crate::icons::draw(ui.painter(), pic, here.icon(), pal.accent);
-        resp.on_hover_text(if editable {
-            format!("{}. {POSITION_HINT}", here.label())
-        } else {
-            format!(
-                "{}: shown, not set here. A take's positions are kept as they were; \
-                     during a test the test sets them.",
-                here.label()
-            )
+            (n, c, f.row_height(&code_font))
         });
-        if editable {
-            let c = grid.center();
-            let edge = grid.width() / 2.0 - 5.0;
-            for (tip, at, glyph) in [
-                (Tip::Back, c + Vec2::new(0.0, -edge), "↑"),
-                (Tip::Forward, c + Vec2::new(0.0, edge), "↓"),
-                (Tip::Left, c + Vec2::new(-edge, 0.0), "←"),
-                (Tip::Right, c + Vec2::new(edge, 0.0), "→"),
-                (Tip::Over, c + Vec2::new(edge, -edge), "↗"),
-            ] {
-                let from = if self.orient.position() == here {
-                    self.orient
-                } else {
-                    Orient::of(here)
-                };
-                let turned = from.tip(tip);
-                let to = turned.position();
-                let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
-                // A small spot to click, the glyph faint until pointed at.
-                let r = egui::Rect::from_center_size(at, Vec2::splat(22.0));
-                let resp = ui.interact(r, ui.id().with(("tip", glyph)), egui::Sense::click());
-                let ink = if resp.hovered() {
-                    pal.text
-                } else {
-                    pal.text_tertiary
-                };
-                ui.painter().text(
-                    r.center(),
-                    egui::Align2::CENTER_CENTER,
-                    glyph,
-                    egui::FontId::proportional(10.0),
-                    ink,
+        let side_for = |label_w: f32| {
+            (top.width() - label_w - 8.0)
+                .min(top.height())
+                .min(POSITION_PIC_H)
+        };
+        let (side, label) = if side_for(name_w.max(codes_w)) >= 44.0 {
+            (side_for(name_w.max(codes_w)), PositionLabel::Beside)
+        } else if side_for(codes_w) >= 44.0 {
+            (side_for(codes_w), PositionLabel::Codes)
+        } else {
+            (
+                (top.height() - code_h - 2.0)
+                    .min(top.width())
+                    .min(POSITION_PIC_H),
+                PositionLabel::Under,
+            )
+        };
+        let label_w = match label {
+            PositionLabel::Beside => name_w.max(codes_w) + 8.0,
+            PositionLabel::Codes => codes_w + 8.0,
+            PositionLabel::Under => 0.0,
+        };
+        let pic = if label == PositionLabel::Under {
+            egui::Rect::from_min_size(
+                egui::pos2(
+                    top.center().x - side / 2.0,
+                    top.center().y - (side + 2.0 + code_h) / 2.0,
+                ),
+                Vec2::splat(side),
+            )
+        } else {
+            egui::Rect::from_min_size(
+                egui::pos2(
+                    top.center().x - (side + label_w) / 2.0,
+                    top.center().y - side / 2.0,
+                ),
+                Vec2::splat(side),
+            )
+        };
+        crate::icons::watch(
+            ui.painter(),
+            pic,
+            here.lying(),
+            pal.teal,
+            pal.text,
+            pal.card,
+        );
+        let settle = format!(
+            "Each change of position settles for {} s (Settle, on the Positions Test pane), \
+             and those seconds are left out of the readings.",
+            fields::plain(self.guided_settle_s)
+        );
+        ui.interact(pic, ui.id().with("position picture"), egui::Sense::hover())
+            .on_hover_text(if editable {
+                format!("{}. {POSITION_HINT} {settle}", here.label())
+            } else {
+                format!(
+                    "{}: shown, not set here. A take's positions are kept as they were; \
+                     during a test the test sets them. {settle}",
+                    here.label()
+                )
+            });
+        let x = pic.right() + 8.0;
+        let painter = ui.painter();
+        match label {
+            PositionLabel::Beside => {
+                painter.text(
+                    egui::pos2(x, pic.center().y - 1.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    here.name(),
+                    name_font,
+                    pal.text,
                 );
-                if resp
-                    .on_hover_text(format!("{}: {} (key {n})", tip.words(), to.label()))
-                    .clicked()
-                {
-                    picked = Some(turned);
-                }
+                painter.text(
+                    egui::pos2(x, pic.center().y + 1.0),
+                    egui::Align2::LEFT_TOP,
+                    &codes,
+                    code_font,
+                    pal.text_secondary,
+                );
+            }
+            PositionLabel::Codes => {
+                painter.text(
+                    egui::pos2(x, pic.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    &codes,
+                    code_font,
+                    pal.text_secondary,
+                );
+            }
+            PositionLabel::Under => {
+                painter.text(
+                    egui::pos2(pic.center().x, pic.bottom() + 2.0),
+                    egui::Align2::CENTER_TOP,
+                    &codes,
+                    code_font,
+                    pal.text_secondary,
+                );
             }
         }
-        if let Some(o) = picked {
-            if o.position() != self.position {
-                self.change_position(o.position());
+        // The six buttons, a segmented row across the card, or two.
+        let per_row = 6 / rows;
+        let mut picked = None;
+        for (n, p) in Position::ALL.into_iter().enumerate() {
+            let (line, col) = (n / per_row, n % per_row);
+            let track = egui::Rect::from_min_size(
+                egui::pos2(
+                    area.left(),
+                    area.bottom() - buttons_h + line as f32 * (POSITION_SEG_H + 4.0),
+                ),
+                Vec2::new(area.width(), POSITION_SEG_H),
+            );
+            if col == 0 {
+                ui.painter().rect_filled(
+                    track,
+                    egui::CornerRadius::same(theme::CONTROL_RADIUS + 1),
+                    pal.control,
+                );
             }
-            if self.position == o.position() {
-                self.orient = o;
+            let w = (track.width() - 4.0) / per_row as f32;
+            let r = egui::Rect::from_min_size(
+                egui::pos2(track.left() + 2.0 + w * col as f32, track.top() + 2.0),
+                Vec2::new(w, track.height() - 4.0),
+            )
+            .shrink2(Vec2::new(1.0, 0.0));
+            let sense = if editable {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            };
+            let resp = ui.interact(r, ui.id().with(("position", n)), sense);
+            let on = p == here;
+            let fill = if on {
+                pal.teal
+            } else if editable && resp.hovered() {
+                pal.control_hover
+            } else {
+                Color32::TRANSPARENT
+            };
+            ui.painter()
+                .rect_filled(r, egui::CornerRadius::same(theme::CONTROL_RADIUS), fill);
+            let ink = if on {
+                if ui.visuals().dark_mode {
+                    POSITION_ON_INK
+                } else {
+                    Color32::WHITE
+                }
+            } else if editable {
+                pal.text
+            } else {
+                pal.text_tertiary
+            };
+            ui.painter().text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                p.code(),
+                theme::semibold(12.0),
+                ink,
+            );
+            let tip = format!(
+                "{} ({}, {}) · key {}",
+                p.name(),
+                p.code(),
+                p.witschi(),
+                n + 1
+            );
+            let resp = if editable {
+                resp.on_hover_text(format!("{tip}. {settle}"))
+            } else {
+                resp.on_hover_text(format!(
+                    "{tip}. Shown, not set here: a take's positions are kept as they were, \
+                     and during a test the test sets them."
+                ))
+            };
+            if resp.clicked() {
+                picked = Some(p);
+            }
+        }
+        if let Some(p) = picked {
+            if p != self.position {
+                self.change_position(p);
             }
         }
     }
@@ -6654,9 +6698,16 @@ impl TimegrapherApp {
     /// watch's calibre sets it.
     fn lift_control(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        // On a narrow card, Lift on a line of its own above the rest.
+        let narrow = ui.available_width() < LIFT_ROW_W;
+        if narrow {
+            ui.label(RichText::new("Lift").color(pal.text_secondary));
+        }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(RichText::new("Lift").color(pal.text_secondary));
+            if !narrow {
+                ui.label(RichText::new("Lift").color(pal.text_secondary));
+            }
             if !self.take_shows_rate_and_lift() {
                 ui.label(format!("{}°", fields::plain(self.lift_deg)))
                     .on_hover_text("The watch's calibre sets it. Edit… on the watch changes it.");
@@ -9270,10 +9321,20 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = theme::GAP;
         let gap = theme::GAP;
         let total = ui.available_width();
-        // The Position and Listen cards narrower than the four of figures.
-        let narrow = (total * 0.11).clamp(124.0, 160.0);
+        // The Current Position card wide enough for its six buttons in a
+        // row where the window allows (else they go in two rows of three),
+        // and Listen; the four of figures share the rest, Amplitude taking
+        // the room its lift row needs from the other three.
         let listen = (total * 0.13).clamp(144.0, 180.0);
-        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        let narrow = (total * 0.18)
+            .clamp(POSITION_MIN_W, POSITION_MAX_W)
+            .min(total - listen - 5.0 * gap - 4.0 * FIGURE_MIN_W)
+            .max(POSITION_MIN_W);
+        let share = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        let amp_w = (LIFT_ROW_W + 2.0 * 14.0)
+            .min(4.0 * share - 3.0 * FIGURE_MIN_W)
+            .max(share);
+        let wide = (4.0 * share - amp_w) / 3.0;
         // The width inside a card of figures, less its margins: the room
         // kept for whole lines is reckoned at it, the same on every card.
         let inner = wide - 2.0 * 14.0;
@@ -9491,7 +9552,7 @@ impl TimegrapherApp {
             }
         };
         let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, wide, wide, wide]
+        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, amp_w, wide, wide]
             .iter()
             .scan(origin.x, |x, &w| {
                 let rect =
@@ -9520,10 +9581,14 @@ impl TimegrapherApp {
                 .collect();
             card(
                 &mut cols[0],
-                "Position",
+                if narrow >= POSITION_CAPTION_W {
+                    "Current Position"
+                } else {
+                    "Position"
+                },
                 help::POSITION,
                 None,
-                Some((Slot::Position, POSITION_SLOT_H)),
+                Some((Slot::Position, position_slot_h(narrow - 2.0 * 14.0))),
                 &|_| {},
             );
             card(
@@ -9759,7 +9824,14 @@ impl TimegrapherApp {
                         .filter(|f| !f.0.starts_with("lift angle "))
                         .collect(),
                 ),
-                Some((Slot::Lift, CONTROL_SLOT_H)),
+                Some((
+                    Slot::Lift,
+                    if amp_w - 2.0 * 14.0 < LIFT_ROW_W {
+                        CONTROL_SLOT_H + LIFT_NARROW_EXTRA_H
+                    } else {
+                        CONTROL_SLOT_H
+                    },
+                )),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a
                     // decimal would claim more than the beats can say.
@@ -10011,7 +10083,9 @@ impl TimegrapherApp {
                     .small()
                     .color(pal.text_secondary),
                 )
-                .on_hover_text("The position, set on the Position card or with keys 1 to 6");
+                .on_hover_text(
+                    "The position, set on the Current Position card or with keys 1 to 6",
+                );
                 if let Some(b) = self.reading().and_then(|r| r.bph) {
                     ui.label(
                         RichText::new(format!("{b} beats per hour"))
@@ -10538,16 +10612,23 @@ impl TimegrapherApp {
             ui,
             Icon::Hourglass,
             "Settle",
-            "Seconds the watch is left to settle after each turn before it is measured",
+            "Seconds the watch is left to settle after every change of position, in any take \
+             and in the guided test, before its beats are read. They show faint on the strip \
+             and are left out of every reading.",
             |ui| {
-                ui.add_enabled(
-                    !running,
-                    egui::DragValue::new(&mut self.guided_settle_s)
-                        .range(guided::SETTLE_RANGE)
-                        .speed(1.0)
-                        .max_decimals(0)
-                        .suffix(" s"),
-                );
+                let changed = ui
+                    .add_enabled(
+                        !running,
+                        egui::DragValue::new(&mut self.guided_settle_s)
+                            .range(guided::SETTLE_RANGE)
+                            .speed(1.0)
+                            .max_decimals(0)
+                            .suffix(" s"),
+                    )
+                    .changed();
+                if changed {
+                    self.session.set_settle_s(self.guided_settle_s);
+                }
             },
         );
         theme::tool_field(
@@ -13653,6 +13734,8 @@ impl TimegrapherApp {
 impl eframe::App for TimegrapherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         crate::frame_built();
+        // One settling for every change of position: the pane's Settle.
+        self.session.set_settle_s(self.guided_settle_s);
         if std::mem::take(&mut self.listen_pending) && !self.running() {
             self.quick_listen(false);
         }
@@ -14003,7 +14086,8 @@ fn reading_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use timegrapher_core::recorder::SETTLE_S;
+    /// The settling the tests of a move set the pane's Settle to.
+    const SETTLE_S: f64 = 10.0;
 
     #[test]
     fn errors_read_without_codes() {
@@ -14609,6 +14693,7 @@ mod tests {
     #[test]
     fn a_move_settles_before_it_is_read() {
         let mut app = synthetic(60.0, 0.0);
+        app.session.set_settle_s(SETTLE_S);
         app.session
             .load(&[(0.0, Position::DialUp), (30.0, Position::DialDown)], &[]);
         app.position = Position::DialDown;
@@ -16607,6 +16692,7 @@ mod tests {
         assert_eq!(paused_at, 60.0);
         assert_eq!(app.session.recorder.as_ref().unwrap().duration_s(), 60.0);
         app.session.pause(paused_at).unwrap().unwrap();
+        app.session.set_settle_s(SETTLE_S);
         app.change_position(Position::DialDown);
         assert!(
             app.session.settles().is_empty(),
@@ -17285,6 +17371,7 @@ mod tests {
         );
         let info = app.info("test", 48000, 16);
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
+        app.session.set_settle_s(SETTLE_S);
         let third = audio.samples.len() / 3;
         let moves = [
             (0, None),
@@ -18262,68 +18349,128 @@ mod tests {
         assert!(!pane_visible(&old.panes.tiles, Pane::Watch), "afresh");
     }
 
-    /// The Position card's arrows tip the watch as it would tip on the
-    /// stand: from Dial Up, back to 12 down (Crown Left, 6H), forward to
-    /// 6 down (Crown Right, 12H), left to Crown Up, right to Crown Down,
-    /// and over to Dial Down. From every position the four tips reach the
-    /// four positions beside it and Over the opposite one.
+    /// The Current Position card's six buttons stay big enough to read and
+    /// press: one row where the card gives each 30 points (1280), else two
+    /// rows of three (1000, 800). On the narrowest window the card is
+    /// captioned Position, and every card of the row stays inside the
+    /// window with the Beat Rate card's caption whole.
     #[test]
-    fn the_position_arrows_tip_the_watch() {
-        use Position::*;
-        let du = |t| Orient::DIAL_UP.tip(t).position();
-        assert_eq!(du(Tip::Back), CrownLeft);
-        assert_eq!(du(Tip::Forward), CrownRight);
-        assert_eq!(du(Tip::Left), CrownUp);
-        assert_eq!(du(Tip::Right), CrownDown);
-        assert_eq!(du(Tip::Over), DialDown);
-        let opposite = |p: Position| match p {
-            DialUp => DialDown,
-            DialDown => DialUp,
-            CrownUp => CrownDown,
-            CrownDown => CrownUp,
-            CrownLeft => CrownRight,
-            CrownRight => CrownLeft,
-        };
-        // From every way the watch can lie, reached by any two tips.
-        let tips = [Tip::Back, Tip::Forward, Tip::Left, Tip::Right, Tip::Over];
-        for a in tips {
-            for b in tips {
-                let o = Orient::DIAL_UP.tip(a).tip(b);
-                let p = o.position();
-                assert_eq!(o.tip(Tip::Over).position(), opposite(p), "{a:?} {b:?}");
-                let mut reached: Vec<Position> =
-                    tips[..4].iter().map(|&t| o.tip(t).position()).collect();
-                assert!(!reached.contains(&p) && !reached.contains(&opposite(p)));
-                reached.sort_by_key(|q| q.code());
-                reached.dedup();
-                assert_eq!(reached.len(), 4, "{a:?} {b:?}: {reached:?}");
-                // A tip and its opposite undo each other.
-                assert_eq!(o.tip(Tip::Back).tip(Tip::Forward), o);
-                assert_eq!(o.tip(Tip::Left).tip(Tip::Right), o);
-                assert_eq!(o.tip(Tip::Over).tip(Tip::Over), o);
+    fn the_position_buttons_keep_their_size() {
+        assert_eq!(position_rows(198.0), 1);
+        assert_eq!(position_rows(148.0), 2);
+        assert!(position_slot_h(148.0) > position_slot_h(198.0));
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let rects = |app: &mut TimegrapherApp, w: f32| {
+            let mut found = Vec::new();
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 800.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                found.clear();
+                for c in &out.shapes {
+                    if let egui::Shape::Text(t) = &c.shape {
+                        found.push((t.galley.text().to_string(), t.visual_bounding_rect()));
+                    }
+                }
             }
-        }
-        for p in Position::ALL {
-            assert_eq!(Orient::of(p).position(), p);
+            found
+        };
+        let at = |found: &[(String, egui::Rect)], text: &str| {
+            found
+                .iter()
+                .find(|(t, _)| t == text)
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("{text}: {found:?}"))
+        };
+        for (w, rows, caption) in [
+            (1280.0, 1, "Current Position"),
+            (1000.0, 2, "Current Position"),
+            (800.0, 2, "Position"),
+        ] {
+            let found = rects(&mut app, w);
+            at(&found, caption);
+            let (du, cd) = (at(&found, "DU"), at(&found, "CD"));
+            if rows == 1 {
+                assert!((du.center().y - cd.center().y).abs() < 1.0, "{w}");
+            } else {
+                assert!(cd.center().y > du.bottom(), "{w}");
+            }
+            // Next to each other, the codes' centres are far enough apart
+            // for a button of 28 points or more each.
+            let cu = at(&found, "CU");
+            assert!(cu.center().x - du.center().x >= 2.0 * 28.0, "{w}");
+            let beat_rate = at(&found, "Beat Rate");
+            assert!(beat_rate.right() <= w - 12.0, "{w}: {beat_rate:?}");
         }
     }
 
-    /// The Position card sets the position only while it can: before
-    /// anything is on show, it has the arrows; with a take on show it
-    /// shows the position alone, as history.
+    /// The Current Position card sets the position only while it can:
+    /// before anything is on show its six buttons can be pressed; with a
+    /// take on show they only show the position, as history. Either way
+    /// the card names the position with both its codes and has all six.
     #[test]
     fn the_position_card_only_shows_a_takes_position() {
         let ctx = themed();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         assert!(app.position_editable());
         let texts = window_texts(&mut app, &ctx, 1000.0);
-        assert!(texts.iter().any(|t| t == "↑"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "Current Position"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "DU · CH"), "{texts:?}");
+        // With room, the name too.
+        let texts = window_texts(&mut app, &ctx, 1440.0);
+        assert!(texts.iter().any(|t| t == "Dial Up"), "{texts:?}");
+        for p in Position::ALL {
+            assert!(
+                texts.iter().any(|t| t == p.code()),
+                "{}: {texts:?}",
+                p.code()
+            );
+        }
         let mut app = synthetic(20.0, 0.0);
         assert!(!app.position_editable());
         let texts = window_texts(&mut app, &ctx, 1000.0);
-        assert!(texts.iter().any(|t| t == "DU"), "{texts:?}");
-        for arrow in ["↑", "↓", "←", "→", "↗"] {
-            assert!(!texts.iter().any(|t| t == arrow), "{arrow}: {texts:?}");
+        for p in Position::ALL {
+            assert!(
+                texts.iter().any(|t| t == p.code()),
+                "{}: {texts:?}",
+                p.code()
+            );
+        }
+    }
+
+    /// Each position's second code is Witschi's: the hour that points up
+    /// standing, CH and CB lying flat; and the picture turns the watch so
+    /// that hour is at the top.
+    #[test]
+    fn each_position_has_witschis_code_and_its_hour_up() {
+        use crate::icons::Lying;
+        let pairs: Vec<(&str, &str)> = Position::ALL
+            .iter()
+            .map(|p| (p.code(), p.witschi()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("DU", "CH"),
+                ("DD", "CB"),
+                ("CU", "3H"),
+                ("CD", "9H"),
+                ("CL", "6H"),
+                ("CR", "12H")
+            ]
+        );
+        for p in Position::ALL {
+            match p.lying() {
+                Lying::Hour(h) => assert_eq!(format!("{h}H"), p.witschi()),
+                Lying::DialUp => assert_eq!(p, Position::DialUp),
+                Lying::DialDown => assert_eq!(p, Position::DialDown),
+            }
         }
     }
 
@@ -18372,7 +18519,7 @@ mod tests {
         assert!(shown.iter().any(|t| t == "Listen"), "{shown:?}");
         app.show_readings = false;
         let hidden = window_texts(&mut app, &ctx, 1440.0);
-        for card in ["Position", "Listen", "Beat Rate"] {
+        for card in ["Current Position", "Listen", "Beat Rate"] {
             assert!(!hidden.iter().any(|t| t == card), "{card}: {hidden:?}");
         }
     }
@@ -18621,13 +18768,10 @@ mod tests {
                 assert!(texts.iter().any(|t| t == "Dial Up"), "at {w}: {texts:?}");
             }
             for want in [
-                "Position",
+                "Current Position",
                 "DU",
-                "↑",
-                "↓",
-                "←",
-                "→",
-                "↗",
+                "CR",
+                "DU · CH",
                 "Listen",
                 "Lift",
                 "Average 10 s",
@@ -18984,7 +19128,7 @@ mod tests {
                 .find(|k| k.starts_with('—') && k.contains("bph"))
                 .expect("the beat rate's menu")
                 .clone();
-            for control in ["↓", "Lift", bph.as_str()] {
+            for control in ["CR", "Lift", bph.as_str()] {
                 assert!(
                     bottom_of[control] < pane,
                     "{control} ends at {} under the panes at {pane}",
@@ -19168,7 +19312,7 @@ mod tests {
                 }
             }
         }
-        let cards = top_of["Paper Strip"] - top_of["Position"];
+        let cards = top_of["Paper Strip"] - top_of["Current Position"];
         let strip = top_of["Tick Tock Profile"] - top_of["Paper Strip"];
         let profile = top_of[&app.status_words()] - top_of["Tick Tock Profile"];
         assert!(

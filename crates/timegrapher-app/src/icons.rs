@@ -954,3 +954,141 @@ mod tests {
         assert_eq!(runs[1], vec![Pos2::new(4.0, 0.0), Pos2::new(6.0, 0.0)]);
     }
 }
+
+/// How the watch lies on the Current Position card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lying {
+    /// Flat, dial up: the face in perspective, its side wall below.
+    DialUp,
+    /// Flat, dial down: the case back, crown on the left.
+    DialDown,
+    /// Standing, the hour that points up (3 for Crown Up, 9, 6 or 12).
+    Hour(u8),
+}
+
+/// The watch itself, no stand, filling the square `r`: the case in
+/// `teal` with its crown at 3 in the dial's own frame, the numbers 12, 3,
+/// 6 and 9 and the hour ticks in `teal`, the hands at 10:10 in `ink`.
+/// Standing, the whole watch is turned so the hour named is at the top,
+/// numbers and all, as the watch in the hand would be. Lying, it is
+/// squashed to 60% with a side wall below in `card`; dial down shows
+/// only the case back's fluted ring. Drawn on a 100 by 100 grid.
+pub fn watch(
+    painter: &egui::Painter,
+    r: Rect,
+    lying: Lying,
+    teal: Color32,
+    ink: Color32,
+    card: Color32,
+) {
+    let k = r.width().min(r.height()) / 100.0;
+    let origin = r.center() - egui::vec2(50.0, 50.0) * k;
+    let turn = match lying {
+        Lying::Hour(h) => -(f32::from(h) * 30.0).to_radians(),
+        _ => 0.0,
+    };
+    let flat = !matches!(lying, Lying::Hour(_));
+    let (sin, cos) = turn.sin_cos();
+    // A point on the grid, turned about the centre or squashed flat.
+    let at = |x: f32, y: f32| -> Pos2 {
+        let (x, y) = if flat {
+            (x, 20.0 + 0.6 * y)
+        } else {
+            let (dx, dy) = (x - 50.0, y - 50.0);
+            (50.0 + dx * cos - dy * sin, 50.0 + dx * sin + dy * cos)
+        };
+        origin + egui::vec2(x, y) * k
+    };
+    let ring = |cx: f32, cy: f32, rad: f32, n: usize| -> Vec<Pos2> {
+        (0..n)
+            .map(|i| {
+                let a = i as f32 / n as f32 * std::f32::consts::TAU;
+                at(cx + rad * a.cos(), cy + rad * a.sin())
+            })
+            .collect()
+    };
+    if flat {
+        // The side wall: the lower half of the case, 6 points lower,
+        // filled with the card so the face sits on it.
+        let wall = |x: f32, y: f32| origin + egui::vec2(x, 16.0 + 0.6 * y) * k;
+        let mut edge = vec![wall(10.0, 50.0)];
+        for i in 0..=32 {
+            let a = std::f32::consts::PI * (1.0 - i as f32 / 32.0);
+            edge.push(wall(50.0 + 40.0 * a.cos(), 68.0 + 40.0 * a.sin()));
+        }
+        edge.push(wall(90.0, 50.0));
+        painter.add(Shape::convex_polygon(edge.clone(), card, Stroke::NONE));
+        painter.add(Shape::line(edge, Stroke::new(3.0 * k, teal)));
+    }
+    let back = lying == Lying::DialDown;
+    // The crown, a solid block just outside the case: at 3, or at 9 for
+    // the case back seen from below.
+    let x0 = if back { 2.0 } else { 91.0 };
+    painter.add(Shape::convex_polygon(
+        vec![
+            at(x0, 44.0),
+            at(x0 + 7.0, 44.0),
+            at(x0 + 7.0, 56.0),
+            at(x0, 56.0),
+        ],
+        teal,
+        Stroke::NONE,
+    ));
+    let case = ring(50.0, 50.0, 40.0, 72);
+    painter.add(Shape::convex_polygon(
+        case.clone(),
+        teal.gamma_multiply(0.07),
+        Stroke::NONE,
+    ));
+    painter.add(Shape::closed_line(case, Stroke::new(4.5 * k, teal)));
+    if back {
+        // One plain fluted ring and nothing else that could read as a
+        // dial's mark.
+        let fine = teal.gamma_multiply(0.85);
+        let n = 80;
+        for i in 0..n {
+            let a0 = i as f32 / n as f32 * std::f32::consts::TAU;
+            let a1 = a0 + 0.54 * std::f32::consts::TAU / n as f32;
+            painter.line_segment(
+                [
+                    at(50.0 + 30.0 * a0.cos(), 50.0 + 30.0 * a0.sin()),
+                    at(50.0 + 30.0 * a1.cos(), 50.0 + 30.0 * a1.sin()),
+                ],
+                Stroke::new(5.0 * k * if flat { 0.8 } else { 1.0 }, fine),
+            );
+        }
+        return;
+    }
+    for h in 1..=12u8 {
+        let a = (f32::from(h) * 30.0 - 90.0).to_radians();
+        let (s, c) = a.sin_cos();
+        if h % 3 == 0 {
+            let size = if h == 12 { 15.0 } else { 13.0 } * k * if flat { 0.8 } else { 1.0 };
+            let galley = painter.layout_no_wrap(h.to_string(), crate::theme::semibold(size), teal);
+            let centre = at(50.0 + c * 26.0, 50.0 + s * 26.0);
+            let angle = if flat { 0.0 } else { turn };
+            let half = galley.size() / 2.0;
+            // Top-left of the text, turned about its centre.
+            let (sa, ca) = angle.sin_cos();
+            let off = egui::vec2(-half.x * ca + half.y * sa, -half.x * sa - half.y * ca);
+            painter.add(epaint::TextShape::new(centre + off, galley, teal).with_angle(angle));
+        } else {
+            let r0 = 33.0;
+            painter.line_segment(
+                [
+                    at(50.0 + c * r0, 50.0 + s * r0),
+                    at(50.0 + c * 36.0, 50.0 + s * 36.0),
+                ],
+                Stroke::new(1.6 * k, teal),
+            );
+        }
+    }
+    // The hands at 10:10, and the centre.
+    for (deg, len, w) in [(305.0f32, 17.0, 4.2), (60.0, 27.0, 2.8)] {
+        let a = (deg - 90.0).to_radians();
+        let tip = at(50.0 + a.cos() * len, 50.0 + a.sin() * len);
+        painter.line_segment([at(50.0, 50.0), tip], Stroke::new(w * k, ink));
+        painter.circle_filled(tip, w * k / 2.0, ink);
+    }
+    painter.circle_filled(at(50.0, 50.0), 3.2 * k, ink);
+}

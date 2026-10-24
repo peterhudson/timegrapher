@@ -31,7 +31,7 @@ use crate::app::Position;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use timegrapher_core::recorder::{Recorder, SETTLE_S};
+use timegrapher_core::recorder::Recorder;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
@@ -163,6 +163,9 @@ pub struct Session {
     settle_pending: bool,
     /// The end of the settling under way, when the readings start afresh.
     settle_to: Option<f64>,
+    /// How long the watch settles after every change of position: the
+    /// Positions Test pane's Settle, for free takes and guided tests alike.
+    settle_s: Option<f64>,
     events: Vec<Event>,
     audio_timeline: Vec<AudioAnchor>,
     saved_metadata: Option<MetadataSnapshot>,
@@ -389,9 +392,20 @@ impl Session {
             .retain(|e| !matches!(e, Event::Settle { from_s, to_s } if to_s <= from_s));
         self.events.push(Event::Settle {
             from_s: t,
-            to_s: t + SETTLE_S,
+            to_s: t + self.settle_len(),
         });
-        self.settle_to = Some(t + SETTLE_S);
+        self.settle_to = Some(t + self.settle_len());
+    }
+
+    /// Set how long the watch settles after a change of position, from the
+    /// next change on.
+    pub fn set_settle_s(&mut self, s: f64) {
+        self.settle_s = Some(s);
+    }
+
+    /// How long the watch settles after a change of position.
+    pub fn settle_len(&self) -> f64 {
+        self.settle_s.unwrap_or(crate::guided::SETTLE_S)
     }
 
     /// While listening at `now`: `Some(true)` while settling (read
@@ -753,6 +767,32 @@ impl Session {
 mod tests {
     use super::*;
 
+    /// The settling these tests were written for: the pane's Settle set
+    /// to 10 s.
+    const SETTLE_S: f64 = 10.0;
+
+    fn ten() -> Session {
+        let mut s = Session::default();
+        s.set_settle_s(SETTLE_S);
+        s
+    }
+
+    /// The settling after a move is the Positions Test pane's Settle: 20 s
+    /// unless set, and whatever it is set to from the next move on.
+    #[test]
+    fn the_settling_after_a_move_is_the_settle_setting() {
+        let mut s = Session::default();
+        s.listen();
+        assert_eq!(s.settle_len(), crate::guided::SETTLE_S);
+        s.move_to(30.0, Position::DialUp, Position::DialDown)
+            .unwrap();
+        assert_eq!(s.settles(), [(30.0, 50.0)]);
+        s.set_settle_s(45.0);
+        s.move_to(100.0, Position::DialDown, Position::CrownUp)
+            .unwrap();
+        assert_eq!(s.settles(), [(30.0, 50.0), (100.0, 145.0)]);
+    }
+
     // These are recorder/timeline tests only: no capture device or DSP.
     fn recording(name: &str) -> Session {
         let dir = std::env::temp_dir().join(format!("tg-session-{name}-{}", std::process::id()));
@@ -767,7 +807,7 @@ mod tests {
             bits: 16,
             software: "test".into(),
         };
-        let mut s = Session::default();
+        let mut s = ten();
         s.listen();
         s.recorder = Some(Recorder::start(&dir, info).unwrap());
         s
@@ -791,7 +831,7 @@ mod tests {
 
     #[test]
     fn imported_replay_history_is_immutable_and_uses_saved_settling_times() {
-        let mut s = Session::default();
+        let mut s = ten();
         s.replay();
         let positions = [
             (0.0, Position::DialUp),
@@ -840,7 +880,7 @@ mod tests {
 
     #[test]
     fn a_single_imported_position_is_still_a_replay_filter() {
-        let mut s = Session::default();
+        let mut s = ten();
         s.replay();
         s.load(&[(0.0, Position::DialDown)], &[]);
         assert!(s.has_replay_context());
@@ -1140,7 +1180,7 @@ mod tests {
     /// from Resume.
     #[test]
     fn events_give_stretches_settles_and_spans() {
-        let mut s = Session::default();
+        let mut s = ten();
         s.listen();
         assert_eq!(
             s.position_spans(Position::DialUp),
@@ -1169,7 +1209,7 @@ mod tests {
             .unwrap();
         assert_eq!(s.stretches().len(), 2, "{:?}", s.stretches());
         // Paused, moved: the settling waits for Resume.
-        let mut p = Session::default();
+        let mut p = ten();
         p.listen();
         p.pause(20.0).unwrap().unwrap();
         p.move_to(20.0, Position::DialUp, Position::CrownLeft)
@@ -1220,7 +1260,7 @@ mod tests {
         };
         for st in states {
             for a in actions {
-                let mut s = Session::default();
+                let mut s = ten();
                 s.set_state(st);
                 assert_eq!(s.allows(a), allowed(st, a), "{a:?} in {st:?}");
                 let done = match a {
@@ -1237,7 +1277,7 @@ mod tests {
             }
         }
         // Where each one leads.
-        let mut s = Session::default();
+        let mut s = ten();
         s.listen();
         s.stop(5.0).unwrap().unwrap();
         assert!(s.paused() && s.mic());

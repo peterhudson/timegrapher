@@ -47,31 +47,38 @@ Steadiness views share one green. The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
 
-**The readings**, across the top, are six cards: **Position** and
+**The readings**, across the top, are six cards: **Current Position** and
 **Listen**, narrower, then **Rate**, **Amplitude**, **Beat Error** and
 **Beat Rate**, one width. Each card of figures carries its big figure and
 one line at most; what stands behind the figure is in its hover: the
 beats the rate is fitted to and their jitter, the Tick and Tock
 amplitudes, the beat error from the drop, how the beat rate was found,
 and, for a stopped take, the whole take's reading (see below).
-**Position** shows the position as a picture filling most of the card,
-the watch head on a timegrapher's stand: lying, it is tilted so its top
-shows (the crystal's dome and the 12 o'clock mark for dial up, the case
-back's ring with the dome below for dial down); standing, it faces you
-with its 12 o'clock mark and its crown (the solid block, bigger than
-the 12's thin mark) where they are.
-Its name and code sit beside it (the code alone where the name won't fit on
-one line). While you listen, or before anything is on show, small faint
-arrows at the picture's edges tip the watch, seen from above with 12 away from you:
-up tips it back (the side away from you goes down), down tips it
-forward, left and right roll it to that side, and the corner arrow turns
-it over. From Dial Up, up gives Crown Left (12 down), down Crown Right,
-left Crown Up, right Crown Down, and the corner Dial Down. A tip and its
-opposite undo each other. Keys 1 to 6 pick DU, DD, CU, CD, CL and CR too,
-except while typing in a field. With a take on show, and during a
-Positions Test or a Power Reserve Test, the card only shows the
-position, the take's latest or the one the test set, with
-no arrows: a take's positions can't be changed afterwards. **Listen**
+**Current Position** shows the watch as it lies, in teal, the colour of
+position information everywhere, with no stand: the case, its crown at
+3, the numbers 12, 3, 6 and 9, and the hands at 10:10. Standing, the
+whole watch is turned so the hour that points up is at the top, numbers
+and all, as the watch in your hand would be: the crown on top for Crown
+Up, at the bottom for Crown Down, on the left for Crown Left and on the
+right for Crown Right. Lying, it is drawn flat with its side wall below:
+the dial for Dial Up, and for Dial Down only the case back's fluted
+ring, crown on the left. Beside the picture are the name ("Crown Down")
+and both codes, the common one then Witschi's ("CD · 9H"; DU · CH and
+DD · CB lying flat); on a narrow card the codes alone, and narrower still
+the codes under the picture. Under them are six buttons, **DU DD CU CD
+CL CR**, the current one filled teal: in one row where each has room,
+else in two rows of three (a 1000-point window), so they stay big enough
+to read and press. Each one's hover gives its name, codes and key
+("Crown Down (CD, 9H) · key 4") and how long each change of position
+settles (the Positions Test pane's Settle), and the picture and the
+label keep their size whichever is set. On the narrowest windows
+(about 800 points) the card is captioned **Position**, and the
+Amplitude card puts **Lift** on a line of its own above its field.
+While you listen, or before anything is on show, a button sets the
+position; keys 1 to 6 do the same, except while typing in a field. With
+a take on show, and during a Positions Test or a Power Reserve Test, the
+buttons only show the position, the take's latest or the one the test
+set: a take's positions can't be changed afterwards. **Listen**
 has a **Listen** icon, which starts Quick Listen (below), or with a
 watch picked that watch's Listen take, and becomes a **Stop** icon while
 listening; beside it a **Save** icon (a floppy disk), whose menu offers
@@ -1142,7 +1149,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       whatever the sort, and the Maker funnel filters them as any maker.
     - **Funnels.** Each heading has a funnel just after its name, as a
       spreadsheet's column filter does. Its menu sorts on the column (A to
-      Z and Z to A; smallest or largest first for numbers; ticked first or
+      Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
       a search over them. The list keeps its height while you search. The
@@ -1225,7 +1232,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
 - **Lift angle.** **Lift**, on the Amplitude card: 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.
-- **Position.** On the Position card, or keys 1 to 6: DU, DD, CU, CD, CL, CR, with the Swiss laboratory names
+- **Position.** On the Current Position card, or keys 1 to 6: DU, DD, CU, CD, CL, CR, with the Swiss laboratory names
   beside the crown positions, the hour that points up: Crown Up (CU, 3H),
   Crown Down (CD, 9H), Crown Left (CL, 6H) and Crown Right (CR, 12H).
   The Positions Test's table names them the same way. A new position is a new
@@ -1240,7 +1247,10 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   distributions and Steadiness take only the stretches in the position the
   watch is in now: dial up for 5 minutes, dial down for 10, then dial up
   again tests the two dial-up stretches together and leaves the dial-down
-  one out. The first 10 seconds in a new position are settling: the ticker says
+  one out. The first seconds in a new position are settling, as many as
+  the Positions Test pane's **Settle** (20 s unless set otherwise), the
+  one settling for every change of position, in a free take or the guided
+  test alike, from the next change on: the ticker says
   Settling, the beats are drawn faintly, and they are left out of the
   readings, the charts' points, the distributions and Steadiness, but kept
   in the audio. A saved take's `session.toml` starts each later position
