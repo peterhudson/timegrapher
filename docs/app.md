@@ -1143,7 +1143,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       whatever the sort, and the Maker funnel filters them as any maker.
     - **Funnels.** Each heading has a funnel just after its name, as a
       spreadsheet's column filter does. Its menu sorts on the column (A to
-      Z and Z to A; smallest or largest first for numbers; ticked first or
+      Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
       a search over them. The list keeps its height while you search. The
