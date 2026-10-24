@@ -404,8 +404,9 @@ impl Calibres {
     }
 
     /// The Calibre menu, short: Not Set, the recent picks, the short list
-    /// and the user's own calibres, with Manage Calibres… at its foot for
-    /// the rest. What was picked ("" for Not Set), if anything.
+    /// and the user's own calibres, with Manage Calibres… pinned at its
+    /// foot, below the scrolling list, for the rest. What was picked ("" for
+    /// Not Set), if anything.
     pub fn picker(&mut self, ui: &mut egui::Ui, current: &str) -> Option<String> {
         let pal = theme::pal(ui);
         let shown = match self.find(current) {
@@ -416,10 +417,16 @@ impl Calibres {
         let mut manage = false;
         let catalog = Catalog::new(&self.user);
         let mut typed = std::mem::take(&mut self.menu_search);
+        // egui makes a menu no taller than its default area; the list
+        // scrolls inside that, leaving room for the search field above and
+        // Manage Calibres… below, so the menu itself never scrolls.
+        let menu_h =
+            (ui.ctx().content_rect().height() * 0.7).min(ui.spacing().default_area_size.y - 16.0);
+        let list_h = (menu_h - 110.0).max(120.0);
         {
             egui::ComboBox::from_id_salt("calibre")
                 .width(ui.available_width())
-                .height(ui.ctx().content_rect().height() * 0.7)
+                .height(menu_h)
                 .truncate()
                 .selected_text(shown)
                 .show_ui(ui, |ui| {
@@ -449,90 +456,94 @@ impl Calibres {
                         search.request_focus();
                     }
                     let q = typed.trim();
-                    if !q.is_empty() {
-                        let found = catalog.search(q);
-                        if found.is_empty() {
-                            ui.label(
-                                RichText::new("No calibre matches. Manage Calibres… can add it.")
+                    // The list scrolls between the search field and Manage
+                    // Calibres…, so both stay in view however long the
+                    // Short List grows.
+                    egui::ScrollArea::vertical()
+                        .id_salt("calibre list")
+                        .max_height(list_h)
+                        .min_scrolled_height(list_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            if !q.is_empty() {
+                                let found = catalog.search(q);
+                                if found.is_empty() {
+                                    ui.label(
+                                        RichText::new(
+                                            "No calibre matches. Manage Calibres… can add it.",
+                                        )
+                                        .small()
+                                        .color(pal.text_tertiary),
+                                    );
+                                }
+                                const MOST: usize = 200;
+                                for e in found.iter().take(MOST) {
+                                    let text = match e {
+                                        Entry::Table(c) => format!("{} · {}", c.calibre, c.maker),
+                                        Entry::Custom(_) => label(*e),
+                                    };
+                                    line(ui, *e, text);
+                                }
+                                if found.len() > MOST {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} more: type more of the name to narrow it down.",
+                                            found.len() - MOST
+                                        ))
+                                        .small()
+                                        .color(pal.text_tertiary),
+                                    );
+                                }
+                                return;
+                            }
+                            if ui
+                                .selectable_label(current.is_empty(), "Not Set")
+                                .on_hover_text(
+                                    "Name cycles after the wheels most calibres at this beat rate \
+                             share, with the default lift angle",
+                                )
+                                .clicked()
+                            {
+                                *picked.borrow_mut() = Some(String::new());
+                            }
+                            let recent: Vec<Entry<'_>> =
+                                self.recent.iter().filter_map(|r| catalog.find(r)).collect();
+                            if !recent.is_empty() {
+                                heading(ui, "Recent");
+                                for e in recent {
+                                    line(ui, e, label(e));
+                                }
+                            }
+                            heading(ui, "Short List");
+                            let mut any = false;
+                            for (maker, _, list) in by_maker() {
+                                let short: Vec<&&Calibre> =
+                                    list.iter().filter(|c| self.in_short(c)).collect();
+                                if short.is_empty() {
+                                    continue;
+                                }
+                                any = true;
+                                ui.label(RichText::new(*maker).small().color(pal.text_tertiary));
+                                for c in short {
+                                    line(ui, Entry::Table(c), c.calibre.clone());
+                                }
+                            }
+                            if !any {
+                                ui.label(
+                                    RichText::new(
+                                        "Empty: tick calibres in Manage Calibres to put them here.",
+                                    )
                                     .small()
                                     .color(pal.text_tertiary),
-                            );
-                        }
-                        const MOST: usize = 200;
-                        for e in found.iter().take(MOST) {
-                            let text = match e {
-                                Entry::Table(c) => format!("{} · {}", c.calibre, c.maker),
-                                Entry::Custom(_) => label(*e),
-                            };
-                            line(ui, *e, text);
-                        }
-                        if found.len() > MOST {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{} more: type more of the name to narrow it down.",
-                                    found.len() - MOST
-                                ))
-                                .small()
-                                .color(pal.text_tertiary),
-                            );
-                        }
-                        ui.separator();
-                        if ui
-                            .selectable_label(false, "Manage Calibres…")
-                            .on_hover_text(MANAGE_HINT)
-                            .clicked()
-                        {
-                            manage = true;
-                        }
-                        return;
-                    }
-                    if ui
-                        .selectable_label(current.is_empty(), "Not Set")
-                        .on_hover_text(
-                            "Name cycles after the wheels most calibres at this beat rate \
-                             share, with the default lift angle",
-                        )
-                        .clicked()
-                    {
-                        *picked.borrow_mut() = Some(String::new());
-                    }
-                    let recent: Vec<Entry<'_>> =
-                        self.recent.iter().filter_map(|r| catalog.find(r)).collect();
-                    if !recent.is_empty() {
-                        heading(ui, "Recent");
-                        for e in recent {
-                            line(ui, e, label(e));
-                        }
-                    }
-                    heading(ui, "Short List");
-                    let mut any = false;
-                    for (maker, _, list) in by_maker() {
-                        let short: Vec<&&Calibre> =
-                            list.iter().filter(|c| self.in_short(c)).collect();
-                        if short.is_empty() {
-                            continue;
-                        }
-                        any = true;
-                        ui.label(RichText::new(*maker).small().color(pal.text_tertiary));
-                        for c in short {
-                            line(ui, Entry::Table(c), c.calibre.clone());
-                        }
-                    }
-                    if !any {
-                        ui.label(
-                            RichText::new(
-                                "Empty: tick calibres in Manage Calibres to put them here.",
-                            )
-                            .small()
-                            .color(pal.text_tertiary),
-                        );
-                    }
-                    if !self.user.custom.is_empty() {
-                        heading(ui, "Custom");
-                        for c in &self.user.custom {
-                            line(ui, Entry::Custom(c), c.name.clone());
-                        }
-                    }
+                                );
+                            }
+                            if !self.user.custom.is_empty() {
+                                heading(ui, "Custom");
+                                for c in &self.user.custom {
+                                    line(ui, Entry::Custom(c), c.name.clone());
+                                }
+                            }
+                        });
                     ui.separator();
                     if ui
                         .selectable_label(false, "Manage Calibres…")
@@ -2293,5 +2304,54 @@ mod menu_search_tests {
             "{want} not in {:?}",
             texts(&found)
         );
+    }
+
+    #[test]
+    fn manage_calibres_stays_in_view_under_a_long_short_list() {
+        let mut c = Calibres::in_memory();
+        for x in calibres::all() {
+            c.set_short(&x.calibre, true);
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 600.0));
+        let frame = |c: &mut Calibres, events: Vec<egui::Event>| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_width(300.0);
+                        c.picker(ui, "");
+                    });
+                },
+            )
+        };
+        frame(&mut c, vec![]);
+        let at = egui::pos2(60.0, 18.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(&mut c, vec![egui::Event::PointerMoved(at), press(true)]);
+        frame(&mut c, vec![press(false)]);
+        for _ in 0..10 {
+            frame(&mut c, vec![]);
+        }
+        let open = frame(&mut c, vec![]);
+        // Drawn, and inside what its clip lets the eye see.
+        let seen = open.shapes.iter().any(|s| match &s.shape {
+            egui::Shape::Text(x) if x.galley.text() == "Manage Calibres…" => {
+                let r = x.visual_bounding_rect();
+                s.clip_rect.contains_rect(r) && screen.contains_rect(r)
+            }
+            _ => false,
+        });
+        assert!(seen, "Manage Calibres… scrolled out of view");
     }
 }
