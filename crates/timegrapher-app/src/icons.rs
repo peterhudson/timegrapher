@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 34] = [
+const ALL: [Icon; 33] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -16,12 +16,11 @@ const ALL: [Icon; 34] = [
     Icon::Scope,
     Icon::Isochronism,
     Icon::Positions,
-    Icon::RateChart,
-    Icon::AmplitudeChart,
-    Icon::BeatErrorChart,
-    Icon::RateDistribution,
-    Icon::AmplitudeDistribution,
-    Icon::BeatErrorDistribution,
+    Icon::Rate,
+    Icon::Amplitude,
+    Icon::BeatError,
+    Icon::Charts,
+    Icon::Distributions,
     Icon::Steadiness,
     Icon::Periods,
     Icon::Cycle,
@@ -77,27 +76,23 @@ fn drawing(icon: Icon) -> &'static str {
             r#"<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8" r="1.4"/><circle cx="8.5" cy="12" r="1.4"/><circle cx="8.5" cy="16" r="1.4"/><circle cx="15.5" cy="8" r="1.4"/><circle cx="15.5" cy="12" r="1.4"/><circle cx="15.5" cy="16" r="1.4"/></g>"#
         }
         // A leaping hare: Gaining or losing: how fast the watch runs.
-        Icon::RateChart => {
+        Icon::Rate => {
             r#"<path d="M4.2 14.2c.4-3.4 3.8-5.6 7.8-5.2 2.4.2 4.2 1.3 5 2.8"/><path d="M16.8 13.4c-.9 1.6-2.6 2.3-4.6 2.3"/><path d="M4.2 14.2c.2 1.8 1.8 3 3.8 3 1.6 0 3-.6 3.8-1.6"/><path d="M7.6 13.6c1.4.4 2.4 1.6 2.4 3.2l-.6 2.2H4.4"/><circle cx="18.4" cy="11.4" r="2.4"/><circle cx="19.2" cy="11" r=".6" fill="currentColor" stroke="none"/><path d="M17.2 9.4c-1.8-2.2-2.6-4.8-2.2-7.2 1.6 1.4 2.8 4 3 6.8"/><path d="M19.2 9.2c.4-2.6 1.4-4.8 3-6 .2 2.2-.4 4.6-1.8 6.6"/><path d="M15.6 15l2.6 2.6M14 15.6l1.8 3"/><circle cx="3.6" cy="12.4" r="1.3" fill="currentColor" stroke="none"/>"#
         }
         // A swing: How far the balance swings, like a child on a swing.
-        Icon::AmplitudeChart => {
+        Icon::Amplitude => {
             r#"<path d="M3 3.5h18"/><path d="M10 3.5L6 15M14 3.5L10 16.2"/><path d="M4.6 15.4l6.6 1.4"/><path d="M4.5 19.5a11 11 0 0 0 15 0" stroke-dasharray="1.5 2.4"/>"#
         }
         // Two children on a seesaw: Tick and tock out of balance: one up, one down.
-        Icon::BeatErrorChart => {
+        Icon::BeatError => {
             r#"<path d="M3 13.4l18 5.2"/><path d="M12 16l-2.4 4.6h4.8z"/><circle cx="5" cy="8.8" r="1.6"/><path d="M5 10.4v3.4M5 11.6l1.8.6M5 13.8l1.6 2.6"/><circle cx="19" cy="12.4" r="1.6"/><path d="M19 14v3.8M19 15.2l-1.8.4M19 17.8l-1.4 2.8"/>"#
         }
-        // A dromedary: One hump, like a normal distribution.
-        Icon::RateDistribution => {
+        // A camel: The charts plot a course across the take, as a camel crosses a desert.
+        Icon::Charts => {
             r#"<path d="M4 10.5C4 8 5.6 7.4 7 6.6 8.2 3 12 3 13 6.6c.6 1.8 1.8 2.2 3 2.6L18.2 6.8c.4-1 1.4-1.6 2.6-1.4l1.2.6-.4 1-1.2.2-1.8 4.2c-.6 1.6-1.8 2.6-3.6 2.6H6.6C5 14 4 12.6 4 10.5z"/><path d="M6.6 14v7.5M8.6 14v7.5M14.2 14v7.5M16.2 13.8v7.7"/><path d="M4 10.4l-1 3.6"/><circle cx="20.4" cy="6.6" r=".5" fill="currentColor" stroke="none"/>"#
         }
-        // An hourglass: The sand piles up in a bell-shaped heap: a distribution, grain by grain.
-        Icon::AmplitudeDistribution => {
-            r#"<path d="M5.5 2.5h13M5.5 21.5h13"/><path d="M7.5 2.5c0 5 4 6.4 4 9.5s-4 4.5-4 9.5M16.5 2.5c0 5-4 6.4-4 9.5s4 4.5 4 9.5"/><path d="M8.4 21.4c1.8 0 2.2-3.6 3.6-3.6s1.8 3.6 3.6 3.6z" fill="currentColor"/><path d="M12 13v3" stroke-dasharray=".6 1.6"/>"#
-        }
-        // A jellyfish: A jellyfish's body is called its bell.
-        Icon::BeatErrorDistribution => {
+        // A jellyfish: A jellyfish's body is called its bell, like a normal distribution's curve.
+        Icon::Distributions => {
             r#"<path d="M4.5 12.5a7.5 7.5 0 0 1 15 0c-1.25.9-2.5.9-3.75 0-1.25.9-2.5.9-3.75 0-1.25.9-2.5.9-3.75 0-1.25.9-2.5.9-3.75 0z"/><path d="M7.4 14c-.8 2 .8 3.4 0 5.4M10.8 14.2c-.8 2.1.8 3.9 0 6.6M13.2 14.2c.8 2.1-.8 3.9 0 6.6M16.6 14c.8 2-.8 3.4 0 5.4"/>"#
         }
         // A spirit level: Is it holding level, or drifting?

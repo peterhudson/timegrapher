@@ -197,11 +197,11 @@ pub const PROFILE: &[&str] = &[
 ];
 
 pub const CHARTS: &[&str] = &[
-    "Rate, amplitude and beat error over time, each point a reading over the averaging \
-     time. The charts' time axes move together.",
-    "Time Span: Session shows everything since the session started, growing as it \
-     goes. Strip shows the same stretch of time as the paper strip and moves with \
-     it, so with the charts under a strip lying across, every time axis lines up.",
+    "Rate, amplitude and beat error over the whole take, one chart above the other, each \
+     point a reading over the averaging time. The charts' time axes move together.",
+    "The hare, the swing and the seesaw in the toolbar show or hide the Rate, Amplitude \
+     and Beat Error charts; the charts shown share the pane's height, and at least one \
+     stays on.",
     "Mouse: the wheel zooms time around the pointer, Ctrl and the wheel the vertical \
      scale, dragging pans, and a double-click fits the whole session again (and \
      follows new beats while listening). Clicking a moment shows it on the strip and \
@@ -222,9 +222,10 @@ pub const STEADINESS: &[&str] = &[
      it are the statistics: readings, median, standard deviation, the scatter from one \
      reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
      trend and period when found.",
-    "Each view is a pane of its own, with its icon under Steadiness at the top, so two \
-     can sit side by side. Rate, Amplitude and Beat Error, in each pane's toolbar, \
-     choose which series that pane shows; at least one stays on.",
+    "Each view is a pane of its own, with its icon under Analysis at the top, so two \
+     can sit side by side. The hare, the swing and the seesaw, for Rate, Amplitude and \
+     Beat Error in each pane's toolbar, choose which series that pane shows; at least one \
+     stays on.",
     "Readings Over Time: every reading in time order (10 s rate readings, 2 s \
      amplitude and beat error readings), with the stretches of constant level and the \
      two state levels. Periods: how strongly the readings repeat at each period, with \
@@ -314,8 +315,10 @@ pub const ISOCHRONISM: &[&str] = &[
 ];
 
 pub const HISTOGRAMS: &[&str] = &[
-    "How a reading's values spread over the session or the strip's length (Time Span). \
-     An average gives one number; these show whether the values come from one steady \
+    "How the rate's, amplitude's and beat error's values spread over the session or the \
+     strip's length (Time Span), one plot above the other. The hare, the swing and the \
+     seesaw in the toolbar show or hide each one; at least one stays on. An average gives \
+     one number; these show whether the values come from one steady \
      state or from two, say a high and a low amplitude as a rubbing part comes and \
      goes, which a single average hides.",
     "Show: Probability is probability paper, as in flood-frequency analysis. Each value \
