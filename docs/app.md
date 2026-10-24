@@ -737,7 +737,7 @@ so the whole take shows at once. Listen then brings back the width and
 length the strip had before, unless they were changed by hand meanwhile.
 
 On the strip, the mouse wheel changes the length about the time under the
-pointer, which stays where it is, Ctrl and the wheel (or a
+pointer, which stays where it is, Shift or Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
 click returns to the newest beats and centres them. **Auto-Centre** keeps
@@ -1110,7 +1110,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   the microphone each time it opens it, so setting the card's own control
   there would not last; for a direct device it is the card's capture
   control (`amixer`). The change is made when you let go of the slider.
-  On other systems, set the level in the system's sound settings. The
+  On a Mac or Windows the system sets the level: **Open Sound Settings…**
+  opens the system's sound input settings (Sound > Input on a Mac, Sound
+  on Windows), with the Peak meter here to watch as you change it. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
   proposals. When the microphone's automatic gain is on, it says
   **Automatic gain: on** with a **Turn It Off** button, and otherwise

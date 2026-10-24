@@ -704,6 +704,9 @@ const STOP_HINT: &str = "Stop listening and let go of the microphone. Everything
 const POSITION_HINT: &str = "The position the watch is in. Changing it while listening marks a \
      new stretch on the strip and the charts, and the readings, profile, distributions and \
      Steadiness then use only this position's beats. It is noted in a saved take.";
+const SOUND_SETTINGS_HINT: &str = "The app can't set this input's level, so the system \
+     does: this opens the system's sound input settings (Sound > Input on a Mac, Sound on \
+     Windows), where the input volume is. Watch the Peak meter here as you change it.";
 const LIFT_HINT: &str = "No calibre or lift angle is set, so every amplitude is worked out \
      from the default 52°. Type the calibre's lift angle, pick one, or pick the calibre on the \
      Beat Rate card.";
@@ -826,7 +829,7 @@ const FIGURE_PT: f32 = 30.0;
 const BEAT_RATE_SLOT_H: f32 = 72.0;
 /// The Beat Rate card's controls narrower than this put the Calibre menu
 /// under its name, and the card leaves this much more room for them.
-const BEAT_RATE_NARROW_W: f32 = 110.0;
+const BEAT_RATE_NARROW_W: f32 = 130.0;
 const BEAT_RATE_NARROW_EXTRA_H: f32 = 20.0;
 /// The Current Position card's picture and label, then its buttons: one
 /// row of six where each button has `POSITION_BUTTON_W`, else two rows of
@@ -874,6 +877,28 @@ enum PositionLabel {
 /// The height of the Current Position card's buttons, in `rows` rows.
 fn position_buttons_h(rows: usize) -> f32 {
     rows as f32 * POSITION_SEG_H + (rows as f32 - 1.0) * 4.0
+}
+
+/// Open the system's sound input settings, where the input volume is set
+/// on a system whose inputs the app can't turn up or down.
+fn open_sound_settings() -> std::io::Result<()> {
+    let (program, page) = if cfg!(target_os = "macos") {
+        (
+            "open",
+            "x-apple.systempreferences:com.apple.Sound-Settings.extension?input",
+        )
+    } else if cfg!(target_os = "windows") {
+        ("explorer", "ms-settings:sound")
+    } else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "no sound settings page to open on this system",
+        ));
+    };
+    std::process::Command::new(program)
+        .arg(page)
+        .spawn()
+        .map(|_| ())
 }
 
 /// The Current Position card's slot across `inner`: the picture, then its
@@ -5467,7 +5492,7 @@ impl TimegrapherApp {
         theme::keep_next(ui);
         theme::tool_field(
             ui,
-            Icon::Loupe,
+            Icon::Search,
             "Search",
             "Show the watches whose name, calibre, notes or fields hold this",
             |ui| {
@@ -8741,18 +8766,26 @@ impl TimegrapherApp {
             }
             _ => {
                 theme::row(ui, "Input Level", Some(hint), |ui| {
-                    // Wrapped, so a longer line doesn't widen the Watches pane.
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(if cfg!(target_os = "linux") {
-                                "not adjustable here"
-                            } else {
-                                "set it in the system's sound settings"
-                            })
-                            .color(pal.text_secondary),
-                        )
-                        .wrap(),
-                    );
+                    if cfg!(any(target_os = "macos", target_os = "windows")) {
+                        // The system sets it: open the system's own page.
+                        if ui
+                            .button("Open Sound Settings…")
+                            .on_hover_text(SOUND_SETTINGS_HINT)
+                            .clicked()
+                        {
+                            self.gain_error = open_sound_settings()
+                                .err()
+                                .map(|e| format!("Couldn't open the sound settings: {e}"));
+                        }
+                    } else {
+                        // Wrapped, so a longer line doesn't widen the Watches pane.
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new("not adjustable here").color(pal.text_secondary),
+                            )
+                            .wrap(),
+                        );
+                    }
                 });
             }
         }
@@ -18412,13 +18445,36 @@ mod tests {
 
     /// The Current Position card sets the position only while it can:
     /// before anything is on show its six buttons can be pressed; with a
-    /// take on show they only show the position, as history. Either way
-    /// the card names the position with both its codes and has all six.
+    /// take on show they only show the position, as history, their codes
+    /// dimmed. Either way the card names the position with both its codes
+    /// and has all six.
     #[test]
     fn the_position_card_only_shows_a_takes_position() {
         let ctx = themed();
+        // The colour "DD" (never the current position here) is drawn in.
+        let ink = |app: &mut TimegrapherApp| {
+            let mut colour = None;
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(1000.0, 800.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                colour = out.shapes.iter().find_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "DD" => {
+                        Some(t.galley.job.sections[0].format.color)
+                    }
+                    _ => None,
+                });
+            }
+            colour.expect("the DD button")
+        };
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         assert!(app.position_editable());
+        let settable = ink(&mut app);
         let texts = window_texts(&mut app, &ctx, 1000.0);
         assert!(texts.iter().any(|t| t == "Current Position"), "{texts:?}");
         assert!(texts.iter().any(|t| t == "DU · CH"), "{texts:?}");
@@ -18442,6 +18498,9 @@ mod tests {
                 p.code()
             );
         }
+        let pal = theme::palette(ctx.style().visuals.dark_mode);
+        assert_eq!(settable, pal.text);
+        assert_eq!(ink(&mut app), pal.text_tertiary);
     }
 
     /// Each position's second code is Witschi's: the hour that points up

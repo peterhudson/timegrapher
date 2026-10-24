@@ -153,7 +153,7 @@ pub const STRIP: &[&str] = &[
      above the strip (or beside it when the strip lies across). Seeing amplitude beside \
      the dots shows at once whether a wobble in the rate comes with a change in \
      amplitude.",
-    "Mouse: the wheel changes the length about the time under the pointer, Ctrl and the \
+    "Mouse: the wheel changes the length about the time under the pointer, Shift or Ctrl and the \
      wheel (or a pinch) the width; \
      drag along the time to look back, drag across to slide the trace; double-click \
      for the newest beats, centred.",

@@ -735,9 +735,13 @@ pub fn draw_strip(
         input.lead_shift_ms = (d.x / (r.width() / 2.0).max(1.0)) as f64 * view.half_width_ms;
     }
     if resp.hovered() {
-        let (scroll, zoom) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
+        let (scroll, zoom, shift) =
+            ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers.shift));
         let wheel = scroll.x + scroll.y;
-        if wheel != 0.0 {
+        if wheel != 0.0 && shift {
+            // Shift and the wheel zoom the width, as a pinch does.
+            input.width_factor = (-wheel as f64 * 0.003).exp();
+        } else if wheel != 0.0 {
             input.span_factor = (-wheel as f64 * 0.003).exp();
             input.zoom_at = resp
                 .hover_pos()
@@ -1212,6 +1216,15 @@ mod tests {
     /// Frames of the strip lying across, 100 s long with 40 to 60 s
     /// masked and the Mask tool on, each given `events`: what it asked for.
     fn masking_frames(ctx: &egui::Context, frames: &[Vec<egui::Event>]) -> Vec<StripInput> {
+        masking_frames_with(ctx, egui::Modifiers::default(), frames)
+    }
+
+    /// As `masking_frames`, with `modifiers` held throughout.
+    fn masking_frames_with(
+        ctx: &egui::Context,
+        modifiers: egui::Modifiers,
+        frames: &[Vec<egui::Event>],
+    ) -> Vec<StripInput> {
         let view = StripView {
             half_width_ms: 10.0,
             span_s: 100.0,
@@ -1229,6 +1242,7 @@ mod tests {
                 let input = egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 400.0))),
                     events: events.clone(),
+                    modifiers,
                     ..Default::default()
                 };
                 let mut got = StripInput::default();
@@ -1333,6 +1347,39 @@ mod tests {
         let at = zoom.zoom_at.expect("about the pointer");
         let under = got.iter().find_map(|i| i.hover_t).expect("hovered");
         assert!((at - under).abs() < 1e-9 && at < 90.0, "{at} {under}");
+    }
+
+    /// Shift and the wheel zoom the width, not the length.
+    #[test]
+    fn shift_and_the_wheel_zoom_the_width() {
+        let ctx = egui::Context::default();
+        let p = egui::Event::PointerMoved(Pos2::new(300.0, 200.0));
+        let shift = egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, 50.0),
+            modifiers: shift,
+        };
+        let got = masking_frames_with(
+            &ctx,
+            shift,
+            &[
+                vec![p.clone()],
+                vec![p.clone()],
+                vec![p, wheel],
+                vec![],
+                vec![],
+            ],
+        );
+        let zoom = got
+            .iter()
+            .find(|i| i.width_factor != 1.0)
+            .expect("the width zoomed");
+        assert!(zoom.width_factor < 1.0, "{zoom:?}");
+        assert!(got.iter().all(|i| i.span_factor == 1.0), "{got:?}");
     }
 
     fn beat(index: i64, time: f64) -> Beat {

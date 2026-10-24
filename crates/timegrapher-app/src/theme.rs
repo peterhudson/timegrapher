@@ -1480,7 +1480,7 @@ pub enum Icon {
     Hourglass,
     Wave,
     Sheet,
-    Loupe,
+    Search,
     Sort,
     WatchBox,
     NewWatch,
