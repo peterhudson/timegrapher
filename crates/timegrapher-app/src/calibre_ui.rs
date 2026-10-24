@@ -129,8 +129,14 @@ fn col_widths(w: f32) -> [f32; 5] {
     [rest * 0.5, rest * 0.5, facts[0], facts[1], facts[2]]
 }
 
-/// The least width the selected calibre's details need beside the table.
-const DETAILS_W: f32 = 330.0;
+/// The least width the selected calibre's details need beside the table, in
+/// their card: room for a wheel's row with Add and Cancel.
+const DETAILS_W: f32 = 360.0;
+/// The least width the table takes beside the details.
+const TABLE_MIN_W: f32 = 440.0;
+/// The width the controls row needs on one line, New Custom Calibre…
+/// included.
+const TOOLBAR_W: f32 = 660.0;
 /// A line of the table.
 const ROW_H: f32 = 22.0;
 /// The maker the user's own calibres are shown under.
@@ -159,13 +165,13 @@ pub const MANAGE_HELP: &[&str] = &[
      too.",
     "Search by a calibre's number, one of its other names, or its maker under any of the \
      maker's names. Short List Only shows just your short list.",
-    "The tickbox under the star puts a calibre on your short list, which the Calibre menu \
-     offers. The list starts as the common and modern calibres; Reset the Short List goes back \
-     to them.",
+    "Click the star in a calibre's row to put it on your short list, which the Calibre menu \
+     offers; a filled star is on it. The list starts as the common and modern calibres; Reset \
+     the Short List, in the star column's funnel, goes back to them.",
     "The calibre selected shows in full: maker, beat rate, lift angle and escape wheel, each \
      wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
      wheel's period you know into a blank and it is kept for this calibre, marked Custom; add \
-     another wheel by name and period with + at the foot of the wheels. Share with the Project \
+     another wheel by name and period with + at the foot of the wheels, then Add. Share with the Project \
      opens a GitHub issue with what you added, to send from your browser.",
     "New Custom Calibre adds one the list doesn't have, named as typed in the search box, with \
      no wheels assumed; its name, maker, beat rate and lift angle are edited here, its \
@@ -700,7 +706,9 @@ impl Calibres {
         if let Some((wheel, period)) = self.adding.as_mut() {
             let mut close = false;
             let mut keep = false;
-            ui.horizontal(|ui| {
+            // Add and Cancel go under the fields where the details are too
+            // narrow for them beside.
+            ui.horizontal_wrapped(|ui| {
                 let n = ui.add(
                     egui::TextEdit::singleline(wheel)
                         .id_salt(("another wheel", place))
@@ -714,6 +722,13 @@ impl Calibres {
                         .desired_width(66.0),
                 );
                 ui.label("s");
+                let whole = !wheel.trim().is_empty()
+                    && fields::parse_number(period).is_some_and(|v| v > 0.0);
+                let added = ui
+                    .add_enabled(whole, egui::Button::new("Add"))
+                    .on_hover_text("Add this wheel to the calibre (or press Return)")
+                    .on_disabled_hover_text("Type the wheel's name and its period in seconds")
+                    .clicked();
                 if ui
                     .button("Cancel")
                     .on_hover_text("Forget this row without adding a wheel")
@@ -721,10 +736,9 @@ impl Calibres {
                 {
                     close = true;
                 }
-                let done = n.lost_focus() || p.lost_focus();
-                let whole = !wheel.trim().is_empty()
-                    && fields::parse_number(period).is_some_and(|v| v > 0.0);
-                keep = done && whole;
+                let entered = (n.lost_focus() || p.lost_focus())
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                keep = whole && (added || entered);
             });
             if keep {
                 if let Some(v) = fields::parse_number(period) {
@@ -794,8 +808,9 @@ impl Calibres {
         if let Some(problem) = &self.problem {
             ui.label(RichText::new(problem).color(pal.bad));
         }
-        // One toolbar: finding a calibre on the left, adding to or resetting
-        // the lists on the right. Its "?" is beside the Calibres heading above.
+        // One toolbar: finding a calibre on the left, adding one on the
+        // right. Its "?" is beside the Calibres heading above.
+        let tight = ui.available_width() < TOOLBAR_W;
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.search)
@@ -832,38 +847,16 @@ impl Calibres {
                 self.search.clear();
                 self.short_only = false;
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button("New Custom Calibre…")
-                    .on_hover_text(
-                        "Add a calibre the list doesn't have, named as typed in the search \
-                         box, with the wheels' periods you type; it is kept for next time",
-                    )
-                    .clicked()
-                {
-                    let name = self.new_custom(&self.search.clone());
-                    self.search.clear();
-                    // The new one shows, whatever was filtered out.
-                    if !self.rows().iter().any(|e| e.name() == name) {
-                        self.funnels = Default::default();
-                        self.short_only = false;
-                    }
-                    self.selected = Some(name);
-                }
-                if ui
-                    .add_enabled(
-                        !self.short_is_default(),
-                        egui::Button::new("Reset the Short List"),
-                    )
-                    .on_hover_text("Back to the common and modern calibres the app comes with")
-                    .on_disabled_hover_text("The short list is as the app comes with it")
-                    .clicked()
-                {
-                    self.short_added.clear();
-                    self.short_removed.clear();
-                }
-            });
+            if !tight {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.new_custom_button(ui);
+                });
+            }
         });
+        // In a narrow window it goes on a row of its own.
+        if tight {
+            ui.horizontal(|ui| self.new_custom_button(ui));
+        }
         // The rate the table started at, while its funnel is as it was set.
         if let Some((rate, from)) = self.rate_preset.clone() {
             if self.rate_funnel_is(&rate) {
@@ -889,9 +882,44 @@ impl Calibres {
         let rows = self.row_names();
         // The details beside it keep room for a wheel's row, with Clear.
         let room = ui.available_width();
-        let table_w = (room * 0.62).min(room - DETAILS_W).max(440.0);
+        // Too narrow for both side by side, the table fills the room and
+        // the calibre selected takes its place, with the way back.
+        let narrow = room < TABLE_MIN_W + DETAILS_W;
+        let chosen = self
+            .selected
+            .as_ref()
+            .is_some_and(|n| self.find(n).is_some());
+        let table_w = if narrow {
+            room
+        } else {
+            (room * 0.62).min(room - DETAILS_W).max(TABLE_MIN_W)
+        };
         let mut toggles: Vec<(String, bool)> = Vec::new();
         let mut select: Option<String> = None;
+        if narrow && chosen {
+            if ui
+                .button("‹ All Calibres")
+                .on_hover_text("Back to the table of calibres")
+                .clicked()
+            {
+                self.selected = None;
+                return;
+            }
+            ui.add_space(4.0);
+            let h = ui.available_height();
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(room, h), egui::Sense::hover());
+            let down = egui::Layout::top_down(egui::Align::Min);
+            let mut d = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(down));
+            d.set_clip_rect(rect.intersect(ui.clip_rect()));
+            theme::card().fill(pal.card).show(&mut d, |ui| {
+                ui.set_min_size(ui.available_size());
+                egui::ScrollArea::vertical()
+                    .id_salt("manage details")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.details(ui, current, version, out));
+            });
+            return;
+        }
         ui.horizontal_top(|ui| {
             let h = ui.available_height();
             let down = egui::Layout::top_down(egui::Align::Min);
@@ -934,6 +962,9 @@ impl Calibres {
                         });
                 });
             });
+            if narrow {
+                return;
+            }
             ui.add_space(8.0);
             // The details sit in a card level with the table's, and never
             // widen the window: what doesn't fit is cut off at its edge.
@@ -954,6 +985,28 @@ impl Calibres {
         }
         if select.is_some() {
             self.selected = select;
+        }
+    }
+
+    /// New Custom Calibre…: one named as typed in the search box, shown and
+    /// selected whatever the filters hid.
+    fn new_custom_button(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button("New Custom Calibre…")
+            .on_hover_text(
+                "Add a calibre the list doesn't have, named as typed in the search box, with \
+                 the wheels' periods you type; it is kept for next time",
+            )
+            .clicked()
+        {
+            let name = self.new_custom(&self.search.clone());
+            self.search.clear();
+            // The new one shows, whatever was filtered out.
+            if !self.rows().iter().any(|e| e.name() == name) {
+                self.funnels = Default::default();
+                self.short_only = false;
+            }
+            self.selected = Some(name);
         }
     }
 
@@ -1286,6 +1339,20 @@ impl Calibres {
             self.funnels[col as usize] = None;
             ui.close();
         }
+        if col == Col::Short
+            && ui
+                .add_enabled(
+                    !self.short_is_default(),
+                    egui::Button::new("Reset the Short List").frame_when_inactive(false),
+                )
+                .on_hover_text("Back to the common and modern calibres the app comes with")
+                .on_disabled_hover_text("The short list is as the app comes with it")
+                .clicked()
+        {
+            self.short_added.clear();
+            self.short_removed.clear();
+            ui.close();
+        }
         ui.separator();
         ui.add(
             egui::TextEdit::singleline(&mut self.funnel_search)
@@ -1414,21 +1481,38 @@ impl Calibres {
             match col {
                 Col::Short => {
                     if let Entry::Table(c) = e {
-                        let mut on = self.in_short(c);
+                        let on = self.in_short(c);
                         let at = egui::Rect::from_min_size(
-                            egui::pos2(cell.left() + 4.0, cell.top()),
-                            Vec2::new(ui.spacing().interact_size.y, ROW_H),
+                            egui::pos2(cell.left() + 2.0, cell.top()),
+                            Vec2::new(18.0, ROW_H),
                         );
-                        if ui
-                            .put(at, egui::Checkbox::without_text(&mut on))
+                        let r = ui
+                            .interact(
+                                at,
+                                ui.id().with(("short", &c.calibre)),
+                                egui::Sense::click(),
+                            )
                             .on_hover_text(if on {
-                                "On your short list: untick to keep it only in the full list"
+                                "On your short list: click to keep it only in the full list"
                             } else {
-                                "Tick to put it on your short list, offered in the Calibre menu"
-                            })
-                            .changed()
-                        {
-                            toggles.push((c.calibre.clone(), on));
+                                "Click to put it on your short list, offered in the Calibre menu"
+                            });
+                        // A filled star on the short list, an outline off it.
+                        let ink = if on {
+                            pal.accent
+                        } else if r.hovered() {
+                            pal.text_secondary
+                        } else {
+                            pal.text_tertiary
+                        };
+                        let c0 = egui::pos2(at.left() + 9.0, at.center().y);
+                        if on {
+                            star(ui.painter(), c0, 6.5, ink);
+                        } else {
+                            star_outline(ui.painter(), c0, 6.5, ink);
+                        }
+                        if r.clicked() {
+                            toggles.push((c.calibre.clone(), !on));
                         }
                     }
                 }
@@ -1915,14 +1999,26 @@ fn period_field(
 }
 
 /// A five-pointed star of radius `r` at `c`, filled with `ink`.
-fn star(painter: &egui::Painter, c: egui::Pos2, r: f32, ink: egui::Color32) {
-    let pts: Vec<egui::Pos2> = (0..10)
+fn star_points(c: egui::Pos2, r: f32) -> Vec<egui::Pos2> {
+    (0..10)
         .map(|i| {
             let a = std::f32::consts::PI * (i as f32 / 5.0 - 0.5);
             let d = if i % 2 == 0 { r } else { r * 0.45 };
             c + Vec2::new(a.cos(), a.sin()) * d
         })
-        .collect();
+        .collect()
+}
+
+/// A five-pointed star's outline.
+fn star_outline(painter: &egui::Painter, c: egui::Pos2, r: f32, ink: egui::Color32) {
+    painter.add(egui::Shape::closed_line(
+        star_points(c, r),
+        egui::Stroke::new(1.2_f32, ink),
+    ));
+}
+
+fn star(painter: &egui::Painter, c: egui::Pos2, r: f32, ink: egui::Color32) {
+    let pts = star_points(c, r);
     // Not convex: drawn as five triangles from the centre and the rim.
     for i in 0..10 {
         let (a, b) = (pts[i], pts[(i + 1) % 10]);
@@ -2347,6 +2443,46 @@ mod tests {
         k.bph = None;
         follow_balance(&mut k, Some(36000));
         assert_eq!(balance(&k), None);
+    }
+
+    /// A funnel's menu keeps its height whatever its search leaves listed:
+    /// every value, a few, or none.
+    #[test]
+    fn a_funnel_menu_keeps_its_height_as_you_search() {
+        let mut c = Calibres::in_memory();
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 900.0));
+        let height = |c: &mut Calibres, typed: &str| {
+            c.funnel_search = typed.to_string();
+            let mut h = 0.0;
+            for _ in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(screen),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            ui.set_width(230.0);
+                            let r = ui.scope(|ui| c.funnel_menu(ui, Col::Calibre, "Calibre"));
+                            h = r.response.rect.height();
+                        });
+                    },
+                );
+            }
+            h
+        };
+        let all = height(&mut c, "");
+        let few = c
+            .funnel_values(Col::Calibre)
+            .iter()
+            .filter(|v| v.contains("2824"))
+            .count();
+        assert!(few > 0 && few < 9, "{few}");
+        assert_eq!(height(&mut c, "2824"), all);
+        assert_eq!(height(&mut c, "no such calibre"), all);
+        assert!(all > 300.0, "{all}");
     }
 
     #[test]
