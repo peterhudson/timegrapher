@@ -582,8 +582,13 @@ with the Scope as a tab behind it. Every other pane, the Watches pane
 included, starts hidden, and its icon at the top or the View menu shows
 it: the charts of rate, amplitude and beat error over the session, the
 distributions, the Steadiness views, Isochronism, the Positions Test and
-Power Reserve. A layout saved by an earlier version of the app is set
-aside once for this starting one. Drag a pane by its tab
+Power Reserve. Charts and Distributions open as tabs behind the profile,
+so showing them never takes room from the strip. No pane on show is laid
+out shorter than 140 pt (240 pt wide side by side): a pane dragged beside
+another takes its room from the panes with some to spare, and a window
+too small for them all shares its room evenly. A
+layout saved by an earlier version of the app is set aside once for this
+starting one. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides

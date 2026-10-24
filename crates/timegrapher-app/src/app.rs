@@ -878,8 +878,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let watch = tabbed(Pane::Watch);
     let strip = tabbed(Pane::Strip);
     let sound = tabbed(Pane::Sound);
-    let charts = tabbed(Pane::Charts);
-    let hists = tabbed(Pane::Distributions);
+    // The charts and distributions are tabs beside the profile, as the
+    // other analysis panes are: opening one never takes the strip's room.
+    // Dragged out beside another pane, [`keep_room`] keeps both readable.
+    let charts = tiles.insert_pane(Pane::Charts);
+    let hists = tiles.insert_pane(Pane::Distributions);
     // Scope behind the profile, then the rest, as more tabs.
     let scope = tiles.insert_pane(Pane::Scope);
     let steady: Vec<TileId> = Pane::STEADY.map(|p| tiles.insert_pane(p)).to_vec();
@@ -888,6 +891,8 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let reserve = tiles.insert_pane(Pane::PowerReserve);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
+        c.add_child(charts);
+        c.add_child(hists);
         for v in steady {
             c.add_child(v);
         }
@@ -895,18 +900,15 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         c.add_child(positions);
         c.add_child(reserve);
     }
-    // The strip across the middle and the profile across the bottom; the
-    // charts and distributions under them, hidden until wanted.
+    // The strip across the middle and the profile across the bottom, with
+    // the panes hidden until wanted as tabs behind the profile.
     let dir = if horizontal {
         LinearDir::Vertical
     } else {
         LinearDir::Horizontal
     };
-    let mut middle = Linear::new(dir, vec![strip, sound, charts, hists]);
+    let mut middle = Linear::new(dir, vec![strip, sound]);
     middle.shares.set_share(strip, 1.6);
-    // Three plots stacked in each: room for them when shown.
-    middle.shares.set_share(charts, 1.6);
-    middle.shares.set_share(hists, 1.6);
     let middle = tiles.insert_container(middle);
     // The Watches pane at the left when it is shown.
     let root = tiles.insert_container(Linear::new_binary(
@@ -977,6 +979,79 @@ fn add_missing(tree: &mut Tree<Pane>, pane: Pane) {
         .or(tree.root());
     if let Some(Some(egui_tiles::Tile::Container(c))) = host.map(|id| tree.tiles.get_mut(id)) {
         c.add_child(pane);
+    }
+}
+
+/// The least height a pane is laid out at, one above another, and the
+/// least width, side by side: room for its toolbar and one plot.
+const MIN_PANE_H: f32 = 140.0;
+const MIN_PANE_W: f32 = 240.0;
+
+/// Give every pane on show at least [`MIN_PANE_H`] (or [`MIN_PANE_W`]
+/// across), taken from the panes with room to spare, so opening a pane
+/// never crushes the others into a sliver. Worked from the sizes of the
+/// last frame; a window too small for them all shares its room evenly.
+fn keep_room(tiles: &mut Tiles<Pane>) {
+    let ids: Vec<TileId> = tiles.tile_ids().collect();
+    for id in ids {
+        let Some(rect) = tiles.rect(id) else { continue };
+        let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(id)
+        else {
+            continue;
+        };
+        let (room, least) = match l.dir {
+            LinearDir::Vertical => (rect.height(), MIN_PANE_H),
+            LinearDir::Horizontal => (rect.width(), MIN_PANE_W),
+        };
+        let shown: Vec<TileId> = l
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| tiles.is_visible(c))
+            .collect();
+        let n = shown.len();
+        let room = room - 8.0 * (n as f32 - 1.0);
+        if n < 2 || room <= 0.0 {
+            continue;
+        }
+        // A window too small for them all shares it out evenly.
+        let least = least.min(room / n as f32);
+        let share: Vec<f32> = shown.iter().map(|&c| l.shares[c]).collect();
+        let total: f32 = share.iter().sum();
+        let least = least / room;
+        // Raise the smallest to the least, then share the rest out as
+        // before, until none of the rest falls under it.
+        let mut small = vec![false; n];
+        loop {
+            let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
+            let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+            let under: Vec<usize> = (0..n)
+                .filter(|&i| !small[i] && share[i] / rest * left < least)
+                .collect();
+            if under.is_empty() {
+                break;
+            }
+            for i in under {
+                small[i] = true;
+            }
+        }
+        if !small.contains(&true) {
+            continue;
+        }
+        let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
+        let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+        if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+            tiles.get_mut(id)
+        {
+            for (i, &c) in shown.iter().enumerate() {
+                let f = if small[i] {
+                    least
+                } else {
+                    share[i] / rest * left
+                };
+                l.shares.set_share(c, f * total);
+            }
+        }
     }
 }
 
@@ -7303,7 +7378,7 @@ impl TimegrapherApp {
                 .on_hover_text(pane.hint())
                 .changed()
             {
-                set_pane_visible(&mut self.panes.tiles, pane, on);
+                self.show_pane(pane, on);
             }
         };
         for pane in Pane::ALL {
@@ -8185,7 +8260,7 @@ impl TimegrapherApp {
                             .on_hover_text(pane.hint())
                             .changed()
                         {
-                            set_pane_visible(&mut self.panes.tiles, pane, shown);
+                            self.show_pane(pane, shown);
                         }
                     }
                 });
@@ -8202,7 +8277,7 @@ impl TimegrapherApp {
                     .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
                     .clicked()
                 {
-                    set_pane_visible(&mut self.panes.tiles, pane, !on);
+                    self.show_pane(pane, !on);
                 }
             }
         }
@@ -10522,6 +10597,16 @@ impl TimegrapherApp {
         }
     }
 
+    /// Show a pane at the front of its tabs, or hide it: what its icon and
+    /// its View menu item do.
+    fn show_pane(&mut self, pane: Pane, on: bool) {
+        if on {
+            self.reveal_pane(pane);
+        } else {
+            set_pane_visible(&mut self.panes.tiles, pane, false);
+        }
+    }
+
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
         set_pane_visible(&mut self.panes.tiles, pane, true);
@@ -10909,6 +10994,7 @@ impl TimegrapherApp {
         self.charts_to_live_now = std::mem::take(&mut self.charts_to_live);
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         repair_tabs(&mut panes);
+        keep_room(&mut panes.tiles);
         panes.ui(&mut PaneBehavior { app: self }, ui);
         self.panes = panes;
     }
@@ -12252,9 +12338,22 @@ fn stacked(
     }
     if !left_out.is_empty() {
         let names: Vec<&str> = left_out.iter().map(|&k| steady::title(k)).collect();
+        // The switches are pictures: say which picture turns which off.
+        let switches: Vec<String> = kinds[..n]
+            .iter()
+            .map(|&k| {
+                let picture = match k {
+                    SeriesKind::Rate => "the hare",
+                    SeriesKind::Amplitude => "the swing",
+                    SeriesKind::BeatError => "the seesaw",
+                };
+                format!("{picture} ({})", steady::title(k))
+            })
+            .collect();
         let line = format!(
-            "{} not shown: no room. Make the pane taller, or turn a reading off.",
-            names.join(" and ")
+            "{} not shown: no room. Make the pane taller, or turn off {}.",
+            names.join(" and "),
+            switches.join(" or ")
         );
         let pal = theme::pal(ui);
         ui.add(egui::Label::new(RichText::new(line).small().color(pal.text_secondary)).truncate());
@@ -13913,19 +14012,27 @@ mod tests {
             set_pane_visible(&mut app.panes.tiles, p, false);
         }
         let ctx = themed();
+        // Each pane in turn: they are tabs side by side, one on show.
         let draw = |app: &mut TimegrapherApp| {
-            let mut text = String::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(1440.0, 1000.0),
-                    )),
-                    ..Default::default()
-                };
-                text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
+            let mut all = String::new();
+            for p in [Pane::Charts, Pane::Distributions] {
+                for q in [Pane::Charts, Pane::Distributions] {
+                    set_pane_visible(&mut app.panes.tiles, q, q == p);
+                }
+                let mut text = String::new();
+                for _ in 0..3 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(1440.0, 1000.0),
+                        )),
+                        ..Default::default()
+                    };
+                    text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
+                }
+                all.push_str(&text);
             }
-            text
+            all
         };
         let text = draw(&mut app);
         for t in [
@@ -16950,7 +17057,14 @@ mod tests {
         let all = visible_containers(tiles);
         set_pane_visible(tiles, Pane::Charts, false);
         assert!(!pane_visible(tiles, Pane::Charts));
-        // Its tab container goes too, nothing else.
+        // They are tabs behind the profile, so its tab bar stays while
+        // any pane shows in it,
+        assert_eq!(visible_containers(tiles), all);
+        set_pane_visible(tiles, Pane::Distributions, false);
+        set_pane_visible(tiles, Pane::Scope, false);
+        assert_eq!(visible_containers(tiles), all);
+        // and goes with the last of them, nothing else.
+        set_pane_visible(tiles, Pane::Sound, false);
         assert_eq!(visible_containers(tiles), all - 1);
         for p in Pane::ALL {
             set_pane_visible(tiles, p, false);

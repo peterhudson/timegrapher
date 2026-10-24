@@ -272,6 +272,30 @@ fn every_pane_is_whole_with_a_recording_opened() {
     for size in SIZES {
         wrong.extend(check(&mut app, &ctx, size, "a recording opened"));
     }
+    // With the charts and the distributions open too, no pane is crushed:
+    // each laid out keeps room for a plot.
+    for p in [Pane::Charts, Pane::Distributions] {
+        set_pane_visible(&mut app.panes.tiles, p, true);
+    }
+    for size in [(1000.0, 700.0), (1440.0, 900.0)] {
+        wrong.extend(check(&mut app, &ctx, size, "charts and distributions open"));
+        for &p in Pane::ALL.iter() {
+            let tiles = &app.panes.tiles;
+            let Some(r) = tiles.find_pane(&p).and_then(|t| tiles.rect(t)) else {
+                continue;
+            };
+            // The least is the pane with its tab bar (24 pt).
+            if pane_visible(tiles, p) && r.height() < MIN_PANE_H - 24.0 {
+                wrong.push(format!(
+                    "{} at {}×{}: {:.0} pt tall",
+                    p.title(),
+                    size.0,
+                    size.1,
+                    r.height()
+                ));
+            }
+        }
+    }
     drop(app);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
