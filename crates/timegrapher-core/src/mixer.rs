@@ -10,6 +10,9 @@
 //! does that when the person moves its input-level control).
 
 use crate::diagnose::{IssueCode, SignalCheck};
+/// A USB microphone's automatic gain switch set over USB, where the
+/// system shows no setting for it (macOS).
+pub use crate::usbagc::{usb_agc, UsbAgc};
 use serde::Serialize;
 use std::process::Command;
 

@@ -51,6 +51,7 @@ pub mod timefreq;
 pub mod timing;
 pub mod twostate;
 pub mod update;
+pub mod usbagc;
 pub mod usbclock;
 pub mod wheel_lines;
 
