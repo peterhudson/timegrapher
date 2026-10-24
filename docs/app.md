@@ -55,7 +55,7 @@ beats the rate is fitted to and their jitter, the Tick and Tock
 amplitudes, the beat error from the drop, how the beat rate was found,
 and, for a stopped take, the whole take's reading (see below).
 **Position** shows the position as a picture, with its name and code
-beside it. While you listen, or before anything is on show, arrows
+beside it (the code alone where the name won't fit on one line). While you listen, or before anything is on show, arrows
 around the picture tip the watch, seen from above with 12 away from you:
 up tips it back (the side away from you goes down), down tips it
 forward, left and right roll it to that side, and the corner arrow turns
@@ -84,9 +84,9 @@ controls. On **Beat Rate** the big figure is itself the beat rate's menu
 where the card has room, and, with no watch picked, the labelled
 **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre, the
-beat rate and the lift angle it sets instead (Edit… on the watch changes
-them).
+the table knows, the figure shows and one line names the calibre; its
+hover gives the beat rate and lift angle it sets (Edit… on the watch
+changes them).
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -112,7 +112,7 @@ pane like the others: drag it by its tab, or hide it. At its top, under
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
 calibre, how many takes it has and the date of the last, and the space
-they use. The row picked is marked. Its toolbar has a search (in the
+they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
 **Archived** (once a watch is archived, to list those too) and **New
 Watch…**. The Watches folder's location, and Show in Finder for it, are
@@ -328,7 +328,9 @@ expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
 in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
 beside Lift on the Amplitude card says the amplitude comes from the
-default 52°. On the beat error, a reading of an opened file whose Tick
+default 52° (shortened to "default" on a narrow card, or "*" with the
+same hover where even that won't fit). The cards give their units short:
+s/d and ms. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("Tick and
 Tock named by the beat count across 1 break"). Once stopped, each figure's hover also gives the whole take in the
 position the watch is in, settling left out, as `timegrapher session`

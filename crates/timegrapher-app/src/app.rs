@@ -6108,13 +6108,34 @@ impl TimegrapherApp {
             egui::pos2(ui.max_rect().right(), grid.bottom()),
         );
         ui.scope_builder(
-            egui::UiBuilder::new().max_rect(name).layout(
-                egui::Layout::top_down(egui::Align::Min).with_main_align(egui::Align::Center),
-            ),
+            egui::UiBuilder::new()
+                .max_rect(name)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
             |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                ui.label(RichText::new(here.name()).font(theme::semibold(13.0)));
-                ui.label(RichText::new(here.code()).small().color(pal.text_secondary));
+                // The name on one line where it fits, else the code alone.
+                let font = theme::semibold(13.0);
+                let wide = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(here.name().to_string(), font.clone(), pal.text)
+                        .size()
+                        .x
+                });
+                let one_line =
+                    |t: RichText| egui::Label::new(t).wrap_mode(egui::TextWrapMode::Extend);
+                // Centred against the picture, by hand: top-down layouts
+                // don't centre their items.
+                let fits = wide <= ui.available_width();
+                ui.add_space(((grid.height() - if fits { 32.0 } else { 20.0 }) / 2.0).max(0.0));
+                if fits {
+                    ui.add(one_line(RichText::new(here.name()).font(font)));
+                    ui.add(one_line(
+                        RichText::new(here.code()).small().color(pal.text_secondary),
+                    ));
+                } else {
+                    ui.add(one_line(
+                        RichText::new(here.code()).font(theme::semibold(15.0)),
+                    ));
+                }
             },
         );
         let at = |col: f32, row: f32| {
@@ -6158,12 +6179,24 @@ impl TimegrapherApp {
                 let turned = from.tip(tip);
                 let to = turned.position();
                 let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
-                let b =
-                    egui::Button::new(RichText::new(glyph).size(14.0).color(pal.text_secondary))
-                        .frame_when_inactive(false)
-                        .min_size(Vec2::splat(cell));
-                if ui
-                    .put(at(col, row), b)
+                // A whole cell to click, drawn to fit it exactly, the glyph
+                // large enough to see.
+                let r = at(col, row).shrink(1.0);
+                let resp = ui.allocate_rect(r, egui::Sense::click());
+                let fill = if resp.hovered() {
+                    ui.visuals().widgets.hovered.weak_bg_fill
+                } else {
+                    ui.visuals().widgets.inactive.weak_bg_fill
+                };
+                ui.painter().rect_filled(r, 4.0, fill);
+                ui.painter().text(
+                    r.center(),
+                    egui::Align2::CENTER_CENTER,
+                    glyph,
+                    egui::FontId::proportional(15.0),
+                    pal.text,
+                );
+                if resp
                     .on_hover_text(format!("{}: {} (key {n})", tip.words(), to.label()))
                     .clicked()
                 {
@@ -6339,7 +6372,7 @@ impl TimegrapherApp {
                 return;
             }
             let mut lift = self.lift_deg;
-            let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 40.0);
+            let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 32.0);
             ui.label("°");
             let b = fields::presets(ui, "lift-presets", &mut lift, &LIFTS, |v| {
                 format!("{}°", fields::plain(v))
@@ -6350,15 +6383,22 @@ impl TimegrapherApp {
             if !self.lift_known() {
                 // As much of it as the card has room for.
                 let small = egui::TextStyle::Small.resolve(ui.style());
-                let fits = |ui: &egui::Ui, t: &str| {
-                    ui.fonts_mut(|f| f.layout_no_wrap(t.into(), small.clone(), Color32::WHITE))
+                let tiny = egui::FontId::proportional(9.0);
+                let fits = |ui: &egui::Ui, t: &str, font: &egui::FontId| {
+                    ui.fonts_mut(|f| f.layout_no_wrap(t.into(), font.clone(), Color32::WHITE))
                         .size()
                         .x
                         <= ui.available_width()
                 };
-                let word = ["the default", "default"].into_iter().find(|t| fits(ui, t));
-                if let Some(t) = word {
-                    ui.label(RichText::new(t).small().color(pal.text_secondary))
+                let word = [
+                    ("the default", small.clone()),
+                    ("default", small.clone()),
+                    ("default", tiny),
+                ]
+                .into_iter()
+                .find(|(t, font)| fits(ui, t, font));
+                if let Some((t, font)) = word {
+                    ui.label(RichText::new(t).font(font).color(pal.text_secondary))
                         .on_hover_text(LIFT_HINT);
                 } else {
                     ui.label(RichText::new("*").color(pal.text_secondary))
@@ -6560,18 +6600,14 @@ impl TimegrapherApp {
             (None, Some(b)) => format!("{b} bph, found"),
             (None, None) => "beat rate found when heard".to_string(),
         };
-        ui.label(
-            RichText::new(format!(
-                "{} · {bph} · lift {}°",
+        // The beat rate and lift show on their own cards: the name is enough.
+        ui.label(RichText::new(&self.calibre).color(pal.text_secondary))
+            .on_hover_text(format!(
+                "{}: {bph}, lift {}°. The watch's calibre sets the beat rate and lift \
+                 angle. Edit… on the watch changes them.",
                 self.calibre,
                 fields::plain(self.lift_deg)
-            ))
-            .color(pal.text_secondary),
-        )
-        .on_hover_text(
-            "The watch's calibre sets the beat rate and lift angle. Edit… on the watch \
-             changes them.",
-        );
+            ));
         if let Some((b, cb)) = heard
             .zip(self.cal.bph(&self.calibre))
             .filter(|&(b, cb)| b != cb)
@@ -6841,21 +6877,21 @@ impl TimegrapherApp {
              easy to see whether the dots run parallel to it. They show with or without \
              the Rate Line.",
         );
-        ui.horizontal(|ui| {
-            if ui
-                .button("Centre")
-                .on_hover_text("Put the latest beats on the centre line")
-                .clicked()
-            {
-                self.centre();
-            }
-            ui.add_enabled_ui(self.live.is_some(), |ui| {
-                theme::toggle(ui, "Mask", &mut self.masking)
-            })
-            .inner
-            .on_hover_text(MASK_HINT)
-            .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
-        });
+        // Each its own item, so a narrow toolbar wraps between them rather
+        // than running under the "?".
+        if ui
+            .button("Centre")
+            .on_hover_text("Put the latest beats on the centre line")
+            .clicked()
+        {
+            self.centre();
+        }
+        ui.add_enabled_ui(self.live.is_some(), |ui| {
+            theme::toggle(ui, "Mask", &mut self.masking)
+        })
+        .inner
+        .on_hover_text(MASK_HINT)
+        .on_disabled_hover_text("Nothing to mask yet: listen, or open a recording");
         theme::more_menu(
             ui,
             "More strip settings: direction, lines drawn over the strip, \
@@ -8127,7 +8163,12 @@ impl TimegrapherApp {
                 let button = ui
                     .add(egui::Button::new(RichText::new(label).small()).frame_when_inactive(false))
                     .on_hover_text(format!(
-                        "{hint}. Folded into a menu while the window is narrow."
+                        "{hint}. Folded into a menu while the window is narrow: {}.",
+                        panes
+                            .iter()
+                            .map(|p| p.title())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ));
                 egui::Popup::menu(&button).show(|ui| {
                     for &pane in panes {
@@ -8862,20 +8903,11 @@ impl TimegrapherApp {
                     big.on_hover_text(hover);
                 }
                 if !unit.is_empty() {
-                    // Whole beside the figure, in short where the card is
-                    // too narrow for it in words.
-                    let body = egui::TextStyle::Body.resolve(ui.style());
-                    let fits = ui
-                        .fonts_mut(|f| f.layout_no_wrap(unit.into(), body, Color32::WHITE))
-                        .size()
-                        .x
-                        <= ui.available_size_before_wrap().x - ui.spacing().item_spacing.x;
-                    let unit = if fits {
-                        unit.to_string()
-                    } else {
-                        unit.replace("seconds per day", "s/d")
-                            .replace("milliseconds", "ms")
-                    };
+                    // In short, the same with or without a figure, so the card
+                    // keeps one look while it waits and once it reads.
+                    let unit = unit
+                        .replace("seconds per day", "s/d")
+                        .replace("milliseconds", "ms");
                     ui.add(
                         egui::Label::new(RichText::new(unit).color(pal.text_secondary))
                             .wrap_mode(egui::TextWrapMode::Extend),
@@ -17652,7 +17684,7 @@ mod tests {
         let mut app = synthetic(20.0, 0.0);
         assert!(!app.position_editable());
         let texts = window_texts(&mut app, &ctx, 1000.0);
-        assert!(texts.iter().any(|t| t == "Dial Up"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "DU"), "{texts:?}");
         for arrow in ["↑", "↓", "←", "→", "↗"] {
             assert!(!texts.iter().any(|t| t == arrow), "{arrow}: {texts:?}");
         }
@@ -17772,9 +17804,12 @@ mod tests {
         let ctx = themed();
         for w in [1000.0, 1440.0] {
             let texts = window_texts(&mut app, &ctx, w);
+            // The name where it fits on one line, else the code alone.
+            if w > 1000.0 {
+                assert!(texts.iter().any(|t| t == "Dial Up"), "at {w}: {texts:?}");
+            }
             for want in [
                 "Position",
-                "Dial Up",
                 "DU",
                 "↑",
                 "↓",
