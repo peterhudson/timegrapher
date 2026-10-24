@@ -1717,6 +1717,13 @@ pub struct TimegrapherApp {
     source_label: String,
     batch: Option<Batch>,
     anchor: Option<Anchor>,
+    /// The settings a take on show is read again with, for a new beat
+    /// rate, in place of what the take saved.
+    reread_with: Option<WatchSetup>,
+    /// The strip's width and length before an opened take was fitted to
+    /// it, and the fitted view: Listen brings the first back, unless the
+    /// strip was changed by hand since.
+    live_strip: Option<(StripView, StripView)>,
     trend: Vec<TrendPoint>,
     /// The last [`Self::whole_take`] and what it was read from.
     whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
@@ -1811,7 +1818,7 @@ impl TimegrapherApp {
         Settings {
             device: self.device.clone(),
             average_s: self.average_s,
-            strip: self.strip,
+            strip: self.live_view(),
             rate_line: self.rate_line,
             rate_guides: self.rate_guides,
             overlays: self.overlays,
@@ -2125,6 +2132,8 @@ impl TimegrapherApp {
             source_label: String::new(),
             batch: None,
             anchor: None,
+            reread_with: None,
+            live_strip: None,
             trend: Vec::new(),
             whole_take: Default::default(),
             level: Level::default(),
@@ -2363,6 +2372,10 @@ impl TimegrapherApp {
             self.ensure_devices();
             return self.resume_microphone();
         }
+        // A take's fitted view is for the take: listening goes back to the
+        // strip as it was.
+        self.strip = self.live_view();
+        self.live_strip = None;
         let clocks = match clockstore::ClockStore::load() {
             Ok(s) => s,
             Err(e) => return self.error(format!("Can't load the input's clock correction: {e}")),
@@ -3578,6 +3591,11 @@ impl TimegrapherApp {
             Some((m, entries)) => self.apply_manifest(&m, &entries),
             None => Default::default(),
         };
+        // Read again for a new beat rate: the settings as they were, not
+        // as the take saved them.
+        if let Some(s) = self.reread_with.take() {
+            self.set_watch_setup(s);
+        }
         if let Some(m) = carried_masks {
             self.masked = m;
         }
@@ -4269,8 +4287,26 @@ impl TimegrapherApp {
     /// and the latest, or, with Auto-Centre on, the newest stay on the
     /// centre line as it keeps them. The odd stray dot (one beat in a
     /// thousand at each end) is left out of the width, so one bad
-    /// detection can't flatten the trace.
+    /// detection can't flatten the trace. The view before is kept for the
+    /// next Listen.
     fn fit_take(&mut self) {
+        let before = self.strip;
+        self.fit_view();
+        let live = self.live_strip.map_or(before, |(live, _)| live);
+        self.live_strip = Some((live, self.strip));
+    }
+
+    /// The strip's view a live session goes back to: the one before a take
+    /// was fitted, unless the strip was changed by hand since.
+    fn live_view(&self) -> StripView {
+        match self.live_strip {
+            Some((live, fitted)) if fitted == self.strip => live,
+            _ => self.strip,
+        }
+    }
+
+    /// Fit the strip's length and width to the take on show.
+    fn fit_view(&mut self) {
         self.fit_strip();
         let Some(live) = &self.live else { return };
         let Some(bph) = live.bph() else { return };
@@ -5331,26 +5367,24 @@ impl TimegrapherApp {
         }
     }
 
-    /// A beat rate picked, or Auto.
+    /// A beat rate picked, or Auto. A take on show is read again at it,
+    /// with the settings and masks as they are now, since its readings
+    /// were worked out at the old one.
     fn change_bph(&mut self, bph: Option<u32>) {
-        // A take opened is read at its own beat rate: changed, its
-        // readings go, and with them the take on show, so Open reads it
-        // again.
         let shown = (!self.running()).then(|| self.take_on_show()).flatten();
-        if let Some(take) = &shown {
-            self.new_session();
-            self.info_msg(format!(
-                "The beat rate changed, so the readings of \"{}\" were cleared. Open it \
-                 again to see them.",
-                file_name(take)
-            ));
-        }
         self.bph = bph;
         if let Some(l) = self.live.as_mut() {
             l.set_bph(bph);
         }
         self.anchor = None;
         self.clear_trends();
+        if let Some(take) = shown {
+            let masked = self.masked.clone();
+            self.reread_with = Some(self.watch_setup());
+            self.analyse_whole(&take, None);
+            self.reread_with = None;
+            self.masked = masked;
+        }
     }
 
     /// Quick Listen's settings: no watch, no calibre, the default lift
@@ -18318,6 +18352,14 @@ mod tests {
                 let lead = anchor.lead_ms(b, 0.125);
                 assert!(lead.abs() < half, "{lead} outside ±{half}");
             }
+            // Listen goes back to the strip as it was, unless it was
+            // changed by hand since.
+            assert_eq!(
+                (app.live_view().span_s, app.live_view().half_width_ms),
+                (10.0, 1.0)
+            );
+            app.strip.set_half_width(5.0);
+            assert_eq!(app.live_view(), app.strip);
         }
     }
 
@@ -18357,25 +18399,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// A new beat rate clears a take's readings and the take on show with
-    /// them, so its Open comes back.
+    /// A new beat rate reads the take on show again at that rate, with
+    /// the settings as they are now, not as the take saved them.
     #[test]
-    fn a_new_beat_rate_puts_the_take_away() {
+    fn a_new_beat_rate_reads_the_take_again() {
+        let dir = std::env::temp_dir().join(format!("tg-app-test-reread-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 20.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let take = dir.join("take.wav");
+        timegrapher_core::audio::write_wav(&take, &audio).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        app.show_log(gaining_log(0.0), "take".into(), vec![], vec![]);
-        app.input = Input::File;
-        app.opened_path = "take.flac".into();
+        let finish = |app: &mut TimegrapherApp| {
+            let t = Instant::now();
+            while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+                app.poll();
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        };
+        app.start_batch(&take);
+        finish(&mut app);
         assert!(app.take_on_show().is_some());
+        app.set_lift(49.0);
         app.change_bph(Some(21600));
-        assert!(app.take_on_show().is_none());
-        assert!(app.live.is_none());
+        assert!(app.batch.is_some(), "read again");
+        finish(&mut app);
+        assert!(
+            app.take_on_show().is_some(),
+            "still on show, no Open needed"
+        );
         assert_eq!(app.bph, Some(21600));
-        let said = app
-            .message
-            .as_ref()
-            .map(|m| m.0.clone())
-            .unwrap_or_default();
-        assert!(said.contains("Open it again"), "{said}");
+        assert_eq!(app.live.as_ref().unwrap().bph(), Some(21600));
+        assert_eq!(app.lift_deg, 49.0, "the settings as they were");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The readings' cards carry what a take needs: the position with the

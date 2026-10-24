@@ -716,7 +716,8 @@ session so far, or its last 24 hours when it is longer, and shows it up
 to its latest beat. Opening a take sets the length to **Fit** and the
 width to the narrowest of the listed widths that holds all its beats
 without wrapping (leaving out one stray dot in a thousand at each end),
-so the whole take shows at once.
+so the whole take shows at once. Listen then brings back the width and
+length the strip had before, unless they were changed by hand meanwhile.
 
 On the strip, the mouse wheel changes the length about the time under the
 pointer, which stays where it is, Ctrl and the wheel (or a
@@ -1162,7 +1163,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     the watch on the stand and isn't kept. Not Set names cycles after the
     wheels most calibres at the beat rate share.
 - **Beat rate.** On the Beat Rate card: Auto (guessed from the first seconds) or any standard rate
-  from 12,000 to 72,000 bph. Changing it starts the readings again.
+  from 12,000 to 72,000 bph. Changing it starts the readings again; with
+  a take open, the take is read again at the new rate, keeping the
+  settings and masks as they are.
 - **Lift angle.** **Lift**, on the Amplitude card: 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.
