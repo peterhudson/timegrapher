@@ -3975,6 +3975,7 @@ dependencies = [
  "sha2",
  "toml",
  "ureq",
+ "windows 0.62.2",
  "zip",
 ]
 
