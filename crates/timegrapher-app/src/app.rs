@@ -904,6 +904,9 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     };
     let mut middle = Linear::new(dir, vec![strip, sound, charts, hists]);
     middle.shares.set_share(strip, 1.6);
+    // Three plots stacked in each: room for them when shown.
+    middle.shares.set_share(charts, 1.6);
+    middle.shares.set_share(hists, 1.6);
     let middle = tiles.insert_container(middle);
     // The Watches pane at the left when it is shown.
     let root = tiles.insert_container(Linear::new_binary(
@@ -1540,6 +1543,9 @@ pub struct TimegrapherApp {
     chart_series: [bool; 3],
     /// The readings the Distributions pane draws.
     dist_series: [bool; 3],
+    /// The charts drawn last frame: those turned on that had room. The
+    /// key names only these.
+    charts_drawn: [bool; 3],
     /// The distributions cover only the strip's length, ending where the
     /// strip does, instead of the whole session.
     hist_span_of_strip: bool,
@@ -1982,6 +1988,7 @@ impl TimegrapherApp {
             overlays: [true, false, false],
             chart_series: [true; 3],
             dist_series: [true; 3],
+            charts_drawn: [true; 3],
             hist_span_of_strip: false,
             hist_cumulative: false,
             steady_series: Default::default(),
@@ -5625,7 +5632,7 @@ impl TimegrapherApp {
                     .color(pal.text),
             );
             let key = if pane == Pane::Charts {
-                chart_key(self.chart_series, pal)
+                chart_key(self.charts_drawn, pal)
             } else {
                 Vec::new()
             };
@@ -11767,7 +11774,7 @@ impl TimegrapherApp {
     /// other, sharing the pane's height and its time axis.
     fn charts_pane(&mut self, ui: &mut egui::Ui) {
         let shown = self.chart_series;
-        stacked(ui, shown, |ui, k| self.chart(ui, k));
+        self.charts_drawn = stacked(ui, shown, |ui, k| self.chart(ui, k));
     }
 
     fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
@@ -12204,7 +12211,11 @@ fn chart_key(
 /// height left in `ui` evenly. A pane too short for them all draws the
 /// first ones at a readable height and names the rest, rather than
 /// squeezing every plot flat or spilling out of the pane.
-fn stacked(ui: &mut egui::Ui, shown: [bool; 3], mut draw: impl FnMut(&mut egui::Ui, SeriesKind)) {
+fn stacked(
+    ui: &mut egui::Ui,
+    shown: [bool; 3],
+    mut draw: impl FnMut(&mut egui::Ui, SeriesKind),
+) -> [bool; 3] {
     let kinds: Vec<SeriesKind> = steady::SERIES
         .into_iter()
         .zip(shown)
@@ -12248,6 +12259,7 @@ fn stacked(ui: &mut egui::Ui, shown: [bool; 3], mut draw: impl FnMut(&mut egui::
         let pal = theme::pal(ui);
         ui.add(egui::Label::new(RichText::new(line).small().color(pal.text_secondary)).truncate());
     }
+    steady::SERIES.map(|k| kinds[..n].contains(&k))
 }
 
 /// The least height a chart or distribution is drawn at in the Charts and
@@ -12483,7 +12495,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
             return;
         }
         // The key only when all of it fits beside the tabs' titles.
-        let key = chart_key(self.app.chart_series, pal);
+        let key = chart_key(self.app.charts_drawn, pal);
         let font = egui::TextStyle::Small.resolve(ui.style());
         let needed: f32 = key
             .iter()
@@ -17519,6 +17531,7 @@ mod tests {
         let run = |height: f32| {
             let ctx = egui::Context::default();
             let mut drawn = Vec::new();
+            let mut fit = [false; 3];
             let out = ctx.run(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
@@ -17529,22 +17542,25 @@ mod tests {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        stacked(ui, [true; 3], |ui, k| {
+                        fit = stacked(ui, [true; 3], |ui, k| {
                             drawn.push((k, ui.max_rect().height()));
                         });
                     });
                 },
             );
-            (drawn, painted_text(&out))
+            (drawn, painted_text(&out), fit)
         };
-        let (drawn, text) = run(140.0);
+        // What it says it drew, for the key, is what it drew.
+        let (drawn, text, fit) = run(140.0);
+        assert_eq!(fit, [true, false, false]);
         assert_eq!(drawn.len(), 1, "{drawn:?}");
         assert!(drawn[0].1 >= STACKED_MIN_H, "{drawn:?}");
         assert!(
             text.contains("Amplitude and Beat Error not shown: no room"),
             "{text}"
         );
-        let (drawn, text) = run(600.0);
+        let (drawn, text, fit) = run(600.0);
+        assert_eq!(fit, [true; 3]);
         assert_eq!(drawn.len(), 3, "{drawn:?}");
         assert!(!text.contains("not shown"), "{text}");
     }
