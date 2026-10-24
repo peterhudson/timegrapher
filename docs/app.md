@@ -146,7 +146,7 @@ size) it measured when saved, the space it uses, and **Analysis Only** or
 **Open** button under it; double-clicking opens it as
 Open… does. The take on show is marked **On Show** and is not read again
 when opened again. Right-clicking offers **Open**,
-**Show in Finder**, **Rename…** (its folder; nothing relies on the name),
+**Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone). Keep Analysis Only… asks
 first, saying the take's size and its sound's and what is lost: the take

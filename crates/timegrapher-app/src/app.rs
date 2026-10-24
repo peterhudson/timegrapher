@@ -930,13 +930,13 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 const WATCH_SHARE: f32 = 0.34;
 
 /// The heights of the strips of controls at the readings' cards' feet: a
-/// row of controls, the Beat Rate card's two, the Position card's two rows
-/// of position buttons.
+/// row of controls, the Beat Rate card's two, the Position card's picture
+/// of the position.
 const CONTROL_SLOT_H: f32 = 28.0;
 /// The size of a card's big figure.
 const FIGURE_PT: f32 = 30.0;
 const BEAT_RATE_SLOT_H: f32 = 72.0;
-const POSITION_SLOT_H: f32 = 60.0;
+const POSITION_SLOT_H: f32 = 72.0;
 const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
@@ -1478,7 +1478,7 @@ pub struct TimegrapherApp {
     results_rects: [Option<egui::Rect>; 2],
     /// This take ran a Positions Test.
     positions_take: bool,
-    /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
+    /// A question about a take (Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
@@ -3323,8 +3323,8 @@ impl TimegrapherApp {
         if let Ok(inner) = take_folder(path) {
             if analysis_take::is_analysis_only(&inner) {
                 return self.open_failed(format!(
-                    "{} was kept as its analysis alone, without its sound, so it can't be \
-                     replayed. Open shows its readings.",
+                    "{} has had its sound removed, so it can't be played again. Open shows \
+                     its readings.",
                     capture_label(&inner)
                 ));
             }
@@ -4788,10 +4788,6 @@ impl TimegrapherApp {
                     self.error(format!("Couldn't open {}: {err}", dir.display()));
                 }
             }
-            Some(watches::TakeAction::Rename(take)) => {
-                let name = file_name(&take);
-                self.take_ask = Some(watches::Ask::Rename { take, name });
-            }
             Some(watches::TakeAction::Delete(take)) => {
                 let bytes = folder_size(&take);
                 self.take_ask = Some(watches::Ask::Delete { take, bytes });
@@ -4908,24 +4904,30 @@ impl TimegrapherApp {
         }
     }
 
-    /// Why `take` can't be renamed, moved or deleted now (or, with
-    /// `keep`, kept as its analysis), if it can't: Save Again saves into
-    /// it, it is being read as the input, or its analysis is being kept.
+    /// Why `take` can't be moved or deleted now (or, with `keep`, kept
+    /// as its analysis), if it can't: it is being recorded or read, or
+    /// its analysis is being kept. A stopped session saved into it is let
+    /// go of first, by [`Self::answer_take_ask`].
     fn take_busy(&self, take: &Path, keep: bool) -> Option<String> {
         let inside = |p: &Path| p.starts_with(take);
-        if self.session.saved_to().is_some_and(inside) {
-            return Some(
-                "This take is the one Save Again saves into: press New Session first.".into(),
-            );
+        if self.running() && self.session.saved_to().is_some_and(inside) {
+            return Some("This take is still being recorded. Press Stop first.".into());
         }
         if self.running() && inside(Path::new(&self.opened_path)) {
-            return Some("This take is in use: Stop first.".into());
+            return Some("This take is being played. Press Stop first.".into());
         }
         if self.take_keep.as_ref().is_some_and(|(t, _)| t == take) {
-            return Some("This take's analysis is being kept: wait, or Cancel.".into());
+            return Some(
+                "This take's sound is already being removed. Wait for it to finish, or press \
+                 Cancel."
+                    .into(),
+            );
         }
         if !keep && self.batch.is_some() && inside(Path::new(&self.opened_path)) {
-            return Some("This take is being analysed: wait, or Cancel.".into());
+            return Some(
+                "This take is still being analysed. Wait for it to finish, or press Cancel."
+                    .into(),
+            );
         }
         None
     }
@@ -4966,10 +4968,27 @@ impl TimegrapherApp {
     }
 
     fn answer_take_ask(&mut self, ask: watches::Ask) {
+        // The session just saved into the take, stopped, lets go of it:
+        // nothing more is saved there, and what is on show goes.
+        let changed = match &ask {
+            watches::Ask::Delete { take, .. } | watches::Ask::Keep { take, .. } => Some(take),
+            watches::Ask::Add {
+                from,
+                keep_original: false,
+                ..
+            } => Some(from),
+            _ => None,
+        };
+        let saved_into = changed.is_some_and(|take| {
+            self.session
+                .saved_to()
+                .is_some_and(|p| p.starts_with(take))
+        });
+        if saved_into && !self.running() {
+            self.new_session();
+        }
         let busy = match &ask {
-            watches::Ask::Rename { take, .. } | watches::Ask::Delete { take, .. } => {
-                self.take_busy(take, false)
-            }
+            watches::Ask::Delete { take, .. } => self.take_busy(take, false),
             watches::Ask::DeletePhoto { .. } => None,
             watches::Ask::Keep { take, .. } => self.take_busy(take, true),
             watches::Ask::Add {
@@ -4987,10 +5006,6 @@ impl TimegrapherApp {
             return self.error("There is no Watches folder.".into());
         };
         match ask {
-            watches::Ask::Rename { take, name } => match lib.rename_take(&take, &name) {
-                Ok(to) => self.take_moved(&take, &to),
-                Err(e) => self.error(format!("The take couldn't be renamed: {e}")),
-            },
             watches::Ask::Delete { take, .. } => match lib.delete_take(&take) {
                 Ok(()) => self.info_msg(format!("Deleted \"{}\".", file_name(&take))),
                 Err(e) => self.error(format!("The take couldn't be deleted: {e}")),
@@ -5043,12 +5058,13 @@ impl TimegrapherApp {
             let m: Manifest =
                 toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
             if m.audio == Some(false) {
-                return Err("it is already kept as its analysis alone".into());
+                return Err("its sound has already been removed".into());
             }
             if m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".") {
                 return Err(format!(
-                    "its {MANIFEST} lists its sound file by file, and a take kept as its \
-                     analysis names the whole folder in each entry, as the app's own takes do"
+                    "its {MANIFEST} lists each sound file by name, and only takes whose \
+                     {MANIFEST} names the whole folder, as the app writes it, can have their \
+                     sound removed"
                 ));
             }
             let files = recordings_in(&take)?;
@@ -5089,7 +5105,11 @@ impl TimegrapherApp {
         })();
         let (files, total_s, companions, cfg, shapes) = match prepared {
             Ok(p) => p,
-            Err(e) => return self.error(format!("The take can't be kept as its analysis: {e}")),
+            Err(e) => {
+                return self.error(format!(
+                    "The sound couldn't be removed from this take, so nothing was changed: {e}"
+                ))
+            }
         };
         let dest = take.with_file_name(format!(".{}.analysis", file_name(&take)));
         let _ = std::fs::remove_dir_all(&dest);
@@ -5165,14 +5185,15 @@ impl TimegrapherApp {
         };
         match placed {
             Ok(None) => self.info_msg(format!(
-                "Kept \"{}\" as its analysis alone: {} now, from {}.",
+                "Removed the sound from \"{}\" and kept its analysis. It now uses {}, down \
+                 from {}.",
                 file_name(&take),
                 fmt_bytes(folder_size(&take)),
                 fmt_bytes(before)
             )),
             Ok(Some(why)) => self.error(why),
             Err(e) => self.error(format!(
-                "The take couldn't be kept as its analysis, and is left with its sound: {e}"
+                "The sound couldn't be removed from this take, so it still has its sound: {e}"
             )),
         }
     }
@@ -5187,6 +5208,8 @@ impl TimegrapherApp {
         }
         self.watch_open = Some(id.to_string());
         self.unsorted_open = false;
+        // The watch picked shows, not the list left over from before.
+        self.list_for = None;
         self.quick_defaults = false;
         let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
             self.watch_open = None;
@@ -5218,6 +5241,8 @@ impl TimegrapherApp {
         }
         self.watch_open = None;
         self.unsorted_open = true;
+        // Its takes show, not the list left over from before.
+        self.list_for = None;
         self.quick_listen = false;
         // Readings on show keep the settings they were measured with.
         if self.live.is_some() {
@@ -6174,16 +6199,22 @@ impl TimegrapherApp {
             .map_or(self.position, |(_, p)| p)
     }
 
-    /// The position as a picture, with arrows around it that tip the watch
-    /// to the four next to it and turn it over, while it can be set; the
-    /// picture alone while it can't.
+    /// The position as a picture filling its square, with small arrows at
+    /// its edges that tip the watch to the four next to it and turn it
+    /// over, while it can be set; the picture alone while it can't.
     fn position_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
         let mut picked = None;
-        let cell = POSITION_SLOT_H / 3.0;
-        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(cell * 3.0));
+        // As large a square as the slot allows, leaving room for the code.
+        let code_w = ui.fonts_mut(|f| {
+            f.layout_no_wrap(here.code().to_string(), theme::semibold(15.0), pal.text)
+                .size()
+                .x
+        });
+        let side = (ui.max_rect().width() - code_w - 6.0).clamp(48.0, POSITION_SLOT_H);
+        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(side));
         // Its name beside the picture, the code under it.
         let name = egui::Rect::from_min_max(
             egui::pos2(grid.right() + 6.0, grid.top()),
@@ -6220,23 +6251,13 @@ impl TimegrapherApp {
                 }
             },
         );
-        let at = |col: f32, row: f32| {
-            egui::Rect::from_min_size(
-                grid.min + Vec2::new(col * cell, row * cell),
-                Vec2::splat(cell),
-            )
-        };
         ui.allocate_rect(grid, egui::Sense::hover());
-        // Shown only, the picture fills the space the arrows would take.
-        let (spot, size) = if editable {
-            (at(1.0, 1.0), cell)
-        } else {
-            (grid.shrink(cell * 0.4), cell * 2.2)
-        };
-        ui.put(spot, |ui: &mut egui::Ui| {
-            theme::icon_button(ui, here.icon(), size, pal.accent, false, editable)
-        })
-        .on_hover_text(if editable {
+        // The picture fills the square, the arrows small and faint at its
+        // edges, while it can be set or not.
+        let pic = grid.shrink(3.0);
+        let resp = ui.allocate_rect(pic, egui::Sense::hover());
+        crate::icons::draw(ui.painter(), pic, here.icon(), pal.accent);
+        resp.on_hover_text(if editable {
             format!("{}. {POSITION_HINT}", here.label())
         } else {
             format!(
@@ -6246,12 +6267,14 @@ impl TimegrapherApp {
             )
         });
         if editable {
-            for (tip, col, row, glyph) in [
-                (Tip::Back, 1.0, 0.0, "↑"),
-                (Tip::Forward, 1.0, 2.0, "↓"),
-                (Tip::Left, 0.0, 1.0, "←"),
-                (Tip::Right, 2.0, 1.0, "→"),
-                (Tip::Over, 2.0, 0.0, "↗"),
+            let c = grid.center();
+            let edge = grid.width() / 2.0 - 5.0;
+            for (tip, at, glyph) in [
+                (Tip::Back, c + Vec2::new(0.0, -edge), "↑"),
+                (Tip::Forward, c + Vec2::new(0.0, edge), "↓"),
+                (Tip::Left, c + Vec2::new(-edge, 0.0), "←"),
+                (Tip::Right, c + Vec2::new(edge, 0.0), "→"),
+                (Tip::Over, c + Vec2::new(edge, -edge), "↗"),
             ] {
                 let from = if self.orient.position() == here {
                     self.orient
@@ -6261,22 +6284,20 @@ impl TimegrapherApp {
                 let turned = from.tip(tip);
                 let to = turned.position();
                 let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
-                // A whole cell to click, drawn to fit it exactly, the glyph
-                // large enough to see.
-                let r = at(col, row).shrink(1.0);
-                let resp = ui.allocate_rect(r, egui::Sense::click());
-                let fill = if resp.hovered() {
-                    ui.visuals().widgets.hovered.weak_bg_fill
+                // A small spot to click, the glyph faint until pointed at.
+                let r = egui::Rect::from_center_size(at, Vec2::splat(12.0));
+                let resp = ui.interact(r, ui.id().with(("tip", glyph)), egui::Sense::click());
+                let ink = if resp.hovered() {
+                    pal.text
                 } else {
-                    ui.visuals().widgets.inactive.weak_bg_fill
+                    pal.text_tertiary
                 };
-                ui.painter().rect_filled(r, 4.0, fill);
                 ui.painter().text(
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     glyph,
-                    egui::FontId::proportional(15.0),
-                    pal.text,
+                    egui::FontId::proportional(10.0),
+                    ink,
                 );
                 if resp
                     .on_hover_text(format!("{}: {} (key {n})", tip.words(), to.label()))
@@ -6376,14 +6397,33 @@ impl TimegrapherApp {
             _ => Vec::new(),
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
+        // A Quick Listen not saved yet can go into Unsorted, as File > Save
+        // puts it.
+        let into_unsorted = can
+            && self.quick_listen
+            && self.session.saved_to().is_none()
+            && self.watch_takes_dir().is_some();
         let mut picked = None;
-        let (mut new, mut folder) = (false, false);
+        let (mut new, mut folder, mut unsorted) = (false, false, false);
         ui.add_enabled_ui(can || self.addable_take().is_some(), |ui| {
             let button = theme::icon_button(ui, Icon::Save, 26.0, pal.accent, false, false);
             let saved = self.session.saved_to().is_some();
             egui::Popup::menu(&button)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
                 .show(|ui| {
+                    if into_unsorted {
+                        if ui
+                            .button("Unsorted Takes")
+                            .on_hover_text(
+                                "Keep this in Unsorted Takes, in the Watches pane, to file \
+                                 under a watch later",
+                            )
+                            .clicked()
+                        {
+                            unsorted = true;
+                        }
+                        ui.separator();
+                    }
                     if into_watch {
                         ui.label(
                             RichText::new("Keep in a Watch")
@@ -6427,6 +6467,9 @@ impl TimegrapherApp {
         if let Some(id) = picked {
             self.keep_into(&id);
         }
+        if unsorted {
+            self.save_again();
+        }
         if new {
             self.open_new_watch_form();
             self.keep_after_form = true;
@@ -6451,6 +6494,14 @@ impl TimegrapherApp {
             if !self.take_shows_rate_and_lift() {
                 ui.label(format!("{}°", fields::plain(self.lift_deg)))
                     .on_hover_text("The watch's calibre sets it. Edit… on the watch changes it.");
+                return;
+            }
+            // A calibre picked with a lift angle of its own sets it.
+            if self.cal.lift(&self.calibre).is_some() {
+                ui.label(format!("{}°", fields::plain(self.lift_deg))).on_hover_text(format!(
+                    "The {} calibre sets it. Set Calibre to Not Set to type another.",
+                    self.calibre
+                ));
                 return;
             }
             let mut lift = self.lift_deg;
@@ -11248,8 +11299,7 @@ impl TimegrapherApp {
         if self.no_sound {
             ui.label(
                 RichText::new(
-                    "This take was kept as its analysis alone, without its sound, so there is \
-                     no waveform to show.",
+                    "This take's sound was removed, so there is no waveform to show.",
                 )
                 .color(pal.text_tertiary),
             );
@@ -15630,7 +15680,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// A watch's takes are kept as their analysis alone, renamed, moved
+    /// A watch's takes are kept as their analysis alone, moved
     /// and deleted from the Watches pane, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
@@ -15736,21 +15786,12 @@ mod tests {
         app.take_action(Some(watches::TakeAction::Open(take.clone())));
         assert!(app.batch.is_none());
 
-        // Renamed: the recording opened follows.
-        app.answer_take_ask(watches::Ask::Rename {
-            take: take.clone(),
-            name: "Before Service".into(),
-        });
-        let renamed = take.with_file_name("Before Service");
-        assert!(renamed.is_dir() && !take.exists());
-        assert_eq!(Path::new(&app.opened_path), renamed);
+        let renamed = take.clone();
+        let name = file_name(&take);
 
         // Moved to Daytona, then deleted there.
         app.move_take(&renamed, &daytona_id);
-        let d = root
-            .join("Daytona")
-            .join(library::TAKES)
-            .join("Before Service");
+        let d = root.join("Daytona").join(library::TAKES).join(&name);
         assert!(d.is_dir() && !renamed.exists());
         assert_eq!(Path::new(&app.opened_path), d);
         app.answer_take_ask(watches::Ask::Delete {

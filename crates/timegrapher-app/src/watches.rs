@@ -25,7 +25,7 @@ pub const HELP: &[&str] = &[
     "Each take shows what it measured when it was saved, its length and the space it uses. \
      Clicking one picks it and shows its Open button; double-clicking opens it \
      as Open does, and the take already on show is not read again. Right-clicking it \
-     offers Rename…, Keep Analysis \
+     offers Keep Analysis \
      Only… (keeping what was measured and deleting the sound, to save space), Move to \
      Another Watch and Delete…. Open Recording… and Open Folder… in the File menu ask \
      whether to add a recording from outside your watches to one of them, asking for \
@@ -441,7 +441,6 @@ pub enum TakeAction {
     Pick(PathBuf),
     Open(PathBuf),
     Show(PathBuf),
-    Rename(PathBuf),
     KeepAnalysis(PathBuf),
     /// To the watch of this id.
     MoveTo(PathBuf, String),
@@ -590,7 +589,7 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
         let busy = cx.keeping.is_some_and(|(k, _)| k == dir);
         let changes = cx.writable && !busy;
         let why = if busy {
-            "Wait until its analysis is kept, or Cancel"
+            "This take's sound is being removed. Wait for it to finish, or press Cancel."
         } else {
             "This copy of the app can only read your watches"
         };
@@ -611,28 +610,20 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
             }
             ui.separator();
             if ui
-                .add_enabled(changes, egui::Button::new("Rename…"))
-                .on_hover_text("Give the take's folder another name")
-                .on_disabled_hover_text(why)
-                .clicked()
-            {
-                act = Some(TakeAction::Rename(dir.clone()));
-            }
-            if ui
                 .add_enabled(
                     changes && t.audio && !t.incomplete && cx.keeping.is_none(),
                     egui::Button::new("Keep Analysis Only…"),
                 )
                 .on_hover_text(
-                    "Keep what was measured and delete the sound, to save space. It asks \
-                     first and says what is lost.",
+                    "Delete the take's sound to save space and keep its analysis. You are \
+                     asked first, and told what is lost.",
                 )
                 .on_disabled_hover_text(if !t.audio {
-                    "This take is already kept as its analysis alone"
+                    "This take's sound has already been removed"
                 } else if t.incomplete {
                     "Files this take lists are missing"
                 } else if cx.keeping.is_some() {
-                    "Another take's analysis is being kept"
+                    "Another take's sound is being removed. Wait for it to finish."
                 } else {
                     why
                 })
@@ -682,10 +673,6 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
 /// A question about a take, in a window of its own.
 #[derive(Debug, Clone)]
 pub enum Ask {
-    Rename {
-        take: PathBuf,
-        name: String,
-    },
     Delete {
         take: PathBuf,
         bytes: u64,
@@ -726,22 +713,14 @@ pub fn ask_dialog(
         ui.set_width(420.0);
         let pal = theme::pal(ui);
         let (go, ready, red) = match ask {
-            Ask::Rename { take, name } => {
-                ui.label(
-                    RichText::new(format!("Rename \"{}\"", folder_label(take)))
-                        .font(theme::semibold(15.0)),
-                );
-                ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY))
-                    .on_hover_text("The take's new folder name; nothing relies on it");
-                ("Rename", !name.trim().is_empty(), false)
-            }
             Ask::Delete { take, bytes } => {
                 ui.label(
                     RichText::new(format!("Delete \"{}\"?", folder_label(take)))
                         .font(theme::semibold(15.0)),
                 );
                 ui.label(format!(
-                    "Its folder and everything in it, {}, are deleted. This can't be undone.",
+                    "The take's folder and everything in it ({}) will be deleted. You can't \
+                     undo this.",
                     fmt_bytes(*bytes)
                 ));
                 ("Delete", true, true)
@@ -751,30 +730,30 @@ pub fn ask_dialog(
                     RichText::new(format!("Delete \"{}\"?", folder_label(photo)))
                         .font(theme::semibold(15.0)),
                 );
-                ui.label("The photo is deleted from the watch's photos. This can't be undone.");
+                ui.label("The photo will be deleted from the watch's photos. You can't undo this.");
                 ("Delete", true, true)
             }
             Ask::Keep { take, bytes, sound } => {
                 ui.label(
                     RichText::new(format!(
-                        "Keep \"{}\" as Its Analysis Only?",
+                        "Delete the Sound of \"{}\" and Keep Its Analysis?",
                         folder_label(take)
                     ))
                     .font(theme::semibold(15.0)),
                 );
                 ui.label(format!(
-                    "The take uses {} now, {} of it its sound. Its sound is read once more \
-                     for its analysis, which is written beside it and checked, and only then \
-                     is the sound deleted.",
+                    "This take uses {}, and {} of that is sound. The app reads the sound one \
+                     last time to save the analysis, checks what it saved, and then deletes \
+                     the sound.",
                     fmt_bytes(*bytes),
                     fmt_bytes(*sound)
                 ));
                 ui.label(
                     RichText::new(
-                        "Without its sound the take can't be measured again (by a later \
-                         version of the app, or with other settings), and Scope \
-                         doesn't work on it. The readings, charts, Steadiness and the Positions \
-                         Test still do. This can't be undone.",
+                        "Without its sound, this take can't be analysed again, by a later \
+                         version of the app or with other settings, and the Scope won't work \
+                         on it. The readings, charts, Steadiness and Positions Test will still \
+                         work. You can't undo this.",
                     )
                     .color(pal.text_secondary),
                 );
