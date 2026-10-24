@@ -7229,6 +7229,7 @@ impl TimegrapherApp {
             "Milliseconds either side of the centre line. Shift or Ctrl and the mouse wheel \
              on the strip change it too.",
             |ui| {
+                ui.label("±");
                 let mut w = self.strip.half_width_ms;
                 let a = fields::entry(
                     ui,
@@ -7445,7 +7446,7 @@ impl TimegrapherApp {
                 }
             }
         });
-        theme::bar_gap(ui);
+        // Average Over's name in words sets it apart: no line before it.
         self.pane_average_setting(ui, Pane::Strip);
         self.export_button(ui, Pane::Strip);
     }
