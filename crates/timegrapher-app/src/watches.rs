@@ -926,7 +926,7 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         ui,
         "Calibre",
         Some("The movement: it fills the lift angle and beat rate below"),
-        |ui| cal.picker(ui, &current),
+        |ui| cal.picker(ui, &current, w.bph.map(|b| (b, "the watch's beat rate"))),
     );
     if let Some(p) = picked {
         if let Some(l) = cal.lift(&p) {

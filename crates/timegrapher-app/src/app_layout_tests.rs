@@ -569,6 +569,7 @@ fn a_two_way_choice_is_one_icon_wide() {
                     "Layout",
                     "Scale",
                     "Time From",
+                    "Keep",
                 ]
                 .contains(&name)
                 {
@@ -585,6 +586,7 @@ fn a_two_way_choice_is_one_icon_wide() {
         "Layout",
         "Scale",
         "Time From",
+        "Keep",
     ] {
         assert!(seen.iter().any(|s| s == name), "{name} not drawn: {seen:?}");
     }

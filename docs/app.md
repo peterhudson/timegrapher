@@ -697,8 +697,9 @@ well. **Parallel Guides** (on by default) adds faint red lines at the same
 slope across the whole strip, one per grid step, since the eye judges
 whether lines are parallel far better than it judges a slope; dots that
 bend away from the guides show the rate changing. The guides show with or
-without the Rate Line. Under **Draw Over the Strip**, amplitude (purple,
-on by default), rate (red) and beat error (yellow) readings can be drawn
+without the Rate Line. Under **Draw Over the Strip**, rate (red), amplitude
+(purple, on by default) and beat error (yellow) readings, in that order
+as everywhere in the app, can be drawn
 as lines against the same time, each on its own scale, whose ends are
 written in its colour above the strip (beside it when the strip lies
 across), as some versions of tg do for amplitude: a wobble in the rate
@@ -1123,7 +1124,13 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   - **Manage Calibres.** The Calibres category of Settings, which
     Manage Calibres… opens: every calibre in a table on the left, and the
     one selected in full on the right (its wheels, sources and notes, and
-    for a custom calibre its fields with **Delete Calibre**).
+    for a custom calibre its fields with **Delete Calibre**). Opened
+    from the Calibre menu while a beat rate is known (set on the Beat Rate
+    card, found from the beats, or the watch's in its form), the table
+    starts with the Beat Rate funnel at that rate and says so above it
+    ("Showing 28800 bph, the rate found from the beats"), with **Show
+    All** beside it; Clear Filters clears it too. Opened from the gear,
+    or with no rate known, nothing is filtered.
     - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**,
       **Short List** (a tickbox) and **Custom** (a mark on the calibres you
       added). Clicking a heading sorts on it, a second click reverses it;
