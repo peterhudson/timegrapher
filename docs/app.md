@@ -33,7 +33,8 @@ on an icon names its pane), and a gear at the end that opens Settings.
 The icons come in groups: the core panes first (Watches, the Paper
 Strip, the Tick Tock Profile and the Scope), then **Analysis** (Charts,
 Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test and the Power Reserve Test), each
-under its name. Where the window is too narrow for every icon, the
+under its name. The window is never smaller than 800 by 600 points, so
+the panes' toolbars and Settings always have room. Where the window is too narrow for every icon, the
 largest groups fold into a menu under their name, with the number of
 their panes showing, until the rest fit.
 Each icon is a small picture with a pun on
@@ -118,7 +119,9 @@ calibre, how many takes it has and the date of the last, and the space
 they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
 **Archived** (a watch box; once a watch is archived, to list those too)
-and **New Watch…** (a watch and a plus). The Watches folder's location, and Show in Finder for it, are
+and **New Watch…** (a watch and a plus). In a narrow pane, Archived and
+Sort fold into the "…" menu first; New Watch… and the search always stay
+in the row. The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
 watch, no calibre, the default lift angle and the beat rate found from
 the beats (with a take on show, its readings keep the settings they were
@@ -562,9 +565,10 @@ stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; the True Clock line is beside it,
 never instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a recording opened from disk. **Settings**,
-under General's **Sound Card Clock Calibration**, lists each input's kept clock (its error in ppm
-and in s/d, the day it was measured, how, and over how long) with
-**Forget** beside it. Forget first asks, naming the input, its error and
+under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
+and in s/d, the day it was measured, how, and over how long), with
+**Forget** beside it; the input listening is marked "(listening)", or
+named with "None kept" when it has none. Forget first asks, naming the input, its error and
 the day it was measured, since getting it back takes 20 minutes or more of
 listening; then it removes it from the same `clocks.json` that
 `timegrapher clock list` and `clock forget` read, so the command line and
@@ -1017,14 +1021,18 @@ been published yet"). The request carries no account or identifier.
 ## Settings
 
 **The Settings window.** Edit > Settings… (Ctrl+, or Cmd+,) or the gear at
-the end of the pane icons opens it over the app, with three sections:
+the end of the pane icons opens it over the app. As the Mac's System
+Settings does, a sidebar down its left lists the categories, each with its
+icon and name, the one picked filled in the accent colour, and the picked
+category's name heads its settings on the right:
 **General** (Appearance, Check for Updates at Start, **Listening** with
 **Listen When the App Opens**, on unless switched off, and **Keep
-Awake**, the **Watches Folder** (below) and **Sound Card Clock
-Calibration**, each input's kept clock with Forget; see True Clock),
-**Microphone** (the microphone menu and **Rescan**, **Input Level**, the
-peak meter and **Show Every Input**) and **Calibres** (Manage Calibres,
-below). It opens at the section it was last left on. **Done**, Escape or a click outside closes it. What belongs to
+Awake**), **Microphone** (the microphone menu and **Rescan**, **Input
+Level**, the peak meter, **Show Every Input** and **Quartz Correction**,
+each input's kept clock with Forget; see True Clock), **Watches Folder**
+(below) and **Calibres** (Manage Calibres, below). It opens at the
+category it was last left on, kept with the app's settings across
+restarts. **Done**, at the top right, Escape or a click outside closes it. What belongs to
 the take on show (its calibre, lift angle, beat rate, position and
 Average Over) stays on the readings' cards, beside what it sets.
 
@@ -1043,7 +1051,7 @@ takes while the app doesn't have the Watches folder open
 ([agent-interface.md](agent-interface.md#record)). Nothing in
 it records where it is, so it can be moved, synced or copied whole; a
 take with sound files missing is listed as incomplete and never changed.
-Settings' **Watches Folder** section, under General, shows where it is and how many watches and
+Settings' **Watches Folder** category shows where it is and how many watches and
 takes it holds and their size, with **Show in Finder** (Explorer on
 Windows, File Manager on Linux), **Move Watches…** (into a folder picked,
 asking first; onto another disk it is copied, each file with its
@@ -1099,25 +1107,42 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     New Watch form. A **Search every calibre** box at its top, ready to
     type into, lists every calibre matching a name, another name or the
     maker (the first 200, with how many more). Empty, the menu offers Not
-    Set, the calibres picked lately (**Recent**), the **Short List** by
-    maker and **Your Calibres**, with **Manage Calibres…** at its foot and
-    as a button under it.
-  - **Manage Calibres.** The Calibres section of Settings, which
-    Manage Calibres… opens, with every calibre in a
-    list down the left, by maker (the common and modern makers first, your
-    own calibres at the top), and the one selected in full on the right.
-    **All**, **Short List** and **Yours** choose what the list shows.
-    Typing in its search box searches the whole list. Every word must
-    match a calibre's number, one of its other names, or its maker under
-    any of the maker's names ("dd 3235", "sw200", "seagull st19"), and the
-    best matches come first. **Use for This Watch** sets the selected
-    calibre for the take on show. **New Custom Calibre…** adds one, named as typed
-    in the search box.
+    Set, then **Recent**, the **Short List** by maker and **Custom** (your
+    own calibres). The list scrolls between the search field and
+    **Manage Calibres…**, which stays at the menu's foot and opens
+    Settings at Calibres, and as a button under it. Recent is the 6
+    calibres the app was last set to, by a pick in the menu, a watch or
+    take opened, or a take saved: the latest first, none twice, never
+    expiring, and kept across restarts.
+  - **Manage Calibres.** The Calibres category of Settings, which
+    Manage Calibres… opens: every calibre in a table on the left, and the
+    one selected in full on the right (its wheels, sources and notes, and
+    for a custom calibre its fields with **Delete Calibre**).
+    - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**,
+      **Short List** (a tickbox) and **Custom** (a mark on the calibres you
+      added). Clicking a heading sorts on it, a second click reverses it;
+      it starts by maker. A value the list doesn't give is "Not Given" and
+      sorts after every value.
+    - **Custom calibres.** Your own calibres show under the maker
+      **Custom**, always at the top of the table whatever the sort, and
+      the Maker funnel filters them as any maker.
+    - **Funnels.** Each heading has a funnel, as a spreadsheet's filter
+      does: it lists the column's values with a tickbox each, a search over
+      them and **Select All**. It lists the values the other filters let
+      through; the funnels combine, so a row shows only when every column's
+      value is ticked. A funnel in use is tinted in the accent colour.
+      **Clear Filters**, beside the search box, shows every calibre again:
+      it clears the search, Short List Only and every column's funnel.
+    - **Above the table.** The search box: every word must match a
+      calibre's number, one of its other names, or its maker under any of
+      the maker's names ("dd 3235", "sw200", "seagull st19"). **Short List
+      Only** shows just the short list. **New Custom Calibre…** adds one,
+      named as typed in the search box.
   - **The short list.** It starts as the list's common and modern
-    calibres. In Manage Calibres a tickbox beside every calibre puts it on
-    the short list or takes it off, and **Tick All** and **Untick All**
-    beside a maker do a whole maker at once: untick the clones, say, or
-    keep just one maker's calibres. **Reset the Short List** goes back to
+    calibres. In Manage Calibres the tickbox in each calibre's Short List
+    column puts it on the short list or takes it off; filter the table
+    with the funnels first to work through one maker, or the clones.
+    **Reset the Short List** goes back to
     the one the app comes with. The short list and the recent picks are
     kept with the app's settings. When the list renames a calibre (the
     "vph" names became "bph"), the short list, the recent picks and a take
@@ -1136,7 +1161,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       list names.
     - The hint on each wheel says where its figure comes from.
     - A wheel nobody has given is blank: type its period and it is kept
-      for that calibre, marked "yours", with **Clear** to go back.
+      for that calibre, marked "Custom", with **Clear** to go back.
     - **Another wheel** adds one by name.
     - Below come the list's sources as links, how its figures are known,
       and its notes.
@@ -1279,7 +1304,7 @@ when. It holds:
 
 Opening a recording or folder that has a `session.toml` beside it (or in
 it) that lists it takes back the watch, the calibre (a custom one joins
-Your Calibres), the lift angle, the beat rate and the position stretches,
+the custom calibres), the lift angle, the beat rate and the position stretches,
 so the strip and charts mark them and Steadiness tests each position on
 its own. Without one, a recording opens with the settings back at their
 defaults (no watch name or calibre, 52°, the beat rate found, Dial Up), so

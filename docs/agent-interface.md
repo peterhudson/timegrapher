@@ -173,7 +173,7 @@ session loads the store before querying/opening devices or replacing its
 current context; load errors stop the start and are shown. A resumed session
 retains its already-selected correction even if the store has changed. Keeping
 a measured correction changes the app's selected correction only after a
-successful save. Forgetting it in the app's Settings (General, Sound Card Clock Calibration)
+successful save. Forgetting it in the app's Settings (Microphone, Quartz Correction)
 removes the entry from the store and, when it is the input of the
 microphone session in hand (listening or stopped), clears the app's
 selected correction too. No correction is selected when a valid store has

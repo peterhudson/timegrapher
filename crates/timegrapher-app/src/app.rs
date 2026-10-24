@@ -120,6 +120,8 @@ fn day_of(utc: &str) -> &str {
 const CLOCK_UNKNOWN: &str = "input clock not measured";
 /// Plain marks on the level meter, for reference only.
 const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
+/// The width of the Settings window's sidebar.
+const SETTINGS_SIDEBAR_W: f32 = 146.0;
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
 use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
@@ -1853,6 +1855,7 @@ impl TimegrapherApp {
             mic_set_up: self.mic_set_up,
             show_readings: self.show_readings,
             library: self.library_dir.clone(),
+            settings_section: self.settings_last.key().into(),
         }
     }
 
@@ -1897,7 +1900,9 @@ impl TimegrapherApp {
             mic_set_up,
             show_readings,
             library,
+            settings_section,
         } = s;
+        self.settings_last = Tab::from_key(&settings_section);
         self.listen_at_open = listen_at_open;
         self.mic_set_up = mic_set_up;
         // A layout from before the panes moved starts afresh.
@@ -2858,6 +2863,9 @@ impl TimegrapherApp {
             Ok(p) => p,
             Err(e) => return self.error(format!("Saving the recording failed: {e}")),
         };
+        // A saved take's calibre is among the recent ones.
+        let c = self.calibre.clone();
+        self.cal.remember(&c);
         let dest = pending.dest().to_path_buf();
         let spawned = std::thread::Builder::new()
             .name("saving".into())
@@ -3272,7 +3280,7 @@ impl TimegrapherApp {
     }
 
     /// Take what a session file says about a recording: the watch, its
-    /// calibre (a custom one is added to Your Calibres from its wheels),
+    /// calibre (a custom one is added to the custom calibres from its wheels),
     /// the lift angle and beat rate. Returns the positions it lists through
     /// the recording, oldest first, and the settling before each: a gap
     /// between one position's end and the next one's start.
@@ -5515,16 +5523,20 @@ impl TimegrapherApp {
             self.open_new_watch_form();
         }
         theme::bar_gap(ui);
+        // The search stays in the row too: Sort and Archived fold first.
+        theme::keep_next(ui);
         theme::tool_field(
             ui,
             Icon::Loupe,
             "Search",
             "Show the watches whose name, calibre, notes or fields hold this",
             |ui| {
+                // Narrower in a narrow pane, leaving room for "…" after it.
+                let w = (ui.available_width() - 48.0).clamp(72.0, 120.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.watch_search)
                         .hint_text("Search")
-                        .desired_width(120.0),
+                        .desired_width(w),
                 )
                 .on_hover_text("Show the watches whose name, calibre, notes or fields hold this");
             },
@@ -8713,6 +8725,8 @@ impl TimegrapherApp {
     fn set_calibre(&mut self, name: String) {
         // A take saved before the table renamed its calibre.
         let name = self.cal.current_name(&name);
+        // Recent is what the app was last set to, even set again.
+        self.cal.remember(&name);
         if name == self.calibre {
             return;
         }
@@ -8721,8 +8735,6 @@ impl TimegrapherApp {
             self.set_lift(l);
             self.lift_context = (l, true);
         }
-        let n = self.calibre.clone();
-        self.cal.remember(&n);
         // Named afresh with the new wheels.
         self.steady = None;
         self.steady_job = None;
@@ -8920,7 +8932,7 @@ impl TimegrapherApp {
         };
         let screen = ctx.content_rect();
         let size = Vec2::new(
-            (screen.width() - 48.0).clamp(320.0, 1100.0),
+            (screen.width() - 24.0).clamp(320.0, 1100.0),
             (screen.height() - 64.0).clamp(240.0, 760.0),
         );
         let mut done = false;
@@ -8929,8 +8941,6 @@ impl TimegrapherApp {
             ui.set_height(size.y);
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Settings").strong().size(16.0));
-                ui.add_space(12.0);
-                theme::segmented(ui, &mut tab, &settings_window::TABS);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(theme::primary(ui, "Done"))
@@ -8942,63 +8952,103 @@ impl TimegrapherApp {
                 });
             });
             ui.separator();
-            match tab {
-                Tab::General => {
-                    egui::ScrollArea::vertical()
-                        .id_salt("general settings")
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            self.general_settings(ui);
-                            ui.add_space(8.0);
-                            ui.separator();
-                            let root = self.library_root();
-                            let act = settings_window::library_section(
-                                ui,
-                                root.as_deref(),
-                                &self.library,
-                                self.library_moving.as_ref().map(|(to, _)| to.as_path()),
-                                self.library_dir.is_some(),
-                            );
-                            if let Some(act) = act {
-                                self.library_action(act);
-                            }
-                            ui.add_space(8.0);
-                            ui.separator();
-                            if let Some(device) =
-                                settings_window::clock_section(ui, &self.kept_clocks)
-                            {
-                                self.forget_ask = Some(device);
-                            }
-                        });
-                }
-                Tab::Microphone => {
-                    egui::ScrollArea::vertical()
-                        .id_salt("microphone settings")
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            ui.set_max_width(520.0);
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new("Microphone").strong());
-                                theme::help(ui, "Microphone", help::MICROPHONE);
-                            });
-                            self.microphone_card(ui);
-                        });
-                }
-                Tab::Calibres => {
-                    let current = self.calibre.clone();
-                    let out = self.cal.contents(ui, &current, env!("CARGO_PKG_VERSION"));
-                    let name = out.name.clone();
-                    self.calibre_changed(&name, out.change);
-                    if let Some(p) = out.picked {
-                        self.set_calibre(p);
-                    }
-                }
-            }
+            ui.horizontal_top(|ui| {
+                let h = ui.available_height();
+                let down = egui::Layout::top_down(egui::Align::Min);
+                ui.allocate_ui_with_layout(Vec2::new(SETTINGS_SIDEBAR_W, h), down, |ui| {
+                    ui.set_min_size(Vec2::new(SETTINGS_SIDEBAR_W, h));
+                    settings_window::sidebar(ui, &mut tab);
+                });
+                ui.separator();
+                let rest = Vec2::new(ui.available_width(), h);
+                ui.allocate_ui_with_layout(rest, down, |ui| {
+                    ui.set_min_size(rest);
+                    self.settings_category(ui, tab);
+                });
+            });
         });
         self.settings_last = tab;
         self.settings_tab = (!done && !modal.should_close()).then_some(tab);
         self.forget_dialog(ctx);
         self.library_move_dialog(ctx);
+    }
+
+    /// The category picked in Settings, under its name.
+    fn settings_category(&mut self, ui: &mut egui::Ui, tab: Tab) {
+        let name = settings_window::TABS
+            .iter()
+            .find(|t| t.0 == tab)
+            .map_or("", |t| t.2);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(name).strong().size(16.0));
+            match tab {
+                Tab::Microphone => {
+                    theme::help(ui, "Microphone", help::MICROPHONE);
+                }
+                Tab::WatchesFolder => {
+                    theme::help(ui, "Watches Folder", settings_window::LIBRARY_HELP);
+                }
+                Tab::Calibres => {
+                    theme::help(ui, "Calibres", calibre_ui::MANAGE_HELP);
+                }
+                Tab::General => {}
+            }
+        });
+        ui.add_space(6.0);
+        match tab {
+            Tab::General => {
+                egui::ScrollArea::vertical()
+                    .id_salt("general settings")
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.set_max_width(520.0);
+                        self.general_settings(ui);
+                    });
+            }
+            Tab::Microphone => {
+                egui::ScrollArea::vertical()
+                    .id_salt("microphone settings")
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.set_max_width(520.0);
+                        self.microphone_card(ui);
+                        ui.add_space(12.0);
+                        let listening = self.clock_track.as_ref().map(|t| t.device.clone());
+                        if let Some(device) = settings_window::quartz_section(
+                            ui,
+                            &self.kept_clocks,
+                            listening.as_deref(),
+                        ) {
+                            self.forget_ask = Some(device);
+                        }
+                    });
+            }
+            Tab::WatchesFolder => {
+                egui::ScrollArea::vertical()
+                    .id_salt("watches folder settings")
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.set_max_width(620.0);
+                        let root = self.library_root();
+                        let act = settings_window::library_section(
+                            ui,
+                            root.as_deref(),
+                            &self.library,
+                            self.library_moving.as_ref().map(|(to, _)| to.as_path()),
+                            self.library_dir.is_some(),
+                        );
+                        if let Some(act) = act {
+                            self.library_action(act);
+                        }
+                    });
+            }
+            Tab::Calibres => {
+                let current = self.calibre.clone();
+                let out = self.cal.contents(ui, &current, env!("CARGO_PKG_VERSION"));
+                let name = out.name.clone();
+                self.calibre_changed(&name, out.change);
+            }
+        }
     }
 
     /// Forget asks first, saying what is lost: the kept clock took 20
@@ -9503,7 +9553,8 @@ impl TimegrapherApp {
                         "The rate corrected for this input's own clock, which runs {:.1} ppm \
                          {slow} ({:+.1} s/d on every rate), measured {} from {}. The big \
                          figure stays on the card's clock, the one tg and an analysis of \
-                         the recording read, so the two compare directly.",
+                         the recording read, so the two compare directly. The clock kept is \
+                         under Settings > Microphone > Quartz Correction.",
                         c.ppm.abs(),
                         c.rate_error_s_per_day(),
                         c.measured_utc,
@@ -18971,7 +19022,7 @@ mod tests {
         lib.add(&library::Watch::new("Pepsi")).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.use_library(Some(root.clone()));
-        app.open_settings(Tab::General);
+        app.open_settings(Tab::WatchesFolder);
         assert_eq!(
             app.library
                 .as_ref()
@@ -18995,13 +19046,17 @@ mod tests {
         let drawn = text(&ctx, &mut app);
         assert!(drawn.contains("1 watch, 0 takes"), "{drawn}");
         assert!(drawn.contains("Move Watches…") && drawn.contains("Use the Default"));
-        // One General tab holds the Watches folder and the sound card's
-        // clock, with Calibres beside it; nothing is called Library.
-        assert!(drawn.contains("Watches Folder") && drawn.contains("Sound Card Clock Calibration"));
+        // The Watches folder is a category of its own in the sidebar, beside
+        // every other; nothing is called Library, and the kept clocks are
+        // under Microphone, not here.
+        for name in ["General", "Microphone", "Watches Folder", "Calibres"] {
+            assert!(drawn.contains(name), "{name} not in the sidebar: {drawn}");
+        }
         assert!(
-            drawn.contains("Calibres") && !drawn.contains("Library"),
+            !drawn.contains("Library") && !drawn.contains("Quartz Correction"),
             "{drawn}"
         );
+        assert!(!drawn.contains("Sound Card Clock"), "{drawn}");
         // While another copy holds them, this one can only read them, and says so.
         assert!(drawn.contains("can only read them"), "{drawn}");
         drop(lib);
@@ -19009,7 +19064,7 @@ mod tests {
         assert!(!text(&ctx, &mut app).contains("can only read them"));
         // Opening Settings again reads it afresh, and this copy's own lock
         // is no other copy.
-        app.open_settings(Tab::General);
+        app.open_settings(Tab::WatchesFolder);
         assert!(!text(&ctx, &mut app).contains("can only read them"));
 
         // Move it into another folder, and it is used there.
@@ -19102,7 +19157,7 @@ mod tests {
             .get("USB Mic")
             .cloned();
         assert!(app.clock.is_some());
-        app.open_settings(Tab::General);
+        app.open_settings(Tab::Microphone);
         let listed = app.kept_clocks.as_ref().unwrap();
         assert_eq!(listed.devices.len(), 2);
         assert_eq!(
@@ -19132,6 +19187,43 @@ mod tests {
             2,
             "{text:?}"
         );
+        // Under Microphone, as Quartz Correction, kept per input: the input
+        // listening is marked, and a kept clock is under its own input.
+        assert!(text.iter().any(|t| t == "Quartz Correction"), "{text:?}");
+        app.clock_track = Some(ClockTrack {
+            device: "USB Mic".into(),
+            shown: "USB Mic".into(),
+            tracker: timegrapher_core::clock::ClockTracker::new(48_000),
+            next_s: CLOCK_MEASURE_S,
+            fit: None,
+        });
+        let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let text: Vec<String> = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            text.iter().any(|t| t == "USB Mic  (listening)")
+                && text.iter().any(|t| t == "Built-in"),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|t| t.starts_with("3.0 ppm fast, ")),
+            "{text:?}"
+        );
+        // An input listening with none kept says so, beside the others'.
+        app.clock_track.as_mut().unwrap().device = "Line In".into();
+        let out = ctx.run(egui::RawInput::default(), |ctx| app.settings_window(ctx));
+        let said = out.shapes.iter().any(|s| match &s.shape {
+            egui::Shape::Text(t) => t.galley.text().starts_with("None kept for \"Line In\""),
+            _ => false,
+        });
+        assert!(said, "the input listening with no correction kept is named");
+        app.clock_track = None;
         // Forget asks first, saying what is lost; nothing goes until it is
         // confirmed.
         app.forget_ask = Some("USB Mic".into());
@@ -19533,6 +19625,89 @@ mod tests {
         let (pts, _) = app.strip_trend(0.0, 40.0, app.average_s);
         assert!(app.strip_points.is_none());
         assert!(pts.len() <= kept);
+    }
+
+    /// Recent is the six calibres the app was last set to, by a menu pick,
+    /// a watch opened or a take saved: the latest first, none twice, kept
+    /// across restarts.
+    #[test]
+    fn recent_follows_what_the_app_was_set_to() {
+        let names: Vec<String> = timegrapher_core::calibres::all()
+            .iter()
+            .take(8)
+            .map(|c| c.calibre.clone())
+            .collect();
+        let (mut app, base) = save_failure_fixture("recent");
+        // Menu picks: the latest first.
+        for n in &names[..3] {
+            app.set_calibre(n.clone());
+        }
+        assert_eq!(
+            app.cal
+                .recent
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [names[2].as_str(), names[1].as_str(), names[0].as_str()]
+        );
+        // Set again to a calibre already there: it moves to the front, once.
+        app.set_calibre(names[0].clone());
+        assert_eq!(
+            app.cal
+                .recent
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [names[0].as_str(), names[2].as_str(), names[1].as_str()]
+        );
+        app.set_calibre(names[0].clone());
+        assert_eq!(
+            app.cal
+                .recent
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [names[0].as_str(), names[2].as_str(), names[1].as_str()]
+        );
+        // A watch opened sets its calibre.
+        let mut w = library::Watch::new("Bench");
+        w.calibre = Some(names[3].clone());
+        app.apply_watch(&w);
+        assert_eq!(app.cal.recent[0], names[3]);
+        // A take saved puts its calibre first, though nothing else set it.
+        app.cal.recent.retain(|r| r != names[3].as_str());
+        app.save_into(&base.join("saved"));
+        app.wait_for_save();
+        assert_eq!(app.cal.recent[0], names[3]);
+        // Six at most, the oldest going first; Not Set is never one.
+        for n in &names[4..] {
+            app.set_calibre(n.clone());
+        }
+        app.set_calibre(String::new());
+        assert_eq!(app.cal.recent.len(), calibre_ui::RECENT);
+        assert_eq!(
+            app.cal
+                .recent
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                names[7].as_str(),
+                names[6].as_str(),
+                names[5].as_str(),
+                names[4].as_str(),
+                names[3].as_str(),
+                names[0].as_str()
+            ]
+        );
+        // Kept across restarts, with the Settings category last left on.
+        app.settings_last = Tab::Calibres;
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.apply_settings(app.settings());
+        assert_eq!(again.cal.recent, app.cal.recent);
+        assert_eq!(again.settings_last, Tab::Calibres);
+        app.new_session();
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

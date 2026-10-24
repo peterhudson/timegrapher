@@ -13,6 +13,10 @@ pub const MICROPHONE: &[&str] = &[
      card's own capture level.",
     "The Peak meter shows the loudest sample in the last half second, in dBFS \
      (decibels below the most the input can carry). It turns red when the sound clips.",
+    "Quartz Correction lists the clock error kept for each input, by the name the system \
+     gives it, with Forget beside each: the Rate card shows a rate read on that input \
+     corrected as True Clock. Each input keeps its own, so changing the microphone \
+     changes the correction used.",
 ];
 
 pub const RATE: &[&str] = &[
@@ -38,7 +42,7 @@ pub const RATE: &[&str] = &[
      is only right if the computer's clock is kept by internet time. Once the error is \
      kept (by Keep, `timegrapher clock measure --save`, or `clock from-log --save` \
      after a recording with a clock log), the app shows the corrected rate under the \
-     big figure. Until then the rate is read on the card's clock alone, as tg reads \
+     big figure. Settings > Microphone > Quartz Correction lists each input's. Until then the rate is read on the card's clock alone, as tg reads \
      it. The big figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
     "The ± is how far the figure could be off from the scatter of 10-second rates over \
