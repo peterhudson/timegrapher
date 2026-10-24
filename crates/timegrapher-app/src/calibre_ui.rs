@@ -1240,9 +1240,14 @@ impl Calibres {
                         Col::Maker if e.is_custom() => pal.accent,
                         _ => pal.text_secondary,
                     };
-                    let galley =
-                        ui.painter()
-                            .layout_no_wrap(text, egui::FontId::proportional(12.5), ink);
+                    // Too long for its column: cut with "…", the whole
+                    // of it in the row's hover.
+                    let mut job = egui::text::LayoutJob::single_section(
+                        text,
+                        egui::TextFormat::simple(egui::FontId::proportional(12.5), ink),
+                    );
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(widths[i] - 8.0);
+                    let galley = ui.painter().layout_job(job);
                     let at = egui::pos2(cell.left() + 4.0, cell.center().y - galley.size().y / 2.0);
                     ui.painter()
                         .with_clip_rect(cell.shrink2(Vec2::new(2.0, 0.0)))
@@ -1506,7 +1511,8 @@ fn label(e: Entry<'_>) -> String {
 
 /// What the list says about a calibre, for its line in the menu.
 fn hint(e: Entry<'_>) -> String {
-    let mut t = summary(e);
+    // The name first: the table may cut it short.
+    let mut t = format!("{}\n{}", e.name(), summary(e));
     if let Entry::Table(c) = e {
         if !c.family.is_empty() {
             t += &format!("\nAlso: {}", c.family.join(", "));
