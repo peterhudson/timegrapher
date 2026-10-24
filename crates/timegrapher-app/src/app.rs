@@ -9267,6 +9267,16 @@ impl TimegrapherApp {
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
+        ui.spacing_mut().item_spacing.x = theme::GAP;
+        let gap = theme::GAP;
+        let total = ui.available_width();
+        // The Position and Listen cards narrower than the four of figures.
+        let narrow = (total * 0.11).clamp(124.0, 160.0);
+        let listen = (total * 0.13).clamp(144.0, 180.0);
+        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        // The width inside a card of figures, less its margins: the room
+        // kept for whole lines is reckoned at it, the same on every card.
+        let inner = wide - 2.0 * 14.0;
         // Every line of a card is a row of fixed height, whatever is on it
         // or not, so the cards (and every pane under them) never change
         // height with the readings: only with the window's width. What
@@ -9326,9 +9336,23 @@ impl TimegrapherApp {
                     + 6.0
                     + wide(widest.1, egui::TextStyle::Body.resolve(ui.style()))
                     <= ui.available_width();
+            // A figure wider than its card (noise read as beats can give
+            // thousands of s/d) is made smaller to show whole.
+            let unit_w = if beside && !unit.is_empty() {
+                6.0 + wide(&unit, egui::TextStyle::Body.resolve(ui.style()))
+            } else {
+                0.0
+            };
+            let room = ui.available_width() - unit_w;
+            let fig_w = wide(&v, theme::display(FIGURE_PT));
+            let size = if fig_w > room {
+                (FIGURE_PT * room / fig_w).floor().max(12.0)
+            } else {
+                FIGURE_PT
+            };
             let big = |ui: &mut egui::Ui| {
                 let l = ui.add(
-                    egui::Label::new(RichText::new(&v).font(theme::display(FIGURE_PT)).color(c))
+                    egui::Label::new(RichText::new(&v).font(theme::display(size)).color(c))
                         .extend()
                         .sense(egui::Sense::hover()),
                 );
@@ -9354,7 +9378,14 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a note saying so.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let unheard_line = r.as_ref().map(no_regular_beat).unwrap_or_default();
+        // On the cards the fact in short, whole; the sentence with the
+        // timing scatter, as the command line gives it, in the hover.
+        let unheard_line = "No regular beat found".to_string();
+        let unheard_hover = format!(
+            "{}.\n\n{}",
+            r.as_ref().map(no_regular_beat).unwrap_or_default(),
+            help::NO_REGULAR_BEAT
+        );
         let r = r.as_ref().filter(|_| heard);
         let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
         // Each reading's ±, as an analysis of the recording gives them
@@ -9380,9 +9411,9 @@ impl TimegrapherApp {
         // nothing.
         let unheard = |ui: &mut egui::Ui| {
             if heard {
-                note(ui, "", "");
+                whole_lines(ui, "", "", LONGEST_STATUS, inner);
             } else {
-                note(ui, &unheard_line, help::NO_REGULAR_BEAT);
+                whole_lines(ui, &unheard_line, &unheard_hover, LONGEST_STATUS, inner);
             }
         };
         // The cards share one height, the tallest's on the last frame. With
@@ -9428,10 +9459,14 @@ impl TimegrapherApp {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
                     });
-                    // A reading card's limits on a line of their own under
-                    // its title, there (empty) or not, every one in the hover.
+                    // A reading card's limits under its title, whole, never
+                    // cut short: they may be what says the figure isn't a
+                    // watch's. Their room is there (empty) or not, as many
+                    // lines as the longest usual limits take at this width,
+                    // so the card's height follows the width alone; only
+                    // limits longer still take more.
                     if facts.is_some() {
-                        note(ui, &short, &long);
+                        whole_lines(ui, &short, &long, LONGEST_LIMITS, inner);
                     }
                     body(ui);
                     // Room for the controls, which go in once every card
@@ -9455,13 +9490,6 @@ impl TimegrapherApp {
                 ));
             }
         };
-        ui.spacing_mut().item_spacing.x = theme::GAP;
-        let gap = theme::GAP;
-        let total = ui.available_width();
-        // The Position and Listen cards narrower than the four of figures.
-        let narrow = (total * 0.11).clamp(124.0, 160.0);
-        let listen = (total * 0.13).clamp(144.0, 180.0);
-        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
         let origin = ui.cursor().min;
         let mut cols: Vec<egui::Ui> = [narrow, listen, wide, wide, wide, wide]
             .iter()
@@ -9564,23 +9592,24 @@ impl TimegrapherApp {
                     // Under the figure, two lines: what the reading waits on
                     // (or why it is the position before), and the rate on the
                     // input's own clock or the clock timed to keep.
-                    let status: Option<(String, &str)> = if r.is_none() {
+                    let status: Option<(String, String)> = if r.is_none() {
                         if let Some(left) = self.settling_left() {
                             Some((
                                 format!("settling in the new position, {:.0} s", left.ceil()),
-                                SETTLE_HINT,
+                                SETTLE_HINT.to_string(),
                             ))
                         } else if heard {
-                            Some(("waiting for beats".into(), ""))
+                            Some(("waiting for beats".into(), String::new()))
                         } else {
-                            Some((unheard_line.clone(), help::NO_REGULAR_BEAT))
+                            Some((unheard_line.clone(), unheard_hover.clone()))
                         }
                     } else {
                         self.stopped_in_settle().map(|at| {
                             (
                                 format!("before the move at {}", strip::fmt_time(at)),
                                 "Stopped while the watch settled in its new position, so these \
-                             are the last readings of the position before it.",
+                             are the last readings of the position before it."
+                                    .to_string(),
                             )
                         })
                     };
@@ -9663,12 +9692,15 @@ impl TimegrapherApp {
                         (text, hint)
                     });
                     let (first, second) = match (status, true_clock) {
-                        (Some(s), clock) => (Some((s.0, s.1.to_string())), clock),
+                        (Some(s), clock) => (Some(s), clock),
                         (None, clock) => (clock, None),
                     };
+                    // What the figure waits on, or that no watch is heard,
+                    // whole; True Clock (in the figure's hover too) where
+                    // the line is free.
                     match first {
-                        Some((t, h)) => note(ui, &t, &h),
-                        None => note(ui, "", ""),
+                        Some((t, h)) => whole_lines(ui, &t, &h, LONGEST_STATUS, inner),
+                        None => whole_lines(ui, "", "", LONGEST_STATUS, inner),
                     }
                     match (offer, second) {
                         (Some((text, hint)), _) => row(ui, small_h, &mut |ui| {
@@ -10185,11 +10217,16 @@ impl TimegrapherApp {
     /// being analysed, how far it has got.
     fn empty_state(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
+        // Space above the card, but never so much that the card (as tall as
+        // on the last frame) runs out of the pane.
+        let h_id = ui.id().with("empty state height");
+        let last_h: f32 = ui.data(|d| d.get_temp(h_id)).unwrap_or(0.0);
+        let room = (ui.available_height() - last_h).max(0.0);
+        ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0).min(room));
         ui.vertical_centered(|ui| {
             let w = 520.0_f32.min(ui.available_width());
             ui.allocate_ui(Vec2::new(w, 0.0), |ui| {
-                theme::card().fill(pal.card).show(ui, |ui| {
+                let shown = theme::card().fill(pal.card).show(ui, |ui| {
                     ui.set_width(w - 28.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 10.0;
@@ -10200,6 +10237,11 @@ impl TimegrapherApp {
                         }
                     });
                 });
+                let h = shown.response.rect.height();
+                if h != last_h {
+                    ui.data_mut(|d| d.insert_temp(h_id, h));
+                    ui.ctx().request_repaint();
+                }
             });
         });
     }
@@ -13054,6 +13096,49 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         }
     }
 }
+
+/// Small text on a reading card, wrapped whole and never cut short, for
+/// lines that may be what says the figure isn't a watch's: the limits
+/// under the title, and the line under the figure. Its room is there
+/// (empty) or not, as many lines as `longest` takes at `inner`, the width
+/// inside every card of figures alike, so the cards' lines stay level and
+/// their height follows the window's width alone; only text longer still
+/// takes more.
+fn whole_lines(ui: &mut egui::Ui, short: &str, long: &str, longest: &str, inner: f32) {
+    let pal = theme::pal(ui);
+    let w = ui.available_width();
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let lines = |ui: &egui::Ui, text: &str, w: f32| {
+        ui.fonts_mut(|f| {
+            f.layout(text.to_string(), font.clone(), pal.text_secondary, w)
+                .rows
+                .len()
+        })
+    };
+    let n = lines(ui, longest, inner).max(lines(ui, short, w)).max(1);
+    let h = n as f32 * ui.text_style_height(&egui::TextStyle::Small) + 2.0;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    if !short.is_empty() {
+        let l = child
+            .add(egui::Label::new(RichText::new(short).small().color(pal.text_secondary)).wrap());
+        if !long.is_empty() {
+            l.on_hover_text(long);
+        }
+    }
+}
+
+/// The longest limits a reading card usually names, as on noise taken for
+/// beats: the card keeps room for them at every width.
+const LONGEST_LIMITS: &str = "9 s of beats · 25 of 66 expected beats found";
+
+/// The longest line a reading card gives under its figure that must show
+/// whole: the card keeps room for it at every width.
+const LONGEST_STATUS: &str = "settling in the new position, 20 s";
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
@@ -18650,6 +18735,47 @@ mod tests {
         }
     }
 
+    /// A card's limits show whole, wrapped, never cut short, in room that
+    /// is the same whether they are there or not: at the narrowest card
+    /// and a wide one.
+    #[test]
+    fn a_cards_limits_show_whole_in_room_kept_for_them() {
+        let ctx = themed();
+        let noise = "9 s of beats · 25 of 66 expected beats found";
+        for w in [92.0, 190.0] {
+            let mut heights = Vec::new();
+            for short in ["", "12 s of beats", noise] {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(w, 400.0));
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect)
+                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                        );
+                        let top = child.cursor().top();
+                        whole_lines(&mut child, short, "", LONGEST_LIMITS, w);
+                        heights.push(child.cursor().top() - top);
+                    });
+                });
+                let drawn: String = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(!drawn.contains('…'), "{drawn}");
+                assert_eq!(drawn.replace('\n', " ").trim(), short, "at {w} pt");
+            }
+            assert!(
+                heights.iter().all(|&h| h == heights[0]),
+                "{heights:?} at {w} pt"
+            );
+        }
+    }
+
     /// The reading cards are one height at a width, whatever they show:
     /// waiting, reading, settling, or with their limits named.
     #[test]
@@ -18688,10 +18814,28 @@ mod tests {
         settling.session.start_settle(55.0);
         let mut masked = synthetic(60.0, 0.0);
         masked.mask(5.0, 30.0);
+        // Hiss with the beat rate set: a reading of whatever peaks there
+        // are, with its limits named.
+        let mut noise = TimegrapherApp::with_devices(Vec::new(), None);
+        noise.bph = Some(28_800);
+        noise.reset_session(48000, "noise".into());
+        let mut seed = 12_345_u32;
+        let hiss: Vec<f32> = (0..48_000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let live = noise.live.as_mut().unwrap();
+        for b in hiss.chunks(960) {
+            live.push(b);
+        }
+        noise.poll();
+        assert!(noise.reading().is_some_and(|r| !r.watch_heard));
         for w in [800.0, 1280.0, 1900.0] {
             let h = height(&waiting, w);
             assert!(h > 0.0);
-            for app in [&reading, &settling, &masked] {
+            for app in [&reading, &settling, &masked, &noise] {
                 assert_eq!(height(app, w), h, "at {w} pt wide");
             }
         }

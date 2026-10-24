@@ -339,8 +339,8 @@ standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 break or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
-plain fact, on the line under the reading's caption, with a sentence on
-hover (and the whole list there, where the line is too short for it): "12 s of beats" when the beats span under 10 s, "540 of 600
+plain fact, whole, under the reading's caption, with a sentence on
+hover: "12 s of beats" when the beats span under 10 s, "540 of 600
 expected beats found" when under 95% were found, "3% of beats clipped"
 when over 1% clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
 in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
@@ -1296,13 +1296,18 @@ Stopped during a move's settling time, the rate card gives the reading
 from before the move and says so.
 
 **The cards keep their height.** Every line on a reading card has its
-place whether it shows anything or not: the caption, the line of what
-limits the reading, the figure and its unit (under it on a card too
-narrow for the widest figure), and the lines under the figure. A line
-too long for the card is cut short, its whole in the hover; True Clock
-is in the Rate figure's hover too. So the cards, and every pane under
-them, change height only with the window's width, never with the
-readings.
+place whether it shows anything or not: the caption, what limits the
+reading, the figure and its unit (under it on a card too narrow for the
+widest figure), and the lines under the figure. What limits the reading
+and the line under the figure always show whole, wrapped: each has room
+for its longest usual wording at the card's width, so a narrow window
+gives taller cards. With no regular beat, the cards say "No regular beat
+found" and give the full sentence, with the timing scatter, in its
+hover. A figure too wide for its card is drawn smaller. The
+Rate card's last line (True Clock, or the input clock timed to keep) is
+cut short where it doesn't fit, its whole in the hover; True Clock is in
+the Rate figure's hover too. So the cards, and every pane under them,
+change height only with the window's width, never with the readings.
 
 Each saved recording is a folder named after the start time, then the
 watch's name and the calibre when they are set by the first save

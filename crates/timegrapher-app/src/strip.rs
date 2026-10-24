@@ -890,8 +890,16 @@ pub fn draw_strip(
             Align2::LEFT_TOP,
         )
     };
-    painter.text(early_at, early_align, "Early", font.clone(), text);
-    painter.text(late_at, late_align, "Late", font.clone(), text);
+    // Too short a strip for both to stand apart names neither.
+    let ends = if view.horizontal {
+        r.height()
+    } else {
+        r.width()
+    } > 2.0 * font.size + 4.0;
+    if ends {
+        painter.text(early_at, early_align, "Early", font.clone(), text);
+        painter.text(late_at, late_align, "Late", font.clone(), text);
+    }
     // Time lines at whole seconds, minutes or hours, about 90 points apart.
     let along_px = if view.horizontal {
         r.width()
