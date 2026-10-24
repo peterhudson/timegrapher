@@ -154,9 +154,13 @@ fn drawing(icon: Icon) -> &'static str {
         // The positions, the watch drawn as it lies or stands, its lugs
         // the short strokes off the case and its crown the thick knob.
         // Dial up: its face, hands and all.
-        Icon::DialUp => r#"<circle cx="12" cy="12" r="6.4"/><path d="M12 12V8.6M12 12l2.4 1.4"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#,
+        Icon::DialUp => {
+            r#"<circle cx="12" cy="12" r="6.4"/><path d="M12 12V8.6M12 12l2.4 1.4"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+        }
         // Dial down: the case back, its rings.
-        Icon::DialDown => r#"<circle cx="12" cy="12" r="6.4"/><circle cx="12" cy="12" r="3.6"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#,
+        Icon::DialDown => {
+            r#"<circle cx="12" cy="12" r="6.4"/><circle cx="12" cy="12" r="3.6"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+        }
         Icon::CrownUp => {
             r#"<circle cx="12" cy="13.2" r="6.4"/><path d="M12 13.2V9.8M12 13.2l2.4 1.4"/><path d="M6.5 10L3 9.6M17.5 10L21 9.6M6.5 16.4L3 16.8M17.5 16.4L21 16.8"/><path stroke-width="2.6" d="M12 6.8L12 4.4"/>"#
         }

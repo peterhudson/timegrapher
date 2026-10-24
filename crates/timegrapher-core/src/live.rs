@@ -28,6 +28,7 @@ pub const MAX_PROFILE_S: f64 = 60.0;
 /// latest unbroken run of beats, up to this long. The averaging time
 /// holds too few windows to judge the rate on its own.
 pub const RATE_RUN_S: f64 = 300.0;
+
 use crate::stream::BeatLog;
 use crate::timing;
 use serde::Serialize;
@@ -152,6 +153,10 @@ pub struct LiveAnalyzer {
     snr: Option<f32>,
     /// Passes in a row with no signal.
     quiet_passes: u32,
+    /// For display only: the peaks found in passes too quiet to log, each
+    /// numbered from the first by the rate guessed then, the newest
+    /// [`CANDIDATES_KEPT`]. Nothing is measured from them.
+    candidates: VecDeque<Beat>,
     /// The beat rate the logged beats were numbered at, kept when a long
     /// silence lets a guessed rate go, so readings back in the log still
     /// fit.
@@ -182,6 +187,10 @@ pub struct LiveAnalyzer {
 /// step.
 const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
 
+/// How many candidate peaks [`LiveAnalyzer::candidates`] keeps: about four
+/// minutes at 28,800 beats per hour, more than a strip shows.
+const CANDIDATES_KEPT: usize = 2000;
+
 impl LiveAnalyzer {
     pub fn new(sample_rate: u32, cfg: LiveConfig) -> Self {
         LiveAnalyzer {
@@ -203,6 +212,7 @@ impl LiveAnalyzer {
             sides: beats::SideCheck::default(),
             snr: None,
             quiet_passes: 0,
+            candidates: VecDeque::new(),
             logged_bph: None,
             intrinsic_breaks: Vec::new(),
             by_count: Vec::new(),
@@ -253,6 +263,13 @@ impl LiveAnalyzer {
         &self.beats
     }
 
+    /// The peaks found while the sound was too quiet or irregular to log
+    /// as beats, oldest first, for showing what was heard before a regular
+    /// beat is found. They are not beats: no reading uses them.
+    pub fn candidates(&self) -> Vec<Beat> {
+        self.candidates.iter().copied().collect()
+    }
+
     /// The sound of the tick and the tock (even and odd beats) over the last
     /// `profile_s` seconds of settled beats, with the unlock, drop and sound
     /// marks the engine measured on them. Empty for a file analysed at once.
@@ -295,6 +312,7 @@ impl LiveAnalyzer {
         self.snippets.clear();
         self.settled_to = self.duration_s();
         self.quiet_passes = 0;
+        self.candidates.clear();
         self.intrinsic_breaks.clear();
         self.by_count.clear();
         self.breaks.clear();
@@ -500,6 +518,29 @@ impl LiveAnalyzer {
         self.buf = buf;
     }
 
+    /// Keep this pass's peaks between `from` and `to` as candidates,
+    /// numbered on from the last kept at the `beat` guessed now.
+    fn keep_candidates(&mut self, local: &[Beat], off: f64, from: f64, to: f64, beat: f64) {
+        for b in local {
+            let t = b.time + off;
+            if t < from || t >= to {
+                continue;
+            }
+            let index = match self.candidates.back() {
+                Some(last) => last.index + ((t - last.time) / beat).round().max(1.0) as i64,
+                None => 0,
+            };
+            self.candidates.push_back(Beat {
+                index,
+                time: t,
+                quality: b.quality,
+            });
+            if self.candidates.len() > CANDIDATES_KEPT {
+                self.candidates.pop_front();
+            }
+        }
+    }
+
     fn pass_on(&mut self, buf: &[f32]) {
         let fs = self.fs;
         let win = ((self.cfg.window_s * fs).ceil() as usize).min(buf.len());
@@ -541,6 +582,7 @@ impl LiveAnalyzer {
         self.snr = Some(s);
         let heard = s >= self.cfg.min_snr || clipped_out(x, fs, &local);
         if !heard || self.template.is_none() {
+            self.keep_candidates(&local, off, from, to, beat);
             self.quiet_passes += 1;
             // A long silence with a guessed rate: start over on the next
             // watch, which may beat at another rate.
@@ -1048,6 +1090,30 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn noise_logs_no_beats_but_keeps_its_peaks_to_show() {
+        // Steady noise, the same each run.
+        let mut seed = 12_345_u32;
+        let x: Vec<f32> = (0..48_000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let mut a = LiveAnalyzer::new(48_000, LiveConfig::default());
+        feed(&mut a, &x);
+        assert!(a.beats().is_empty(), "{} beats", a.beats().len());
+        let c = a.candidates();
+        assert!(c.len() > 20, "{} candidates", c.len());
+        assert!(c
+            .windows(2)
+            .all(|w| w[1].time > w[0].time && w[1].index > w[0].index));
+        // Kept no longer than the limit, and gone with the log.
+        assert!(c.len() <= CANDIDATES_KEPT);
+        a.set_bph(Some(28_800));
+        assert!(a.candidates().is_empty());
     }
 
     // Supplied beat times only: no waveform synthesis or detector involved.

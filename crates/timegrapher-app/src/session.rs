@@ -561,6 +561,17 @@ impl Session {
         })
     }
 
+    /// A take saved to was moved from `from` to `to`: Save Again follows.
+    pub fn saved_moved(&mut self, from: &Path, to: &Path) {
+        for e in &mut self.events {
+            if let Event::Saved { to: at, .. } = e {
+                if let Ok(rest) = at.strip_prefix(from) {
+                    *at = to.join(rest);
+                }
+            }
+        }
+    }
+
     fn saved_through_s(&self) -> f64 {
         self.events
             .iter()

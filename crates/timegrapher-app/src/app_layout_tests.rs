@@ -296,6 +296,27 @@ fn every_pane_is_whole_with_a_recording_opened() {
             }
         }
     }
+    // Each in front in turn has room for its toolbar and one readable
+    // plot, a distribution's about 60 pt.
+    for front in [Pane::Charts, Pane::Distributions] {
+        app.show_pane(front, true);
+        for size in [(1000.0, 700.0), (1440.0, 900.0)] {
+            wrong.extend(check(&mut app, &ctx, size, "charts and distributions open"));
+            let tiles = &app.panes.tiles;
+            let r = tiles.find_pane(&front).and_then(|t| tiles.rect(t));
+            let need = app.pane_need.get(&front).copied();
+            match (r, need) {
+                (Some(r), Some(need)) if r.height() + 1.0 >= need => {}
+                _ => wrong.push(format!(
+                    "{} at {}×{}: {:?} for a need of {need:?}",
+                    front.title(),
+                    size.0,
+                    size.1,
+                    r.map(|r| r.height())
+                )),
+            }
+        }
+    }
     drop(app);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
