@@ -67,6 +67,48 @@ pub struct BeatLog {
     /// after [`crate::breaks::renumber`] the breaks it returns.
     #[serde(skip)]
     pub by_count: Vec<f64>,
+    /// Each clean beat's envelope window ([`crate::profile::snippet`]) with
+    /// the beat's time, for the beats in the first [`SNIPPETS_KEPT_S`] of
+    /// audio, so that a stretch there too short for its timing to be
+    /// assessed can be looked at by its sound ([`BeatLog::beat_sound`]).
+    #[serde(skip)]
+    pub snippets: Vec<(f64, Vec<f32>)>,
+}
+
+/// Seconds of audio, from the start, whose beats keep their envelope
+/// windows in [`BeatLog::snippets`]: enough for a reading after a settling
+/// time, few enough to cost little memory (about 2.6 MB at 28,800 bph and
+/// 48 kHz).
+pub const SNIPPETS_KEPT_S: f64 = 60.0;
+
+impl BeatLog {
+    /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
+    /// beats as this log holds them (audio time): the profiles of their
+    /// kept envelope windows, Tick from the even beats. `None` when the
+    /// stretch reaches past [`SNIPPETS_KEPT_S`] or holds too few clean
+    /// beats for a profile.
+    pub fn beat_sound(
+        &self,
+        beats: &[Beat],
+        cfg: &crate::amplitude::AmplitudeConfig,
+    ) -> Option<bool> {
+        if beats.last().is_some_and(|b| b.time >= SNIPPETS_KEPT_S) {
+            return None;
+        }
+        let find = |t: f64| {
+            let k = self.snippets.partition_point(|s| s.0 < t - 1e-9);
+            self.snippets
+                .get(k)
+                .filter(|s| (s.0 - t).abs() < 1e-9)
+                .map(|s| s.1.as_slice())
+        };
+        let snips = beats
+            .iter()
+            .filter(|b| b.quality > 0.4)
+            .filter_map(|b| Some((b.index.rem_euclid(2) == 0, find(b.time)?)));
+        let beat = 3600.0 / self.bph.max(1) as f64;
+        crate::measure::beat_sound_found(snips, self.sample_rate as f64, 2.0 * beat, cfg)
+    }
 }
 
 struct State {
@@ -84,6 +126,7 @@ struct State {
     next_amp_s: f64,
     clipped_beats: Vec<f64>,
     clipped_samples: usize,
+    snippets: Vec<(f64, Vec<f32>)>,
 }
 
 impl State {
@@ -162,6 +205,9 @@ impl State {
             }
             self.beats.push(Beat { time: t, ..b });
             if let Some(w) = profile::snippet(&env, fs, b.time) {
+                if t < SNIPPETS_KEPT_S && b.quality > 0.4 {
+                    self.snippets.push((t, w.to_vec()));
+                }
                 self.sides.beat(t, b.index, b.quality, w);
             }
             if let Some((j, beats::SideCall::Swapped)) = self.sides.settle() {
@@ -315,6 +361,7 @@ impl Chunker {
                 next_amp_s: 0.0,
                 clipped_beats: Vec::new(),
                 clipped_samples: 0,
+                snippets: Vec::new(),
             },
             core: (cfg.chunk_s * fs).round() as usize,
             margin: (cfg.margin_s * fs).round() as usize,
@@ -371,6 +418,7 @@ impl Chunker {
             by_count: crate::breaks::by_count(st.jumps.iter().copied(), st.sides.sided()),
             jumps: st.jumps,
             sided: st.sides.sided().to_vec(),
+            snippets: st.snippets,
         }
     }
 }

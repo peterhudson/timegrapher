@@ -186,6 +186,7 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         jumps: live.breaks().to_vec(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     // Stretches masked by hand are left out, cut at both ends: no reading
     // reaches across one, and none takes in a ragged edge of beats beside
@@ -235,6 +236,7 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
         jumps: Vec::new(),
         sided: Vec::new(),
         by_count: Vec::new(),
+        snippets: Vec::new(),
     };
     // The last kept span's end and last beat (time, number), joined.
     let mut prev: Option<(f64, f64, i64)> = None;
@@ -1891,6 +1893,7 @@ mod tests {
             jumps: vec![60.03],
             sided: Vec::new(),
             by_count: Vec::new(),
+            snippets: Vec::new(),
         }
     }
 
@@ -2066,6 +2069,7 @@ mod tests {
             jumps: vec![],
             sided: vec![],
             by_count: vec![],
+            snippets: Vec::new(),
         };
         let at = |g: &Grid, t: f64| g.y[((t - g.t0) / g.step).floor() as usize];
         let raw = steady_views::grids_with_breaks(&log, 10.0, &[]);

@@ -1244,9 +1244,10 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
     if !s.watch_heard {
+        let reason = measure::no_watch_reason_in(&s.caveats).unwrap_or_default();
         println!(
             "{}",
-            timegrapher_core::beats::no_regular_beat_text(s.jitter_us, s.timing_scatter_fraction)
+            measure::no_watch_text(reason, s.jitter_us, s.timing_scatter_fraction)
         );
         return;
     }
@@ -1356,7 +1357,7 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
             }
             Caveat::Masked { seconds } => Some(format!("{seconds:.0} s masked out")),
             // Said on their own lines.
-            Caveat::NoWatch
+            Caveat::NoWatch { .. }
             | Caveat::SetRateDisagrees { .. }
             | Caveat::Clipped { .. }
             | Caveat::BeatsMissing { .. } => None,

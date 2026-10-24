@@ -478,6 +478,10 @@ fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
         w.start_s -= from_s;
         w.end_s -= from_s;
     }
+    l.snippets.retain(|s| s.0 >= from_s && s.0 < to_s);
+    for s in &mut l.snippets {
+        s.0 -= from_s;
+    }
     l.duration_s = to_s.min(log.duration_s) - from_s;
     l
 }
@@ -1067,7 +1071,7 @@ fn print_summary(s: &Session) {
                 "{:<21} {:<18} {:<62} {:>17}  {}{clock}",
                 rd.position.display_label(),
                 wind(rd.wind_h),
-                session::no_regular_beat(m.jitter_us, rd.bph),
+                session::no_regular_beat_in(m, rd.bph),
                 rf,
                 rd.label,
             );

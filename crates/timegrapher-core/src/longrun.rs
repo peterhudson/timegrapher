@@ -457,6 +457,7 @@ mod tests {
                 jumps: vec![],
                 sided: vec![],
                 by_count: if flip { vec![200.0] } else { vec![] },
+                snippets: Vec::new(),
             }
         };
         let breaks = [Break {

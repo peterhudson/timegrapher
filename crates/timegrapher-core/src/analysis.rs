@@ -240,6 +240,8 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
             ..Default::default()
         },
     );
+    // Under 10 s the beats' averaged sound says whether a watch is heard.
+    let beat_sound = log.beat_sound(&log.beats, &cfg.amplitude);
     let beats = log.beats;
     let amplitude_windows = log.amplitude_windows;
     // Where listening stopped and started again the beats jump, and no
@@ -312,7 +314,8 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
         crate::confidence::standard_error(&v)
     };
-    let watch_heard = crate::measure::watch_heard(jitter_us, bph, duration);
+    let no_watch = crate::measure::no_watch_reason(jitter_us, bph, duration, beat_sound);
+    let watch_heard = no_watch.is_none();
     let clipping = Clipping::measure(&audio.samples, fs, &beats);
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
     let amplitude_se_deg = se(&|w| w.mean());
@@ -322,6 +325,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         &amplitude_windows.iter().collect::<Vec<_>>(),
         &crate::measure::Context {
             watch_heard,
+            no_watch_reason: no_watch.unwrap_or_default(),
             bph_heard: (bph != guessed).then_some(guessed),
             lift_known: cfg.lift_known,
             clock_known: usb_clock.is_some(),

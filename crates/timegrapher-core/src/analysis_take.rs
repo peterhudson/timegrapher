@@ -479,6 +479,7 @@ pub fn read(take: &Path) -> io::Result<Stored> {
         by_count: crate::breaks::by_count(header.jumps.iter().copied(), &header.sided),
         jumps: header.jumps.clone(),
         sided: header.sided.clone(),
+        snippets: Vec::new(),
     };
     Ok(Stored {
         header,

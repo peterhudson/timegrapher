@@ -11,9 +11,12 @@
 //! describe noise.
 //!
 //! Whether the beats are regular is assessed on 10 s windows, so with
-//! less than [`SHORT_SPAN_S`] of sound it is not assessed: the readings
-//! are given, `watch_heard` stays true, and `short_span` says how short
-//! the stretch is (see [`watch_heard`]).
+//! less than [`SHORT_SPAN_S`] of sound their timing is not assessed. What
+//! is looked at instead is the beats' averaged sound: when neither the
+//! Tick's nor the Tock's shows an unlock or a drop, no regular beat is
+//! found (`no_watch`, reason `no_beat_sound`). Otherwise the readings are
+//! given, `watch_heard` stays true, and `short_span` says how short the
+//! stretch is (see [`no_watch_reason`]).
 //!
 //! The beat error's sign: positive means Tick, the first beat of the run,
 //! comes late. Tick is whichever beat a reading locks on first, so the sign
@@ -38,9 +41,92 @@ pub fn regularity_assessed(listened_s: f64) -> bool {
 /// False when a regular beat was looked for and not found: with at least
 /// [`SHORT_SPAN_S`] of sound, the beat timing scatter is at or above
 /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. With less sound,
-/// regularity is not assessed and this is true.
+/// regularity is not assessed and this is true; [`no_watch_reason`] also
+/// looks at the beats' sound there.
 pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
     !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
+}
+
+/// Why no regular beat was found, or `None` when one was: with at least
+/// [`SHORT_SPAN_S`] of sound, the timing scatter ([`watch_heard`]); with
+/// less, the beats' averaged sound, when `beat_sound` (from
+/// [`beat_sound_found`]) says neither side shows an unlock or a drop. With
+/// less sound and no profile to look at, `None`, as before.
+pub fn no_watch_reason(
+    jitter_us: Option<f64>,
+    bph: u32,
+    listened_s: f64,
+    beat_sound: Option<bool>,
+) -> Option<NoWatchReason> {
+    if regularity_assessed(listened_s) {
+        (!crate::beats::watch_heard(jitter_us, bph)).then_some(NoWatchReason::Scatter)
+    } else {
+        (beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
+    }
+}
+
+/// Whether the beats' averaged Tick and Tock sounds show a watch's sound:
+/// an unlock or a drop on either side, as [`crate::profile`] finds them on
+/// the same template amplitude uses. `snippets` are each beat's envelope
+/// window ([`crate::profile::snippet`]) with whether it is a Tick (an even
+/// beat). `None` when neither side has enough beats for a profile.
+pub fn beat_sound_found<'a>(
+    snippets: impl IntoIterator<Item = (bool, &'a [f32])>,
+    fs: f64,
+    osc_period_s: f64,
+    cfg: &crate::amplitude::AmplitudeConfig,
+) -> Option<bool> {
+    let (tick, tock): (Vec<_>, Vec<_>) = snippets.into_iter().partition(|s| s.0);
+    let shows = |side: crate::profile::Side, w: Vec<(bool, &[f32])>| {
+        let w: Vec<&[f32]> = w.into_iter().map(|s| s.1).collect();
+        crate::profile::from_snippets(&w, fs, side, osc_period_s, cfg)
+            .map(|p| p.unlock_ms.is_some() || p.drop_ms.is_some())
+    };
+    match (
+        shows(crate::profile::Side::A, tick),
+        shows(crate::profile::Side::B, tock),
+    ) {
+        (None, None) => None,
+        (a, b) => Some(a == Some(true) || b == Some(true)),
+    }
+}
+
+/// The sentence for no regular beat found, as every surface states it:
+/// The reason on the `no_watch` caveat among `caveats`, if there is one.
+pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
+    caveats.iter().find_map(|c| match c {
+        Caveat::NoWatch { reason } => Some(*reason),
+        _ => None,
+    })
+}
+
+/// with the timing scatter, as [`crate::beats::no_regular_beat_text`]
+/// gives it, or that the beats' sound shows no unlock and no drop.
+pub fn no_watch_text(
+    reason: NoWatchReason,
+    jitter_us: Option<f64>,
+    fraction: Option<f64>,
+) -> String {
+    match reason {
+        NoWatchReason::Scatter => crate::beats::no_regular_beat_text(jitter_us, fraction),
+        NoWatchReason::NoBeatSound => {
+            "No regular beat found (neither the Tick's nor the Tock's sound shows an unlock \
+             or a drop)"
+                .into()
+        }
+    }
+}
+
+/// What [`Caveat::NoWatch { reason: NoWatchReason::Scatter }`] was found on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoWatchReason {
+    /// The beat timing scatter, with at least [`SHORT_SPAN_S`] of sound.
+    #[default]
+    Scatter,
+    /// With less sound, the beats' averaged sound: neither the Tick's nor
+    /// the Tock's shows an unlock or a drop ([`beat_sound_found`]).
+    NoBeatSound,
 }
 
 /// Something that limits how far a measurement can be trusted.
@@ -48,9 +134,11 @@ pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum Caveat {
     /// No regular beat found: the beat timing scatter is at or above
-    /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. No readings
-    /// are given.
-    NoWatch,
+    /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat (`reason`
+    /// `scatter`), or, with under [`SHORT_SPAN_S`] of sound, neither the
+    /// Tick's nor the Tock's averaged sound shows an unlock or a drop
+    /// (`no_beat_sound`). No readings are given.
+    NoWatch { reason: NoWatchReason },
     /// A set beat rate (`--bph`, `--calibre`) differs from the one heard.
     SetRateDisagrees { heard: u32 },
     /// More than [`crate::analysis::Clipping::NOTED_FRACTION`] of the beats
@@ -85,7 +173,7 @@ impl Caveat {
     /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {
-            Caveat::NoWatch => 0,
+            Caveat::NoWatch { .. } => 0,
             Caveat::SetRateDisagrees { .. } => 1,
             Caveat::ShortSpan { .. } => 2,
             Caveat::Clipped { .. } => 3,
@@ -113,6 +201,8 @@ pub fn add(caveats: &mut Vec<Caveat>, c: Caveat) {
 pub struct Context {
     /// See [`watch_heard`].
     pub watch_heard: bool,
+    /// What no regular beat was found on, when `watch_heard` is false.
+    pub no_watch_reason: NoWatchReason,
     /// The beat rate heard, when a set one differs from it.
     pub bph_heard: Option<u32>,
     pub lift_known: bool,
@@ -181,7 +271,9 @@ pub fn assess(
     };
     let mut caveats = Vec::new();
     if !c.watch_heard {
-        caveats.push(Caveat::NoWatch);
+        caveats.push(Caveat::NoWatch {
+            reason: c.no_watch_reason,
+        });
     }
     if let Some(heard) = c.bph_heard {
         caveats.push(Caveat::SetRateDisagrees { heard });
@@ -270,7 +362,12 @@ mod tests {
                 ..heard()
             },
         );
-        assert_eq!(a.caveats, vec![Caveat::NoWatch]);
+        assert_eq!(
+            a.caveats,
+            vec![Caveat::NoWatch {
+                reason: NoWatchReason::Scatter
+            }]
+        );
         assert!(a.confidence.is_none());
     }
 
@@ -286,7 +383,12 @@ mod tests {
                 ..heard()
             },
         );
-        assert_eq!(a.caveats, vec![Caveat::NoWatch]);
+        assert_eq!(
+            a.caveats,
+            vec![Caveat::NoWatch {
+                reason: NoWatchReason::Scatter
+            }]
+        );
         let a = assess(
             &[],
             &[],
@@ -408,7 +510,12 @@ mod tests {
         );
         assert_eq!(
             a.caveats,
-            vec![Caveat::NoWatch, Caveat::ShortSpan { span_s: 0.0 }]
+            vec![
+                Caveat::NoWatch {
+                    reason: NoWatchReason::Scatter
+                },
+                Caveat::ShortSpan { span_s: 0.0 }
+            ]
         );
     }
 
