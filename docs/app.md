@@ -71,7 +71,13 @@ else in two rows of three (a 1000-point window), so they stay big enough
 to read and press. Each one's hover gives its name, codes and key
 ("Crown Down (CD, 9H) · key 4") and how long each change of position
 settles (the Positions Test pane's Settle), and the picture and the
-label keep their size whichever is set. On the narrowest windows
+label keep their size whichever is set. Along each button's foot a thin
+teal bar fills with the seconds heard in that position, in Quick Listen
+as in a test or a take on show: settled and not masked, each position's
+own time only. It is full at the Positions Test pane's Measure (60 s
+unless set otherwise; at 120 s, 60 s heard fills half), so a free-form
+test shows which positions still need time; the hover gives the
+seconds. On the narrowest windows
 (about 800 points) the card is captioned **Position**, and the
 Amplitude card puts **Lift** on a line of its own above its field.
 While you listen, or before anything is on show, a button sets the
@@ -430,7 +436,9 @@ Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
 has **Start Test** (**Start a New Test** once one has finished), **Load
 Full-Wind Results…**, **Settle** and **Measure** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
-otherwise, kept between runs, 5 to 600 s and 20 to 3600 s), and **Save
+otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
+field to type in with a menu of common times beside it, 10, 20, 30 and
+60 s for Settle and 30 s to 5 min for Measure), and **Save
 as CSV…**, **Copy** and, after a test just after winding, **Save
 Results for 24 Hours…**. The pane can be shown with nothing listened
 to yet, so a test can start from it.
