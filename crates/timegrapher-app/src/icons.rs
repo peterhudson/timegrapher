@@ -78,7 +78,7 @@ const ALL: [Icon; 77] = [
     Icon::Hourglass,
     Icon::Wave,
     Icon::Sheet,
-    Icon::Loupe,
+    Icon::Search,
     Icon::Sort,
     Icon::WatchBox,
     Icon::NewWatch,
@@ -361,8 +361,8 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Sheet => {
             r#"<path d="M6 2.5h8.5l4 4v15H6z"/><path d="M14.5 2.5v4h4"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" stroke-width="1.3"/>"#
         }
-        // A watchmaker's loupe: Looking closely.
-        Icon::Loupe => r#"<path d="M5 4h14l-3.5 13h-7z"/><path d="M8.5 17h7v3.5h-7z"/>"#,
+        // A magnifying glass: Search.
+        Icon::Search => r#"<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.2 15.2L21 21"/>"#,
         // Arrows up and down: The order of the list.
         Icon::Sort => r#"<path d="M8 4v16M4.5 7.5L8 4l3.5 3.5M16 20V4M12.5 16.5L16 20l3.5-3.5"/>"#,
         // A watch box with its lid shut: Put away.

@@ -136,7 +136,7 @@ const DETAILS_W: f32 = 360.0;
 const TABLE_MIN_W: f32 = 440.0;
 /// The width the controls row needs on one line, New Custom Calibre…
 /// included.
-const TOOLBAR_W: f32 = 660.0;
+const TOOLBAR_W: f32 = 686.0;
 /// A line of the table.
 const ROW_H: f32 = 22.0;
 /// The maker the user's own calibres are shown under.
@@ -812,6 +812,13 @@ impl Calibres {
         // right. Its "?" is beside the Calibres heading above.
         let tight = ui.available_width() < TOOLBAR_W;
         ui.horizontal(|ui| {
+            let (glass, _) = ui.allocate_exact_size(egui::Vec2::splat(18.0), egui::Sense::hover());
+            crate::icons::draw(
+                ui.painter(),
+                glass,
+                crate::theme::Icon::Search,
+                theme::pal(ui).text_secondary,
+            );
             ui.add(
                 egui::TextEdit::singleline(&mut self.search)
                     .id_salt("manage search")

@@ -98,9 +98,11 @@ controls. On **Beat Rate** the big figure is itself the beat rate's menu
 where the card has room, and, with no watch picked, the labelled
 **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre; its
-hover gives the beat rate and lift angle it sets (Edit… on the watch
-changes them).
+the table knows, the figure shows and one line names the calibre (with
+"· beats at" and the calibre's rate when the watch is heard at another
+rate); its hover gives the beat rate and lift angle it sets (Edit… on the
+watch changes them). Lines too long for the card end in "…", with the
+whole sentence on hover.
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -165,7 +167,8 @@ Open… does. The take on show is marked **On Show** and is not read again
 when opened again. Right-clicking offers **Open**,
 **Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
-first, with its size; it can't be undone). Keep Analysis Only… asks
+first, with its size; it can't be undone; deleting the take on show
+leaves the window empty, as at the start). Keep Analysis Only… asks
 first, saying the take's size and its sound's and what is lost: the take
 can't be measured again without its sound, and the Scope doesn't
 work on it, while the readings, charts, Steadiness and the Positions Test
@@ -737,7 +740,7 @@ so the whole take shows at once. Listen then brings back the width and
 length the strip had before, unless they were changed by hand meanwhile.
 
 On the strip, the mouse wheel changes the length about the time under the
-pointer, which stays where it is, Ctrl and the wheel (or a
+pointer, which stays where it is, Shift or Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
 click returns to the newest beats and centres them. **Auto-Centre** keeps
@@ -1110,7 +1113,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   the microphone each time it opens it, so setting the card's own control
   there would not last; for a direct device it is the card's capture
   control (`amixer`). The change is made when you let go of the slider.
-  On other systems, set the level in the system's sound settings. The
+  On a Mac or Windows the system sets the level: **Open Sound Settings…**
+  opens the system's sound input settings (Sound > Input on a Mac, Sound
+  on Windows), with the Peak meter here to watch as you change it. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
   proposals. When the microphone's automatic gain is on, it says
   **Automatic gain: on** with a **Turn It Off** button, and otherwise
