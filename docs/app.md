@@ -54,9 +54,11 @@ one line at most; what stands behind the figure is in its hover: the
 beats the rate is fitted to and their jitter, the Tick and Tock
 amplitudes, the beat error from the drop, how the beat rate was found,
 and, for a stopped take, the whole take's reading (see below).
-**Position** shows the position as a picture, with its name and code
-beside it (the code alone where the name won't fit on one line). While you listen, or before anything is on show, arrows
-around the picture tip the watch, seen from above with 12 away from you:
+**Position** shows the position as a picture filling most of the card,
+the watch drawn with its lugs and, standing on its edge, its crown, with
+its name and code beside it (the code alone where the name won't fit on
+one line). While you listen, or before anything is on show, small faint
+arrows at the picture's edges tip the watch, seen from above with 12 away from you:
 up tips it back (the side away from you goes down), down tips it
 forward, left and right roll it to that side, and the corner arrow turns
 it over. From Dial Up, up gives Crown Left (12 down), down Crown Right,
@@ -77,8 +79,9 @@ watch's own take, which saves itself at Stop. Under them **Average
 Over**, shown as "Average 10 s", the time the readings are fitted over.
 **Amplitude** has **Lift**, the lift angle, typed or picked from the
 common ones, with "the default" beside it while nothing has set it
-(shortened where the card is narrow); a watch's calibre that the table
-knows sets it instead, and it shows as a figure. **Beat Error** has no
+(shortened where the card is narrow); a calibre picked that has a lift
+angle in the table, a watch's or one picked in Quick Listen, sets it
+instead, and it shows as a figure. **Beat Error** has no
 controls. On **Beat Rate** the big figure is itself the beat rate's menu
 (Auto, found from the beats, or a standard rate), with "Auto" beside it
 where the card has room, and, with no watch picked, the labelled
@@ -146,7 +149,7 @@ size) it measured when saved, the space it uses, and **Analysis Only** or
 **Open** button under it; double-clicking opens it as
 Open… does. The take on show is marked **On Show** and is not read again
 when opened again. Right-clicking offers **Open**,
-**Show in Finder**, **Rename…** (its folder; nothing relies on the name),
+**Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone). Keep Analysis Only… asks
 first, saying the take's size and its sound's and what is lost: the take
@@ -348,9 +351,12 @@ measure it. When the beats found don't come at regular intervals (their
 timing scatter is 2% of a beat or more, `beats::watch_heard`, as
 `analyze` uses), the cards show no figures, only **No regular beat found
 (timing scatter 8.6 ms, 5.2% of a beat)**. When nothing in the take has
-had a regular beat after its first few seconds, the cards and charts give
-way to one card saying the same; they appear once a regular beat is
-found.
+had a regular beat after its first few seconds, the strip shows the
+sounds that might be beats as faint dots, under the line **No regular
+beat found yet. The faint dots are sounds that might be beats.** Nothing
+is measured from them; the readings and charts appear once a regular
+beat is found. With nothing heard at all, one card says so in the
+strip's place.
 
 **Long takes.** Listening carries on while the window is hidden behind
 other windows, minimised, or with the screen locked or switched off: the
@@ -584,9 +590,11 @@ it: the charts of rate, amplitude and beat error over the session, the
 distributions, the Steadiness views, Isochronism, the Positions Test and
 Power Reserve. Charts and Distributions open as tabs behind the profile,
 so showing them never takes room from the strip. No pane on show is laid
-out shorter than 140 pt (240 pt wide side by side): a pane dragged beside
-another takes its room from the panes with some to spare, and a window
-too small for them all shares its room evenly. A
+out shorter than 140 pt (240 pt wide side by side), and Charts and
+Distributions are kept tall enough for their toolbar and one plot at a
+readable height (about 60 pt of plot for a distribution): the room comes
+from the panes with some to spare, and a window too small for them all
+shares its room in proportion. A
 layout saved by an earlier version of the app is set aside once for this
 starting one. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
@@ -770,9 +778,8 @@ the app (rate red, amplitude purple, beat error yellow), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
 dashes purple over blue and from the tocks purple over orange, and beat
 error from the drop is a fainter dashed yellow; the key and the box at the
-pointer draw them the same way. The key for the amplitude and beat
-error lines shown sits at the right of the pane's tab bar, where it
-covers nothing. Each chart labels its vertical scale at two marks or more,
+pointer draw them the same way. The Amplitude and Beat Error charts
+each carry the key to their own lines at their top right. Each chart labels its vertical scale at two marks or more,
 in small text, however short the chart; a long time at the right end of
 the time axis is left out rather than cut in half. The charts always
 cover the whole take: to look at a stretch of it, zoom or pan them, or

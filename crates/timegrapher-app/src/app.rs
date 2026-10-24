@@ -930,13 +930,13 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 const WATCH_SHARE: f32 = 0.34;
 
 /// The heights of the strips of controls at the readings' cards' feet: a
-/// row of controls, the Beat Rate card's two, the Position card's two rows
-/// of position buttons.
+/// row of controls, the Beat Rate card's two, the Position card's picture
+/// of the position.
 const CONTROL_SLOT_H: f32 = 28.0;
 /// The size of a card's big figure.
 const FIGURE_PT: f32 = 30.0;
 const BEAT_RATE_SLOT_H: f32 = 72.0;
-const POSITION_SLOT_H: f32 = 60.0;
+const POSITION_SLOT_H: f32 = 72.0;
 const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
@@ -986,22 +986,21 @@ fn add_missing(tree: &mut Tree<Pane>, pane: Pane) {
 /// least width, side by side: room for its toolbar and one plot.
 const MIN_PANE_H: f32 = 140.0;
 const MIN_PANE_W: f32 = 240.0;
+/// The height of a pane's tab bar.
+const TAB_BAR_H: f32 = 24.0;
 
 /// Give every pane on show at least [`MIN_PANE_H`] (or [`MIN_PANE_W`]
-/// across), taken from the panes with room to spare, so opening a pane
-/// never crushes the others into a sliver. Worked from the sizes of the
-/// last frame; a window too small for them all shares its room evenly.
-fn keep_room(tiles: &mut Tiles<Pane>) {
+/// across), or the height `need` says its tab on show needs if more,
+/// taken from the panes with room to spare, so opening a pane never
+/// crushes the others into a sliver. Worked from the sizes of the last
+/// frame; a window too small for them all shares its room in proportion.
+fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
     let ids: Vec<TileId> = tiles.tile_ids().collect();
     for id in ids {
         let Some(rect) = tiles.rect(id) else { continue };
         let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(id)
         else {
             continue;
-        };
-        let (room, least) = match l.dir {
-            LinearDir::Vertical => (rect.height(), MIN_PANE_H),
-            LinearDir::Horizontal => (rect.width(), MIN_PANE_W),
         };
         let shown: Vec<TileId> = l
             .children
@@ -1010,23 +1009,59 @@ fn keep_room(tiles: &mut Tiles<Pane>) {
             .filter(|&c| tiles.is_visible(c))
             .collect();
         let n = shown.len();
+        let vertical = l.dir == LinearDir::Vertical;
+        let room = if vertical {
+            rect.height()
+        } else {
+            rect.width()
+        };
         let room = room - 8.0 * (n as f32 - 1.0);
         if n < 2 || room <= 0.0 {
             continue;
         }
-        // A window too small for them all shares it out evenly.
-        let least = least.min(room / n as f32);
+        // Each child's least: a tab bar's active pane may need more than
+        // the usual height, under its tab bar.
+        let mut least: Vec<f32> = shown
+            .iter()
+            .map(|&c| {
+                if !vertical {
+                    return MIN_PANE_W;
+                }
+                let more = match tiles.get(c) {
+                    Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) => t
+                        .active
+                        .and_then(|a| match tiles.get(a) {
+                            Some(egui_tiles::Tile::Pane(p)) => need(*p),
+                            _ => None,
+                        })
+                        .map(|h| h + TAB_BAR_H),
+                    _ => None,
+                };
+                more.unwrap_or(0.0).max(MIN_PANE_H)
+            })
+            .collect();
+        // A window too small for them all shares it out in proportion.
+        let sum: f32 = least.iter().sum();
+        if sum > room {
+            for l in &mut least {
+                *l *= room / sum;
+            }
+        }
+        let least: Vec<f32> = least.iter().map(|l| l / room).collect();
         let share: Vec<f32> = shown.iter().map(|&c| l.shares[c]).collect();
         let total: f32 = share.iter().sum();
-        let least = least / room;
-        // Raise the smallest to the least, then share the rest out as
-        // before, until none of the rest falls under it.
+        // Raise the smallest to their least, then share the rest out as
+        // before, until none of the rest falls under theirs.
         let mut small = vec![false; n];
-        loop {
+        let rest_and_left = |small: &[bool]| {
             let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
-            let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+            let left = 1.0 - (0..n).filter(|&i| small[i]).map(|i| least[i]).sum::<f32>();
+            (rest, left)
+        };
+        loop {
+            let (rest, left) = rest_and_left(&small);
             let under: Vec<usize> = (0..n)
-                .filter(|&i| !small[i] && share[i] / rest * left < least)
+                .filter(|&i| !small[i] && share[i] / rest * left < least[i])
                 .collect();
             if under.is_empty() {
                 break;
@@ -1038,14 +1073,13 @@ fn keep_room(tiles: &mut Tiles<Pane>) {
         if !small.contains(&true) {
             continue;
         }
-        let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
-        let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+        let (rest, left) = rest_and_left(&small);
         if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
             tiles.get_mut(id)
         {
             for (i, &c) in shown.iter().enumerate() {
                 let f = if small[i] {
-                    least
+                    least[i]
                 } else {
                     share[i] / rest * left
                 };
@@ -1478,7 +1512,7 @@ pub struct TimegrapherApp {
     results_rects: [Option<egui::Rect>; 2],
     /// This take ran a Positions Test.
     positions_take: bool,
-    /// A question about a take (Rename, Delete, Keep Analysis Only, Add to
+    /// A question about a take (Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
@@ -1621,6 +1655,11 @@ pub struct TimegrapherApp {
     /// The charts drawn last frame: those turned on that had room. The
     /// key names only these.
     charts_drawn: [bool; 3],
+    /// The height each pane with plots needed last frame for its toolbar
+    /// and one plot at a readable size, kept clear by [`keep_room`].
+    pane_need: std::collections::HashMap<Pane, f32>,
+    /// The top of the pane being drawn, for working out its need.
+    pane_top: f32,
     /// The distributions cover only the strip's length, ending where the
     /// strip does, instead of the whole session.
     hist_span_of_strip: bool,
@@ -2064,6 +2103,8 @@ impl TimegrapherApp {
             chart_series: [true; 3],
             dist_series: [true; 3],
             charts_drawn: [true; 3],
+            pane_need: std::collections::HashMap::new(),
+            pane_top: 0.0,
             hist_span_of_strip: false,
             hist_cumulative: false,
             steady_series: Default::default(),
@@ -3323,8 +3364,8 @@ impl TimegrapherApp {
         if let Ok(inner) = take_folder(path) {
             if analysis_take::is_analysis_only(&inner) {
                 return self.open_failed(format!(
-                    "{} was kept as its analysis alone, without its sound, so it can't be \
-                     replayed. Open shows its readings.",
+                    "{} has had its sound removed, so it can't be played again. Open shows \
+                     its readings.",
                     capture_label(&inner)
                 ));
             }
@@ -4788,10 +4829,6 @@ impl TimegrapherApp {
                     self.error(format!("Couldn't open {}: {err}", dir.display()));
                 }
             }
-            Some(watches::TakeAction::Rename(take)) => {
-                let name = file_name(&take);
-                self.take_ask = Some(watches::Ask::Rename { take, name });
-            }
             Some(watches::TakeAction::Delete(take)) => {
                 let bytes = folder_size(&take);
                 self.take_ask = Some(watches::Ask::Delete { take, bytes });
@@ -4908,30 +4945,37 @@ impl TimegrapherApp {
         }
     }
 
-    /// Why `take` can't be renamed, moved or deleted now (or, with
-    /// `keep`, kept as its analysis), if it can't: Save Again saves into
-    /// it, it is being read as the input, or its analysis is being kept.
+    /// Why `take` can't be moved or deleted now (or, with `keep`, kept
+    /// as its analysis), if it can't: it is being recorded or read, or
+    /// its analysis is being kept. A stopped session saved into it is let
+    /// go of first, by [`Self::answer_take_ask`].
     fn take_busy(&self, take: &Path, keep: bool) -> Option<String> {
         let inside = |p: &Path| p.starts_with(take);
-        if self.session.saved_to().is_some_and(inside) {
-            return Some(
-                "This take is the one Save Again saves into: press New Session first.".into(),
-            );
+        if self.running() && self.session.saved_to().is_some_and(inside) {
+            return Some("This take is still being recorded. Press Stop first.".into());
         }
         if self.running() && inside(Path::new(&self.opened_path)) {
-            return Some("This take is in use: Stop first.".into());
+            return Some("This take is being played. Press Stop first.".into());
         }
         if self.take_keep.as_ref().is_some_and(|(t, _)| t == take) {
-            return Some("This take's analysis is being kept: wait, or Cancel.".into());
+            return Some(
+                "This take's sound is already being removed. Wait for it to finish, or press \
+                 Cancel."
+                    .into(),
+            );
         }
         if !keep && self.batch.is_some() && inside(Path::new(&self.opened_path)) {
-            return Some("This take is being analysed: wait, or Cancel.".into());
+            return Some(
+                "This take is still being analysed. Wait for it to finish, or press Cancel.".into(),
+            );
         }
         None
     }
 
-    /// A take renamed or moved: the recording opened from it follows.
+    /// A take moved: the recording opened from it follows, and so does
+    /// Save Again.
     fn take_moved(&mut self, from: &Path, to: &Path) {
+        self.session.saved_moved(from, to);
         if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
             let now = to.join(rest);
             self.opened_path = now.display().to_string();
@@ -4966,10 +5010,19 @@ impl TimegrapherApp {
     }
 
     fn answer_take_ask(&mut self, ask: watches::Ask) {
+        // The session just saved into the take, stopped, lets go of it:
+        // nothing more is saved there, and what is on show goes.
+        let changed = match &ask {
+            watches::Ask::Delete { take, .. } | watches::Ask::Keep { take, .. } => Some(take),
+            _ => None,
+        };
+        let saved_into = changed
+            .is_some_and(|take| self.session.saved_to().is_some_and(|p| p.starts_with(take)));
+        if saved_into && !self.running() {
+            self.new_session();
+        }
         let busy = match &ask {
-            watches::Ask::Rename { take, .. } | watches::Ask::Delete { take, .. } => {
-                self.take_busy(take, false)
-            }
+            watches::Ask::Delete { take, .. } => self.take_busy(take, false),
             watches::Ask::DeletePhoto { .. } => None,
             watches::Ask::Keep { take, .. } => self.take_busy(take, true),
             watches::Ask::Add {
@@ -4987,10 +5040,6 @@ impl TimegrapherApp {
             return self.error("There is no Watches folder.".into());
         };
         match ask {
-            watches::Ask::Rename { take, name } => match lib.rename_take(&take, &name) {
-                Ok(to) => self.take_moved(&take, &to),
-                Err(e) => self.error(format!("The take couldn't be renamed: {e}")),
-            },
             watches::Ask::Delete { take, .. } => match lib.delete_take(&take) {
                 Ok(()) => self.info_msg(format!("Deleted \"{}\".", file_name(&take))),
                 Err(e) => self.error(format!("The take couldn't be deleted: {e}")),
@@ -5043,12 +5092,13 @@ impl TimegrapherApp {
             let m: Manifest =
                 toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
             if m.audio == Some(false) {
-                return Err("it is already kept as its analysis alone".into());
+                return Err("its sound has already been removed".into());
             }
             if m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".") {
                 return Err(format!(
-                    "its {MANIFEST} lists its sound file by file, and a take kept as its \
-                     analysis names the whole folder in each entry, as the app's own takes do"
+                    "its {MANIFEST} lists each sound file by name, and only takes whose \
+                     {MANIFEST} names the whole folder, as the app writes it, can have their \
+                     sound removed"
                 ));
             }
             let files = recordings_in(&take)?;
@@ -5089,7 +5139,11 @@ impl TimegrapherApp {
         })();
         let (files, total_s, companions, cfg, shapes) = match prepared {
             Ok(p) => p,
-            Err(e) => return self.error(format!("The take can't be kept as its analysis: {e}")),
+            Err(e) => {
+                return self.error(format!(
+                    "The sound couldn't be removed from this take, so nothing was changed: {e}"
+                ))
+            }
         };
         let dest = take.with_file_name(format!(".{}.analysis", file_name(&take)));
         let _ = std::fs::remove_dir_all(&dest);
@@ -5165,14 +5219,15 @@ impl TimegrapherApp {
         };
         match placed {
             Ok(None) => self.info_msg(format!(
-                "Kept \"{}\" as its analysis alone: {} now, from {}.",
+                "Removed the sound from \"{}\" and kept its analysis. It now uses {}, down \
+                 from {}.",
                 file_name(&take),
                 fmt_bytes(folder_size(&take)),
                 fmt_bytes(before)
             )),
             Ok(Some(why)) => self.error(why),
             Err(e) => self.error(format!(
-                "The take couldn't be kept as its analysis, and is left with its sound: {e}"
+                "The sound couldn't be removed from this take, so it still has its sound: {e}"
             )),
         }
     }
@@ -5187,6 +5242,8 @@ impl TimegrapherApp {
         }
         self.watch_open = Some(id.to_string());
         self.unsorted_open = false;
+        // The watch picked shows, not the list left over from before.
+        self.list_for = None;
         self.quick_defaults = false;
         let Some(w) = self.open_watch().map(|e| e.watch.clone()) else {
             self.watch_open = None;
@@ -5218,6 +5275,8 @@ impl TimegrapherApp {
         }
         self.watch_open = None;
         self.unsorted_open = true;
+        // Its takes show, not the list left over from before.
+        self.list_for = None;
         self.quick_listen = false;
         // Readings on show keep the settings they were measured with.
         if self.live.is_some() {
@@ -6174,16 +6233,22 @@ impl TimegrapherApp {
             .map_or(self.position, |(_, p)| p)
     }
 
-    /// The position as a picture, with arrows around it that tip the watch
-    /// to the four next to it and turn it over, while it can be set; the
-    /// picture alone while it can't.
+    /// The position as a picture filling its square, with small arrows at
+    /// its edges that tip the watch to the four next to it and turn it
+    /// over, while it can be set; the picture alone while it can't.
     fn position_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
         let mut picked = None;
-        let cell = POSITION_SLOT_H / 3.0;
-        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(cell * 3.0));
+        // As large a square as the slot allows, leaving room for the code.
+        let code_w = ui.fonts_mut(|f| {
+            f.layout_no_wrap(here.code().to_string(), theme::semibold(15.0), pal.text)
+                .size()
+                .x
+        });
+        let side = (ui.max_rect().width() - code_w - 6.0).clamp(48.0, POSITION_SLOT_H);
+        let grid = egui::Rect::from_min_size(ui.min_rect().min, Vec2::splat(side));
         // Its name beside the picture, the code under it.
         let name = egui::Rect::from_min_max(
             egui::pos2(grid.right() + 6.0, grid.top()),
@@ -6220,23 +6285,13 @@ impl TimegrapherApp {
                 }
             },
         );
-        let at = |col: f32, row: f32| {
-            egui::Rect::from_min_size(
-                grid.min + Vec2::new(col * cell, row * cell),
-                Vec2::splat(cell),
-            )
-        };
         ui.allocate_rect(grid, egui::Sense::hover());
-        // Shown only, the picture fills the space the arrows would take.
-        let (spot, size) = if editable {
-            (at(1.0, 1.0), cell)
-        } else {
-            (grid.shrink(cell * 0.4), cell * 2.2)
-        };
-        ui.put(spot, |ui: &mut egui::Ui| {
-            theme::icon_button(ui, here.icon(), size, pal.accent, false, editable)
-        })
-        .on_hover_text(if editable {
+        // The picture fills the square, the arrows small and faint at its
+        // edges, while it can be set or not.
+        let pic = grid.shrink(3.0);
+        let resp = ui.allocate_rect(pic, egui::Sense::hover());
+        crate::icons::draw(ui.painter(), pic, here.icon(), pal.accent);
+        resp.on_hover_text(if editable {
             format!("{}. {POSITION_HINT}", here.label())
         } else {
             format!(
@@ -6246,12 +6301,14 @@ impl TimegrapherApp {
             )
         });
         if editable {
-            for (tip, col, row, glyph) in [
-                (Tip::Back, 1.0, 0.0, "↑"),
-                (Tip::Forward, 1.0, 2.0, "↓"),
-                (Tip::Left, 0.0, 1.0, "←"),
-                (Tip::Right, 2.0, 1.0, "→"),
-                (Tip::Over, 2.0, 0.0, "↗"),
+            let c = grid.center();
+            let edge = grid.width() / 2.0 - 5.0;
+            for (tip, at, glyph) in [
+                (Tip::Back, c + Vec2::new(0.0, -edge), "↑"),
+                (Tip::Forward, c + Vec2::new(0.0, edge), "↓"),
+                (Tip::Left, c + Vec2::new(-edge, 0.0), "←"),
+                (Tip::Right, c + Vec2::new(edge, 0.0), "→"),
+                (Tip::Over, c + Vec2::new(edge, -edge), "↗"),
             ] {
                 let from = if self.orient.position() == here {
                     self.orient
@@ -6261,22 +6318,20 @@ impl TimegrapherApp {
                 let turned = from.tip(tip);
                 let to = turned.position();
                 let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
-                // A whole cell to click, drawn to fit it exactly, the glyph
-                // large enough to see.
-                let r = at(col, row).shrink(1.0);
-                let resp = ui.allocate_rect(r, egui::Sense::click());
-                let fill = if resp.hovered() {
-                    ui.visuals().widgets.hovered.weak_bg_fill
+                // A small spot to click, the glyph faint until pointed at.
+                let r = egui::Rect::from_center_size(at, Vec2::splat(22.0));
+                let resp = ui.interact(r, ui.id().with(("tip", glyph)), egui::Sense::click());
+                let ink = if resp.hovered() {
+                    pal.text
                 } else {
-                    ui.visuals().widgets.inactive.weak_bg_fill
+                    pal.text_tertiary
                 };
-                ui.painter().rect_filled(r, 4.0, fill);
                 ui.painter().text(
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     glyph,
-                    egui::FontId::proportional(15.0),
-                    pal.text,
+                    egui::FontId::proportional(10.0),
+                    ink,
                 );
                 if resp
                     .on_hover_text(format!("{}: {} (key {n})", tip.words(), to.label()))
@@ -6363,6 +6418,12 @@ impl TimegrapherApp {
     }
 
     /// Save: what is on show kept in a watch, or as a take in a folder.
+    /// Whether the Save menu offers Unsorted Takes: a Quick Listen not
+    /// saved yet goes there, as File > Save puts it.
+    fn saves_into_unsorted(&self) -> bool {
+        self.quick_listen && self.session.saved_to().is_none() && self.watch_takes_dir().is_some()
+    }
+
     fn save_menu(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
@@ -6376,14 +6437,28 @@ impl TimegrapherApp {
             _ => Vec::new(),
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
+        let into_unsorted = can && self.saves_into_unsorted();
         let mut picked = None;
-        let (mut new, mut folder) = (false, false);
+        let (mut new, mut folder, mut unsorted) = (false, false, false);
         ui.add_enabled_ui(can || self.addable_take().is_some(), |ui| {
             let button = theme::icon_button(ui, Icon::Save, 26.0, pal.accent, false, false);
             let saved = self.session.saved_to().is_some();
             egui::Popup::menu(&button)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
                 .show(|ui| {
+                    if into_unsorted {
+                        if ui
+                            .button("Unsorted Takes")
+                            .on_hover_text(
+                                "Keep this in Unsorted Takes, in the Watches pane, to file \
+                                 under a watch later",
+                            )
+                            .clicked()
+                        {
+                            unsorted = true;
+                        }
+                        ui.separator();
+                    }
                     if into_watch {
                         ui.label(
                             RichText::new("Keep in a Watch")
@@ -6427,6 +6502,9 @@ impl TimegrapherApp {
         if let Some(id) = picked {
             self.keep_into(&id);
         }
+        if unsorted {
+            self.save_again();
+        }
         if new {
             self.open_new_watch_form();
             self.keep_after_form = true;
@@ -6451,6 +6529,15 @@ impl TimegrapherApp {
             if !self.take_shows_rate_and_lift() {
                 ui.label(format!("{}°", fields::plain(self.lift_deg)))
                     .on_hover_text("The watch's calibre sets it. Edit… on the watch changes it.");
+                return;
+            }
+            // A calibre picked with a lift angle of its own sets it.
+            if !self.lift_settable() {
+                ui.label(format!("{}°", fields::plain(self.lift_deg)))
+                    .on_hover_text(format!(
+                        "The {} calibre sets it. Set Calibre to Not Set to type another.",
+                        self.calibre
+                    ));
                 return;
             }
             let mut lift = self.lift_deg;
@@ -6668,6 +6755,12 @@ impl TimegrapherApp {
 
     /// Whether the cards offer Beat Rate and Lift Angle: when the
     /// take's watch has no calibre the table knows, or no watch is picked.
+    /// Whether the lift angle can be typed: not when a watch's calibre or
+    /// a calibre picked in Quick Listen sets it.
+    fn lift_settable(&self) -> bool {
+        self.take_shows_rate_and_lift() && self.cal.lift(&self.calibre).is_none()
+    }
+
     fn take_shows_rate_and_lift(&self) -> bool {
         self.open_watch().is_none() || self.cal.find(&self.calibre).is_none()
     }
@@ -9060,30 +9153,50 @@ impl TimegrapherApp {
                     // the cursor down.
                     ui.set_min_height(height);
                     let top = ui.min_rect().top();
+                    let short = facts
+                        .iter()
+                        .map(|f| f.0.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    let long = facts
+                        .iter()
+                        .map(|f| f.1.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let note = || RichText::new(&short).small().color(pal.text_secondary);
+                    // Beside the title where it fits whole, else wrapped on
+                    // lines of its own under it: a reading's limits are never
+                    // cut short.
+                    let mut under = false;
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
                         if !facts.is_empty() {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    let short: Vec<&str> =
-                                        facts.iter().map(|f| f.0.as_str()).collect();
-                                    let long: Vec<&str> =
-                                        facts.iter().map(|f| f.1.as_str()).collect();
-                                    ui.add(
-                                        egui::Label::new(
-                                            RichText::new(short.join(" · "))
-                                                .small()
-                                                .color(pal.text_secondary),
+                            let small = egui::TextStyle::Small.resolve(ui.style());
+                            let wide = ui.fonts_mut(|f| {
+                                f.layout_no_wrap(short.clone(), small, pal.text_secondary)
+                                    .size()
+                                    .x
+                            });
+                            if wide + 8.0 <= ui.available_width() {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.add(
+                                            egui::Label::new(note())
+                                                .wrap_mode(egui::TextWrapMode::Extend),
                                         )
-                                        .truncate(),
-                                    )
-                                    .on_hover_text(long.join("\n\n"));
-                                },
-                            );
+                                        .on_hover_text(&long);
+                                    },
+                                );
+                            } else {
+                                under = true;
+                            }
                         }
                     });
+                    if under {
+                        ui.add(egui::Label::new(note()).wrap()).on_hover_text(&long);
+                    }
                     body(ui);
                     // Room for the controls, which go in once every card
                     // is drawn, at the foot of the row's height.
@@ -10994,7 +11107,8 @@ impl TimegrapherApp {
         self.charts_to_live_now = std::mem::take(&mut self.charts_to_live);
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         repair_tabs(&mut panes);
-        keep_room(&mut panes.tiles);
+        let need = self.pane_need.clone();
+        keep_room(&mut panes.tiles, |p| need.get(&p).copied());
         panes.ui(&mut PaneBehavior { app: self }, ui);
         self.panes = panes;
     }
@@ -11053,7 +11167,13 @@ impl TimegrapherApp {
         if self.live.is_none() || self.mic_session_set_aside() {
             return self.empty_state(ui);
         }
-        if self.no_watch_yet() {
+        // No regular beat yet: the peaks heard, faint, if any.
+        let guessing = self.no_watch_yet();
+        let candidates = match &self.live {
+            Some(l) if guessing => l.candidates(),
+            _ => Vec::new(),
+        };
+        if guessing && candidates.is_empty() {
             return self.no_watch(ui);
         }
         if self.follow {
@@ -11061,12 +11181,19 @@ impl TimegrapherApp {
         }
         let end = self.end_s();
         let looking_back = self.view_end.is_some() && end < self.latest_s() - 0.5;
-        let note = looking_back.then(|| {
-            format!(
-                "at {}, double-click for the newest beats",
-                strip::fmt_time(end)
+        let note = if guessing {
+            Some(
+                "No regular beat found yet. The faint dots are sounds that might be beats."
+                    .to_string(),
             )
-        });
+        } else {
+            looking_back.then(|| {
+                format!(
+                    "at {}, double-click for the newest beats",
+                    strip::fmt_time(end)
+                )
+            })
+        };
         let from = end - self.strip.span_s - 5.0;
         let (trend, step) = self.strip_trend(from, end, self.average_for(Pane::Strip));
         let Some(live) = &self.live else { return };
@@ -11129,7 +11256,13 @@ impl TimegrapherApp {
             });
         }
         let bands = self.position_bands();
-        let settles = self.strip_settles();
+        let mut settles = self.strip_settles();
+        if guessing {
+            // Drawn faintly, as the beats the readings leave out are.
+            overlays.clear();
+            settles = vec![(from, end + 1.0, "Possible Beats")];
+        }
+        let rate_line = rate_line.filter(|_| !guessing);
         let extras = strip::Extras {
             note: note.as_deref(),
             rate_line,
@@ -11145,11 +11278,34 @@ impl TimegrapherApp {
             masking: self.masking,
         };
         let Some(live) = &self.live else { return };
+        // The possible beats numbered at the strip's beat period from the
+        // first, so each lands on the strip, wrapped as the beats are.
+        let candidates: Vec<timegrapher_core::beats::Beat> = candidates
+            .first()
+            .map(|first| {
+                candidates
+                    .iter()
+                    .map(|b| timegrapher_core::beats::Beat {
+                        index: first.index + ((b.time - first.time) / period).round() as i64,
+                        time: b.time,
+                        quality: 1.0,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let anchor = if guessing {
+            candidates.first().map(|b| strip::Anchor {
+                index: b.index,
+                time: b.time,
+            })
+        } else {
+            self.anchor
+        };
         let input = strip::draw_strip(
             ui,
-            live.beats(),
+            if guessing { &candidates } else { live.beats() },
             period,
-            self.anchor,
+            anchor,
             end,
             &self.strip,
             &extras,
@@ -11247,11 +11403,8 @@ impl TimegrapherApp {
         };
         if self.no_sound {
             ui.label(
-                RichText::new(
-                    "This take was kept as its analysis alone, without its sound, so there is \
-                     no waveform to show.",
-                )
-                .color(pal.text_tertiary),
+                RichText::new("This take's sound was removed, so there is no waveform to show.")
+                    .color(pal.text_tertiary),
             );
             return;
         }
@@ -11585,7 +11738,8 @@ impl TimegrapherApp {
     /// the other, sharing the pane's height.
     fn distributions_pane(&mut self, ui: &mut egui::Ui) {
         let shown = self.dist_series;
-        stacked(ui, shown, |ui, k| self.histogram(ui, k));
+        self.note_need(ui, Pane::Distributions, DIST_MIN_H);
+        stacked(ui, shown, DIST_MIN_H, |ui, k| self.histogram(ui, k));
     }
 
     /// How often each value of a reading came up, over the session or the
@@ -11860,7 +12014,16 @@ impl TimegrapherApp {
     /// other, sharing the pane's height and its time axis.
     fn charts_pane(&mut self, ui: &mut egui::Ui) {
         let shown = self.chart_series;
-        self.charts_drawn = stacked(ui, shown, |ui, k| self.chart(ui, k));
+        self.note_need(ui, Pane::Charts, STACKED_MIN_H);
+        self.charts_drawn = stacked(ui, shown, STACKED_MIN_H, |ui, k| self.chart(ui, k));
+    }
+
+    /// Keep the height `pane` needs: what is above its plots, one plot
+    /// `least` tall, the line naming those with no room, and the margin.
+    fn note_need(&mut self, ui: &egui::Ui, pane: Pane, least: f32) {
+        let above = ui.cursor().top() - self.pane_top;
+        self.pane_need
+            .insert(pane, above + least + STACKED_NOTE_H + 6.0);
     }
 
     fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
@@ -11965,9 +12128,8 @@ impl TimegrapherApp {
             .allow_axis_zoom_drag(false)
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-            .custom_x_axes(vec![
-                egui_plot::AxisHints::new_x().formatter(|m, r| chart_time_label(m.value, r))
-            ])
+            .custom_x_axes(vec![egui_plot::AxisHints::new_x()
+                .formatter(|m, r| chart_time_label(m.value, m.step_size, r))])
             // Short charts still get a label at the top and the bottom:
             // the labels are painted below, in small text, so they fit
             // closer than the plot's own.
@@ -12055,6 +12217,9 @@ impl TimegrapherApp {
             egui::TextStyle::Small.resolve(ui.style()),
             colour,
         );
+        // Its lines' key at its top right, beside the lines it names.
+        let only = steady::SERIES.map(|k| k == reading);
+        paint_key(&painter, frame, &chart_key(only, pal), ui, pal);
         let at = |x| egui::pos2(t.position_from_point_x(x), frame.top());
         let test = self.in_test();
         if test {
@@ -12253,14 +12418,21 @@ fn position_in_name(path: &Path) -> Option<Position> {
 }
 
 /// A chart's time label at `t` seconds, in view `r`.
-fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
+fn chart_time_label(t: f64, step: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     // Nothing before the session starts: a time there read as a second
     // "0:00".
     if t < -1e-6 {
         return String::new();
     }
     // A long time ("1:30:00") at the right end would be cut.
-    let label = strip::fmt_time(t);
+    // Marks less than a second apart name their tenths, so no two read
+    // the same.
+    let label = if step < 1.0 - 1e-9 {
+        let fine = strip::fmt_time_fine(t);
+        fine[..fine.len() - 1].to_string()
+    } else {
+        strip::fmt_time(t)
+    };
     let frac = if label.len() > 5 { 0.03 } else { 0.0 };
     theme::clear_of_right_edge(label, t, r, frac)
 }
@@ -12293,6 +12465,67 @@ fn chart_key(
     key
 }
 
+/// A chart's key, right to left from its top right corner: each name
+/// after a dot, or a short dash for a line drawn dashed over another
+/// colour.
+fn paint_key(
+    painter: &egui::Painter,
+    frame: egui::Rect,
+    key: &[(&'static str, Color32, Option<Color32>)],
+    ui: &egui::Ui,
+    pal: &theme::Palette,
+) {
+    if key.is_empty() {
+        return;
+    }
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let galleys: Vec<_> = key
+        .iter()
+        .map(|&(name, _, _)| painter.layout_no_wrap(name.into(), font.clone(), pal.text_secondary))
+        .collect();
+    let mark = |under: Option<Color32>| if under.is_some() { 14.0 } else { 6.0 };
+    let (gap, space) = (5.0, 12.0);
+    let width: f32 = key
+        .iter()
+        .zip(&galleys)
+        .map(|(&(_, _, under), g)| mark(under) + gap + g.size().x)
+        .sum::<f32>()
+        + space * (key.len() as f32 - 1.0);
+    let h = galleys.iter().map(|g| g.size().y).fold(0.0, f32::max);
+    let right = frame.right() - 6.0;
+    let top = frame.top() + 3.0;
+    let y = top + h / 2.0;
+    // On a backing of the card's colour, so the lines under it don't
+    // muddle it.
+    painter.rect_filled(
+        egui::Rect::from_min_max(
+            egui::pos2(right - width - 4.0, top - 1.0),
+            egui::pos2(right + 2.0, top + h + 1.0),
+        ),
+        3.0,
+        pal.card,
+    );
+    let mut x = right - width;
+    for (&(_, color, under), g) in key.iter().zip(galleys) {
+        match under {
+            Some(u) => {
+                painter.hline(x..=x + 14.0, y, egui::Stroke::new(2.0_f32, u));
+                for i in 0..3 {
+                    let a = x + i as f32 * 5.0;
+                    painter.hline(a..=a + 3.0, y, egui::Stroke::new(2.0_f32, color));
+                }
+            }
+            None => {
+                painter.circle_filled(egui::pos2(x + 3.0, y), 3.0, color);
+            }
+        }
+        x += mark(under) + gap;
+        let w = g.size().x;
+        painter.galley(egui::pos2(x, top), g, pal.text_secondary);
+        x += w + space;
+    }
+}
+
 /// One plot for each reading `shown`, one above the other, sharing the
 /// height left in `ui` evenly. A pane too short for them all draws the
 /// first ones at a readable height and names the rest, rather than
@@ -12300,6 +12533,7 @@ fn chart_key(
 fn stacked(
     ui: &mut egui::Ui,
     shown: [bool; 3],
+    least: f32,
     mut draw: impl FnMut(&mut egui::Ui, SeriesKind),
 ) -> [bool; 3] {
     let kinds: Vec<SeriesKind> = steady::SERIES
@@ -12307,7 +12541,7 @@ fn stacked(
         .zip(shown)
         .filter_map(|(k, on)| on.then_some(k))
         .collect();
-    let (gap, least, note) = (6.0, STACKED_MIN_H, 18.0);
+    let (gap, note) = (6.0, STACKED_NOTE_H);
     let room = ui.available_height();
     let fits = |n: usize| n as f32 * least + (n as f32 - 1.0) * gap + note;
     let mut n = kinds.len();
@@ -12361,9 +12595,14 @@ fn stacked(
     steady::SERIES.map(|k| kinds[..n].contains(&k))
 }
 
-/// The least height a chart or distribution is drawn at in the Charts and
-/// Distributions panes.
+/// The least height a chart is drawn at in the Charts pane, its time axis
+/// included.
 const STACKED_MIN_H: f32 = 70.0;
+/// The least height a distribution is drawn at, its summary line and
+/// axis included: about 60 pt of plot.
+const DIST_MIN_H: f32 = 100.0;
+/// The line under stacked plots naming those with no room.
+const STACKED_NOTE_H: f32 = 18.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
@@ -12442,6 +12681,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile: TileId, pane: &mut Pane) -> UiResponse {
         let pal = theme::pal(ui);
         let rect = ui.max_rect();
+        self.app.pane_top = rect.top();
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
         let inner = rect.shrink2(Vec2::new(8.0, 6.0));
@@ -12557,68 +12797,6 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         )
     }
 
-    /// The charts' key at the right of their tab bar, so it never covers
-    /// the lines.
-    fn top_bar_right_ui(
-        &mut self,
-        tiles: &Tiles<Pane>,
-        ui: &mut egui::Ui,
-        _tile_id: TileId,
-        tabs: &egui_tiles::Tabs,
-        _scroll_offset: &mut f32,
-    ) {
-        let Some(egui_tiles::Tile::Pane(pane)) = tabs.active.and_then(|a| tiles.get(a)) else {
-            return;
-        };
-        let pal = theme::pal(ui);
-        ui.spacing_mut().item_spacing.x = 4.0;
-        // The tabs' titles and their ×s come first: what is drawn here
-        // only takes the room they leave.
-        let title_font = theme::semibold(12.5);
-        let tabs_w: f32 = tabs
-            .children
-            .iter()
-            .filter_map(|c| match tiles.get(*c) {
-                Some(egui_tiles::Tile::Pane(p)) if tiles.is_visible(*c) => Some(*p),
-                _ => None,
-            })
-            .map(|p| {
-                let name = self.app.pane_heading(p);
-                ui.fonts_mut(|f| f.layout_no_wrap(name, title_font.clone(), pal.text))
-                    .size()
-                    .x
-                    + 40.0
-            })
-            .sum();
-        if *pane != Pane::Charts {
-            return;
-        }
-        // The key only when all of it fits beside the tabs' titles.
-        let key = chart_key(self.app.charts_drawn, pal);
-        let font = egui::TextStyle::Small.resolve(ui.style());
-        let needed: f32 = key
-            .iter()
-            .map(|(name, _, _)| {
-                ui.fonts_mut(|f| {
-                    f.layout_no_wrap(name.to_string(), font.clone(), pal.text_secondary)
-                })
-                .size()
-                .x + 26.0
-            })
-            .sum();
-        if needed + tabs_w > ui.available_width() {
-            return;
-        }
-        for (name, color, gaps) in key.into_iter().rev() {
-            ui.add_space(6.0);
-            ui.label(RichText::new(name).small().color(pal.text_secondary));
-            match gaps {
-                Some(g) => theme::dash(ui, color, g),
-                None => theme::dot(ui, color),
-            };
-        }
-    }
-
     fn tab_outline_stroke(
         &self,
         _visuals: &egui::Visuals,
@@ -12649,7 +12827,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     }
 
     fn tab_bar_height(&self, _style: &egui::Style) -> f32 {
-        24.0
+        TAB_BAR_H
     }
 
     fn gap_width(&self, _style: &egui::Style) -> f32 {
@@ -13604,6 +13782,53 @@ mod tests {
         }
         app.poll();
         app
+    }
+
+    /// The lift angle is typed only with no calibre setting it, in Quick
+    /// Listen too.
+    #[test]
+    fn a_calibre_picked_sets_the_lift_angle() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert!(app.open_watch().is_none());
+        assert!(app.lift_settable());
+        app.set_calibre("ETA 2824-2".into());
+        assert!(app.cal.lift("ETA 2824-2").is_some());
+        assert!(!app.lift_settable());
+        app.set_calibre(String::new());
+        assert!(app.lift_settable());
+    }
+
+    /// Noise with no regular beat: the strip shows the peaks heard,
+    /// faintly and said to be possible beats, rather than an empty card.
+    #[test]
+    fn noise_shows_its_possible_beats_on_the_strip() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.reset_session(48000, "noise".into());
+        let mut seed = 12_345_u32;
+        let x: Vec<f32> = (0..48_000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let live = app.live.as_mut().unwrap();
+        for b in x.chunks(960) {
+            if live.push(b) {
+                let r = live.reading(app.average_s);
+                app.trend.push(TrendPoint::of(r.time_s, &r));
+            }
+        }
+        app.poll();
+        assert!(app.no_watch_yet());
+        assert!(!app.live.as_ref().unwrap().candidates().is_empty());
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.strip_pane(ui));
+        });
+        let drawn = format!("{:?}", out.shapes);
+        assert!(drawn.contains("No regular beat found yet"), "{drawn}");
+        assert!(drawn.contains("Circle"), "the possible beats are drawn");
     }
 
     /// The rate distribution's 2 s values are the rate over each 2 seconds
@@ -15519,6 +15744,8 @@ mod tests {
         // Nor asked about: it goes without a question unless saved.
         assert!(!app.needs_save_confirmation());
         assert!(app.quick_unsaved());
+        // The Listen card's Save offers Unsorted Takes until it is saved.
+        assert!(app.saves_into_unsorted());
         app.save_again();
         app.wait_for_save();
         let saved: Vec<PathBuf> = std::fs::read_dir(&unsorted)
@@ -15527,6 +15754,7 @@ mod tests {
             .collect();
         assert_eq!(saved.len(), 1, "{saved:?}");
         assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
+        assert!(!app.saves_into_unsorted());
         assert!(!app.needs_save_confirmation());
         app.stop_listening();
         app.wait_for_save();
@@ -15545,10 +15773,7 @@ mod tests {
         let e = app.open_group().unwrap();
         assert!(e.watch.id.is_empty() && e.takes.len() == 1);
 
-        // Filed under Pepsi, once Save Again no longer saves into it.
-        app.move_take(&saved[0], &pepsi);
-        assert!(saved[0].exists(), "busy: {:?}", app.message);
-        app.new_session();
+        // Filed under Pepsi while stopped: Save Again follows it there.
         app.move_take(&saved[0], &pepsi);
         let filed = root.join("Pepsi").join(library::TAKES).join(&name);
         assert!(filed.join(MANIFEST).is_file() && !saved[0].exists());
@@ -15556,11 +15781,27 @@ mod tests {
             .message
             .as_ref()
             .is_some_and(|(m, _)| m.contains("Filed") && m.contains("Pepsi")));
+        assert_eq!(app.session.saved_to(), Some(filed.as_path()));
         assert!(app.open_group().unwrap().takes.is_empty());
+        // Deleted while the stopped session is saved into it: the session
+        // lets go of it first, rather than refusing.
+        app.answer_take_ask(watches::Ask::Delete {
+            take: filed.clone(),
+            bytes: 0,
+        });
+        assert!(!filed.exists(), "{:?}", app.message);
+        assert_eq!(app.session.saved_to(), None);
+
+        // Unsorted Takes shows its takes at once, not a list left over.
+        app.list_for = Some((None, true));
+        app.pick_unsorted();
+        assert!(!app.list_shown());
 
         // Picking a watch ends Quick Listen: Save… saves into the watch.
+        app.list_for = Some((None, true));
         app.pick_watch(&pepsi);
         assert!(!app.quick_listen && !app.unsorted_open);
+        assert!(app.list_for.is_none());
         assert_eq!(
             app.watch_takes_dir(),
             Some(root.join("Pepsi").join(library::TAKES))
@@ -15630,11 +15871,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// A watch's takes are kept as their analysis alone, renamed, moved
+    /// A watch's takes are kept as their analysis alone, moved
     /// and deleted from the Watches pane, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
-    fn a_watchs_takes_are_kept_renamed_moved_deleted_and_added() {
+    fn a_watchs_takes_are_kept_moved_deleted_and_added() {
         let base = std::env::temp_dir().join(format!("tg-app-take-ops-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let root = base.join("Timegrapher Data");
@@ -15736,21 +15977,12 @@ mod tests {
         app.take_action(Some(watches::TakeAction::Open(take.clone())));
         assert!(app.batch.is_none());
 
-        // Renamed: the recording opened follows.
-        app.answer_take_ask(watches::Ask::Rename {
-            take: take.clone(),
-            name: "Before Service".into(),
-        });
-        let renamed = take.with_file_name("Before Service");
-        assert!(renamed.is_dir() && !take.exists());
-        assert_eq!(Path::new(&app.opened_path), renamed);
+        let renamed = take.clone();
+        let name = file_name(&take);
 
         // Moved to Daytona, then deleted there.
         app.move_take(&renamed, &daytona_id);
-        let d = root
-            .join("Daytona")
-            .join(library::TAKES)
-            .join("Before Service");
+        let d = root.join("Daytona").join(library::TAKES).join(&name);
         assert!(d.is_dir() && !renamed.exists());
         assert_eq!(Path::new(&app.opened_path), d);
         app.answer_take_ask(watches::Ask::Delete {
@@ -17656,7 +17888,7 @@ mod tests {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        fit = stacked(ui, [true; 3], |ui, k| {
+                        fit = stacked(ui, [true; 3], STACKED_MIN_H, |ui, k| {
                             drawn.push((k, ui.max_rect().height()));
                         });
                     });
@@ -18433,9 +18665,13 @@ mod tests {
     #[test]
     fn a_chart_labels_no_time_before_the_start() {
         let r = -30.0..=600.0;
-        assert_eq!(chart_time_label(-30.0, &r), "");
-        assert_eq!(chart_time_label(0.0, &r), "0:00");
-        assert_eq!(chart_time_label(120.0, &r), "2:00");
+        assert_eq!(chart_time_label(-30.0, 60.0, &r), "");
+        assert_eq!(chart_time_label(0.0, 60.0, &r), "0:00");
+        assert_eq!(chart_time_label(120.0, 60.0, &r), "2:00");
+        // Marks under a second apart don't repeat a label.
+        let r = 9.0..=10.0;
+        assert_eq!(chart_time_label(9.2, 0.2, &r), "0:09.2");
+        assert_eq!(chart_time_label(9.4, 0.2, &r), "0:09.4");
     }
 
     /// Settings' Library section reads the library at the folder chosen,

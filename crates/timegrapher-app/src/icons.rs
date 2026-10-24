@@ -151,22 +151,27 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Save => {
             r#"<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>"#
         }
-        // The positions, the watch drawn as it lies or stands, its crown
-        // the small knob. Dial up: its face, hands and all.
-        Icon::DialUp => r#"<circle cx="12" cy="12" r="7.5"/><path d="M12 12V8.2M12 12l2.6 1.5"/>"#,
+        // The positions, the watch drawn as it lies or stands, its lugs
+        // the short strokes off the case and its crown the thick knob.
+        // Dial up: its face, hands and all.
+        Icon::DialUp => {
+            r#"<circle cx="12" cy="12" r="6.4"/><path d="M12 12V8.6M12 12l2.4 1.4"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+        }
         // Dial down: the case back, its rings.
-        Icon::DialDown => r#"<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="4.2"/>"#,
+        Icon::DialDown => {
+            r#"<circle cx="12" cy="12" r="6.4"/><circle cx="12" cy="12" r="3.6"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+        }
         Icon::CrownUp => {
-            r#"<circle cx="12" cy="13.2" r="7"/><path d="M12 13.2V9.4M12 13.2l2.6 1.5"/><path stroke-width="2.6" d="M12 6.2V3.4"/>"#
+            r#"<circle cx="12" cy="13.2" r="6.4"/><path d="M12 13.2V9.8M12 13.2l2.4 1.4"/><path d="M6.5 10L3 9.6M17.5 10L21 9.6M6.5 16.4L3 16.8M17.5 16.4L21 16.8"/><path stroke-width="2.6" d="M12 6.8L12 4.4"/>"#
         }
         Icon::CrownDown => {
-            r#"<circle cx="12" cy="10.8" r="7"/><path d="M12 10.8V7.0M12 10.8l2.6 1.5"/><path stroke-width="2.6" d="M12 17.8v2.8"/>"#
+            r#"<circle cx="12" cy="10.8" r="6.4"/><path d="M12 10.8V7.4M12 10.8l2.4 1.4"/><path d="M6.5 7.6L3 7.2M17.5 7.6L21 7.2M6.5 14L3 14.4M17.5 14L21 14.4"/><path stroke-width="2.6" d="M12 17.2L12 19.6"/>"#
         }
         Icon::CrownLeft => {
-            r#"<circle cx="13.2" cy="12" r="7"/><path d="M13.2 12V8.2M13.2 12l2.6 1.5"/><path stroke-width="2.6" d="M6.2 12H3.4"/>"#
+            r#"<circle cx="13.2" cy="12" r="6.4"/><path d="M13.2 12V8.6M13.2 12l2.4 1.4"/><path d="M10 6.5L9.6 3M10 17.5L9.6 21M16.4 6.5L16.8 3M16.4 17.5L16.8 21"/><path stroke-width="2.6" d="M6.8 12L4.4 12"/>"#
         }
         Icon::CrownRight => {
-            r#"<circle cx="10.8" cy="12" r="7"/><path d="M10.8 12V8.2M10.8 12l2.6 1.5"/><path stroke-width="2.6" d="M17.8 12h2.8"/>"#
+            r#"<circle cx="10.8" cy="12" r="6.4"/><path d="M10.8 12V8.6M10.8 12l2.4 1.4"/><path d="M7.6 6.5L7.2 3M7.6 17.5L7.2 21M14 6.5L14.4 3M14 17.5L14.4 21"/><path stroke-width="2.6" d="M17.2 12L19.6 12"/>"#
         }
     }
 }
