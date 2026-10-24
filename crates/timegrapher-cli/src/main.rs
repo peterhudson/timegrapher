@@ -319,6 +319,18 @@ enum Command {
         /// Print the list as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// Read each USB microphone's automatic gain switch over USB
+        /// (macOS), instead of listing the inputs.
+        #[arg(long, conflicts_with_all = ["agc_off", "agc_on"])]
+        agc: bool,
+        /// Turn each USB microphone's automatic gain off over USB (macOS),
+        /// and read it back. The microphone turns it on again when it is
+        /// plugged in.
+        #[arg(long, conflicts_with = "agc_on")]
+        agc_off: bool,
+        /// Turn it back on (macOS).
+        #[arg(long)]
+        agc_on: bool,
     },
     /// Measure the microphone input: record a few seconds and report the
     /// level, clipping, whether the background rises between ticks, the
@@ -864,7 +876,15 @@ fn main() -> ExitCode {
             WatchesAction::List { all } => watches_cmd::list(library.as_deref(), all, json),
             WatchesAction::Show { name } => watches_cmd::show(&name, library.as_deref(), json),
         },
-        Command::Devices { json } => run_devices(json),
+        Command::Devices {
+            json,
+            agc,
+            agc_off,
+            agc_on,
+        } if agc || agc_off || agc_on => {
+            run_usb_agc(json, agc_off.then_some(false).or(agc_on.then_some(true)))
+        }
+        Command::Devices { json, .. } => run_devices(json),
         Command::Update { json } => update_cmd::run(json),
         Command::Clock { action, json } => {
             let a = match action {
@@ -1221,6 +1241,44 @@ fn run_devices(json: bool) -> Result<(), String> {
 #[cfg(not(feature = "live"))]
 fn run_devices(_json: bool) -> Result<(), String> {
     Err("this build has no sound input support; build with --features live".into())
+}
+
+/// `devices --agc`, `--agc-off`, `--agc-on`: each USB microphone's
+/// automatic gain switch, read and set over USB.
+fn run_usb_agc(json: bool, set: Option<bool>) -> Result<(), String> {
+    let found = timegrapher_core::mixer::usb_agc(set)?;
+    if json {
+        return output::print(
+            "usb_agc",
+            serde_json::json!({ "set": set }),
+            &serde_json::json!({ "microphones": found }),
+        );
+    }
+    if found.is_empty() {
+        println!("No USB microphone with an automatic gain switch found.");
+    }
+    let state = |v: Option<bool>| match v {
+        Some(true) => "on",
+        Some(false) => "off",
+        None => "not read",
+    };
+    for f in &found {
+        println!(
+            "{} ({:04x}:{:04x}), unit {} channel {}",
+            f.name, f.vendor_id, f.product_id, f.control.unit, f.control.channel
+        );
+        println!("    automatic gain {}", state(f.before));
+        if set.is_some() {
+            println!("    after the change {}", state(f.after));
+        }
+        if let Some((cur, lo, hi)) = f.volume_db {
+            println!("    capture volume {cur:+.1} dB (from {lo:+.1} to {hi:+.1} dB)");
+        }
+        if let Some(e) = &f.error {
+            println!("    {e}");
+        }
+    }
+    Ok(())
 }
 
 fn opt(v: Option<f64>, digits: usize) -> String {
