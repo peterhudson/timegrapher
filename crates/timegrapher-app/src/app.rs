@@ -6319,7 +6319,7 @@ impl TimegrapherApp {
                 let to = turned.position();
                 let n = Position::ALL.iter().position(|&q| q == to).unwrap_or(0) + 1;
                 // A small spot to click, the glyph faint until pointed at.
-                let r = egui::Rect::from_center_size(at, Vec2::splat(12.0));
+                let r = egui::Rect::from_center_size(at, Vec2::splat(22.0));
                 let resp = ui.interact(r, ui.id().with(("tip", glyph)), egui::Sense::click());
                 let ink = if resp.hovered() {
                     pal.text
@@ -9153,30 +9153,50 @@ impl TimegrapherApp {
                     // the cursor down.
                     ui.set_min_height(height);
                     let top = ui.min_rect().top();
+                    let short = facts
+                        .iter()
+                        .map(|f| f.0.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    let long = facts
+                        .iter()
+                        .map(|f| f.1.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let note = || RichText::new(&short).small().color(pal.text_secondary);
+                    // Beside the title where it fits whole, else wrapped on
+                    // lines of its own under it: a reading's limits are never
+                    // cut short.
+                    let mut under = false;
                     ui.horizontal(|ui| {
                         ui.label(theme::caption(title).color(pal.text_secondary));
                         theme::help(ui, title, help);
                         if !facts.is_empty() {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    let short: Vec<&str> =
-                                        facts.iter().map(|f| f.0.as_str()).collect();
-                                    let long: Vec<&str> =
-                                        facts.iter().map(|f| f.1.as_str()).collect();
-                                    ui.add(
-                                        egui::Label::new(
-                                            RichText::new(short.join(" · "))
-                                                .small()
-                                                .color(pal.text_secondary),
+                            let small = egui::TextStyle::Small.resolve(ui.style());
+                            let wide = ui.fonts_mut(|f| {
+                                f.layout_no_wrap(short.clone(), small, pal.text_secondary)
+                                    .size()
+                                    .x
+                            });
+                            if wide + 8.0 <= ui.available_width() {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.add(
+                                            egui::Label::new(note())
+                                                .wrap_mode(egui::TextWrapMode::Extend),
                                         )
-                                        .truncate(),
-                                    )
-                                    .on_hover_text(long.join("\n\n"));
-                                },
-                            );
+                                        .on_hover_text(&long);
+                                    },
+                                );
+                            } else {
+                                under = true;
+                            }
                         }
                     });
+                    if under {
+                        ui.add(egui::Label::new(note()).wrap()).on_hover_text(&long);
+                    }
                     body(ui);
                     // Room for the controls, which go in once every card
                     // is drawn, at the foot of the row's height.
@@ -12108,9 +12128,8 @@ impl TimegrapherApp {
             .allow_axis_zoom_drag(false)
             .allow_boxed_zoom(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-            .custom_x_axes(vec![
-                egui_plot::AxisHints::new_x().formatter(|m, r| chart_time_label(m.value, r))
-            ])
+            .custom_x_axes(vec![egui_plot::AxisHints::new_x()
+                .formatter(|m, r| chart_time_label(m.value, m.step_size, r))])
             // Short charts still get a label at the top and the bottom:
             // the labels are painted below, in small text, so they fit
             // closer than the plot's own.
@@ -12399,14 +12418,21 @@ fn position_in_name(path: &Path) -> Option<Position> {
 }
 
 /// A chart's time label at `t` seconds, in view `r`.
-fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
+fn chart_time_label(t: f64, step: f64, r: &std::ops::RangeInclusive<f64>) -> String {
     // Nothing before the session starts: a time there read as a second
     // "0:00".
     if t < -1e-6 {
         return String::new();
     }
     // A long time ("1:30:00") at the right end would be cut.
-    let label = strip::fmt_time(t);
+    // Marks less than a second apart name their tenths, so no two read
+    // the same.
+    let label = if step < 1.0 - 1e-9 {
+        let fine = strip::fmt_time_fine(t);
+        fine[..fine.len() - 1].to_string()
+    } else {
+        strip::fmt_time(t)
+    };
     let frac = if label.len() > 5 { 0.03 } else { 0.0 };
     theme::clear_of_right_edge(label, t, r, frac)
 }
@@ -18639,9 +18665,13 @@ mod tests {
     #[test]
     fn a_chart_labels_no_time_before_the_start() {
         let r = -30.0..=600.0;
-        assert_eq!(chart_time_label(-30.0, &r), "");
-        assert_eq!(chart_time_label(0.0, &r), "0:00");
-        assert_eq!(chart_time_label(120.0, &r), "2:00");
+        assert_eq!(chart_time_label(-30.0, 60.0, &r), "");
+        assert_eq!(chart_time_label(0.0, 60.0, &r), "0:00");
+        assert_eq!(chart_time_label(120.0, 60.0, &r), "2:00");
+        // Marks under a second apart don't repeat a label.
+        let r = 9.0..=10.0;
+        assert_eq!(chart_time_label(9.2, 0.2, &r), "0:09.2");
+        assert_eq!(chart_time_label(9.4, 0.2, &r), "0:09.4");
     }
 
     /// Settings' Library section reads the library at the folder chosen,
