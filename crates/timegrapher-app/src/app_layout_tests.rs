@@ -532,3 +532,60 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
     }
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }
+
+/// A choice between two settings is one switch in a toolbar, an icon's
+/// width, not a pair of icons: Direction on the strip, Show on the
+/// distributions, Layout on the profile, and the rest.
+#[test]
+fn a_two_way_choice_is_one_icon_wide() {
+    let ctx = {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx
+    };
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let mut seen = Vec::new();
+    for &p in Pane::ALL.iter() {
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 700.0));
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.pane_tools(ui, p);
+                });
+            });
+        }
+        let prefix = format!("{}/", p.title());
+        for (k, r) in theme::tools_drawn_at(&ctx) {
+            if let Some(name) = k.strip_prefix(&prefix) {
+                if [
+                    "Show",
+                    "Values",
+                    "Direction",
+                    "Layout",
+                    "Scale",
+                    "Time From",
+                ]
+                .contains(&name)
+                {
+                    assert!(r.width() < 30.0, "{k} is {} pt wide", r.width());
+                    seen.push(name.to_string());
+                }
+            }
+        }
+    }
+    for name in [
+        "Show",
+        "Values",
+        "Direction",
+        "Layout",
+        "Scale",
+        "Time From",
+    ] {
+        assert!(seen.iter().any(|s| s == name), "{name} not drawn: {seen:?}");
+    }
+}

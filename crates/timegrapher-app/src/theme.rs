@@ -1301,7 +1301,8 @@ pub fn tool_field<R>(
 
 /// One of a few choices in a toolbar: a row of icons, the picked one
 /// tinted; under "…" or in a settings list, the choices in words. True
-/// when the choice changed.
+/// when the choice changed. Two choices are one button, not two icons:
+/// the icon of the choice in use, and a click changes to the other.
 pub fn tool_choice<T: PartialEq + Copy>(
     ui: &mut Ui,
     label: &str,
@@ -1309,6 +1310,32 @@ pub fn tool_choice<T: PartialEq + Copy>(
     value: &mut T,
     choices: &[(T, Icon, &str, &str)],
 ) -> bool {
+    if let [(off, off_icon, off_name, off_why), (on, on_icon, on_name, on_why)] = *choices {
+        note_icon(ui, off_icon, &format!("{label}: {off_name}"));
+        note_icon(ui, on_icon, &format!("{label}: {on_name}"));
+        return bar_item(ui, label, |ui| {
+            if in_toolbar(ui) {
+                // Two modes, not on and off: the icon is the mode in use,
+                // and a click changes to the other.
+                let now_on = *value == on;
+                let (icon, name, why, other) = if now_on {
+                    (on_icon, on_name, on_why, off_name)
+                } else {
+                    (off_icon, off_name, off_why, on_name)
+                };
+                let r = icon_tool(ui, icon)
+                    .on_hover_text(format!("{label}: {}. Click for {other}.", hover(name, why)));
+                if r.clicked() {
+                    *value = if now_on { off } else { on };
+                }
+                r.clicked()
+            } else {
+                let words = [(off, off_name, off_why), (on, on_name, on_why)];
+                row(ui, label, Some(hint), |ui| segmented(ui, value, &words))
+            }
+        })
+        .unwrap_or(false);
+    }
     for &(_, icon, name, _) in choices {
         note_icon(ui, icon, &format!("{label}: {name}"));
     }
@@ -1418,7 +1445,7 @@ pub enum Icon {
     CrownLeft,
     CrownRight,
     Export,
-    Mean,
+    Bucket,
     Log,
     Copy,
     SaveTable,

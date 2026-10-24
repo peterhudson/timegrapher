@@ -80,19 +80,13 @@ fn last_take(e: &WatchEntry) -> Option<&str> {
 }
 
 /// The watches to list: those matching `search` (in the name, the calibre,
-/// the notes or a field's value, ignoring case), archived ones only when
-/// asked for, in `sort`'s order.
-pub fn shown<'a>(
-    lib: &'a Library,
-    search: &str,
-    sort: Sort,
-    archived: bool,
-) -> Vec<&'a WatchEntry> {
+/// the notes or a field's value, ignoring case), in `sort`'s order. A
+/// watch an older version marked Archived is listed like any other.
+pub fn shown<'a>(lib: &'a Library, search: &str, sort: Sort) -> Vec<&'a WatchEntry> {
     let key = search.trim().to_lowercase();
     let mut v: Vec<&WatchEntry> = lib
         .watches
         .iter()
-        .filter(|e| archived || !e.watch.archived)
         .filter(|e| {
             let w = &e.watch;
             key.is_empty()
@@ -249,9 +243,6 @@ pub fn list(
         if let Some(t) = last_take(e).and_then(local_minute) {
             below.push(format!("last {}", &t[..10]));
         }
-        if w.archived {
-            below.push("Archived".into());
-        }
         if row(
             ui,
             marked == Some(w.id.as_str()),
@@ -332,9 +323,6 @@ pub fn details(ui: &mut egui::Ui, e: &WatchEntry) {
     }
     if let Some(n) = w.notes.as_deref().filter(|n| !n.trim().is_empty()) {
         ui.label(RichText::new(n).color(pal.text_secondary));
-    }
-    if w.archived {
-        ui.label(RichText::new("Archived: hidden from the list").color(pal.text_secondary));
     }
 }
 
@@ -1097,14 +1085,6 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         })
         .response
         .on_hover_text("Add a field: a suggested one, or one of your own");
-        let mut hidden = w.archived;
-        if ui
-            .checkbox(&mut hidden, "Archived")
-            .on_hover_text("Hide this watch from the list without deleting it")
-            .changed()
-        {
-            w.archived = hidden;
-        }
     });
     ui.label(
         RichText::new(

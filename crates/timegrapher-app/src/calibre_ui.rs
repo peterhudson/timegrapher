@@ -63,6 +63,24 @@ pub struct Calibres {
     extra: (String, String),
     /// Why the user's calibres couldn't be read or written, if so.
     pub problem: Option<String>,
+    /// The table's rows by name, kept with what they were sorted from so a
+    /// frame that changes nothing doesn't sort every calibre again.
+    table_rows: std::cell::RefCell<Option<(TableKey, RowNames)>>,
+}
+
+/// The table's rows by name: whether custom, and the name.
+type RowNames = Vec<(bool, String)>;
+
+/// What the table's rows depend on.
+#[derive(Clone, PartialEq)]
+struct TableKey {
+    search: String,
+    short_only: bool,
+    funnels: [Option<std::collections::BTreeSet<String>>; 6],
+    sort: (Col, bool),
+    short_added: Vec<String>,
+    short_removed: Vec<String>,
+    user: UserCalibres,
 }
 
 /// A column of Manage Calibres' table.
@@ -206,6 +224,7 @@ impl Calibres {
             short_only: false,
             extra: (String::new(), String::new()),
             problem: None,
+            table_rows: Default::default(),
         }
     }
 
@@ -811,11 +830,7 @@ impl Calibres {
         });
         ui.add_space(6.0);
         // By name, so the table can change what it holds as it draws.
-        let rows: Vec<(bool, String)> = self
-            .rows()
-            .iter()
-            .map(|e| (e.is_custom(), e.name().to_string()))
-            .collect();
+        let rows = self.row_names();
         // The details beside it keep room for a wheel's row, with Clear.
         let room = ui.available_width();
         let table_w = (room * 0.62).min(room - DETAILS_W).max(440.0);
@@ -970,6 +985,34 @@ impl Calibres {
                 .cmp(&a.is_custom())
                 .then_with(|| self.order(a, b))
         });
+        rows
+    }
+
+    /// The table's rows by name (custom or not, and the name), sorted
+    /// again only when the search, a filter, the sort or the calibres
+    /// themselves changed since the last frame.
+    fn row_names(&self) -> RowNames {
+        let key = TableKey {
+            search: self.search.clone(),
+            short_only: self.short_only,
+            funnels: self.funnels.clone(),
+            sort: self.sort,
+            short_added: self.short_added.clone(),
+            short_removed: self.short_removed.clone(),
+            user: self.user.clone(),
+        };
+        let mut cache = self.table_rows.borrow_mut();
+        if let Some((k, rows)) = cache.as_ref() {
+            if *k == key {
+                return rows.clone();
+            }
+        }
+        let rows: Vec<(bool, String)> = self
+            .rows()
+            .iter()
+            .map(|e| (e.is_custom(), e.name().to_string()))
+            .collect();
+        *cache = Some((key, rows.clone()));
         rows
     }
 
@@ -2171,6 +2214,33 @@ mod tests {
         assert!(cal.rows().is_empty());
         cal.funnels = Default::default();
         assert_eq!(cal.rows().len(), calibres::all().len());
+    }
+
+    /// The table's kept rows follow every change they depend on.
+    #[test]
+    fn the_kept_rows_follow_the_sort_the_filters_and_the_calibres() {
+        let mut cal = Calibres::in_memory();
+        let names = |c: &Calibres| -> Vec<(bool, String)> {
+            c.rows()
+                .iter()
+                .map(|e| (e.is_custom(), e.name().to_string()))
+                .collect()
+        };
+        assert_eq!(cal.row_names(), names(&cal));
+        cal.sort = (Col::BeatRate, true);
+        assert_eq!(cal.row_names(), names(&cal));
+        cal.search = "eta".into();
+        assert_eq!(cal.row_names(), names(&cal));
+        cal.short_only = true;
+        assert_eq!(cal.row_names(), names(&cal));
+        let first = cal.row_names()[0].1.clone();
+        cal.set_short(&first, false);
+        assert_eq!(cal.row_names(), names(&cal));
+        cal.search.clear();
+        cal.short_only = false;
+        let name = cal.new_custom("Kept Rows Test");
+        assert_eq!(cal.row_names(), names(&cal));
+        assert_eq!(cal.row_names()[0], (true, name));
     }
 
     /// The Calibre column leaves out the maker the Maker column already

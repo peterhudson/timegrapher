@@ -21,8 +21,7 @@ Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 **Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the
 readings and for each pane, and Reset Panes. **Watches**: Show Watches
 or Hide Watches, **New Watch…**, **Quick Listen (No Watch)**, which lets
-go of a picked watch and starts Quick Listen (below), then each watch not
-archived; picking one shows the Watches pane with that watch. **Help**: Check for
+go of a picked watch and starts Quick Listen (below), then each watch; picking one shows the Watches pane with that watch. **Help**: Check for
 Updates…, Report a Problem… and, on Linux, **Add to Applications Menu**,
 which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
@@ -56,8 +55,12 @@ beats the rate is fitted to and their jitter, the Tick and Tock
 amplitudes, the beat error from the drop, how the beat rate was found,
 and, for a stopped take, the whole take's reading (see below).
 **Position** shows the position as a picture filling most of the card,
-the watch drawn with its lugs and, standing on its edge, its crown, with
-its name and code beside it (the code alone where the name won't fit on
+the watch head on a timegrapher's stand: lying, it is tilted so its top
+shows (the crystal's dome and the 12 o'clock mark for dial up, the case
+back's ring with the dome below for dial down); standing, it faces you
+with its 12 o'clock mark and its crown (the solid block, bigger than
+the 12's thin mark) where they are.
+Its name and code sit beside it (the code alone where the name won't fit on
 one line). While you listen, or before anything is on show, small faint
 arrows at the picture's edges tip the watch, seen from above with 12 away from you:
 up tips it back (the side away from you goes down), down tips it
@@ -72,7 +75,7 @@ no arrows: a take's positions can't be changed afterwards. **Listen**
 has a **Listen** icon, which starts Quick Listen (below), or with a
 watch picked that watch's Listen take, and becomes a **Stop** icon while
 listening; beside it a **Save** icon (a floppy disk), whose menu offers
-**Keep in a Watch** (your watches not archived, then **New Watch…**;
+**Keep in a Watch** (your watches, then **New Watch…**;
 shown for a Quick Listen take, and for a recording opened from outside
 the Watches folder) and **Save in a Folder…**, which asks where, or
 **Save Again** once it has been saved. The Save icon is hidden for a
@@ -118,14 +121,14 @@ its initial while it has none, or one that can't be read), its name, its
 calibre, how many takes it has and the date of the last, and the space
 they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
-**Archived** (a watch box; once a watch is archived, to list those too)
-and **New Watch…** (a watch and a plus). In a narrow pane, Archived and
-Sort fold into the "…" menu first; New Watch… and the search always stay
+and **New Watch…** (a watch and a plus). In a narrow pane, Sort folds
+into the "…" menu first; New Watch… and the search always stay
 in the row. The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
 watch, no calibre, the default lift angle and the beat rate found from
-the beats (with a take on show, its readings keep the settings they were
-measured with, and these apply from the next Listen), and shows the
+the beats (a watch's take on show is put away first; other readings on
+show keep the settings they were measured with, and these apply from
+the next Listen), and shows the
 takes Quick Listen kept. Those takes have the same menu as a watch's, with **File Under a Watch** (into
 the watch picked from it) in place of Move to Another Watch, so a take
 waits there until it is filed or deleted. No watch can be called
@@ -133,8 +136,9 @@ Unsorted. **New Watch…** opens a form:
 only the **Name** is needed. Name, Calibre (which fills the Lift Angle
 and Beat Rate), Lift Angle, Beat Rate and Notes are always in the form,
 set or not; **Add Field** adds a suggested field or one of your own, and
-only those can be removed, with their ×; **Archived** hides the watch from the
-list without deleting it. The first watch makes the Watches folder.
+only those can be removed, with their ×. A watch is kept or deleted:
+there is no hiding one (a watch an older version marked Archived is
+listed like any other, and saving it clears the mark). The first watch makes the Watches folder.
 Clicking a watch shows its details, and **‹ All Watches** goes back to
 the list with that watch still picked and its row marked: Listen and the
 tests still take it until another row is picked. **Listen**, **Positions Test** and
@@ -223,8 +227,10 @@ Every other pane's own settings sit in a toolbar across the top of the
 pane, one row, with the pane's **?** at its right. The toolbar is a row
 of icons, each naming itself and saying what it does on hover, in the
 words this guide uses: a switch is an icon that stays pressed, tinted,
-while it is on; a choice is a row of icons with the picked one tinted
-(Stacked and Beside, two bars one above the other and side by side).
+while it is on; a choice between two settings is one icon showing the
+setting in use, and a click changes to the other (Direction shows a
+down arrow while the strip runs down and an across arrow while it runs
+across); a choice of more is a row of icons with the picked one tinted.
 A setting that holds a value (Width, Length, Average Over, Settle) keeps
 its field, with a small icon in place of its name that has the same
 hover. **Start Test**, **Start a New Test** and **Copy** keep their words
@@ -233,8 +239,8 @@ ones fold into a **…** menu at the row's end, in words, as a Mac toolbar
 does, and come back out when the pane is wide enough again; the pane's
 plot never gives up room for its tools, and with everything in the row
 there is no **…**. Every
-pane but the Watches and Power Reserve panes has **Export…** (a box with
-an arrow leaving it) in its toolbar, which saves the pane as a picture: a PNG of it as it is on the
+pane but the Watches and Power Reserve panes has **Export…** (an arrow rising
+out of an open box, as Share is drawn on a Mac) in its toolbar, which saves the pane as a picture: a PNG of it as it is on the
 screen, or, with a name ending `.svg`, an SVG drawing whose lines and
 text stay sharp at any size. A name with no ending is saved as a PNG.
 In the picture the pane's name (with its own averaging time, if it has
