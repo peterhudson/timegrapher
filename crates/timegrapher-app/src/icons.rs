@@ -52,9 +52,9 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Readings => {
             r#"<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 17l4.2-5.6"/><circle cx="12" cy="17" r="1.3" fill="currentColor"/><path d="M6.2 11.3l1 .9M12 8.5v1.3M17.8 11.3l-1 .9"/>"#
         }
-        // A brass pocket watch: Your watches, and the take of one running or on show. Drawn in brass.
+        // A wristwatch on its strap: Your watches, and the take of one running or on show. Drawn in brass.
         Icon::Watch => {
-            r#"<circle cx="12" cy="14" r="7"/><path d="M12 7V5.2"/><circle cx="12" cy="3.6" r="1.6"/><path d="M12 14v-3.6M12 14l2.6 1.4"/>"#
+            r#"<path d="M8.6 7.2L9.4 2h5.2l.8 5.2M8.6 16.8L9.4 22h5.2l.8-5.2"/><circle cx="12" cy="12" r="5.6"/><path d="M17.6 11h1.4v2h-1.4"/><path d="M12 12V8.8M12 12l2.2 1.2"/>"#
         }
         // A pole dancer: The strip, as in stripper. Family friendly: long hair, a dress, and a pole. In pink.
         Icon::Strip => {

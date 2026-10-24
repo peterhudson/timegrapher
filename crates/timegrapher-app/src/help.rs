@@ -93,7 +93,7 @@ pub const POSITION: &[&str] = &[
      tip the watch as seen from above: up tips it back, so the side away from you goes \
      down; down tips it forward; left and right roll it to that side; the corner arrow \
      turns it over. From Dial Up, up gives Crown Left (12 down), left Crown Up. Keys 1 \
-     to 6 pick a position too.",
+     to 6 pick a position too: DU, DD, CU, CD, CL and CR, in that order.",
     "Looking at a take, or during a Positions Test or a Power Reserve Test, the card only \
      shows the position: the one at the strip's latest beat on show, or the one the test \
      set. A take's positions can't be changed afterwards.",

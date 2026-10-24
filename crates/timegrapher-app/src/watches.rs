@@ -207,6 +207,16 @@ fn row(
     resp.on_hover_text(hint)
 }
 
+/// A watch's size in the list, once it is a megabyte or more: an empty
+/// folder's "0 bytes" says nothing.
+fn list_size(bytes: u64) -> String {
+    if bytes >= 1_000_000 {
+        fmt_bytes(bytes)
+    } else {
+        String::new()
+    }
+}
+
 /// The list: one row per watch, led by its first photo when any watch
 /// listed has one. The id of the watch clicked, if any.
 pub fn list(
@@ -247,7 +257,7 @@ pub fn list(
             marked == Some(w.id.as_str()),
             lead,
             &w.name,
-            &fmt_bytes(e.bytes()),
+            &list_size(e.bytes()),
             &below.join(" · "),
             "Show this watch's details and takes",
         )
@@ -271,7 +281,7 @@ pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool, marked: bool
             Lead::None
         },
         UNSORTED_TAKES,
-        &fmt_bytes(e.bytes()),
+        &list_size(e.bytes()),
         &format!(
             "Quick Listen, no watch · {}",
             count(e.takes.len(), "take", "takes")
