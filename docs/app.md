@@ -1122,40 +1122,68 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     take opened, or a take saved: the latest first, none twice, never
     expiring, and kept across restarts.
   - **Manage Calibres.** The Calibres category of Settings, which
-    Manage Calibres… opens: every calibre in a table on the left, and the
-    one selected in full on the right (its wheels, sources and notes, and
-    for a custom calibre its fields with **Delete Calibre**). Opened
+    Manage Calibres… opens. One row of controls runs across the top, then
+    every calibre in a table on the left and, level with it on the right,
+    the one selected in full (see **The details** below). Opened
     from the Calibre menu while a beat rate is known (set on the Beat Rate
     card, found from the beats, or the watch's in its form), the table
     starts with the Beat Rate funnel at that rate and says so above it
     ("Showing 28800 bph, the rate found from the beats"), with **Show
     All** beside it; Clear Filters clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
-    - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**,
-      **Short List** (a tickbox) and **Custom** (a mark on the calibres you
-      added). Clicking a heading sorts on it, a second click reverses it;
-      it starts by maker. A value the list doesn't give is "Not Given" and
-      sorts after every value.
+    - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
+      and the short list, a narrow column headed by a star with a star on
+      each row, filled for a calibre on the short list and an outline for
+      one off it. Clicking a heading sorts on it, a second click reverses
+      it; it starts by maker. A value the list doesn't give is "Not Given"
+      and sorts after every value.
     - **Custom calibres.** Your own calibres show under the maker
-      **Custom**, always at the top of the table whatever the sort, and
-      the Maker funnel filters them as any maker.
-    - **Funnels.** Each heading has a funnel, as a spreadsheet's filter
-      does: it lists the column's values with a tickbox each, a search over
-      them and **Select All**. It lists the values the other filters let
-      through; the funnels combine, so a row shows only when every column's
-      value is ticked. A funnel in use is tinted in the accent colour.
-      **Clear Filters**, beside the search box, shows every calibre again:
-      it clears the search, Short List Only and every column's funnel.
-    - **Above the table.** The search box: every word must match a
-      calibre's number, one of its other names, or its maker under any of
-      the maker's names ("dd 3235", "sw200", "seagull st19"). **Short List
-      Only** shows just the short list. **New Custom Calibre…** adds one,
-      named as typed in the search box.
+      **Custom**, in the accent colour, always at the top of the table
+      whatever the sort, and the Maker funnel filters them as any maker.
+    - **Funnels.** Each heading has a funnel just after its name, as a
+      spreadsheet's column filter does. Its menu sorts on the column (A to
+      Z and Z to A; smallest or largest first for numbers; ticked first or
+      last for the short list), clears that column's filter, and lists the
+      column's values with a tickbox each, **(Select All)** at the top and
+      a search over them. The list keeps its height while you search. The
+      ticks apply on **OK**; **Cancel** leaves the filter as it was, and OK
+      needs at least one value ticked. It lists the values the other
+      filters let through; the funnels combine, so a row shows only when
+      every column's value is ticked. A funnel in use is tinted in the
+      accent colour.
+    - **The controls row.** On the left the search box (every word must
+      match a calibre's number, one of its other names, or its maker under
+      any of the maker's names: "dd 3235", "sw200", "seagull st19"),
+      **Short List Only**, which shows just the short list, and **Clear
+      Filters**, which shows every calibre again: it clears the search,
+      Short List Only and every column's funnel. On the right **New Custom
+      Calibre…**, which adds one named as typed in the search box.
+    - **The details.** The calibre selected, in a card level with the
+      table: its name and what the list gives, then for a custom calibre
+      its name, maker, beat rate and lift angle, then **Wheels**, each
+      wheel's time for one turn:
+      - The six every lever movement has (balance, escape, fourth, third
+        and centre wheels, and the barrel) come first, then any other the
+        list names.
+      - The hint on each wheel says where its figure comes from.
+      - A wheel nobody has given is blank: type its period and it is kept
+        for that calibre, marked "Custom", with **Clear** to go back.
+      - **+** at the foot of the wheels adds a row to type another wheel's
+        name and period, with **Add** (or Return) to add it once both are
+        filled in, and **Cancel** to forget the row.
+      - Then the list's sources as links, how its figures are known, and
+        its notes.
+      - At the foot, **Share with the Project…** and, for a custom
+        calibre, **Delete Calibre**.
+    - **A narrow window.** When the table and the details don't both fit,
+      the table takes the whole width, and choosing a calibre shows its
+      details in its place with **‹ All Calibres** to go back. **New Custom
+      Calibre…** then sits on a row of its own under the controls.
   - **The short list.** It starts as the list's common and modern
-    calibres. In Manage Calibres the tickbox in each calibre's Short List
-    column puts it on the short list or takes it off; filter the table
-    with the funnels first to work through one maker, or the clones.
-    **Reset the Short List** goes back to
+    calibres. In Manage Calibres clicking the star in a calibre's row puts
+    it on the short list or takes it off; filter the table with the funnels
+    first to work through one maker, or the clones. **Reset the Short
+    List**, in the star column's funnel menu, goes back to
     the one the app comes with. The short list and the recent picks are
     kept with the app's settings. When the list renames a calibre (the
     "vph" names became "bph"), the short list, the recent picks and a take
@@ -1165,19 +1193,6 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     wheels. If the watch beats at another rate than the calibre, a line
     under the menu says so. With none picked and the lift angle left at
     52°, a line says the amplitude is worked out from that default.
-  - **The panel.** Under the menu, a line gives the maker, beat rate, lift
-    angle and escape wheel, or says which of them the list doesn't give.
-    **Wheels and Sources**, folded until opened, lists each wheel's time
-    for one turn, as Manage Calibres does for the calibre selected there:
-    - The six every lever movement has (balance, escape, fourth, third
-      and centre wheels, and the barrel) come first, then any other the
-      list names.
-    - The hint on each wheel says where its figure comes from.
-    - A wheel nobody has given is blank: type its period and it is kept
-      for that calibre, marked "Custom", with **Clear** to go back.
-    - **Another wheel** adds one by name.
-    - Below come the list's sources as links, how its figures are known,
-      and its notes.
   - **Your additions.** Wheel periods and custom calibres are kept in
     `calibres.json` in the settings folder (core `calibre_store`), which
     the command line and the MCP server read too. Calibres typed in under
@@ -1195,8 +1210,11 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   - **Share with the Project….** It opens a GitHub issue in the browser,
     filled in with what you added to the calibre, to look over and send.
     Nothing is sent from the app.
-  - **A custom calibre.** Its panel, and Manage Calibres, also have its
-    name, maker, beat rate and lift angle, and **Delete Calibre**.
+  - **A custom calibre.** It starts with no wheels: a custom calibre is
+    often obscure or vintage, so nothing is assumed. Typing its beat rate
+    fills in the balance's period, two beats (7200 ÷ bph seconds: 0.25 s
+    at 28,800 bph), and a new beat rate changes it, unless a period typed
+    by hand is there.
   - **What isn't kept.** The pick itself, like the lift angle, is about
     the watch on the stand and isn't kept. Not Set names cycles after the
     wheels most calibres at the beat rate share.
