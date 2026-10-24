@@ -883,10 +883,20 @@ fn position_buttons_h(rows: usize) -> f32 {
 /// on a system whose inputs the app can't turn up or down.
 fn open_sound_settings() -> std::io::Result<()> {
     let (program, page) = if cfg!(target_os = "macos") {
-        (
-            "open",
-            "x-apple.systempreferences:com.apple.Sound-Settings.extension?input",
-        )
+        // System Settings (macOS 13 and later) and System Preferences
+        // before it name the page differently.
+        let major = std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|v| v.trim().split('.').next()?.parse::<u32>().ok());
+        let page = if major.is_some_and(|m| m < 13) {
+            "x-apple.systempreferences:com.apple.preference.sound?input"
+        } else {
+            "x-apple.systempreferences:com.apple.Sound-Settings.extension?input"
+        };
+        ("open", page)
     } else if cfg!(target_os = "windows") {
         ("explorer", "ms-settings:sound")
     } else {
@@ -5086,7 +5096,15 @@ impl TimegrapherApp {
         };
         match ask {
             watches::Ask::Delete { take, .. } => match lib.delete_take(&take) {
-                Ok(()) => self.info_msg(format!("Deleted \"{}\".", file_name(&take))),
+                Ok(()) => {
+                    // A take on show that is deleted leaves the window
+                    // empty, as at the start, rather than showing sound
+                    // that is gone.
+                    if !self.running() && Path::new(&self.opened_path).starts_with(&take) {
+                        self.new_session();
+                    }
+                    self.info_msg(format!("Deleted \"{}\".", file_name(&take)))
+                }
                 Err(e) => self.error(format!("The take couldn't be deleted: {e}")),
             },
             watches::Ask::Keep { take, .. } => self.start_take_keep(take),
@@ -6912,17 +6930,14 @@ impl TimegrapherApp {
             .filter(|&(b, cb)| b != cb)
         {
             let pal = theme::pal(ui);
-            ui.add(
-                egui::Label::new(
-                    RichText::new(format!(
-                        "The {} beats at {cb} bph; this watch beats at {b}.",
-                        self.calibre
-                    ))
-                    .small()
-                    .color(pal.text_secondary),
-                )
-                .truncate(),
+            let note = format!(
+                "The {} beats at {cb} bph; this watch beats at {b}.",
+                self.calibre
             );
+            ui.add(
+                egui::Label::new(RichText::new(&note).small().color(pal.text_secondary)).truncate(),
+            )
+            .on_hover_text(note);
         }
     }
 
@@ -7006,27 +7021,31 @@ impl TimegrapherApp {
             (None, Some(b)) => format!("{b} bph, found"),
             (None, None) => "beat rate found when heard".to_string(),
         };
-        // The beat rate and lift show on their own cards: the name is enough.
-        ui.label(RichText::new(&self.calibre).color(pal.text_secondary))
-            .on_hover_text(format!(
-                "{}: {bph}, lift {}°. The watch's calibre sets the beat rate and lift \
-                 angle. Edit… on the watch changes them.",
-                self.calibre,
-                fields::plain(self.lift_deg)
-            ));
-        if let Some((b, cb)) = heard
+        // The beat rate and lift show on their own cards: the name is enough,
+        // on one line cut short where the card is narrow, so the card keeps
+        // its height. A calibre whose beat rate isn't the one heard says its
+        // own beside the name, the whole sentence in the hover.
+        let other = heard
             .zip(self.cal.bph(&self.calibre))
-            .filter(|&(b, cb)| b != cb)
-        {
-            ui.label(
-                RichText::new(format!(
-                    "The {} beats at {cb} bph, but this watch beats at {b}.",
-                    self.calibre
-                ))
-                .small()
-                .color(pal.text_secondary),
+            .filter(|&(b, cb)| b != cb);
+        let line = match other {
+            Some((_, cb)) => format!("{} · beats at {cb}", self.calibre),
+            None => self.calibre.clone(),
+        };
+        let mut hover = format!(
+            "{}: {bph}, lift {}°. The watch's calibre sets the beat rate and lift angle. \
+             Edit… on the watch changes them.",
+            self.calibre,
+            fields::plain(self.lift_deg)
+        );
+        if let Some((b, cb)) = other {
+            hover = format!(
+                "The {} beats at {cb} bph, but this watch beats at {b}.\n\n{hover}",
+                self.calibre
             );
         }
+        ui.add(egui::Label::new(RichText::new(line).color(pal.text_secondary)).truncate())
+            .on_hover_text(hover);
     }
 
     /// The position picked: a new stretch, noted in the recording.
@@ -16399,10 +16418,14 @@ mod tests {
             bytes: 0,
         });
         assert!(!d.exists());
+        // The take was on show: the window is empty again, as at the start.
+        assert!(app.live.is_none() && app.opened_path.is_empty());
+        assert!(app.take_on_show().is_none());
 
         // A take from outside, opened, is added by a move.
         let outside = base.join("From a USB Stick");
         take_at(&outside);
+        app.input = Input::File;
         app.opened_path = outside.display().to_string();
         assert_eq!(app.addable_take(), Some(outside.clone()));
         app.answer_take_ask(watches::Ask::Add {

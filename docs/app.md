@@ -98,9 +98,11 @@ controls. On **Beat Rate** the big figure is itself the beat rate's menu
 where the card has room, and, with no watch picked, the labelled
 **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre; its
-hover gives the beat rate and lift angle it sets (Edit… on the watch
-changes them).
+the table knows, the figure shows and one line names the calibre (with
+"· beats at" and the calibre's rate when the watch is heard at another
+rate); its hover gives the beat rate and lift angle it sets (Edit… on the
+watch changes them). Lines too long for the card end in "…", with the
+whole sentence on hover.
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -165,7 +167,8 @@ Open… does. The take on show is marked **On Show** and is not read again
 when opened again. Right-clicking offers **Open**,
 **Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
-first, with its size; it can't be undone). Keep Analysis Only… asks
+first, with its size; it can't be undone; deleting the take on show
+leaves the window empty, as at the start). Keep Analysis Only… asks
 first, saying the take's size and its sound's and what is lost: the take
 can't be measured again without its sound, and the Scope doesn't
 work on it, while the readings, charts, Steadiness and the Positions Test
