@@ -941,8 +941,11 @@ fn figure_row(
     } else if !compact {
         vec![side_text.to_string()]
     } else if status.is_some() {
-        match side_text.rsplit_once(' ') {
-            Some((a, b)) => vec![a.trim_end_matches(',').to_string(), b.to_string()],
+        // Two lines as even as the words allow: "Settling," over "12 s",
+        // "Waiting for" over "Beats".
+        let splits = side_text.match_indices(' ').map(|(i, _)| i);
+        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
+            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
             None => vec![side_text.to_string()],
         }
     } else {
@@ -9796,14 +9799,26 @@ impl TimegrapherApp {
                         String::new()
                     };
                     let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
-                    let max = (ui.available_width() - 40.0).max(24.0);
-                    theme::chip(
-                        ui,
-                        &format!("{}{more}", chip_words(&first.0)),
-                        caption,
-                        &sentences,
-                        max,
-                    );
+                    // Where the words would push the caption off the
+                    // card, how many limits there are, the words in the
+                    // hover.
+                    let words = format!("{}{more}", chip_words(&first.0));
+                    let caption_w = ui.fonts_mut(|f| {
+                        f.layout_no_wrap(caption.into(), theme::semibold(13.0), pal.text)
+                            .size()
+                            .x
+                    });
+                    let words_w = ui.fonts_mut(|f| {
+                        f.layout_no_wrap(words.clone(), egui::FontId::proportional(12.0), pal.text)
+                            .size()
+                            .x
+                    }) + 14.0;
+                    let text = if words_w + 6.0 + caption_w <= ui.available_width() {
+                        words
+                    } else {
+                        limits.len().to_string()
+                    };
+                    theme::chip(ui, &text, caption, &sentences, ui.available_width());
                 }
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.add(
@@ -19265,8 +19280,8 @@ mod tests {
 
     /// A card's limits show in a chip in its title row, in Title Case, the
     /// first of them with how many more; the whole sentences are its
-    /// hover. At the narrowest window the chip is cut short rather than
-    /// the card's caption pushed off it.
+    /// hover. Where the words would push the card's caption off it, the
+    /// chip gives how many limits there are.
     #[test]
     fn a_cards_limits_show_in_a_chip_with_the_whole_in_its_hover() {
         assert_eq!(chip_words("9 s of beats"), "9 s of Beats");
@@ -19317,13 +19332,13 @@ mod tests {
         for caption in ["Rate", "Amplitude", "Beat Error"] {
             assert!(wide.iter().any(|t| t == caption), "{caption}: {wide:?}");
         }
+        // Too narrow for the words beside the caption, the chip gives how
+        // many limits there are.
         let narrow = drawn(800.0);
-        let start: String = chip.chars().take(1).collect();
+        let count = limits.len().to_string();
         assert!(
-            narrow
-                .iter()
-                .any(|t| t.starts_with(&start) && t.len() <= chip.len() + 3),
-            "{chip}: {narrow:?}"
+            narrow.iter().any(|t| *t == chip || *t == count),
+            "{chip} or {count}: {narrow:?}"
         );
         assert!(narrow.iter().any(|t| t == "Rate"), "{narrow:?}");
     }
