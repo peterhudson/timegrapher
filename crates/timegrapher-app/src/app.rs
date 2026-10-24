@@ -828,11 +828,59 @@ const BEAT_RATE_SLOT_H: f32 = 72.0;
 /// under its name, and the card leaves this much more room for them.
 const BEAT_RATE_NARROW_W: f32 = 110.0;
 const BEAT_RATE_NARROW_EXTRA_H: f32 = 20.0;
-/// The Current Position card's picture and label, then its row of buttons.
-const POSITION_SLOT_H: f32 = 72.0 + 6.0 + POSITION_SEG_H;
-const POSITION_SEG_H: f32 = 24.0;
+/// The Current Position card's picture and label, then its buttons: one
+/// row of six where each button has `POSITION_BUTTON_W`, else two rows of
+/// three.
+const POSITION_PIC_H: f32 = 72.0;
+const POSITION_SEG_H: f32 = 26.0;
+const POSITION_BUTTON_W: f32 = 30.0;
+/// The Current Position card's width: its share of the window, between
+/// these.
+const POSITION_MIN_W: f32 = 124.0;
+const POSITION_MAX_W: f32 = 240.0;
+/// The room the Amplitude card's lift row takes: Lift, its field, °, the
+/// presets menu and the default's mark. Narrower, Lift goes on a line of
+/// its own above the rest, and the card is this much taller.
+const LIFT_ROW_W: f32 = 130.0;
+const LIFT_NARROW_EXTRA_H: f32 = 20.0;
+/// The narrowest a card of figures can be and still show its caption and
+/// "?" whole.
+const FIGURE_MIN_W: f32 = 118.0;
+/// The Current Position card narrower than this is captioned Position.
+const POSITION_CAPTION_W: f32 = 160.0;
 /// Dark text on the teal of the current position's button.
 const POSITION_ON_INK: Color32 = Color32::from_rgb(0x0d, 0x26, 0x29);
+
+/// The rows of the Current Position card's buttons across `inner`, the
+/// card less its margins: six in one row where each has room, else three
+/// in each of two.
+fn position_rows(inner: f32) -> usize {
+    if (inner - 4.0) / 6.0 >= POSITION_BUTTON_W {
+        1
+    } else {
+        2
+    }
+}
+
+/// Where the Current Position card puts its label: the name and codes
+/// beside the picture, the codes alone beside it, or the codes under it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PositionLabel {
+    Beside,
+    Codes,
+    Under,
+}
+
+/// The height of the Current Position card's buttons, in `rows` rows.
+fn position_buttons_h(rows: usize) -> f32 {
+    rows as f32 * POSITION_SEG_H + (rows as f32 - 1.0) * 4.0
+}
+
+/// The Current Position card's slot across `inner`: the picture, then its
+/// buttons.
+fn position_slot_h(inner: f32) -> f32 {
+    POSITION_PIC_H + 6.0 + position_buttons_h(position_rows(inner))
+}
 const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
@@ -6256,58 +6304,83 @@ impl TimegrapherApp {
     }
 
     /// The Current Position card: the watch as it lies and its name in the
-    /// middle, and a row of six buttons under them, DU to CR, the current
-    /// one filled. The buttons set the position in a free live take; on a
-    /// take on show or during a test they only show it.
+    /// middle, and six buttons under them, DU to CR, the current one
+    /// filled: one row where the card has room, else two rows of three.
+    /// The buttons set the position in a free live take; on a take on show
+    /// or during a test they only show it.
     fn position_buttons(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
         let area = ui.max_rect();
-        let seg_h = POSITION_SEG_H;
+        let rows = position_rows(area.width());
+        let buttons_h = position_buttons_h(rows);
         let top = egui::Rect::from_min_max(
             area.min,
-            egui::pos2(area.right(), area.bottom() - seg_h - 6.0),
+            egui::pos2(area.right(), area.bottom() - buttons_h - 6.0),
         );
         // The picture and the label together, centred; the label falls
-        // back to the codes alone, then to nothing, as the card narrows.
+        // back to the codes alone, then to the codes under the picture, as
+        // the card narrows.
         let name_font = theme::semibold(12.5);
         let code_font = egui::FontId::proportional(10.5);
         let codes_of = |p: Position| format!("{} · {}", p.code(), p.witschi());
         let codes = codes_of(here);
         // Sized for the widest of the six, so the picture keeps its size
         // whichever position is set.
-        let (name_w, codes_w) = ui.fonts_mut(|f| {
+        let (name_w, codes_w, code_h) = ui.fonts_mut(|f| {
             let mut w = |t: String, font: &egui::FontId| {
                 f.layout_no_wrap(t, font.clone(), pal.text).size().x
             };
-            Position::ALL
+            let (n, c) = Position::ALL
                 .into_iter()
                 .fold((0.0f32, 0.0f32), |(n, c), p| {
                     (
                         n.max(w(p.name().to_string(), &name_font)),
                         c.max(w(codes_of(p), &code_font)),
                     )
-                })
+                });
+            (n, c, f.row_height(&code_font))
         });
-        let side_for = |label_w: f32| (top.width() - label_w - 8.0).min(top.height()).min(72.0);
+        let side_for = |label_w: f32| {
+            (top.width() - label_w - 8.0)
+                .min(top.height())
+                .min(POSITION_PIC_H)
+        };
         let (side, label) = if side_for(name_w.max(codes_w)) >= 44.0 {
-            (side_for(name_w.max(codes_w)), 2)
+            (side_for(name_w.max(codes_w)), PositionLabel::Beside)
         } else if side_for(codes_w) >= 44.0 {
-            (side_for(codes_w), 1)
+            (side_for(codes_w), PositionLabel::Codes)
         } else {
-            (top.width().min(top.height()).min(72.0), 0)
+            (
+                (top.height() - code_h - 2.0)
+                    .min(top.width())
+                    .min(POSITION_PIC_H),
+                PositionLabel::Under,
+            )
         };
         let label_w = match label {
-            2 => name_w.max(codes_w) + 8.0,
-            1 => codes_w + 8.0,
-            _ => 0.0,
+            PositionLabel::Beside => name_w.max(codes_w) + 8.0,
+            PositionLabel::Codes => codes_w + 8.0,
+            PositionLabel::Under => 0.0,
         };
-        let left = top.center().x - (side + label_w) / 2.0;
-        let pic = egui::Rect::from_min_size(
-            egui::pos2(left, top.center().y - side / 2.0),
-            Vec2::splat(side),
-        );
+        let pic = if label == PositionLabel::Under {
+            egui::Rect::from_min_size(
+                egui::pos2(
+                    top.center().x - side / 2.0,
+                    top.center().y - (side + 2.0 + code_h) / 2.0,
+                ),
+                Vec2::splat(side),
+            )
+        } else {
+            egui::Rect::from_min_size(
+                egui::pos2(
+                    top.center().x - (side + label_w) / 2.0,
+                    top.center().y - side / 2.0,
+                ),
+                Vec2::splat(side),
+            )
+        };
         crate::icons::watch(
             ui.painter(),
             pic,
@@ -6316,20 +6389,25 @@ impl TimegrapherApp {
             pal.text,
             pal.card,
         );
+        let settle = format!(
+            "Each change of position settles for {} s (Settle, on the Positions Test pane), \
+             and those seconds are left out of the readings.",
+            fields::plain(self.guided_settle_s)
+        );
         ui.interact(pic, ui.id().with("position picture"), egui::Sense::hover())
             .on_hover_text(if editable {
-                format!("{}. {POSITION_HINT}", here.label())
+                format!("{}. {POSITION_HINT} {settle}", here.label())
             } else {
                 format!(
                     "{}: shown, not set here. A take's positions are kept as they were; \
-                     during a test the test sets them.",
+                     during a test the test sets them. {settle}",
                     here.label()
                 )
             });
         let x = pic.right() + 8.0;
         let painter = ui.painter();
         match label {
-            2 => {
+            PositionLabel::Beside => {
                 painter.text(
                     egui::pos2(x, pic.center().y - 1.0),
                     egui::Align2::LEFT_BOTTOM,
@@ -6345,7 +6423,7 @@ impl TimegrapherApp {
                     pal.text_secondary,
                 );
             }
-            1 => {
+            PositionLabel::Codes => {
                 painter.text(
                     egui::pos2(x, pic.center().y),
                     egui::Align2::LEFT_CENTER,
@@ -6354,22 +6432,39 @@ impl TimegrapherApp {
                     pal.text_secondary,
                 );
             }
-            _ => {}
+            PositionLabel::Under => {
+                painter.text(
+                    egui::pos2(pic.center().x, pic.bottom() + 2.0),
+                    egui::Align2::CENTER_TOP,
+                    &codes,
+                    code_font,
+                    pal.text_secondary,
+                );
+            }
         }
-        // The six buttons, a segmented row across the card.
-        let row =
-            egui::Rect::from_min_max(egui::pos2(area.left(), area.bottom() - seg_h), area.max);
-        ui.painter().rect_filled(
-            row,
-            egui::CornerRadius::same(theme::CONTROL_RADIUS + 1),
-            pal.control,
-        );
-        let w = (row.width() - 4.0) / 6.0;
+        // The six buttons, a segmented row across the card, or two.
+        let per_row = 6 / rows;
         let mut picked = None;
         for (n, p) in Position::ALL.into_iter().enumerate() {
+            let (line, col) = (n / per_row, n % per_row);
+            let track = egui::Rect::from_min_size(
+                egui::pos2(
+                    area.left(),
+                    area.bottom() - buttons_h + line as f32 * (POSITION_SEG_H + 4.0),
+                ),
+                Vec2::new(area.width(), POSITION_SEG_H),
+            );
+            if col == 0 {
+                ui.painter().rect_filled(
+                    track,
+                    egui::CornerRadius::same(theme::CONTROL_RADIUS + 1),
+                    pal.control,
+                );
+            }
+            let w = (track.width() - 4.0) / per_row as f32;
             let r = egui::Rect::from_min_size(
-                egui::pos2(row.left() + 2.0 + w * n as f32, row.top() + 2.0),
-                Vec2::new(w, row.height() - 4.0),
+                egui::pos2(track.left() + 2.0 + w * col as f32, track.top() + 2.0),
+                Vec2::new(w, track.height() - 4.0),
             )
             .shrink2(Vec2::new(1.0, 0.0));
             let sense = if editable {
@@ -6403,7 +6498,7 @@ impl TimegrapherApp {
                 r.center(),
                 egui::Align2::CENTER_CENTER,
                 p.code(),
-                theme::semibold(11.0),
+                theme::semibold(12.0),
                 ink,
             );
             let tip = format!(
@@ -6414,7 +6509,7 @@ impl TimegrapherApp {
                 n + 1
             );
             let resp = if editable {
-                resp.on_hover_text(tip)
+                resp.on_hover_text(format!("{tip}. {settle}"))
             } else {
                 resp.on_hover_text(format!(
                     "{tip}. Shown, not set here: a take's positions are kept as they were, \
@@ -6603,9 +6698,16 @@ impl TimegrapherApp {
     /// watch's calibre sets it.
     fn lift_control(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        // On a narrow card, Lift on a line of its own above the rest.
+        let narrow = ui.available_width() < LIFT_ROW_W;
+        if narrow {
+            ui.label(RichText::new("Lift").color(pal.text_secondary));
+        }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(RichText::new("Lift").color(pal.text_secondary));
+            if !narrow {
+                ui.label(RichText::new("Lift").color(pal.text_secondary));
+            }
             if !self.take_shows_rate_and_lift() {
                 ui.label(format!("{}°", fields::plain(self.lift_deg)))
                     .on_hover_text("The watch's calibre sets it. Edit… on the watch changes it.");
@@ -9219,10 +9321,20 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = theme::GAP;
         let gap = theme::GAP;
         let total = ui.available_width();
-        // The Position and Listen cards narrower than the four of figures.
-        let narrow = (total * 0.15).clamp(150.0, 200.0);
+        // The Current Position card wide enough for its six buttons in a
+        // row where the window allows (else they go in two rows of three),
+        // and Listen; the four of figures share the rest, Amplitude taking
+        // the room its lift row needs from the other three.
         let listen = (total * 0.13).clamp(144.0, 180.0);
-        let wide = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        let narrow = (total * 0.18)
+            .clamp(POSITION_MIN_W, POSITION_MAX_W)
+            .min(total - listen - 5.0 * gap - 4.0 * FIGURE_MIN_W)
+            .max(POSITION_MIN_W);
+        let share = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
+        let amp_w = (LIFT_ROW_W + 2.0 * 14.0)
+            .min(4.0 * share - 3.0 * FIGURE_MIN_W)
+            .max(share);
+        let wide = (4.0 * share - amp_w) / 3.0;
         // The width inside a card of figures, less its margins: the room
         // kept for whole lines is reckoned at it, the same on every card.
         let inner = wide - 2.0 * 14.0;
@@ -9440,7 +9552,7 @@ impl TimegrapherApp {
             }
         };
         let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, wide, wide, wide]
+        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, amp_w, wide, wide]
             .iter()
             .scan(origin.x, |x, &w| {
                 let rect =
@@ -9469,10 +9581,14 @@ impl TimegrapherApp {
                 .collect();
             card(
                 &mut cols[0],
-                "Current Position",
+                if narrow >= POSITION_CAPTION_W {
+                    "Current Position"
+                } else {
+                    "Position"
+                },
                 help::POSITION,
                 None,
-                Some((Slot::Position, POSITION_SLOT_H)),
+                Some((Slot::Position, position_slot_h(narrow - 2.0 * 14.0))),
                 &|_| {},
             );
             card(
@@ -9708,7 +9824,14 @@ impl TimegrapherApp {
                         .filter(|f| !f.0.starts_with("lift angle "))
                         .collect(),
                 ),
-                Some((Slot::Lift, CONTROL_SLOT_H)),
+                Some((
+                    Slot::Lift,
+                    if amp_w - 2.0 * 14.0 < LIFT_ROW_W {
+                        CONTROL_SLOT_H + LIFT_NARROW_EXTRA_H
+                    } else {
+                        CONTROL_SLOT_H
+                    },
+                )),
                 &|ui| {
                     // Whole degrees: a live reading's ± is about a degree, so a
                     // decimal would claim more than the beats can say.
@@ -18224,6 +18347,67 @@ mod tests {
         let mut old = TimegrapherApp::with_devices(Vec::new(), None);
         old.apply_settings(before);
         assert!(!pane_visible(&old.panes.tiles, Pane::Watch), "afresh");
+    }
+
+    /// The Current Position card's six buttons stay big enough to read and
+    /// press: one row where the card gives each 30 points (1280), else two
+    /// rows of three (1000, 800). On the narrowest window the card is
+    /// captioned Position, and every card of the row stays inside the
+    /// window with the Beat Rate card's caption whole.
+    #[test]
+    fn the_position_buttons_keep_their_size() {
+        assert_eq!(position_rows(198.0), 1);
+        assert_eq!(position_rows(148.0), 2);
+        assert!(position_slot_h(148.0) > position_slot_h(198.0));
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let rects = |app: &mut TimegrapherApp, w: f32| {
+            let mut found = Vec::new();
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 800.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                found.clear();
+                for c in &out.shapes {
+                    if let egui::Shape::Text(t) = &c.shape {
+                        found.push((t.galley.text().to_string(), t.visual_bounding_rect()));
+                    }
+                }
+            }
+            found
+        };
+        let at = |found: &[(String, egui::Rect)], text: &str| {
+            found
+                .iter()
+                .find(|(t, _)| t == text)
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("{text}: {found:?}"))
+        };
+        for (w, rows, caption) in [
+            (1280.0, 1, "Current Position"),
+            (1000.0, 2, "Current Position"),
+            (800.0, 2, "Position"),
+        ] {
+            let found = rects(&mut app, w);
+            at(&found, caption);
+            let (du, cd) = (at(&found, "DU"), at(&found, "CD"));
+            if rows == 1 {
+                assert!((du.center().y - cd.center().y).abs() < 1.0, "{w}");
+            } else {
+                assert!(cd.center().y > du.bottom(), "{w}");
+            }
+            // Next to each other, the codes' centres are far enough apart
+            // for a button of 28 points or more each.
+            let cu = at(&found, "CU");
+            assert!(cu.center().x - du.center().x >= 2.0 * 28.0, "{w}");
+            let beat_rate = at(&found, "Beat Rate");
+            assert!(beat_rate.right() <= w - 12.0, "{w}: {beat_rate:?}");
+        }
     }
 
     /// The Current Position card sets the position only while it can:

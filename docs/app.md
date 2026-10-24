@@ -64,10 +64,16 @@ right for Crown Right. Lying, it is drawn flat with its side wall below:
 the dial for Dial Up, and for Dial Down only the case back's fluted
 ring, crown on the left. Beside the picture are the name ("Crown Down")
 and both codes, the common one then Witschi's ("CD · 9H"; DU · CH and
-DD · CB lying flat); on a narrow card the codes alone. Under them is a
-row of six buttons, **DU DD CU CD CL CR**, the current one filled teal;
-each one's hover gives its name, codes and key ("Crown Down (CD, 9H) ·
-key 4"), and the picture and the label keep their size whichever is set.
+DD · CB lying flat); on a narrow card the codes alone, and narrower still
+the codes under the picture. Under them are six buttons, **DU DD CU CD
+CL CR**, the current one filled teal: in one row where each has room,
+else in two rows of three (a 1000-point window), so they stay big enough
+to read and press. Each one's hover gives its name, codes and key
+("Crown Down (CD, 9H) · key 4") and how long each change of position
+settles (the Positions Test pane's Settle), and the picture and the
+label keep their size whichever is set. On the narrowest windows
+(about 800 points) the card is captioned **Position**, and the
+Amplitude card puts **Lift** on a line of its own above its field.
 While you listen, or before anything is on show, a button sets the
 position; keys 1 to 6 do the same, except while typing in a field. With
 a take on show, and during a Positions Test or a Power Reserve Test, the
