@@ -374,7 +374,7 @@ pub const TOOLS: &[ToolSpec] = &[
         description: "The watches in the library the app keeps: each one's name, calibre, \
             beat rate and lift angle as the person entered them, how many takes it has and \
             when the newest started, and how many Quick Listen takes wait in Unsorted. \
-            Archived watches only with `all`. It only reads, so the app can be open.",
+            Every watch is listed. It only reads, so the app can be open.",
         command: &["watches", "list"],
         params: &[
             LIBRARY,
@@ -383,7 +383,8 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::Switch,
                 Arg::Flag("--all"),
                 false,
-                "Include archived watches (gone back to their owner, or sold).",
+                "Ignored: every watch is listed. Watches are kept or deleted, no longer \
+                 archived; kept so older calls still work.",
             ),
         ],
         charts: false,

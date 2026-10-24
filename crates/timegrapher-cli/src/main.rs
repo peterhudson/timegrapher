@@ -637,7 +637,8 @@ enum WatchesAction {
     /// Each watch with its calibre, number of takes, newest take and size,
     /// and how many takes wait in Unsorted.
     List {
-        /// Also list the watches marked Archived.
+        /// Accepted and ignored: every watch is listed (watches are no
+        /// longer archived).
         #[arg(long)]
         all: bool,
     },

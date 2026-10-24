@@ -530,11 +530,12 @@ fn a_chat_app_finds_a_watchs_takes_in_the_library() {
     assert_ne!(r["isError"], true, "{r}");
     let doc = &r["structuredContent"];
     assert_eq!(doc["schema"], "timegrapher.watches/1");
-    assert_eq!(doc["watches"].as_array().unwrap().len(), 1, "{doc}");
+    // A watch an older app marked archived is listed like any other.
+    assert_eq!(doc["watches"].as_array().unwrap().len(), 2, "{doc}");
     assert!(r["content"][0]["text"]
         .as_str()
         .unwrap()
-        .starts_with("1 watch, 1 take."));
+        .starts_with("2 watches, 1 take."));
     let r = c.call("list_watches", json!({ "library": library, "all": true }));
     assert_eq!(
         r["structuredContent"]["watches"].as_array().unwrap().len(),

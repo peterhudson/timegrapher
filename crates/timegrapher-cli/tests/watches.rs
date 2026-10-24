@@ -78,7 +78,10 @@ fn watches_lists_and_shows_the_library_as_json() {
     assert_eq!(doc["caveats"], serde_json::json!([]));
     assert!(doc["bytes"].as_u64().unwrap() >= 4000);
     let watches = doc["watches"].as_array().unwrap();
-    assert_eq!(watches.len(), 1, "the archived watch is left out: {doc}");
+    // A watch an older app marked archived is listed like any other.
+    assert_eq!(watches.len(), 2, "{doc}");
+    assert_eq!(watches[1]["name"], "Sold Seiko");
+    assert_eq!(watches[1]["archived"], true, "the field stays");
     let w = &watches[0];
     assert_eq!(w["name"], "Pepsi");
     assert_eq!(w["calibre"], "Rolex 3135");
@@ -94,11 +97,13 @@ fn watches_lists_and_shows_the_library_as_json() {
     assert_eq!(reopened.read_only, None);
     drop(reopened);
 
+    // --all is still accepted, and changes nothing.
     let out = run(&["watches", "list", "--all", "--library", &lib, "--json"]);
+    assert!(out.status.success());
     let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(doc["watches"].as_array().unwrap().len(), 2);
 
-    // One watch, by its name in any case; archived ones too.
+    // One watch, by its name in any case.
     let out = run(&["watches", "show", "pepsi", "--library", &lib, "--json"]);
     assert!(
         out.status.success(),
@@ -154,13 +159,14 @@ fn watches_prints_text_and_says_when_there_is_nothing_to_list() {
     );
     let text = String::from_utf8_lossy(&out.stdout);
     for s in [
-        "1 watch,",
+        "2 watches,",
+        "Sold Seiko: ",
         "Unsorted: 1 take, made with Quick Listen",
         "Pepsi: Rolex 3135, 1 take, newest started 2026-10-20T21:32:00Z",
     ] {
         assert!(text.contains(s), "{s}: {text}");
     }
-    assert!(!text.contains("Sold Seiko"), "{text}");
+    assert!(!text.contains("Archived"), "{text}");
     let out = run(&["watches", "show", "Pepsi", "--library", &lib]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
