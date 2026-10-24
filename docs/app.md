@@ -1179,8 +1179,9 @@ watch later; **Keep in a Watch…** keeps it in a watch picked from the
 menu, or in a new one (**New Watch…**), with the settings it ran with
 (the watch's calibre, lift angle and beat rate apply to its next take);
 **Throw Away** deletes it, sound and readings. The question sits at the
-foot of the window, so the test's results stay in view. Quick Listen's sound is never asked about; a test's always
-is. **Save Again** (Ctrl+S) later brings
+top or the foot of the window, whichever is clear of the test's pane, so
+the test's results stay in view. Quick Listen's sound is never asked
+about; a test's always is. **Save Again** (Ctrl+S) later brings
 that copy up to date without asking again, and **Save As…** (Ctrl+Shift+S)
 copies the session to a new folder of your choosing, which Save Again then
 keeps up to date. Sound that hasn't been saved is never thrown away
