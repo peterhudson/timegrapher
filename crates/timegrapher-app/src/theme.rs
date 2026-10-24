@@ -1301,7 +1301,9 @@ pub fn tool_field<R>(
 
 /// One of a few choices in a toolbar: a row of icons, the picked one
 /// tinted; under "…" or in a settings list, the choices in words. True
-/// when the choice changed.
+/// when the choice changed. Two choices are one switch, not two icons:
+/// the second choice's icon, tinted while it is picked, and a click
+/// flips between them.
 pub fn tool_choice<T: PartialEq + Copy>(
     ui: &mut Ui,
     label: &str,
@@ -1309,6 +1311,35 @@ pub fn tool_choice<T: PartialEq + Copy>(
     value: &mut T,
     choices: &[(T, Icon, &str, &str)],
 ) -> bool {
+    if let [(off, _, off_name, off_why), (on, icon, on_name, on_why)] = *choices {
+        note_icon(
+            ui,
+            icon,
+            &format!("{label}: {on_name} when lit, {off_name} when not"),
+        );
+        return bar_item(ui, label, |ui| {
+            if in_toolbar(ui) {
+                let p = pal(ui);
+                let lit = *value == on;
+                let (name, why) = if lit {
+                    (on_name, on_why)
+                } else {
+                    (off_name, off_why)
+                };
+                let other = if lit { off_name } else { on_name };
+                let r = icon_toggle(ui, icon, lit, p.accent)
+                    .on_hover_text(format!("{label}: {}. Click for {other}.", hover(name, why)));
+                if r.clicked() {
+                    *value = if lit { off } else { on };
+                }
+                r.clicked()
+            } else {
+                let words = [(off, off_name, off_why), (on, on_name, on_why)];
+                row(ui, label, Some(hint), |ui| segmented(ui, value, &words))
+            }
+        })
+        .unwrap_or(false);
+    }
     for &(_, icon, name, _) in choices {
         note_icon(ui, icon, &format!("{label}: {name}"));
     }
@@ -1418,7 +1449,7 @@ pub enum Icon {
     CrownLeft,
     CrownRight,
     Export,
-    Mean,
+    Bucket,
     Log,
     Copy,
     SaveTable,

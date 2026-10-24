@@ -43,7 +43,7 @@ const ALL: [Icon; 77] = [
     Icon::CrownLeft,
     Icon::CrownRight,
     Icon::Export,
-    Icon::Mean,
+    Icon::Bucket,
     Icon::Log,
     Icon::Copy,
     Icon::SaveTable,
@@ -195,34 +195,39 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Save => {
             r#"<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>"#
         }
-        // The positions, the watch drawn as it lies or stands, its lugs
-        // the short strokes off the case and its crown the thick knob.
-        // Dial up: its face, hands and all.
+        // The positions, the watch head on a timegrapher's stand: lying,
+        // tilted so its top shows, the crystal's dome and 12 o'clock's
+        // mark for dial up, the case back's ring and the dome below for
+        // dial down; standing, face-on, its 12 o'clock mark and crown
+        // where they are. The crown is the thick knob; no lugs.
         Icon::DialUp => {
-            r#"<circle cx="12" cy="12" r="6.4"/><path d="M12 12V8.6M12 12l2.4 1.4"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+            r#"<ellipse cx="12" cy="9.5" rx="8" ry="3.4"/><path d="M4 9.5v1.6a8 3.4 0 0 0 16 0V9.5"/><path d="M6.6 8.6a6 2.2 0 0 1 10.8 0" stroke-width="1.1"/><path stroke-width="2.2" d="M12 6.9v1.1"/><path stroke-width="2.6" d="M20.4 10.3h1.8"/><path d="M8.5 15.2L9.5 17.4H14.5L15.5 15.2"/><path d="M12 17.4V21M7.5 21.5H16.5"/>"#
         }
-        // Dial down: the case back, its rings.
         Icon::DialDown => {
-            r#"<circle cx="12" cy="12" r="6.4"/><circle cx="12" cy="12" r="3.6"/><path d="M8.8 6.5L8.4 3M8.8 17.5L8.4 21M15.2 6.5L15.6 3M15.2 17.5L15.6 21"/>"#
+            r#"<ellipse cx="12" cy="8.5" rx="8" ry="3.4"/><path d="M4 8.5v1.6a8 3.4 0 0 0 16 0V8.5"/><ellipse cx="12" cy="8.5" rx="4.6" ry="1.8" stroke-width="1.1"/><path d="M7 12.6Q12 16.4 17 12.6" stroke-width="1.1"/><path stroke-width="2.6" d="M3.6 9.3H1.8"/><path d="M8.5 16.2L9.5 18H14.5L15.5 16.2"/><path d="M12 18V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownUp => {
-            r#"<circle cx="12" cy="13.2" r="6.4"/><path d="M12 13.2V9.8M12 13.2l2.4 1.4"/><path d="M6.5 10L3 9.6M17.5 10L21 9.6M6.5 16.4L3 16.8M17.5 16.4L21 16.8"/><path stroke-width="2.6" d="M12 6.8L12 4.4"/>"#
+            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M7.7 8.8L9.5 8.8"/><path stroke-width="2.6" d="M12 2.9L12 1.3"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownDown => {
-            r#"<circle cx="12" cy="10.8" r="6.4"/><path d="M12 10.8V7.4M12 10.8l2.4 1.4"/><path d="M6.5 7.6L3 7.2M17.5 7.6L21 7.2M6.5 14L3 14.4M17.5 14L21 14.4"/><path stroke-width="2.6" d="M12 17.2L12 19.6"/>"#
+            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M16.3 8.8L14.5 8.8"/><path stroke-width="2.6" d="M12 14.7L12 16.3"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownLeft => {
-            r#"<circle cx="13.2" cy="12" r="6.4"/><path d="M13.2 12V8.6M13.2 12l2.4 1.4"/><path d="M10 6.5L9.6 3M10 17.5L9.6 21M16.4 6.5L16.8 3M16.4 17.5L16.8 21"/><path stroke-width="2.6" d="M6.8 12L4.4 12"/>"#
+            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M12 13.1L12 11.3"/><path stroke-width="2.6" d="M6.1 8.8L4.5 8.8"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
         Icon::CrownRight => {
-            r#"<circle cx="10.8" cy="12" r="6.4"/><path d="M10.8 12V8.6M10.8 12l2.4 1.4"/><path d="M7.6 6.5L7.2 3M7.6 17.5L7.2 21M14 6.5L14.4 3M14 17.5L14.4 21"/><path stroke-width="2.6" d="M17.2 12L19.6 12"/>"#
+            r#"<circle cx="12" cy="8.8" r="5.6"/><path stroke-width="2.2" d="M12 4.5L12 6.3"/><path stroke-width="2.6" d="M17.9 8.8L19.5 8.8"/><path d="M8.8 17.6L9.6 19H14.4L15.2 17.6"/><path d="M12 19V21M7.5 21.5H16.5"/>"#
         }
-        // A box with an arrow leaving it: Export, as on a Mac.
+        // An arrow rising out of an open-topped box: Export, as Share is
+        // drawn on a Mac.
         Icon::Export => {
-            r#"<path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M14.5 3.5h6v6M20.5 3.5L12 12"/>"#
+            r#"<path d="M9 9.5H6v11.5h12V9.5h-3"/><path d="M12 15V2.8M8.3 6.5L12 2.8l3.7 3.7"/>"#
         }
-        // x-bar: The mean, for anyone who did statistics. Average Over.
-        Icon::Mean => r#"<path d="M6 4.5h12"/><path d="M7 9l10 11M17 9L7 20"/>"#,
+        // A bucket the beats are gathered into: Average Over, each reading
+        // what one bucket of time holds.
+        Icon::Bucket => {
+            r#"<path d="M4.5 8.5h15l-1.8 12h-11.4z"/><path d="M5.5 8.5a6.5 6.5 0 0 1 13 0" stroke-width="1.3"/><g fill="currentColor" stroke="none"><circle cx="9.5" cy="13" r="1.2"/><circle cx="13.5" cy="12.5" r="1.2"/><circle cx="11.5" cy="16.5" r="1.2"/></g>"#
+        }
         // A log of wood: A log scale. Lying down, its rings at the sawn
         // end, bark along it, a broken far end and a branch stub, so it
         // reads as wood and not a battery.

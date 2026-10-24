@@ -1478,7 +1478,7 @@ pub struct TimegrapherApp {
     /// The kept sound Delete… is asking about.
     kept_delete_ask: Option<PathBuf>,
     /// The Watches pane: the watch picked (its id), the list's search,
-    /// order and whether it shows archived watches, and the details form.
+    /// order, and the details form.
     watch_open: Option<String>,
     /// The pane shows Unsorted's takes instead of the list.
     unsorted_open: bool,
@@ -1498,7 +1498,6 @@ pub struct TimegrapherApp {
     quick_listen: bool,
     watch_search: String,
     watch_sort: watches::Sort,
-    watch_archived: bool,
     watch_form: Option<watches::Form>,
     /// The form was opened from Keep in a Watch…: Done keeps what is on
     /// show in the new watch.
@@ -2068,7 +2067,6 @@ impl TimegrapherApp {
             quick_listen: false,
             watch_search: String::new(),
             watch_sort: watches::Sort::default(),
-            watch_archived: false,
             watch_form: None,
             keep_after_form: false,
             test_keep: None,
@@ -4729,8 +4727,7 @@ impl TimegrapherApp {
         let mut show_unsorted = false;
         let picked = match &self.library {
             Ok(Some(l)) => {
-                let shown =
-                    watches::shown(l, &self.watch_search, self.watch_sort, self.watch_archived);
+                let shown = watches::shown(l, &self.watch_search, self.watch_sort);
                 if l.watches.is_empty() {
                     ui.label(
                         RichText::new(
@@ -5523,7 +5520,7 @@ impl TimegrapherApp {
             self.open_new_watch_form();
         }
         theme::bar_gap(ui);
-        // The search stays in the row too: Sort and Archived fold first.
+        // The search stays in the row too: Sort folds first.
         theme::keep_next(ui);
         theme::tool_field(
             ui,
@@ -5552,17 +5549,6 @@ impl TimegrapherApp {
                 });
         });
         self.watch_sort = sort;
-        if matches!(&self.library, Ok(Some(l)) if l.watches.iter().any(|e| e.watch.archived)) {
-            let accent = theme::pal(ui).accent;
-            theme::tool_switch(
-                ui,
-                Icon::WatchBox,
-                accent,
-                "Archived",
-                &mut self.watch_archived,
-                "Also list the watches marked Archived",
-            );
-        }
     }
 
     /// The form for a new watch: only its name is needed.
@@ -5678,6 +5664,9 @@ impl TimegrapherApp {
         w.notes = w.notes.filter(|n| !n.trim().is_empty());
         w.fields
             .retain(|x| !(x.label.trim().is_empty() && x.value.trim().is_empty()));
+        // The app keeps no Archived mark: one an older version set goes
+        // when the watch is saved, so the command line lists it too.
+        w.archived = false;
         self.ensure_library();
         let done = match &mut self.library {
             Ok(Some(lib)) if f.new => lib.add(&w).map(|_| ()),
@@ -6002,7 +5991,7 @@ impl TimegrapherApp {
 
     /// Average Over for one pane: Readings' time, or one of its own.
     fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        theme::tool_field(ui, Icon::Mean, "Average Over", PANE_AVERAGE_HINT, |ui| {
+        theme::tool_field(ui, Icon::Bucket, "Average Over", PANE_AVERAGE_HINT, |ui| {
             self.pane_average_choice(ui, pane);
         });
     }
@@ -6272,7 +6261,7 @@ impl TimegrapherApp {
             &[
                 (
                     true,
-                    Icon::Mean,
+                    Icon::Bucket,
                     "Readings",
                     "The readings, each averaged over Average Over, as on the charts \
                              and the strip, one per Average Over so that no two share beats: \
@@ -6569,7 +6558,6 @@ impl TimegrapherApp {
             Ok(Some(l)) if l.read_only.is_none() => l
                 .watches
                 .iter()
-                .filter(|e| !e.watch.archived)
                 .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
                 .collect(),
             _ => Vec::new(),
@@ -7161,6 +7149,17 @@ impl TimegrapherApp {
                     66.0,
                 );
                 let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
+                // Fitted to the take on show: a length for the take only.
+                if self
+                    .live_strip
+                    .is_some_and(|(_, fitted)| fitted == self.strip)
+                {
+                    ui.label(RichText::new("Fit").small().color(pal.text_secondary))
+                        .on_hover_text(
+                            "Fitted to the take on show. Listen brings back the strip's own \
+                             width and length.",
+                        );
+                }
                 if b && s.is_infinite() {
                     self.fit_strip();
                 } else if a || b {
@@ -7181,7 +7180,7 @@ impl TimegrapherApp {
         theme::tool_switch(
             ui,
             Icon::Rails,
-            pal.accent,
+            pal.trace_rate,
             "Parallel Guides",
             &mut self.rate_guides,
             "Faint lines at the Rate reading's slope across the whole strip, so it is easy \
@@ -7450,7 +7449,6 @@ impl TimegrapherApp {
             Ok(Some(l)) => l
                 .watches
                 .iter()
-                .filter(|e| !e.watch.archived)
                 .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
                 .collect(),
             _ => Vec::new(),
@@ -7776,15 +7774,14 @@ impl TimegrapherApp {
                 ..Default::default()
             },
         };
-        let watch = self.watch_open.clone().filter(|id| {
-            l.watches
-                .iter()
-                .any(|e| &e.watch.id == id && !e.watch.archived)
-        });
+        let watch = self
+            .watch_open
+            .clone()
+            .filter(|id| l.watches.iter().any(|e| &e.watch.id == id));
         Some(OpenAsk {
             path: path.to_path_buf(),
             add: watch.is_some(),
-            new_watch: !l.watches.iter().any(|e| !e.watch.archived),
+            new_watch: l.watches.is_empty(),
             watch,
             new_name: String::new(),
             has,
@@ -7919,7 +7916,6 @@ impl TimegrapherApp {
             Ok(Some(l)) if l.read_only.is_none() => l
                 .watches
                 .iter()
-                .filter(|e| !e.watch.archived)
                 .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
                 .collect(),
             _ => Vec::new(),
@@ -8053,7 +8049,6 @@ impl TimegrapherApp {
             Ok(Some(l)) => l
                 .watches
                 .iter()
-                .filter(|e| !e.watch.archived)
                 .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
                 .collect(),
             _ => Vec::new(),
@@ -15443,15 +15438,10 @@ mod tests {
             error: None,
         });
         let form = pane(&ctx, &mut app);
-        for t in [
-            "New Watch",
-            "Add Field",
-            "Add Watch",
-            "Lift Angle",
-            "Archived",
-        ] {
+        for t in ["New Watch", "Add Field", "Add Watch", "Lift Angle"] {
             assert!(form.contains(t), "{t}: {form}");
         }
+        assert!(!form.contains("Archived"), "no Archived mark: {form}");
         // Nothing on show: the new watch's details are the next take's.
         // (Readings on show keep theirs: see
         // a_recording_on_show_is_kept_in_a_new_watch_with_its_charts.)
@@ -18353,6 +18343,44 @@ mod tests {
         assert_eq!(shown.lift_deg, DEFAULT_LIFT_DEG);
         assert!(!shown.quick_defaults);
         drop(shown);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A watch an older version marked Archived is listed and offered
+    /// like any other, and saving it in the form clears the mark.
+    #[test]
+    fn an_archived_watch_is_listed_and_saving_clears_the_mark() {
+        let base =
+            std::env::temp_dir().join(format!("tg-app-test-archived-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let mut w = library::Watch::new("Old Seiko");
+        w.archived = true;
+        lib.add(&w).unwrap();
+        let id = lib.find("Old Seiko").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        let watch = {
+            let Ok(Some(l)) = &app.library else {
+                panic!("no library")
+            };
+            let listed = watches::shown(l, "", app.watch_sort);
+            assert_eq!(listed.len(), 1, "the archived watch is listed");
+            l.find("Old Seiko").unwrap().watch.clone()
+        };
+        app.pick_watch(&id);
+        assert_eq!(app.watch_open.as_deref(), Some(id.as_str()));
+        app.watch_form = Some(watches::Form {
+            watch,
+            new: false,
+            error: None,
+        });
+        app.save_watch_form();
+        let again = library::Library::open(&root).unwrap();
+        assert!(!again.find("Old Seiko").unwrap().watch.archived);
+        drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
 
