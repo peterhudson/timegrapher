@@ -31,19 +31,21 @@ under `~/.local/share`, pointing at the program running now). Beside the
 menus, one icon for each pane that shows or hides it (resting the pointer
 on an icon names its pane), and a gear at the end that opens Settings.
 The icons come in groups: the core panes first (Watches, the Paper
-Strip, the Tick Tock Profile and the Scope), then **Charts**,
-**Distributions**, **Analysis** (the Steadiness views and Isochronism)
-and **Tests** (the Positions Test and the Power Reserve Test), each
+Strip, the Tick Tock Profile and the Scope), then **Analysis** (Charts,
+Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test and the Power Reserve Test), each
 under its name. Where the window is too narrow for every icon, the
 largest groups fold into a menu under their name, with the number of
 their panes showing, until the rest fit.
 Each icon is a small picture with a pun on
 its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
-Tock Profile, a die showing six for the Positions Test, a hare for the
-Rate chart, a dromedary for the Rate distribution (one hump), an Allen
-key for Allan, and so on. A pane showing has its icon in colour on a
-tinted chip; a hidden one is faint grey. The charts and distributions
-take their reading's colour, and the Steadiness views share one green.
+Tock Profile, a die showing six for the Positions Test, a camel for
+Charts (it charts a course across the take, as across a desert), a
+jellyfish for Distributions (its body is called its bell), an Allen key
+for Allan, and so on. A pane showing has its icon in colour on a tinted
+chip; a hidden one is faint grey. Charts, Distributions and the
+Steadiness views share one green. The readings have pictures of their
+own wherever the app shows or switches one: a hare for the rate, a swing
+for the amplitude and a seesaw for the beat error, in their colours.
 
 **The readings**, across the top, are six cards: **Position** and
 **Listen**, narrower, then **Rate**, **Amplitude**, **Beat Error** and
@@ -218,17 +220,14 @@ Tock Profile keep to one line: their everyday settings are in the row,
 and the rest (the strip's direction, the lines drawn over it,
 Auto-Centre and Unmask All; the profile's Time From and Sounds 1, 2 and
 3; and each pane's Average Over and Export…) are in a **…** menu at the
-row's end. The charts carry theirs in the
-tab bar: **Match Strip**, on, shows the same stretch of time as the paper
-strip, and off, the whole session. A choice between two options, such as
+row's end. A choice between two options, such as
 Stacked and Beside, switches to the other option wherever it is clicked,
 so it can be flipped back and forth without moving the pointer. Every
-pane but the Watches and Power Reserve panes has **Export…** in its toolbar (a chart's in its
-tab bar), which saves the pane as a picture: a PNG of it as it is on the
+pane but the Watches and Power Reserve panes has **Export…** in its toolbar, which saves the pane as a picture: a PNG of it as it is on the
 screen, or, with a name ending `.svg`, an SVG drawing whose lines and
 text stay sharp at any size. A name with no ending is saved as a PNG.
 In the picture the pane's name (with its own averaging time, if it has
-one) and a chart's key take the place of its controls. The save starts
+one) and the charts' key take the place of its controls. The save starts
 in the folder last chosen for a picture, else in the folder of the
 recording last opened; the app forgets both when it closes. Titles and
 labels are in Title Case. Across the top, the readings (above), and below
@@ -280,11 +279,11 @@ more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so in the rate's hover
 ("190 beats in 24 s of 180 s"); they never fit across a break or gap, since the watch may have
 been moved or have drifted meanwhile. The panes that average (the Paper Strip's
-Rate Line, guides and overlays, the Tick Tock Profile, the three charts and the three
-distributions) follow Readings' Average Over unless set otherwise: each has
-its own **Average Over** in its toolbar (the charts' in their tab bar),
+Rate Line, guides and overlays, the Tick Tock Profile, Charts and
+Distributions) follow Readings' Average Over unless set otherwise: each has
+its own **Average Over** in its toolbar,
 "As Readings" by default or one of the presets, and a pane with its own
-time names it in its tab ("Rate · 30 s"). A pane's own time sets everything
+time names it in its tab ("Charts · 30 s"). A pane's own time sets everything
 in it that Average Over would. Changing Readings' Average Over puts every
 pane back on it, dropping their own times. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
@@ -583,8 +582,13 @@ with the Scope as a tab behind it. Every other pane, the Watches pane
 included, starts hidden, and its icon at the top or the View menu shows
 it: the charts of rate, amplitude and beat error over the session, the
 distributions, the Steadiness views, Isochronism, the Positions Test and
-Power Reserve. A layout saved by an earlier version of the app is set
-aside once for this starting one. Drag a pane by its tab
+Power Reserve. Charts and Distributions open as tabs behind the profile,
+so showing them never takes room from the strip. No pane on show is laid
+out shorter than 140 pt (240 pt wide side by side): a pane dragged beside
+another takes its room from the panes with some to spare, and a window
+too small for them all shares its room evenly. A
+layout saved by an earlier version of the app is set aside once for this
+starting one. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
 them; drag the gaps between panes to resize them. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides
@@ -754,23 +758,25 @@ the strip masks instead of sliding the trace. Mask turns off, and nothing
 is masked, when a new take, New Session or another recording starts.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
-unlock and from the drop) over time. Each reading keeps its colour across
+unlock and from the drop) over the whole take, one chart above the other
+in the one pane, each with its reading's name at its top left. The hare,
+the swing and the seesaw in the pane's toolbar show or hide the Rate,
+Amplitude and Beat Error charts; the charts shown share the pane's
+height, and at least one stays on. A pane too short for every chart draws
+the first ones at a readable height and names the rest at its foot ("Beat
+Error not shown: no room"); the Distributions pane does the same. Each
+reading keeps its colour across
 the app (rate red, amplitude purple, beat error yellow), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
 dashes purple over blue and from the tocks purple over orange, and beat
 error from the drop is a fainter dashed yellow; the key and the box at the
-pointer draw them the same way. A chart
-with more than one line has its key at the right of its tab bar, where it
+pointer draw them the same way. The key for the amplitude and beat
+error lines shown sits at the right of the pane's tab bar, where it
 covers nothing. Each chart labels its vertical scale at two marks or more,
 in small text, however short the chart; a long time at the right end of
-the time axis is left out rather than cut in half. **Time Span**, in the Charts and
-Distributions cards, sets what they cover: **Session**, everything since the
-session started, or **Strip**, the same stretch of time as the paper strip,
-moving with it, so that with the charts under a strip lying across every
-time axis lines up: the strip and the charts keep the same width of axis
-on the left and of overlay scales on the right, so their times sit one
-above the other. In Strip mode the strip sets the time, so only the
-vertical scale can be dragged or zoomed. Wherever the pointer is on the
+the time axis is left out rather than cut in half. The charts always
+cover the whole take: to look at a stretch of it, zoom or pan them, or
+use the strip with its overlays and masks. Wherever the pointer is on the
 strip or a chart, a thin line marks that moment on all of them, and on the
 strip a label gives its time from the start to the hundredth of a second
 (such as 1:23.45). With the pointer
@@ -788,8 +794,11 @@ size, as on its card. Changing the averaging time or the
 lift angle works every point out again, back to the start of the session.
 
 **Distributions.** How the values of rate, amplitude and beat error spread
-over the session or the strip's length (Time Span), switched on in the
-Distributions card (all off at first). An average gives one number; these
+over the session or the strip's length (**Time Span**: **Session**,
+everything since the session started, or **Strip**, the same stretch of
+time as the paper strip, moving with it), one plot above the other in the
+one pane, hidden at first. The hare, the swing and the seesaw in its
+toolbar show or hide each reading's plot; at least one stays on. An average gives one number; these
 show whether a watch keeps to one state or moves between two, such as a
 high and a low amplitude. Rate, amplitude and beat error count either
 the readings (**Values: Readings**, the default, averaged over Average

@@ -433,7 +433,8 @@ fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
     }
 }
 
-fn title(k: SeriesKind) -> &'static str {
+/// A reading's name, as its series, chart, distribution and switch show it.
+pub fn title(k: SeriesKind) -> &'static str {
     match k {
         SeriesKind::Rate => "Rate",
         SeriesKind::Amplitude => "Amplitude",
@@ -572,22 +573,41 @@ pub const SERIES: [SeriesKind; 3] = [
     SeriesKind::BeatError,
 ];
 
-/// The switches for which series the pane shows, for its toolbar. At
-/// least one stays on.
+/// The icon for each reading: a hare for the rate, a swing for the
+/// amplitude and a seesaw for the beat error, wherever the app uses one.
+pub fn series_icon(k: SeriesKind) -> theme::Icon {
+    match k {
+        SeriesKind::Rate => theme::Icon::Rate,
+        SeriesKind::Amplitude => theme::Icon::Amplitude,
+        SeriesKind::BeatError => theme::Icon::BeatError,
+    }
+}
+
+/// The switches for which series the pane shows, for its toolbar: the
+/// readings' icons, each tinted in its colour while shown. At least one
+/// stays on.
 pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
+    let pal = theme::pal(ui);
     for (i, k) in SERIES.into_iter().enumerate() {
-        let others = shown.iter().enumerate().any(|(j, &on)| j != i && on);
-        let mut on = shown[i];
-        if theme::toggle(ui, title(k), &mut on)
+        if theme::icon_toggle(ui, series_icon(k), shown[i], series_colour(k, pal))
             .on_hover_text(format!(
-                "Show the {} series. Turning the others off gives this one the whole pane.",
+                "{}: show the {} series. Turning the others off gives this one the whole \
+                 pane.",
+                title(k),
                 title(k).to_lowercase()
             ))
-            .changed()
-            && (on || others)
+            .clicked()
         {
-            shown[i] = on;
+            flip_series(shown, i);
         }
+    }
+}
+
+/// Turn series `i` on or off, unless it is the last one on.
+pub fn flip_series(shown: &mut [bool; 3], i: usize) {
+    let others = shown.iter().enumerate().any(|(j, &on)| j != i && on);
+    if !shown[i] || others {
+        shown[i] = !shown[i];
     }
 }
 

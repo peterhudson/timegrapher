@@ -36,6 +36,7 @@ use timegrapher_core::mixer::{GainState, InputGain};
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::power_reserve;
 use timegrapher_core::profile::TickProfile;
+use timegrapher_core::steadiness::SeriesKind;
 
 /// The A and B sides' sounds.
 type Profiles = [Option<TickProfile>; 2];
@@ -575,12 +576,19 @@ pub enum Pane {
     Watch,
     Strip,
     Sound,
-    Rate,
-    Amplitude,
-    BeatError,
-    RateHistogram,
-    AmplitudeHistogram,
-    BeatErrorHistogram,
+    /// Rate, amplitude and beat error over the take, one chart each in
+    /// the one pane. Layouts saved when each was a pane of its own name
+    /// them one by one.
+    #[serde(alias = "Rate", alias = "Amplitude", alias = "BeatError")]
+    Charts,
+    /// How often each value came up, one plot for each reading in the one
+    /// pane; once three panes.
+    #[serde(
+        alias = "RateHistogram",
+        alias = "AmplitudeHistogram",
+        alias = "BeatErrorHistogram"
+    )]
+    Distributions,
     /// The Steadiness views, each a pane of its own. Layouts saved when
     /// they were one pane name it Steadiness.
     #[serde(alias = "Steadiness")]
@@ -601,7 +609,7 @@ pub enum Pane {
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 22] = [
+    const ALL: [Pane; 18] = [
         Pane::Watch,
         Pane::PositionsTest,
         Pane::PowerReserve,
@@ -609,12 +617,8 @@ impl Pane {
         Pane::Sound,
         Pane::Scope,
         Pane::Isochronism,
-        Pane::Rate,
-        Pane::Amplitude,
-        Pane::BeatError,
-        Pane::RateHistogram,
-        Pane::AmplitudeHistogram,
-        Pane::BeatErrorHistogram,
+        Pane::Charts,
+        Pane::Distributions,
         Pane::SteadyReadings,
         Pane::SteadyPeriods,
         Pane::SteadyCycle,
@@ -637,11 +641,13 @@ impl Pane {
         Pane::SteadyStft,
         Pane::SteadyWavelet,
     ];
-    const CHARTS: [Pane; 3] = [Pane::Rate, Pane::Amplitude, Pane::BeatError];
     /// The core panes, first in the icon bar.
     const CORE: [Pane; 4] = [Pane::Watch, Pane::Strip, Pane::Sound, Pane::Scope];
-    /// The analysis views: the Steadiness views and Isochronism.
-    const ANALYSIS: [Pane; 10] = [
+    /// The analysis views: the charts, the distributions, the Steadiness
+    /// views and Isochronism.
+    const ANALYSIS: [Pane; 12] = [
+        Pane::Charts,
+        Pane::Distributions,
         Pane::SteadyReadings,
         Pane::SteadyPeriods,
         Pane::SteadyCycle,
@@ -656,33 +662,15 @@ impl Pane {
     const TESTS: [Pane; 2] = [Pane::PositionsTest, Pane::PowerReserve];
     /// The panes that average the beats, each over Readings' Average Over
     /// or a time of its own.
-    const AVERAGING: [Pane; 8] = [
-        Pane::Strip,
-        Pane::Sound,
-        Pane::Rate,
-        Pane::Amplitude,
-        Pane::BeatError,
-        Pane::RateHistogram,
-        Pane::AmplitudeHistogram,
-        Pane::BeatErrorHistogram,
-    ];
-    const HISTOGRAMS: [Pane; 3] = [
-        Pane::RateHistogram,
-        Pane::AmplitudeHistogram,
-        Pane::BeatErrorHistogram,
-    ];
+    const AVERAGING: [Pane; 4] = [Pane::Strip, Pane::Sound, Pane::Charts, Pane::Distributions];
 
     fn title(self) -> &'static str {
         match self {
             Pane::Watch => "Watches",
             Pane::Strip => "Paper Strip",
             Pane::Sound => "Tick Tock Profile",
-            Pane::Rate => "Rate",
-            Pane::Amplitude => "Amplitude",
-            Pane::BeatError => "Beat Error",
-            Pane::RateHistogram => "Rate Distribution",
-            Pane::AmplitudeHistogram => "Amplitude Distribution",
-            Pane::BeatErrorHistogram => "Beat Error Distribution",
+            Pane::Charts => "Charts",
+            Pane::Distributions => "Distributions",
             Pane::SteadyReadings => "Readings Over Time",
             Pane::SteadyPeriods => "Periods",
             Pane::SteadyCycle => "Cycle",
@@ -708,19 +696,14 @@ impl Pane {
             }
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
             Pane::Sound => "The typical tick and tock sound, with the edges the readings come from",
-            Pane::Rate => "The rate over the whole session",
-            Pane::Amplitude => "The amplitude over the whole session, from the ticks and tocks",
-            Pane::BeatError => "The beat error over the whole session",
-            Pane::RateHistogram => {
-                "The rate readings on probability paper: one steady rate falls on a straight \
-                 line, two states bend it"
+            Pane::Charts => {
+                "The rate, amplitude and beat error over the whole take, each as a line in a \
+                 chart of its own"
             }
-            Pane::AmplitudeHistogram => {
-                "The amplitude readings on probability paper: a balance swinging between a \
-                 high and a low state bends the line"
-            }
-            Pane::BeatErrorHistogram => {
-                "The beat error readings, from the unlock, on probability paper"
+            Pane::Distributions => {
+                "How often each value of the rate, amplitude and beat error came up, on \
+                 probability paper: one steady state falls on a straight line, two states \
+                 bend it"
             }
             Pane::SteadyReadings => {
                 "Whether the rate, amplitude and beat error each hold steady over the \
@@ -775,12 +758,9 @@ impl Pane {
     }
 }
 
-/// The starting arrangement: the strip beside the sound and the three
-/// charts when it runs down the window, above them when it lies on its
-/// side.
-/// A pane's icon and the colour it is drawn in: the reading's colour for a
-/// chart or a distribution, one green for the Steadiness views so they read
-/// as a family, and a colour of its own for each of the rest.
+/// A pane's icon and the colour it is drawn in: one green for the charts,
+/// the distributions and the Steadiness views so they read as a family,
+/// and a colour of its own for each of the rest.
 fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
     match pane {
         Pane::Watch => (Icon::Watch, pal.sound),
@@ -799,12 +779,8 @@ fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
         Pane::Isochronism => (Icon::Isochronism, pal.drop),
         Pane::PositionsTest => (Icon::Positions, pal.teal),
         Pane::PowerReserve => (Icon::Reserve, pal.teal),
-        Pane::Rate => (Icon::RateChart, pal.trace_rate),
-        Pane::Amplitude => (Icon::AmplitudeChart, pal.trace_amplitude),
-        Pane::BeatError => (Icon::BeatErrorChart, pal.trace_beat_error),
-        Pane::RateHistogram => (Icon::RateDistribution, pal.trace_rate),
-        Pane::AmplitudeHistogram => (Icon::AmplitudeDistribution, pal.trace_amplitude),
-        Pane::BeatErrorHistogram => (Icon::BeatErrorDistribution, pal.trace_beat_error),
+        Pane::Charts => (Icon::Charts, pal.unlock),
+        Pane::Distributions => (Icon::Distributions, pal.unlock),
     }
 }
 
@@ -902,8 +878,11 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let watch = tabbed(Pane::Watch);
     let strip = tabbed(Pane::Strip);
     let sound = tabbed(Pane::Sound);
-    let charts: Vec<TileId> = Pane::CHARTS.into_iter().map(&mut tabbed).collect();
-    let hists: Vec<TileId> = Pane::HISTOGRAMS.into_iter().map(&mut tabbed).collect();
+    // The charts and distributions are tabs beside the profile, as the
+    // other analysis panes are: opening one never takes the strip's room.
+    // Dragged out beside another pane, [`keep_room`] keeps both readable.
+    let charts = tiles.insert_pane(Pane::Charts);
+    let hists = tiles.insert_pane(Pane::Distributions);
     // Scope behind the profile, then the rest, as more tabs.
     let scope = tiles.insert_pane(Pane::Scope);
     let steady: Vec<TileId> = Pane::STEADY.map(|p| tiles.insert_pane(p)).to_vec();
@@ -912,6 +891,8 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let reserve = tiles.insert_pane(Pane::PowerReserve);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
+        c.add_child(charts);
+        c.add_child(hists);
         for v in steady {
             c.add_child(v);
         }
@@ -919,22 +900,14 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         c.add_child(positions);
         c.add_child(reserve);
     }
-    // The strip across the middle and the profile across the bottom; the
-    // charts and distributions in rows of their own under them, hidden
-    // until wanted.
-    let across = if horizontal {
-        LinearDir::Horizontal
-    } else {
-        LinearDir::Vertical
-    };
-    let chart_row = tiles.insert_container(Linear::new(across, charts));
-    let hist_row = tiles.insert_container(Linear::new(across, hists));
+    // The strip across the middle and the profile across the bottom, with
+    // the panes hidden until wanted as tabs behind the profile.
     let dir = if horizontal {
         LinearDir::Vertical
     } else {
         LinearDir::Horizontal
     };
-    let mut middle = Linear::new(dir, vec![strip, sound, chart_row, hist_row]);
+    let mut middle = Linear::new(dir, vec![strip, sound]);
     middle.shares.set_share(strip, 1.6);
     let middle = tiles.insert_container(middle);
     // The Watches pane at the left when it is shown.
@@ -968,7 +941,8 @@ const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
 /// default once, as the panes moved.
-pub(crate) const LAYOUT: u32 = 2;
+/// 3: the charts and the distributions became one pane each.
+pub(crate) const LAYOUT: u32 = 3;
 
 /// After a drag moves a tab out of a tab group, egui_tiles can leave the
 /// group's active tab pointing at the tile that left, so the group shows
@@ -1005,6 +979,79 @@ fn add_missing(tree: &mut Tree<Pane>, pane: Pane) {
         .or(tree.root());
     if let Some(Some(egui_tiles::Tile::Container(c))) = host.map(|id| tree.tiles.get_mut(id)) {
         c.add_child(pane);
+    }
+}
+
+/// The least height a pane is laid out at, one above another, and the
+/// least width, side by side: room for its toolbar and one plot.
+const MIN_PANE_H: f32 = 140.0;
+const MIN_PANE_W: f32 = 240.0;
+
+/// Give every pane on show at least [`MIN_PANE_H`] (or [`MIN_PANE_W`]
+/// across), taken from the panes with room to spare, so opening a pane
+/// never crushes the others into a sliver. Worked from the sizes of the
+/// last frame; a window too small for them all shares its room evenly.
+fn keep_room(tiles: &mut Tiles<Pane>) {
+    let ids: Vec<TileId> = tiles.tile_ids().collect();
+    for id in ids {
+        let Some(rect) = tiles.rect(id) else { continue };
+        let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(id)
+        else {
+            continue;
+        };
+        let (room, least) = match l.dir {
+            LinearDir::Vertical => (rect.height(), MIN_PANE_H),
+            LinearDir::Horizontal => (rect.width(), MIN_PANE_W),
+        };
+        let shown: Vec<TileId> = l
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| tiles.is_visible(c))
+            .collect();
+        let n = shown.len();
+        let room = room - 8.0 * (n as f32 - 1.0);
+        if n < 2 || room <= 0.0 {
+            continue;
+        }
+        // A window too small for them all shares it out evenly.
+        let least = least.min(room / n as f32);
+        let share: Vec<f32> = shown.iter().map(|&c| l.shares[c]).collect();
+        let total: f32 = share.iter().sum();
+        let least = least / room;
+        // Raise the smallest to the least, then share the rest out as
+        // before, until none of the rest falls under it.
+        let mut small = vec![false; n];
+        loop {
+            let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
+            let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+            let under: Vec<usize> = (0..n)
+                .filter(|&i| !small[i] && share[i] / rest * left < least)
+                .collect();
+            if under.is_empty() {
+                break;
+            }
+            for i in under {
+                small[i] = true;
+            }
+        }
+        if !small.contains(&true) {
+            continue;
+        }
+        let rest: f32 = (0..n).filter(|&i| !small[i]).map(|i| share[i]).sum();
+        let left = 1.0 - least * small.iter().filter(|&&s| s).count() as f32;
+        if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+            tiles.get_mut(id)
+        {
+            for (i, &c) in shown.iter().enumerate() {
+                let f = if small[i] {
+                    least
+                } else {
+                    share[i] / rest * left
+                };
+                l.shares.set_share(c, f * total);
+            }
+        }
     }
 }
 
@@ -1567,17 +1614,22 @@ pub struct TimegrapherApp {
     rate_guides: bool,
     /// Amplitude, rate and beat error drawn over the strip.
     overlays: [bool; 3],
-    /// The charts cover only the strip's length, ending where the strip
-    /// does, instead of the whole session.
-    span_of_strip: bool,
-    /// The same for the distributions, set on their own.
+    /// The readings the Charts pane draws: rate, amplitude, beat error.
+    chart_series: [bool; 3],
+    /// The readings the Distributions pane draws.
+    dist_series: [bool; 3],
+    /// The charts drawn last frame: those turned on that had room. The
+    /// key names only these.
+    charts_drawn: [bool; 3],
+    /// The distributions cover only the strip's length, ending where the
+    /// strip does, instead of the whole session.
     hist_span_of_strip: bool,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
     /// The histograms count the readings rather than each 2 seconds of
     /// beats.
     hist_readings: bool,
-    /// The rate over each 2 seconds of beats, for the Rate Distribution.
+    /// The rate over each 2 seconds of beats, for the rate's distribution.
     rate_2s: RateTwoS,
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
@@ -1622,12 +1674,7 @@ pub struct TimegrapherApp {
     charts_to_live_now: bool,
     /// The averaging time each chart last drew with: a new one rescales
     /// its values, which spread wider or narrower with it.
-    chart_average_drawn: std::collections::HashMap<Pane, f64>,
-    /// How wide each chart's controls in its tab bar were last drawn, and
-    /// the charts whose tab bar has no room for them beside the tabs'
-    /// titles: those draw them in a toolbar in the pane instead.
-    chart_tools_w: std::collections::HashMap<Pane, f32>,
-    chart_tools_below: std::collections::HashSet<Pane>,
+    chart_average_drawn: std::collections::HashMap<&'static str, f64>,
     /// `None` follows the newest beat; otherwise the time at the newest
     /// edge of the strip.
     view_end: Option<f64>,
@@ -1737,7 +1784,8 @@ impl TimegrapherApp {
             rate_guides: self.rate_guides,
             overlays: self.overlays,
             follow: self.follow,
-            span_of_strip: self.span_of_strip,
+            chart_series: self.chart_series,
+            dist_series: self.dist_series,
             hist_span_of_strip: self.hist_span_of_strip,
             hist_cumulative: self.hist_cumulative,
             hist_readings: self.hist_readings,
@@ -1782,7 +1830,8 @@ impl TimegrapherApp {
             rate_guides,
             overlays,
             follow,
-            span_of_strip,
+            chart_series,
+            dist_series,
             hist_span_of_strip,
             hist_cumulative,
             hist_readings,
@@ -1847,7 +1896,10 @@ impl TimegrapherApp {
         self.rate_guides = rate_guides;
         self.overlays = overlays;
         self.follow = follow;
-        self.span_of_strip = span_of_strip;
+        // One left on is kept: a pane with none shown would be empty.
+        let some = |s: [bool; 3]| if s.contains(&true) { s } else { [true; 3] };
+        self.chart_series = some(chart_series);
+        self.dist_series = some(dist_series);
         self.hist_span_of_strip = hist_span_of_strip;
         self.hist_cumulative = hist_cumulative;
         self.hist_readings = hist_readings;
@@ -2009,7 +2061,9 @@ impl TimegrapherApp {
             rate_line: true,
             rate_guides: true,
             overlays: [true, false, false],
-            span_of_strip: false,
+            chart_series: [true; 3],
+            dist_series: [true; 3],
+            charts_drawn: [true; 3],
             hist_span_of_strip: false,
             hist_cumulative: false,
             steady_series: Default::default(),
@@ -2036,8 +2090,6 @@ impl TimegrapherApp {
             charts_to_live: false,
             charts_to_live_now: false,
             chart_average_drawn: Default::default(),
-            chart_tools_w: Default::default(),
-            chart_tools_below: Default::default(),
             capture: None,
             live: None,
             source_label: String::new(),
@@ -5558,8 +5610,6 @@ impl TimegrapherApp {
     }
 
     /// A pane's toolbar: its settings in a row and its "?" at the right.
-    /// The charts keep theirs in the tab bar (see `top_bar_right_ui`), so
-    /// a short chart loses no height; false for them.
     fn pane_tools(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
         let title = pane.title();
         match pane {
@@ -5592,22 +5642,20 @@ impl TimegrapherApp {
             Pane::PowerReserve => theme::pane_toolbar(ui, title, help::POWER_RESERVE, |ui| {
                 self.reserve_settings(ui);
             }),
-            p if Pane::HISTOGRAMS.contains(&p) => {
-                theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
-                    self.span_setting(ui);
-                    self.histogram_settings(ui);
-                    self.pane_average_setting(ui, p);
-                    self.export_button(ui, p);
-                })
-            }
-            p if self.chart_tools_below.contains(&p) => {
-                theme::pane_toolbar(ui, title, help::CHARTS, |ui| {
-                    self.pane_average_setting(ui, p);
-                    theme::toggle(ui, "Match Strip", &mut self.span_of_strip)
-                        .on_hover_text(MATCH_STRIP_HINT);
-                    self.export_button(ui, p);
-                })
-            }
+            Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
+                steady::series_switches(ui, &mut self.dist_series);
+                ui.separator();
+                self.span_setting(ui);
+                self.histogram_settings(ui);
+                self.pane_average_setting(ui, pane);
+                self.export_button(ui, pane);
+            }),
+            Pane::Charts => theme::pane_toolbar(ui, title, help::CHARTS, |ui| {
+                steady::series_switches(ui, &mut self.chart_series);
+                ui.separator();
+                self.pane_average_setting(ui, pane);
+                self.export_button(ui, pane);
+            }),
             _ => return false,
         }
         true
@@ -5658,7 +5706,12 @@ impl TimegrapherApp {
                     .font(theme::semibold(13.0))
                     .color(pal.text),
             );
-            for (name, color, gaps) in chart_key(pane, pal) {
+            let key = if pane == Pane::Charts {
+                chart_key(self.charts_drawn, pal)
+            } else {
+                Vec::new()
+            };
+            for (name, color, gaps) in key {
                 ui.add_space(10.0);
                 match gaps {
                     Some(g) => theme::dash(ui, color, g),
@@ -7325,7 +7378,7 @@ impl TimegrapherApp {
                 .on_hover_text(pane.hint())
                 .changed()
             {
-                set_pane_visible(&mut self.panes.tiles, pane, on);
+                self.show_pane(pane, on);
             }
         };
         for pane in Pane::ALL {
@@ -8104,8 +8157,8 @@ impl TimegrapherApp {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
         // The readings' cards, which are no pane, then the core panes,
-        // Watches first, the charts, the distributions, the analysis views
-        // and the tests, each group under its name.
+        // Watches first, the analysis views and the tests, each group under
+        // its name.
         if theme::icon_toggle(ui, Icon::Readings, self.show_readings, pal.accent)
             .on_hover_text(
                 "Readings: the Position, Listen, Rate, Amplitude, Beat Error and Beat Rate \
@@ -8115,23 +8168,14 @@ impl TimegrapherApp {
         {
             self.show_readings = !self.show_readings;
         }
-        let groups: [(&str, &str, &[Pane]); 5] = [
+        let groups: [(&str, &str, &[Pane]); 3] = [
             ("", "", &Pane::CORE),
             (
-                "Charts",
-                "Each reading over the session, as a line",
-                &Pane::CHARTS,
-            ),
-            (
-                "Distributions",
-                "How often each value of a reading came up",
-                &Pane::HISTOGRAMS,
-            ),
-            (
                 "Analysis",
-                "How the rate, amplitude and beat error each change over the session, from \
-                 the same tests as `timegrapher series`, and how the rate moves with the \
-                 amplitude: each view a pane of its own, so two can sit side by side",
+                "The readings over the take as charts and as distributions, how the rate, \
+                 amplitude and beat error each change over the session, from the same tests \
+                 as `timegrapher series`, and how the rate moves with the amplitude: each \
+                 view a pane of its own, so two can sit side by side",
                 &Pane::ANALYSIS,
             ),
             (
@@ -8216,7 +8260,7 @@ impl TimegrapherApp {
                             .on_hover_text(pane.hint())
                             .changed()
                         {
-                            set_pane_visible(&mut self.panes.tiles, pane, shown);
+                            self.show_pane(pane, shown);
                         }
                     }
                 });
@@ -8233,7 +8277,7 @@ impl TimegrapherApp {
                     .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
                     .clicked()
                 {
-                    set_pane_visible(&mut self.panes.tiles, pane, !on);
+                    self.show_pane(pane, !on);
                 }
             }
         }
@@ -10553,6 +10597,16 @@ impl TimegrapherApp {
         }
     }
 
+    /// Show a pane at the front of its tabs, or hide it: what its icon and
+    /// its View menu item do.
+    fn show_pane(&mut self, pane: Pane, on: bool) {
+        if on {
+            self.reveal_pane(pane);
+        } else {
+            set_pane_visible(&mut self.panes.tiles, pane, false);
+        }
+    }
+
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
         set_pane_visible(&mut self.panes.tiles, pane, true);
@@ -10940,6 +10994,7 @@ impl TimegrapherApp {
         self.charts_to_live_now = std::mem::take(&mut self.charts_to_live);
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         repair_tabs(&mut panes);
+        keep_room(&mut panes.tiles);
         panes.ui(&mut PaneBehavior { app: self }, ui);
         self.panes = panes;
     }
@@ -11496,14 +11551,8 @@ impl TimegrapherApp {
         }
     }
 
-    /// The stretch of time the charts cover: the strip's length, ending
-    /// where the strip does, or `None` for the whole session.
-    fn chart_window(&self) -> Option<(f64, f64)> {
-        self.span_of_strip.then(|| self.strip_window())
-    }
-
-    /// The stretch of time the distributions cover, as for the charts but
-    /// set on its own.
+    /// The stretch of time the distributions cover: the strip's length,
+    /// ending where the strip does, or `None` for the whole session.
     fn hist_window(&self) -> Option<(f64, f64)> {
         self.hist_span_of_strip.then(|| self.strip_window())
     }
@@ -11532,13 +11581,21 @@ impl TimegrapherApp {
             .collect()
     }
 
+    /// The Distributions pane: a plot for each reading shown, one above
+    /// the other, sharing the pane's height.
+    fn distributions_pane(&mut self, ui: &mut egui::Ui) {
+        let shown = self.dist_series;
+        stacked(ui, shown, |ui, k| self.histogram(ui, k));
+    }
+
     /// How often each value of a reading came up, over the session or the
     /// strip's length: bars, or the cumulative share.
-    fn histogram(&mut self, ui: &mut egui::Ui, pane: Pane) {
+    fn histogram(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
         let short = !self.hist_readings;
-        if pane == Pane::RateHistogram && short {
+        let pane = Pane::Distributions;
+        if reading == SeriesKind::Rate && short {
             match self.live.as_ref() {
                 Some(live) => self.rate_2s.refresh(live, &self.masked),
                 None => self.rate_2s = RateTwoS::default(),
@@ -11577,8 +11634,8 @@ impl TimegrapherApp {
             usize,
             _,
             &str,
-        ) = match pane {
-            Pane::RateHistogram if short => (
+        ) = match reading {
+            SeriesKind::Rate if short => (
                 self.rate_2s
                     .values
                     .iter()
@@ -11591,7 +11648,7 @@ impl TimegrapherApp {
                 pal.trace_rate,
                 "2-second stretches",
             ),
-            Pane::RateHistogram => (
+            SeriesKind::Rate => (
                 readings(|p| p.rate),
                 0.1,
                 " s/day",
@@ -11599,7 +11656,7 @@ impl TimegrapherApp {
                 pal.trace_rate,
                 "readings",
             ),
-            Pane::AmplitudeHistogram if short => (
+            SeriesKind::Amplitude if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
@@ -11611,7 +11668,7 @@ impl TimegrapherApp {
                 pal.trace_amplitude,
                 "2-second stretches",
             ),
-            Pane::AmplitudeHistogram => (
+            SeriesKind::Amplitude => (
                 readings(|p| p.amplitude),
                 0.5,
                 "°",
@@ -11619,7 +11676,7 @@ impl TimegrapherApp {
                 pal.trace_amplitude,
                 "readings",
             ),
-            Pane::BeatErrorHistogram if short => (
+            SeriesKind::BeatError if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
@@ -11631,7 +11688,7 @@ impl TimegrapherApp {
                 pal.trace_beat_error,
                 "2-second stretches",
             ),
-            Pane::BeatErrorHistogram => (
+            SeriesKind::BeatError => (
                 readings(|p| p.beat_error_unlock),
                 0.01,
                 " ms",
@@ -11639,7 +11696,6 @@ impl TimegrapherApp {
                 pal.trace_beat_error,
                 "readings",
             ),
-            _ => return,
         };
         let opt = hist::Options {
             resolution,
@@ -11648,9 +11704,12 @@ impl TimegrapherApp {
         };
         let Some(h) = hist::histogram_with(&values, &opt) else {
             ui.label(
-                RichText::new("Not enough readings yet")
-                    .small()
-                    .color(pal.text_secondary),
+                RichText::new(format!(
+                    "{}: not enough readings yet",
+                    steady::title(reading)
+                ))
+                .small()
+                .color(pal.text_secondary),
             );
             return;
         };
@@ -11662,7 +11721,8 @@ impl TimegrapherApp {
             None => " in the session".to_string(),
         };
         let mut line = format!(
-            "{} {per}{over} · median {} · middle 80% {} to {}",
+            "{}: {} {per}{over} · median {} · middle 80% {} to {}",
+            steady::title(reading),
             h.n,
             f(h.median),
             f(h.p10),
@@ -11683,7 +11743,9 @@ impl TimegrapherApp {
         let (x_lo, x_hi) = (h.start, h.start + h.counts.len() as f64 * h.bin_width);
         let unit_owned = unit.to_string();
         let cumulative = self.hist_cumulative;
-        let plot = Plot::new(pane.title())
+        let plot = Plot::new(format!("{} Distribution", steady::title(reading)))
+            // As short as its share of the pane, rather than spilling out.
+            .min_size(Vec2::new(64.0, 24.0))
             .allow_scroll(false)
             .allow_zoom(false)
             .allow_drag(false)
@@ -11794,10 +11856,17 @@ impl TimegrapherApp {
         });
     }
 
-    fn chart(&mut self, ui: &mut egui::Ui, pane: Pane) {
+    /// The Charts pane: a chart for each reading shown, one above the
+    /// other, sharing the pane's height and its time axis.
+    fn charts_pane(&mut self, ui: &mut egui::Ui) {
+        let shown = self.chart_series;
+        self.charts_drawn = stacked(ui, shown, |ui, k| self.chart(ui, k));
+    }
+
+    fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         let pal = theme::pal(ui);
         let weak = pal.text_tertiary;
-        let average = self.average_for(pane);
+        let average = self.average_for(Pane::Charts);
         let trend = self.trend_for(average);
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             trend
@@ -11810,8 +11879,8 @@ impl TimegrapherApp {
         // purple over orange, the key drawn the same; beat error from the
         // drop is a fainter dashed yellow.
         let solid = LineStyle::Solid;
-        let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match pane {
-            Pane::Rate => (
+        let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match reading {
+            SeriesKind::Rate => (
                 vec![ChartLine {
                     name: format!(
                         "Rate in seconds per day, {} average",
@@ -11827,7 +11896,7 @@ impl TimegrapherApp {
                 " s/day",
                 1,
             ),
-            Pane::Amplitude => (
+            SeriesKind::Amplitude => (
                 vec![
                     ChartLine {
                         name: "Average Amplitude".into(),
@@ -11860,7 +11929,7 @@ impl TimegrapherApp {
                 "°",
                 0,
             ),
-            Pane::BeatError => (
+            SeriesKind::BeatError => (
                 vec![
                     ChartLine {
                         name: "From the Unlock".into(),
@@ -11884,9 +11953,10 @@ impl TimegrapherApp {
                 " ms",
                 2,
             ),
-            _ => return,
         };
-        let mut plot = Plot::new(pane.title())
+        let mut plot = Plot::new(steady::title(reading))
+            // As short as its share of the pane, rather than spilling out.
+            .min_size(Vec2::new(64.0, 24.0))
             .link_axis("trend", [true, false])
             .link_cursor("trend", [true, false])
             .allow_scroll(false)
@@ -11908,49 +11978,30 @@ impl TimegrapherApp {
             // (below), instead of only when the pointer is on a line.
             .show_x(false)
             .show_y(false);
-        // Scale to hold every point of the lines.
-        let window = self.chart_window();
-        if window.is_some() && self.strip.horizontal {
-            // Leave the room the strip keeps for its overlays' scales, so the
-            // time axes end together too.
-            let n = self.overlays.iter().filter(|&&o| o).count() as f32;
-            let right = 4.0 + 58.0 * n;
-            ui.set_max_width((ui.available_width() - right).max(100.0));
-        }
-        let all: Vec<[f64; 2]> = series
-            .iter()
-            .flat_map(|s| s.pts.iter().copied())
-            .filter(|p| window.is_none_or(|(a, b)| p[0] >= a && p[0] <= b))
-            .collect();
+        // Scale to hold every point of the lines: the whole take.
+        let all: Vec<[f64; 2]> = series.iter().flat_map(|s| s.pts.iter().copied()).collect();
         let y_range = data_range(&all);
         if let Some((lo, hi)) = y_range {
             plot = plot.default_y_bounds(lo, hi);
         }
-        if window.is_some() {
-            // The strip sets the time: only the vertical scale moves.
-            plot = plot
-                .allow_drag([false, true])
-                .allow_double_click_reset(false);
-        }
         let marker = (self.view_end.is_some() || !self.running()).then(|| self.end_s());
         let lookup = series.clone();
+        let colour = series.first().map_or(pal.text_secondary, |l| l.key);
         let to_live = self.charts_to_live_now;
         // A new averaging time spreads the values wider or narrower, so the
         // scale follows it, keeping the time shown.
         let rescale = self
             .chart_average_drawn
-            .insert(pane, average)
+            .insert(steady::title(reading), average)
             .is_some_and(|was| was != average);
         let resp = plot.show(ui, |p| {
-            if let Some((a, b)) = window {
-                p.set_plot_bounds_x(a..=b);
-            } else if to_live {
+            if to_live {
                 p.set_auto_bounds([true, true]);
             }
-            if let (Some((lo, hi)), true) = (y_range, rescale || (to_live && window.is_some())) {
+            if let (Some((lo, hi)), true) = (y_range, rescale) {
                 p.set_plot_bounds_y(lo..=hi);
             }
-            if p.response().hovered() && window.is_none() {
+            if p.response().hovered() {
                 let s = p.ctx().input(|i| i.smooth_scroll_delta);
                 let wheel = s.x + s.y;
                 if wheel != 0.0 {
@@ -11984,7 +12035,7 @@ impl TimegrapherApp {
             let hover = p.pointer_coordinate().filter(|_| hovered);
             let click = clicked.then(|| p.pointer_coordinate()).flatten();
             // Panned or zoomed away from the whole session.
-            let moved = window.is_none() && !to_live && !p.auto_bounds().x;
+            let moved = !to_live && !p.auto_bounds().x;
             (click, hover.map(|h| h.x), moved)
         });
         let (click, hover, moved) = resp.inner;
@@ -11996,6 +12047,14 @@ impl TimegrapherApp {
         let painter = ui.painter_at(frame);
         let t = resp.transform;
         paint_y_labels(ui, &t, unit);
+        // Which reading this chart is, in its colour, at its top left.
+        painter.text(
+            frame.left_top() + Vec2::new(6.0, 3.0),
+            egui::Align2::LEFT_TOP,
+            steady::title(reading),
+            egui::TextStyle::Small.resolve(ui.style()),
+            colour,
+        );
         let at = |x| egui::pos2(t.position_from_point_x(x), frame.top());
         let test = self.in_test();
         if test {
@@ -12209,24 +12268,102 @@ fn chart_time_label(t: f64, r: &std::ops::RangeInclusive<f64>) -> String {
 /// The names in a chart's key and their colours, when it has more than one
 /// line.
 /// A second colour is drawn as a dash of the two, as the line is.
-fn chart_key(pane: Pane, pal: &theme::Palette) -> Vec<(&'static str, Color32, Option<Color32>)> {
-    match pane {
-        Pane::Amplitude => vec![
+fn chart_key(
+    shown: [bool; 3],
+    pal: &theme::Palette,
+) -> Vec<(&'static str, Color32, Option<Color32>)> {
+    let mut key = Vec::new();
+    if shown[1] {
+        key.extend([
             ("Average Amplitude", pal.trace_amplitude, None),
             ("From Tick", pal.trace_amplitude, Some(pal.tick)),
             ("From Tock", pal.trace_amplitude, Some(pal.tock)),
-        ],
-        Pane::BeatError => vec![
+        ]);
+    }
+    if shown[2] {
+        key.extend([
             ("From the Unlock", pal.trace_beat_error, None),
             (
                 "From the Drop",
                 pal.trace_beat_error.gamma_multiply(0.6),
                 None,
             ),
-        ],
-        _ => Vec::new(),
+        ]);
     }
+    key
 }
+
+/// One plot for each reading `shown`, one above the other, sharing the
+/// height left in `ui` evenly. A pane too short for them all draws the
+/// first ones at a readable height and names the rest, rather than
+/// squeezing every plot flat or spilling out of the pane.
+fn stacked(
+    ui: &mut egui::Ui,
+    shown: [bool; 3],
+    mut draw: impl FnMut(&mut egui::Ui, SeriesKind),
+) -> [bool; 3] {
+    let kinds: Vec<SeriesKind> = steady::SERIES
+        .into_iter()
+        .zip(shown)
+        .filter_map(|(k, on)| on.then_some(k))
+        .collect();
+    let (gap, least, note) = (6.0, STACKED_MIN_H, 18.0);
+    let room = ui.available_height();
+    let fits = |n: usize| n as f32 * least + (n as f32 - 1.0) * gap + note;
+    let mut n = kinds.len();
+    while n > 1 && fits(n) > room {
+        n -= 1;
+    }
+    let left_out = &kinds[n..];
+    let room = if left_out.is_empty() {
+        room
+    } else {
+        room - note
+    };
+    let h = ((room - gap * (n as f32 - 1.0)) / n.max(1) as f32).max(24.0);
+    let w = ui.available_width();
+    for (i, &k) in kinds[..n].iter().enumerate() {
+        if i > 0 {
+            ui.add_space(gap);
+        }
+        ui.allocate_ui_with_layout(
+            Vec2::new(w, h),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_min_size(Vec2::new(w, h));
+                ui.set_max_height(h);
+                draw(ui, k);
+            },
+        );
+    }
+    if !left_out.is_empty() {
+        let names: Vec<&str> = left_out.iter().map(|&k| steady::title(k)).collect();
+        // The switches are pictures: say which picture turns which off.
+        let switches: Vec<String> = kinds[..n]
+            .iter()
+            .map(|&k| {
+                let picture = match k {
+                    SeriesKind::Rate => "the hare",
+                    SeriesKind::Amplitude => "the swing",
+                    SeriesKind::BeatError => "the seesaw",
+                };
+                format!("{picture} ({})", steady::title(k))
+            })
+            .collect();
+        let line = format!(
+            "{} not shown: no room. Make the pane taller, or turn off {}.",
+            names.join(" and "),
+            switches.join(" or ")
+        );
+        let pal = theme::pal(ui);
+        ui.add(egui::Label::new(RichText::new(line).small().color(pal.text_secondary)).truncate());
+    }
+    steady::SERIES.map(|k| kinds[..n].contains(&k))
+}
+
+/// The least height a chart or distribution is drawn at in the Charts and
+/// Distributions panes.
+const STACKED_MIN_H: f32 = 70.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
@@ -12336,8 +12473,9 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                     self.app.reserve_pane(ui)
                 }
                 Pane::Scope => self.app.scope_pane(ui),
-                p if Pane::HISTOGRAMS.contains(p) => self.app.histogram(ui, *p),
-                p => self.app.chart(ui, *p),
+                Pane::Distributions => self.app.distributions_pane(ui),
+                Pane::Charts => self.app.charts_pane(ui),
+                _ => {}
             }
         });
         if exporting {
@@ -12419,8 +12557,8 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         )
     }
 
-    /// A chart's key at the right of its tab bar, so it never covers the
-    /// lines.
+    /// The charts' key at the right of their tab bar, so it never covers
+    /// the lines.
     fn top_bar_right_ui(
         &mut self,
         tiles: &Tiles<Pane>,
@@ -12452,33 +12590,11 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                     + 40.0
             })
             .sum();
-        // Right to left: a chart's "?" and Match Strip, then its key.
-        if Pane::CHARTS.contains(pane) {
-            let need = self.app.chart_tools_w.get(pane).copied().unwrap_or(360.0);
-            if ui.available_width() - tabs_w < need {
-                self.app.chart_tools_below.insert(*pane);
-                return;
-            }
-            self.app.chart_tools_below.remove(pane);
-            let before = ui.available_width();
-            ui.add_space(4.0);
-            theme::help(ui, pane.title(), help::CHARTS);
-            ui.add_space(6.0);
-            self.app.export_button(ui, *pane);
-            ui.add_space(6.0);
-            theme::toggle(ui, "Match Strip", &mut self.app.span_of_strip)
-                .on_hover_text(MATCH_STRIP_HINT);
-            ui.add_space(6.0);
-            self.app.pane_average_choice(ui, *pane);
-            ui.label(RichText::new("Average Over").size(12.5))
-                .on_hover_text(PANE_AVERAGE_HINT);
-            ui.add_space(8.0);
-            self.app
-                .chart_tools_w
-                .insert(*pane, before - ui.available_width());
+        if *pane != Pane::Charts {
+            return;
         }
         // The key only when all of it fits beside the tabs' titles.
-        let key = chart_key(*pane, pal);
+        let key = chart_key(self.app.charts_drawn, pal);
         let font = egui::TextStyle::Small.resolve(ui.style());
         let needed: f32 = key
             .iter()
@@ -13232,9 +13348,6 @@ fn banner(
 type ScopeKey = (i64, u64, scope::Zoom, u64);
 
 /// What a pane's Average Over does.
-const MATCH_STRIP_HINT: &str = "Show the same stretch of time as the paper strip, so the charts \
-     line up with it and move with it. Off, the charts show the whole session.";
-
 const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
      As Readings follows Average Over on the Listen card. A time of its own sets \
      everything in this pane that Average Over sets, and is named on the pane's tab, until \
@@ -13493,7 +13606,7 @@ mod tests {
         app
     }
 
-    /// The Rate Distribution's 2 s values are the rate over each 2 seconds
+    /// The rate distribution's 2 s values are the rate over each 2 seconds
     /// of beats, none across a break or into a masked stretch.
     #[test]
     fn rate_distribution_counts_two_second_stretches() {
@@ -13519,7 +13632,7 @@ mod tests {
         app.hist_readings = false;
         let ctx = egui::Context::default();
         let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.histogram(ui, Pane::RateHistogram));
+            egui::CentralPanel::default().show(ctx, |ui| app.histogram(ui, SeriesKind::Rate));
         });
         assert!(!app.rate_2s.values.is_empty());
     }
@@ -13885,43 +13998,68 @@ mod tests {
         }
     }
 
-    /// A chart too narrow for its controls beside its tab's title draws
-    /// them in a toolbar in the pane, so its title and × stay in view; a
-    /// wide one keeps them in its tab bar.
+    /// The Charts and Distributions panes draw a plot for each reading
+    /// turned on, and its switches keep at least one on.
     #[test]
-    fn a_narrow_chart_keeps_its_tab_title_and_moves_its_controls_into_the_pane() {
-        let mut app = synthetic(12.0, 20.0);
-        for p in Pane::CHARTS {
+    fn the_charts_and_distributions_draw_the_readings_turned_on() {
+        let mut app = synthetic(30.0, 20.0);
+        for p in [Pane::Charts, Pane::Distributions] {
             set_pane_visible(&mut app.panes.tiles, p, true);
         }
-        let ctx = themed();
-        let draw = |app: &mut TimegrapherApp, w: f32| {
-            let mut text = String::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(w, 1000.0),
-                    )),
-                    ..Default::default()
-                };
-                text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
-            }
-            text
-        };
-        let text = draw(&mut app, 1600.0);
-        assert!(!app.chart_tools_below.is_empty());
-        for p in &app.chart_tools_below {
-            assert!(text.contains(&app.pane_heading(*p)), "{p:?}: {text}");
+        // Room for every plot: the strip, the profile and the Scope out of
+        // the way.
+        for p in [Pane::Strip, Pane::Sound, Pane::Scope] {
+            set_pane_visible(&mut app.panes.tiles, p, false);
         }
-        // Each chart's controls once, in its bar or its pane.
-        assert_eq!(
-            text.matches("Match Strip").count(),
-            Pane::CHARTS.len(),
-            "{text}"
-        );
-        draw(&mut app, 6000.0);
-        assert!(app.chart_tools_below.is_empty());
+        let ctx = themed();
+        // Each pane in turn: they are tabs side by side, one on show.
+        let draw = |app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for p in [Pane::Charts, Pane::Distributions] {
+                for q in [Pane::Charts, Pane::Distributions] {
+                    set_pane_visible(&mut app.panes.tiles, q, q == p);
+                }
+                let mut text = String::new();
+                for _ in 0..3 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(1440.0, 1000.0),
+                        )),
+                        ..Default::default()
+                    };
+                    text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
+                }
+                all.push_str(&text);
+            }
+            all
+        };
+        let text = draw(&mut app);
+        for t in [
+            "Charts",
+            "Distributions",
+            "s/day",
+            "Beat Error:",
+            "Amplitude:",
+        ] {
+            assert!(text.contains(t), "{t}: {text}");
+        }
+        assert!(!text.contains("Match Strip"), "{text}");
+        // Only the rate: no amplitude or beat error plot in either pane.
+        app.chart_series = [true, false, false];
+        app.dist_series = [true, false, false];
+        let text = draw(&mut app);
+        assert!(text.contains("Rate"), "{text}");
+        for t in ["Beat Error:", "Amplitude:", "From the Unlock", "From Tick"] {
+            assert!(!text.contains(t), "{t}: {text}");
+        }
+        // The last one on stays on; another comes on beside it.
+        steady::flip_series(&mut app.chart_series, 0);
+        assert_eq!(app.chart_series, [true, false, false]);
+        steady::flip_series(&mut app.chart_series, 2);
+        assert_eq!(app.chart_series, [true, false, true]);
+        steady::flip_series(&mut app.chart_series, 0);
+        assert_eq!(app.chart_series, [false, false, true]);
     }
 
     /// The window before anything is open, with a problem showing, in both
@@ -16131,7 +16269,7 @@ mod tests {
         assert!(fit.rate_s_per_day.abs() < 5.0, "{}", fit.rate_s_per_day);
         // And it all draws, bands and all.
         let ctx = themed();
-        for p in Pane::CHARTS.into_iter().chain(Pane::HISTOGRAMS) {
+        for p in [Pane::Charts, Pane::Distributions] {
             set_pane_visible(&mut app.panes.tiles, p, true);
         }
         frames(&mut app, &ctx, 2);
@@ -16850,14 +16988,14 @@ mod tests {
         let mut app = synthetic(12.0, 20.0);
         let ctx = themed();
         frames(&mut app, &ctx, 2);
-        for p in [Pane::Rate, Pane::Amplitude, Pane::Strip] {
+        for p in [Pane::Charts, Pane::Distributions, Pane::Strip] {
             set_pane_visible(&mut app.panes.tiles, p, false);
         }
         frames(&mut app, &ctx, 2);
         app.strip.horizontal = true;
         app.relayout(true);
         frames(&mut app, &ctx, 3);
-        for p in [Pane::Rate, Pane::Amplitude, Pane::Strip] {
+        for p in [Pane::Charts, Pane::Distributions, Pane::Strip] {
             assert!(!pane_visible(&app.panes.tiles, p), "{p:?} came back");
         }
         assert!(pane_visible(&app.panes.tiles, Pane::Sound));
@@ -16912,23 +17050,30 @@ mod tests {
                 .filter(|&id| t.get_container(id).is_some() && t.is_visible(id))
                 .count()
         };
-        // Every chart shown, as it is in use.
-        for p in Pane::CHARTS {
+        // The charts and distributions shown, as they are in use.
+        for p in [Pane::Charts, Pane::Distributions] {
             set_pane_visible(tiles, p, true);
         }
         let all = visible_containers(tiles);
-        set_pane_visible(tiles, Pane::Rate, false);
-        assert!(!pane_visible(tiles, Pane::Rate));
-        // Its tab container goes too, nothing else.
+        set_pane_visible(tiles, Pane::Charts, false);
+        assert!(!pane_visible(tiles, Pane::Charts));
+        // They are tabs behind the profile, so its tab bar stays while
+        // any pane shows in it,
+        assert_eq!(visible_containers(tiles), all);
+        set_pane_visible(tiles, Pane::Distributions, false);
+        set_pane_visible(tiles, Pane::Scope, false);
+        assert_eq!(visible_containers(tiles), all);
+        // and goes with the last of them, nothing else.
+        set_pane_visible(tiles, Pane::Sound, false);
         assert_eq!(visible_containers(tiles), all - 1);
         for p in Pane::ALL {
             set_pane_visible(tiles, p, false);
         }
         assert_eq!(visible_containers(tiles), 0, "root still shown");
-        set_pane_visible(tiles, Pane::Amplitude, true);
-        assert!(pane_visible(tiles, Pane::Amplitude));
+        set_pane_visible(tiles, Pane::Distributions, true);
+        assert!(pane_visible(tiles, Pane::Distributions));
         assert!(tiles.is_visible(tree.root.unwrap()));
-        assert!(!pane_visible(tiles, Pane::Rate));
+        assert!(!pane_visible(tiles, Pane::Charts));
 
         // A new strip direction keeps the choice.
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
@@ -16941,15 +17086,13 @@ mod tests {
     #[test]
     fn histograms_start_hidden_and_keep_their_switch_through_a_relayout() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        for p in Pane::HISTOGRAMS {
-            assert!(!pane_visible(&app.panes.tiles, p));
-        }
+        assert!(!pane_visible(&app.panes.tiles, Pane::Distributions));
         // The charts start hidden too, in Quick Listen's layout.
-        assert!(!pane_visible(&app.panes.tiles, Pane::Rate));
-        set_pane_visible(&mut app.panes.tiles, Pane::AmplitudeHistogram, true);
+        assert!(!pane_visible(&app.panes.tiles, Pane::Charts));
+        set_pane_visible(&mut app.panes.tiles, Pane::Distributions, true);
         app.relayout(true);
-        assert!(pane_visible(&app.panes.tiles, Pane::AmplitudeHistogram));
-        assert!(!pane_visible(&app.panes.tiles, Pane::RateHistogram));
+        assert!(pane_visible(&app.panes.tiles, Pane::Distributions));
+        assert!(!pane_visible(&app.panes.tiles, Pane::Charts));
     }
 
     #[test]
@@ -17247,7 +17390,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .set_breaks(app.session.replay_breaks().unwrap());
-        app.pane_average.insert(Pane::Rate, 5.0);
+        app.pane_average.insert(Pane::Charts, 5.0);
         app.rebuild_trend();
         assert!(!app.trend.is_empty());
         assert!(!app.other_trends[&trend_key(5.0)].is_empty());
@@ -17398,7 +17541,7 @@ mod tests {
         app.sound_opts.scale = profiles::Scale::Decibels;
         app.hist_cumulative = true;
         app.folded.insert("Window".into());
-        set_pane_visible(&mut app.panes.tiles, Pane::AmplitudeHistogram, true);
+        set_pane_visible(&mut app.panes.tiles, Pane::Distributions, true);
         app.set_average(30.0);
         let json = serde_json::to_string(&app.settings()).unwrap();
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
@@ -17409,7 +17552,7 @@ mod tests {
         assert!(again.hist_cumulative);
         assert!(again.folded.contains("Window"));
         assert_eq!(again.average_s, 30.0);
-        assert!(pane_visible(&again.panes.tiles, Pane::AmplitudeHistogram));
+        assert!(pane_visible(&again.panes.tiles, Pane::Distributions));
         // Settings from an older app, with fields missing, fill in the rest.
         let old: Settings = serde_json::from_str(r#"{"hist_cumulative": true}"#).unwrap();
         assert!(old.hist_cumulative && old.rate_line);
@@ -17493,6 +17636,103 @@ mod tests {
         // app has, so the rest of the settings aren't lost with it.
         let old: Pane = serde_json::from_str("\"Microphone\"").unwrap();
         assert_eq!(old, Pane::Watch);
+    }
+
+    /// A pane too short for every reading's plot draws the first ones at a
+    /// readable height and names the rest; a tall one draws them all.
+    #[test]
+    fn a_short_pane_names_the_plots_it_has_no_room_for() {
+        let run = |height: f32| {
+            let ctx = egui::Context::default();
+            let mut drawn = Vec::new();
+            let mut fit = [false; 3];
+            let out = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(800.0, height),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        fit = stacked(ui, [true; 3], |ui, k| {
+                            drawn.push((k, ui.max_rect().height()));
+                        });
+                    });
+                },
+            );
+            (drawn, painted_text(&out), fit)
+        };
+        // What it says it drew, for the key, is what it drew.
+        let (drawn, text, fit) = run(140.0);
+        assert_eq!(fit, [true, false, false]);
+        assert_eq!(drawn.len(), 1, "{drawn:?}");
+        assert!(drawn[0].1 >= STACKED_MIN_H, "{drawn:?}");
+        assert!(
+            text.contains("Amplitude and Beat Error not shown: no room"),
+            "{text}"
+        );
+        let (drawn, text, fit) = run(600.0);
+        assert_eq!(fit, [true; 3]);
+        assert_eq!(drawn.len(), 3, "{drawn:?}");
+        assert!(!text.contains("not shown"), "{text}");
+    }
+
+    /// Settings from before the charts and the distributions were one pane
+    /// each still read: each old chart is the Charts pane, each old
+    /// distribution the Distributions pane, the old charts' Match Strip is
+    /// left, and the layout starts afresh with one of each, hidden, while
+    /// the other settings are kept.
+    #[test]
+    fn an_old_layout_with_a_pane_for_each_chart_reads_back() {
+        for (name, pane) in [
+            ("Rate", Pane::Charts),
+            ("Amplitude", Pane::Charts),
+            ("BeatError", Pane::Charts),
+            ("RateHistogram", Pane::Distributions),
+            ("AmplitudeHistogram", Pane::Distributions),
+            ("BeatErrorHistogram", Pane::Distributions),
+        ] {
+            let old: Pane = serde_json::from_str(&format!("\"{name}\"")).unwrap();
+            assert_eq!(old, pane, "{name}");
+        }
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.hist_cumulative = true;
+        // An older app's file, naming a chart and a distribution the old
+        // way, with Match Strip on.
+        let json = serde_json::to_string(&app.settings()).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let tree = serde_json::to_string(&value["panes"])
+            .unwrap()
+            .replacen("\"Charts\"", "\"Rate\"", 1)
+            .replacen("\"Distributions\"", "\"AmplitudeHistogram\"", 1);
+        value["panes"] = serde_json::from_str(&tree).unwrap();
+        value["layout"] = 2.into();
+        value["span_of_strip"] = true.into();
+        value.as_object_mut().unwrap().remove("chart_series");
+        let old: Settings = serde_json::from_value(value).unwrap();
+        let mut back = TimegrapherApp::with_devices(Vec::new(), None);
+        back.apply_settings(old);
+        assert!(back.hist_cumulative, "the rest is kept");
+        assert_eq!(back.chart_series, [true; 3]);
+        for p in [Pane::Charts, Pane::Distributions] {
+            let n = back
+                .panes
+                .tiles
+                .tiles()
+                .filter(|t| matches!(t, egui_tiles::Tile::Pane(q) if *q == p))
+                .count();
+            assert_eq!(n, 1, "{p:?}");
+            assert!(!pane_visible(&back.panes.tiles, p), "{p:?}");
+        }
+        // Each pane's readings come back as they were left.
+        app.chart_series = [false, true, false];
+        app.dist_series = [true, false, true];
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.apply_settings(app.settings());
+        assert_eq!(again.chart_series, [false, true, false]);
+        assert_eq!(again.dist_series, [true, false, true]);
     }
 
     /// A layout saved before Quick Listen's starts afresh once; one saved
@@ -17581,29 +17821,29 @@ mod tests {
     }
 
     /// Every pane has one place in the icon bar's groups: the core panes
-    /// with Watches first, the charts, the distributions, Analysis (the
-    /// Steadiness views and Isochronism) and Tests. At 1000 points the
-    /// largest groups fold into menus, and the Tests and Settings still
-    /// show.
+    /// with Watches first, Analysis (the charts, the distributions, the
+    /// Steadiness views and Isochronism) and Tests. At 1000 points every
+    /// icon fits; narrower, the largest group folds into a menu, and the
+    /// Tests still show.
     #[test]
     fn every_pane_has_one_place_in_the_icon_bar() {
-        let mut all: Vec<Pane> = [
-            &Pane::CORE[..],
-            &Pane::CHARTS,
-            &Pane::HISTOGRAMS,
-            &Pane::ANALYSIS,
-            &Pane::TESTS,
-        ]
-        .concat();
+        let mut all: Vec<Pane> = [&Pane::CORE[..], &Pane::ANALYSIS, &Pane::TESTS].concat();
         assert_eq!(Pane::CORE[0], Pane::Watch);
         assert!(Pane::ANALYSIS.contains(&Pane::Isochronism));
+        assert_eq!(Pane::ANALYSIS[..2], [Pane::Charts, Pane::Distributions]);
         assert_eq!(all.len(), Pane::ALL.len());
         all.sort();
         all.dedup();
         assert_eq!(all.len(), Pane::ALL.len());
         let ctx = themed();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        let narrow = window_texts(&mut app, &ctx, 1000.0);
+        // At 1000 points every icon fits, with the Charts and
+        // Distributions groups gone into Analysis.
+        let mid = window_texts(&mut app, &ctx, 1000.0);
+        assert!(mid.iter().any(|t| t == "Analysis"), "{mid:?}");
+        assert!(mid.iter().any(|t| t == "Tests"), "{mid:?}");
+        assert!(!mid.iter().any(|t| t.contains('⏷')), "{mid:?}");
+        let narrow = window_texts(&mut app, &ctx, 760.0);
         assert!(
             narrow
                 .iter()
@@ -18168,11 +18408,11 @@ mod tests {
     }
 
     #[test]
-    fn charts_can_follow_the_strip() {
+    fn distributions_can_follow_the_strip() {
         let mut app = synthetic(40.0, 0.0);
-        assert_eq!(app.chart_window(), None);
-        app.span_of_strip = true;
-        let (a, b) = app.chart_window().unwrap();
+        assert_eq!(app.hist_window(), None);
+        app.hist_span_of_strip = true;
+        let (a, b) = app.hist_window().unwrap();
         assert!((b - app.end_s()).abs() < 1e-9);
         assert!((b - a - app.strip.span_s).abs() < 1e-9);
     }
@@ -18180,10 +18420,14 @@ mod tests {
     #[test]
     fn tick_and_tock_amplitude_dash_over_their_own_colours() {
         let pal = theme::palette(true);
-        let key = chart_key(Pane::Amplitude, pal);
+        let key = chart_key([false, true, false], pal);
         assert_eq!(key[0], ("Average Amplitude", pal.trace_amplitude, None));
         assert_eq!(key[1], ("From Tick", pal.trace_amplitude, Some(pal.tick)));
         assert_eq!(key[2], ("From Tock", pal.trace_amplitude, Some(pal.tock)));
+        assert_eq!(key.len(), 3);
+        // The key follows the charts shown: none for the rate alone.
+        assert!(chart_key([true, false, false], pal).is_empty());
+        assert_eq!(chart_key([true; 3], pal).len(), 5);
     }
 
     #[test]
@@ -18533,27 +18777,27 @@ mod tests {
     #[test]
     fn a_pane_follows_readings_unless_set() {
         let mut app = synthetic(40.0, 0.0);
-        assert_eq!(app.average_for(Pane::Rate), 10.0);
-        app.set_pane_average(Pane::Rate, Some(30.0));
-        assert_eq!(app.average_for(Pane::Rate), 30.0);
-        assert_eq!(app.average_for(Pane::Amplitude), 10.0);
+        assert_eq!(app.average_for(Pane::Charts), 10.0);
+        app.set_pane_average(Pane::Charts, Some(30.0));
+        assert_eq!(app.average_for(Pane::Charts), 30.0);
+        assert_eq!(app.average_for(Pane::Distributions), 10.0);
         let own = app.trend_for(30.0);
         assert!(!own.is_empty());
         assert!(own.last().unwrap().t > 30.0);
         // Back to following: its own readings are dropped.
-        app.set_pane_average(Pane::Rate, None);
-        assert_eq!(app.average_for(Pane::Rate), 10.0);
+        app.set_pane_average(Pane::Charts, None);
+        assert_eq!(app.average_for(Pane::Charts), 10.0);
         assert!(app.other_trends.is_empty());
         // A new time for Readings takes over every pane's own.
-        app.set_pane_average(Pane::Rate, Some(30.0));
+        app.set_pane_average(Pane::Charts, Some(30.0));
         app.set_pane_average(Pane::Strip, Some(60.0));
         app.set_average(5.0);
-        assert_eq!(app.average_for(Pane::Rate), 5.0);
+        assert_eq!(app.average_for(Pane::Charts), 5.0);
         assert_eq!(app.average_for(Pane::Strip), 5.0);
-        assert_eq!(app.average_for(Pane::Amplitude), 5.0);
+        assert_eq!(app.average_for(Pane::Distributions), 5.0);
         assert!(app.pane_average.is_empty() && app.other_trends.is_empty());
         // Picking Readings' own time is the same as following it.
-        app.set_pane_average(Pane::Rate, Some(5.0));
+        app.set_pane_average(Pane::Charts, Some(5.0));
         assert!(app.pane_average.is_empty());
     }
 
@@ -18574,7 +18818,7 @@ mod tests {
         assert_eq!(back.steady_series[&View::Cycle], [true; 3]);
         let mut none = s;
         none.steady_shown = vec![(View::Fft, [false; 3])];
-        none.pane_average = vec![(Pane::Watch, 30.0), (Pane::Rate, 7.0)];
+        none.pane_average = vec![(Pane::Watch, 30.0), (Pane::Charts, 7.0)];
         back.apply_settings(none);
         assert_eq!(back.steady_series[&View::Fft], [true; 3]);
         assert!(back.pane_average.is_empty());

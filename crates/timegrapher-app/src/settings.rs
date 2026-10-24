@@ -25,7 +25,11 @@ pub struct Settings {
     pub rate_guides: bool,
     pub overlays: [bool; 3],
     pub follow: bool,
-    pub span_of_strip: bool,
+    /// The readings the Charts and Distributions panes draw: rate,
+    /// amplitude, beat error. The charts' Match Strip, kept by older
+    /// versions, is read and left: the charts always show the whole take.
+    pub chart_series: [bool; 3],
+    pub dist_series: [bool; 3],
     pub hist_span_of_strip: bool,
     pub hist_cumulative: bool,
     pub hist_readings: bool,
@@ -114,7 +118,8 @@ impl Default for Settings {
             rate_guides: true,
             overlays: [true, false, false],
             follow: false,
-            span_of_strip: false,
+            chart_series: [true; 3],
+            dist_series: [true; 3],
             hist_span_of_strip: false,
             hist_cumulative: false,
             hist_readings: true,
