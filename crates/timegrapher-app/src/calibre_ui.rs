@@ -882,7 +882,7 @@ impl Calibres {
                     ui.separator();
                     if rows.is_empty() {
                         ui.label(
-                            RichText::new("No calibre matches the filters.")
+                            RichText::new("No calibre matches the filters. Search with the funnel beside Calibre.")
                                 .small()
                                 .color(pal.text_tertiary),
                         );

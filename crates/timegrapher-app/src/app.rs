@@ -6568,17 +6568,18 @@ impl TimegrapherApp {
             // at the Positions Test's Measure time.
             let heard = self.recorded_in(p);
             let full = heard / self.guided_measure_s;
-            if heard > 0.0 {
+            if self.live.is_some() {
+                // A faint full-length track, so a part fill reads as progress.
                 let bar = egui::Rect::from_min_max(
-                    egui::pos2(r.left() + 4.0, r.bottom() - 4.5),
+                    egui::pos2(r.left() + 4.0, r.bottom() - 5.5),
                     egui::pos2(r.right() - 4.0, r.bottom() - 2.0),
                 );
                 let fill_ink = if on { ink } else { pal.teal };
                 ui.painter()
-                    .rect_filled(bar, 1.0, fill_ink.gamma_multiply(0.25));
+                    .rect_filled(bar, 1.5, fill_ink.gamma_multiply(0.2));
                 let mut done = bar;
                 done.set_width(bar.width() * full.min(1.0) as f32);
-                ui.painter().rect_filled(done, 1.0, fill_ink);
+                ui.painter().rect_filled(done, 1.5, fill_ink);
             }
             let tip = format!(
                 "{} ({}, {}) · key {}. {} heard, settled and not masked; the bar is full at \
