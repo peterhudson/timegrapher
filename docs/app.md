@@ -71,7 +71,13 @@ else in two rows of three (a 1000-point window), so they stay big enough
 to read and press. Each one's hover gives its name, codes and key
 ("Crown Down (CD, 9H) · key 4") and how long each change of position
 settles (the Positions Test pane's Settle), and the picture and the
-label keep their size whichever is set. On the narrowest windows
+label keep their size whichever is set. Along each button's foot a thin
+teal bar fills with the seconds heard in that position, in Quick Listen
+as in a test or a take on show: settled and not masked, each position's
+own time only. It is full at the Positions Test pane's Measure (60 s
+unless set otherwise; at 120 s, 60 s heard fills half), so a free-form
+test shows which positions still need time; the hover gives the
+seconds. On the narrowest windows
 (about 800 points) the card is captioned **Position**, and the
 Amplitude card puts **Lift** on a line of its own above its field.
 While you listen, or before anything is on show, a button sets the
@@ -98,9 +104,8 @@ controls. On **Beat Rate** the big figure is itself the beat rate's menu
 where the card has room, and, with no watch picked, the labelled
 **Calibre** menu (its search covers the whole table, with **Manage
 Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre (with
-"· beats at" and the calibre's rate when the watch is heard at another
-rate); its hover gives the beat rate and lift angle it sets (Edit… on the
+the table knows, the figure shows and one line names the calibre (as
+"Peacock SL1258 is 28800 bph" when the watch is heard at another rate); its hover gives the beat rate and lift angle it sets (Edit… on the
 watch changes them). Lines too long for the card end in "…", with the
 whole sentence on hover.
 
@@ -430,7 +435,9 @@ Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
 has **Start Test** (**Start a New Test** once one has finished), **Load
 Full-Wind Results…**, **Settle** and **Measure** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
-otherwise, kept between runs, 5 to 600 s and 20 to 3600 s), and **Save
+otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
+field to type in with a menu of common times beside it, 10, 20, 30 and
+60 s for Settle and 30 s to 5 min for Measure), and **Save
 as CSV…**, **Copy** and, after a test just after winding, **Save
 Results for 24 Hours…**. The pane can be shown with nothing listened
 to yet, so a test can start from it.
@@ -1121,8 +1128,11 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   proposals.
 - **Automatic Gain.** In Settings under Microphone, for an input whose
   own automatic gain the app can reach: the sound card's mixer switch on
-  Linux, and on a Mac a USB microphone's switch, set over USB
-  (`timegrapher_core::mixer::usb_agc`) since macOS shows no such setting.
+  Linux, on a Mac a USB microphone's switch, set over USB
+  (`timegrapher_core::mixer::usb_agc`) since macOS shows no such setting,
+  and on Windows the input's own switch through the system
+  (`timegrapher_core::mixer::endpoint_agc`, the AGC tickbox the Sound
+  Control Panel shows on some inputs).
   Off by default and kept for each input. Each time the app opens the
   input it sets the switch to match, since a stand turns it back on each
   time it is plugged in, and it reads it back: where the microphone
@@ -1144,14 +1154,16 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     take opened, or a take saved: the latest first, none twice, never
     expiring, and kept across restarts.
   - **Manage Calibres.** The Calibres category of Settings, which
-    Manage Calibres… opens. One row of controls runs across the top, then
-    every calibre in a table on the left and, level with it on the right,
+    Manage Calibres… opens. **New Custom Calibre…** sits at the right of
+    the Calibres heading and adds a calibre the list doesn't have, shown
+    and selected whatever the filters hide. Under the heading, every
+    calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
     from the Calibre menu while a beat rate is known (set on the Beat Rate
     card, found from the beats, or the watch's in its form), the table
     starts with the Beat Rate funnel at that rate and says so above it
     ("Showing 28800 bph, the rate found from the beats"), with **Show
-    All** beside it; Clear Filters clears it too. Opened from the gear,
+    All** beside it; the Beat Rate funnel's Clear Filter clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
     - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
       and the short list, a narrow column headed by a star with a star on
@@ -1167,19 +1179,18 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
-      a search over them. The list keeps its height while you search. The
+      a search over them. The list keeps its height while you search. In
+      Maker and Calibre the search also finds a calibre by one of its
+      other names, or its maker under any of the maker's names ("dd 3235",
+      "sw200", "seagull st19"). With a search typed, Select All reads
+      **(Select All Search Results)** and picks just the values the search
+      lists, as a spreadsheet's does. The star column's funnel with only
+      Starred ticked shows just the short list. The
       ticks apply on **OK**; **Cancel** leaves the filter as it was, and OK
       needs at least one value ticked. It lists the values the other
       filters let through; the funnels combine, so a row shows only when
       every column's value is ticked. A funnel in use is tinted in the
       accent colour.
-    - **The controls row.** On the left the search box (every word must
-      match a calibre's number, one of its other names, or its maker under
-      any of the maker's names: "dd 3235", "sw200", "seagull st19"),
-      **Short List Only**, which shows just the short list, and **Clear
-      Filters**, which shows every calibre again: it clears the search,
-      Short List Only and every column's funnel. On the right **New Custom
-      Calibre…**, which adds one named as typed in the search box.
     - **The details.** The calibre selected, in a card level with the
       table: its name and what the list gives, then for a custom calibre
       its name, maker, beat rate and lift angle, then **Wheels**, each

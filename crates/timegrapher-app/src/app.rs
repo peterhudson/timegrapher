@@ -1193,6 +1193,10 @@ fn span_label(v: f64) -> String {
         fields::duration(v)
     }
 }
+/// Settle times offered on the Positions Test pane, seconds.
+const SETTLES: [f64; 4] = [10.0, 20.0, 30.0, 60.0];
+/// Measure times offered on the Positions Test pane, seconds.
+const MEASURES: [f64; 6] = [30.0, 60.0, 90.0, 120.0, 180.0, 300.0];
 /// Lift angles offered, degrees.
 const LIFTS: [f64; 6] = [44.0, 49.0, 50.0, 52.0, 53.0, 55.0];
 /// Most points kept on a chart when it is rebuilt from the whole session.
@@ -6560,12 +6564,32 @@ impl TimegrapherApp {
                 theme::semibold(12.0),
                 ink,
             );
+            // A bar along the foot, filling as the position is heard, full
+            // at the Positions Test's Measure time.
+            let heard = self.recorded_in(p);
+            let full = heard / self.guided_measure_s;
+            if self.live.is_some() {
+                // A faint full-length track, so a part fill reads as progress.
+                let bar = egui::Rect::from_min_max(
+                    egui::pos2(r.left() + 4.0, r.bottom() - 5.5),
+                    egui::pos2(r.right() - 4.0, r.bottom() - 2.0),
+                );
+                let fill_ink = if on { ink } else { pal.teal };
+                ui.painter()
+                    .rect_filled(bar, 1.5, fill_ink.gamma_multiply(0.2));
+                let mut done = bar;
+                done.set_width(bar.width() * full.min(1.0) as f32);
+                ui.painter().rect_filled(done, 1.5, fill_ink);
+            }
             let tip = format!(
-                "{} ({}, {}) · key {}",
+                "{} ({}, {}) · key {}. {} heard, settled and not masked; the bar is full at \
+                 Measure's {} (Positions Test)",
                 p.name(),
                 p.code(),
                 p.witschi(),
-                n + 1
+                n + 1,
+                fields::duration(heard.floor()),
+                fields::duration(self.guided_measure_s)
             );
             let resp = if editable {
                 resp.on_hover_text(format!("{tip}. {settle}"))
@@ -7045,7 +7069,7 @@ impl TimegrapherApp {
             .zip(self.cal.bph(&self.calibre))
             .filter(|&(b, cb)| b != cb);
         let line = match other {
-            Some((_, cb)) => format!("{} · beats at {cb}", self.calibre),
+            Some((_, cb)) => format!("{} is {cb} bph", self.calibre),
             None => self.calibre.clone(),
         };
         let mut hover = format!(
@@ -7144,6 +7168,27 @@ impl TimegrapherApp {
     /// profile, the distributions and the steadiness tests are made over.
     fn current_spans(&self) -> Vec<(f64, f64)> {
         self.session.current_spans(self.position)
+    }
+
+    /// The seconds heard so far in position `p`, settled and not masked,
+    /// in a live take or the take on show: what each position button's
+    /// bar fills with.
+    fn recorded_in(&self, p: Position) -> f64 {
+        if self.live.is_none() {
+            return 0.0;
+        }
+        let end = self.latest_s();
+        let masked = timegrapher_core::session::masked_spans(
+            &self.masked.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>(),
+        );
+        self.session
+            .settled_spans(self.position, p)
+            .into_iter()
+            .map(|(a, b)| (a.max(0.0), b.min(end)))
+            .filter(|(a, b)| a < b)
+            .map(|(a, b)| b - a - timegrapher_core::session::masked_within(&masked, a, b))
+            .sum::<f64>()
+            .max(0.0)
     }
 
     /// Whether a reading ending at `t` comes from the position the watch is
@@ -8755,6 +8800,39 @@ impl TimegrapherApp {
     /// switch the app can reach: the sound card's mixer on Linux, the USB
     /// microphone itself on macOS.
     fn input_agc(&self, set: Option<bool>) -> Option<Result<bool, String>> {
+        if cfg!(windows) {
+            // The input by the name the system gives it, the system
+            // default's when none is picked; Windows sets the one input.
+            let name = self
+                .devices
+                .iter()
+                .find(|d| match &self.device {
+                    Some(id) => &d.id == id,
+                    None => d.is_default,
+                })
+                .map(|d| d.name.clone())?;
+            let first =
+                |r: Result<Vec<mixer::EndpointAgc>, String>| r.map(|v| v.into_iter().next());
+            let found = match first(mixer::endpoint_agc(Some(&name), None)) {
+                Ok(Some(f)) => f,
+                Ok(None) => return None,
+                Err(e) => return Some(Err(e)),
+            };
+            return Some(match set {
+                Some(want) if found.before != Some(want) => {
+                    match first(mixer::endpoint_agc(Some(&name), Some(want))) {
+                        Ok(Some(mixer::EndpointAgc { error: Some(e), .. })) | Err(e) => Err(e),
+                        Ok(Some(mixer::EndpointAgc { after: Some(v), .. })) => Ok(v),
+                        _ => Err("the input didn't say whether it changed".into()),
+                    }
+                }
+                _ => found.before.ok_or_else(|| {
+                    found
+                        .error
+                        .unwrap_or_else(|| "the input didn't answer".into())
+                }),
+            });
+        }
         if cfg!(target_os = "macos") {
             let label = capture::choices(&self.devices)
                 .into_iter()
@@ -9197,6 +9275,11 @@ impl TimegrapherApp {
                 }
                 Tab::Calibres => {
                     theme::help(ui, "Calibres", calibre_ui::MANAGE_HELP);
+                    // Adding a calibre is the pane's one action: beside
+                    // its heading, at the right.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.cal.new_custom_button(ui);
+                    });
                 }
                 Tab::General => {}
             }
@@ -10758,19 +10841,17 @@ impl TimegrapherApp {
              and in the guided test, before its beats are read. They show faint on the strip \
              and are left out of every reading.",
             |ui| {
-                let changed = ui
-                    .add_enabled(
-                        !running,
-                        egui::DragValue::new(&mut self.guided_settle_s)
-                            .range(guided::SETTLE_RANGE)
-                            .speed(1.0)
-                            .max_decimals(0)
-                            .suffix(" s"),
-                    )
-                    .changed();
-                if changed {
-                    self.session.set_settle_s(self.guided_settle_s);
-                }
+                ui.add_enabled_ui(!running, |ui| {
+                    let mut v = self.guided_settle_s;
+                    let a =
+                        fields::entry(ui, "settle", &mut v, guided::SETTLE_RANGE, &DURATION, 48.0);
+                    let b =
+                        fields::presets(ui, "settle-presets", &mut v, &SETTLES, fields::duration);
+                    if a || b {
+                        self.guided_settle_s = v;
+                        self.session.set_settle_s(v);
+                    }
+                });
             },
         );
         theme::tool_field(
@@ -10779,14 +10860,22 @@ impl TimegrapherApp {
             "Seconds each position is measured for. Longer brings the rate's ± down; a minute \
              gives about half a second a day.",
             |ui| {
-                ui.add_enabled(
-                    !running,
-                    egui::DragValue::new(&mut self.guided_measure_s)
-                        .range(guided::MEASURE_RANGE)
-                        .speed(1.0)
-                        .max_decimals(0)
-                        .suffix(" s"),
-                );
+                ui.add_enabled_ui(!running, |ui| {
+                    let mut v = self.guided_measure_s;
+                    let a = fields::entry(
+                        ui,
+                        "measure",
+                        &mut v,
+                        guided::MEASURE_RANGE,
+                        &DURATION,
+                        48.0,
+                    );
+                    let b =
+                        fields::presets(ui, "measure-presets", &mut v, &MEASURES, fields::duration);
+                    if a || b {
+                        self.guided_measure_s = v;
+                    }
+                });
             },
         );
         let has = self
@@ -16991,6 +17080,50 @@ mod tests {
     /// readings and the distributions take only the position the watch is
     /// in, and going back to an earlier position joins its stretches for
     /// the steadiness tests.
+    /// Each position button's bar fills with the seconds heard in that
+    /// position: settled and not masked, other positions' time left out.
+    #[test]
+    fn each_position_counts_its_own_seconds() {
+        let mut app = synthetic(20.0, 0.0);
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        // One position so far: every second is Dial Up's.
+        let end = app.latest_s();
+        assert!(
+            (app.recorded_in(Position::DialUp) - end).abs() < 0.5,
+            "{end}"
+        );
+        assert_eq!(app.recorded_in(Position::DialDown), 0.0);
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let moved = app.live.as_ref().unwrap().duration_s();
+        app.set_position(Position::DialDown);
+        // Paused, the settling starts at Resume: here, at once.
+        app.session.start_settle(moved);
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let du = app.recorded_in(Position::DialUp);
+        let dd = app.recorded_in(Position::DialDown);
+        assert!(
+            (du - moved).abs() < 0.5,
+            "Dial Up keeps its {du} s of {moved}"
+        );
+        // Dial Down's time to the latest beat, less its settling.
+        let want = app.latest_s() - moved - app.guided_settle_s;
+        assert!((dd - want).abs() < 1.0, "Dial Down {dd} s, not {want}");
+        // A mask comes off the position it lies in.
+        app.masked.push((moved + 25.0, moved + 30.0));
+        assert!((app.recorded_in(Position::DialDown) - (want - 5.0)).abs() < 1.0);
+        assert_eq!(app.recorded_in(Position::CrownUp), 0.0);
+    }
+
     #[test]
     fn a_new_position_marks_a_stretch_and_keeps_the_strip() {
         let mut app = synthetic(20.0, 0.0);

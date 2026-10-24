@@ -45,10 +45,9 @@ pub struct Calibres {
     pub short_added: Vec<String>,
     pub short_removed: Vec<String>,
     /// Manage Calibres: asked for (the app opens Settings at Calibres),
-    /// the calibre selected in it and its search.
+    /// and the calibre selected in it.
     pub manager_open: bool,
     selected: Option<String>,
-    search: String,
     /// What is typed in the Calibre menu's own search box.
     menu_search: String,
     /// The column the table is sorted on, and whether reversed.
@@ -59,8 +58,12 @@ pub struct Calibres {
     funnel_search: String,
     /// What the funnel open ticks, kept to the column's filter on OK.
     funnel_draft: Option<std::collections::BTreeSet<String>>,
-    /// Short List Only.
-    short_only: bool,
+    /// The values the funnel open lists, for its column and what is typed
+    /// in its search, so a frame or a Select All doesn't gather them
+    /// from every calibre again.
+    funnel_listed: std::cell::RefCell<Option<(Col, String, Vec<String>)>>,
+    /// The values the funnel open offers, kept the same way.
+    funnel_offered: std::cell::RefCell<Option<(Col, Vec<String>)>>,
     /// The row open for a wheel the slots don't list: its name and period
     /// as typed so far.
     adding: Option<(String, String)>,
@@ -83,8 +86,6 @@ type RowNames = Vec<(bool, String)>;
 /// What the table's rows depend on.
 #[derive(Clone, PartialEq)]
 struct TableKey {
-    search: String,
-    short_only: bool,
     funnels: [Option<std::collections::BTreeSet<String>>; 5],
     sort: (Col, bool),
     short_added: Vec<String>,
@@ -134,9 +135,6 @@ fn col_widths(w: f32) -> [f32; 5] {
 const DETAILS_W: f32 = 360.0;
 /// The least width the table takes beside the details.
 const TABLE_MIN_W: f32 = 440.0;
-/// The width the controls row needs on one line, New Custom Calibre…
-/// included.
-const TOOLBAR_W: f32 = 686.0;
 /// A line of the table.
 const ROW_H: f32 = 22.0;
 /// The maker the user's own calibres are shown under.
@@ -161,10 +159,11 @@ pub const MANAGE_HELP: &[&str] = &[
      always at the top. Click a column's heading to sort on it, and again to reverse. The \
      funnel beside each heading sorts on that column, clears its filter, and picks which of its \
      values show, ticked and applied with OK; the funnels combine, a tinted funnel is one in \
-     use, and Clear Filters shows everything again, clearing the search and Short List Only \
-     too.",
-    "Search by a calibre's number, one of its other names, or its maker under any of the \
-     maker's names. Short List Only shows just your short list.",
+     use, and its Clear Filter shows that column's values again.",
+    "A funnel's search lists the values holding what you type; in Maker and Calibre it also \
+     finds a calibre by one of its other names, or its maker under any of the maker's names. \
+     With a search typed, (Select All Search Results) picks just the values it lists. The star \
+     column's funnel shows just your short list (Starred).",
     "Click the star in a calibre's row to put it on your short list, which the Calibre menu \
      offers; a filled star is on it. The list starts as the common and modern calibres; Reset \
      the Short List, in the star column's funnel, goes back to them.",
@@ -173,7 +172,7 @@ pub const MANAGE_HELP: &[&str] = &[
      wheel's period you know into a blank and it is kept for this calibre, marked Custom; add \
      another wheel by name and period with + at the foot of the wheels, then Add. Share with the Project \
      opens a GitHub issue with what you added, to send from your browser.",
-    "New Custom Calibre adds one the list doesn't have, named as typed in the search box, with \
+    "New Custom Calibre…, beside the Calibres heading, adds one the list doesn't have, with \
      no wheels assumed; its name, maker, beat rate and lift angle are edited here, its \
      balance's period follows the beat rate typed, and Delete Calibre is at the foot.",
 ];
@@ -227,13 +226,13 @@ impl Calibres {
             short_removed: Vec::new(),
             manager_open: false,
             selected: None,
-            search: String::new(),
             menu_search: String::new(),
             sort: (Col::Maker, false),
             funnels: Default::default(),
             funnel_search: String::new(),
             funnel_draft: None,
-            short_only: false,
+            funnel_listed: Default::default(),
+            funnel_offered: Default::default(),
             adding: None,
             problem: None,
             manager_rate: None,
@@ -808,62 +807,6 @@ impl Calibres {
         if let Some(problem) = &self.problem {
             ui.label(RichText::new(problem).color(pal.bad));
         }
-        // One toolbar: finding a calibre on the left, adding one on the
-        // right. Its "?" is beside the Calibres heading above.
-        let tight = ui.available_width() < TOOLBAR_W;
-        ui.horizontal(|ui| {
-            let (glass, _) = ui.allocate_exact_size(egui::Vec2::splat(18.0), egui::Sense::hover());
-            crate::icons::draw(
-                ui.painter(),
-                glass,
-                crate::theme::Icon::Search,
-                theme::pal(ui).text_secondary,
-            );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.search)
-                    .id_salt("manage search")
-                    .hint_text("Search calibres and makers")
-                    .desired_width(240.0),
-            )
-            .on_hover_text(
-                "Every word must match: a calibre's number, one of its other names, or its \
-                 maker under any of the maker's names (\"dd 3235\", \"sw200\", \"seagull st19\")",
-            );
-            ui.add_space(8.0);
-            let hint = "Show only the calibres on your short list, which the Calibre menu offers";
-            let l = ui.add(egui::Label::new("Short List Only").sense(egui::Sense::click()));
-            if l.clicked() {
-                self.short_only = !self.short_only;
-            }
-            l.on_hover_text(hint);
-            theme::switch(ui, &mut self.short_only).on_hover_text(hint);
-            ui.add_space(8.0);
-            let filtered = self.funnels.iter().any(Option::is_some)
-                || !self.search.is_empty()
-                || self.short_only;
-            if ui
-                .add_enabled(filtered, egui::Button::new("Clear Filters"))
-                .on_hover_text(
-                    "Show every calibre again: clears the search, Short List Only and every \
-                     column's funnel",
-                )
-                .on_disabled_hover_text("Nothing is filtered")
-                .clicked()
-            {
-                self.funnels = Default::default();
-                self.search.clear();
-                self.short_only = false;
-            }
-            if !tight {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.new_custom_button(ui);
-                });
-            }
-        });
-        // In a narrow window it goes on a row of its own.
-        if tight {
-            ui.horizontal(|ui| self.new_custom_button(ui));
-        }
         // The rate the table started at, while its funnel is as it was set.
         if let Some((rate, from)) = self.rate_preset.clone() {
             if self.rate_funnel_is(&rate) {
@@ -938,18 +881,10 @@ impl Calibres {
                     self.table_head(ui, &widths);
                     ui.separator();
                     if rows.is_empty() {
-                        let empty = self.short_only
-                            && self.search.trim().is_empty()
-                            && !self.funnels.iter().any(Option::is_some)
-                            && !calibres::all().iter().any(|c| self.in_short(c));
                         ui.label(
-                            RichText::new(if empty {
-                                "Empty: tick calibres with Short List Only off to put them here."
-                            } else {
-                                "No calibre matches."
-                            })
-                            .small()
-                            .color(pal.text_tertiary),
+                            RichText::new("No calibre matches the filters. Search with the funnel beside Calibre.")
+                                .small()
+                                .color(pal.text_tertiary),
                         );
                     }
                     // Rows touch, as a table's do.
@@ -995,23 +930,21 @@ impl Calibres {
         }
     }
 
-    /// New Custom Calibre…: one named as typed in the search box, shown and
-    /// selected whatever the filters hid.
-    fn new_custom_button(&mut self, ui: &mut egui::Ui) {
+    /// New Custom Calibre…, beside the Calibres heading: one shown and
+    /// selected whatever the filters hid, to name and fill in.
+    pub fn new_custom_button(&mut self, ui: &mut egui::Ui) {
         if ui
             .button("New Custom Calibre…")
             .on_hover_text(
-                "Add a calibre the list doesn't have, named as typed in the search box, with \
-                 the wheels' periods you type; it is kept for next time",
+                "Add a calibre the list doesn't have, with the wheels' periods you type; it is \
+                 kept for next time",
             )
             .clicked()
         {
-            let name = self.new_custom(&self.search.clone());
-            self.search.clear();
+            let name = self.new_custom("");
             // The new one shows, whatever was filtered out.
             if !self.rows().iter().any(|e| e.name() == name) {
                 self.funnels = Default::default();
-                self.short_only = false;
             }
             self.selected = Some(name);
         }
@@ -1061,25 +994,10 @@ impl Calibres {
         }
     }
 
-    /// The calibres the search, Short List Only and every column's filter
-    /// but `skip`'s let through, in no order.
+    /// The calibres every column's filter but `skip`'s lets through, in no
+    /// order.
     fn passing(&self, skip: Option<Col>) -> Vec<Entry<'_>> {
-        let typed = self.search.trim();
-        let found: Option<std::collections::HashSet<(bool, &str)>> =
-            (!typed.is_empty()).then(|| {
-                Catalog::new(&self.user)
-                    .search(typed)
-                    .into_iter()
-                    .map(|e| (e.is_custom(), e.name()))
-                    .collect()
-            });
         self.every()
-            .filter(|e| {
-                found
-                    .as_ref()
-                    .is_none_or(|f| f.contains(&(e.is_custom(), e.name())))
-            })
-            .filter(|e| !self.short_only || matches!(e, Entry::Table(c) if self.in_short(c)))
             .filter(|e| {
                 COLS.iter().all(|&(col, ..)| {
                     Some(col) == skip
@@ -1104,12 +1022,10 @@ impl Calibres {
     }
 
     /// The table's rows by name (custom or not, and the name), sorted
-    /// again only when the search, a filter, the sort or the calibres
+    /// again only when a filter, the sort or the calibres
     /// themselves changed since the last frame.
     fn row_names(&self) -> RowNames {
         let key = TableKey {
-            search: self.search.clone(),
-            short_only: self.short_only,
             funnels: self.funnels.clone(),
             sort: self.sort,
             short_added: self.short_added.clone(),
@@ -1171,6 +1087,52 @@ impl Calibres {
         v.sort_by(|a, b| natural(a, b));
         v.dedup();
         v
+    }
+
+    /// The values the funnel open offers: [`Self::funnel_values`], kept
+    /// while the menu is open, since the other columns' filters can't
+    /// change then.
+    fn funnel_offered(&self, col: Col) -> Vec<String> {
+        if let Some((c, v)) = self.funnel_offered.borrow().as_ref() {
+            if *c == col {
+                return v.clone();
+            }
+        }
+        let v = self.funnel_values(col);
+        *self.funnel_offered.borrow_mut() = Some((col, v.clone()));
+        v
+    }
+
+    /// The values the funnel open lists: those offered that hold what is
+    /// typed in its search. For Maker and Calibre the search also finds a
+    /// calibre by one of its other names, or its maker under any of the
+    /// maker's names ("dd 3235", "sw200", "seagull st19"), as the Calibre
+    /// menu's does. Kept until the column or the search changes.
+    fn funnel_listed(&self, col: Col) -> Vec<String> {
+        let typed = self.funnel_search.trim().to_string();
+        if let Some((c, t, v)) = self.funnel_listed.borrow().as_ref() {
+            if *c == col && *t == typed {
+                return v.clone();
+            }
+        }
+        let offered = self.funnel_offered(col);
+        let low = typed.to_lowercase();
+        let found: std::collections::HashSet<String> =
+            if !typed.is_empty() && matches!(col, Col::Maker | Col::Calibre) {
+                Catalog::new(&self.user)
+                    .search(&typed)
+                    .into_iter()
+                    .map(|e| self.cell(e, col))
+                    .collect()
+            } else {
+                Default::default()
+            };
+        let listed: Vec<String> = offered
+            .into_iter()
+            .filter(|v| low.is_empty() || v.to_lowercase().contains(&low) || found.contains(v))
+            .collect();
+        *self.funnel_listed.borrow_mut() = Some((col, typed, listed.clone()));
+        listed
     }
 
     /// Show `value` in `col` or not, the other values offered staying as
@@ -1301,6 +1263,8 @@ impl Calibres {
                 // changes it only on OK, as a spreadsheet's does.
                 self.funnel_search.clear();
                 self.funnel_draft = self.funnels[col as usize].clone();
+                self.funnel_listed.take();
+                self.funnel_offered.take();
             }
             egui::Popup::menu(&fr)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -1367,12 +1331,10 @@ impl Calibres {
                 .desired_width(f32::INFINITY),
         )
         .on_hover_text("List only the values holding this");
-        let offered = self.funnel_values(col);
-        let typed = self.funnel_search.trim().to_lowercase();
-        let listed: Vec<&String> = offered
-            .iter()
-            .filter(|v| typed.is_empty() || v.to_lowercase().contains(&typed))
-            .collect();
+        let offered = self.funnel_offered(col);
+        let listed = self.funnel_listed(col);
+        let listed: Vec<&String> = listed.iter().collect();
+        let searching = !self.funnel_search.trim().is_empty();
         let shown = |s: &Self, v: &str| s.funnel_draft.as_ref().is_none_or(|k| k.contains(v));
         // The list keeps one height however few values a search leaves, so
         // the menu doesn't shrink as you type.
@@ -1383,13 +1345,19 @@ impl Calibres {
             .inner_margin(egui::Margin::symmetric(6, 4))
             .show(ui, |ui| {
                 let mut all = !listed.is_empty() && listed.iter().all(|v| shown(self, v));
-                if ui
-                    .checkbox(&mut all, "(Select All)")
-                    .on_hover_text("Tick or untick every value listed")
-                    .changed()
-                {
+                // As a spreadsheet's: with a search typed, it picks only
+                // the values the search lists.
+                let (text, hint) = if searching {
+                    (
+                        "(Select All Search Results)",
+                        "Tick or untick every value the search lists",
+                    )
+                } else {
+                    ("(Select All)", "Tick or untick every value")
+                };
+                if ui.checkbox(&mut all, text).on_hover_text(hint).changed() {
                     for v in &listed {
-                        self.draft_set(col, v, all);
+                        self.draft_set(&offered, v, all);
                     }
                 }
                 let mut flips: Vec<(String, bool)> = Vec::new();
@@ -1418,7 +1386,7 @@ impl Calibres {
                         }
                     });
                 for (v, on) in flips {
-                    self.draft_set(col, &v, on);
+                    self.draft_set(&offered, &v, on);
                 }
             });
         ui.add_space(4.0);
@@ -1444,9 +1412,8 @@ impl Calibres {
     }
 
     /// Tick or untick `value` in the funnel menu open, the other values
-    /// offered staying as they are; every one ticked is no filter.
-    fn draft_set(&mut self, col: Col, value: &str, on: bool) {
-        let offered = self.funnel_values(col);
+    /// `offered` staying as they are; every one ticked is no filter.
+    fn draft_set(&mut self, offered: &[String], value: &str, on: bool) {
         let keep = self
             .funnel_draft
             .get_or_insert_with(|| offered.iter().cloned().collect());
@@ -2492,6 +2459,43 @@ mod tests {
         assert!(all > 300.0, "{all}");
     }
 
+    /// A funnel's search in the Calibre column also finds a calibre by one
+    /// of its other names, as the Calibre menu's does, and the Maker
+    /// column's lists only what it finds.
+    #[test]
+    fn a_funnel_search_finds_other_names() {
+        let mut c = Calibres::in_memory();
+        let (cal, other) = calibres::all()
+            .iter()
+            .find_map(|cal| {
+                let name = Entry::Table(cal).name().to_lowercase();
+                cal.family
+                    .iter()
+                    .find(|f| {
+                        f.len() > 3
+                            && f.chars().all(|ch| ch.is_alphanumeric() || ch == ' ')
+                            && !name.contains(&f.to_lowercase())
+                    })
+                    .map(|f| (cal, f.clone()))
+            })
+            .expect("a calibre with another name its own doesn't hold");
+        c.funnel_search = other.clone();
+        let listed = c.funnel_listed(Col::Calibre);
+        let name = c.cell(Entry::Table(cal), Col::Calibre);
+        assert!(
+            listed.contains(&name),
+            "{other} doesn't list {name}: {listed:?}"
+        );
+        // Kept while the search stays; a new search lists afresh.
+        assert_eq!(c.funnel_listed(Col::Calibre), listed);
+        c.funnel_search = "no such calibre".into();
+        assert!(c.funnel_listed(Col::Calibre).is_empty());
+        c.funnel_search = "eta".into();
+        let makers = c.funnel_listed(Col::Maker);
+        assert!(makers.iter().any(|m| m == "ETA"), "{makers:?}");
+        assert!(makers.len() < c.funnel_values(Col::Maker).len());
+    }
+
     #[test]
     fn a_column_filter_applies_only_on_ok() {
         let mut c = Calibres::in_memory();
@@ -2500,7 +2504,7 @@ mod tests {
         let one = offered[0].clone();
         // Untick every value but one, as in the menu, before OK.
         for v in &offered[1..] {
-            c.draft_set(Col::BeatRate, v, false);
+            c.draft_set(&offered, v, false);
         }
         assert!(
             c.funnels[Col::BeatRate as usize].is_none(),
@@ -2513,7 +2517,7 @@ mod tests {
         // Ticking every value again is no filter at all.
         c.funnel_draft = c.funnels[Col::BeatRate as usize].clone();
         for v in &offered[1..] {
-            c.draft_set(Col::BeatRate, v, true);
+            c.draft_set(&offered, v, true);
         }
         assert!(c.funnel_draft.is_none());
     }
@@ -2534,30 +2538,26 @@ mod tests {
         assert!(summary(e).contains("bph") || summary(e).contains("beat rate not given"));
     }
 
-    /// Manage Calibres' table: every calibre, Short List Only the ticked
-    /// ones, the custom ones under the maker Custom, and a search keeps to
-    /// what else is filtered.
+    /// Manage Calibres' table: every calibre, the star column's funnel the
+    /// starred ones, and the custom ones under the maker Custom.
     #[test]
-    fn the_manager_lists_by_search_and_short_list() {
+    fn the_manager_lists_every_calibre_and_the_short_list() {
         let mut cal = Calibres::in_memory();
         let names = |c: &Calibres| -> Vec<String> {
             c.rows().iter().map(|e| e.name().to_string()).collect()
         };
         assert_eq!(names(&cal).len(), calibres::all().len());
-        cal.short_only = true;
+        cal.funnels[Col::Short as usize] = Some(["Starred".to_string()].into());
         let common = calibres::all().iter().filter(|c| cal.in_short(c)).count();
         assert_eq!(names(&cal).len(), common);
         assert!(common < calibres::all().len());
-        cal.short_only = false;
+        cal.funnels = Default::default();
         let mine = cal.new_custom("Bench Special");
         assert_eq!(names(&cal).len(), calibres::all().len() + 1);
         let e = cal.find(&mine).unwrap();
         assert_eq!(cal.cell(e, Col::Maker), "Custom");
-        cal.search = "bench".into();
-        assert_eq!(names(&cal), vec![mine.clone()]);
         cal.funnels[Col::Maker as usize] = Some(["Custom".to_string()].into());
-        cal.search = "3235".into();
-        assert!(cal.rows().is_empty(), "a listed calibre isn't under Custom");
+        assert_eq!(names(&cal), vec![mine.clone()]);
         cal.funnels = Default::default();
         assert!(!cal.rows().is_empty());
     }
@@ -2622,14 +2622,14 @@ mod tests {
         }
         assert!(cal.funnels[Col::BeatRate as usize].is_none());
         assert_eq!(cal.rows().len(), theirs.len());
-        // Short List Only combines with the funnels too.
-        cal.short_only = true;
+        // The star column's funnel combines with the others too.
+        cal.funnels[Col::Short as usize] = Some(["Starred".to_string()].into());
         assert!(cal
             .rows()
             .iter()
             .all(|e| matches!(e, Entry::Table(c) if cal.in_short(c) && c.maker == maker)));
-        // Unticking everything shows nothing; Clear Filters is every value.
-        cal.short_only = false;
+        // Unticking everything shows nothing; no funnel is every value.
+        cal.funnels[Col::Short as usize] = None;
         cal.set_funnel(Col::Maker, &maker, false);
         assert!(cal.rows().is_empty());
         cal.funnels = Default::default();
@@ -2677,15 +2677,14 @@ mod tests {
         assert_eq!(cal.row_names(), names(&cal));
         cal.sort = (Col::BeatRate, true);
         assert_eq!(cal.row_names(), names(&cal));
-        cal.search = "eta".into();
+        cal.funnels[Col::Maker as usize] = Some(["ETA".to_string()].into());
         assert_eq!(cal.row_names(), names(&cal));
-        cal.short_only = true;
+        cal.funnels[Col::Short as usize] = Some(["Starred".to_string()].into());
         assert_eq!(cal.row_names(), names(&cal));
         let first = cal.row_names()[0].1.clone();
         cal.set_short(&first, false);
         assert_eq!(cal.row_names(), names(&cal));
-        cal.search.clear();
-        cal.short_only = false;
+        cal.funnels = Default::default();
         let name = cal.new_custom("Kept Rows Test");
         assert_eq!(cal.row_names(), names(&cal));
         assert_eq!(cal.row_names()[0], (true, name));

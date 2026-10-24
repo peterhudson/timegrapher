@@ -531,10 +531,16 @@ impl Session {
     /// The stretches in position `now`, each without the settling it began
     /// with.
     pub fn current_spans(&self, now: Position) -> Vec<(f64, f64)> {
+        self.settled_spans(now, now)
+    }
+
+    /// The stretches in position `of`, each without the settling it began
+    /// with, the watch being in position `now`.
+    pub fn settled_spans(&self, now: Position, of: Position) -> Vec<(f64, f64)> {
         let settles = self.settles();
         self.position_spans(now)
             .into_iter()
-            .filter(|s| s.2 == now)
+            .filter(|s| s.2 == of)
             .filter_map(|(a, b, _)| {
                 let a = settles
                     .iter()
