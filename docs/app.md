@@ -1133,8 +1133,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     All** beside it; Clear Filters clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
     - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
-      and the short list, a narrow column headed by a star with a tickbox
-      on each row. Clicking a heading sorts on it, a second click reverses
+      and the short list, a narrow column headed by a star with a star on
+      each row, filled for a calibre on the short list and an outline for
+      one off it. Clicking a heading sorts on it, a second click reverses
       it; it starts by maker. A value the list doesn't give is "Not Given"
       and sorts after every value.
     - **Custom calibres.** Your own calibres show under the maker
@@ -1156,9 +1157,8 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       any of the maker's names: "dd 3235", "sw200", "seagull st19"),
       **Short List Only**, which shows just the short list, and **Clear
       Filters**, which shows every calibre again: it clears the search,
-      Short List Only and every column's funnel. On the right **Reset the
-      Short List** and **New Custom Calibre…**, which adds one named as
-      typed in the search box.
+      Short List Only and every column's funnel. On the right **New Custom
+      Calibre…**, which adds one named as typed in the search box.
     - **The details.** The calibre selected, in a card level with the
       table: its name and what the list gives, then for a custom calibre
       its name, maker, beat rate and lift angle, then **Wheels**, each
@@ -1170,17 +1170,21 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
       - A wheel nobody has given is blank: type its period and it is kept
         for that calibre, marked "Custom", with **Clear** to go back.
       - **+** at the foot of the wheels adds a row to type another wheel's
-        name and period; it is kept once both are filled in, and
-        **Cancel** forgets the row.
+        name and period, with **Add** (or Return) to add it once both are
+        filled in, and **Cancel** to forget the row.
       - Then the list's sources as links, how its figures are known, and
         its notes.
       - At the foot, **Share with the Project…** and, for a custom
         calibre, **Delete Calibre**.
+    - **A narrow window.** When the table and the details don't both fit,
+      the table takes the whole width, and choosing a calibre shows its
+      details in its place with **‹ All Calibres** to go back. **New Custom
+      Calibre…** then sits on a row of its own under the controls.
   - **The short list.** It starts as the list's common and modern
-    calibres. In Manage Calibres the tickbox in each calibre's Short List
-    column puts it on the short list or takes it off; filter the table
-    with the funnels first to work through one maker, or the clones.
-    **Reset the Short List** goes back to
+    calibres. In Manage Calibres clicking the star in a calibre's row puts
+    it on the short list or takes it off; filter the table with the funnels
+    first to work through one maker, or the clones. **Reset the Short
+    List**, in the star column's funnel menu, goes back to
     the one the app comes with. The short list and the recent picks are
     kept with the app's settings. When the list renames a calibre (the
     "vph" names became "bph"), the short list, the recent picks and a take
