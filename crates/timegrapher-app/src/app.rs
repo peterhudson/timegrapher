@@ -43,10 +43,6 @@ type Profiles = [Option<TickProfile>; 2];
 
 /// How often the sound is kept for looking back, seconds.
 const SOUND_EVERY_S: f64 = 2.0;
-/// The hints on Time Span's two choices.
-const SPAN_SESSION_HINT: &str = "Everything since the session started, growing as it goes";
-const SPAN_STRIP_HINT: &str = "Only the paper strip's length, ending where the strip does: the \
-     newest readings, moving along with the strip";
 /// What the reading cards asked for.
 struct Readouts {
     /// Keep the input's clock as timed.
@@ -1660,9 +1656,6 @@ pub struct TimegrapherApp {
     pane_need: std::collections::HashMap<Pane, f32>,
     /// The top of the pane being drawn, for working out its need.
     pane_top: f32,
-    /// The distributions cover only the strip's length, ending where the
-    /// strip does, instead of the whole session.
-    hist_span_of_strip: bool,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
     /// The histograms count the readings rather than each 2 seconds of
@@ -1825,7 +1818,6 @@ impl TimegrapherApp {
             follow: self.follow,
             chart_series: self.chart_series,
             dist_series: self.dist_series,
-            hist_span_of_strip: self.hist_span_of_strip,
             hist_cumulative: self.hist_cumulative,
             hist_readings: self.hist_readings,
             sound: self.sound_opts,
@@ -1871,7 +1863,6 @@ impl TimegrapherApp {
             follow,
             chart_series,
             dist_series,
-            hist_span_of_strip,
             hist_cumulative,
             hist_readings,
             sound,
@@ -1939,7 +1930,6 @@ impl TimegrapherApp {
         let some = |s: [bool; 3]| if s.contains(&true) { s } else { [true; 3] };
         self.chart_series = some(chart_series);
         self.dist_series = some(dist_series);
-        self.hist_span_of_strip = hist_span_of_strip;
         self.hist_cumulative = hist_cumulative;
         self.hist_readings = hist_readings;
         self.sound_opts = sound;
@@ -2105,7 +2095,6 @@ impl TimegrapherApp {
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             pane_top: 0.0,
-            hist_span_of_strip: false,
             hist_cumulative: false,
             steady_series: Default::default(),
             periods_log: false,
@@ -4086,6 +4075,7 @@ impl TimegrapherApp {
         self.source_label = label;
         self.anchor = None;
         self.view_end = None;
+        self.fit_take();
         let done = if self.no_sound {
             "Opened the analysis kept without its sound: the readings, charts and tests are as \
              they were measured, and the Scope needs the sound. Drag the strip or the \
@@ -4271,6 +4261,52 @@ impl TimegrapherApp {
     fn fit_strip(&mut self) {
         self.view_end = None;
         self.strip.set_span(self.latest_s());
+    }
+
+    /// An opened take shows whole: the strip's length fits all of it, and
+    /// its width is the narrowest of the offered widths that holds every
+    /// beat without wrapping. The beats are centred between the earliest
+    /// and the latest, or, with Auto-Centre on, the newest stay on the
+    /// centre line as it keeps them. The odd stray dot (one beat in a
+    /// thousand at each end) is left out of the width, so one bad
+    /// detection can't flatten the trace.
+    fn fit_take(&mut self) {
+        self.fit_strip();
+        let Some(live) = &self.live else { return };
+        let Some(bph) = live.bph() else { return };
+        let period = 3600.0 / bph as f64;
+        let beats = live.beats();
+        let centred = if self.follow {
+            Anchor::centre_on(beats, period, 8)
+        } else {
+            Anchor::centre_on(&beats[..beats.len().min(16)], period, 16)
+        };
+        let Some(anchor) = centred else { return };
+        let mut leads: Vec<f64> = beats.iter().map(|b| anchor.lead_ms(b, period)).collect();
+        leads.sort_by(f64::total_cmp);
+        let stray = leads.len() / 1000;
+        let (lo, hi) = (leads[stray], leads[leads.len() - 1 - stray]);
+        let (anchor, half) = if self.follow {
+            (anchor, lo.abs().max(hi.abs()))
+        } else {
+            // An earlier anchor time makes every beat read later by as
+            // much, which puts the middle of the spread on the centre line.
+            let mid = (lo + hi) / 2.0;
+            let shifted = Anchor {
+                time: anchor.time - mid / 1000.0,
+                ..anchor
+            };
+            (shifted, (hi - lo) / 2.0)
+        };
+        self.anchor = Some(anchor);
+        // A little room at the edges, so the outermost dots aren't cut.
+        let need = half * 1.1;
+        let width = WIDTHS
+            .iter()
+            .copied()
+            .find(|&w| w >= need)
+            .unwrap_or(StripView::MAX_HALF_WIDTH_MS);
+        self.strip.set_half_width(width);
     }
 
     fn end_s(&self) -> f64 {
@@ -5273,17 +5309,48 @@ impl TimegrapherApp {
             self.info_msg("Stop listening before picking Unsorted Takes.".into());
             return;
         }
+        // A watch's take on show, all of it saved, is put away: Unsorted
+        // Takes starts again from Quick Listen's settings.
+        let watch_take = self.watch_open.is_some()
+            && self.live.is_some()
+            && !self.needs_save_confirmation()
+            && self.session.unsaved_s() < 0.5;
         self.watch_open = None;
         self.unsorted_open = true;
         // Its takes show, not the list left over from before.
         self.list_for = None;
         self.quick_listen = false;
-        // Readings on show keep the settings they were measured with.
+        if watch_take {
+            self.new_session();
+        }
+        // Other readings on show keep the settings they were measured with.
         if self.live.is_some() {
             self.quick_defaults = true;
         } else {
             self.quick_listen_defaults();
         }
+    }
+
+    /// A beat rate picked, or Auto.
+    fn change_bph(&mut self, bph: Option<u32>) {
+        // A take opened is read at its own beat rate: changed, its
+        // readings go, and with them the take on show, so Open reads it
+        // again.
+        let shown = (!self.running()).then(|| self.take_on_show()).flatten();
+        if let Some(take) = &shown {
+            self.new_session();
+            self.info_msg(format!(
+                "The beat rate changed, so the readings of \"{}\" were cleared. Open it \
+                 again to see them.",
+                file_name(take)
+            ));
+        }
+        self.bph = bph;
+        if let Some(l) = self.live.as_mut() {
+            l.set_bph(bph);
+        }
+        self.anchor = None;
+        self.clear_trends();
     }
 
     /// Quick Listen's settings: no watch, no calibre, the default lift
@@ -5730,7 +5797,6 @@ impl TimegrapherApp {
             Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
                 theme::bar_gap(ui);
-                self.span_setting(ui);
                 self.histogram_settings(ui);
                 self.pane_average_setting(ui, pane);
                 self.export_button(ui, pane);
@@ -6173,21 +6239,6 @@ impl TimegrapherApp {
                     "Each 2 seconds of beats, the finest the app measures: catches \
                              quicker changes, with more scatter",
                 ),
-            ],
-        );
-    }
-
-    /// Whether the distributions cover the whole session or the strip's
-    /// length.
-    fn span_setting(&mut self, ui: &mut egui::Ui) {
-        theme::tool_choice(
-            ui,
-            "Time Span",
-            "How much of the session the distributions cover",
-            &mut self.hist_span_of_strip,
-            &[
-                (false, Icon::Roll, "Session", SPAN_SESSION_HINT),
-                (true, Icon::Strip, "Strip", SPAN_STRIP_HINT),
             ],
         );
     }
@@ -6692,12 +6743,7 @@ impl TimegrapherApp {
             .response
             .on_hover_text(how);
         if bph != self.bph {
-            self.bph = bph;
-            if let Some(l) = self.live.as_mut() {
-                l.set_bph(bph);
-            }
-            self.anchor = None;
-            self.clear_trends();
+            self.change_bph(bph);
         }
         if self.open_watch().is_none() {
             let current = self.calibre.clone();
@@ -11792,17 +11838,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// The stretch of time the distributions cover: the strip's length,
-    /// ending where the strip does, or `None` for the whole session.
-    fn hist_window(&self) -> Option<(f64, f64)> {
-        self.hist_span_of_strip.then(|| self.strip_window())
-    }
-
-    fn strip_window(&self) -> (f64, f64) {
-        let end = self.end_s();
-        (end - self.strip.span_s, end)
-    }
-
     /// The 2-second stretches of amplitude and beat error, leaving out any
     /// that overlap a masked stretch or reach across a break, as the
     /// readings do.
@@ -11843,10 +11878,9 @@ impl TimegrapherApp {
                 None => self.rate_2s = RateTwoS::default(),
             }
         }
-        let window = self.hist_window();
         // Only the position the watch is in now: values from another
         // position are a different measurement.
-        let inside = |t: f64| window.is_none_or(|(a, b)| t >= a && t <= b) && self.in_position(t);
+        let inside = |t: f64| self.in_position(t);
         let windows = self.unmasked_windows();
         // One reading per averaging time: a new reading comes every half
         // second, and the ones between share most of their beats, so counting
@@ -11957,11 +11991,7 @@ impl TimegrapherApp {
         };
         let peaks = h.peaks(0.05);
         let f = |v: f64| format!("{v:.decimals$}{unit}");
-        // Over what stretch, so a short window isn't taken for the session.
-        let over = match window {
-            Some((a, b)) => format!(" in the last {}", fields::duration(b - a)),
-            None => " in the session".to_string(),
-        };
+        let over = " in the session";
         let mut line = format!(
             "{}: {} {per}{over} · median {} · middle 80% {} to {}",
             steady::title(reading),
@@ -14984,7 +15014,6 @@ mod tests {
         assert!(app.metadata_unsaved());
         app.calibre = original.calibre.clone();
         app.hist_cumulative = !app.hist_cumulative;
-        app.hist_span_of_strip = !app.hist_span_of_strip;
         assert!(
             !app.metadata_unsaved(),
             "view preferences are not saved take edits"
@@ -18242,6 +18271,113 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Two minutes of beats at 28,800 bph from a watch gaining `gain`
+    /// (a fraction: 1e-4 is 8.64 s a day), as a take's log.
+    fn gaining_log(gain: f64) -> BeatLog {
+        BeatLog {
+            sample_rate: 48000,
+            duration_s: 120.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: (0..960)
+                .map(|index| timegrapher_core::beats::Beat {
+                    index,
+                    time: index as f64 / 8.0 * (1.0 - gain),
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: Vec::new(),
+            by_count: Vec::new(),
+        }
+    }
+
+    /// A take opened shows whole: Fit along the strip, and the narrowest
+    /// listed width that holds every beat, with Auto-Centre off or on.
+    #[test]
+    fn an_opened_take_fits_the_strip() {
+        for follow in [false, true] {
+            let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+            app.follow = follow;
+            app.strip.set_span(10.0);
+            app.strip.set_half_width(1.0);
+            // 12 ms gained over the two minutes.
+            app.show_log(gaining_log(1e-4), "gaining".into(), vec![], vec![]);
+            assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
+            assert!(app.strip.span_s > 119.0);
+            let half = app.strip.half_width_ms;
+            // Centred, the spread is ±6 ms; kept on the newest beats, it
+            // reaches 12 ms on one side.
+            assert_eq!(half, if follow { 20.0 } else { 10.0 }, "follow {follow}");
+            let live = app.live.as_ref().unwrap();
+            let anchor = app.anchor.unwrap();
+            for b in live.beats() {
+                let lead = anchor.lead_ms(b, 0.125);
+                assert!(lead.abs() < half, "{lead} outside ±{half}");
+            }
+        }
+    }
+
+    /// A watch's take on show, then Unsorted Takes: the take is put away
+    /// and the settings go back to Quick Listen's, not by chance.
+    #[test]
+    fn unsorted_takes_after_a_watch_take_resets_the_settings() {
+        let base =
+            std::env::temp_dir().join(format!("tg-app-test-unsorted-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let mut w = library::Watch::new("Pepsi");
+        w.lift = Some(55.0);
+        w.bph = Some(28800);
+        lib.add(&w).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.pick_watch(&pepsi);
+        app.set_calibre("ETA 2824-2".into());
+        app.show_log(gaining_log(0.0), "take".into(), vec![], vec![]);
+        app.input = Input::File;
+        app.opened_path = base.join("take.flac").display().to_string();
+        assert!(app.take_on_show().is_some());
+        assert_eq!(app.bph, Some(28800));
+
+        app.pick_unsorted();
+        assert!(app.take_on_show().is_none(), "the watch's take is put away");
+        assert!(app.live.is_none());
+        assert!(app.calibre.is_empty());
+        assert_eq!(app.bph, None);
+        assert_eq!(app.lift_deg, DEFAULT_LIFT_DEG);
+        assert!(!app.quick_defaults);
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A new beat rate clears a take's readings and the take on show with
+    /// them, so its Open comes back.
+    #[test]
+    fn a_new_beat_rate_puts_the_take_away() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.show_log(gaining_log(0.0), "take".into(), vec![], vec![]);
+        app.input = Input::File;
+        app.opened_path = "take.flac".into();
+        assert!(app.take_on_show().is_some());
+        app.change_bph(Some(21600));
+        assert!(app.take_on_show().is_none());
+        assert!(app.live.is_none());
+        assert_eq!(app.bph, Some(21600));
+        let said = app
+            .message
+            .as_ref()
+            .map(|m| m.0.clone())
+            .unwrap_or_default();
+        assert!(said.contains("Open it again"), "{said}");
+    }
+
     /// The readings' cards carry what a take needs: the position with the
     /// arrows that tip the watch, Listen and Save with Average Over on a
     /// card of their own, the lift angle and the beat rate's menu with the
@@ -18733,16 +18869,6 @@ mod tests {
         assert_eq!(data_range(&[]), None);
         let (lo, hi) = data_range(&[[0.0, 3.0]]).unwrap();
         assert!(lo < 3.0 && hi > 3.0);
-    }
-
-    #[test]
-    fn distributions_can_follow_the_strip() {
-        let mut app = synthetic(40.0, 0.0);
-        assert_eq!(app.hist_window(), None);
-        app.hist_span_of_strip = true;
-        let (a, b) = app.hist_window().unwrap();
-        assert!((b - app.end_s()).abs() < 1e-9);
-        assert!((b - a - app.strip.span_s).abs() < 1e-9);
     }
 
     #[test]
