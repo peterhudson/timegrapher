@@ -1048,8 +1048,8 @@ impl Calibres {
                 .lift_angle_deg()
                 .map_or(NOT_GIVEN.into(), |l| format!("{}°", fields::plain(l))),
             Col::Short => match e {
-                Entry::Table(c) if self.in_short(c) => "Ticked".into(),
-                _ => "Not Ticked".into(),
+                Entry::Table(c) if self.in_short(c) => "Starred".into(),
+                _ => "Not Starred".into(),
             },
         }
     }
@@ -1311,7 +1311,7 @@ impl Calibres {
             Col::BeatRate | Col::LiftAngle => {
                 ("Sort Smallest to Largest", "Sort Largest to Smallest")
             }
-            Col::Short => ("Sort Ticked First", "Sort Ticked Last"),
+            Col::Short => ("Sort Starred First", "Sort Starred Last"),
             _ => ("Sort A to Z", "Sort Z to A"),
         };
         for (text, reversed) in [(up, false), (down, true)] {
