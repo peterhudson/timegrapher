@@ -32,7 +32,7 @@ use timegrapher_core::clockstore;
 use timegrapher_core::library;
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
-use timegrapher_core::mixer::{GainState, InputGain};
+use timegrapher_core::mixer::{self, GainState, InputGain};
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::power_reserve;
 use timegrapher_core::profile::TickProfile;
@@ -382,21 +382,6 @@ impl Position {
         }
     }
 
-    /// The name with its code, and for a crown position the Swiss
-    /// laboratory name beside it (the hour that points up), as the menus
-    /// and the strip's position ticker show it.
-    /// Its picture on the Position card.
-    fn icon(self) -> Icon {
-        match self {
-            Position::DialUp => Icon::DialUp,
-            Position::DialDown => Icon::DialDown,
-            Position::CrownUp => Icon::CrownUp,
-            Position::CrownDown => Icon::CrownDown,
-            Position::CrownLeft => Icon::CrownLeft,
-            Position::CrownRight => Icon::CrownRight,
-        }
-    }
-
     /// Witschi's name: the hour that points up for a crown position, CH
     /// and CB (cadran haut, cadran bas) lying flat.
     pub fn witschi(self) -> &'static str {
@@ -680,6 +665,12 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
     )
 }
 
+/// The Automatic Gain switch's hover, in Settings > Microphone.
+const AGC_HINT: &str = "The microphone's own automatic gain, which raises its level between \
+     ticks and lowers it on each one. Off, the level stays where Input Level puts it, as a \
+     timegrapher needs. A stand turns it back on each time it is plugged in, so the app sets \
+     it again each time it opens the input.";
+
 const MASK_HINT: &str = "Leave stretches out of the readings, such as a bump of the stand: \
      with Mask on, drag along the strip over the beats to mask them, drag a masked \
      stretch's edge to move it, and click a masked stretch to bring it back. A right click \
@@ -877,6 +868,21 @@ enum PositionLabel {
 /// The height of the Current Position card's buttons, in `rows` rows.
 fn position_buttons_h(rows: usize) -> f32 {
     rows as f32 * POSITION_SEG_H + (rows as f32 - 1.0) * 4.0
+}
+
+/// The USB microphone behind an input, for its automatic gain switch on
+/// macOS: the one whose name the input's carries (or the other way
+/// round), or for the system default (`label` `None`) the only one there
+/// is.
+fn usb_agc_for(list: Vec<mixer::UsbAgc>, label: Option<&str>) -> Option<mixer::UsbAgc> {
+    let named = |m: &mixer::UsbAgc| {
+        let (a, b) = (m.name.to_lowercase(), label?.to_lowercase());
+        (!a.is_empty() && (a.contains(&b) || b.contains(&a))).then_some(())
+    };
+    if label.is_none() && list.len() == 1 {
+        return list.into_iter().next();
+    }
+    list.into_iter().find(|m| named(m).is_some())
 }
 
 /// Open the system's sound input settings, where the input volume is set
@@ -1525,6 +1531,11 @@ pub struct TimegrapherApp {
     keep_awake: bool,
     /// Listen to the microphone as soon as the app opens.
     listen_at_open: bool,
+    /// The inputs whose automatic gain is left on (Settings > Microphone).
+    agc_on: Vec<String>,
+    /// The selected input's automatic gain switch as last read back, when
+    /// it has one.
+    agc_read: Option<bool>,
     /// The microphone has been set up, or opened once.
     mic_set_up: bool,
     /// Set Up the Microphone is open (the first launch).
@@ -1828,6 +1839,7 @@ impl TimegrapherApp {
             show_readings: self.show_readings,
             library: self.library_dir.clone(),
             settings_section: self.settings_last.key().into(),
+            agc_on: self.agc_on.clone(),
         }
     }
 
@@ -1873,10 +1885,12 @@ impl TimegrapherApp {
             show_readings,
             library,
             settings_section,
+            agc_on,
         } = s;
         self.settings_last = Tab::from_key(&settings_section);
         self.listen_at_open = listen_at_open;
         self.mic_set_up = mic_set_up;
+        self.agc_on = agc_on;
         // A layout from before the panes moved starts afresh.
         let panes = panes.filter(|_| layout >= LAYOUT);
         self.library_dir = library;
@@ -2120,6 +2134,8 @@ impl TimegrapherApp {
             clock: None,
             clock_track: None,
             gain_error: None,
+            agc_on: Vec::new(),
+            agc_read: None,
             message: None,
             export: None,
             export_dir: None,
@@ -2394,6 +2410,7 @@ impl TimegrapherApp {
                     )),
                 }
                 self.capture = Some(c);
+                self.apply_agc();
             }
             Err(e) => self.error(format!(
                 "Can't open the input. {}",
@@ -2490,6 +2507,7 @@ impl TimegrapherApp {
                 self.message = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
                 self.capture = Some(c);
+                self.apply_agc();
             }
             Err(e) => self.error(format!(
                 "Can't open the input. {}",
@@ -5508,10 +5526,8 @@ impl TimegrapherApp {
         theme::bar_gap(ui);
         // The search stays in the row too: Sort folds first.
         theme::keep_next(ui);
-        theme::tool_field(
+        theme::tool_search(
             ui,
-            Icon::Search,
-            "Search",
             "Show the watches whose name, calibre, notes or fields hold this",
             |ui| {
                 // Narrower in a narrow pane, leaving room for "…" after it.
@@ -5525,7 +5541,7 @@ impl TimegrapherApp {
             },
         );
         let mut sort = self.watch_sort;
-        theme::tool_field(ui, Icon::Sort, "Sort", "The order of the list", |ui| {
+        theme::tool_field(ui, "Sort", "The order of the list", |ui| {
             egui::ComboBox::from_id_salt("watch sort")
                 .selected_text(sort.words())
                 .show_ui(ui, |ui| {
@@ -5977,7 +5993,7 @@ impl TimegrapherApp {
 
     /// Average Over for one pane: Readings' time, or one of its own.
     fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        theme::tool_field(ui, Icon::Bucket, "Average Over", PANE_AVERAGE_HINT, |ui| {
+        theme::tool_field(ui, "Average Over", PANE_AVERAGE_HINT, |ui| {
             self.pane_average_choice(ui, pane);
         });
     }
@@ -5991,7 +6007,7 @@ impl TimegrapherApp {
         egui::ComboBox::from_id_salt(("pane average", pane))
             .selected_text(match own {
                 Some(s) => fields::duration(s),
-                None => format!("As Readings ({readings})"),
+                None => format!("{readings} as Readings"),
             })
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut choice, None, format!("As Readings ({readings})"));
@@ -7209,10 +7225,9 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         theme::tool_field(
             ui,
-            Icon::Calipers,
             "Width",
-            "Milliseconds either side of the centre line. Ctrl and the mouse wheel on the \
-             strip change it too.",
+            "Milliseconds either side of the centre line. Shift or Ctrl and the mouse wheel \
+             on the strip change it too.",
             |ui| {
                 ui.label("±");
                 let mut w = self.strip.half_width_ms;
@@ -7222,7 +7237,7 @@ impl TimegrapherApp {
                     &mut w,
                     StripView::MIN_HALF_WIDTH_MS..=StripView::MAX_HALF_WIDTH_MS,
                     &MS,
-                    44.0,
+                    40.0,
                 );
                 ui.label("ms");
                 let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
@@ -7239,7 +7254,6 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            Icon::Tape,
             "Length",
             "Time shown along the strip, such as 30 s, 5 min or 2 h. Fit shows the whole \
              session so far, up to its latest beat, or its last 24 hours when it is longer. \
@@ -7252,7 +7266,7 @@ impl TimegrapherApp {
                     &mut s,
                     StripView::MIN_SPAN_S..=StripView::MAX_SPAN_S,
                     &DURATION,
-                    66.0,
+                    48.0,
                 );
                 let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
                 // Fitted to the take on show: a length for the take only.
@@ -7432,7 +7446,7 @@ impl TimegrapherApp {
                 }
             }
         });
-        theme::bar_gap(ui);
+        // Average Over's name in words sets it apart: no line before it.
         self.pane_average_setting(ui, Pane::Strip);
         self.export_button(ui, Pane::Strip);
     }
@@ -8728,6 +8742,79 @@ impl TimegrapherApp {
         self.gain = id.and_then(InputGain::for_device);
         self.gain_state = self.gain.as_ref().and_then(|g| g.read());
         self.gain_read_at = Instant::now();
+        self.agc_read = self.input_agc(None).and_then(Result::ok);
+    }
+
+    /// The key Settings keeps the selected input's automatic gain under.
+    fn agc_key(&self) -> String {
+        self.device.clone().unwrap_or_else(|| "default".into())
+    }
+
+    /// The selected input's automatic gain switch, read back, after
+    /// turning it on or off first with `set`. `None` when the input has no
+    /// switch the app can reach: the sound card's mixer on Linux, the USB
+    /// microphone itself on macOS.
+    fn input_agc(&self, set: Option<bool>) -> Option<Result<bool, String>> {
+        if cfg!(target_os = "macos") {
+            let label = capture::choices(&self.devices)
+                .into_iter()
+                .find(|c| Some(&c.id) == self.device.as_ref())
+                .map(|c| c.label);
+            let read = |list: Result<Vec<mixer::UsbAgc>, String>| {
+                usb_agc_for(list.ok()?, label.as_deref())
+            };
+            let found = read(mixer::usb_agc(None))?;
+            let now = found.before;
+            return Some(match set {
+                // Over USB the request reaches every USB microphone's
+                // switch, so it goes only when this input's needs it.
+                Some(want) if now != Some(want) => match read(mixer::usb_agc(Some(want))) {
+                    Some(mixer::UsbAgc { error: Some(e), .. }) => Err(e),
+                    Some(mixer::UsbAgc { after: Some(v), .. }) => Ok(v),
+                    _ => Err("the microphone didn't say whether it changed".into()),
+                },
+                _ => now.ok_or_else(|| {
+                    found
+                        .error
+                        .unwrap_or_else(|| "the microphone didn't answer".into())
+                }),
+            });
+        }
+        let g = self.gain.as_ref()?;
+        self.gain_state.as_ref()?.agc?;
+        if let Some(want) = set {
+            if let Err(e) = g.set_agc(want) {
+                return Some(Err(e));
+            }
+        }
+        g.read()?.agc.map(Ok)
+    }
+
+    /// Turn the selected input's automatic gain off, or leave it on where
+    /// Settings says so: each time the app opens the input, since a stand
+    /// turns it back on when it is plugged in.
+    fn apply_agc(&mut self) {
+        let want = self.agc_on.contains(&self.agc_key());
+        if self.gain_device != self.device {
+            self.read_gain();
+        }
+        match self.input_agc(Some(want)) {
+            Some(Ok(now)) => {
+                self.agc_read = Some(now);
+                applog::info(&format!(
+                    "automatic gain {}",
+                    if now { "on" } else { "off" }
+                ));
+            }
+            Some(Err(e)) => {
+                self.agc_read = None;
+                self.gain_error = Some(format!(
+                    "Couldn't turn the microphone's automatic gain {}: {e}",
+                    if want { "on" } else { "off" }
+                ));
+            }
+            None => self.agc_read = None,
+        }
     }
 
     /// The input level control and meter, in Settings > Microphone and Set Up the Microphone.
@@ -8763,25 +8850,6 @@ impl TimegrapherApp {
                         }
                     }
                 });
-                // Automatic gain shows only when it is on, with the way to
-                // turn it off.
-                if st.agc == Some(true) {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Automatic gain: on").small().color(pal.text))
-                            .on_hover_text(
-                                "The microphone sets its own level as the sound changes, \
-                                 raising it between ticks.",
-                            );
-                        if ui
-                            .button("Turn It Off")
-                            .on_hover_text("Turn the microphone's automatic gain off")
-                            .clicked()
-                        {
-                            self.gain_error = g.set_agc(false).err();
-                            self.read_gain();
-                        }
-                    });
-                }
             }
             _ => {
                 theme::row(ui, "Input Level", Some(hint), |ui| {
@@ -8806,6 +8874,29 @@ impl TimegrapherApp {
                         );
                     }
                 });
+            }
+        }
+        // Only for an input whose own automatic gain the app can reach.
+        if let Some(now) = self.agc_read {
+            let key = self.agc_key();
+            let mut on = self.agc_on.contains(&key);
+            if theme::switch_row(ui, "Automatic Gain", &mut on, AGC_HINT) {
+                self.agc_on.retain(|k| k != &key);
+                if on {
+                    self.agc_on.push(key);
+                }
+                self.apply_agc();
+            }
+            // What the microphone says, where it isn't what was asked.
+            if now != on {
+                ui.label(
+                    RichText::new(format!(
+                        "The microphone reports its automatic gain {}.",
+                        if now { "on" } else { "off" }
+                    ))
+                    .small()
+                    .color(pal.warn),
+                );
             }
         }
         let level_hint = "Loudest sample in the last half second, with plain marks at \
@@ -10662,7 +10753,6 @@ impl TimegrapherApp {
         }
         theme::tool_field(
             ui,
-            Icon::Hourglass,
             "Settle",
             "Seconds the watch is left to settle after every change of position, in any take \
              and in the guided test, before its beats are read. They show faint on the strip \
@@ -10685,7 +10775,6 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            Icon::Stopwatch,
             "Measure",
             "Seconds each position is measured for. Longer brings the rate's ± down; a minute \
              gives about half a second a day.",
@@ -10859,7 +10948,6 @@ impl TimegrapherApp {
         let running = self.reserve_running();
         theme::tool_field(
             ui,
-            self.reserve_position.icon(),
             "Position",
             "The one position the watch runs down in, from wind to stop",
             |ui| {
@@ -14140,6 +14228,63 @@ mod tests {
     use super::*;
     /// The settling the tests of a move set the pane's Settle to.
     const SETTLE_S: f64 = 10.0;
+
+    /// On macOS the input's automatic gain is the USB microphone's whose
+    /// name it carries; the system default takes the only one there is.
+    #[test]
+    fn an_input_finds_its_usb_microphones_automatic_gain() {
+        let mic = |name: &str| mixer::UsbAgc {
+            name: name.into(),
+            vendor_id: 0x0d8c,
+            product_id: 0x013c,
+            control: timegrapher_core::usbagc::AgcControl {
+                interface: 0,
+                unit: 2,
+                channel: 0,
+                volume: true,
+            },
+            before: Some(true),
+            after: None,
+            volume_db: None,
+            error: None,
+        };
+        let name = |m: Option<mixer::UsbAgc>| m.map(|m| m.name);
+        let one = || vec![mic("USB PnP Sound Device")];
+        let two = || vec![mic("USB PnP Sound Device"), mic("Blue Yeti")];
+        assert_eq!(
+            name(usb_agc_for(one(), Some("USB PnP Sound Device"))).as_deref(),
+            Some("USB PnP Sound Device")
+        );
+        assert_eq!(
+            name(usb_agc_for(two(), Some("Blue Yeti Stereo Microphone"))).as_deref(),
+            Some("Blue Yeti")
+        );
+        assert_eq!(
+            name(usb_agc_for(one(), None)).as_deref(),
+            Some("USB PnP Sound Device")
+        );
+        // The built-in microphone has no such switch, and the default
+        // with two USB microphones is neither.
+        assert!(usb_agc_for(one(), Some("MacBook Pro Microphone")).is_none());
+        assert!(usb_agc_for(two(), None).is_none());
+        assert!(usb_agc_for(Vec::new(), None).is_none());
+    }
+
+    /// Which inputs keep their automatic gain on is kept with the settings.
+    #[test]
+    fn the_automatic_gain_choice_is_kept_per_input() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.agc_on = vec!["hw:2,0".into()];
+        let s = app.settings();
+        assert_eq!(s.agc_on, vec!["hw:2,0".to_string()]);
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.apply_settings(s);
+        assert_eq!(again.agc_on, vec!["hw:2,0".to_string()]);
+        assert!(
+            Settings::default().agc_on.is_empty(),
+            "off for every input at first"
+        );
+    }
 
     #[test]
     fn errors_read_without_codes() {

@@ -241,9 +241,10 @@ while it is on; a choice between two settings is one icon showing the
 setting in use, and a click changes to the other (Direction shows a
 down arrow while the strip runs down and an across arrow while it runs
 across); a choice of more is a row of icons with the picked one tinted.
-A setting that holds a value (Width, Length, Average Over, Settle) keeps
-its field, with a small icon in place of its name that has the same
-hover. **Start Test**, **Start a New Test** and **Copy** keep their words
+Icons are for what can be clicked: a setting that holds a value (Width,
+Length, Average Over, Settle, Span, Beats) shows its name in words before
+its field, with the same hover; a search box keeps the magnifying glass
+beside it. **Start Test**, **Start a New Test** and **Copy** keep their words
 beside their icons. When the pane is too narrow for every icon, the last
 ones fold into a **…** menu at the row's end, in words, as a Mac toolbar
 does, and come back out when the pane is wide enough again; the pane's
@@ -1117,9 +1118,18 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   opens the system's sound input settings (Sound > Input on a Mac, Sound
   on Windows), with the Peak meter here to watch as you change it. The
   same code (`timegrapher_core::mixer`) gives `timegrapher doctor` its
-  proposals. When the microphone's automatic gain is on, it says
-  **Automatic gain: on** with a **Turn It Off** button, and otherwise
-  says nothing about it.
+  proposals.
+- **Automatic Gain.** In Settings under Microphone, for an input whose
+  own automatic gain the app can reach: the sound card's mixer switch on
+  Linux, and on a Mac a USB microphone's switch, set over USB
+  (`timegrapher_core::mixer::usb_agc`) since macOS shows no such setting.
+  Off by default and kept for each input. Each time the app opens the
+  input it sets the switch to match, since a stand turns it back on each
+  time it is plugged in, and it reads it back: where the microphone
+  reports otherwise, a line under the switch says so. On a Mac the
+  request reaches every USB microphone's switch at once, so it is sent
+  only when the input's own switch needs changing. The switch is hidden
+  for an input without one, such as a built-in microphone.
 - **Calibre.** Not Set, a calibre from the list (`timegrapher_core::calibres`,
   some 4,500 of them, each with its sources), or one of your own.
   - **The menu.** On the Beat Rate card with no watch picked, and in the

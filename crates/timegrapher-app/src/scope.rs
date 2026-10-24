@@ -291,68 +291,61 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
 
 /// The span and ring controls, in a row above the plot.
 pub fn settings(ui: &mut egui::Ui, view: &mut View) {
-    theme::tool_field(
-        ui,
-        theme::Icon::Trace,
-        "Span",
-        "How much time each trace covers",
-        |ui| {
-            theme::segmented(
-                ui,
-                &mut view.zoom,
-                &[
-                    (
-                        Zoom::Ms5,
-                        "5",
-                        "The drop up close, 3.5 ms before it to 1.5 ms after, ticks above tocks",
-                    ),
-                    (
-                        Zoom::Ms10,
-                        "10",
-                        "The drop and the sound just before it, ticks above tocks",
-                    ),
-                    (
-                        Zoom::Ms20,
-                        "20",
-                        "One sound in detail, from the unlock to the drop, ticks above tocks",
-                    ),
-                    (
-                        Zoom::Ms50,
-                        "50",
-                        "One sound and what rings on after it, ticks above tocks",
-                    ),
-                    (
-                        Zoom::Ms200,
-                        "200",
-                        "The whole beat and the quiet after it, ticks above tocks",
-                    ),
-                    (
-                        Zoom::Ms400,
-                        "400",
-                        "A tick, the tock after it and the next tick, in one row",
-                    ),
-                ],
-            );
-            ui.label(RichText::new("ms").size(12.5));
-            let beat = "From just before one beat to just before the next, at the watch's beat \
+    theme::tool_field(ui, "Span", "How much time each trace covers", |ui| {
+        theme::segmented(
+            ui,
+            &mut view.zoom,
+            &[
+                (
+                    Zoom::Ms5,
+                    "5",
+                    "The drop up close, 3.5 ms before it to 1.5 ms after, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms10,
+                    "10",
+                    "The drop and the sound just before it, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms20,
+                    "20",
+                    "One sound in detail, from the unlock to the drop, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms50,
+                    "50",
+                    "One sound and what rings on after it, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms200,
+                    "200",
+                    "The whole beat and the quiet after it, ticks above tocks",
+                ),
+                (
+                    Zoom::Ms400,
+                    "400",
+                    "A tick, the tock after it and the next tick, in one row",
+                ),
+            ],
+        );
+        ui.label(RichText::new("ms").size(12.5));
+        let beat = "From just before one beat to just before the next, at the watch's beat \
                     rate, ticks above tocks";
-            if theme::in_toolbar(ui) {
-                let on = view.zoom == Zoom::Beat;
-                if theme::icon_toggle(ui, theme::Icon::Drum, on, theme::pal(ui).accent)
-                    .on_hover_text(format!("One Beat: {beat}"))
-                    .clicked()
-                {
-                    view.zoom = Zoom::Beat;
-                }
-            } else {
-                theme::segmented(ui, &mut view.zoom, &[(Zoom::Beat, "One Beat", beat)]);
+        if theme::in_toolbar(ui) {
+            let on = view.zoom == Zoom::Beat;
+            if theme::icon_toggle(ui, theme::Icon::Drum, on, theme::pal(ui).accent)
+                .on_hover_text(format!("One Beat: {beat}"))
+                .clicked()
+            {
+                view.zoom = Zoom::Beat;
             }
-        },
-    );
+        } else {
+            theme::segmented(ui, &mut view.zoom, &[(Zoom::Beat, "One Beat", beat)]);
+        }
+    });
     theme::note_icon(ui, theme::Icon::Drum, "Span: One Beat");
     theme::tool_field(
         ui,
-        theme::Icon::Traces,
         "Beats",
         "How many of the latest beats are drawn over each other",
         |ui| {
