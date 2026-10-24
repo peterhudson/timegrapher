@@ -594,6 +594,9 @@ pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
             title(k).to_lowercase()
         )
     };
+    for k in SERIES {
+        theme::note_icon(ui, series_icon(k), title(k));
+    }
     theme::bar_item(ui, "Series", |ui| {
         for (i, k) in SERIES.into_iter().enumerate() {
             let flip = if theme::in_toolbar(ui) {

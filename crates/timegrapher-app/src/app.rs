@@ -5396,6 +5396,24 @@ impl TimegrapherApp {
             }
             return;
         }
+        // The pane's main action first, in words, and never folded: the
+        // empty list names it.
+        let writable = !matches!(&self.library, Ok(Some(l)) if l.read_only.is_some())
+            && self.library_root().is_some();
+        theme::keep_next(ui);
+        if theme::tool_word_button(
+            ui,
+            Icon::NewWatch,
+            "New Watch…",
+            "Add a watch: only its name is needed",
+            false,
+            (!writable).then_some(
+                "This copy of the app can only read your watches, or there is no folder for them",
+            ),
+        ) {
+            self.open_new_watch_form();
+        }
+        theme::bar_gap(ui);
         theme::tool_field(
             ui,
             Icon::Loupe,
@@ -5431,20 +5449,6 @@ impl TimegrapherApp {
                 &mut self.watch_archived,
                 "Also list the watches marked Archived",
             );
-        }
-        let writable = !matches!(&self.library, Ok(Some(l)) if l.read_only.is_some())
-            && self.library_root().is_some();
-        theme::bar_gap(ui);
-        if theme::tool_button(
-            ui,
-            Icon::NewWatch,
-            "New Watch…",
-            "Add a watch: only its name is needed",
-            (!writable).then_some(
-                "This copy of the app can only read your watches, or there is no folder for them",
-            ),
-        ) {
-            self.open_new_watch_form();
         }
     }
 
@@ -7112,6 +7116,7 @@ impl TimegrapherApp {
         );
         theme::bar_gap(ui);
         let live = self.live.is_some();
+        theme::note_icon(ui, Icon::Masks, "Mask");
         theme::bar_item(ui, "Mask", |ui| {
             ui.add_enabled_ui(live, |ui| {
                 if theme::in_toolbar(ui) {
@@ -7174,6 +7179,13 @@ impl TimegrapherApp {
             self.relayout(h);
         }
         let overlays = &mut self.overlays;
+        for (icon, name) in [
+            (Icon::Amplitude, "Amplitude"),
+            (Icon::Rate, "Rate"),
+            (Icon::BeatError, "Beat Error"),
+        ] {
+            theme::note_icon(ui, icon, &format!("Draw Over the Strip: {name}"));
+        }
         theme::bar_item(ui, "Draw Over the Strip", |ui| {
             let over = "Readings drawn as lines over the beats against the same time, each \
                         on its own scale";
@@ -10274,6 +10286,7 @@ impl TimegrapherApp {
         };
         // While it runs, the banner below carries the test's buttons.
         if !running {
+            theme::keep_next(ui);
             if theme::tool_word_button(ui, Icon::Listen, label, &start_hint, true, None) {
                 let earlier = self.guided_earlier.clone();
                 self.start_guided(earlier);
@@ -10284,11 +10297,12 @@ impl TimegrapherApp {
                  Hours… wrote). The next test is then set against them.",
                 guided::RESULTS_FILE
             );
-            if theme::tool_button(
+            if theme::tool_word_button(
                 ui,
                 Icon::BarrelIn,
                 "Load Full-Wind Results…",
                 &load_hint,
+                false,
                 None,
             ) {
                 if let Some(full) = self.load_full_wind() {
@@ -10372,11 +10386,12 @@ impl TimegrapherApp {
                  Saving the session keeps them too, as {} in its folder.",
                 guided::RESULTS_FILE
             );
-            if theme::tool_button(
+            if theme::tool_word_button(
                 ui,
                 Icon::Barrel24,
                 "Save Results for 24 Hours…",
                 &hint,
+                false,
                 None,
             ) {
                 if let Some(m) = guided::save_results(&k, &self.guided_dir()) {

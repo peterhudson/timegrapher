@@ -402,7 +402,8 @@ fn the_set_up_the_microphone_sheet_holds_long_microphone_names() {
 /// Each pane's toolbar keeps to one row inside its pane, as wide as the
 /// window at 1000 pt and as narrow as 420 pt: what doesn't fit folds into
 /// a "…" menu at the row's end, which shows only then, and every control
-/// is either in the row or in the menu, never both.
+/// is either in the row or in the menu, never both. The Watches pane's
+/// New Watch… never folds.
 #[test]
 fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
     let ctx = {
@@ -501,6 +502,11 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
             }
             if w < 1000.0 && more {
                 folded_at_narrow.push(p);
+            }
+            // The Watches pane's main action keeps its words in the row
+            // however narrow, before the search: the empty list names it.
+            if p == Pane::Watch && !keys.contains(&"New Watch…") {
+                wrong.push(format!("{at}: New Watch… is not in the row: {keys:?}"));
             }
             let mut seen_keys = keys.clone();
             seen_keys.sort_unstable();

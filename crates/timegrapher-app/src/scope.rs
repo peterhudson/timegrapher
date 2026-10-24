@@ -349,6 +349,7 @@ pub fn settings(ui: &mut egui::Ui, view: &mut View) {
             }
         },
     );
+    theme::note_icon(ui, theme::Icon::Drum, "Span: One Beat");
     theme::tool_field(
         ui,
         theme::Icon::Traces,

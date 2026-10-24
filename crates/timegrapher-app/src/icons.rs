@@ -222,9 +222,11 @@ fn drawing(icon: Icon) -> &'static str {
         }
         // x-bar: The mean, for anyone who did statistics. Average Over.
         Icon::Mean => r#"<path d="M6 4.5h12"/><path d="M7 9l10 11M17 9L7 20"/>"#,
-        // A log of wood: A log scale.
+        // A log of wood: A log scale. Lying down, its rings at the sawn
+        // end, bark along it, a broken far end and a branch stub, so it
+        // reads as wood and not a battery.
         Icon::Log => {
-            r#"<path d="M8 4.5h8a4.5 7.5 0 0 1 0 15H8"/><ellipse cx="8" cy="12" rx="4.5" ry="7.5"/><ellipse cx="8" cy="12" rx="2.3" ry="4"/><circle cx="8" cy="12" r="0.9" fill="currentColor"/>"#
+            r#"<ellipse cx="6.5" cy="12" rx="3.5" ry="6.5"/><ellipse cx="6.5" cy="12" rx="1.6" ry="3"/><path d="M6.5 5.5H17.5L19.8 8.6L17.6 11.2L20.3 14.4L18 18.5H6.5"/><path d="M11 9.5H15M10.5 14.8H14.5"/><path d="M13.2 5.5L15 2.6"/>"#
         }
         // Two sheets, one over the other: Copy.
         Icon::Copy => {
