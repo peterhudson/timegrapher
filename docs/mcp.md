@@ -105,7 +105,7 @@ That route has not been tried with this server yet.
 | `check_microphone` | `doctor` | Listens a few seconds and states the level, clipping, automatic gain and noise, with the sound card's controls; **uses the microphone**, changes nothing |
 | `check_recording` | `doctor --file` | A recording's level, clipping, automatic gain and noise |
 | `list_calibres` | `calibres` | A calibre's beat rate, lift angle and train, or with `search` the calibres that answer some words |
-| `list_watches` | `watches list` | The watches in the app's library: name, calibre, beat rate, lift angle, how many takes and the newest's start, and the Quick Listen takes in Unsorted; archived watches only with `all` |
+| `list_watches` | `watches list` | The watches in the app's library: name, calibre, beat rate, lift angle, how many takes and the newest's start, and the Quick Listen takes in Unsorted; every watch (`all` is still accepted and changes nothing) |
 | `show_watch` | `watches show` | One watch (any case, spaces at either end ignored), or `Unsorted`: its details and fields, and each take, newest first, with its folder `path` for `run_session`, `long_run` or `check_steadiness`, whether it kept its sound, and the readings the app showed at its end |
 | `list_sound_inputs` | `devices` | The computer's sound inputs |
 | `make_report_bundle` | `report` | A zip for a GitHub issue, saved in your home folder unless told otherwise |

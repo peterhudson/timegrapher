@@ -35,15 +35,12 @@ fn warn_unreadable(lib: &Library) {
     }
 }
 
-/// `watches list`: one line or entry per watch, archived ones only with
-/// `all`, and how many takes wait in Unsorted.
+/// `watches list`: one line or entry per watch, and how many takes wait in
+/// Unsorted. A watch is kept or deleted: one an older app marked archived
+/// is listed like any other, and `all` is accepted and changes nothing.
 pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String> {
     let lib = open(library)?;
-    let watches: Vec<&WatchEntry> = lib
-        .watches
-        .iter()
-        .filter(|e| all || !e.watch.archived)
-        .collect();
+    let watches: Vec<&WatchEntry> = lib.watches.iter().collect();
     if json {
         let input = json!({ "library": lib.root.display().to_string(), "all": all });
         let body = json!({
@@ -91,9 +88,6 @@ pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String>
             parts.push(format!("newest started {t}"));
         }
         parts.push(bytes(e.bytes()));
-        if e.watch.archived {
-            parts.push("Archived".into());
-        }
         println!("  {}: {}", e.watch.name, parts.join(", "));
     }
     warn_unreadable(&lib);
@@ -101,7 +95,7 @@ pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String>
 }
 
 /// `watches show NAME`: one watch (by its name, ignoring case and spaces
-/// at either end; archived or not), or Unsorted, with every take.
+/// at either end), or Unsorted, with every take.
 pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String> {
     let lib = open(library)?;
     let e = if name.trim().eq_ignore_ascii_case(UNSORTED) {
@@ -205,9 +199,6 @@ fn print_watch(e: &WatchEntry) {
     }
     if let Some(n) = w.notes.as_deref().filter(|n| !n.trim().is_empty()) {
         println!("  Notes: {n}");
-    }
-    if w.archived {
-        println!("  Archived");
     }
     print_takes(e);
 }

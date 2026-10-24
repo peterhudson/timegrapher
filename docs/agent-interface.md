@@ -392,12 +392,17 @@ library is `Timegrapher Data` in the home folder, or the folder
 to be named this way); `library` is its absolute folder, and every
 folder in the document is absolute too. It only reads: it takes no lock
 and writes nothing, not even the library's cache, so it can run while the
-app has the library open. `list` leaves archived watches out unless
-`--all` is given; `show` finds a watch by its name, ignoring case and
-spaces at either end, archived or not, and `show Unsorted` gives the
+app has the library open. `list` gives every watch; `show` finds a
+watch by its name, ignoring case and spaces at either end, and `show
+Unsorted` gives the
 takes Quick Listen made (`unsorted` true, `name` `"Unsorted"`,
 `archived` false, `fields` empty, `photos` 0, and `calibre`, `bph`,
 `lift_deg` and `notes` null).
+Deprecated: watches are kept or deleted, no longer archived. `archived`
+stays in both documents, true only for a watch an older version of the
+app marked and that has not been saved since (saving clears it), and
+`list` no longer leaves such a watch out; `--all` is still accepted and
+changes nothing.
 A field the user never set is `null`. Each take's `path` is a standard
 take folder to pass to `session`, `long` or `series` as it is; `audio` is
 false for a take kept as its analysis alone, which can't be measured

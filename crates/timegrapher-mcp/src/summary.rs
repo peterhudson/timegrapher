@@ -149,9 +149,6 @@ fn watch(doc: &Value) -> String {
         s += &format!("; the newest started {t}");
     }
     s += ".";
-    if doc["archived"] == true {
-        s += " Archived.";
-    }
     s + &unreadable(doc)
 }
 
@@ -886,7 +883,8 @@ mod tests {
         assert_eq!(
             lead(&one, &Map::new()).unwrap(),
             "Pepsi: 2 takes, 1 kept as their analysis only; the newest started \
-             2026-10-20T21:32:00Z. Archived."
+             2026-10-20T21:32:00Z.",
+            "an older app's archived mark is not stated"
         );
         let unsorted = json!({"schema": "timegrapher.watch/1", "name": "Unsorted",
             "unsorted": true, "takes": []});
