@@ -4451,6 +4451,7 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
+        live.set_rate_clock(self.take_clock.as_ref().map(|f| f.ppm));
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -11095,20 +11096,16 @@ impl TimegrapherApp {
     }
 
     /// The rate `rate` on the clock kept for the input, for the Rate
-    /// figure's hover, while one is kept; on the take's own clock log
-    /// where it has one.
+    /// figure's hover, while one is kept. A take with its own clock log
+    /// is read on it, the big figure included, so the hover says so.
     fn true_clock_words(&self, rate: f64) -> Option<String> {
         if let Some(f) = &self.take_clock {
-            let v = format!(
-                "{:+.1}",
-                timegrapher_core::clockstore::correct_rate(rate, f.ppm)
-            )
-            .replace('-', "−");
+            let ppm = format!("{:.1}", f.ppm.abs());
+            let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
             return Some(format!(
-                "True Clock {v} seconds per day, on this take's clock log: the rate \
-                 corrected for the sound card's own clock, as the tables and \
-                 `timegrapher session` read it. The big figure stays on the card's clock, \
-                 the one tg reads, so the two compare directly."
+                "On this take's clock log: the rate corrected for the sound card's own \
+                 clock, {ppm} ppm {way}, as the Positions table and `timegrapher session` \
+                 read it. tg reads the recording on the card's clock."
             ));
         }
         let c = self.clock.as_ref()?;
@@ -15156,8 +15153,10 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
+        let rate_ppm = self.take_clock.as_ref().map(|f| f.ppm);
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
+            l.set_rate_clock(rate_ppm);
         }
         // A file dropped on the window is opened, where the desktop passes
         // drops on (not yet on Wayland).
@@ -18308,11 +18307,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Record, save, carry on, pause, change position, resume, save again
     /// A take whose session file names a clock log is read on that log,
-    /// as `timegrapher session` reads it: the Positions table's rates are
-    /// corrected for the sound card's clock, and the Rate's hover says so.
-    /// Without the log the rates are as heard.
+    /// as `timegrapher session` reads it: the Positions table's rates and
+    /// the Rate card's figure are corrected for the sound card's clock, so
+    /// the two agree, and the Rate's hover says so. Without the log the
+    /// rates are as heard.
     #[test]
     fn a_takes_clock_log_corrects_its_rates() {
         let base = std::env::temp_dir().join(format!("tg-app-clock-{}", std::process::id()));
@@ -18356,12 +18355,23 @@ mod tests {
                 ref c => panic!("{c:?}"),
             };
             let ppm = app.take_clock.as_ref().map(|f| f.ppm);
-            (rate, ppm, app.true_clock_words(10.0))
+            let card = app
+                .live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day;
+            (
+                rate,
+                ppm,
+                app.true_clock_words(10.0),
+                card.expect("a card figure"),
+            )
         };
-        let (heard, none, words) = rate_of(false);
+        let (heard, none, words, card_heard) = rate_of(false);
         assert_eq!(none, None);
         assert_eq!(words, None, "no clock kept, no log: no True Clock");
-        let (corrected, ppm, words) = rate_of(true);
+        let (corrected, ppm, words, card) = rate_of(true);
         let ppm = ppm.expect("the log read");
         assert!((ppm.abs() - 50.0).abs() < 0.5, "{ppm}");
         let want = timegrapher_core::clockstore::correct_rate(heard, ppm);
@@ -18371,9 +18381,13 @@ mod tests {
         );
         assert!((corrected - heard).abs() > 4.0, "{corrected} {heard}");
         assert!(words.is_some_and(|w| w.contains("clock log")));
+        // The card's figure is on the same clock as the table.
+        let want = timegrapher_core::clockstore::correct_rate(card_heard, ppm);
+        assert!((card - want).abs() < 0.02, "{card} {want} {card_heard}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Record, save, carry on, pause, change position, resume, save again
     /// and reopen: sound after a save still counts as unsaved, Save Again
     /// keeps it, and the saved take keeps the position it started in.
     #[test]

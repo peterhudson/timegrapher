@@ -677,16 +677,17 @@ take with a clock log; see `clock` in [the agent
 interface](agent-interface.md#clock)), Quartz Correction lists it, and
 the Rate figure's hover gives the rate corrected onto true time,
 labelled True Clock, with the day the clock it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
-which moves every rate read on it by 1 to 4 s/d. The big figure always
-stays on the card's clock, the same clock tg and `timegrapher analyze`
+which moves every rate read on it by 1 to 4 s/d. While listening, the big
+figure stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; True Clock is in its hover,
 never instead of it. It is looked up by the input's name when a microphone
 session starts. A take opened from disk whose session file names a clock
 log (every take the app keeps has `clock.csv`) is read on that log
 instead, fitted as `timegrapher session` fits it: the Positions Test
-tables and the readings worked out over the whole take are corrected for
-that take's own sound card, so they read what the command
-line reads, and True Clock in the Rate's hover comes from the log. A log
+tables, the readings worked out over the whole take, the Rate figure and
+the Charts are all corrected for that take's own sound card, so one take
+has one rate and it is what the command line reads. The Rate's hover
+says the figure is on the take's clock log, and by how many ppm. A log
 that can't be read is named in the line shown on opening, and the take
 is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
