@@ -59,8 +59,8 @@ jobs:
         run: python3 .github/scripts/release_ci_gate.py
 
   # The version every file of this run carries. Cargo.toml holds the base
-  # X.Y.Z; a draft takes one more than the highest patch any release
-  # (drafts included) or tag has used for that X.Y, never less than the
+  # X.Y.Z; a draft takes one more than the highest patch any remaining
+  # release (drafts included) or tag uses for that X.Y, never less than the
   # base, so a draft can be made at any time without a version bump; X or Y
   # is raised by hand in Cargo.toml. A tag build takes the tag's version.
   version:
