@@ -1319,25 +1319,9 @@ function paintMaps(root) {
 
 // ---- Distributions on probability paper (the app's Distribution panes) ----
 
-// histogram::normal_quantile (Acklam), the normal score of a share.
-function normalQuantile(p) {
-  if (!(p > 0 && p < 1)) return p <= 0 ? -Infinity : Infinity;
-  const A = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239];
-  const B = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
-  const C = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
-  const D = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
-  const tail = (q) => (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-    / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1);
-  if (p < 0.02425) return tail(Math.sqrt(-2 * Math.log(p)));
-  if (p > 1 - 0.02425) return -tail(Math.sqrt(-2 * Math.log(1 - p)));
-  const q = p - 0.5, r = q * q;
-  return (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
-    / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1);
-}
-
-// The app's PROBABILITY_MARKS, percent.
-const PROBABILITY_MARKS = [[0.1, "0.1%"], [1, "1%"], [5, "5%"], [10, "10%"], [25, "25%"],
-  [50, "50%"], [75, "75%"], [90, "90%"], [95, "95%"], [99, "99%"], [99.9, "99.9%"]];
+// The app's probability marks, lowest first, each [label, z] with z from
+// core histogram::normal_quantile. The server fills the list in.
+const PROBABILITY_MARKS = /*PROBABILITY_MARKS*/null;
 const DISTRIBUTIONS = {
   rate: ["Rate Distribution", "--rate", " s/day",
     "The rate readings on probability paper: one steady rate falls on a straight line, two states bend it"],
@@ -1354,19 +1338,20 @@ function probabilityChart(e, color, unit) {
   const W = chartWidth(), H = 190, T = 4, B = 20, R = 6;
   const n = e.n, x0 = e.edges[0], x1 = e.edges[e.edges.length - 1];
   if (!(n >= 2) || !(x1 > x0)) return `<p class="empty">Not enough readings yet.</p>`;
-  const zTop = Math.min(normalQuantile(1 - 0.5 / Math.max(n, 2)), 3.3) + 0.25;
+  // Core keeps the highest point, at the normal score of (n − ½) / n.
+  const pts = e.points || [], zLast = pts.length ? pts[pts.length - 1][1] : NaN;
+  const zTop = Math.min(Number.isFinite(zLast) ? zLast : 3.3, 3.3) + 0.25;
   const plotH = H - T - B;
   // From 50% outwards, leaving out a share whose label would crowd the one before it.
   const pxPerZ = plotH / (2 * zTop);
   const kept = [];
-  for (const [pc, label] of PROBABILITY_MARKS.slice(5)) {
-    const z = normalQuantile(pc / 100);
+  for (const [label, z] of PROBABILITY_MARKS.slice(5)) {
     if (z <= zTop && (!kept.length || (z - kept[kept.length - 1][0]) * pxPerZ >= 16)) kept.push([z, label]);
   }
   const ylab = [];
   for (const [z, label] of kept) {
     ylab.push([z, label]);
-    if (z !== 0) ylab.push([-z, PROBABILITY_MARKS[10 - PROBABILITY_MARKS.findIndex(([, l]) => l === label)][1]]);
+    if (z !== 0) ylab.push([-z, PROBABILITY_MARKS[10 - PROBABILITY_MARKS.findIndex(([l]) => l === label)][0]]);
   }
   const L = Math.max(44, Math.ceil(10 + CHAR_W * Math.max(3, ...ylab.map(([, t]) => t.length))));
   const plotW = W - L - R;
@@ -1392,7 +1377,7 @@ function probabilityChart(e, color, unit) {
     inside += `<line x1="${sx(line.centre - line.spread * zTop)}" y1="${sy(-zTop)}" x2="${sx(line.centre + line.spread * zTop)}" y2="${sy(zTop)}" stroke="var(--text3)" stroke-width="1" stroke-dasharray="${DASH.loose}"/>`;
   }
   let dots = "";
-  for (const [x, z] of e.points || []) {
+  for (const [x, z] of pts) {
     if (x < x0 || x > x1 || !Number.isFinite(z)) continue;
     dots += `<circle cx="${sx(x).toFixed(1)}" cy="${sy(z).toFixed(1)}" r="1.6"/>`;
   }
