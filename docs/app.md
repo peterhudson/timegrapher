@@ -498,7 +498,7 @@ positions test:
   the start of each stretch and less masked time.
 - **Readings** show once a position has 10 s. Under that it reads
   "Under 10 s"; a position never marked reads "Not marked".
-- **Largest rate difference** follows, with "n of 6" positions read,
+- **Largest Rate Difference** follows, with "n of 6" positions read,
   once two positions have readings.
 - The figures are core `session::positions_table`'s: each position's
   stretches read together, the time between them left out as a mask is.

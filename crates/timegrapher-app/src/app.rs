@@ -17342,7 +17342,7 @@ mod tests {
             "This Take",
             "Duration",
             "Not marked",
-            "Largest rate difference",
+            "Largest Rate Difference",
             "2 of 6",
             "Each Position applies only to the guided test.",
         ] {

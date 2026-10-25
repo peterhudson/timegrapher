@@ -1327,7 +1327,7 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
             }
             if t.read >= 2 {
                 ui.label(
-                    RichText::new("Largest rate difference")
+                    RichText::new("Largest Rate Difference")
                         .strong()
                         .color(pal.text),
                 )
