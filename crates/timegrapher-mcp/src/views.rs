@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 use serde_json::{json, Map, Value};
+use timegrapher_core::histogram::normal_quantile;
 use timegrapher_core::palette::{Palette, Rgb, DARK, LIGHT};
 
 use crate::cli;
@@ -34,11 +35,34 @@ pub fn page() -> &'static str {
             .expect("the viridis table as JSON");
         let period_ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS)
             .expect("the period marks as JSON");
+        let marks: Vec<(&str, f64)> = PROBABILITY_MARKS
+            .iter()
+            .map(|&(pc, label)| (label, normal_quantile(pc / 100.0)))
+            .collect();
+        let marks = serde_json::to_string(&marks).expect("the probability marks as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
+            .replace("/*PROBABILITY_MARKS*/null", &marks)
     })
 }
+
+/// Shares labelled up the probability plot, percent, as on probability
+/// paper: the app's marks. The page gets each one's normal score from
+/// [`normal_quantile`], so it never works one out itself.
+const PROBABILITY_MARKS: [(f64, &str); 11] = [
+    (0.1, "0.1%"),
+    (1.0, "1%"),
+    (5.0, "5%"),
+    (10.0, "10%"),
+    (25.0, "25%"),
+    (50.0, "50%"),
+    (75.0, "75%"),
+    (90.0, "90%"),
+    (95.0, "95%"),
+    (99.0, "99%"),
+    (99.9, "99.9%"),
+];
 
 /// One theme as the page's CSS variables.
 fn variables(p: &Palette) -> String {
@@ -538,6 +562,24 @@ mod tests {
         assert!(!page.contains("/*PERIOD_TICKS*/"));
         let ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS).unwrap();
         assert!(page.contains(&format!("const PERIOD_TICKS = {ticks};")));
+    }
+
+    #[test]
+    fn the_view_places_probability_marks_by_the_cores_normal_scores() {
+        let page = page();
+        assert!(!page.contains("/*PROBABILITY_MARKS*/"));
+        assert!(
+            !page.contains("normalQuantile"),
+            "the page works out no normal scores"
+        );
+        let at = page.find("const PROBABILITY_MARKS = ").unwrap() + 26;
+        let end = at + page[at..].find(';').unwrap();
+        let marks: Vec<(String, f64)> = serde_json::from_str(&page[at..end]).unwrap();
+        assert_eq!(marks.len(), 11);
+        assert_eq!(marks[5], ("50%".to_string(), 0.0));
+        assert_eq!(marks[9].0, "99%");
+        assert_eq!(marks[9].1, normal_quantile(0.99));
+        assert!((marks[0].1 + marks[10].1).abs() < 1e-12);
     }
 
     #[test]
