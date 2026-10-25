@@ -1979,6 +1979,9 @@ pub struct TimegrapherApp {
     whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
     /// The last [`Self::free_table`] and what it was read from.
     free_table: std::cell::RefCell<Option<(FreeKey, Option<guided::FreeTable>)>>,
+    /// The next table while listening, read in the background, and what
+    /// it is read from.
+    free_job: std::cell::RefCell<Option<FreeJob>>,
     level: Level,
     level_at: Instant,
     /// When the input last clipped.
@@ -2394,6 +2397,7 @@ impl TimegrapherApp {
             trend: Vec::new(),
             whole_take: Default::default(),
             free_table: Default::default(),
+            free_job: Default::default(),
             level: Level::default(),
             level_at: Instant::now(),
             clipped_at: None,
@@ -2513,6 +2517,8 @@ impl TimegrapherApp {
         self.sound_job = None;
         self.steady = None;
         self.steady_job = None;
+        *self.free_table.borrow_mut() = None;
+        *self.free_job.borrow_mut() = None;
     }
 
     /// List the inputs, once, and keep the chosen one if it is still there,
@@ -4770,12 +4776,14 @@ impl TimegrapherApp {
 
     /// The Positions Test table of the take on show or under way, when no
     /// guided test is: each position's settled stretches read by core
-    /// `session::positions_table`. Read afresh every 5 s while listening.
-    fn free_table(&self) -> Option<guided::FreeTable> {
+    /// `session::positions_table`. While listening it is read afresh every
+    /// second, in the background, the last table showing until the next is
+    /// ready; a take on show is read at once.
+    fn free_table(&self, ctx: &egui::Context) -> Option<guided::FreeTable> {
         let live = self.live.as_ref()?;
         let latest = self.latest_s();
         let end = if self.running() {
-            (latest / 5.0).floor() * 5.0
+            (latest / FREE_TABLE_STEP_S).floor() * FREE_TABLE_STEP_S
         } else {
             latest
         };
@@ -4794,7 +4802,7 @@ impl TimegrapherApp {
             &self.masked.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>(),
         );
         let beats = if self.running() {
-            end as usize
+            (end / FREE_TABLE_STEP_S) as usize
         } else {
             live.beats().len()
         };
@@ -4804,17 +4812,25 @@ impl TimegrapherApp {
             masked.clone(),
             self.clock.as_ref().map(|c| c.ppm),
         );
+        let mut job = self.free_job.borrow_mut();
+        if let Some(j) = job.as_ref() {
+            match j.rx.try_recv() {
+                Ok(t) => {
+                    *self.free_table.borrow_mut() = Some((j.key.clone(), t));
+                    *job = None;
+                }
+                Err(TryRecvError::Disconnected) => *job = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
         if let Some((k, t)) = self.free_table.borrow().as_ref() {
-            if *k == key {
+            if *k == key || self.running() && job.is_some() {
                 return t.clone();
             }
         }
-        let read = || {
-            let log = steady::log_of(live)?;
-            let clock = self
-                .clock
-                .as_ref()
-                .and_then(|c| core_session::fixed_clock(c.ppm, log.duration_s));
+        let ppm = self.clock.as_ref().map(|c| c.ppm);
+        let read = move |log: BeatLog| {
+            let clock = ppm.and_then(|ppm| core_session::fixed_clock(ppm, log.duration_s));
             let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
             let t = core_session::positions_table(
                 &log,
@@ -4824,9 +4840,23 @@ impl TimegrapherApp {
                 &stretches,
                 core_session::POSITION_MIN_S,
             );
-            Some(guided::free_table(&t))
+            guided::free_table(&t)
         };
-        let t = read();
+        let log = steady::log_of(live);
+        let shown = self.free_table.borrow().as_ref().map(|(_, t)| t.clone());
+        if let (true, Some(shown), Some(log)) = (self.running(), shown, log.clone()) {
+            // Listening, with a table on show: read the next one in the
+            // background and keep this one until it comes.
+            let (tx, rx) = std::sync::mpsc::channel();
+            let ctx = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(Some(read(log)));
+                ctx.request_repaint();
+            });
+            *job = Some(FreeJob { key, rx });
+            return shown;
+        }
+        let t = log.map(read);
         *self.free_table.borrow_mut() = Some((key, t.clone()));
         t
     }
@@ -7824,7 +7854,9 @@ impl TimegrapherApp {
         }
         let mut bph = self.bph;
         egui::ComboBox::from_id_salt("bph")
-            .width(text_w + 8.0)
+            // The rest of the row, so it ends on the card's right edge as
+            // the Calibre pop-up does (its width is the outer width).
+            .width(ui.available_width())
             // Tall enough for every rate, as in the menus that list them.
             .height(480.0)
             .selected_text(shown)
@@ -11108,6 +11140,8 @@ impl TimegrapherApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.status_notices(ui);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    // Nothing runs under the notices, even past an ellipsis.
+                    ui.shrink_clip_rect(ui.max_rect());
                     self.status_left(ui);
                 });
             });
@@ -11272,24 +11306,6 @@ impl TimegrapherApp {
                     .fill(pal.accent)
                     .text(RichText::new(format!("Analysing {}", b.label)).small()),
             );
-        } else if self.running() && !self.source_label.is_empty() {
-            // The input listened to; a take opened is named on the left
-            // already.
-            let text = format!("Listening to {}", self.source_label);
-            ui.add(
-                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            )
-            .on_hover_text(text);
-        }
-        if self.running() {
-            if let Some(s) = self.reading().and_then(|r| r.snr) {
-                ui.label(
-                    RichText::new(format!("signal {s:.0}×"))
-                        .small()
-                        .color(pal.text_secondary),
-                )
-                .on_hover_text(help::SIGNAL);
-            }
         }
         if let Some(r) = &self.session.recorder {
             let since = self.unsaved_s();
@@ -11373,6 +11389,27 @@ impl TimegrapherApp {
             })
             .response
             .on_hover_text(hint);
+        }
+        if self.running() {
+            if let Some(s) = self.reading().and_then(|r| r.snr) {
+                ui.label(
+                    RichText::new(format!("signal {s:.0}×"))
+                        .small()
+                        .color(pal.text_secondary),
+                )
+                .on_hover_text(help::SIGNAL);
+            }
+        }
+        // What can be cut short with an ellipsis last, so that the facts
+        // before it keep their room.
+        if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
+            // The input listened to; a take opened is named on the left
+            // already.
+            let text = format!("Listening to {}", self.source_label);
+            ui.add(
+                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
+            )
+            .on_hover_text(text);
         }
         // Errors are a notice at the right instead.
         if let Some((m, false)) = &self.message {
@@ -11823,7 +11860,7 @@ impl TimegrapherApp {
             _ => None,
         };
         let free = if self.guided.is_none() {
-            self.free_table()
+            self.free_table(ui.ctx())
         } else {
             None
         };
@@ -15183,6 +15220,15 @@ type FreeKey = (
     Option<f64>,
 );
 
+/// How often the Positions Test table is read again while listening.
+const FREE_TABLE_STEP_S: f64 = 1.0;
+
+/// A Positions Test table being read in the background, and what from.
+struct FreeJob {
+    key: FreeKey,
+    rx: std::sync::mpsc::Receiver<Option<guided::FreeTable>>,
+}
+
 /// The whole take in one position, and the seconds it covers.
 #[derive(Clone)]
 struct WholeTake {
@@ -18250,7 +18296,7 @@ mod tests {
         for b in audio.samples.chunks(960) {
             live.push(b);
         }
-        let t = app.free_table().expect("a table");
+        let t = app.free_table(&egui::Context::default()).expect("a table");
         let row = |label: &str| t.rows.iter().find(|r| r.0 == label).unwrap().clone();
         let du = row("Dial Up (DU)");
         let dd = row("Dial Down (DD)");
@@ -18308,9 +18354,66 @@ mod tests {
         for b in audio.samples.chunks(960) {
             live.push(b);
         }
-        let t = app.free_table().unwrap();
+        let t = app.free_table(&egui::Context::default()).unwrap();
         let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
         assert_eq!(cu.2, guided::FreeCell::Short, "{t:?}");
+    }
+
+    #[test]
+    fn the_positions_table_reads_again_every_second_in_the_background_while_listening() {
+        let base = std::env::temp_dir().join(format!("tg-free-table-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let mut app = synthetic(20.0, 0.0);
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        let feed = |app: &mut TimegrapherApp, s: f64| {
+            let cfg = SynthConfig {
+                duration_s: s,
+                ..Default::default()
+            };
+            let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+            let live = app.live.as_mut().unwrap();
+            for b in audio.samples.chunks(960) {
+                live.push(b);
+            }
+        };
+        feed(&mut app, 30.0);
+        let _tx = queued_capture(&mut app, &base);
+        assert!(app.running());
+        let ctx = egui::Context::default();
+        let du = |t: &guided::FreeTable| t.rows.iter().find(|r| r.0 == "Dial Up (DU)").unwrap().1;
+        // The first table is read at once, to the last whole second.
+        let first = app.free_table(&ctx).expect("a table");
+        assert_eq!(du(&first), app.latest_s().floor());
+        // Under a second more: the same second, the same table, nothing read.
+        feed(&mut app, 0.5);
+        assert_eq!(app.latest_s().floor(), du(&first));
+        assert_eq!(du(&app.free_table(&ctx).unwrap()), du(&first));
+        assert!(app.free_job.borrow().is_none());
+        // Into the next seconds: the table on show stays while the next is
+        // read in the background, then the next one shows.
+        feed(&mut app, 2.0);
+        assert_eq!(du(&app.free_table(&ctx).unwrap()), du(&first));
+        assert!(app.free_job.borrow().is_some());
+        let since = Instant::now();
+        let next = loop {
+            let t = app.free_table(&ctx).unwrap();
+            if du(&t) != du(&first) {
+                break t;
+            }
+            assert!(since.elapsed().as_secs() < 30, "never read again");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(du(&next), app.latest_s().floor());
+        assert!(
+            du(&next) >= du(&first) + 2.0,
+            "{} {}",
+            du(&first),
+            du(&next)
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -20133,6 +20236,58 @@ mod tests {
                 .map(|(_, r)| *r)
                 .unwrap_or_else(|| panic!("the Watch line: {found:?}"));
             assert!(calibre.right() <= w - 12.0, "{w}: {calibre:?}");
+        }
+    }
+
+    #[test]
+    fn the_calibre_cards_fields_end_on_one_right_edge() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        for w in [1000.0, 1280.0, 1610.0, 2560.0] {
+            let (mut texts, mut frames) = (Vec::new(), Vec::new());
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 900.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                texts.clear();
+                frames.clear();
+                for c in &out.shapes {
+                    match &c.shape {
+                        egui::Shape::Text(t) => {
+                            texts.push((t.galley.text().to_string(), t.visual_bounding_rect()))
+                        }
+                        egui::Shape::Rect(r) => frames.push(r.rect),
+                        _ => {}
+                    }
+                }
+            }
+            // The smallest frame round each field's words.
+            let field = |words: &str| {
+                let at = texts
+                    .iter()
+                    .find(|(t, _)| t == words)
+                    .map(|(_, r)| r.center())
+                    .unwrap_or_else(|| panic!("{w}: {words}: {texts:?}"));
+                frames
+                    .iter()
+                    .filter(|r| r.contains(at) && r.height() < 40.0)
+                    .min_by(|a, b| a.area().total_cmp(&b.area()))
+                    .copied()
+                    .unwrap_or_else(|| panic!("{w}: no frame round {words}"))
+            };
+            let (calibre, bph) = (field("Not Set"), field("Auto"));
+            assert!(bph.top() > calibre.bottom(), "{w}: {calibre:?} {bph:?}");
+            assert!(
+                (bph.right() - calibre.right()).abs() < 0.5,
+                "{w}: Auto ends at {} where Not Set ends at {}",
+                bph.right(),
+                calibre.right()
+            );
         }
     }
 
@@ -22283,6 +22438,68 @@ mod tests {
         assert!(bar > 700.0, "in the status bar: {bar}");
         assert!(top(&after, "The microphone couldn't be opened.…") > 700.0);
         let _ = std::fs::remove_file(crash);
+    }
+
+    #[test]
+    fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
+        let ctx = themed();
+        let (mut app, base) = save_failure_fixture("status-bar");
+        let crash = base.join("crash.log");
+        std::fs::write(&crash, "panicked").unwrap();
+        app.crash = Some(crash);
+        app.message = Some(("The microphone couldn't be opened.".into(), true));
+        // Listening to an input with a long name, whose words can be cut.
+        app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
+        let _tx = queued_capture(&mut app, &base);
+        for w in [800.0, 1000.0, 1280.0] {
+            let mut found = Vec::new();
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                found.clear();
+                for c in &out.shapes {
+                    if let egui::Shape::Text(t) = &c.shape {
+                        let r = t.visual_bounding_rect().intersect(c.clip_rect);
+                        if r.top() > 650.0 && r.is_positive() {
+                            found.push((t.galley.text().to_string(), r));
+                        }
+                    }
+                }
+            }
+            // The notices: the leftmost is the error's.
+            let notices = [
+                "Closed Unexpectedly…",
+                "The microphone couldn't be opened.…",
+            ];
+            let edge = found
+                .iter()
+                .filter(|(t, _)| notices.contains(&t.as_str()))
+                .map(|(_, r)| r.left())
+                .fold(f32::INFINITY, f32::min);
+            assert!(edge.is_finite(), "{w}: {found:?}");
+            for (t, r) in found.iter().filter(|(t, _)| !notices.contains(&t.as_str())) {
+                assert!(
+                    r.right() <= edge,
+                    "{w}: {t:?} {r:?} runs under the notices at {edge}"
+                );
+            }
+            // The take's state and whether it is saved always show whole.
+            for whole in ["Not saved", "Listening"] {
+                assert!(
+                    found
+                        .iter()
+                        .any(|(t, _)| t == whole || t.ends_with(&format!("· {whole}"))),
+                    "{w}: {whole}: {found:?}"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

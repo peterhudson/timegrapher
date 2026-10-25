@@ -545,7 +545,8 @@ positions test:
   once two positions have readings.
 - The figures are core `session::positions_table`'s: each position's
   stretches read together, the time between them left out as a mask is.
-  While listening the table is read again every 5 s.
+  While listening the table is read again every second, in the
+  background, the last table staying on show until the next is ready.
 
 Under the banner, the table fills in as each position is measured, read
 with core `session::measure` as `session` does (rate on the input's
