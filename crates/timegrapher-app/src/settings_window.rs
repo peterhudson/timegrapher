@@ -422,9 +422,8 @@ pub fn quartz_section(
                         );
                     ui.label(
                         RichText::new(format!(
-                            "{} of {} heard; timed after {}.",
+                            "{} of {} heard",
                             crate::strip::fmt_time(t.heard_s),
-                            crate::strip::fmt_time(t.needed_s),
                             crate::strip::fmt_time(t.needed_s)
                         ))
                         .small()
