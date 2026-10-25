@@ -930,6 +930,7 @@ pub fn pane(
     test: Option<&Test>,
     phase: Option<Phase>,
     earlier: Option<&FullWind>,
+    free: Option<&FreeTable>,
     settle_s: f64,
     measure_s: f64,
 ) -> Option<Action> {
@@ -965,6 +966,31 @@ pub fn pane(
                     _ => None,
                 };
                 table_grid(ui, "positions", &table(t.readings_so_far()), status);
+            }
+            if let (None, Some(f)) = (test, free) {
+                heading(
+                    ui,
+                    "This Take",
+                    "Each position marked on the Current Position card, read as \
+                     `timegrapher session` reads a take",
+                );
+                free_grid(ui, f);
+                ui.add_space(4.0);
+                for line in [
+                    format!(
+                        "Duration leaves out the first {} after each change of position \
+                         (Settle) and masked time.",
+                        table_duration(settle_s)
+                    ),
+                    "A position shows readings once it has 10 s.".to_string(),
+                    "Each Position applies only to the guided test.".to_string(),
+                ] {
+                    ui.label(
+                        RichText::new(format!("• {line}"))
+                            .small()
+                            .color(pal.text_tertiary),
+                    );
+                }
             }
             let c = test.and_then(|t| {
                 let (f, h) = t.full.as_ref()?;
@@ -1008,12 +1034,13 @@ pub fn pane(
             ui.add_space(10.0);
             let about = match (test, earlier) {
                 (None, None) => format!(
-                    "Start Test leads you through the six positions, one after another: it \
-                     says which position to turn the watch to, lets it settle {settle_s:.0} s, \
-                     measures it for {measure_s:.0} s, and fills in the table as it goes. Run \
-                     it just after winding and save its results; 24 hours later, without \
-                     winding or wearing the watch in between, load them with Load Full-Wind \
-                     Results… and run it again to see both side by side."
+                    "Start Test leads you through the six positions:\n\
+                     1. It says which position to turn the watch to.\n\
+                     2. It lets the watch settle {settle_s:.0} s.\n\
+                     3. It measures it for {measure_s:.0} s and fills in its row.\n\
+                     For the test 24 hours after winding, save the results, leave the watch \
+                     unwound and off the wrist, then load them with Load Full-Wind Results… \
+                     and run it again."
                 ),
                 (None, Some(_)) => "Start Test runs the six positions again and sets them \
                      against these results."
@@ -1181,6 +1208,140 @@ fn table_of(figures: &[Figures], notes: Vec<String>) -> Table {
         dvh_amplitude: ix.dvh_amplitude,
         notes,
     }
+}
+
+/// One row of a free take's table: what the position's duration allows.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FreeCell {
+    /// No time marked in the position.
+    NotMarked,
+    /// Marked, but under the 10 s one reading needs.
+    Short,
+    /// Its rate, amplitude and beat error (a size).
+    Read(Option<f64>, Option<f64>, Option<f64>),
+}
+
+/// A free take's table: each position in the card's order with its
+/// duration and readings, and the largest rate difference over the
+/// positions read. The figures are core `session::positions_table`'s.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FreeTable {
+    pub rows: Vec<(String, f64, FreeCell)>,
+    pub largest_difference: Option<f64>,
+    /// How many positions have readings.
+    pub read: usize,
+}
+
+/// The free take's table from core's, in the Current Position card's
+/// order.
+pub fn free_table(t: &session::PositionsTable) -> FreeTable {
+    let rows: Vec<(String, f64, FreeCell)> = Position::ALL
+        .iter()
+        .filter_map(|p| {
+            let sp = session::Position::parse(p.code())?;
+            let r = t.rows.iter().find(|r| r.position == sp)?;
+            let cell = match &r.measurement {
+                Some(m) => FreeCell::Read(m.rate_s_per_day, m.amplitude_deg, m.beat_error()),
+                None if r.duration_s > 0.0 => FreeCell::Short,
+                None => FreeCell::NotMarked,
+            };
+            Some((position_label(sp), r.duration_s, cell))
+        })
+        .collect();
+    let read = rows
+        .iter()
+        .filter(|r| matches!(r.2, FreeCell::Read(..)))
+        .count();
+    FreeTable {
+        rows,
+        largest_difference: t.indices.d_rate,
+        read,
+    }
+}
+
+/// A duration as the table writes it: "35 s", "4 min 10 s", "1 h 5 min".
+fn table_duration(v: f64) -> String {
+    let s = v.round().max(0.0) as u64;
+    match (s / 3600, s % 3600 / 60, s % 60) {
+        (0, 0, s) => format!("{s} s"),
+        (0, m, 0) => format!("{m} min"),
+        (0, m, s) => format!("{m} min {s} s"),
+        (h, 0, _) => format!("{h} h"),
+        (h, m, _) => format!("{h} h {m} min"),
+    }
+}
+
+/// The free take's table: Position, Duration, Rate, Amplitude and Beat
+/// Error, each reading in its own colour, then the largest rate
+/// difference once two positions have readings.
+fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
+    let pal = theme::pal(ui);
+    egui::Grid::new("free-positions")
+        .num_columns(5)
+        .spacing(Vec2::new(16.0, 5.0))
+        .min_col_width(LABEL_W.min(FIGURE_W))
+        .striped(true)
+        .show(ui, |ui| {
+            position_head(ui);
+            for (h, hint) in [
+                (
+                    "Duration",
+                    "Time marked in the position, less its settling and masked time",
+                ),
+                ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
+                (
+                    "Amplitude, °",
+                    "The balance's swing, from the lift angle set",
+                ),
+                ("Beat Error, ms", "From the unlock, as a size"),
+            ] {
+                column_head(ui, FIGURE_W, h, hint);
+            }
+            ui.end_row();
+            for (label, duration, cell) in &t.rows {
+                let marked = *cell != FreeCell::NotMarked;
+                let color = if marked { pal.text } else { pal.text_tertiary };
+                ui.label(RichText::new(label).color(color));
+                match cell {
+                    FreeCell::NotMarked => {
+                        right(ui, "Not marked".into(), false, pal.text_tertiary);
+                        for _ in 0..3 {
+                            ui.label("");
+                        }
+                    }
+                    FreeCell::Short => {
+                        right(ui, table_duration(*duration), false, pal.text);
+                        right(ui, "Under 10 s".into(), false, pal.text_secondary);
+                        for _ in 0..2 {
+                            ui.label("");
+                        }
+                    }
+                    FreeCell::Read(rate, amp, be) => {
+                        right(ui, table_duration(*duration), false, pal.text);
+                        right(ui, signed(*rate, 1), false, pal.trace_rate);
+                        right(ui, plain(*amp, 0), false, pal.trace_amplitude);
+                        right(ui, plain(*be, 2), false, pal.trace_beat_error);
+                    }
+                }
+                ui.end_row();
+            }
+            if t.read >= 2 {
+                ui.label(
+                    RichText::new("Largest Rate Difference")
+                        .strong()
+                        .color(pal.text),
+                )
+                .on_hover_text("The fastest position's rate less the slowest's");
+                right(ui, format!("{} of 6", t.read), false, pal.text_secondary);
+                right(
+                    ui,
+                    plain(t.largest_difference.map(f64::abs), 1),
+                    true,
+                    pal.trace_rate,
+                );
+                ui.end_row();
+            }
+        });
 }
 
 /// The full-wind test against the 24 hour half, with the figures

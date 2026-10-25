@@ -127,7 +127,7 @@ const SETTINGS_SIDEBAR_W: f32 = 146.0;
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
 use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
-use timegrapher_core::session::{Manifest, RecordingEntry};
+use timegrapher_core::session::{self as core_session, Manifest, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
 /// The kinds of take New Take starts for the watch picked.
@@ -1851,6 +1851,8 @@ pub struct TimegrapherApp {
     trend: Vec<TrendPoint>,
     /// The last [`Self::whole_take`] and what it was read from.
     whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
+    /// The last [`Self::free_table`] and what it was read from.
+    free_table: std::cell::RefCell<Option<(FreeKey, Option<guided::FreeTable>)>>,
     level: Level,
     level_at: Instant,
     /// When the input last clipped.
@@ -2255,6 +2257,7 @@ impl TimegrapherApp {
             live_fit: false,
             trend: Vec::new(),
             whole_take: Default::default(),
+            free_table: Default::default(),
             level: Level::default(),
             level_at: Instant::now(),
             clipped_at: None,
@@ -4348,6 +4351,69 @@ impl TimegrapherApp {
         let w = read();
         *self.whole_take.borrow_mut() = Some((key, w.clone()));
         w
+    }
+
+    /// The Positions Test table of the take on show or under way, when no
+    /// guided test is: each position's settled stretches read by core
+    /// `session::positions_table`. Read afresh every 5 s while listening.
+    fn free_table(&self) -> Option<guided::FreeTable> {
+        let live = self.live.as_ref()?;
+        let latest = self.latest_s();
+        let end = if self.running() {
+            (latest / 5.0).floor() * 5.0
+        } else {
+            latest
+        };
+        let stretches: Vec<(core_session::Position, f64, f64)> = guided::ORDER
+            .iter()
+            .filter_map(|&p| Some((p, core_session::Position::parse(p.code())?)))
+            .flat_map(|(p, sp)| {
+                self.session
+                    .settled_spans(self.position, p)
+                    .into_iter()
+                    .map(move |(a, b)| (sp, a.max(0.0), b.min(end)))
+            })
+            .filter(|s| s.1 < s.2)
+            .collect();
+        let masked = core_session::masked_spans(
+            &self.masked.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>(),
+        );
+        let beats = if self.running() {
+            end as usize
+        } else {
+            live.beats().len()
+        };
+        let key: FreeKey = (
+            beats,
+            stretches.clone(),
+            masked.clone(),
+            self.clock.as_ref().map(|c| c.ppm),
+        );
+        if let Some((k, t)) = self.free_table.borrow().as_ref() {
+            if *k == key {
+                return t.clone();
+            }
+        }
+        let read = || {
+            let log = steady::log_of(live)?;
+            let clock = self
+                .clock
+                .as_ref()
+                .and_then(|c| core_session::fixed_clock(c.ppm, log.duration_s));
+            let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+            let t = core_session::positions_table(
+                &log,
+                clock.as_ref(),
+                &breaks,
+                &masked,
+                &stretches,
+                core_session::POSITION_MIN_S,
+            );
+            Some(guided::free_table(&t))
+        };
+        let t = read();
+        *self.free_table.borrow_mut() = Some((key, t.clone()));
+        t
     }
 
     /// Show the whole session so far along the strip, ending at its latest
@@ -10916,9 +10982,9 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            "Measure",
-            "Seconds each position is measured for. Longer brings the rate's ± down; a minute \
-             gives about half a second a day.",
+            "Each Position",
+            "Used by the guided test only: how long it measures each position. Longer brings \
+             the rate's ± down; a minute gives about half a second a day.",
             |ui| {
                 ui.add_enabled_ui(!running, |ui| {
                     let mut v = self.guided_measure_s;
@@ -11004,11 +11070,17 @@ impl TimegrapherApp {
             (Some(t), Some(now)) => Some(t.tick(now)),
             _ => None,
         };
+        let free = if self.guided.is_none() {
+            self.free_table()
+        } else {
+            None
+        };
         let action = guided::pane(
             ui,
             self.guided.as_ref(),
             phase,
             self.guided_earlier.as_ref(),
+            free.as_ref(),
             self.guided_settle_s,
             self.guided_measure_s,
         );
@@ -14160,6 +14232,15 @@ fn no_regular_beat(r: &LiveReading) -> String {
 /// the stretches, the masks and the clock's ppm.
 type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
 
+/// What [`TimegrapherApp::free_table`] was read from: the beats heard,
+/// each position's settled stretches, the masks and the True Clock.
+type FreeKey = (
+    usize,
+    Vec<(core_session::Position, f64, f64)>,
+    Vec<(f64, f64)>,
+    Option<f64>,
+);
+
 /// The whole take in one position, and the seconds it covers.
 #[derive(Clone)]
 struct WholeTake {
@@ -17193,6 +17274,98 @@ mod tests {
         app.masked.push((moved + 25.0, moved + 30.0));
         assert!((app.recorded_in(Position::DialDown) - (want - 5.0)).abs() < 1.0);
         assert_eq!(app.recorded_in(Position::CrownUp), 0.0);
+    }
+
+    /// With no guided test, the Positions Test pane reads every position
+    /// marked in the take: each one's settled duration and readings, the
+    /// positions never marked, and the largest rate difference.
+    #[test]
+    fn the_positions_table_reads_a_free_take() {
+        let mut app = synthetic(40.0, 0.0);
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            rate_s_per_day: 60.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        // Moved while listening, so the settling starts at once.
+        let moved = |app: &mut TimegrapherApp, p: Position| {
+            app.session.set_state(session::State::Listening);
+            app.set_position(p);
+            app.session.set_state(session::State::Paused {
+                since: Instant::now(),
+            });
+        };
+        moved(&mut app, Position::DialDown);
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let t = app.free_table().expect("a table");
+        let row = |label: &str| t.rows.iter().find(|r| r.0 == label).unwrap().clone();
+        let du = row("Dial Up (DU)");
+        let dd = row("Dial Down (DD)");
+        let (guided::FreeCell::Read(du_rate, ..), guided::FreeCell::Read(dd_rate, ..)) =
+            (&du.2, &dd.2)
+        else {
+            panic!("{t:?}");
+        };
+        assert!(du_rate.unwrap().abs() < 5.0, "{du_rate:?}");
+        assert!((dd_rate.unwrap() - 60.0).abs() < 5.0, "{dd_rate:?}");
+        // Dial Down's settling is left out of its duration.
+        assert!(
+            (dd.1 - (40.0 - app.guided_settle_s)).abs() < 1.0,
+            "{}",
+            dd.1
+        );
+        assert_eq!(row("Crown Up (CU, 3H)").2, guided::FreeCell::NotMarked);
+        assert_eq!(t.read, 2);
+        assert!((t.largest_difference.unwrap().abs() - 60.0).abs() < 8.0);
+
+        // The pane draws it, with Each Position's word for a free take.
+        let ctx = themed();
+        let mut drawn = String::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.pane_tools(ui, Pane::PositionsTest);
+                    app.positions_pane(ui);
+                });
+            });
+            drawn = format!("{:?} {:?}", out.shapes, theme::tools_drawn(&ctx));
+        }
+        for want in [
+            "This Take",
+            "Duration",
+            "Not marked",
+            "Largest Rate Difference",
+            "2 of 6",
+            "Each Position applies only to the guided test.",
+        ] {
+            assert!(drawn.contains(want), "{want}: {drawn}");
+        }
+
+        // A position too short to read says so.
+        moved(&mut app, Position::CrownUp);
+        let audio = generate(
+            &SynthConfig {
+                duration_s: app.guided_settle_s + 5.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let t = app.free_table().unwrap();
+        let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
+        assert_eq!(cu.2, guided::FreeCell::Short, "{t:?}");
     }
 
     #[test]
