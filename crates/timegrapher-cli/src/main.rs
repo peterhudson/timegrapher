@@ -277,7 +277,7 @@ enum Command {
         /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
-        /// With --json, add what the app's Steadiness pane draws behind
+        /// With --json, add the chart data behind
         /// each headline (the readings, the period search and the fold):
         /// a few hundred kB on a long take.
         #[arg(long, requires = "json")]
