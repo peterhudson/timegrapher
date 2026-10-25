@@ -47,9 +47,9 @@ Steadiness views share one green. The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
 
-**The readings**, across the top, are six cards: **Current Position** and
-**Listen**, then **Rate**, **Amplitude**, **Beat Error** and **Beat
-Rate**, sharing the rest of the width. Every card is the same three rows,
+**The readings**, across the top, are six cards, left to right:
+**Current Position**, **Calibre** and **Listen**, then **Rate**,
+**Amplitude** and **Beat Error**, sharing the rest of the width. Every card is the same three rows,
 so the titles, the big figures and the controls each read in one line
 across: a title row (the caption, the card's **?** in its top-right
 corner, and what limits the reading in a small chip beside the ?), a
@@ -57,7 +57,7 @@ figure row (the big figure with its ± and unit on the figure's baseline)
 and a controls row. What stands behind a figure is in its hover: the
 beats the rate is fitted to and their jitter, True Clock, the Tick and
 Tock amplitudes, the beat error from the drop, how the beat rate was
-found, and, for a stopped take, the whole take's reading (see below).
+found (on the Calibre card), and, for a stopped take, the whole take's reading (see below).
 **Current Position** shows the watch as it lies, in teal, the colour of
 position information everywhere, with no stand: the case, its crown at
 3, the numbers 12, 3, 6 and 9, and the hands at 10:10. Standing, the
@@ -123,7 +123,7 @@ reading cards always keeping room for their captions whole. Compact,
 Current Position is captioned **Position**, with a smaller picture, the
 position's two-letter code beside it ("CR"; the name is in its hover),
 and under it one pop-up, **Set**, of the six positions (with their keys)
-instead of the buttons; keys 1 to 6 still work, and the bars aren't shown. Listen keeps
+instead of the buttons (none while a take is on show or a test runs); keys 1 to 6 still work, and the bars aren't shown. Listen keeps
 its two icons, gives the take's length beside its caption ("Listen
 12:48"; on the narrowest windows in the Listen icon's hover instead),
 and shows Average Over's pop-up as **Avg 10 s**. Compact, Calibre keeps

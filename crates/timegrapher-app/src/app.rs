@@ -817,6 +817,9 @@ const WATCH_SHARE: f32 = 0.34;
 /// The readings cards' widths: Current Position, Listen and Calibre keep
 /// these while the three reading cards share the rest; on a narrower
 /// window they step down (see `readouts`) before the reading cards do.
+/// The readings cards left to right, by their place in `readouts`'
+/// widths: Position, Calibre, Listen, Rate, Amplitude, Beat Error.
+const CARD_ORDER: [usize; 6] = [0, 5, 1, 2, 3, 4];
 const POSITION_W: f32 = 250.0;
 const LISTEN_W: f32 = 210.0;
 const CALIBRE_W: f32 = 250.0;
@@ -849,6 +852,7 @@ const POSITION_ON_INK: Color32 = Color32::from_rgb(0x0d, 0x26, 0x29);
 const LISTEN_BUTTON: f32 = 40.0;
 
 /// A readings card's three rows inside its padding.
+#[derive(Clone)]
 struct CardRows {
     inner: egui::Rect,
     title: egui::Rect,
@@ -6617,7 +6621,12 @@ impl TimegrapherApp {
             );
             ui.interact(code, ui.id().with("position code"), egui::Sense::hover())
                 .on_hover_text(format!("{} ({codes})", here.name()));
-            // The six in one pop-up; keys 1 to 6 still pick them.
+            // The six in one pop-up; keys 1 to 6 still pick them. Where
+            // the position can't be set (a take on show, a test running),
+            // no pop-up: the code beside the picture says it all.
+            if !editable {
+                return;
+            }
             let mut picked = here;
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
@@ -6632,7 +6641,7 @@ impl TimegrapherApp {
                     // says what it does instead.
                     egui::ComboBox::from_id_salt("position")
                         .width(ui.available_width())
-                        .selected_text(if editable { "Set" } else { "" })
+                        .selected_text("Set")
                         .show_ui(ui, |ui| {
                             for (n, p) in Position::ALL.into_iter().enumerate() {
                                 ui.selectable_value(
@@ -9847,24 +9856,20 @@ impl TimegrapherApp {
             Vec2::new(total, theme::READINGS_CARD_H),
             egui::Sense::hover(),
         );
-        // Each card's three rows, hung off the same three lines.
+        // Each card's three rows, hung off the same three lines. `cards`
+        // keeps the order above; left to right they read Position,
+        // Calibre, Listen, Rate, Amplitude, Beat Error.
         let mut x = block.left();
-        let cards: Vec<CardRows> = widths
-            .iter()
-            .map(|&w| {
-                let rect = egui::Rect::from_min_size(
-                    egui::pos2(x, block.top()),
-                    Vec2::new(w, block.height()),
-                );
-                x += w + gap;
-                ui.painter().rect_filled(
-                    rect,
-                    egui::CornerRadius::same(theme::CARD_RADIUS),
-                    pal.card,
-                );
-                CardRows::of(rect)
-            })
-            .collect();
+        let mut cards = vec![CardRows::of(block); widths.len()];
+        for i in CARD_ORDER {
+            let w = widths[i];
+            let rect =
+                egui::Rect::from_min_size(egui::pos2(x, block.top()), Vec2::new(w, block.height()));
+            x += w + gap;
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
+            cards[i] = CardRows::of(rect);
+        }
         // A row of a card, laid out left to right and kept inside it.
         let row = |ui: &mut egui::Ui, rect: egui::Rect, salt: &str| {
             let mut child = ui.new_child(
@@ -19250,6 +19255,55 @@ mod tests {
                 texts.iter().any(|t| t.starts_with("New Take · ")),
                 "the status line: {texts:?}"
             );
+        }
+    }
+
+    /// Left to right the cards read Position, Calibre, Listen, Rate,
+    /// Amplitude, Beat Error, at every width.
+    #[test]
+    fn the_cards_read_position_calibre_listen_then_the_readings() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        for w in [800.0, 1000.0, 1610.0] {
+            let mut xs = Vec::new();
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 800.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                xs.clear();
+                for c in &out.shapes {
+                    if let egui::Shape::Text(t) = &c.shape {
+                        xs.push((t.galley.text().to_string(), t.pos.x));
+                    }
+                }
+            }
+            let at = |caption: &str| {
+                xs.iter()
+                    .find(|(t, _)| t == caption)
+                    .map(|&(_, x)| x)
+                    .unwrap_or_else(|| panic!("{caption} at {w}: {xs:?}"))
+            };
+            let position = if w > 1000.0 {
+                "Current Position"
+            } else {
+                "Position"
+            };
+            let order = [
+                position,
+                "Calibre",
+                "Listen",
+                "Rate",
+                "Amplitude",
+                "Beat Error",
+            ];
+            for pair in order.windows(2) {
+                assert!(at(pair[0]) < at(pair[1]), "{pair:?} at {w}");
+            }
         }
     }
 
