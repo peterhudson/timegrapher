@@ -383,6 +383,7 @@ Each entry of `series[]`:
 | Field | Contents |
 |---|---|
 | `series`, `unit`, `headline` | what it is, and what the tests found in one plain sentence |
+| `summary` | the headline's lead in a few words, one line, with no series name and no full stop, for a plot's title after the series' own: e.g. "repeats every 46 s, 4.0 s/d peak to peak", "shifts level once, +4.9 s/d to +9.1 s/d", "slides from 280° to 260°", "switches between 293° and 312°, about every 78 s", "successive readings correlated; no cycle, level change or trend", "no cycle, level change or trend", "20 readings, too few to search". It says "no cycle" only when the headline names none. |
 | `step_s`, `readings`, `outliers` | reading length (the rate's for all three series), readings used, readings left out |
 | `median`, `sd`, `short_term_sd` | level, spread, reading-to-reading scatter |
 | `autocorrelation` | `lag_s[]`, `r[]` (thinned to about 600 points), `band`, `band_by_lag[]` (the band at each of `lag_s`, 1.96/√pairs from the pairs that lag was read from: wider than `band` where gaps leave fewer pairs; null where none), `ljung_box_q`, `ljung_box_lags`, `p_value`, `max_short_lag_r`, `memory_s`, `repeat_lag_s`, `repeat_r` |
