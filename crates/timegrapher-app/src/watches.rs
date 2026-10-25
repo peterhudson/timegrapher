@@ -26,13 +26,13 @@ pub const HELP: &[&str] = &[
      (JPEG, PNG, TIFF, or HEIC as an iPhone takes them). They show as a strip under its \
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
-    "Each take shows what it measured when it was saved, its length and the space it uses. \
-     Clicking one picks it and shows its Open button; double-clicking opens it \
-     as Open does, and the take already on show is not read again. Right-clicking it \
-     offers Keep Analysis \
-     Only… (keeping what was measured and deleting the sound, to save space), Move to \
-     Another Watch and Delete…. Open Recording… and Open Folder… in the File menu ask \
-     whether to add a recording from outside your watches to one of them, asking for \
+    "Each take is a row of the Takes table: when it started, its positions, its length, \
+     what it measured when it was saved, and the space it uses. Clicking a row picks it; \
+     Open, at the right of the Takes title, or a double click opens it on the Bench, and \
+     the take already on show is not read again. Right-clicking it, or …, offers Keep \
+     Analysis Only… (keeping what was measured and deleting the sound, to save space), \
+     Move to Another Watch and Delete…. Open Recording… and Open Folder… in the File menu \
+     ask whether to add a recording from outside your watches to one of them, asking for \
      anything its files don't say, or just to open it.",
     "Pick a watch, then Listen, Positions Test or Power Reserve Test: each is a new take \
      on the microphone, saved into the watch when it stops.",
@@ -160,7 +160,7 @@ fn row(
     lead: Lead,
     top: &str,
     right: &str,
-    below: &str,
+    below: &[String],
     hint: &str,
 ) -> egui::Response {
     let pal = theme::pal(ui);
@@ -181,28 +181,78 @@ fn row(
         left = r.right() + 8.0;
     }
     let p = ui.painter_at(rect);
-    p.text(
-        egui::pos2(left, rect.top() + 12.0),
-        egui::Align2::LEFT_CENTER,
-        top,
-        theme::semibold(13.0),
-        pal.text,
-    );
-    p.text(
+    let size = p.text(
         egui::pos2(rect.right() - 8.0, rect.top() + 12.0),
         egui::Align2::RIGHT_CENTER,
         right,
         egui::FontId::proportional(12.0),
         pal.text_secondary,
     );
-    p.text(
-        egui::pos2(left, rect.top() + 29.0),
-        egui::Align2::LEFT_CENTER,
-        below,
-        egui::FontId::proportional(11.5),
+    // Nothing runs off the row: the name stops short of the size, cut with
+    // "…", and the line under it keeps only the parts that fit, in order.
+    let name_room = (size.left() - 8.0 - left).max(0.0);
+    let name = one_line(ui, top, theme::semibold(13.0), pal.text, name_room);
+    p.galley(
+        egui::pos2(left, rect.top() + 12.0 - name.size().y / 2.0),
+        name,
+        pal.text,
+    );
+    let room = (rect.right() - 8.0 - left).max(0.0);
+    let small = egui::FontId::proportional(11.5);
+    let line = fitted(ui, below, &small, room);
+    let line = one_line(ui, &line, small, pal.text_secondary, room);
+    p.galley(
+        egui::pos2(left, rect.top() + 29.0 - line.size().y / 2.0),
+        line,
         pal.text_secondary,
     );
     resp.on_hover_text(hint)
+}
+
+/// `text` on one line no wider than `width`, cut short with "…".
+fn one_line(
+    ui: &egui::Ui,
+    text: &str,
+    font: egui::FontId,
+    color: egui::Color32,
+    width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::TextFormat::simple(font, color),
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: width,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    ui.fonts_mut(|f| f.layout_job(job))
+}
+
+/// `parts` joined by " · ", keeping as many from the first as fit in
+/// `width` whole; the first is kept always, to be cut short if need be.
+fn fitted(ui: &egui::Ui, parts: &[String], font: &egui::FontId, width: f32) -> String {
+    let wide = |t: &str| {
+        ui.fonts_mut(|f| {
+            f.layout_no_wrap(t.to_owned(), font.clone(), egui::Color32::WHITE)
+                .size()
+                .x
+        })
+    };
+    let mut line = String::new();
+    for (i, part) in parts.iter().enumerate() {
+        let next = if i == 0 {
+            part.clone()
+        } else {
+            format!("{line} · {part}")
+        };
+        if i > 0 && wide(&next) > width {
+            break;
+        }
+        line = next;
+    }
+    line
 }
 
 /// A watch's size in the list, once it is a megabyte or more: an empty
@@ -222,6 +272,7 @@ pub fn list(
     watches: &[&WatchEntry],
     marked: Option<&str>,
     thumbs: &mut Thumbs,
+    shows: Option<&str>,
 ) -> Option<String> {
     let mut picked = None;
     let photos = watches.iter().any(|e| !e.photos.is_empty());
@@ -240,8 +291,16 @@ pub fn list(
             Lead::None
         };
         let mut below = Vec::new();
-        if let Some(c) = w.calibre.as_deref().filter(|c| !c.is_empty()) {
-            below.push(c.to_string());
+        let shown = match shows {
+            Some(label) => w
+                .fields
+                .iter()
+                .find(|f| f.label == label && !f.value.trim().is_empty())
+                .map(|f| format!("{label}: {}", f.value)),
+            None => w.calibre.clone().filter(|c| !c.is_empty()),
+        };
+        if let Some(c) = shown {
+            below.push(c);
         }
         below.push(count(e.takes.len(), "take", "takes"));
         if let Some(t) = last_take(e).and_then(local_minute) {
@@ -253,7 +312,7 @@ pub fn list(
             lead,
             &w.name,
             &list_size(e.bytes()),
-            &below.join(" · "),
+            &below,
             "Show this watch's details and takes",
         )
         .clicked()
@@ -277,10 +336,10 @@ pub fn unsorted_row(ui: &mut egui::Ui, e: &WatchEntry, tiled: bool, marked: bool
         },
         UNSORTED_TAKES,
         &list_size(e.bytes()),
-        &format!(
-            "Quick Listen, no watch · {}",
-            count(e.takes.len(), "take", "takes")
-        ),
+        &[
+            "Quick Listen, no watch".to_string(),
+            count(e.takes.len(), "take", "takes"),
+        ],
         "Quick Listen again: no watch, no calibre, the default lift angle and the beat \
          rate found from the beats. Shows the takes not yet filed under a watch.",
     )
@@ -302,32 +361,6 @@ pub fn unsorted_details(ui: &mut egui::Ui) {
         )
         .color(pal.text_secondary),
     );
-}
-
-/// A watch's details, as rows.
-pub fn details(ui: &mut egui::Ui, e: &WatchEntry) {
-    let pal = theme::pal(ui);
-    let w = &e.watch;
-    ui.label(RichText::new(&w.name).font(theme::semibold(16.0)));
-    let mut rows: Vec<(String, String)> = Vec::new();
-    if let Some(c) = &w.calibre {
-        rows.push(("Calibre".into(), c.clone()));
-    }
-    if let Some(l) = w.lift {
-        rows.push(("Lift Angle".into(), format!("{l}°")));
-    }
-    if let Some(b) = w.bph {
-        rows.push(("Beat Rate".into(), format!("{b} bph")));
-    }
-    for f in &w.fields {
-        rows.push((f.label.clone(), f.value.clone()));
-    }
-    for (label, value) in rows {
-        theme::row(ui, &label, None, |ui| ui.label(value));
-    }
-    if let Some(n) = w.notes.as_deref().filter(|n| !n.trim().is_empty()) {
-        ui.label(RichText::new(n).color(pal.text_secondary));
-    }
 }
 
 /// What to do with one of a watch's photos.
@@ -501,64 +534,545 @@ pub fn take_line(t: &Take) -> String {
     parts.join(" · ")
 }
 
-/// The watch's takes, newest first. What was asked for, if anything.
-pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<TakeAction> {
+/// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.
+pub const NEW_TAKE_CAPTIONS: [&str; 3] = [
+    "As long as you like. Stop saves it here.",
+    "Each position in turn, guided.",
+    "From full wind until it stops.",
+];
+
+/// The words under a watch's name in its header: its calibre, beat rate
+/// and lift angle, then its added fields, each named. The beat rate and
+/// lift angle are the ones its takes start with: the calibre's where the
+/// table gives them, else the watch's own ([`Calibres::watch_bph`]).
+pub fn subline(w: &Watch, cal: &Calibres) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    match w.calibre.as_deref().filter(|c| !c.is_empty()) {
+        Some(c) => parts.push(c.to_string()),
+        None => parts.push("Calibre not set".into()),
+    }
+    if let Some(b) = cal.watch_bph(w) {
+        parts.push(format!("{b} bph"));
+    }
+    if let Some(l) = cal.watch_lift(w) {
+        parts.push(format!("lift {}°", fields::plain(l)));
+    }
+    for f in w.fields.iter().filter(|f| !f.value.trim().is_empty()) {
+        parts.push(format!("{}: {}", f.label, f.value));
+    }
+    parts.join(" · ")
+}
+
+/// What was asked in a watch's header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderAction {
+    Edit,
+    AddPhotos,
+}
+
+/// A watch's header: its first photo (or its initial), its name and
+/// [`subline`], and Edit… and Add Photos… at the right, greyed out with
+/// `locked`'s reason when the library can't be changed.
+pub fn header(
+    ui: &mut egui::Ui,
+    e: &WatchEntry,
+    cal: &Calibres,
+    thumbs: &mut Thumbs,
+    locked: Option<&str>,
+) -> Option<HeaderAction> {
+    let pal = theme::pal(ui);
+    let w = &e.watch;
+    let tex = e
+        .photos
+        .first()
+        .and_then(|p| match thumbs.get(ui.ctx(), p) {
+            Thumb::Ready(t) => Some(t.clone()),
+            _ => None,
+        });
+    let mut act = None;
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::hover());
+        tile(ui, rect, tex.as_ref(), &w.name);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(RichText::new(&w.name).font(theme::semibold(16.0)));
+            ui.add(
+                egui::Label::new(
+                    RichText::new(subline(w, cal))
+                        .small()
+                        .color(pal.text_secondary),
+                )
+                .truncate(),
+            );
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let ok = locked.is_none();
+            let why = locked.unwrap_or_default();
+            if ui
+                .add_enabled(ok, theme::secondary(ui, "Add Photos…"))
+                .on_hover_text(
+                    "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an \
+                     iPhone, or TIFF). The first by name leads its row in the list.",
+                )
+                .on_disabled_hover_text(why)
+                .clicked()
+            {
+                act = Some(HeaderAction::AddPhotos);
+            }
+            if ui
+                .add_enabled(ok, theme::secondary(ui, "Edit…"))
+                .on_hover_text("Change this watch's details")
+                .on_disabled_hover_text(why)
+                .clicked()
+            {
+                act = Some(HeaderAction::Edit);
+            }
+        });
+    });
+    act
+}
+
+/// A section's title row, always one control tall so nothing moves when
+/// what is at its right comes and goes: `title`, a `count` after it, and
+/// `right` laid out from the right edge.
+pub fn title_row(
+    ui: &mut egui::Ui,
+    title: &str,
+    count: Option<usize>,
+    right: impl FnOnce(&mut egui::Ui),
+) {
+    let pal = theme::pal(ui);
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), theme::CONTROL_H),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(Vec2::new(ui.available_width(), theme::CONTROL_H));
+            ui.label(RichText::new(title).font(theme::semibold(13.0)));
+            if let Some(n) = count {
+                ui.label(RichText::new(n.to_string()).color(pal.text_secondary));
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), right);
+        },
+    );
+}
+
+/// A rounded panel for a section's content.
+pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let pal = theme::pal(ui);
+    egui::Frame::new()
+        .fill(pal.raised.gamma_multiply(0.6))
+        .corner_radius(egui::CornerRadius::same(theme::CONTROL_RADIUS + 2))
+        .inner_margin(egui::Margin::same(8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui)
+        })
+        .inner
+}
+
+/// New Take's three buttons, equal, each with its caption under it; Listen,
+/// the default, is the blue one. Which was pressed, if any. While `why`
+/// says so, they are greyed out with that reason.
+pub fn new_take_buttons(
+    ui: &mut egui::Ui,
+    names: [(&str, &str); 3],
+    why: Option<&str>,
+) -> Option<usize> {
+    let pal = theme::pal(ui);
+    let mut pressed = None;
+    let gap = 10.0;
+    let w = ((ui.available_width() - 2.0 * gap) / 3.0).max(80.0);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = gap;
+        for (i, (name, hint)) in names.into_iter().enumerate() {
+            ui.allocate_ui_with_layout(
+                Vec2::new(w, 64.0),
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    ui.set_width(w);
+                    panel(ui, |ui| {
+                        let b = if i == 0 {
+                            theme::primary(ui, name)
+                        } else {
+                            theme::secondary(ui, name)
+                        };
+                        let r = ui
+                            .add_enabled(
+                                why.is_none(),
+                                b.min_size(Vec2::new(ui.available_width(), 26.0)),
+                            )
+                            .on_hover_text(hint)
+                            .on_disabled_hover_text(why.unwrap_or_default());
+                        if r.clicked() {
+                            pressed = Some(i);
+                        }
+                        // One line, so the three buttons stay level.
+                        ui.vertical_centered(|ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(NEW_TAKE_CAPTIONS[i])
+                                        .small()
+                                        .color(pal.text_secondary),
+                                )
+                                .truncate(),
+                            );
+                        });
+                    });
+                },
+            );
+        }
+    });
+    pressed
+}
+
+/// A take's start in its row: `22 Oct 2026 09:10`, in this computer's
+/// time zone; its folder's name when `session.json` doesn't say.
+pub fn started_words(t: &Take) -> String {
+    t.started_utc
+        .as_deref()
+        .and_then(|u| chrono::DateTime::parse_from_rfc3339(u).ok())
+        .map(|d| {
+            d.with_timezone(&chrono::Local)
+                .format("%-d %b %Y %H:%M")
+                .to_string()
+        })
+        .unwrap_or_else(|| t.name.clone())
+}
+
+/// A take's row in the takes table: Started, Position, Length, Rate (s/d,
+/// on the take's clock log where it has one), Amplitude (°), Beat Error
+/// (ms, its size) and Size (MB).
+pub fn take_cells(t: &Take) -> [String; 7] {
+    let codes: Vec<String> = t
+        .positions
+        .iter()
+        .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.common().to_string()))
+        .collect();
+    let position = if t.power_reserve.is_some() {
+        "Power Reserve".to_string()
+    } else if codes.len() == 6 {
+        "All 6".to_string()
+    } else {
+        codes.join(", ")
+    };
+    let length = match (&t.power_reserve, t.duration_s) {
+        // One format down the column, a Power Reserve Test's run included.
+        (Some(r), _) => crate::strip::fmt_time(r.run_s),
+        (None, Some(d)) => crate::strip::fmt_time(d),
+        _ => String::new(),
+    };
+    let a = t.at_end.as_ref();
+    [
+        started_words(t),
+        position,
+        length,
+        a.and_then(|a| a.rate())
+            .map_or_else(String::new, |r| format!("{r:+.1}").replace('-', "−")),
+        a.and_then(|a| a.amplitude_deg)
+            .map_or_else(String::new, |x| format!("{x:.0}")),
+        a.and_then(|a| a.beat_error_ms)
+            .map_or_else(String::new, |b| format!("{:.1}", b.abs())),
+        format!("{:.1}", t.bytes as f64 / 1e6),
+    ]
+}
+
+/// The takes table's headings, in [`take_cells`]' order.
+pub const TAKE_HEADS: [&str; 7] = [
+    "Started",
+    "Position",
+    "Length",
+    "Rate (s/d)",
+    "Amplitude (°)",
+    "Beat Error (ms)",
+    "Size (MB)",
+];
+
+/// The take picked in `e`'s takes, if it is still there.
+pub fn picked_take<'a>(e: &'a WatchEntry, cx: &TakesContext) -> Option<&'a Take> {
+    e.takes
+        .iter()
+        .find(|t| cx.picked == Some(e.take_dir(t).as_path()))
+}
+
+/// The Takes title row's Open and "…", acting on the picked take: Open
+/// greyed out while `busy` says why (a take running on the Bench) or none
+/// is picked.
+pub fn takes_buttons(
+    ui: &mut egui::Ui,
+    e: &WatchEntry,
+    cx: &TakesContext,
+    busy: Option<&str>,
+) -> Option<TakeAction> {
+    let mut act = None;
+    let picked = picked_take(e, cx);
+    let r = ui.add_enabled(picked.is_some(), theme::secondary(ui, "…"));
+    let r = r
+        .on_hover_text("More for the picked take: Show in the folder, Keep Analysis Only…, move it, or delete it")
+        .on_disabled_hover_text("Pick a take first");
+    if let Some(t) = picked {
+        egui::Popup::menu(&r)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+            .show(|ui| {
+                if let Some(a) = take_menu(ui, e, t, cx, busy) {
+                    act = Some(a);
+                }
+            });
+    }
+    let why = busy.or(picked.is_none().then_some("Pick a take first"));
+    if ui
+        .add_enabled(why.is_none(), theme::secondary(ui, "Open"))
+        .on_hover_text(
+            "Analyse the whole picked take on the Bench; a long take takes a while to read",
+        )
+        .on_disabled_hover_text(why.unwrap_or_default())
+        .clicked()
+    {
+        if let Some(t) = picked {
+            act = Some(TakeAction::Open(e.take_dir(t)));
+        }
+    }
+    act
+}
+
+/// A take's menu, for its right click and the Takes row's "…".
+fn take_menu(
+    ui: &mut egui::Ui,
+    e: &WatchEntry,
+    t: &Take,
+    cx: &TakesContext,
+    busy: Option<&str>,
+) -> Option<TakeAction> {
+    let dir = e.take_dir(t);
+    let mut act = None;
+    let removing = cx.keeping.is_some_and(|(k, _)| k == dir);
+    let changes = cx.writable && !removing;
+    let why = if removing {
+        "This take's sound is being removed. Wait for it to finish, or press Cancel."
+    } else {
+        "This copy of the app can only read your watches"
+    };
+    if ui
+        .add_enabled(busy.is_none(), egui::Button::new("Open"))
+        .on_hover_text("Analyse the whole take")
+        .on_disabled_hover_text(busy.unwrap_or_default())
+        .clicked()
+    {
+        act = Some(TakeAction::Open(dir.clone()));
+    }
+    if ui
+        .button(crate::settings_window::show_in_words())
+        .on_hover_text("Open the take's folder")
+        .clicked()
+    {
+        act = Some(TakeAction::Show(dir.clone()));
+    }
+    ui.separator();
+    if ui
+        .add_enabled(
+            changes && t.audio && !t.incomplete && cx.keeping.is_none(),
+            egui::Button::new("Keep Analysis Only…"),
+        )
+        .on_hover_text(
+            "Delete the take's sound to save space and keep its analysis. You are asked \
+             first, and told what is lost.",
+        )
+        .on_disabled_hover_text(if !t.audio {
+            "This take's sound has already been removed"
+        } else if t.incomplete {
+            "Files this take lists are missing"
+        } else if cx.keeping.is_some() {
+            "Another take's sound is being removed. Wait for it to finish."
+        } else {
+            why
+        })
+        .clicked()
+    {
+        act = Some(TakeAction::KeepAnalysis(dir.clone()));
+    }
+    let (move_words, move_hint, no_watch) = if cx.unsorted {
+        (
+            "File Under a Watch",
+            "Move the take into a watch's takes",
+            "There is no watch yet: New Watch… adds one",
+        )
+    } else {
+        (
+            "Move to Another Watch",
+            "Move the take into another watch's takes",
+            "There is no other watch to move it to",
+        )
+    };
+    ui.add_enabled_ui(changes && !cx.others.is_empty(), |ui| {
+        ui.menu_button(move_words, |ui| {
+            for (id, name) in cx.others {
+                if ui.button(name).clicked() {
+                    act = Some(TakeAction::MoveTo(dir.clone(), id.clone()));
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text(move_hint)
+        .on_disabled_hover_text(if cx.others.is_empty() { no_watch } else { why });
+    });
+    if ui
+        .add_enabled(changes, theme::destructive(ui, "Delete…"))
+        .on_hover_text("Delete the take and its sound. It asks first.")
+        .on_disabled_hover_text(why)
+        .clicked()
+    {
+        act = Some(TakeAction::Delete(dir.clone()));
+    }
+    act
+}
+
+/// The watch's takes as a table, newest first: a click picks a row, a
+/// double click opens it (unless `busy` says why not), a right click
+/// offers the rest. Nothing is inserted between rows.
+pub fn takes_table(
+    ui: &mut egui::Ui,
+    e: &WatchEntry,
+    cx: &TakesContext,
+    busy: Option<&str>,
+) -> Option<TakeAction> {
     let pal = theme::pal(ui);
     if e.takes.is_empty() {
-        ui.label(
-            RichText::new(if cx.unsorted {
-                "No takes here: a Quick Listen take saved with File > Save… waits here until it is filed."
-            } else {
-                "No takes yet: Listen, Positions Test or Power Reserve Test, above, each keeps one here."
-            })
-            .color(pal.text_secondary),
-        );
+        panel(ui, |ui| {
+            ui.label(
+                RichText::new(if cx.unsorted {
+                    "No takes here: a Quick Listen take saved with File > Save… waits here until it is filed."
+                } else {
+                    "No takes yet: Listen, Positions Test or Power Reserve Test, above, each keeps one here."
+                })
+                .color(pal.text_secondary),
+            );
+        });
         return None;
     }
     let mut act = None;
-    for t in &e.takes {
-        let dir = e.take_dir(t);
-        let on_show = cx.on_show == Some(dir.as_path());
-        let picked = cx.picked == Some(dir.as_path());
-        let r = row(
+    panel(ui, |ui| {
+        let w = ui.available_width();
+        // Each column as wide as its heading or its widest cell; Started
+        // takes what the others leave.
+        let rows: Vec<[String; 7]> = e.takes.iter().map(take_cells).collect();
+        let text_w = |t: &str, size: f32| {
+            ui.fonts_mut(|f| {
+                f.layout_no_wrap(t.to_string(), egui::FontId::proportional(size), pal.text)
+                    .size()
+                    .x
+            })
+        };
+        let natural: Vec<f32> = (0..7)
+            .map(|i| {
+                rows.iter()
+                    .map(|r| text_w(&r[i], 12.5))
+                    .fold(text_w(TAKE_HEADS[i], 11.5), f32::max)
+                    + 18.0
+            })
+            .collect();
+        let others: f32 = natural[1..].iter().sum();
+        let first = (w - others).max(natural[0]);
+        let widths: Vec<f32> = std::iter::once(first)
+            .chain(natural[1..].iter().copied())
+            .collect();
+        let row_h = 24.0;
+        let font = egui::FontId::proportional(12.5);
+        let draw = |ui: &egui::Ui,
+                    rect: egui::Rect,
+                    cells: &[String],
+                    color: egui::Color32,
+                    font: &egui::FontId| {
+            let p = ui.painter_at(rect);
+            let mut x = rect.left() + 6.0;
+            for (i, (c, w)) in cells.iter().zip(&widths).enumerate() {
+                // Started and Position read from the left, the figures from the right.
+                let (pos, align) = if i < 2 {
+                    (egui::pos2(x, rect.center().y), egui::Align2::LEFT_CENTER)
+                } else {
+                    (
+                        egui::pos2(x + w - 12.0, rect.center().y),
+                        egui::Align2::RIGHT_CENTER,
+                    )
+                };
+                p.text(pos, align, c, font.clone(), color);
+                x += w;
+            }
+        };
+        let (head, _) = ui.allocate_exact_size(Vec2::new(w, row_h), Sense::hover());
+        draw(
             ui,
-            picked,
-            Lead::None,
-            &t.name,
-            &if on_show {
-                format!("On Show · {}", fmt_bytes(t.bytes))
-            } else {
-                fmt_bytes(t.bytes)
-            },
-            &take_line(t),
-            if on_show {
-                "This take is on show. Right-click for more."
-            } else if t.incomplete {
-                "Files this take lists are missing (still syncing, or copied in part): it is \
-                 left as it is. Double-click to open what is there."
-            } else {
-                "Click to pick this take, double-click to open it. Right-click for more."
-            },
+            head,
+            &TAKE_HEADS.map(String::from),
+            pal.text_secondary,
+            &egui::FontId::proportional(11.5),
         );
-        if r.double_clicked() {
-            act = Some(TakeAction::Open(dir.clone()));
-        } else if r.clicked() {
-            act = Some(TakeAction::Pick(dir.clone()));
-        }
-        // The picked take's own buttons: nothing opens until asked.
-        if picked && !on_show {
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                if ui
-                    .button("Open")
-                    .on_hover_text("Analyse the whole take; a long take takes a while to read")
-                    .clicked()
-                {
-                    act = Some(TakeAction::Open(dir.clone()));
+        for t in &e.takes {
+            let dir = e.take_dir(t);
+            let on_show = cx.on_show == Some(dir.as_path());
+            let picked = cx.picked == Some(dir.as_path());
+            let (rect, r) = ui.allocate_exact_size(Vec2::new(w, row_h), Sense::click());
+            if picked {
+                ui.painter().rect_filled(rect, 4.0, pal.control_active);
+            } else if r.hovered() {
+                ui.painter().rect_filled(rect, 4.0, pal.control_hover);
+            }
+            let cells = take_cells(t);
+            draw(ui, rect, &cells, pal.text, &font);
+            // Its state after the date, in small grey words.
+            let mut tags = Vec::new();
+            if on_show {
+                tags.push("On Show");
+            }
+            if !t.audio {
+                tags.push("Analysis Only");
+            }
+            if t.incomplete {
+                tags.push("Incomplete");
+            }
+            if !tags.is_empty() {
+                let date_w = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(cells[0].clone(), font.clone(), pal.text)
+                        .size()
+                        .x
+                });
+                ui.painter_at(rect).text(
+                    egui::pos2(rect.left() + 6.0 + date_w + 10.0, rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    tags.join(" · "),
+                    egui::FontId::proportional(11.0),
+                    pal.text_secondary,
+                );
+            }
+            let r = r.on_hover_text(format!(
+                "{}\n\n{}",
+                take_line(t),
+                if on_show {
+                    "This take is on show on the Bench. Right-click for more."
+                } else if t.incomplete {
+                    "Files this take lists are missing (still syncing, or copied in part): it \
+                     is left as it is. Double-click to open what is there."
+                } else {
+                    "Click to pick this take, double-click to open it. Right-click for more."
+                }
+            ));
+            if r.double_clicked() && busy.is_none() {
+                act = Some(TakeAction::Open(dir.clone()));
+            } else if r.clicked() || r.secondary_clicked() {
+                // A right-click picks the row too, so the menu acts on the
+                // take that is marked.
+                act = Some(TakeAction::Pick(dir.clone()));
+            }
+            r.context_menu(|ui| {
+                if let Some(a) = take_menu(ui, e, t, cx, busy) {
+                    act = Some(a);
                 }
             });
         }
-        if let Some((_, done)) = cx.keeping.filter(|(k, _)| *k == dir) {
+    });
+    // A take whose sound is being removed: under the table, never between
+    // its rows.
+    if let Some((k, done)) = cx.keeping {
+        if e.takes.iter().any(|t| e.take_dir(t) == k) {
             ui.horizontal(|ui| {
                 ui.add(
                     egui::ProgressBar::new(done)
@@ -578,88 +1092,40 @@ pub fn takes(ui: &mut egui::Ui, e: &WatchEntry, cx: &TakesContext) -> Option<Tak
                 }
             });
         }
-        let busy = cx.keeping.is_some_and(|(k, _)| k == dir);
-        let changes = cx.writable && !busy;
-        let why = if busy {
-            "This take's sound is being removed. Wait for it to finish, or press Cancel."
-        } else {
-            "This copy of the app can only read your watches"
-        };
-        r.context_menu(|ui| {
-            if ui
-                .button("Open")
-                .on_hover_text("Analyse the whole take")
-                .clicked()
-            {
-                act = Some(TakeAction::Open(dir.clone()));
-            }
-            if ui
-                .button(crate::settings_window::show_in_words())
-                .on_hover_text("Open the take's folder")
-                .clicked()
-            {
-                act = Some(TakeAction::Show(dir.clone()));
-            }
-            ui.separator();
-            if ui
-                .add_enabled(
-                    changes && t.audio && !t.incomplete && cx.keeping.is_none(),
-                    egui::Button::new("Keep Analysis Only…"),
-                )
-                .on_hover_text(
-                    "Delete the take's sound to save space and keep its analysis. You are \
-                     asked first, and told what is lost.",
-                )
-                .on_disabled_hover_text(if !t.audio {
-                    "This take's sound has already been removed"
-                } else if t.incomplete {
-                    "Files this take lists are missing"
-                } else if cx.keeping.is_some() {
-                    "Another take's sound is being removed. Wait for it to finish."
-                } else {
-                    why
-                })
-                .clicked()
-            {
-                act = Some(TakeAction::KeepAnalysis(dir.clone()));
-            }
-            let (move_words, move_hint, no_watch) = if cx.unsorted {
-                (
-                    "File Under a Watch",
-                    "Move the take into a watch's takes",
-                    "There is no watch yet: New Watch… adds one",
-                )
-            } else {
-                (
-                    "Move to Another Watch",
-                    "Move the take into another watch's takes",
-                    "There is no other watch to move it to",
-                )
-            };
-            ui.add_enabled_ui(changes && !cx.others.is_empty(), |ui| {
-                ui.menu_button(move_words, |ui| {
-                    for (id, name) in cx.others {
-                        if ui.button(name).clicked() {
-                            act = Some(TakeAction::MoveTo(dir.clone(), id.clone()));
-                            ui.close();
-                        }
-                    }
-                })
-                .response
-                .on_hover_text(move_hint)
-                .on_disabled_hover_text(if cx.others.is_empty() { no_watch } else { why });
-            });
-            if ui
-                .add_enabled(changes, theme::destructive(ui, "Delete…"))
-                .on_hover_text("Delete the take and its sound. It asks first.")
-                .on_disabled_hover_text(why)
-                .clicked()
-            {
-                act = Some(TakeAction::Delete(dir.clone()));
-            }
-        });
     }
     act
+}
+
+/// A watch's added fields and notes, as rows in a panel.
+pub fn details_panel(ui: &mut egui::Ui, w: &Watch) {
+    let pal = theme::pal(ui);
+    let mut rows: Vec<(String, String)> = w
+        .fields
+        .iter()
+        .map(|f| (f.label.clone(), f.value.clone()))
+        .collect();
+    if let Some(n) = w.notes.as_deref().filter(|n| !n.trim().is_empty()) {
+        rows.push(("Notes".into(), n.to_string()));
+    }
+    panel(ui, |ui| {
+        if rows.is_empty() {
+            ui.label(
+                RichText::new(
+                    "None yet. Edit… adds notes, a customer, a serial number or any field.",
+                )
+                .small()
+                .color(pal.text_secondary),
+            );
+        }
+        for (label, value) in rows {
+            ui.horizontal(|ui| {
+                ui.label(label);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(RichText::new(value).color(pal.text_secondary));
+                });
+            });
+        }
+    });
 }
 
 /// A question about a take, in a window of its own.
@@ -1153,6 +1619,127 @@ mod tests {
         });
         let added = draw(&mut w, &mut cal);
         assert_eq!(added.iter().filter(|t| *t == "×").count(), 1, "{added:?}");
+    }
+
+    /// The header names the beat rate and lift angle a take starts with:
+    /// the calibre's where the table gives them, else the watch's own.
+    #[test]
+    fn the_header_takes_its_beat_rate_and_lift_from_the_calibre_first() {
+        let cal = Calibres::in_memory();
+        let mut w = Watch::new("Diver");
+        w.calibre = Some("ETA 2824-2".into());
+        let line = subline(&w, &cal);
+        let (bph, lift) = (
+            cal.bph("ETA 2824-2").unwrap(),
+            cal.lift("ETA 2824-2").unwrap(),
+        );
+        assert!(line.contains(&format!("{bph} bph")), "{line}");
+        assert!(
+            line.contains(&format!("lift {}°", fields::plain(lift))),
+            "{line}"
+        );
+        let mut own = Watch::new("Own");
+        own.calibre = Some("Not in the table".into());
+        own.bph = Some(19800);
+        own.lift = Some(56.0);
+        assert_eq!(
+            subline(&own, &cal),
+            "Not in the table · 19800 bph · lift 56°"
+        );
+    }
+
+    /// A list row's second line keeps whole parts that fit, in order.
+    #[test]
+    fn a_rows_second_line_keeps_the_parts_that_fit() {
+        let ctx = egui::Context::default();
+        let mut got = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let font = egui::FontId::proportional(11.5);
+                let parts = [
+                    "Audemars Piguet 2121".to_string(),
+                    "3 takes".to_string(),
+                    "last 2026-10-22".to_string(),
+                ];
+                got.push(fitted(ui, &parts, &font, 1000.0));
+                // Just wide enough for two parts, not three.
+                let two = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(
+                        "Audemars Piguet 2121 · 3 takes".into(),
+                        font.clone(),
+                        egui::Color32::WHITE,
+                    )
+                    .size()
+                    .x
+                });
+                got.push(fitted(ui, &parts, &font, two + 1.0));
+                got.push(fitted(ui, &parts, &font, 10.0));
+            });
+        });
+        assert_eq!(got[0], "Audemars Piguet 2121 · 3 takes · last 2026-10-22");
+        assert_eq!(got[1], "Audemars Piguet 2121 · 3 takes");
+        assert_eq!(
+            got[2], "Audemars Piguet 2121",
+            "the first is kept, to be cut"
+        );
+    }
+
+    #[test]
+    fn a_takes_row_has_its_seven_columns() {
+        let t = Take {
+            name: "2026-10-22 09.10".into(),
+            bytes: 112_600_000,
+            audio: false,
+            incomplete: false,
+            started_utc: None,
+            duration_s: Some(1800.0),
+            positions: vec!["DU".into()],
+            at_end: Some(timegrapher_core::library::AtEnd {
+                rate_s_per_day: Some(9.8),
+                amplitude_deg: Some(287.2),
+                beat_error_ms: Some(-0.21),
+                rate_corrected_s_per_day: None,
+            }),
+            power_reserve: None,
+        };
+        assert_eq!(
+            take_cells(&t),
+            [
+                "2026-10-22 09.10",
+                "DU",
+                "30:00",
+                "+9.8",
+                "287",
+                "0.2",
+                "112.6"
+            ]
+            .map(String::from)
+        );
+        // The rate on the take's clock log where it has one, as the Bench
+        // reads it.
+        let mut c = t.clone();
+        c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(21.5);
+        assert_eq!(take_cells(&c)[3], "+21.5");
+        let all = Take {
+            positions: ["DU", "DD", "CU", "CD", "CL", "CR"]
+                .map(String::from)
+                .to_vec(),
+            ..t
+        };
+        assert_eq!(take_cells(&all)[1], "All 6");
+        // A Power Reserve Test's run in the same format as the others.
+        let pr = Take {
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 166_320.0,
+                ending: timegrapher_core::power_reserve::Ending::Stopped,
+                position: "CL".into(),
+            }),
+            ..all.clone()
+        };
+        let cells = take_cells(&pr);
+        assert_eq!(cells[1], "Power Reserve");
+        assert_eq!(cells[2], crate::strip::fmt_time(166_320.0));
+        assert_eq!(TAKE_HEADS.len(), 7);
     }
 
     #[test]
