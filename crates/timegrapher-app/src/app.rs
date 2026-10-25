@@ -3010,6 +3010,7 @@ impl TimegrapherApp {
                 position: Some(code),
                 start_s,
                 end_s,
+                settle_s: Some(0.0),
                 masked: masked.to_vec(),
                 ..Default::default()
             })
@@ -3467,7 +3468,10 @@ impl TimegrapherApp {
     /// The session file for the take being kept: the watch, its calibre
     /// (with the wheels of a custom one), the lift angle and beat rate, and
     /// one entry per stretch in one position, in seconds into the sound
-    /// saved, which `timegrapher session` reads as well.
+    /// saved, which `timegrapher session` reads as well. Each entry starts
+    /// once its position has settled, and says `settle_s = 0` so that
+    /// nothing is skipped twice: the command line reads the seconds the
+    /// app's table read.
     fn take_manifest(&self) -> Manifest {
         let mut m = self.manifest_header();
         // The stretches masked out, in the saved sound's own time. Every
@@ -3492,6 +3496,7 @@ impl TimegrapherApp {
                 clock: Some("clock.csv".into()),
                 start_s,
                 end_s,
+                settle_s: Some(0.0),
                 masked: masked.clone(),
                 ..Default::default()
             })
@@ -3514,6 +3519,7 @@ impl TimegrapherApp {
                     clock: Some("clock.csv".into()),
                     start_s: Some(start_s),
                     end_s: Some(end_s),
+                    settle_s: Some(0.0),
                     masked: masked.clone(),
                     ..Default::default()
                 })
@@ -14593,6 +14599,8 @@ fn save_marks_to_take(
                 None => t.remove(key),
             };
         }
+        // Each start is already after its settling: nothing to skip again.
+        t.insert("settle_s", toml_edit::value(0.0));
     };
     let one_file = |files: Vec<String>| {
         if files.windows(2).any(|w| w[0] != w[1]) {
@@ -18771,6 +18779,7 @@ mod tests {
         want.recordings = vec![RecordingEntry {
             file: ".".into(),
             position: Some("DD".into()),
+            settle_s: Some(0.0),
             masked: vec![[10.0, 14.0]],
             ..Default::default()
         }];
@@ -18942,13 +18951,20 @@ mod tests {
         let want = format!(
             "# A hand-written note\nwatch = \"Test\"\nlift = 52.0\n\n{}\n{}\n{}\n\
              [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n",
-            entry("DU", "start_s = 0.0\nend_s = 10.0", true),
+            entry("DU", "start_s = 0.0\nend_s = 10.0\nsettle_s = 0.0", true),
             entry(
                 "CU",
-                &format!("start_s = {:?}\nend_s = 40.0", 10.0 + settle),
+                &format!(
+                    "start_s = {:?}\nend_s = 40.0\nsettle_s = 0.0",
+                    10.0 + settle
+                ),
                 false
             ),
-            entry("DU", &format!("start_s = {:?}", 40.0 + settle), false),
+            entry(
+                "DU",
+                &format!("start_s = {:?}\nsettle_s = 0.0", 40.0 + settle),
+                false
+            ),
         );
         assert_eq!(text, want);
         let again = reopened(&base.join("take.wav"));
@@ -19172,6 +19188,8 @@ mod tests {
             assert_eq!(m.recordings[0].position.as_deref(), Some("DU"));
             assert_eq!(m.recordings[0].start_s, Some(20.0));
             assert_eq!(m.recordings[0].end_s, Some(end));
+            // Its start is after the settling: nothing more to skip.
+            assert_eq!(m.recordings[0].settle_s, Some(0.0));
         }
         app.session.discard_recording();
     }
@@ -19331,6 +19349,13 @@ mod tests {
         let ends: Vec<_> = m.recordings.iter().map(|e| e.end_s).collect();
         assert_eq!(ends, [Some(30.0), Some(60.0), None], "{text}");
         assert_eq!(m.recordings[2].end_s, None);
+        // Each start is already after its settling, and the entry says so,
+        // so `timegrapher session` skips nothing more: it reads the seconds
+        // the app's table read.
+        assert!(
+            m.recordings.iter().all(|e| e.settle_s == Some(0.0)),
+            "{text}"
+        );
         // A mask in the settling gap after the first move is on every
         // entry, though inside none, and comes back when the file is read.
         app.set_masked(vec![(32.0, 38.0)]);

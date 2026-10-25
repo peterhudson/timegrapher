@@ -932,8 +932,8 @@ one opened:
 - On a recording opened from disk it is saved as masks are: a change
   marks it unsaved, and **Save** writes one entry per stretch in place of
   the entries for what was opened, each keeping everything else the first
-  of them said (each later position starting after its settling, as a
-  saved take's do). It is refused where those entries list more than one
+  of them said (each later position starting after its settling, with
+  `settle_s = 0`, as a saved take's do). It is refused where those entries list more than one
   file.
 
 **The track** runs along the top of the strip (down its right side when
@@ -1435,8 +1435,12 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   it, the beats are drawn faintly, and they are left out of the
   readings, the charts' points, the distributions and Steadiness, but kept
   in the audio. A saved take's `session.toml` starts each later position
-  after its settling, so `timegrapher session` reads the same seconds as
-  the app. Guided runs through the positions (as `timegrapher
+  after its settling, and each entry says `settle_s = 0`, so
+  `timegrapher session` skips nothing more and reads the same seconds as
+  the app (a take saved by an earlier build skips its settling a second
+  time there). Its rates still differ from the app's by the sound card's
+  own clock error, which it corrects from the take's clock log and the
+  app's figures don't. Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions

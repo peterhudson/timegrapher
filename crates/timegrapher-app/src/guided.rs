@@ -591,8 +591,21 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 .iter()
                 .map(|p| format!("Restart {} Measurement", p.code())),
         );
-        let slot = |ui: &mut egui::Ui, w: f32, b: egui::Button<'_>| ui.add_sized([w, 0.0], b);
-        ui.horizontal_wrapped(|ui| {
+        // Each button at its own width at the left of its slot, all one
+        // height on one line, so none moves from phase to phase.
+        let slot = |ui: &mut egui::Ui, w: f32, b: egui::Button<'_>| {
+            let size = Vec2::new(w, 26.0);
+            ui.allocate_ui_with_layout(
+                size,
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_min_size(size);
+                    ui.add(b)
+                },
+            )
+            .inner
+        };
+        ui.horizontal(|ui| {
             let code = test.position().code();
             let name = test.position().name();
             match phase {
@@ -621,7 +634,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     if slot(
                         ui,
                         restart_w,
-                        egui::Button::new(format!("Restart {code} Measurement")),
+                        theme::secondary(ui, &format!("Restart {code} Measurement")),
                     )
                     .on_hover_text(format!(
                         "The {name} measurement was disturbed (a knock, a noise): put the \
@@ -647,7 +660,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     ui.add_space(restart_w + ui.spacing().item_spacing.x);
                 }
                 Phase::Settling(_) | Phase::Measuring(_) => {
-                    if slot(ui, first_w, egui::Button::new("Pause"))
+                    if slot(ui, first_w, theme::secondary(ui, "Pause"))
                         .on_hover_text(format!(
                             "Hold the test here, to deal with the watch or the room. What \
                              {name} measured so far isn't used: Resume settles and measures it \
@@ -660,7 +673,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     if slot(
                         ui,
                         restart_w,
-                        egui::Button::new(format!("Restart {code} Measurement")),
+                        theme::secondary(ui, &format!("Restart {code} Measurement")),
                     )
                     .on_hover_text(format!(
                         "Settle and measure {name} again from now, as after a knock"
@@ -674,8 +687,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     ui.add_space(first_w + restart_w + 2.0 * ui.spacing().item_spacing.x);
                 }
             }
-            if ui
-                .button("Stop")
+            if slot(ui, 0.0, theme::destructive(ui, "Stop"))
                 .on_hover_text(
                     "End the test without finishing it. The session and its positions stay; \
                      the table is cleared.",
@@ -760,6 +772,9 @@ fn column_head_swatch(
     swatch: Option<egui::Color32>,
 ) {
     let pal = theme::pal(ui);
+    // Never narrower than its words, so a long heading can't run into the
+    // one before it.
+    let w = w.max(head_w(ui, text) + if swatch.is_some() { 12.0 } else { 0.0 });
     let size = Vec2::new(w, ui.spacing().interact_size.y);
     ui.allocate_ui_with_layout(
         size,
@@ -775,6 +790,13 @@ fn column_head_swatch(
             }
         },
     );
+}
+
+/// How wide a column's heading is in its own type.
+fn head_w(ui: &egui::Ui, text: &str) -> f32 {
+    let font = theme::semibold(12.5);
+    let color = theme::pal(ui).text;
+    ui.fonts_mut(|f| f.layout_no_wrap(text.to_string(), font, color).size().x)
 }
 
 /// The width of a figure's column, and of the position names'.
@@ -795,6 +817,8 @@ fn table_grid(
     live: Option<&FreeCell>,
 ) {
     let pal = theme::pal(ui);
+    const FROM: &str = "From Average, s/d";
+    let from_w = FIGURE_W.max(head_w(ui, FROM));
     egui::Grid::new(id)
         .num_columns(5)
         .spacing(Vec2::new(16.0, 5.0))
@@ -805,7 +829,7 @@ fn table_grid(
             for (h, hint) in [
                 ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
                 (
-                    "From Average, s/d",
+                    FROM,
                     "This position's rate less the mean of the positions measured",
                 ),
                 (
@@ -823,7 +847,7 @@ fn table_grid(
                     Some((label, rate, from_mean, amp, be)) => {
                         ui.label(RichText::new(label).color(pal.text));
                         right(ui, signed(*rate, 1), false, pal.text);
-                        right(ui, signed(*from_mean, 1), false, pal.text);
+                        right_in(ui, from_w, signed(*from_mean, 1), false, pal.text);
                         right(ui, plain(*amp, 0), false, pal.text);
                         right(ui, plain(*be, 2), false, pal.text);
                     }
@@ -1778,17 +1802,19 @@ mod tests {
 
     /// The banner's buttons keep their places as the test moves on: Stop
     /// never moves, and Restart stays where it was, so a click meant for
-    /// Stop as a position's measuring ends never lands on Restart.
+    /// Stop as a position's measuring ends never lands on Restart. They
+    /// sit on one line at one height, each at the left of its slot.
     #[test]
     fn the_test_buttons_keep_their_places_from_phase_to_phase() {
         let mut test = Test::new().timed(20.0, 60.0);
-        let at = |found: &[(String, egui::Rect)], text: &str| {
+        let rect = |found: &[(String, egui::Rect)], text: &str| {
             found
                 .iter()
                 .find(|(t, _)| t == text)
-                .map(|(_, r)| r.center().x)
+                .map(|(_, r)| *r)
                 .unwrap_or_else(|| panic!("{text}: {found:?}"))
         };
+        let at = |found: &[(String, egui::Rect)], text: &str| rect(found, text).center().x;
         assert!(matches!(test.tick(0.0), Phase::Settling(_)));
         let ph = test.tick(5.0);
         let settling = drawn(&test, ph, None);
@@ -1808,6 +1834,68 @@ mod tests {
         let paused = drawn(&test, ph, None);
         at(&paused, "Resume");
         assert_eq!(at(&paused, "Stop"), stop);
+        // One line: every button's words start at the same height (their
+        // ink ends lower where a letter has a tail).
+        let y = rect(&measuring, "Stop").top();
+        for (found, text) in [
+            (&measuring, "Pause"),
+            (&measuring, "Restart DU Measurement"),
+            (&turn, "Start DD Measurement"),
+            (&turn, "Restart DU Measurement"),
+            (&turn, "Stop"),
+            (&paused, "Resume"),
+            (&paused, "Stop"),
+        ] {
+            let top = rect(found, text).top();
+            assert!((top - y).abs() < 0.5, "{text} at {top}, Stop at {y}");
+        }
+        // Pause is its own width at the left of the first slot, where
+        // Start begins, not stretched across it: its words sit well short
+        // of the slot's middle, where a stretched button would centre them.
+        let pause = rect(&measuring, "Pause");
+        let start = rect(&turn, "Start DD Measurement");
+        assert!(
+            pause.center().x < start.center().x - 20.0,
+            "{pause:?} {start:?}"
+        );
+        assert!(pause.left() > start.left(), "{pause:?} {start:?}");
+    }
+
+    /// The guided table's headings never run into each other: each ends
+    /// before the next begins.
+    #[test]
+    fn the_guided_tables_headings_stand_apart() {
+        let mut test = Test::new().timed(20.0, 60.0);
+        test.tick(0.0);
+        let ph = test.tick(30.0);
+        let found = drawn(&test, ph, None);
+        let heads = [
+            "Position",
+            "Rate, s/d",
+            "From Average, s/d",
+            "Amplitude, °",
+            "Beat Error, ms",
+        ];
+        let rects: Vec<egui::Rect> = heads
+            .iter()
+            .map(|h| {
+                found
+                    .iter()
+                    .find(|(t, _)| t == h)
+                    .map(|(_, r)| *r)
+                    .unwrap_or_else(|| panic!("{h}: {found:?}"))
+            })
+            .collect();
+        for (i, w) in rects.windows(2).enumerate() {
+            assert!(
+                w[0].right() + 8.0 <= w[1].left(),
+                "{} ends at {}, {} begins at {}",
+                heads[i],
+                w[0].right(),
+                heads[i + 1],
+                w[1].left()
+            );
+        }
     }
 
     /// The position being measured shows its figures so far, once it has
